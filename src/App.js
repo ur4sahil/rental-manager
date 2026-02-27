@@ -714,45 +714,528 @@ function Utilities() {
 
 // ============ ACCOUNTING ============
 function Accounting() {
-  const accounts = [
-    { name: "Rental Income", type: "Revenue", balance: 8300 },
-    { name: "Security Deposits Liability", type: "Liability", balance: -7500 },
-    { name: "Maintenance Expense", type: "Expense", balance: -570 },
-    { name: "Utility Expense", type: "Expense", balance: -311 },
-    { name: "Operating Account", type: "Asset", balance: 42800 },
-  ];
-  const reports = ["Rent Roll", "Delinquency Report", "Income Statement", "Balance Sheet", "Cash Flow", "Expense Tracking"];
+  const [entries, setEntries] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [workOrders, setWorkOrders] = useState([]);
+  const [utilities, setUtilities] = useState([]);
+  const [tenants, setTenants] = useState([]);
+  const [properties, setProperties] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeReport, setActiveReport] = useState(null);
+  const [activeTab, setActiveTab] = useState("overview");
+  const [showJournal, setShowJournal] = useState(false);
+  const [editEntry, setEditEntry] = useState(null);
+  const [form, setForm] = useState({ date: "", account: "", description: "", debit: 0, credit: 0 });
 
-  return (
-    <div>
-      <h2 className="text-xl font-bold text-gray-800 mb-5">Accounting & Financials</h2>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <h3 className="font-semibold text-gray-700 mb-3">Chart of Accounts</h3>
+  // Filters
+  const [filterAccount, setFilterAccount] = useState("all");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterType, setFilterType] = useState("all");
+  const [searchDesc, setSearchDesc] = useState("");
+
+  useEffect(() => {
+    async function fetchData() {
+      const [e, p, w, u, t, pr] = await Promise.all([
+        supabase.from("journal_entries").select("*").order("date", { ascending: false }),
+        supabase.from("payments").select("*"),
+        supabase.from("work_orders").select("*"),
+        supabase.from("utilities").select("*"),
+        supabase.from("tenants").select("*"),
+        supabase.from("properties").select("*"),
+      ]);
+      setEntries(e.data || []);
+      setPayments(p.data || []);
+      setWorkOrders(w.data || []);
+      setUtilities(u.data || []);
+      setTenants(t.data || []);
+      setProperties(pr.data || []);
+      setLoading(false);
+    }
+    fetchData();
+  }, []);
+
+  async function saveEntry() {
+    if (editEntry) {
+      await supabase.from("journal_entries").update(form).eq("id", editEntry.id);
+    } else {
+      await supabase.from("journal_entries").insert([form]);
+    }
+    const { data } = await supabase.from("journal_entries").select("*").order("date", { ascending: false });
+    setEntries(data || []);
+    setShowJournal(false);
+    setEditEntry(null);
+    setForm({ date: "", account: "", description: "", debit: 0, credit: 0 });
+  }
+
+  async function deleteEntry(id) {
+    if (!window.confirm("Delete this entry?")) return;
+    await supabase.from("journal_entries").delete().eq("id", id);
+    setEntries(entries.filter(e => e.id !== id));
+  }
+
+  function startEdit(entry) {
+    setEditEntry(entry);
+    setForm({ date: entry.date, account: entry.account, description: entry.description, debit: entry.debit, credit: entry.credit });
+    setShowJournal(true);
+  }
+
+  if (loading) return <Spinner />;
+
+  // Core calculations
+  const totalIncome = payments.filter(p => p.status === "paid").reduce((s, p) => s + Number(p.amount), 0);
+  const totalMaintenance = workOrders.reduce((s, w) => s + Number(w.cost || 0), 0);
+  const totalUtilities = utilities.reduce((s, u) => s + Number(u.amount || 0), 0);
+  const noi = totalIncome - totalMaintenance - totalUtilities;
+  const unpaidRent = payments.filter(p => p.status === "unpaid" || p.status === "partial").reduce((s, p) => s + Number(p.amount), 0);
+
+  // Filtered ledger entries
+  const uniqueAccounts = ["all", ...new Set(entries.map(e => e.account))];
+  const filteredEntries = entries.filter(e => {
+    if (filterAccount !== "all" && e.account !== filterAccount) return false;
+    if (filterType === "debit" && e.debit <= 0) return false;
+    if (filterType === "credit" && e.credit <= 0) return false;
+    if (filterDateFrom && e.date < filterDateFrom) return false;
+    if (filterDateTo && e.date > filterDateTo) return false;
+    if (searchDesc && !e.description?.toLowerCase().includes(searchDesc.toLowerCase())) return false;
+    return true;
+  });
+
+  const filteredDebits = filteredEntries.reduce((s, e) => s + Number(e.debit || 0), 0);
+  const filteredCredits = filteredEntries.reduce((s, e) => s + Number(e.credit || 0), 0);
+
+  // Monthly breakdown
+  const monthlyData = payments.reduce((acc, p) => {
+    const month = p.date?.slice(0, 7);
+    if (!month) return acc;
+    if (!acc[month]) acc[month] = { income: 0, expenses: 0 };
+    if (p.status === "paid") acc[month].income += Number(p.amount);
+    return acc;
+  }, {});
+
+  workOrders.forEach(w => {
+    const month = w.created?.slice(0, 7);
+    if (month && monthlyData[month]) monthlyData[month].expenses += Number(w.cost || 0);
+  });
+
+  const reports = [
+    { name: "Rent Roll", icon: "📋" },
+    { name: "Delinquency Report", icon: "⚠️" },
+    { name: "Income Statement", icon: "📈" },
+    { name: "Balance Sheet", icon: "⚖️" },
+    { name: "Cash Flow", icon: "💵" },
+    { name: "Expense Tracking", icon: "🧾" },
+  ];
+
+  const renderReport = () => {
+    if (!activeReport) return null;
+    let content;
+
+    if (activeReport === "Rent Roll") {
+      const rentPayments = payments.filter(p => p.type === "rent");
+      const totalExpected = rentPayments.reduce((s, p) => s + Number(p.amount), 0);
+      const totalPaid = rentPayments.filter(p => p.status === "paid").reduce((s, p) => s + Number(p.amount), 0);
+      content = (
+        <div>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-400">Expected</div><div className="text-lg font-bold text-green-600">${totalExpected.toLocaleString()}</div></div>
+            <div className="bg-blue-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-400">Collected</div><div className="text-lg font-bold text-blue-600">${totalPaid.toLocaleString()}</div></div>
+            <div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-400">Outstanding</div><div className="text-lg font-bold text-red-500">${(totalExpected - totalPaid).toLocaleString()}</div></div>
+          </div>
           <table className="w-full text-sm">
-            <thead className="text-xs text-gray-400 uppercase"><tr><th className="text-left pb-2">Account</th><th className="text-left pb-2">Type</th><th className="text-right pb-2">Balance</th></tr></thead>
+            <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+              <tr>{["Tenant","Property","Rent","Date","Method","Status"].map(h=><th key={h} className="px-3 py-2 text-left">{h}</th>)}</tr>
+            </thead>
             <tbody>
-              {accounts.map(a => (
-                <tr key={a.name} className="border-t border-gray-50">
-                  <td className="py-2 text-gray-800 font-medium">{a.name}</td>
-                  <td className="py-2 text-gray-400 text-xs">{a.type}</td>
-                  <td className={`py-2 text-right font-semibold ${a.balance < 0 ? "text-red-500" : "text-green-600"}`}>${Math.abs(a.balance).toLocaleString()}</td>
+              {rentPayments.map(p=>(
+                <tr key={p.id} className="border-t border-gray-50 hover:bg-gray-50">
+                  <td className="px-3 py-2 font-medium">{p.tenant}</td>
+                  <td className="px-3 py-2 text-gray-500">{p.property}</td>
+                  <td className="px-3 py-2 font-semibold">${p.amount}</td>
+                  <td className="px-3 py-2 text-gray-500">{p.date}</td>
+                  <td className="px-3 py-2 text-gray-500">{p.method}</td>
+                  <td className="px-3 py-2"><Badge status={p.status} /></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <h3 className="font-semibold text-gray-700 mb-3">Financial Reports</h3>
-          <div className="space-y-2">
-            {reports.map(r => (
-              <button key={r} className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-gray-100 hover:bg-indigo-50 hover:border-indigo-200 text-sm text-gray-700 hover:text-indigo-700">
-                <span>📄 {r}</span><span className="text-gray-300">→</span>
-              </button>
+      );
+    } else if (activeReport === "Delinquency Report") {
+      const delinquent = payments.filter(p => p.status === "unpaid" || p.status === "partial");
+      const total = delinquent.reduce((s, p) => s + Number(p.amount), 0);
+      content = (
+        <div>
+          <div className="bg-red-50 border border-red-100 rounded-lg p-3 mb-4 flex justify-between items-center">
+            <span className="text-sm font-medium text-red-700">Total Delinquent Amount</span>
+            <span className="text-xl font-bold text-red-600">${total.toLocaleString()}</span>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+              <tr>{["Tenant","Property","Amount Owed","Type","Due Date","Status"].map(h=><th key={h} className="px-3 py-2 text-left">{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {delinquent.length === 0 ? (
+                <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-400">🎉 No delinquent payments!</td></tr>
+              ) : delinquent.map(p=>(
+                <tr key={p.id} className="border-t border-gray-50">
+                  <td className="px-3 py-2 font-medium">{p.tenant}</td>
+                  <td className="px-3 py-2 text-gray-500">{p.property}</td>
+                  <td className="px-3 py-2 font-semibold text-red-500">${p.amount}</td>
+                  <td className="px-3 py-2 capitalize">{p.type?.replace("_"," ")}</td>
+                  <td className="px-3 py-2 text-gray-500">{p.date}</td>
+                  <td className="px-3 py-2"><Badge status={p.status} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    } else if (activeReport === "Income Statement") {
+      content = (
+        <div className="space-y-4 text-sm">
+          <div className="text-center text-gray-400 text-xs uppercase tracking-wide">PropManager — Income Statement — February 2025</div>
+          <div className="bg-green-50 rounded-lg p-4">
+            <div className="font-bold text-gray-700 mb-2">REVENUE</div>
+            {payments.filter(p=>p.status==="paid").map(p=>(
+              <div key={p.id} className="flex justify-between py-1 text-gray-600">
+                <span className="pl-3">{p.type?.replace("_"," ")} — {p.tenant}</span>
+                <span className="text-green-600">${Number(p.amount).toLocaleString()}</span>
+              </div>
             ))}
+            <div className="flex justify-between pt-2 border-t border-green-200 font-bold"><span>Total Revenue</span><span className="text-green-600">${totalIncome.toLocaleString()}</span></div>
+          </div>
+          <div className="bg-red-50 rounded-lg p-4">
+            <div className="font-bold text-gray-700 mb-2">EXPENSES</div>
+            {workOrders.filter(w=>w.cost>0).map(w=>(
+              <div key={w.id} className="flex justify-between py-1 text-gray-600">
+                <span className="pl-3">Maintenance — {w.issue}</span>
+                <span className="text-red-500">-${w.cost}</span>
+              </div>
+            ))}
+            {utilities.map(u=>(
+              <div key={u.id} className="flex justify-between py-1 text-gray-600">
+                <span className="pl-3">Utility — {u.provider}</span>
+                <span className="text-red-500">-${u.amount}</span>
+              </div>
+            ))}
+            <div className="flex justify-between pt-2 border-t border-red-200 font-bold"><span>Total Expenses</span><span className="text-red-500">-${(totalMaintenance+totalUtilities).toLocaleString()}</span></div>
+          </div>
+          <div className="bg-blue-50 rounded-lg p-4 flex justify-between font-bold text-lg">
+            <span className="text-gray-800">Net Operating Income</span>
+            <span className={noi >= 0 ? "text-blue-700" : "text-red-600"}>${noi.toLocaleString()}</span>
           </div>
         </div>
+      );
+    } else if (activeReport === "Balance Sheet") {
+      const totalAssets = 42800 + totalIncome;
+      const totalLiabilities = 7500;
+      content = (
+        <div className="space-y-4 text-sm">
+          <div className="text-center text-gray-400 text-xs uppercase tracking-wide">PropManager — Balance Sheet — February 2025</div>
+          <div className="bg-green-50 rounded-lg p-4">
+            <div className="font-bold text-gray-700 mb-2">ASSETS</div>
+            {[["Operating Account","$42,800"],["Rent Receivable",`$${totalIncome.toLocaleString()}`],["Security Deposits Held","$7,500"]].map(([l,v])=>(
+              <div key={l} className="flex justify-between py-1 text-gray-600"><span className="pl-3">{l}</span><span className="text-green-600">{v}</span></div>
+            ))}
+            <div className="flex justify-between pt-2 border-t border-green-200 font-bold"><span>Total Assets</span><span className="text-green-600">${totalAssets.toLocaleString()}</span></div>
+          </div>
+          <div className="bg-red-50 rounded-lg p-4">
+            <div className="font-bold text-gray-700 mb-2">LIABILITIES</div>
+            <div className="flex justify-between py-1 text-gray-600"><span className="pl-3">Security Deposits Payable</span><span className="text-red-500">$7,500</span></div>
+            <div className="flex justify-between pt-2 border-t border-red-200 font-bold"><span>Total Liabilities</span><span className="text-red-500">${totalLiabilities.toLocaleString()}</span></div>
+          </div>
+          <div className="bg-blue-50 rounded-lg p-4 flex justify-between font-bold text-lg">
+            <span className="text-gray-800">Net Assets (Equity)</span>
+            <span className="text-blue-700">${(totalAssets - totalLiabilities).toLocaleString()}</span>
+          </div>
+        </div>
+      );
+    } else if (activeReport === "Cash Flow") {
+      content = (
+        <div className="space-y-4 text-sm">
+          <div className="text-center text-gray-400 text-xs uppercase tracking-wide">PropManager — Cash Flow Statement — February 2025</div>
+          <div className="bg-green-50 rounded-lg p-4">
+            <div className="font-bold text-gray-700 mb-2">OPERATING INFLOWS</div>
+            {payments.filter(p=>p.status==="paid").map(p=>(
+              <div key={p.id} className="flex justify-between py-1 text-gray-600">
+                <span className="pl-3">{p.tenant} — {p.method}</span>
+                <span className="text-green-600">+${Number(p.amount).toLocaleString()}</span>
+              </div>
+            ))}
+            <div className="flex justify-between pt-2 border-t border-green-200 font-bold"><span>Total Inflows</span><span className="text-green-600">+${totalIncome.toLocaleString()}</span></div>
+          </div>
+          <div className="bg-red-50 rounded-lg p-4">
+            <div className="font-bold text-gray-700 mb-2">OPERATING OUTFLOWS</div>
+            {workOrders.filter(w=>w.cost>0).map(w=>(
+              <div key={w.id} className="flex justify-between py-1 text-gray-600">
+                <span className="pl-3">{w.issue}</span>
+                <span className="text-red-500">-${w.cost}</span>
+              </div>
+            ))}
+            {utilities.map(u=>(
+              <div key={u.id} className="flex justify-between py-1 text-gray-600">
+                <span className="pl-3">{u.provider}</span>
+                <span className="text-red-500">-${u.amount}</span>
+              </div>
+            ))}
+            <div className="flex justify-between pt-2 border-t border-red-200 font-bold"><span>Total Outflows</span><span className="text-red-500">-${(totalMaintenance+totalUtilities).toLocaleString()}</span></div>
+          </div>
+          <div className="bg-blue-50 rounded-lg p-4 flex justify-between font-bold text-lg">
+            <span className="text-gray-800">Net Cash Flow</span>
+            <span className={noi >= 0 ? "text-blue-700" : "text-red-600"}>${noi.toLocaleString()}</span>
+          </div>
+        </div>
+      );
+    } else if (activeReport === "Expense Tracking") {
+      const allExpenses = [
+        ...workOrders.filter(w=>w.cost>0).map(w=>({ desc: w.issue, property: w.property, amount: Number(w.cost), type: "Maintenance", date: w.created, vendor: w.assigned })),
+        ...utilities.map(u=>({ desc: u.provider, property: u.property, amount: Number(u.amount), type: "Utility", date: u.due, vendor: u.provider })),
+      ].sort((a,b)=>a.date>b.date?-1:1);
+      const totalExp = allExpenses.reduce((s,e)=>s+e.amount,0);
+      const byType = allExpenses.reduce((acc,e)=>{ acc[e.type]=(acc[e.type]||0)+e.amount; return acc; },{});
+
+      content = (
+        <div>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="bg-red-50 rounded-lg p-3 text-center col-span-1"><div className="text-xs text-gray-400">Total</div><div className="text-lg font-bold text-red-500">${totalExp.toLocaleString()}</div></div>
+            {Object.entries(byType).map(([type,amt])=>(
+              <div key={type} className="bg-gray-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-400">{type}</div><div className="text-lg font-bold text-gray-700">${amt.toLocaleString()}</div></div>
+            ))}
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+              <tr>{["Date","Description","Property","Vendor","Type","Amount"].map(h=><th key={h} className="px-3 py-2 text-left">{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {allExpenses.map((e,i)=>(
+                <tr key={i} className="border-t border-gray-50 hover:bg-gray-50">
+                  <td className="px-3 py-2 text-gray-500">{e.date}</td>
+                  <td className="px-3 py-2 font-medium">{e.desc}</td>
+                  <td className="px-3 py-2 text-gray-500">{e.property}</td>
+                  <td className="px-3 py-2 text-gray-500">{e.vendor || "—"}</td>
+                  <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded-full text-xs ${e.type==="Maintenance"?"bg-orange-50 text-orange-600":"bg-blue-50 text-blue-600"}`}>{e.type}</span></td>
+                  <td className="px-3 py-2 font-semibold text-red-500">${e.amount}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white">
+            <h3 className="font-bold text-gray-800 text-lg">{activeReport}</h3>
+            <div className="flex gap-2">
+              <button onClick={() => window.print()} className="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-100">🖨️ Print</button>
+              <button onClick={() => setActiveReport(null)} className="text-gray-400 hover:text-gray-600 text-xl ml-2">✕</button>
+            </div>
+          </div>
+          <div className="p-6">{content}</div>
+        </div>
       </div>
+    );
+  };
+
+  return (
+    <div>
+      {renderReport()}
+      <h2 className="text-xl font-bold text-gray-800 mb-5">Accounting & Financials</h2>
+
+      {/* Tab Navigation */}
+      <div className="flex gap-2 mb-5 border-b border-gray-100">
+        {[["overview","Overview"],["ledger","General Ledger"],["reports","Reports"],["reconcile","Reconciliation"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setActiveTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab===id?"border-indigo-600 text-indigo-700":"border-transparent text-gray-500 hover:text-gray-700"}`}>{label}</button>
+        ))}
+      </div>
+
+      {/* OVERVIEW TAB */}
+      {activeTab === "overview" && (
+        <div>
+          <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
+            <StatCard label="Total Income" value={`$${totalIncome.toLocaleString()}`} color="text-green-600" sub="rent collected" />
+            <StatCard label="Total Expenses" value={`$${(totalMaintenance+totalUtilities).toLocaleString()}`} color="text-red-500" sub="maintenance + utilities" />
+            <StatCard label="NOI" value={`$${noi.toLocaleString()}`} color="text-blue-700" sub="net operating income" />
+            <StatCard label="Unpaid Rent" value={`$${unpaidRent.toLocaleString()}`} color="text-orange-500" sub="outstanding balance" />
+          </div>
+
+          {/* Monthly Summary */}
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mb-4">
+            <h3 className="font-semibold text-gray-700 mb-3">Monthly Summary</h3>
+            <table className="w-full text-sm">
+              <thead className="text-xs text-gray-400 uppercase">
+                <tr>{["Month","Income","Expenses","Net"].map(h=><th key={h} className="text-left pb-2 px-2">{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {Object.entries(monthlyData).sort((a,b)=>b[0]>a[0]?1:-1).map(([month,data])=>(
+                  <tr key={month} className="border-t border-gray-50 hover:bg-gray-50">
+                    <td className="py-2 px-2 font-medium text-gray-800">{month}</td>
+                    <td className="py-2 px-2 text-green-600 font-semibold">${data.income.toLocaleString()}</td>
+                    <td className="py-2 px-2 text-red-500 font-semibold">${data.expenses.toLocaleString()}</td>
+                    <td className={`py-2 px-2 font-bold ${data.income-data.expenses>=0?"text-blue-700":"text-red-600"}`}>${(data.income-data.expenses).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Chart of Accounts */}
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+            <h3 className="font-semibold text-gray-700 mb-3">Chart of Accounts</h3>
+            <table className="w-full text-sm">
+              <thead className="text-xs text-gray-400 uppercase">
+                <tr>{["Account","Type","Balance"].map(h=><th key={h} className={`pb-2 ${h==="Balance"?"text-right":"text-left"}`}>{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {[
+                  { name: "Rental Income", type: "Revenue", balance: totalIncome },
+                  { name: "Security Deposits Liability", type: "Liability", balance: -7500 },
+                  { name: "Maintenance Expense", type: "Expense", balance: -totalMaintenance },
+                  { name: "Utility Expense", type: "Expense", balance: -totalUtilities },
+                  { name: "Operating Account", type: "Asset", balance: 42800 },
+                ].map(a => (
+                  <tr key={a.name} className="border-t border-gray-50 hover:bg-gray-50">
+                    <td className="py-2 text-gray-800 font-medium">{a.name}</td>
+                    <td className="py-2"><span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{a.type}</span></td>
+                    <td className={`py-2 text-right font-semibold ${a.balance < 0 ? "text-red-500" : "text-green-600"}`}>${Math.abs(a.balance).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* GENERAL LEDGER TAB */}
+      {activeTab === "ledger" && (
+        <div>
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-700">Filters</h3>
+              <button onClick={()=>{setFilterAccount("all");setFilterType("all");setFilterDateFrom("");setFilterDateTo("");setSearchDesc("");}} className="text-xs text-gray-400 hover:text-red-500">Clear All</button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+              <select value={filterAccount} onChange={e=>setFilterAccount(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                {uniqueAccounts.map(a=><option key={a}>{a}</option>)}
+              </select>
+              <select value={filterType} onChange={e=>setFilterType(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <option value="all">All Types</option>
+                <option value="debit">Debits Only</option>
+                <option value="credit">Credits Only</option>
+              </select>
+              <input type="date" value={filterDateFrom} onChange={e=>setFilterDateFrom(e.target.value)} placeholder="From date" className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+              <input type="date" value={filterDateTo} onChange={e=>setFilterDateTo(e.target.value)} placeholder="To date" className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <input value={searchDesc} onChange={e=>setSearchDesc(e.target.value)} placeholder="Search description..." className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full mt-2" />
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm text-gray-500">{filteredEntries.length} entries · Debits: <span className="text-red-500 font-semibold">${filteredDebits.toLocaleString()}</span> · Credits: <span className="text-green-600 font-semibold">${filteredCredits.toLocaleString()}</span></div>
+              <button onClick={()=>{setEditEntry(null);setForm({date:"",account:"",description:"",debit:0,credit:0});setShowJournal(!showJournal);}} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700">+ Journal Entry</button>
+            </div>
+
+            {showJournal && (
+              <div className="bg-indigo-50 rounded-lg p-3 mb-3 border border-indigo-100">
+                <h4 className="text-sm font-semibold text-indigo-700 mb-2">{editEntry ? "Edit Entry" : "New Journal Entry"}</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                  <input placeholder="Account" value={form.account} onChange={e=>setForm({...form,account:e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                  <input placeholder="Description" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" />
+                  <input placeholder="Debit ($)" value={form.debit} onChange={e=>setForm({...form,debit:e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                  <input placeholder="Credit ($)" value={form.credit} onChange={e=>setForm({...form,credit:e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <button onClick={saveEntry} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg">{editEntry ? "Update" : "Save"}</button>
+                  <button onClick={()=>{setShowJournal(false);setEditEntry(null);}} className="bg-gray-200 text-gray-600 text-xs px-3 py-1.5 rounded-lg">Cancel</button>
+                </div>
+              </div>
+            )}
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-xs text-gray-400 uppercase bg-gray-50">
+                  <tr>{["Date","Account","Description","Debit","Credit",""].map(h=><th key={h} className="text-left py-2 px-2">{h}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {filteredEntries.map(e => (
+                    <tr key={e.id} className="border-t border-gray-50 hover:bg-gray-50">
+                      <td className="py-2 px-2 text-gray-500">{e.date}</td>
+                      <td className="py-2 px-2 font-medium text-gray-800">{e.account}</td>
+                      <td className="py-2 px-2 text-gray-500">{e.description}</td>
+                      <td className="py-2 px-2 text-red-500 font-semibold">{e.debit > 0 ? `$${e.debit}` : "—"}</td>
+                      <td className="py-2 px-2 text-green-600 font-semibold">{e.credit > 0 ? `$${e.credit}` : "—"}</td>
+                      <td className="py-2 px-2 flex gap-2">
+                        <button onClick={()=>startEdit(e)} className="text-xs text-indigo-600 hover:underline">Edit</button>
+                        <button onClick={()=>deleteEntry(e.id)} className="text-xs text-red-400 hover:underline">Delete</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredEntries.length === 0 && (
+                    <tr><td colSpan={6} className="py-6 text-center text-gray-400">No entries match your filters</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* REPORTS TAB */}
+      {activeTab === "reports" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {reports.map(r => (
+            <button key={r.name} onClick={() => setActiveReport(r.name)}
+              className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 text-left hover:border-indigo-300 hover:shadow-md transition-all group">
+              <div className="text-3xl mb-2">{r.icon}</div>
+              <div className="font-semibold text-gray-800 group-hover:text-indigo-700">{r.name}</div>
+              <div className="text-xs text-gray-400 mt-1">Click to view full report →</div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* RECONCILIATION TAB */}
+      {activeTab === "reconcile" && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+          <h3 className="font-semibold text-gray-700 mb-4">Bank Reconciliation — February 2025</h3>
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="bg-gray-50 rounded-lg p-4 text-center">
+              <div className="text-xs text-gray-400 mb-1">Bank Statement Balance</div>
+              <div className="text-2xl font-bold text-gray-800">$42,800</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4 text-center">
+              <div className="text-xs text-gray-400 mb-1">Book Balance</div>
+              <div className="text-2xl font-bold text-gray-800">${totalIncome.toLocaleString()}</div>
+            </div>
+            <div className={`rounded-lg p-4 text-center ${42800-totalIncome===0?"bg-green-50":"bg-orange-50"}`}>
+              <div className="text-xs text-gray-400 mb-1">Difference</div>
+              <div className={`text-2xl font-bold ${42800-totalIncome===0?"text-green-600":"text-orange-500"}`}>${Math.abs(42800-totalIncome).toLocaleString()}</div>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <h4 className="font-medium text-gray-700 text-sm">Unreconciled Items</h4>
+            {payments.filter(p=>p.status==="unpaid"||p.status==="partial").map(p=>(
+              <div key={p.id} className="flex items-center justify-between bg-orange-50 rounded-lg px-4 py-2.5">
+                <div>
+                  <div className="text-sm font-medium text-gray-800">{p.tenant}</div>
+                  <div className="text-xs text-gray-400">{p.property} · {p.date}</div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="font-semibold text-orange-600">${p.amount}</span>
+                  <button className="text-xs bg-white border border-gray-200 text-gray-600 px-3 py-1 rounded-lg hover:bg-green-50 hover:text-green-600 hover:border-green-200">Mark Reconciled</button>
+                </div>
+              </div>
+            ))}
+            {payments.filter(p=>p.status==="unpaid"||p.status==="partial").length === 0 && (
+              <div className="text-center py-4 text-gray-400 text-sm">🎉 All items reconciled!</div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
