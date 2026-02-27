@@ -387,6 +387,12 @@ function Tenants() {
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [selectedTenant, setSelectedTenant] = useState(null);
+  const [activePanel, setActivePanel] = useState(null); // 'ledger' | 'messages' | 'lease'
+  const [ledger, setLedger] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState("");
+  const [newCharge, setNewCharge] = useState({ description: "", amount: "", type: "charge" });
   const [form, setForm] = useState({ name: "", email: "", phone: "", property: "", lease_status: "active", move_in: "" });
 
   useEffect(() => { fetchTenants(); }, []);
@@ -404,10 +410,220 @@ function Tenants() {
     fetchTenants();
   }
 
+  async function openLedger(tenant) {
+    setSelectedTenant(tenant);
+    setActivePanel("ledger");
+    const { data } = await supabase.from("ledger_entries").select("*").eq("tenant", tenant.name).order("date", { ascending: false });
+    setLedger(data || []);
+  }
+
+  async function openMessages(tenant) {
+    setSelectedTenant(tenant);
+    setActivePanel("messages");
+    const { data } = await supabase.from("messages").select("*").eq("tenant", tenant.name).order("created_at", { ascending: true });
+    setMessages(data || []);
+    // Mark all as read
+    await supabase.from("messages").update({ read: true }).eq("tenant", tenant.name);
+  }
+
+  async function sendMessage() {
+    if (!newMessage.trim()) return;
+    await supabase.from("messages").insert([{
+      tenant: selectedTenant.name,
+      property: selectedTenant.property,
+      sender: "admin",
+      message: newMessage,
+      read: false,
+    }]);
+    setNewMessage("");
+    const { data } = await supabase.from("messages").select("*").eq("tenant", selectedTenant.name).order("created_at", { ascending: true });
+    setMessages(data || []);
+  }
+
+  async function addLedgerEntry() {
+    if (!newCharge.description || !newCharge.amount) return;
+    const amount = newCharge.type === "payment" || newCharge.type === "credit"
+      ? -Math.abs(Number(newCharge.amount))
+      : Math.abs(Number(newCharge.amount));
+    const currentBalance = ledger.length > 0 ? ledger[0].balance : 0;
+    const newBalance = currentBalance + amount;
+    await supabase.from("ledger_entries").insert([{
+      tenant: selectedTenant.name,
+      property: selectedTenant.property,
+      date: new Date().toISOString().slice(0, 10),
+      description: newCharge.description,
+      amount,
+      type: newCharge.type,
+      balance: newBalance,
+    }]);
+    // Update tenant balance
+    await supabase.from("tenants").update({ balance: newBalance }).eq("id", selectedTenant.id);
+    setNewCharge({ description: "", amount: "", type: "charge" });
+    openLedger(selectedTenant);
+    fetchTenants();
+  }
+
+  function closePanel() {
+    setActivePanel(null);
+    setSelectedTenant(null);
+    setLedger([]);
+    setMessages([]);
+  }
+
   if (loading) return <Spinner />;
+
+  const unreadCount = (tenant) => 0; // placeholder
 
   return (
     <div>
+      {/* Side Panel */}
+      {activePanel && selectedTenant && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-end">
+          <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-2xl">
+            {/* Panel Header */}
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-indigo-600 text-white">
+              <div>
+                <div className="font-bold">{selectedTenant.name}</div>
+                <div className="text-xs text-indigo-200">{selectedTenant.property}</div>
+              </div>
+              <button onClick={closePanel} className="text-indigo-200 hover:text-white text-xl">✕</button>
+            </div>
+
+            {/* Panel Tabs */}
+            <div className="flex border-b border-gray-100">
+              {[["ledger","📒 Ledger"],["messages","💬 Messages"],["lease","📄 Lease"]].map(([id,label])=>(
+                <button key={id} onClick={()=>{
+                  setActivePanel(id);
+                  if(id==="ledger") openLedger(selectedTenant);
+                  if(id==="messages") openMessages(selectedTenant);
+                }} className={`flex-1 py-2.5 text-xs font-medium ${activePanel===id?"border-b-2 border-indigo-600 text-indigo-700":"text-gray-500 hover:text-gray-700"}`}>{label}</button>
+              ))}
+            </div>
+
+            {/* LEDGER PANEL */}
+            {activePanel === "ledger" && (
+              <div className="flex-1 overflow-y-auto p-4">
+                {/* Balance Summary */}
+                <div className={`rounded-xl p-4 mb-4 text-center ${selectedTenant.balance > 0 ? "bg-red-50" : selectedTenant.balance < 0 ? "bg-green-50" : "bg-gray-50"}`}>
+                  <div className="text-xs text-gray-400 mb-1">Current Balance</div>
+                  <div className={`text-3xl font-bold ${selectedTenant.balance > 0 ? "text-red-500" : selectedTenant.balance < 0 ? "text-green-600" : "text-gray-700"}`}>
+                    {selectedTenant.balance > 0 ? `-$${selectedTenant.balance}` : selectedTenant.balance < 0 ? `Credit $${Math.abs(selectedTenant.balance)}` : "$0 Current"}
+                  </div>
+                </div>
+
+                {/* Add Charge/Payment */}
+                <div className="bg-gray-50 rounded-xl p-3 mb-4">
+                  <div className="text-xs font-semibold text-gray-600 mb-2">Add Transaction</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <select value={newCharge.type} onChange={e=>setNewCharge({...newCharge,type:e.target.value})} className="border border-gray-200 rounded-lg px-2 py-2 text-xs">
+                      <option value="charge">Charge</option>
+                      <option value="payment">Payment</option>
+                      <option value="credit">Credit</option>
+                      <option value="late_fee">Late Fee</option>
+                    </select>
+                    <input placeholder="Description" value={newCharge.description} onChange={e=>setNewCharge({...newCharge,description:e.target.value})} className="border border-gray-200 rounded-lg px-2 py-2 text-xs" />
+                    <input placeholder="Amount" value={newCharge.amount} onChange={e=>setNewCharge({...newCharge,amount:e.target.value})} className="border border-gray-200 rounded-lg px-2 py-2 text-xs" />
+                  </div>
+                  <button onClick={addLedgerEntry} className="mt-2 w-full bg-indigo-600 text-white text-xs py-2 rounded-lg hover:bg-indigo-700">Add Transaction</button>
+                </div>
+
+                {/* Ledger Entries */}
+                <div className="space-y-2">
+                  {ledger.map(e => (
+                    <div key={e.id} className="bg-white border border-gray-100 rounded-lg px-3 py-2.5">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="text-sm font-medium text-gray-800">{e.description}</div>
+                          <div className="text-xs text-gray-400">{e.date}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className={`text-sm font-bold ${e.amount > 0 ? "text-red-500" : "text-green-600"}`}>
+                            {e.amount > 0 ? `+$${e.amount}` : `-$${Math.abs(e.amount)}`}
+                          </div>
+                          <div className="text-xs text-gray-400">Bal: ${e.balance}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {ledger.length === 0 && <div className="text-center py-6 text-gray-400 text-sm">No ledger entries yet</div>}
+                </div>
+              </div>
+            )}
+
+            {/* MESSAGES PANEL */}
+            {activePanel === "messages" && (
+              <div className="flex-1 flex flex-col overflow-hidden">
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {messages.map(m => (
+                    <div key={m.id} className={`flex ${m.sender === "admin" ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-xs rounded-2xl px-4 py-2.5 ${m.sender === "admin" ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-800"}`}>
+                        <div className="text-sm">{m.message}</div>
+                        <div className={`text-xs mt-1 ${m.sender === "admin" ? "text-indigo-200" : "text-gray-400"}`}>
+                          {m.sender === "admin" ? "You" : selectedTenant.name} · {new Date(m.created_at).toLocaleDateString()}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {messages.length === 0 && <div className="text-center py-6 text-gray-400 text-sm">No messages yet</div>}
+                </div>
+                <div className="p-4 border-t border-gray-100 flex gap-2">
+                  <input
+                    value={newMessage}
+                    onChange={e=>setNewMessage(e.target.value)}
+                    onKeyDown={e=>e.key==="Enter"&&sendMessage()}
+                    placeholder="Type a message..."
+                    className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-400"
+                  />
+                  <button onClick={sendMessage} className="bg-indigo-600 text-white px-4 py-2.5 rounded-xl hover:bg-indigo-700 text-sm font-medium">Send</button>
+                </div>
+              </div>
+            )}
+
+            {/* LEASE PANEL */}
+            {activePanel === "lease" && (
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4">
+                  <h4 className="font-semibold text-gray-700 mb-3">Lease Details</h4>
+                  <div className="space-y-2 text-sm">
+                    {[
+                      ["Tenant", selectedTenant.name],
+                      ["Property", selectedTenant.property],
+                      ["Move-In Date", selectedTenant.move_in],
+                      ["Move-Out Date", selectedTenant.move_out || "—"],
+                      ["Lease Status", selectedTenant.lease_status],
+                      ["Monthly Rent", `$${selectedTenant.balance !== undefined ? "—" : "—"}`],
+                    ].map(([l,v])=>(
+                      <div key={l} className="flex justify-between py-1.5 border-b border-gray-50">
+                        <span className="text-gray-400">{l}</span>
+                        <span className="font-medium text-gray-800 capitalize">{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {[
+                    { label: "📄 View Lease Agreement", desc: "PDF document" },
+                    { label: "✍️ Send for E-Signature", desc: "DocuSign integration" },
+                    { label: "🔄 Renew Lease", desc: "Generate renewal" },
+                    { label: "📋 Generate Move-Out Notice", desc: "30/60 day notice" },
+                  ].map(item => (
+                    <button key={item.label} className="w-full flex items-center justify-between bg-gray-50 hover:bg-indigo-50 border border-gray-100 hover:border-indigo-200 rounded-xl px-4 py-3 text-left">
+                      <div>
+                        <div className="text-sm font-medium text-gray-800">{item.label}</div>
+                        <div className="text-xs text-gray-400">{item.desc}</div>
+                      </div>
+                      <span className="text-gray-300">→</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Main Tenant List */}
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-xl font-bold text-gray-800">Tenants</h2>
         <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">+ Add Tenant</button>
@@ -421,14 +637,14 @@ function Tenants() {
             <input placeholder="Email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <input placeholder="Phone" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <input placeholder="Property address" value={form.property} onChange={e=>setForm({...form,property:e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input type="date" placeholder="Move in date" value={form.move_in} onChange={e=>setForm({...form,move_in:e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <input type="date" value={form.move_in} onChange={e=>setForm({...form,move_in:e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <select value={form.lease_status} onChange={e=>setForm({...form,lease_status:e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
               {["active","notice","expired"].map(s=><option key={s}>{s}</option>)}
             </select>
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={addTenant} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">Save</button>
-            <button onClick={() => setShowForm(false)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg hover:bg-gray-200">Cancel</button>
+            <button onClick={() => setShowForm(false)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
           </div>
         </div>
       )}
@@ -438,7 +654,7 @@ function Tenants() {
           <div key={t.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
             <div className="flex justify-between items-start">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm">{t.name[0]}</div>
+                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">{t.name[0]}</div>
                 <div>
                   <div className="font-semibold text-gray-800">{t.name}</div>
                   <div className="text-xs text-gray-400">{t.property}</div>
@@ -448,13 +664,17 @@ function Tenants() {
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
               <div><span className="text-gray-400">Email</span><div className="font-semibold text-gray-700 truncate">{t.email}</div></div>
-              <div><span className="text-gray-400">Balance</span><div className={`font-semibold ${t.balance > 0 ? "text-red-500" : t.balance < 0 ? "text-green-600" : "text-gray-700"}`}>{t.balance > 0 ? `-$${t.balance}` : t.balance < 0 ? `Credit $${Math.abs(t.balance)}` : "Current"}</div></div>
+              <div><span className="text-gray-400">Balance</span>
+                <div className={`font-semibold ${t.balance > 0 ? "text-red-500" : t.balance < 0 ? "text-green-600" : "text-gray-700"}`}>
+                  {t.balance > 0 ? `-$${t.balance}` : t.balance < 0 ? `Credit $${Math.abs(t.balance)}` : "Current"}
+                </div>
+              </div>
               <div><span className="text-gray-400">Move-In</span><div className="font-semibold text-gray-700">{t.move_in}</div></div>
             </div>
             <div className="mt-3 flex gap-2">
-              <button className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">View Ledger</button>
-              <button className="text-xs text-gray-600 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50">Message</button>
-              <button className="text-xs text-gray-600 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50">Lease</button>
+              <button onClick={()=>openLedger(t)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-lg hover:bg-indigo-50">📒 Ledger</button>
+              <button onClick={()=>openMessages(t)} className="text-xs text-gray-600 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">💬 Message</button>
+              <button onClick={()=>{setSelectedTenant(t);setActivePanel("lease");}} className="text-xs text-gray-600 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">📄 Lease</button>
             </div>
           </div>
         ))}
