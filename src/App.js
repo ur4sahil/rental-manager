@@ -472,8 +472,7 @@ function Tenants() {
 
   if (loading) return <Spinner />;
 
-  const unreadCount = (tenant) => 0; // placeholder
-
+  
   return (
     <div>
       {/* Side Panel */}
@@ -938,7 +937,9 @@ function Accounting() {
   const [payments, setPayments] = useState([]);
   const [workOrders, setWorkOrders] = useState([]);
   const [utilities, setUtilities] = useState([]);
+  // eslint-disable-next-line no-unused-vars
   const [tenants, setTenants] = useState([]);
+  // eslint-disable-next-line no-unused-vars
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeReport, setActiveReport] = useState(null);
