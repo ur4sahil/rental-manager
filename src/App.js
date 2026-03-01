@@ -483,6 +483,7 @@ function Tenants({ addNotification }) {
   const [form, setForm] = useState({ name: "", email: "", phone: "", property: "", lease_status: "active", move_in: "", move_out: "", rent: "" });
   const [leaseModal, setLeaseModal] = useState(null); // 'renew' | 'notice'
   const [leaseInput, setLeaseInput] = useState("");
+  // eslint-disable-next-line no-unused-vars
   const [error, setError] = useState("");
 
   useEffect(() => {
