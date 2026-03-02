@@ -1871,7 +1871,7 @@ function Documents({ addNotification }) {
       property: form.property,
       type: form.type,
       tenant_visible: form.tenant_visible,
-      file_url: publicUrl,
+      url: publicUrl,
       file_name: fileName,
       uploaded_at: new Date().toISOString(),
     }]);
@@ -1900,14 +1900,14 @@ function Documents({ addNotification }) {
     fetchDocs();
   }
 
-  // Repair existing documents that have empty/broken file_url
+  // Repair existing documents that have empty/broken url
   async function repairUrls() {
     let repaired = 0;
     for (const d of docs) {
-      if (d.file_name && !d.file_url) {
+      if (d.file_name && !d.url) {
         const { data } = supabase.storage.from("documents").getPublicUrl(d.file_name);
         if (data?.publicUrl) {
-          await supabase.from("documents").update({ file_url: data.publicUrl }).eq("id", d.id);
+          await supabase.from("documents").update({ url: data.publicUrl }).eq("id", d.id);
           repaired++;
         }
       }
@@ -1979,10 +1979,10 @@ function Documents({ addNotification }) {
                 <td className="px-3 py-2.5">{d.tenant_visible ? "✅" : "🔒"}</td>
                 <td className="px-3 py-2.5">
                   <div className="flex gap-2">
-                    {d.file_url ? (
+                    {d.url ? (
                       <>
-                        <a href={d.file_url} target="_blank" rel="noreferrer" className="text-xs text-indigo-600 hover:underline">View</a>
-                        <a href={d.file_url} download className="text-xs text-green-600 hover:underline">Download</a>
+                        <a href={d.url} target="_blank" rel="noreferrer" className="text-xs text-indigo-600 hover:underline">View</a>
+                        <a href={d.url} download className="text-xs text-green-600 hover:underline">Download</a>
                       </>
                     ) : d.file_name ? (
                       <>
