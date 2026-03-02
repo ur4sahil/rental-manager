@@ -4,6 +4,18 @@ import { supabase } from "./supabase";
 // Safe number conversion - prevents NaN from breaking calculations
 const safeNum = (val) => { const n = Number(val); return isNaN(n) ? 0 : n; };
 
+// ============ AUDIT TRAIL HELPER ============
+// Call this from any module to log an action
+async function logAudit(action, module, details = "", recordId = "", userEmail = "", userRoleVal = "admin") {
+  try {
+    if (!userEmail) {
+      const { data: { user } } = await supabase.auth.getUser();
+      userEmail = user?.email || "unknown";
+    }
+    await supabase.from("audit_trail").insert([{ action, module, details, record_id: String(recordId), user_email: userEmail, user_role: userRoleVal }]);
+  } catch (e) { console.warn("Audit log failed:", e); }
+}
+
 // ============ STYLES ============
 const statusColors = {
   occupied: "bg-green-100 text-green-700",
@@ -53,6 +65,39 @@ function Spinner() {
 }
 
 function Modal({ title, onClose, children }) {
+
+// ============ SHARED PROPERTY DROPDOWN ============
+// This component is used across ALL modules to select a property
+// It fetches from the approved properties table and renders a consistent dropdown
+function PropertyDropdown({ value, onChange, className = "", required = false, label = "Property" }) {
+  const [properties, setProperties] = useState([]);
+  useEffect(() => {
+    supabase.from("properties").select("id, address, type, status").order("address").then(({ data }) => setProperties(data || []));
+  }, []);
+  return (
+    <div>
+      {label && <label className="text-xs font-medium text-gray-600 block mb-1">{label} {required && "*"}</label>}
+      <select value={value || ""} onChange={e => onChange(e.target.value)} className={`border border-gray-200 rounded-lg px-3 py-2 text-sm w-full ${className}`} required={required}>
+        <option value="">Select property...</option>
+        {properties.map(p => <option key={p.id} value={p.address}>{p.address} ({p.type})</option>)}
+      </select>
+    </div>
+  );
+}
+
+// Inline version (no label, for use in table forms)
+function PropertySelect({ value, onChange, className = "" }) {
+  const [properties, setProperties] = useState([]);
+  useEffect(() => {
+    supabase.from("properties").select("id, address, type").order("address").then(({ data }) => setProperties(data || []));
+  }, []);
+  return (
+    <select value={value || ""} onChange={e => onChange(e.target.value)} className={`border border-gray-200 rounded-lg px-3 py-2 text-sm ${className}`}>
+      <option value="">Select property...</option>
+      {properties.map(p => <option key={p.id} value={p.address}>{p.address}</option>)}
+    </select>
+  );
+}
   return (
     <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -292,8 +337,8 @@ function Dashboard({ notifications, setPage }) {
   );
 }
 
-// ============ PROPERTIES ============
-function Properties({ addNotification }) {
+// ============ PROPERTIES (Admin-Controlled with Approval Workflow) ============
+function Properties({ addNotification, userRole, userProfile }) {
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -303,8 +348,14 @@ function Properties({ addNotification }) {
   const [timelineProperty, setTimelineProperty] = useState(null);
   const [timelineData, setTimelineData] = useState([]);
   const [form, setForm] = useState({ address: "", type: "Single Family", status: "vacant", rent: "", tenant: "", lease_end: "", notes: "" });
+  // Approval workflow
+  const [changeRequests, setChangeRequests] = useState([]);
+  const [showRequests, setShowRequests] = useState(false);
+  const [reviewNote, setReviewNote] = useState("");
 
-  useEffect(() => { fetchProperties(); }, []);
+  const isAdmin = userRole === "admin";
+
+  useEffect(() => { fetchProperties(); fetchChangeRequests(); }, []);
 
   async function fetchProperties() {
     const { data } = await supabase.from("properties").select("*");
@@ -312,17 +363,47 @@ function Properties({ addNotification }) {
     setLoading(false);
   }
 
+  async function fetchChangeRequests() {
+    const { data } = await supabase.from("property_change_requests").select("*").order("requested_at", { ascending: false });
+    setChangeRequests(data || []);
+  }
+
   async function saveProperty() {
     if (!form.address.trim()) { alert("Property address is required."); return; }
     if (!form.rent || isNaN(Number(form.rent))) { alert("Please enter a valid rent amount."); return; }
-    const { error } = editingProperty
-      ? await supabase.from("properties").update(form).eq("id", editingProperty.id)
-      : await supabase.from("properties").insert([form]);
-    if (error) { alert("Error saving property: " + error.message); return; }
-    if (editingProperty) {
-      addNotification("🏠", `Property updated: ${form.address}`);
+
+    if (isAdmin) {
+      // Admin: direct save
+      const { error } = editingProperty
+        ? await supabase.from("properties").update(form).eq("id", editingProperty.id)
+        : await supabase.from("properties").insert([form]);
+      if (error) { alert("Error saving property: " + error.message); return; }
+      // Auto-create accounting class for new properties
+      if (!editingProperty) {
+        const classId = `PROP-${String(Math.random()).slice(2,8)}`;
+        await supabase.from("acct_classes").upsert([{ id: classId, name: form.address, description: `${form.type} · $${form.rent}/mo`, color: ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4"][Math.floor(Math.random()*6)], is_active: true }], { onConflict: "id" });
+      }
+      addNotification("🏠", editingProperty ? `Property updated: ${form.address}` : `New property added: ${form.address}`);
+      logAudit(editingProperty ? "update" : "create", "properties", `${editingProperty ? "Updated" : "Added"} property: ${form.address}`, editingProperty?.id || "", userProfile?.email, userRole);
     } else {
-      addNotification("🏠", `New property added: ${form.address}`);
+      // Non-admin: submit change request
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase.from("property_change_requests").insert([{
+        request_type: editingProperty ? "edit" : "add",
+        property_id: editingProperty?.id || null,
+        requested_by: user?.email || "unknown",
+        address: form.address,
+        type: form.type,
+        property_status: form.status,
+        rent: form.rent,
+        tenant: form.tenant,
+        lease_end: form.lease_end,
+        notes: form.notes,
+      }]);
+      if (error) { alert("Error submitting request: " + error.message); return; }
+      addNotification("📋", `Change request submitted for: ${form.address} — awaiting admin approval`);
+      logAudit("request", "properties", `Requested ${editingProperty ? "edit" : "add"}: ${form.address}`, editingProperty?.id || "", userProfile?.email, userRole);
+      fetchChangeRequests();
     }
     setShowForm(false);
     setEditingProperty(null);
@@ -331,132 +412,196 @@ function Properties({ addNotification }) {
   }
 
   async function deleteProperty(id, address) {
+    if (!isAdmin) { alert("Only admins can delete properties."); return; }
     if (!window.confirm(`Delete property "${address}"? This cannot be undone.`)) return;
     const { error } = await supabase.from("properties").delete().eq("id", id);
     if (error) { alert("Error deleting property: " + error.message); return; }
     addNotification("🗑️", `Property deleted: ${address}`);
+    logAudit("delete", "properties", `Deleted property: ${address}`, id, userProfile?.email, userRole);
+  }
+
+  // Admin: approve change request
+  async function approveRequest(req) {
+    if (req.request_type === "add") {
+      await supabase.from("properties").insert([{ address: req.address, type: req.type, status: req.property_status, rent: req.rent, tenant: req.tenant, lease_end: req.lease_end, notes: req.notes }]);
+      // Auto-create accounting class for this property
+      const classId = `PROP-${String(Math.random()).slice(2,8)}`;
+      await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · $${req.rent}/mo`, color: ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4","#F97316","#EC4899"][Math.floor(Math.random()*8)], is_active: true }], { onConflict: "id" });
+      addNotification("✅", `Property approved & added: ${req.address}`);
+    } else if (req.request_type === "edit" && req.property_id) {
+      await supabase.from("properties").update({ address: req.address, type: req.type, status: req.property_status, rent: req.rent, tenant: req.tenant, lease_end: req.lease_end, notes: req.notes }).eq("id", req.property_id);
+      addNotification("✅", `Property edit approved: ${req.address}`);
+    }
+    const { data: { user } } = await supabase.auth.getUser();
+    await supabase.from("property_change_requests").update({ status: "approved", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNote }).eq("id", req.id);
+    logAudit("approve", "properties", `Approved ${req.request_type} request: ${req.address} (requested by ${req.requested_by})`, req.id, user?.email, "admin");
+    setReviewNote("");
     fetchProperties();
+    fetchChangeRequests();
   }
 
-  function startEdit(p) {
-    setEditingProperty(p);
-    setForm({ address: p.address, type: p.type, status: p.status, rent: p.rent, tenant: p.tenant || "", lease_end: p.lease_end || "", notes: p.notes || "" });
-    setShowForm(true);
+  // Admin: reject change request
+  async function rejectRequest(req) {
+    const { data: { user } } = await supabase.auth.getUser();
+    await supabase.from("property_change_requests").update({ status: "rejected", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNote }).eq("id", req.id);
+    addNotification("❌", `Property request rejected: ${req.address}`);
+    logAudit("reject", "properties", `Rejected ${req.request_type} request: ${req.address} (requested by ${req.requested_by})`, req.id, user?.email, "admin");
+    setReviewNote("");
+    fetchChangeRequests();
   }
 
-  async function openTimeline(p) {
+  // Timeline (same as before)
+  async function loadTimeline(p) {
     setTimelineProperty(p);
-    const [payments, workOrders, docs] = await Promise.all([
+    const [pay, wo, docs] = await Promise.all([
       supabase.from("payments").select("*").eq("property", p.address),
       supabase.from("work_orders").select("*").eq("property", p.address),
       supabase.from("documents").select("*").eq("property", p.address),
     ]);
-    const events = [
-      ...(payments.data || []).map(x => ({ date: x.date, type: "💳 Payment", desc: `${x.tenant} — $${x.amount} (${x.status})` })),
-      ...(workOrders.data || []).map(x => ({ date: x.created, type: "🔧 Maintenance", desc: `${x.issue} — ${x.status}` })),
-      ...(docs.data || []).map(x => ({ date: x.uploaded_at?.slice(0, 10), type: "📄 Document", desc: x.name })),
-    ].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-    setTimelineData(events);
+    const all = [
+      ...(pay.data || []).map(x => ({ ...x, _type: "payment", _date: x.date })),
+      ...(wo.data || []).map(x => ({ ...x, _type: "work_order", _date: x.created_at })),
+      ...(docs.data || []).map(x => ({ ...x, _type: "document", _date: x.created_at })),
+    ].sort((a, b) => new Date(b._date) - new Date(a._date));
+    setTimelineData(all);
   }
 
-  const filtered = properties.filter(p =>
-    (filter === "all" || p.status === filter) &&
-    p.address.toLowerCase().includes(search.toLowerCase())
-  );
+  const pendingRequests = changeRequests.filter(r => r.status === "pending");
 
   if (loading) return <Spinner />;
+  const filtered = properties.filter(p =>
+    (filter === "all" || p.status === filter) &&
+    (p.address?.toLowerCase().includes(search.toLowerCase()) || p.type?.toLowerCase().includes(search.toLowerCase()))
+  );
 
   return (
     <div>
-      {/* Timeline Modal */}
-      {timelineProperty && (
-        <Modal title={`Timeline — ${timelineProperty.address}`} onClose={() => setTimelineProperty(null)}>
-          {timelineData.length === 0 ? (
-            <div className="text-center text-gray-400 py-8">No timeline events yet</div>
-          ) : (
-            <div className="space-y-3">
-              {timelineData.map((e, i) => (
-                <div key={i} className="flex gap-3 items-start">
-                  <div className="w-2 h-2 rounded-full bg-indigo-400 mt-2 flex-shrink-0"></div>
-                  <div className="flex-1 border-b border-gray-50 pb-3">
-                    <div className="flex justify-between">
-                      <span className="text-xs font-semibold text-indigo-600">{e.type}</span>
-                      <span className="text-xs text-gray-400">{e.date}</span>
-                    </div>
-                    <div className="text-sm text-gray-700 mt-0.5">{e.desc}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Modal>
+      <h2 className="text-xl font-bold text-gray-800 mb-4">Properties</h2>
+
+      {/* Pending requests banner (admin only) */}
+      {isAdmin && pendingRequests.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 flex items-center justify-between">
+          <span className="text-sm text-amber-800">📋 <strong>{pendingRequests.length}</strong> property change {pendingRequests.length === 1 ? "request" : "requests"} awaiting your review</span>
+          <button onClick={() => setShowRequests(!showRequests)} className="text-xs bg-amber-200 text-amber-800 px-3 py-1.5 rounded-lg font-medium hover:bg-amber-300">{showRequests ? "Hide" : "Review"}</button>
+        </div>
       )}
 
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="text-xl font-bold text-gray-800">Properties</h2>
-        <button onClick={() => { setEditingProperty(null); setForm({ address: "", type: "Single Family", status: "vacant", rent: "", tenant: "", lease_end: "", notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">+ Add Property</button>
+      {/* Non-admin: show their pending requests */}
+      {!isAdmin && changeRequests.filter(r => r.status === "pending").length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
+          <span className="text-sm text-blue-800">📋 You have <strong>{changeRequests.filter(r => r.status === "pending").length}</strong> pending {changeRequests.filter(r => r.status === "pending").length === 1 ? "request" : "requests"} awaiting admin approval</span>
+        </div>
+      )}
+
+      {/* Approval Queue (admin only) */}
+      {isAdmin && showRequests && pendingRequests.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mb-4 space-y-3">
+          <h3 className="font-semibold text-gray-800">Pending Approval</h3>
+          {pendingRequests.map(req => (
+            <div key={req.id} className="border border-amber-100 rounded-xl p-4 bg-amber-50/30">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${req.request_type === "add" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>{req.request_type === "add" ? "New Property" : "Edit Property"}</span>
+                    <span className="text-xs text-gray-400">by {req.requested_by} · {new Date(req.requested_at).toLocaleDateString()}</span>
+                  </div>
+                  <p className="font-semibold text-gray-800">{req.address}</p>
+                  <p className="text-xs text-gray-500 mt-1">{req.type} · ${req.rent}/mo · Status: {req.property_status}{req.notes ? ` · Notes: ${req.notes}` : ""}</p>
+                </div>
+                <div className="flex flex-col gap-2 shrink-0">
+                  <input value={reviewNote} onChange={e => setReviewNote(e.target.value)} placeholder="Note (optional)" className="border border-gray-200 rounded-lg px-2 py-1 text-xs w-40" />
+                  <div className="flex gap-1">
+                    <button onClick={() => approveRequest(req)} className="bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-emerald-700">✓ Approve</button>
+                    <button onClick={() => rejectRequest(req)} className="bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-red-600">✕ Reject</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-col md:flex-row gap-3 mb-4">
+        <input placeholder="Search properties..." value={search} onChange={e => setSearch(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1" />
+        <select value={filter} onChange={e => setFilter(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+          <option value="all">All Status</option><option value="occupied">Occupied</option><option value="vacant">Vacant</option><option value="maintenance">Maintenance</option>
+        </select>
+        <button onClick={() => { setEditingProperty(null); setForm({ address: "", type: "Single Family", status: "vacant", rent: "", tenant: "", lease_end: "", notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">
+          {isAdmin ? "+ Add Property" : "+ Request New Property"}
+        </button>
       </div>
 
       {showForm && (
-        <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
-          <h3 className="font-semibold text-gray-700 mb-3">{editingProperty ? "Edit Property" : "New Property"}</h3>
+        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm mb-4">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">{editingProperty ? (isAdmin ? "Edit Property" : "Request Edit") : (isAdmin ? "Add Property" : "Request New Property")}</h3>
+          {!isAdmin && <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 mb-3">Your changes will be submitted for admin approval before taking effect.</p>}
           <div className="grid grid-cols-2 gap-3">
             <input placeholder="Address" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" />
             <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
-              {["Single Family", "Condo", "Townhouse"].map(t => <option key={t}>{t}</option>)}
+              <option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option>
             </select>
             <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
-              {["vacant", "occupied", "maintenance", "notice given"].map(s => <option key={s}>{s}</option>)}
+              <option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option>
             </select>
             <input placeholder="Rent amount" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input placeholder="Tenant name" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input type="date" placeholder="Lease end" value={form.lease_end} onChange={e => setForm({ ...form, lease_end: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <textarea placeholder="Notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" rows={2} />
+            <input placeholder="Lease end date" type="date" value={form.lease_end} onChange={e => setForm({ ...form, lease_end: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <input placeholder="Notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" />
           </div>
           <div className="flex gap-2 mt-3">
-            <button onClick={saveProperty} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">Save</button>
-            <button onClick={() => { setShowForm(false); setEditingProperty(null); }} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg hover:bg-gray-200">Cancel</button>
+            <button onClick={saveProperty} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">{isAdmin ? "Save" : "Submit for Approval"}</button>
+            <button onClick={() => { setShowForm(false); setEditingProperty(null); }} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
           </div>
         </div>
       )}
 
-      <div className="flex gap-2 mb-4 flex-wrap">
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search address..." className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm flex-1 min-w-0" />
-        {["all", "occupied", "vacant", "maintenance", "notice given"].map(s => (
-          <button key={s} onClick={() => setFilter(s)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === s ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>{s}</button>
-        ))}
-      </div>
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {filtered.map(p => (
           <div key={p.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-            <div className="flex justify-between items-start">
+            <div className="flex items-start justify-between mb-2">
               <div>
-                <div className="font-semibold text-gray-800">{p.address}</div>
-                <div className="text-xs text-gray-400 mt-0.5">{p.type}</div>
+                <h3 className="font-semibold text-gray-800 text-sm">{p.address}</h3>
+                <p className="text-xs text-gray-400">{p.type}</p>
               </div>
-              <Badge status={p.status} />
+              <Badge status={p.status} label={p.status} />
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-              <div><span className="text-gray-400">Rent</span><div className="font-semibold text-gray-700">${p.rent}/mo</div></div>
-              <div><span className="text-gray-400">Tenant</span><div className="font-semibold text-gray-700">{p.tenant || "—"}</div></div>
-              <div><span className="text-gray-400">Lease End</span><div className="font-semibold text-gray-700">{p.lease_end || "—"}</div></div>
+            <div className="text-sm text-gray-600 space-y-1">
+              <div className="flex justify-between"><span>Rent:</span><span className="font-semibold">${safeNum(p.rent).toLocaleString()}</span></div>
+              {p.tenant && <div className="flex justify-between"><span>Tenant:</span><span>{p.tenant}</span></div>}
+              {p.lease_end && <div className="flex justify-between"><span>Lease End:</span><span>{p.lease_end}</span></div>}
             </div>
-            {p.notes && <div className="mt-2 text-xs text-gray-400 italic">{p.notes}</div>}
-            <div className="mt-3 flex gap-2 flex-wrap">
-              <button onClick={() => openTimeline(p)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">📅 Timeline</button>
-              <button onClick={() => startEdit(p)} className="text-xs text-blue-600 border border-blue-200 px-3 py-1 rounded-lg hover:bg-blue-50">✏️ Edit</button>
-              <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">🗑️ Delete</button>
-              {p.status === "vacant" && <button className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">List on Zillow</button>}
+            <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50">
+              <button onClick={() => { setEditingProperty(p); setForm({ address: p.address, type: p.type, status: p.status, rent: p.rent || "", tenant: p.tenant || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">{isAdmin ? "Edit" : "Request Edit"}</button>
+              {isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline">Delete</button>}
+              <button onClick={() => loadTimeline(p)} className="text-xs text-gray-400 hover:underline ml-auto">Timeline</button>
             </div>
           </div>
         ))}
       </div>
+      {filtered.length === 0 && <p className="text-center text-gray-400 py-8">No properties found.</p>}
+
+      {/* Timeline Modal */}
+      {timelineProperty && (
+        <Modal title={`Timeline: ${timelineProperty.address}`} onClose={() => setTimelineProperty(null)}>
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {timelineData.map((item, i) => (
+              <div key={i} className="flex gap-3 items-start">
+                <span className="text-lg">{item._type === "payment" ? "💰" : item._type === "work_order" ? "🔧" : "📄"}</span>
+                <div>
+                  <p className="text-sm font-medium text-gray-800">{item._type === "payment" ? `$${item.amount} - ${item.type}` : item._type === "work_order" ? item.issue : item.name}</p>
+                  <p className="text-xs text-gray-400">{new Date(item._date).toLocaleDateString()}</p>
+                </div>
+              </div>
+            ))}
+            {timelineData.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No activity found for this property.</p>}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
 // ============ TENANTS ============
-function Tenants({ addNotification }) {
+function Tenants({ addNotification, userProfile, userRole }) {
   const [tenants, setTenants] = useState([]);
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -495,8 +640,10 @@ function Tenants({ addNotification }) {
     if (error) { alert("Error saving tenant: " + error.message); return; }
     if (editingTenant) {
       addNotification("👤", `Tenant updated: ${form.name}`);
+      logAudit("update", "tenants", `Updated tenant: ${form.name}`, editingTenant?.id, userProfile?.email, userRole);
     } else {
       addNotification("👤", `New tenant added: ${form.name}`);
+      logAudit("create", "tenants", `Added tenant: ${form.name} at ${form.property}`, "", userProfile?.email, userRole);
     }
     setShowForm(false);
     setEditingTenant(null);
@@ -509,6 +656,7 @@ function Tenants({ addNotification }) {
     const { error } = await supabase.from("tenants").delete().eq("id", id);
     if (error) { alert("Error deleting tenant: " + error.message); return; }
     addNotification("🗑️", `Tenant deleted: ${name}`);
+    logAudit("delete", "tenants", `Deleted tenant: ${name}`, id, userProfile?.email, userRole);
     fetchTenants();
   }
 
@@ -864,10 +1012,7 @@ function Tenants({ addNotification }) {
             <input placeholder="Full name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <input placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <input placeholder="Phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <select value={form.property} onChange={e => setForm({ ...form, property: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
-              <option value="">Select property...</option>
-              {properties.map(p => <option key={p.id} value={p.address}>{p.address}</option>)}
-            </select>
+            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} />
             <input placeholder="Monthly Rent ($)" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
               {["active", "notice", "expired"].map(s => <option key={s}>{s}</option>)}
@@ -919,7 +1064,7 @@ function Tenants({ addNotification }) {
 }
 
 // ============ PAYMENTS ============
-function Payments({ addNotification }) {
+function Payments({ addNotification, userProfile, userRole }) {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -940,6 +1085,7 @@ function Payments({ addNotification }) {
     const { error } = await supabase.from("payments").insert([{ ...form, amount: Number(form.amount) }]);
     if (error) { alert("Error recording payment: " + error.message); return; }
     addNotification("💳", `Payment recorded: $${form.amount} from ${form.tenant}`);
+    logAudit("create", "payments", `Payment: $${form.amount} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole);
     setShowForm(false);
     setForm({ tenant: "", property: "", amount: "", type: "rent", method: "ACH", status: "paid", date: new Date().toISOString().slice(0, 10) });
     fetchPayments();
@@ -962,7 +1108,7 @@ function Payments({ addNotification }) {
           <h3 className="font-semibold text-gray-700 mb-3">New Payment</h3>
           <div className="grid grid-cols-2 gap-3">
             <input placeholder="Tenant name" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input placeholder="Property" value={form.property} onChange={e => setForm({ ...form, property: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" />
             <input placeholder="Amount" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
@@ -1012,7 +1158,7 @@ function Payments({ addNotification }) {
 }
 
 // ============ MAINTENANCE ============
-function Maintenance({ addNotification }) {
+function Maintenance({ addNotification, userProfile, userRole }) {
   const [workOrders, setWorkOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
@@ -1042,8 +1188,10 @@ function Maintenance({ addNotification }) {
     if (error) { alert("Error saving work order: " + error.message); return; }
     if (editingWO) {
       addNotification("🔧", `Work order updated: ${form.issue}`);
+      logAudit("update", "maintenance", `Updated work order: ${form.issue}`, editingWO?.id, userProfile?.email, userRole);
     } else {
       addNotification("🔧", `New work order: ${form.issue} at ${form.property}`);
+      logAudit("create", "maintenance", `Work order: ${form.issue} at ${form.property}`, "", userProfile?.email, userRole);
     }
     setShowForm(false);
     setEditingWO(null);
@@ -1139,7 +1287,7 @@ function Maintenance({ addNotification }) {
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
           <h3 className="font-semibold text-gray-700 mb-3">{editingWO ? "Edit Work Order" : "New Work Order"}</h3>
           <div className="grid grid-cols-2 gap-3">
-            <input placeholder="Property" value={form.property} onChange={e => setForm({ ...form, property: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" />
             <input placeholder="Tenant" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <input placeholder="Issue description" value={form.issue} onChange={e => setForm({ ...form, issue: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" />
             <select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
@@ -1198,7 +1346,7 @@ function Maintenance({ addNotification }) {
 }
 
 // ============ UTILITIES ============
-function Utilities({ addNotification }) {
+function Utilities({ addNotification, userProfile, userRole }) {
   const [utilities, setUtilities] = useState([]);
   const [auditLog, setAuditLog] = useState([]);
   const [showAudit, setShowAudit] = useState(null);
@@ -1282,7 +1430,7 @@ function Utilities({ addNotification }) {
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
           <h3 className="font-semibold text-gray-700 mb-3">New Utility Bill</h3>
           <div className="grid grid-cols-2 gap-3">
-            <input placeholder="Property" value={form.property} onChange={e => setForm({ ...form, property: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" />
             <input placeholder="Provider (e.g. Gas Co)" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <input placeholder="Amount" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <input type="date" value={form.due} onChange={e => setForm({ ...form, due: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
@@ -2490,7 +2638,7 @@ function Accounting() {
 }
 
 // ============ DOCUMENTS ============
-function Documents({ addNotification }) {
+function Documents({ addNotification, userProfile, userRole }) {
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -2601,7 +2749,7 @@ function Documents({ addNotification }) {
           <h3 className="font-semibold text-gray-700 mb-3">Upload Document</h3>
           <div className="grid grid-cols-2 gap-3">
             <input placeholder="Document name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input placeholder="Property address" value={form.property} onChange={e => setForm({ ...form, property: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" />
             <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
               {["Lease", "Inspection", "Maintenance", "Financial", "Notice", "Other"].map(t => <option key={t}>{t}</option>)}
             </select>
@@ -2673,7 +2821,7 @@ function Documents({ addNotification }) {
 }
 
 // ============ INSPECTIONS ============
-function Inspections({ addNotification }) {
+function Inspections({ addNotification, userProfile, userRole }) {
   const [inspections, setInspections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -2765,7 +2913,7 @@ function Inspections({ addNotification }) {
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
           <h3 className="font-semibold text-gray-700 mb-3">New Inspection</h3>
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <input placeholder="Property address" value={form.property} onChange={e => setForm({ ...form, property: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" />
             <select value={form.type} onChange={e => { setForm({ ...form, type: e.target.value }); initChecklist(e.target.value); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
               {["Move-In", "Move-Out", "Periodic"].map(t => <option key={t}>{t}</option>)}
             </select>
@@ -2822,7 +2970,7 @@ function Inspections({ addNotification }) {
 
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
-  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","accounting","documents","inspections","autopay","latefees"] },
+  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","accounting","documents","inspections","autopay","latefees","audittrail"] },
   office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","documents","inspections"] },
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance"] },
@@ -2841,10 +2989,11 @@ const ALL_NAV = [
   { id: "inspections", label: "Inspections", icon: "🔍" },
   { id: "autopay", label: "Autopay", icon: "🔄" },
   { id: "latefees", label: "Late Fees", icon: "⚠️" },
+  { id: "audittrail", label: "Audit Trail", icon: "📋" },
 ];
 
 // ============ AUTOPAY / RECURRING RENT ============
-function Autopay({ addNotification }) {
+function Autopay({ addNotification, userProfile, userRole }) {
   const [schedules, setSchedules] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -2926,7 +3075,7 @@ function Autopay({ addNotification }) {
               <option value="">Select tenant...</option>
               {tenants.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
             </select>
-            <input placeholder="Property" value={form.property} onChange={e => setForm({ ...form, property: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" />
             <input placeholder="Amount ($)" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
               {["ACH", "card", "cash", "check"].map(m => <option key={m}>{m}</option>)}
@@ -2993,7 +3142,7 @@ function Autopay({ addNotification }) {
 }
 
 // ============ LATE FEES ============
-function LateFees({ addNotification }) {
+function LateFees({ addNotification, userProfile, userRole }) {
   const [rules, setRules] = useState([]);
   const [flagged, setFlagged] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -3504,9 +3653,141 @@ const pageComponents = {
   inspections: Inspections,
   autopay: Autopay,
   latefees: LateFees,
+  audittrail: AuditTrail,
   roles: RoleManagement,
   tenant_portal: TenantPortal,
 };
+
+// ============ AUDIT TRAIL (Admin Panel) ============
+function AuditTrail() {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filterModule, setFilterModule] = useState("all");
+  const [filterAction, setFilterAction] = useState("all");
+  const [filterUser, setFilterUser] = useState("");
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 50;
+
+  useEffect(() => { fetchLogs(); }, []);
+
+  async function fetchLogs() {
+    setLoading(true);
+    const { data } = await supabase.from("audit_trail").select("*").order("created_at", { ascending: false }).limit(500);
+    setLogs(data || []);
+    setLoading(false);
+  }
+
+  const modules = [...new Set(logs.map(l => l.module))].sort();
+  const actions = [...new Set(logs.map(l => l.action))].sort();
+  const users = [...new Set(logs.map(l => l.user_email))].sort();
+
+  const filtered = logs.filter(l =>
+    (filterModule === "all" || l.module === filterModule) &&
+    (filterAction === "all" || l.action === filterAction) &&
+    (!filterUser || l.user_email.toLowerCase().includes(filterUser.toLowerCase()))
+  );
+
+  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+
+  const actionColors = {
+    create: "bg-emerald-100 text-emerald-700",
+    update: "bg-blue-100 text-blue-700",
+    delete: "bg-red-100 text-red-700",
+    request: "bg-amber-100 text-amber-700",
+    approve: "bg-emerald-100 text-emerald-700",
+    reject: "bg-red-100 text-red-700",
+  };
+
+  const moduleIcons = {
+    properties: "🏠", tenants: "👤", payments: "💳", maintenance: "🔧",
+    utilities: "⚡", accounting: "📊", documents: "📄", inspections: "🔍",
+    autopay: "🔁", latefees: "⏰",
+  };
+
+  if (loading) return <Spinner />;
+
+  return (
+    <div>
+      <h2 className="text-xl font-bold text-gray-800 mb-1">Audit Trail</h2>
+      <p className="text-sm text-gray-500 mb-4">Complete activity log across all modules</p>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <select value={filterModule} onChange={e => { setFilterModule(e.target.value); setPage(0); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+          <option value="all">All Modules</option>
+          {modules.map(m => <option key={m} value={m}>{moduleIcons[m] || "📌"} {m}</option>)}
+        </select>
+        <select value={filterAction} onChange={e => { setFilterAction(e.target.value); setPage(0); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+          <option value="all">All Actions</option>
+          {actions.map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+        <input placeholder="Filter by user email..." value={filterUser} onChange={e => { setFilterUser(e.target.value); setPage(0); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-48" />
+        <button onClick={fetchLogs} className="bg-gray-100 text-gray-600 text-sm px-3 py-2 rounded-lg hover:bg-gray-200">🔄 Refresh</button>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-3 mb-4">
+        <div className="bg-white rounded-xl border border-gray-100 p-3 text-center">
+          <p className="text-lg font-bold text-gray-800">{filtered.length}</p>
+          <p className="text-xs text-gray-500">Total Actions</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-3 text-center">
+          <p className="text-lg font-bold text-gray-800">{users.length}</p>
+          <p className="text-xs text-gray-500">Users Active</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-3 text-center">
+          <p className="text-lg font-bold text-emerald-600">{filtered.filter(l => l.action === "create").length}</p>
+          <p className="text-xs text-gray-500">Created</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-3 text-center">
+          <p className="text-lg font-bold text-red-500">{filtered.filter(l => l.action === "delete").length}</p>
+          <p className="text-xs text-gray-500">Deleted</p>
+        </div>
+      </div>
+
+      {/* Log Table */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-xs text-gray-400 uppercase">
+            <tr>
+              <th className="px-4 py-3 text-left">Time</th>
+              <th className="px-4 py-3 text-left">User</th>
+              <th className="px-4 py-3 text-left">Role</th>
+              <th className="px-4 py-3 text-left">Module</th>
+              <th className="px-4 py-3 text-left">Action</th>
+              <th className="px-4 py-3 text-left">Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {paged.map(log => (
+              <tr key={log.id} className="border-t border-gray-50 hover:bg-gray-50/50">
+                <td className="px-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
+                <td className="px-4 py-2.5 text-gray-700 font-medium text-xs">{log.user_email}</td>
+                <td className="px-4 py-2.5"><span className={`text-xs px-1.5 py-0.5 rounded-full ${log.user_role === "admin" ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 text-gray-600"}`}>{log.user_role}</span></td>
+                <td className="px-4 py-2.5 text-xs"><span className="flex items-center gap-1">{moduleIcons[log.module] || "📌"} {log.module}</span></td>
+                <td className="px-4 py-2.5"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${actionColors[log.action] || "bg-gray-100 text-gray-700"}`}>{log.action}</span></td>
+                <td className="px-4 py-2.5 text-xs text-gray-600 max-w-xs truncate">{log.details}</td>
+              </tr>
+            ))}
+            {paged.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No audit logs found</td></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-3">
+          <span className="text-xs text-gray-400">Page {page + 1} of {totalPages} ({filtered.length} records)</span>
+          <div className="flex gap-1">
+            <button onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0} className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg disabled:opacity-30">← Prev</button>
+            <button onClick={() => setPage(Math.min(totalPages - 1, page + 1))} disabled={page >= totalPages - 1} className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg disabled:opacity-30">Next →</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function App() {
   const [screen, setScreen] = useState("landing");
@@ -3688,6 +3969,7 @@ export default function App() {
             setPage={setPage}
             currentUser={currentUser}
             userRole={userRole}
+            userProfile={userProfile}
           />
         </main>
       </div>
