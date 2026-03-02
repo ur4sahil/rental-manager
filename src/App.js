@@ -666,7 +666,6 @@ function Tenants({ addNotification }) {
   }
 
   function openLeaseForSigning(tenant) {
-    const html = generateLeasePDF(tenant);
     // Open in new tab with signing canvas
     const win = window.open("", "_blank");
     win.document.write(`
@@ -749,7 +748,7 @@ function Tenants({ addNotification }) {
           }
           makeDrawable('landlord-canvas');
           makeDrawable('tenant-canvas');
-        <\/script>
+        </script>
       </body>
       </html>
     `);
