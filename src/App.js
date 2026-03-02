@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { supabase } from "./supabase";
 
 // Safe number conversion - prevents NaN from breaking calculations
@@ -1328,501 +1328,802 @@ function Utilities({ addNotification }) {
   );
 }
 
-// ============ ACCOUNTING ============
-function Accounting() {
-  const [entries, setEntries] = useState([]);
-  const [payments, setPayments] = useState([]);
-  const [workOrders, setWorkOrders] = useState([]);
-  const [utilities, setUtilities] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [activeReport, setActiveReport] = useState(null);
-  const [activeTab, setActiveTab] = useState("overview");
-  const [showJournal, setShowJournal] = useState(false);
-  const [editEntry, setEditEntry] = useState(null);
-  const [form, setForm] = useState({ date: "", account: "", description: "", debit: 0, credit: 0 });
-  const [filterAccount, setFilterAccount] = useState("all");
-  const [filterDateFrom, setFilterDateFrom] = useState("");
-  const [filterDateTo, setFilterDateTo] = useState("");
-  const [filterType, setFilterType] = useState("all");
-  const [searchDesc, setSearchDesc] = useState("");
 
-  useEffect(() => {
-    async function fetchData() {
-      const [e, p, w, u] = await Promise.all([
-        supabase.from("journal_entries").select("*").order("date", { ascending: false }),
-        supabase.from("payments").select("*"),
-        supabase.from("work_orders").select("*"),
-        supabase.from("utilities").select("*"),
-      ]);
-      setEntries(e.data || []);
-      setPayments(p.data || []);
-      setWorkOrders(w.data || []);
-      setUtilities(u.data || []);
-      setLoading(false);
+// ============ ACCOUNTING (QuickBooks-Style with Supabase) ============
+
+// --- Accounting Utility Functions ---
+const ACCOUNT_TYPES = ["Asset","Liability","Equity","Revenue","Cost of Goods Sold","Expense","Other Income","Other Expense"];
+const ACCOUNT_SUBTYPES = {
+  Asset: ["Bank","Accounts Receivable","Other Current Asset","Fixed Asset","Other Asset"],
+  Liability: ["Accounts Payable","Credit Card","Other Current Liability","Long Term Liability"],
+  Equity: ["Owners Equity","Retained Earnings","Common Stock"],
+  Revenue: ["Rental Income","Other Primary Income","Service Income"],
+  "Cost of Goods Sold": ["Cost of Goods Sold","Supplies & Materials"],
+  Expense: ["Advertising & Marketing","Auto","Bank Charges","Depreciation","Insurance","Maintenance & Repairs","Meals & Entertainment","Office Supplies","Professional Fees","Property Tax","Rent & Lease","Utilities","Wages & Salaries","Other Expense"],
+  "Other Income": ["Interest Earned","Late Fees","Other Miscellaneous Income"],
+  "Other Expense": ["Depreciation","Other Miscellaneous Expense"],
+};
+const DEBIT_NORMAL = ["Asset","Cost of Goods Sold","Expense","Other Expense"];
+const acctFmt = (amount, showSign = false) => {
+  const abs = Math.abs(amount);
+  const str = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(abs);
+  if (showSign && amount < 0) return `(${str})`;
+  if (amount < 0) return `-${str}`;
+  return str;
+};
+const acctFmtDate = (d) => { if (!d) return ""; const [y,m,dd] = d.split("-"); return `${m}/${dd}/${y}`; };
+const acctToday = () => new Date().toISOString().split("T")[0];
+const getNormalBalance = (type) => DEBIT_NORMAL.includes(type) ? "debit" : "credit";
+
+const calcAccountBalance = (accountId, journalEntries, account) => {
+  let balance = 0;
+  const nb = getNormalBalance(account.type);
+  journalEntries.filter(je => je.status === "posted").forEach(je => {
+    (je.lines || []).filter(l => l.account_id === accountId).forEach(l => {
+      balance += nb === "debit" ? (safeNum(l.debit) - safeNum(l.credit)) : (safeNum(l.credit) - safeNum(l.debit));
+    });
+  });
+  return balance;
+};
+
+const calcAllBalances = (accounts, journalEntries) => accounts.map(a => ({ ...a, computedBalance: calcAccountBalance(a.id, journalEntries, a) }));
+
+const getPLData = (accounts, journalEntries, startDate, endDate, classId = null) => {
+  const revTypes = ["Revenue","Other Income"];
+  const expTypes = ["Expense","Cost of Goods Sold","Other Expense"];
+  const filtered = journalEntries.filter(je => je.status === "posted" && je.date >= startDate && je.date <= endDate);
+  const calc = (aid, atype) => {
+    const nb = getNormalBalance(atype);
+    let bal = 0;
+    filtered.forEach(je => { (je.lines || []).filter(l => l.account_id === aid && (!classId || l.class_id === classId)).forEach(l => { bal += nb === "debit" ? safeNum(l.debit) - safeNum(l.credit) : safeNum(l.credit) - safeNum(l.debit); }); });
+    return bal;
+  };
+  const revenue = accounts.filter(a => revTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: calc(a.id, a.type) })).filter(a => a.amount !== 0);
+  const expenses = accounts.filter(a => expTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: calc(a.id, a.type) })).filter(a => a.amount !== 0);
+  const totalRevenue = revenue.reduce((s, a) => s + a.amount, 0);
+  const totalExpenses = expenses.reduce((s, a) => s + a.amount, 0);
+  return { revenue, expenses, totalRevenue, totalExpenses, netIncome: totalRevenue - totalExpenses };
+};
+
+const getBalanceSheetData = (accounts, journalEntries, asOfDate) => {
+  const filtered = journalEntries.filter(je => je.status === "posted" && je.date <= asOfDate);
+  const calc = (aid, atype) => { const nb = getNormalBalance(atype); let b = 0; filtered.forEach(je => { (je.lines || []).filter(l => l.account_id === aid).forEach(l => { b += nb === "debit" ? safeNum(l.debit) - safeNum(l.credit) : safeNum(l.credit) - safeNum(l.debit); }); }); return b; };
+  const assets = accounts.filter(a => a.type === "Asset" && a.is_active).map(a => ({ ...a, amount: calc(a.id, a.type) }));
+  const liabilities = accounts.filter(a => a.type === "Liability" && a.is_active).map(a => ({ ...a, amount: calc(a.id, a.type) }));
+  const equity = accounts.filter(a => a.type === "Equity" && a.is_active).map(a => ({ ...a, amount: calc(a.id, a.type) }));
+  let netIncome = 0;
+  filtered.forEach(je => { (je.lines || []).forEach(l => { const acct = accounts.find(a => a.id === l.account_id); if (!acct) return; const nb = getNormalBalance(acct.type); if (["Revenue","Other Income"].includes(acct.type)) netIncome += nb === "credit" ? safeNum(l.credit) - safeNum(l.debit) : safeNum(l.debit) - safeNum(l.credit); if (["Expense","Cost of Goods Sold","Other Expense"].includes(acct.type)) netIncome -= nb === "debit" ? safeNum(l.debit) - safeNum(l.credit) : safeNum(l.credit) - safeNum(l.debit); }); });
+  return { assets, liabilities, equity, totalAssets: assets.reduce((s,a) => s + a.amount, 0), totalLiabilities: liabilities.reduce((s,a) => s + a.amount, 0), totalEquity: equity.reduce((s,a) => s + a.amount, 0) + netIncome, netIncome };
+};
+
+const getTrialBalance = (accounts, journalEntries, endDate) => {
+  const filtered = journalEntries.filter(je => je.status === "posted" && je.date <= endDate);
+  return accounts.filter(a => a.is_active).map(a => {
+    let td = 0, tc = 0;
+    filtered.forEach(je => { (je.lines || []).filter(l => l.account_id === a.id).forEach(l => { td += safeNum(l.debit); tc += safeNum(l.credit); }); });
+    const net = td - tc;
+    return { ...a, debitBalance: net > 0 ? net : 0, creditBalance: net < 0 ? Math.abs(net) : 0 };
+  }).filter(a => a.debitBalance !== 0 || a.creditBalance !== 0);
+};
+
+const getGeneralLedger = (accountId, accounts, journalEntries) => {
+  const account = accounts.find(a => a.id === accountId);
+  if (!account) return [];
+  const nb = getNormalBalance(account.type);
+  let running = 0;
+  const lines = [];
+  journalEntries.filter(je => je.status === "posted").sort((a,b) => a.date.localeCompare(b.date)).forEach(je => {
+    (je.lines || []).filter(l => l.account_id === accountId).forEach(l => {
+      running += nb === "debit" ? safeNum(l.debit) - safeNum(l.credit) : safeNum(l.credit) - safeNum(l.debit);
+      lines.push({ date: je.date, jeId: je.id, description: je.description, reference: je.reference, memo: l.memo, debit: safeNum(l.debit), credit: safeNum(l.credit), balance: running });
+    });
+  });
+  return lines;
+};
+
+const getClassReport = (accounts, journalEntries, classes, startDate, endDate) => {
+  const filtered = journalEntries.filter(je => je.status === "posted" && je.date >= startDate && je.date <= endDate);
+  return classes.map(cls => {
+    let revenue = 0, expenses = 0;
+    filtered.forEach(je => { (je.lines || []).filter(l => l.class_id === cls.id).forEach(l => { const acct = accounts.find(a => a.id === l.account_id); if (!acct) return; if (["Revenue","Other Income"].includes(acct.type)) revenue += safeNum(l.credit) - safeNum(l.debit); if (["Expense","Cost of Goods Sold","Other Expense"].includes(acct.type)) expenses += safeNum(l.debit) - safeNum(l.credit); }); });
+    return { ...cls, revenue, expenses, netIncome: revenue - expenses };
+  });
+};
+
+const validateJE = (lines) => {
+  const td = lines.reduce((s,l) => s + (parseFloat(l.debit) || 0), 0);
+  const tc = lines.reduce((s,l) => s + (parseFloat(l.credit) || 0), 0);
+  return { isValid: Math.abs(td - tc) < 0.005, totalDebit: td, totalCredit: tc, difference: Math.abs(td - tc) };
+};
+
+const nextJENumber = (journalEntries) => {
+  const nums = journalEntries.map(je => parseInt(je.number.replace("JE-",""),10)).filter(n => !isNaN(n));
+  return `JE-${String((nums.length > 0 ? Math.max(...nums) : 0) + 1).padStart(4,"0")}`;
+};
+
+const nextAccountId = (accounts, type) => {
+  const ranges = { Asset:{s:1000,e:1999}, Liability:{s:2000,e:2999}, Equity:{s:3000,e:3999}, Revenue:{s:4000,e:4999}, "Cost of Goods Sold":{s:5000,e:5099}, Expense:{s:5000,e:6999}, "Other Income":{s:7000,e:7999}, "Other Expense":{s:8000,e:8999} };
+  const r = ranges[type] || {s:9000,e:9999};
+  const existing = accounts.filter(a => parseInt(a.id) >= r.s && parseInt(a.id) <= r.e).map(a => parseInt(a.id));
+  return String((existing.length > 0 ? Math.max(...existing) : r.s - 10) + 10);
+};
+
+const getPeriodDates = (period) => {
+  const now = new Date(), y = now.getFullYear(), m = now.getMonth();
+  switch(period) {
+    case "This Month": return { start: `${y}-${String(m+1).padStart(2,"0")}-01`, end: new Date(y,m+1,0).toISOString().split("T")[0] };
+    case "Last Month": return { start: `${y}-${String(m).padStart(2,"0")}-01`, end: new Date(y,m,0).toISOString().split("T")[0] };
+    case "This Quarter": { const q = Math.floor(m/3); return { start: `${y}-${String(q*3+1).padStart(2,"0")}-01`, end: new Date(y,q*3+3,0).toISOString().split("T")[0] }; }
+    case "This Year": return { start: `${y}-01-01`, end: `${y}-12-31` };
+    case "Last Year": return { start: `${y-1}-01-01`, end: `${y-1}-12-31` };
+    default: return { start: `${y}-01-01`, end: `${y}-12-31` };
+  }
+};
+
+const PERIODS = ["This Month","Last Month","This Quarter","This Year","Last Year","Custom"];
+
+// --- Accounting Sub-Components ---
+
+function AcctModal({ isOpen, onClose, title, children, size = "md" }) {
+  useEffect(() => { const h = e => { if (e.key === "Escape") onClose(); }; if (isOpen) document.addEventListener("keydown", h); return () => document.removeEventListener("keydown", h); }, [isOpen, onClose]);
+  if (!isOpen) return null;
+  const sizes = { sm:"max-w-md", md:"max-w-xl", lg:"max-w-3xl", xl:"max-w-5xl" };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:"rgba(0,0,0,0.5)" }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className={`bg-white rounded-2xl shadow-2xl w-full ${sizes[size]} flex flex-col`} style={{ maxHeight:"90vh" }}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100">✕</button>
+        </div>
+        <div className="overflow-y-auto flex-1 px-6 py-4">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function AcctTypeBadge({ type }) {
+  const map = { Asset:"bg-blue-50 text-blue-700", Liability:"bg-red-50 text-red-700", Equity:"bg-violet-50 text-violet-700", Revenue:"bg-emerald-50 text-emerald-700", Expense:"bg-orange-50 text-orange-700", "Cost of Goods Sold":"bg-orange-50 text-orange-700", "Other Income":"bg-emerald-50 text-emerald-700", "Other Expense":"bg-orange-50 text-orange-700" };
+  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[type] || "bg-gray-100 text-gray-700"}`}>{type}</span>;
+}
+
+function AcctStatusBadge({ status }) {
+  const map = { posted: "bg-emerald-50 text-emerald-700", draft: "bg-amber-50 text-amber-700", voided: "bg-red-50 text-red-700" };
+  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[status] || "bg-gray-100 text-gray-700"}`}>{status}</span>;
+}
+
+// --- Chart of Accounts Sub-Page ---
+function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onToggle }) {
+  const [modal, setModal] = useState(null);
+  const [filter, setFilter] = useState("All");
+  const [showInactive, setShowInactive] = useState(false);
+  const [form, setForm] = useState({ name:"", type:"Asset", subtype:"Bank", description:"" });
+
+  const withBalances = calcAllBalances(accounts, journalEntries);
+  const filtered = withBalances.filter(a => {
+    if (!showInactive && !a.is_active) return false;
+    if (filter !== "All" && a.type !== filter) return false;
+    return true;
+  });
+
+  const grouped = {};
+  filtered.forEach(a => { if (!grouped[a.type]) grouped[a.type] = []; grouped[a.type].push(a); });
+
+  const openAdd = () => { setForm({ name:"", type:"Asset", subtype:"Bank", description:"" }); setModal("add"); };
+  const openEdit = (a) => { setForm({ name: a.name, type: a.type, subtype: a.subtype, description: a.description || "" }); setModal(a); };
+
+  const saveAccount = async () => {
+    if (!form.name.trim()) return;
+    if (modal === "add") {
+      const newId = nextAccountId(accounts, form.type);
+      await onAdd({ id: newId, ...form, balance: 0, is_active: true });
+    } else {
+      await onUpdate({ ...modal, ...form });
     }
-    fetchData();
-  }, []);
+    setModal(null);
+  };
 
-  async function saveEntry() {
-    if (!form.date) { alert("Date is required."); return; }
-    if (!form.account.trim()) { alert("Account is required."); return; }
-    if (!form.description.trim()) { alert("Description is required."); return; }
-    const { error } = editEntry
-      ? await supabase.from("journal_entries").update(form).eq("id", editEntry.id)
-      : await supabase.from("journal_entries").insert([form]);
-    if (error) { alert("Error saving entry: " + error.message); return; }
-    const { data } = await supabase.from("journal_entries").select("*").order("date", { ascending: false });
-    setEntries(data || []);
-    setShowJournal(false);
-    setEditEntry(null);
-    setForm({ date: "", account: "", description: "", debit: 0, credit: 0 });
+  const typeOrder = ["Asset","Liability","Equity","Revenue","Cost of Goods Sold","Expense","Other Income","Other Expense"];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">Chart of Accounts</h3>
+          <p className="text-sm text-gray-500">Manage your account structure</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setShowInactive(!showInactive)} className={`text-xs px-3 py-1.5 rounded-lg border ${showInactive ? "bg-gray-100 border-gray-300" : "border-gray-200 text-gray-400"}`}>{showInactive ? "Hide Inactive" : "Show Inactive"}</button>
+          <button onClick={openAdd} className="bg-slate-800 text-white text-xs px-4 py-2 rounded-lg hover:bg-slate-700">+ New Account</button>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2 mb-4">
+        {["All", ...ACCOUNT_TYPES].map(t => (
+          <button key={t} onClick={() => setFilter(t)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${filter === t ? "bg-slate-800 text-white border-slate-800" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"}`}>{t}</button>
+        ))}
+      </div>
+      {typeOrder.map(type => {
+        const accts = grouped[type];
+        if (!accts?.length) return null;
+        return (
+          <div key={type} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-3">
+            <div className="px-4 py-2 bg-gray-50 flex items-center justify-between">
+              <div className="flex items-center gap-2"><AcctTypeBadge type={type} /><span className="text-xs text-gray-500">{accts.length} accounts</span></div>
+              <span className="font-mono text-xs font-semibold text-gray-600">{acctFmt(accts.filter(a=>a.is_active).reduce((s,a)=>s+a.computedBalance,0))}</span>
+            </div>
+            <table className="w-full text-sm">
+              <thead className="text-xs text-gray-400 uppercase bg-gray-50/50"><tr><th className="px-4 py-2 text-left">Number</th><th className="px-4 py-2 text-left">Name</th><th className="px-4 py-2 text-left">Subtype</th><th className="px-4 py-2 text-right">Balance</th><th className="px-4 py-2 w-20">Actions</th></tr></thead>
+              <tbody>
+                {accts.map(a => (
+                  <tr key={a.id} className="border-t border-gray-50 hover:bg-blue-50/30 cursor-pointer" onClick={() => openEdit(a)}>
+                    <td className="px-4 py-2 font-mono text-xs text-gray-400">{a.id}</td>
+                    <td className={`px-4 py-2 font-medium ${!a.is_active ? "text-gray-400 line-through" : "text-gray-800"}`}>{a.name}</td>
+                    <td className="px-4 py-2 text-xs text-gray-500">{a.subtype}</td>
+                    <td className={`px-4 py-2 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-red-600" : "text-gray-800"}`}>{acctFmt(a.computedBalance, true)}</td>
+                    <td className="px-4 py-2 text-center">
+                      <button onClick={e => { e.stopPropagation(); onToggle(a.id, a.is_active); }} className="text-gray-400 hover:text-gray-700 text-xs">{a.is_active ? "🟢" : "⚪"}</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+      <AcctModal isOpen={!!modal} onClose={() => setModal(null)} title={modal === "add" ? "New Account" : "Edit Account"} size="md">
+        <div className="space-y-3">
+          <div><label className="text-xs font-medium text-gray-600">Account Name *</label><input value={form.name} onChange={e => setForm({...form, name:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="e.g. Operating Checking" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="text-xs font-medium text-gray-600">Type *</label><select value={form.type} onChange={e => { setForm({...form, type:e.target.value, subtype: ACCOUNT_SUBTYPES[e.target.value]?.[0] || "" }); }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1">{ACCOUNT_TYPES.map(t => <option key={t}>{t}</option>)}</select></div>
+            <div><label className="text-xs font-medium text-gray-600">Subtype *</label><select value={form.subtype} onChange={e => setForm({...form, subtype:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1">{(ACCOUNT_SUBTYPES[form.type]||[]).map(s => <option key={s}>{s}</option>)}</select></div>
+          </div>
+          <div><label className="text-xs font-medium text-gray-600">Description</label><textarea value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" rows={2} /></div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button onClick={() => setModal(null)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button onClick={saveAccount} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-slate-700">{modal === "add" ? "Create" : "Save"}</button>
+          </div>
+        </div>
+      </AcctModal>
+    </div>
+  );
+}
+
+// --- Journal Entries Sub-Page ---
+function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate, onPost, onVoid }) {
+  const [modal, setModal] = useState(null);
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [form, setForm] = useState({ date: acctToday(), description: "", reference: "", lines: [{ account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }, { account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }] });
+
+  const filtered = [...journalEntries].sort((a,b) => b.date.localeCompare(a.date)).filter(je => filterStatus === "all" || je.status === filterStatus);
+  const counts = { all: journalEntries.length, posted: journalEntries.filter(j=>j.status==="posted").length, draft: journalEntries.filter(j=>j.status==="draft").length, voided: journalEntries.filter(j=>j.status==="voided").length };
+
+  const openAdd = () => {
+    setForm({ date: acctToday(), description: "", reference: "", lines: [{ account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }, { account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }] });
+    setModal("add");
+  };
+
+  const openEdit = (je) => {
+    setForm({ date: je.date, description: je.description, reference: je.reference || "", lines: (je.lines || []).map(l => ({ ...l, debit: l.debit || "", credit: l.credit || "" })) });
+    setModal({ mode: "edit", je });
+  };
+
+  const openView = (je) => setModal({ mode: "view", je });
+
+  const setLine = (i, k, v) => {
+    const lines = [...form.lines];
+    lines[i] = { ...lines[i], [k]: v };
+    if (k === "account_id") { const acct = accounts.find(a => a.id === v); lines[i].account_name = acct?.name || ""; }
+    setForm(f => ({ ...f, lines }));
+  };
+
+  const addLine = () => setForm(f => ({ ...f, lines: [...f.lines, { account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }] }));
+  const removeLine = (i) => { if (form.lines.length <= 2) return; setForm(f => ({ ...f, lines: f.lines.filter((_,idx) => idx !== i) })); };
+
+  const totalDebit = form.lines.reduce((s,l) => s + (parseFloat(l.debit) || 0), 0);
+  const totalCredit = form.lines.reduce((s,l) => s + (parseFloat(l.credit) || 0), 0);
+  const validation = validateJE(form.lines.filter(l => l.account_id));
+
+  const saveEntry = async (status) => {
+    if (!form.description.trim() || !validation.isValid) return;
+    const lines = form.lines.filter(l => l.account_id).map(l => ({ ...l, debit: parseFloat(l.debit) || 0, credit: parseFloat(l.credit) || 0 }));
+    if (modal === "add") {
+      await onAdd({ ...form, lines, status });
+    } else if (modal?.mode === "edit") {
+      await onUpdate({ ...modal.je, ...form, lines, status: status || modal.je.status });
+    }
+    setModal(null);
+  };
+
+  const JEFormUI = () => (
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-3">
+        <div><label className="text-xs font-medium text-gray-600">Date *</label><input type="date" value={form.date} onChange={e => setForm({...form, date:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" /></div>
+        <div><label className="text-xs font-medium text-gray-600">Reference</label><input value={form.reference} onChange={e => setForm({...form, reference:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="Invoice #, Check #..." /></div>
+        <div className="col-span-3"><label className="text-xs font-medium text-gray-600">Description *</label><input value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="What is this entry for?" /></div>
+      </div>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-semibold text-gray-600 uppercase">Journal Entry Lines</p>
+        <button onClick={addLine} className="text-xs text-slate-600 hover:text-slate-800">+ Add Line</button>
+      </div>
+      <div className="rounded-xl border border-gray-200 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr className="bg-gray-50 border-b border-gray-200"><th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 w-48">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 w-32">Class</th><th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Memo</th><th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 w-28">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 w-28">Credit</th><th className="px-3 py-2 w-8" /></tr></thead>
+          <tbody>
+            {form.lines.map((line, i) => (
+              <tr key={i} className="border-b border-gray-50">
+                <td className="px-2 py-1.5"><select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.id} - {a.name}</option>)}</optgroup>)}</select></td>
+                <td className="px-2 py-1.5"><select value={line.class_id || ""} onChange={e => setLine(i,"class_id",e.target.value||null)} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></td>
+                <td className="px-2 py-1.5"><input value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white" /></td>
+                <td className="px-2 py-1.5"><input type="number" step="0.01" min="0" value={line.debit} onChange={e => { setLine(i,"debit",e.target.value); if(e.target.value) setLine(i,"credit",""); }} placeholder="0.00" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-right bg-white font-mono" /></td>
+                <td className="px-2 py-1.5"><input type="number" step="0.01" min="0" value={line.credit} onChange={e => { setLine(i,"credit",e.target.value); if(e.target.value) setLine(i,"debit",""); }} placeholder="0.00" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-right bg-white font-mono" /></td>
+                <td className="px-2 py-1.5"><button onClick={() => removeLine(i)} disabled={form.lines.length<=2} className="text-gray-300 hover:text-red-500 disabled:opacity-20">✕</button></td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot><tr className="bg-gray-50 border-t border-gray-200"><td colSpan={3} className="px-3 py-2 text-xs font-semibold text-gray-600 text-right">Totals</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-emerald-700":"text-red-600"}`}>{acctFmt(totalDebit)}</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-emerald-700":"text-red-600"}`}>{acctFmt(totalCredit)}</td><td /></tr></tfoot>
+        </table>
+      </div>
+      {!validation.isValid && totalDebit > 0 && totalCredit > 0 && <div className="text-xs text-red-600 bg-red-50 rounded-xl px-3 py-2">⚠ Out of balance by {acctFmt(validation.difference)}</div>}
+      {validation.isValid && totalDebit > 0 && <div className="text-xs text-emerald-600 bg-emerald-50 rounded-xl px-3 py-2">✓ Balanced — {acctFmt(totalDebit)}</div>}
+      <div className="flex justify-between pt-2">
+        <button onClick={() => setModal(null)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+        <div className="flex gap-2">
+          <button onClick={() => saveEntry("draft")} disabled={!form.description || !validation.isValid} className="bg-gray-200 text-gray-700 text-sm px-4 py-2 rounded-lg disabled:opacity-50">Save Draft</button>
+          <button onClick={() => saveEntry("posted")} disabled={!form.description || !validation.isValid} className="bg-emerald-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50 hover:bg-emerald-700">Post Entry</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between mb-4">
+        <div><h3 className="text-lg font-semibold text-gray-900">Journal Entries</h3><p className="text-sm text-gray-500">Record and manage financial transactions</p></div>
+        <button onClick={openAdd} className="bg-slate-800 text-white text-xs px-4 py-2 rounded-lg hover:bg-slate-700">+ New Entry</button>
+      </div>
+      <div className="flex gap-2 mb-4">
+        {[{k:"all",l:`All (${counts.all})`},{k:"posted",l:`Posted (${counts.posted})`},{k:"draft",l:`Drafts (${counts.draft})`},{k:"voided",l:`Voided (${counts.voided})`}].map(f => (
+          <button key={f.k} onClick={() => setFilterStatus(f.k)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${filterStatus === f.k ? "bg-slate-800 text-white border-slate-800" : "bg-white text-gray-500 border-gray-200"}`}>{f.l}</button>
+        ))}
+      </div>
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="text-xs text-gray-400 uppercase bg-gray-50"><tr><th className="px-4 py-2 text-left">Entry #</th><th className="px-4 py-2 text-left">Date</th><th className="px-4 py-2 text-left">Description</th><th className="px-4 py-2 text-left">Ref</th><th className="px-4 py-2 text-left">Status</th><th className="px-4 py-2 text-right">Amount</th><th className="px-4 py-2">Actions</th></tr></thead>
+          <tbody>
+            {filtered.map(je => {
+              const total = (je.lines || []).reduce((s,l) => s + safeNum(l.debit), 0);
+              return (
+                <tr key={je.id} className="border-t border-gray-50 hover:bg-blue-50/30 cursor-pointer" onClick={() => openView(je)}>
+                  <td className="px-4 py-2 font-mono text-xs font-semibold text-gray-700">{je.number}</td>
+                  <td className="px-4 py-2 text-gray-600">{acctFmtDate(je.date)}</td>
+                  <td className="px-4 py-2 font-medium text-gray-800">{je.description}</td>
+                  <td className="px-4 py-2 text-xs text-gray-400">{je.reference || "—"}</td>
+                  <td className="px-4 py-2"><AcctStatusBadge status={je.status} /></td>
+                  <td className="px-4 py-2 text-right font-mono text-sm font-semibold">{acctFmt(total)}</td>
+                  <td className="px-4 py-2 text-center">
+                    <div className="flex gap-1 justify-center" onClick={e => e.stopPropagation()}>
+                      {je.status === "draft" && <button onClick={() => onPost(je.id)} className="text-xs text-emerald-600 hover:underline">Post</button>}
+                      {je.status === "posted" && <button onClick={() => onVoid(je.id)} className="text-xs text-red-500 hover:underline">Void</button>}
+                      {je.status !== "voided" && <button onClick={() => openEdit(je)} className="text-xs text-indigo-600 hover:underline">Edit</button>}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {filtered.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No journal entries found</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      {/* Add/Edit Modal */}
+      <AcctModal isOpen={modal === "add" || modal?.mode === "edit"} onClose={() => setModal(null)} title={modal === "add" ? "New Journal Entry" : `Edit: ${modal?.je?.number}`} size="xl">
+        <JEFormUI />
+      </AcctModal>
+      {/* View Modal */}
+      {modal?.mode === "view" && (
+        <AcctModal isOpen={true} onClose={() => setModal(null)} title={`Journal Entry: ${modal.je.number}`} size="xl">
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3 bg-gray-50 rounded-xl p-4">
+              <div><p className="text-xs text-gray-500">Entry #</p><p className="font-mono font-semibold">{modal.je.number}</p></div>
+              <div><p className="text-xs text-gray-500">Date</p><p className="font-semibold">{acctFmtDate(modal.je.date)}</p></div>
+              <div><p className="text-xs text-gray-500">Description</p><p className="font-semibold">{modal.je.description}</p></div>
+              <div><p className="text-xs text-gray-500">Status</p><AcctStatusBadge status={modal.je.status} /></div>
+            </div>
+            <table className="w-full text-sm rounded-xl border border-gray-200 overflow-hidden">
+              <thead><tr className="bg-gray-50"><th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Account</th><th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Class</th><th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Memo</th><th className="px-4 py-2 text-right text-xs font-semibold text-gray-500">Debit</th><th className="px-4 py-2 text-right text-xs font-semibold text-gray-500">Credit</th></tr></thead>
+              <tbody>
+                {(modal.je.lines || []).map((l,i) => {
+                  const cls = classes.find(c => c.id === l.class_id);
+                  return (
+                    <tr key={i} className="border-t border-gray-50">
+                      <td className="px-4 py-2"><span className="font-mono text-xs text-gray-400 mr-1">{l.account_id}</span> {l.account_name}</td>
+                      <td className="px-4 py-2 text-xs">{cls ? <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background:cls.color}} />{cls.name}</span> : "—"}</td>
+                      <td className="px-4 py-2 text-xs text-gray-400">{l.memo || "—"}</td>
+                      <td className="px-4 py-2 text-right font-mono">{safeNum(l.debit) > 0 ? acctFmt(l.debit) : ""}</td>
+                      <td className="px-4 py-2 text-right font-mono">{safeNum(l.credit) > 0 ? acctFmt(l.credit) : ""}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="flex gap-2">
+              {modal.je.status === "draft" && <button onClick={() => { onPost(modal.je.id); setModal(null); }} className="bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-lg">Post</button>}
+              {modal.je.status === "posted" && <button onClick={() => { onVoid(modal.je.id); setModal(null); }} className="bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg">Void</button>}
+              {modal.je.status !== "voided" && <button onClick={() => openEdit(modal.je)} className="bg-gray-200 text-gray-700 text-xs px-3 py-1.5 rounded-lg">Edit</button>}
+            </div>
+          </div>
+        </AcctModal>
+      )}
+    </div>
+  );
+}
+
+// --- Class Tracking Sub-Page ---
+function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate, onToggle }) {
+  const [modal, setModal] = useState(null);
+  const [period, setPeriod] = useState("This Year");
+  const [form, setForm] = useState({ name:"", description:"", color:"#3B82F6" });
+  const COLORS = ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4","#F97316","#EC4899"];
+
+  const { start, end } = getPeriodDates(period);
+  const classReport = getClassReport(accounts, journalEntries, classes, start, end);
+  const activeReport = classReport.filter(c => c.is_active);
+  const totalRev = activeReport.reduce((s,c) => s + c.revenue, 0);
+  const totalExp = activeReport.reduce((s,c) => s + c.expenses, 0);
+  const totalNet = activeReport.reduce((s,c) => s + c.netIncome, 0);
+
+  const openAdd = () => { setForm({ name:"", description:"", color:"#3B82F6" }); setModal("add"); };
+  const openEdit = (cls) => { setForm({ name: cls.name, description: cls.description || "", color: cls.color || "#3B82F6" }); setModal({ mode:"edit", cls }); };
+
+  const saveClass = async () => {
+    if (!form.name.trim()) return;
+    if (modal === "add") {
+      await onAdd({ id: `CLS-${String(Math.random()).slice(2,8)}`, ...form, is_active: true });
+    } else {
+      await onUpdate({ ...modal.cls, ...form });
+    }
+    setModal(null);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between mb-4">
+        <div><h3 className="text-lg font-semibold text-gray-900">Class Tracking</h3><p className="text-sm text-gray-500">Track by unit, property, or department</p></div>
+        <button onClick={openAdd} className="bg-slate-800 text-white text-xs px-4 py-2 rounded-lg hover:bg-slate-700">+ New Class</button>
+      </div>
+      <div className="flex flex-wrap gap-2 mb-4">
+        {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${period === p ? "bg-slate-800 text-white border-slate-800" : "bg-white text-gray-500 border-gray-200"}`}>{p}</button>)}
+      </div>
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4"><p className="text-xs text-emerald-600 font-medium">Revenue</p><p className="text-xl font-bold text-emerald-800 font-mono mt-1">{acctFmt(totalRev)}</p></div>
+        <div className="bg-red-50 border border-red-100 rounded-xl p-4"><p className="text-xs text-red-600 font-medium">Expenses</p><p className="text-xl font-bold text-red-800 font-mono mt-1">{acctFmt(totalExp)}</p></div>
+        <div className={`border rounded-xl p-4 ${totalNet >= 0 ? "bg-blue-50 border-blue-100" : "bg-orange-50 border-orange-100"}`}><p className={`text-xs font-medium ${totalNet >= 0 ? "text-blue-600" : "text-orange-600"}`}>Net Income</p><p className={`text-xl font-bold font-mono mt-1 ${totalNet >= 0 ? "text-blue-800" : "text-orange-800"}`}>{acctFmt(totalNet, true)}</p></div>
+      </div>
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="text-xs text-gray-400 uppercase bg-gray-50"><tr><th className="px-4 py-2 text-left">Class</th><th className="px-4 py-2 text-left">Description</th><th className="px-4 py-2 text-right">Revenue</th><th className="px-4 py-2 text-right">Expenses</th><th className="px-4 py-2 text-right">Net Income</th><th className="px-4 py-2 w-16" /></tr></thead>
+          <tbody>
+            {classReport.map(c => (
+              <tr key={c.id} className="border-t border-gray-50 hover:bg-blue-50/30">
+                <td className="px-4 py-2"><div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{background:c.color}} /><span className={`font-medium ${!c.is_active?"text-gray-400 line-through":"text-gray-800"}`}>{c.name}</span></div></td>
+                <td className="px-4 py-2 text-xs text-gray-500">{c.description}</td>
+                <td className="px-4 py-2 text-right font-mono text-sm text-emerald-700">{c.revenue > 0 ? acctFmt(c.revenue) : "—"}</td>
+                <td className="px-4 py-2 text-right font-mono text-sm text-red-600">{c.expenses > 0 ? acctFmt(c.expenses) : "—"}</td>
+                <td className={`px-4 py-2 text-right font-mono text-sm font-bold ${c.netIncome >= 0 ? "text-blue-700" : "text-red-700"}`}>{acctFmt(c.netIncome, true)}</td>
+                <td className="px-4 py-2 flex gap-1"><button onClick={() => openEdit(c)} className="text-xs text-indigo-600 hover:underline">Edit</button><button onClick={() => onToggle(c.id, c.is_active)} className="text-xs">{c.is_active ? "🟢" : "⚪"}</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <AcctModal isOpen={!!modal} onClose={() => setModal(null)} title={modal === "add" ? "New Class" : "Edit Class"} size="sm">
+        <div className="space-y-3">
+          <div><label className="text-xs font-medium text-gray-600">Name *</label><input value={form.name} onChange={e => setForm({...form,name:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" /></div>
+          <div><label className="text-xs font-medium text-gray-600">Description</label><textarea value={form.description} onChange={e => setForm({...form,description:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" rows={2} /></div>
+          <div><label className="text-xs font-medium text-gray-600 block mb-2">Color</label><div className="flex gap-2 flex-wrap">{COLORS.map(c => <button key={c} type="button" onClick={() => setForm({...form,color:c})} className={`w-7 h-7 rounded-full border-2 ${form.color===c?"border-gray-800 scale-110":"border-transparent"}`} style={{background:c}} />)}</div></div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button onClick={() => setModal(null)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button onClick={saveClass} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg">{modal === "add" ? "Create" : "Save"}</button>
+          </div>
+        </div>
+      </AcctModal>
+    </div>
+  );
+}
+
+// --- Reports Sub-Page ---
+function AcctReports({ accounts, journalEntries, classes, companyName }) {
+  const [activeReport, setActiveReport] = useState("pl");
+  const [period, setPeriod] = useState("This Year");
+  const [customDates, setCustomDates] = useState({ start: `${new Date().getFullYear()}-01-01`, end: `${new Date().getFullYear()}-12-31` });
+  const [asOfDate, setAsOfDate] = useState(acctToday());
+  const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id || "");
+  const [classFilter, setClassFilter] = useState("");
+
+  const { start, end } = period === "Custom" ? customDates : getPeriodDates(period);
+
+  const PeriodPicker = () => (
+    <div className="flex flex-wrap items-center gap-2 mb-4">
+      {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${period === p ? "bg-slate-800 text-white border-slate-800" : "bg-white text-gray-500 border-gray-200"}`}>{p}</button>)}
+      {period === "Custom" && <><input type="date" value={customDates.start} onChange={e => setCustomDates(d=>({...d,start:e.target.value}))} className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs" /><span className="text-gray-400 text-xs">to</span><input type="date" value={customDates.end} onChange={e => setCustomDates(d=>({...d,end:e.target.value}))} className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs" /></>}
+    </div>
+  );
+
+  // P&L
+  const plData = getPLData(accounts, journalEntries, start, end, classFilter || null);
+  // Balance Sheet
+  const bsData = getBalanceSheetData(accounts, journalEntries, asOfDate);
+  const bsBalanced = Math.abs(bsData.totalAssets - (bsData.totalLiabilities + bsData.totalEquity)) < 0.01;
+  // Trial Balance
+  const tbData = getTrialBalance(accounts, journalEntries, asOfDate);
+  const tbTotalDebit = tbData.reduce((s,a) => s + a.debitBalance, 0);
+  const tbTotalCredit = tbData.reduce((s,a) => s + a.creditBalance, 0);
+  const tbBalanced = Math.abs(tbTotalDebit - tbTotalCredit) < 0.01;
+  // General Ledger
+  const glLines = getGeneralLedger(selectedAccountId, accounts, journalEntries);
+  const glAccount = accounts.find(a => a.id === selectedAccountId);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between mb-4">
+        <div><h3 className="text-lg font-semibold text-gray-900">Financial Reports</h3><p className="text-sm text-gray-500">P&L, Balance Sheet, Trial Balance, General Ledger</p></div>
+        <button onClick={() => window.print()} className="bg-gray-100 text-gray-600 text-xs px-3 py-1.5 rounded-lg hover:bg-gray-200">🖨️ Print</button>
+      </div>
+      <div className="flex gap-1 border-b border-gray-100 mb-4">
+        {[{id:"pl",l:"Profit & Loss"},{id:"bs",l:"Balance Sheet"},{id:"tb",l:"Trial Balance"},{id:"gl",l:"General Ledger"}].map(t => (
+          <button key={t.id} onClick={() => setActiveReport(t.id)} className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px ${activeReport===t.id ? "border-slate-800 text-slate-800" : "border-transparent text-gray-400 hover:text-gray-600"}`}>{t.l}</button>
+        ))}
+      </div>
+
+      {/* P&L */}
+      {activeReport === "pl" && (
+        <div>
+          <PeriodPicker />
+          <div className="flex gap-2 mb-4"><select value={classFilter} onChange={e => setClassFilter(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm bg-white"><option value="">All Classes</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4"><p className="text-xs text-emerald-600">Total Revenue</p><p className="text-xl font-bold text-emerald-800 font-mono mt-1">{acctFmt(plData.totalRevenue)}</p></div>
+            <div className="bg-red-50 border border-red-100 rounded-xl p-4"><p className="text-xs text-red-600">Total Expenses</p><p className="text-xl font-bold text-red-800 font-mono mt-1">{acctFmt(plData.totalExpenses)}</p></div>
+            <div className={`border rounded-xl p-4 ${plData.netIncome>=0?"bg-blue-50 border-blue-100":"bg-orange-50 border-orange-100"}`}><p className={`text-xs ${plData.netIncome>=0?"text-blue-600":"text-orange-600"}`}>Net Income</p><p className={`text-xl font-bold font-mono mt-1 ${plData.netIncome>=0?"text-blue-800":"text-orange-800"}`}>{acctFmt(plData.netIncome, true)}</p></div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+            <div className="text-center mb-4"><p className="text-xs text-gray-400 uppercase tracking-widest">Profit & Loss Statement</p><h4 className="text-base font-bold text-gray-900">{companyName}</h4><p className="text-sm text-gray-500">{acctFmtDate(start)} — {acctFmtDate(end)}</p></div>
+            <div className="border-t pt-3"><p className="text-sm font-bold text-gray-800 uppercase mb-2">Income</p>{plData.revenue.map(a => <div key={a.id} className="flex justify-between py-1 px-2 hover:bg-gray-50 rounded"><span className="text-sm text-gray-700">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount)}</span></div>)}<div className="flex justify-between py-2 border-t-2 border-gray-300 mt-2 font-bold"><span>Total Income</span><span className="font-mono text-emerald-700">{acctFmt(plData.totalRevenue)}</span></div></div>
+            <div className="border-t pt-3 mt-3"><p className="text-sm font-bold text-gray-800 uppercase mb-2">Expenses</p>{plData.expenses.map(a => <div key={a.id} className="flex justify-between py-1 px-2 hover:bg-gray-50 rounded"><span className="text-sm text-gray-700">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount)}</span></div>)}<div className="flex justify-between py-2 border-t-2 border-gray-300 mt-2 font-bold"><span>Total Expenses</span><span className="font-mono text-red-600">{acctFmt(plData.totalExpenses)}</span></div></div>
+            <div className={`flex justify-between py-3 mt-3 border-t-4 border-gray-800 px-2 rounded-b-xl font-black ${plData.netIncome>=0?"bg-emerald-50":"bg-red-50"}`}><span>Net Income</span><span className={`font-mono ${plData.netIncome>=0?"text-emerald-700":"text-red-700"}`}>{acctFmt(plData.netIncome, true)}</span></div>
+          </div>
+        </div>
+      )}
+
+      {/* Balance Sheet */}
+      {activeReport === "bs" && (
+        <div>
+          <div className="flex items-center gap-3 mb-4"><span className="text-sm text-gray-600">As of:</span><input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm" />{bsBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl">✓ Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-xl">⚠ Out of Balance</span>}</div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+              <p className="text-base font-black text-gray-900 mb-3">ASSETS</p>
+              {bsData.assets.filter(a=>a.amount!==0).map(a => <div key={a.id} className="flex justify-between py-1 px-2 hover:bg-gray-50 rounded"><span className="text-sm text-gray-700">{a.name}</span><span className={`font-mono text-sm ${a.amount<0?"text-red-600":"text-gray-800"}`}>{acctFmt(a.amount, true)}</span></div>)}
+              <div className="flex justify-between py-3 border-t-4 border-gray-800 bg-blue-50 px-2 rounded-xl mt-3 font-black"><span>TOTAL ASSETS</span><span className="font-mono text-blue-700">{acctFmt(bsData.totalAssets)}</span></div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+              <p className="text-base font-black text-gray-900 mb-3">LIABILITIES & EQUITY</p>
+              <p className="text-xs font-bold text-gray-500 uppercase mt-2 mb-1">Liabilities</p>
+              {bsData.liabilities.filter(a=>a.amount!==0).map(a => <div key={a.id} className="flex justify-between py-1 px-2 hover:bg-gray-50 rounded"><span className="text-sm text-gray-700">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount, true)}</span></div>)}
+              <p className="text-xs font-bold text-gray-500 uppercase mt-3 mb-1">Equity</p>
+              {bsData.equity.filter(a=>a.amount!==0).map(a => <div key={a.id} className="flex justify-between py-1 px-2 hover:bg-gray-50 rounded"><span className="text-sm text-gray-700">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount, true)}</span></div>)}
+              {bsData.netIncome !== 0 && <div className="flex justify-between py-1 px-2 hover:bg-gray-50 rounded"><span className="text-sm text-gray-700 italic">Net Income (Current)</span><span className="font-mono text-sm">{acctFmt(bsData.netIncome, true)}</span></div>}
+              <div className="flex justify-between py-3 border-t-4 border-gray-800 bg-violet-50 px-2 rounded-xl mt-3 font-black"><span>TOTAL L + E</span><span className="font-mono text-violet-700">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</span></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Trial Balance */}
+      {activeReport === "tb" && (
+        <div>
+          <div className="flex items-center gap-3 mb-4"><span className="text-sm text-gray-600">As of:</span><input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm" />{tbBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl">✓ Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-xl">⚠ Out of Balance by {acctFmt(Math.abs(tbTotalDebit - tbTotalCredit))}</span>}</div>
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">#</th><th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Account</th><th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Type</th><th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Debit</th><th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Credit</th></tr></thead>
+              <tbody>{tbData.map(a => <tr key={a.id} className="border-t border-gray-50"><td className="px-4 py-2 font-mono text-xs text-gray-400">{a.id}</td><td className="px-4 py-2 text-gray-700 font-medium">{a.name}</td><td className="px-4 py-2 text-xs text-gray-500">{a.type}</td><td className="px-4 py-2 text-right font-mono">{a.debitBalance > 0 ? acctFmt(a.debitBalance) : ""}</td><td className="px-4 py-2 text-right font-mono">{a.creditBalance > 0 ? acctFmt(a.creditBalance) : ""}</td></tr>)}</tbody>
+              <tfoot><tr className="border-t-2 border-gray-800 bg-gray-50"><td colSpan={3} className="px-4 py-3 text-right font-bold">TOTALS</td><td className={`px-4 py-3 text-right font-mono font-black ${tbBalanced?"text-emerald-700":"text-red-600"}`}>{acctFmt(tbTotalDebit)}</td><td className={`px-4 py-3 text-right font-mono font-black ${tbBalanced?"text-emerald-700":"text-red-600"}`}>{acctFmt(tbTotalCredit)}</td></tr></tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* General Ledger */}
+      {activeReport === "gl" && (
+        <div>
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-sm text-gray-600">Account:</span>
+            <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white min-w-56">
+              {ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.id} - {a.name}</option>)}</optgroup>)}
+            </select>
+          </div>
+          {glAccount && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+              <div className="flex justify-between mb-4"><div><h4 className="font-semibold text-gray-800">{glAccount.name}</h4><p className="text-xs text-gray-400">#{glAccount.id} · {glAccount.type} — {glAccount.subtype}</p></div>{glLines.length > 0 && <div className="text-right"><p className="text-xs text-gray-400">Ending Balance</p><p className="font-mono font-bold">{acctFmt(glLines[glLines.length-1].balance, true)}</p></div>}</div>
+              <table className="w-full text-sm rounded-xl border border-gray-100 overflow-hidden">
+                <thead className="bg-gray-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Date</th><th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Entry</th><th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Description</th><th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Memo</th><th className="px-4 py-2 text-right text-xs font-semibold text-gray-500">Debit</th><th className="px-4 py-2 text-right text-xs font-semibold text-gray-500">Credit</th><th className="px-4 py-2 text-right text-xs font-semibold text-gray-500">Balance</th></tr></thead>
+                <tbody>
+                  {glLines.length === 0 ? <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No transactions</td></tr> : glLines.map((l,i) => <tr key={i} className="border-t border-gray-50"><td className="px-4 py-2 text-xs text-gray-500">{acctFmtDate(l.date)}</td><td className="px-4 py-2 font-mono text-xs text-gray-400">{l.jeId}</td><td className="px-4 py-2 text-gray-700">{l.description}</td><td className="px-4 py-2 text-xs text-gray-400">{l.memo || "—"}</td><td className="px-4 py-2 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td><td className="px-4 py-2 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td><td className={`px-4 py-2 text-right font-mono font-semibold ${l.balance<0?"text-red-600":"text-gray-800"}`}>{acctFmt(l.balance, true)}</td></tr>)}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Main Accounting Component (Supabase-backed) ---
+function Accounting() {
+  const [acctAccounts, setAcctAccounts] = useState([]);
+  const [journalEntries, setJournalEntries] = useState([]);
+  const [acctClasses, setAcctClasses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("overview");
+  const companyName = "Sigma Housing LLC";
+
+  useEffect(() => { fetchAll(); }, []);
+
+  async function fetchAll() {
+    setLoading(true);
+    const [acctsRes, jesRes, clsRes] = await Promise.all([
+      supabase.from("acct_accounts").select("*").order("id"),
+      supabase.from("acct_journal_entries").select("*").order("date", { ascending: false }),
+      supabase.from("acct_classes").select("*").order("name"),
+    ]);
+    const accounts = acctsRes.data || [];
+    const jeHeaders = jesRes.data || [];
+    const classes = clsRes.data || [];
+
+    // Fetch all journal lines and attach to entries
+    if (jeHeaders.length > 0) {
+      const { data: allLines } = await supabase.from("acct_journal_lines").select("*");
+      const linesByJE = {};
+      (allLines || []).forEach(l => { if (!linesByJE[l.journal_entry_id]) linesByJE[l.journal_entry_id] = []; linesByJE[l.journal_entry_id].push(l); });
+      jeHeaders.forEach(je => { je.lines = linesByJE[je.id] || []; });
+    }
+
+    setAcctAccounts(accounts);
+    setJournalEntries(jeHeaders);
+    setAcctClasses(classes);
+    setLoading(false);
   }
 
-  async function deleteEntry(id) {
-    if (!window.confirm("Delete this entry?")) return;
-    const { error } = await supabase.from("journal_entries").delete().eq("id", id);
-    if (error) { alert("Error deleting entry: " + error.message); return; }
-    setEntries(entries.filter(e => e.id !== id));
+  // --- Account CRUD ---
+  async function addAccount(acct) {
+    await supabase.from("acct_accounts").insert([acct]);
+    fetchAll();
+  }
+  async function updateAccount(acct) {
+    const { id, ...rest } = acct;
+    // Remove computed fields
+    delete rest.computedBalance;
+    delete rest.created_at;
+    await supabase.from("acct_accounts").update(rest).eq("id", id);
+    fetchAll();
+  }
+  async function toggleAccount(id, currentActive) {
+    await supabase.from("acct_accounts").update({ is_active: !currentActive }).eq("id", id);
+    fetchAll();
   }
 
-  function startEdit(entry) {
-    setEditEntry(entry);
-    setForm({ date: entry.date, account: entry.account, description: entry.description, debit: entry.debit, credit: entry.credit });
-    setShowJournal(true);
+  // --- Journal Entry CRUD ---
+  async function addJournalEntry(data) {
+    const number = nextJENumber(journalEntries);
+    const jeId = number;
+    const { lines, ...header } = data;
+    await supabase.from("acct_journal_entries").insert([{ id: jeId, number, date: header.date, description: header.description, reference: header.reference || "", status: header.status || "draft" }]);
+    if (lines?.length > 0) {
+      await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: jeId, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "" })));
+    }
+    fetchAll();
+  }
+  async function updateJournalEntry(data) {
+    const { id, lines, ...header } = data;
+    delete header.created_at;
+    delete header.number;
+    await supabase.from("acct_journal_entries").update({ date: header.date, description: header.description, reference: header.reference || "", status: header.status }).eq("id", id);
+    // Replace lines
+    await supabase.from("acct_journal_lines").delete().eq("journal_entry_id", id);
+    if (lines?.length > 0) {
+      await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: id, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "" })));
+    }
+    fetchAll();
+  }
+  async function postJournalEntry(id) {
+    await supabase.from("acct_journal_entries").update({ status: "posted" }).eq("id", id);
+    fetchAll();
+  }
+  async function voidJournalEntry(id) {
+    await supabase.from("acct_journal_entries").update({ status: "voided" }).eq("id", id);
+    fetchAll();
+  }
+
+  // --- Class CRUD ---
+  async function addClass(cls) {
+    await supabase.from("acct_classes").insert([cls]);
+    fetchAll();
+  }
+  async function updateClass(cls) {
+    const { id, ...rest } = cls;
+    delete rest.created_at;
+    delete rest.revenue; delete rest.expenses; delete rest.netIncome;
+    await supabase.from("acct_classes").update(rest).eq("id", id);
+    fetchAll();
+  }
+  async function toggleClass(id, currentActive) {
+    await supabase.from("acct_classes").update({ is_active: !currentActive }).eq("id", id);
+    fetchAll();
   }
 
   if (loading) return <Spinner />;
 
-  const totalIncome = payments.filter(p => p.status === "paid").reduce((s, p) => s + safeNum(p.amount), 0);
-  const totalMaintenance = workOrders.reduce((s, w) => s + safeNum(w.cost), 0);
-  const totalUtilities = utilities.reduce((s, u) => s + safeNum(u.amount), 0);
-  const noi = totalIncome - totalMaintenance - totalUtilities;
-  const unpaidRent = payments.filter(p => p.status === "unpaid" || p.status === "partial").reduce((s, p) => s + safeNum(p.amount), 0);
-
-  const uniqueAccounts = ["all", ...new Set(entries.map(e => e.account))];
-  const filteredEntries = entries.filter(e => {
-    if (filterAccount !== "all" && e.account !== filterAccount) return false;
-    if (filterType === "debit" && e.debit <= 0) return false;
-    if (filterType === "credit" && e.credit <= 0) return false;
-    if (filterDateFrom && e.date < filterDateFrom) return false;
-    if (filterDateTo && e.date > filterDateTo) return false;
-    if (searchDesc && !e.description?.toLowerCase().includes(searchDesc.toLowerCase())) return false;
-    return true;
-  });
-
-  const filteredDebits = filteredEntries.reduce((s, e) => s + safeNum(e.debit), 0);
-  const filteredCredits = filteredEntries.reduce((s, e) => s + safeNum(e.credit), 0);
-
-  const monthlyData = payments.reduce((acc, p) => {
-    const month = p.date?.slice(0, 7);
-    if (!month) return acc;
-    if (!acc[month]) acc[month] = { income: 0, expenses: 0 };
-    if (p.status === "paid") acc[month].income += Number(p.amount);
-    return acc;
-  }, {});
-  workOrders.forEach(w => {
-    const month = w.created?.slice(0, 7);
-    if (month && monthlyData[month]) monthlyData[month].expenses += Number(w.cost || 0);
-  });
-
-  const reports = [
-    { name: "Rent Roll", icon: "📋" },
-    { name: "Delinquency Report", icon: "⚠️" },
-    { name: "Income Statement", icon: "📈" },
-    { name: "Balance Sheet", icon: "⚖️" },
-    { name: "Cash Flow", icon: "💵" },
-    { name: "Expense Tracking", icon: "🧾" },
-  ];
-
-  const renderReport = () => {
-    if (!activeReport) return null;
-    let content;
-
-    if (activeReport === "Rent Roll") {
-      const rentPayments = payments.filter(p => p.type === "rent");
-      const totalExpected = rentPayments.reduce((s, p) => s + safeNum(p.amount), 0);
-      const totalPaid = rentPayments.filter(p => p.status === "paid").reduce((s, p) => s + safeNum(p.amount), 0);
-      content = (
-        <div>
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-400">Expected</div><div className="text-lg font-bold text-green-600">${totalExpected.toLocaleString()}</div></div>
-            <div className="bg-blue-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-400">Collected</div><div className="text-lg font-bold text-blue-600">${totalPaid.toLocaleString()}</div></div>
-            <div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-400">Outstanding</div><div className="text-lg font-bold text-red-500">${(totalExpected - totalPaid).toLocaleString()}</div></div>
-          </div>
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
-              <tr>{["Tenant", "Property", "Rent", "Date", "Method", "Status"].map(h => <th key={h} className="px-3 py-2 text-left">{h}</th>)}</tr>
-            </thead>
-            <tbody>
-              {rentPayments.map(p => (
-                <tr key={p.id} className="border-t border-gray-50 hover:bg-gray-50">
-                  <td className="px-3 py-2 font-medium">{p.tenant}</td>
-                  <td className="px-3 py-2 text-gray-500">{p.property}</td>
-                  <td className="px-3 py-2 font-semibold">${p.amount}</td>
-                  <td className="px-3 py-2 text-gray-500">{p.date}</td>
-                  <td className="px-3 py-2 text-gray-500">{p.method}</td>
-                  <td className="px-3 py-2"><Badge status={p.status} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    } else if (activeReport === "Delinquency Report") {
-      const delinquent = payments.filter(p => p.status === "unpaid" || p.status === "partial");
-      const total = delinquent.reduce((s, p) => s + safeNum(p.amount), 0);
-      content = (
-        <div>
-          <div className="bg-red-50 border border-red-100 rounded-lg p-3 mb-4 flex justify-between items-center">
-            <span className="text-sm font-medium text-red-700">Total Delinquent Amount</span>
-            <span className="text-xl font-bold text-red-600">${total.toLocaleString()}</span>
-          </div>
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
-              <tr>{["Tenant", "Property", "Amount Owed", "Type", "Due Date", "Status"].map(h => <th key={h} className="px-3 py-2 text-left">{h}</th>)}</tr>
-            </thead>
-            <tbody>
-              {delinquent.length === 0 ? (
-                <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-400">🎉 No delinquent payments!</td></tr>
-              ) : delinquent.map(p => (
-                <tr key={p.id} className="border-t border-gray-50">
-                  <td className="px-3 py-2 font-medium">{p.tenant}</td>
-                  <td className="px-3 py-2 text-gray-500">{p.property}</td>
-                  <td className="px-3 py-2 font-semibold text-red-500">${p.amount}</td>
-                  <td className="px-3 py-2 capitalize">{p.type?.replace("_", " ")}</td>
-                  <td className="px-3 py-2 text-gray-500">{p.date}</td>
-                  <td className="px-3 py-2"><Badge status={p.status} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    } else if (activeReport === "Income Statement") {
-      content = (
-        <div className="space-y-4 text-sm">
-          <div className="bg-green-50 rounded-lg p-4">
-            <div className="font-bold text-gray-700 mb-2">REVENUE</div>
-            {payments.filter(p => p.status === "paid").map(p => (
-              <div key={p.id} className="flex justify-between py-1 text-gray-600">
-                <span className="pl-3">{p.type?.replace("_", " ")} — {p.tenant}</span>
-                <span className="text-green-600">${safeNum(p.amount).toLocaleString()}</span>
-              </div>
-            ))}
-            <div className="flex justify-between pt-2 border-t border-green-200 font-bold"><span>Total Revenue</span><span className="text-green-600">${totalIncome.toLocaleString()}</span></div>
-          </div>
-          <div className="bg-red-50 rounded-lg p-4">
-            <div className="font-bold text-gray-700 mb-2">EXPENSES</div>
-            {workOrders.filter(w => w.cost > 0).map(w => (
-              <div key={w.id} className="flex justify-between py-1 text-gray-600">
-                <span className="pl-3">Maintenance — {w.issue}</span>
-                <span className="text-red-500">-${w.cost}</span>
-              </div>
-            ))}
-            {utilities.map(u => (
-              <div key={u.id} className="flex justify-between py-1 text-gray-600">
-                <span className="pl-3">Utility — {u.provider}</span>
-                <span className="text-red-500">-${u.amount}</span>
-              </div>
-            ))}
-            <div className="flex justify-between pt-2 border-t border-red-200 font-bold"><span>Total Expenses</span><span className="text-red-500">-${(totalMaintenance + totalUtilities).toLocaleString()}</span></div>
-          </div>
-          <div className="bg-blue-50 rounded-lg p-4 flex justify-between font-bold text-lg">
-            <span className="text-gray-800">Net Operating Income</span>
-            <span className={noi >= 0 ? "text-blue-700" : "text-red-600"}>${noi.toLocaleString()}</span>
-          </div>
-        </div>
-      );
-    } else if (activeReport === "Balance Sheet") {
-      const totalAssets = 42800 + totalIncome;
-      const totalLiabilities = 7500;
-      content = (
-        <div className="space-y-4 text-sm">
-          <div className="bg-green-50 rounded-lg p-4">
-            <div className="font-bold text-gray-700 mb-2">ASSETS</div>
-            {[["Operating Account", "$42,800"], ["Rent Receivable", `$${totalIncome.toLocaleString()}`], ["Security Deposits Held", "$7,500"]].map(([l, v]) => (
-              <div key={l} className="flex justify-between py-1 text-gray-600"><span className="pl-3">{l}</span><span className="text-green-600">{v}</span></div>
-            ))}
-            <div className="flex justify-between pt-2 border-t border-green-200 font-bold"><span>Total Assets</span><span className="text-green-600">${totalAssets.toLocaleString()}</span></div>
-          </div>
-          <div className="bg-red-50 rounded-lg p-4">
-            <div className="font-bold text-gray-700 mb-2">LIABILITIES</div>
-            <div className="flex justify-between py-1 text-gray-600"><span className="pl-3">Security Deposits Payable</span><span className="text-red-500">$7,500</span></div>
-            <div className="flex justify-between pt-2 border-t border-red-200 font-bold"><span>Total Liabilities</span><span className="text-red-500">${totalLiabilities.toLocaleString()}</span></div>
-          </div>
-          <div className="bg-blue-50 rounded-lg p-4 flex justify-between font-bold text-lg">
-            <span className="text-gray-800">Net Assets (Equity)</span>
-            <span className="text-blue-700">${(totalAssets - totalLiabilities).toLocaleString()}</span>
-          </div>
-        </div>
-      );
-    } else if (activeReport === "Cash Flow") {
-      content = (
-        <div className="space-y-4 text-sm">
-          <div className="bg-green-50 rounded-lg p-4">
-            <div className="font-bold text-gray-700 mb-2">OPERATING INFLOWS</div>
-            {payments.filter(p => p.status === "paid").map(p => (
-              <div key={p.id} className="flex justify-between py-1 text-gray-600">
-                <span className="pl-3">{p.tenant} — {p.method}</span>
-                <span className="text-green-600">+${safeNum(p.amount).toLocaleString()}</span>
-              </div>
-            ))}
-            <div className="flex justify-between pt-2 border-t border-green-200 font-bold"><span>Total Inflows</span><span className="text-green-600">+${totalIncome.toLocaleString()}</span></div>
-          </div>
-          <div className="bg-red-50 rounded-lg p-4">
-            <div className="font-bold text-gray-700 mb-2">OPERATING OUTFLOWS</div>
-            {workOrders.filter(w => w.cost > 0).map(w => (
-              <div key={w.id} className="flex justify-between py-1 text-gray-600">
-                <span className="pl-3">{w.issue}</span>
-                <span className="text-red-500">-${w.cost}</span>
-              </div>
-            ))}
-            {utilities.map(u => (
-              <div key={u.id} className="flex justify-between py-1 text-gray-600">
-                <span className="pl-3">{u.provider}</span>
-                <span className="text-red-500">-${u.amount}</span>
-              </div>
-            ))}
-            <div className="flex justify-between pt-2 border-t border-red-200 font-bold"><span>Total Outflows</span><span className="text-red-500">-${(totalMaintenance + totalUtilities).toLocaleString()}</span></div>
-          </div>
-          <div className="bg-blue-50 rounded-lg p-4 flex justify-between font-bold text-lg">
-            <span className="text-gray-800">Net Cash Flow</span>
-            <span className={noi >= 0 ? "text-blue-700" : "text-red-600"}>${noi.toLocaleString()}</span>
-          </div>
-        </div>
-      );
-    } else if (activeReport === "Expense Tracking") {
-      const allExpenses = [
-        ...workOrders.filter(w => w.cost > 0).map(w => ({ desc: w.issue, property: w.property, amount: Number(w.cost), type: "Maintenance", date: w.created, vendor: w.assigned })),
-        ...utilities.map(u => ({ desc: u.provider, property: u.property, amount: Number(u.amount), type: "Utility", date: u.due, vendor: u.provider })),
-      ].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-      const totalExp = allExpenses.reduce((s, e) => s + e.amount, 0);
-      const byType = allExpenses.reduce((acc, e) => { acc[e.type] = (acc[e.type] || 0) + e.amount; return acc; }, {});
-      content = (
-        <div>
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-400">Total</div><div className="text-lg font-bold text-red-500">${totalExp.toLocaleString()}</div></div>
-            {Object.entries(byType).map(([type, amt]) => (
-              <div key={type} className="bg-gray-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-400">{type}</div><div className="text-lg font-bold text-gray-700">${amt.toLocaleString()}</div></div>
-            ))}
-          </div>
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
-              <tr>{["Date", "Description", "Property", "Vendor", "Type", "Amount"].map(h => <th key={h} className="px-3 py-2 text-left">{h}</th>)}</tr>
-            </thead>
-            <tbody>
-              {allExpenses.map((e, i) => (
-                <tr key={i} className="border-t border-gray-50 hover:bg-gray-50">
-                  <td className="px-3 py-2 text-gray-500">{e.date}</td>
-                  <td className="px-3 py-2 font-medium">{e.desc}</td>
-                  <td className="px-3 py-2 text-gray-500">{e.property}</td>
-                  <td className="px-3 py-2 text-gray-500">{e.vendor || "—"}</td>
-                  <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded-full text-xs ${e.type === "Maintenance" ? "bg-orange-50 text-orange-600" : "bg-blue-50 text-blue-600"}`}>{e.type}</span></td>
-                  <td className="px-3 py-2 font-semibold text-red-500">${e.amount}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    }
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white">
-            <h3 className="font-bold text-gray-800 text-lg">{activeReport}</h3>
-            <div className="flex gap-2">
-              <button onClick={() => window.print()} className="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-100">🖨️ Print</button>
-              <button onClick={() => setActiveReport(null)} className="text-gray-400 hover:text-gray-600 text-xl ml-2">✕</button>
-            </div>
-          </div>
-          <div className="p-6">{content}</div>
-        </div>
-      </div>
-    );
-  };
+  // --- Overview Dashboard Data ---
+  const { start: ytdStart, end: ytdEnd } = getPeriodDates("This Year");
+  const plData = getPLData(acctAccounts, journalEntries, ytdStart, ytdEnd);
+  const bsData = getBalanceSheetData(acctAccounts, journalEntries, ytdEnd);
+  const pendingCount = journalEntries.filter(j => j.status === "draft").length;
 
   return (
     <div>
-      {renderReport()}
       <h2 className="text-xl font-bold text-gray-800 mb-5">Accounting & Financials</h2>
-      <div className="flex gap-2 mb-5 border-b border-gray-100">
-        {[["overview", "Overview"], ["ledger", "General Ledger"], ["reports", "Reports"], ["reconcile", "Reconciliation"]].map(([id, label]) => (
-          <button key={id} onClick={() => setActiveTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>{label}</button>
+      <div className="flex gap-2 mb-5 border-b border-gray-100 overflow-x-auto">
+        {[["overview","Overview"],["coa","Chart of Accounts"],["journal","Journal Entries"],["classes","Class Tracking"],["reports","Reports"]].map(([id,label]) => (
+          <button key={id} onClick={() => setActiveTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
+            {label}
+            {id === "journal" && pendingCount > 0 && <span className="ml-1.5 bg-amber-100 text-amber-700 text-xs px-1.5 py-0.5 rounded-full">{pendingCount}</span>}
+          </button>
         ))}
       </div>
 
       {activeTab === "overview" && (
         <div>
           <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
-            <StatCard label="Total Income" value={`$${totalIncome.toLocaleString()}`} color="text-green-600" sub="rent collected" />
-            <StatCard label="Total Expenses" value={`$${(totalMaintenance + totalUtilities).toLocaleString()}`} color="text-red-500" sub="maintenance + utilities" />
-            <StatCard label="NOI" value={`$${noi.toLocaleString()}`} color="text-blue-700" sub="net operating income" />
-            <StatCard label="Unpaid Rent" value={`$${unpaidRent.toLocaleString()}`} color="text-orange-500" sub="outstanding balance" />
+            <StatCard label="Total Revenue" value={acctFmt(plData.totalRevenue)} color="text-green-600" sub="Year to date" />
+            <StatCard label="Total Expenses" value={acctFmt(plData.totalExpenses)} color="text-red-500" sub="Year to date" />
+            <StatCard label="Net Income" value={acctFmt(plData.netIncome)} color={plData.netIncome >= 0 ? "text-blue-700" : "text-red-600"} sub="Year to date" />
+            <StatCard label="Total Assets" value={acctFmt(bsData.totalAssets)} color="text-purple-700" sub="Balance sheet" />
           </div>
+          {pendingCount > 0 && <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 mb-4 text-sm text-amber-700">⏳ {pendingCount} draft journal {pendingCount === 1 ? "entry" : "entries"} awaiting review</div>}
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mb-4">
-            <h3 className="font-semibold text-gray-700 mb-3">Monthly Summary</h3>
-            <table className="w-full text-sm">
-              <thead className="text-xs text-gray-400 uppercase">
-                <tr>{["Month", "Income", "Expenses", "Net"].map(h => <th key={h} className="text-left pb-2 px-2">{h}</th>)}</tr>
-              </thead>
-              <tbody>
-                {Object.entries(monthlyData).sort((a, b) => b[0] > a[0] ? 1 : -1).map(([month, data]) => (
-                  <tr key={month} className="border-t border-gray-50 hover:bg-gray-50">
-                    <td className="py-2 px-2 font-medium text-gray-800">{month}</td>
-                    <td className="py-2 px-2 text-green-600 font-semibold">${data.income.toLocaleString()}</td>
-                    <td className="py-2 px-2 text-red-500 font-semibold">${data.expenses.toLocaleString()}</td>
-                    <td className={`py-2 px-2 font-bold ${data.income - data.expenses >= 0 ? "text-blue-700" : "text-red-600"}`}>${(data.income - data.expenses).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <h3 className="font-semibold text-gray-700 mb-3">Recent Journal Entries</h3>
+            {journalEntries.slice(0, 5).map(je => {
+              const total = (je.lines || []).reduce((s,l) => s + safeNum(l.debit), 0);
+              return (
+                <div key={je.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                  <div className="flex items-center gap-3">
+                    <span className={`w-2 h-2 rounded-full ${je.status==="posted"?"bg-emerald-400":je.status==="draft"?"bg-amber-400":"bg-gray-300"}`} />
+                    <div><p className="text-sm font-medium text-gray-700">{je.description}</p><p className="text-xs text-gray-400">{je.number} · {je.date}</p></div>
+                  </div>
+                  <span className="font-mono text-sm font-semibold text-gray-700">{acctFmt(total)}</span>
+                </div>
+              );
+            })}
+            {journalEntries.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No journal entries yet. Start by creating one in the Journal Entries tab.</p>}
           </div>
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-            <h3 className="font-semibold text-gray-700 mb-3">Chart of Accounts</h3>
-            <table className="w-full text-sm">
-              <thead className="text-xs text-gray-400 uppercase">
-                <tr>{["Account", "Type", "Balance"].map(h => <th key={h} className={`pb-2 ${h === "Balance" ? "text-right" : "text-left"}`}>{h}</th>)}</tr>
-              </thead>
-              <tbody>
-                {[
-                  { name: "Rental Income", type: "Revenue", balance: totalIncome },
-                  { name: "Security Deposits Liability", type: "Liability", balance: -7500 },
-                  { name: "Maintenance Expense", type: "Expense", balance: -totalMaintenance },
-                  { name: "Utility Expense", type: "Expense", balance: -totalUtilities },
-                  { name: "Operating Account", type: "Asset", balance: 42800 },
-                ].map(a => (
-                  <tr key={a.name} className="border-t border-gray-50 hover:bg-gray-50">
-                    <td className="py-2 text-gray-800 font-medium">{a.name}</td>
-                    <td className="py-2"><span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{a.type}</span></td>
-                    <td className={`py-2 text-right font-semibold ${a.balance < 0 ? "text-red-500" : "text-green-600"}`}>${Math.abs(a.balance).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <h3 className="font-semibold text-gray-700 mb-3">Account Summary</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {["Asset","Liability","Equity","Revenue","Expense"].map(type => {
+                const total = calcAllBalances(acctAccounts, journalEntries).filter(a => a.type === type && a.is_active).reduce((s,a) => s + a.computedBalance, 0);
+                return (
+                  <div key={type} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-lg">
+                    <span className="text-sm text-gray-600">{type}</span>
+                    <span className={`font-mono text-sm font-semibold ${total < 0 ? "text-red-600" : "text-gray-800"}`}>{acctFmt(total, true)}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
 
-      {activeTab === "ledger" && (
-        <div>
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-gray-700">Filters</h3>
-              <button onClick={() => { setFilterAccount("all"); setFilterType("all"); setFilterDateFrom(""); setFilterDateTo(""); setSearchDesc(""); }} className="text-xs text-gray-400 hover:text-red-500">Clear All</button>
-            </div>
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              <select value={filterAccount} onChange={e => setFilterAccount(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                {uniqueAccounts.map(a => <option key={a}>{a}</option>)}
-              </select>
-              <select value={filterType} onChange={e => setFilterType(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                <option value="all">All Types</option>
-                <option value="debit">Debits Only</option>
-                <option value="credit">Credits Only</option>
-              </select>
-              <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-              <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            </div>
-            <input value={searchDesc} onChange={e => setSearchDesc(e.target.value)} placeholder="Search description..." className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full mt-2" />
-          </div>
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-sm text-gray-500">{filteredEntries.length} entries · Debits: <span className="text-red-500 font-semibold">${filteredDebits.toLocaleString()}</span> · Credits: <span className="text-green-600 font-semibold">${filteredCredits.toLocaleString()}</span></div>
-              <button onClick={() => { setEditEntry(null); setForm({ date: "", account: "", description: "", debit: 0, credit: 0 }); setShowJournal(!showJournal); }} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700">+ Journal Entry</button>
-            </div>
-            {showJournal && (
-              <div className="bg-indigo-50 rounded-lg p-3 mb-3 border border-indigo-100">
-                <h4 className="text-sm font-semibold text-indigo-700 mb-2">{editEntry ? "Edit Entry" : "New Journal Entry"}</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-                  <input placeholder="Account" value={form.account} onChange={e => setForm({ ...form, account: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-                  <input placeholder="Description" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" />
-                  <input placeholder="Debit ($)" value={form.debit} onChange={e => setForm({ ...form, debit: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-                  <input placeholder="Credit ($)" value={form.credit} onChange={e => setForm({ ...form, credit: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-                </div>
-                <div className="flex gap-2 mt-2">
-                  <button onClick={saveEntry} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg">{editEntry ? "Update" : "Save"}</button>
-                  <button onClick={() => { setShowJournal(false); setEditEntry(null); }} className="bg-gray-200 text-gray-600 text-xs px-3 py-1.5 rounded-lg">Cancel</button>
-                </div>
-              </div>
-            )}
-            <table className="w-full text-sm">
-              <thead className="text-xs text-gray-400 uppercase bg-gray-50">
-                <tr>{["Date", "Account", "Description", "Debit", "Credit", ""].map(h => <th key={h} className="text-left py-2 px-2">{h}</th>)}</tr>
-              </thead>
-              <tbody>
-                {filteredEntries.map(e => (
-                  <tr key={e.id} className="border-t border-gray-50 hover:bg-gray-50">
-                    <td className="py-2 px-2 text-gray-500">{e.date}</td>
-                    <td className="py-2 px-2 font-medium text-gray-800">{e.account}</td>
-                    <td className="py-2 px-2 text-gray-500">{e.description}</td>
-                    <td className="py-2 px-2 text-red-500 font-semibold">{e.debit > 0 ? `$${e.debit}` : "—"}</td>
-                    <td className="py-2 px-2 text-green-600 font-semibold">{e.credit > 0 ? `$${e.credit}` : "—"}</td>
-                    <td className="py-2 px-2 flex gap-2">
-                      <button onClick={() => startEdit(e)} className="text-xs text-indigo-600 hover:underline">Edit</button>
-                      <button onClick={() => deleteEntry(e.id)} className="text-xs text-red-400 hover:underline">Delete</button>
-                    </td>
-                  </tr>
-                ))}
-                {filteredEntries.length === 0 && (
-                  <tr><td colSpan={6} className="py-6 text-center text-gray-400">No entries match your filters</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {activeTab === "reports" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {reports.map(r => (
-            <button key={r.name} onClick={() => setActiveReport(r.name)} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 text-left hover:border-indigo-300 hover:shadow-md transition-all group">
-              <div className="text-3xl mb-2">{r.icon}</div>
-              <div className="font-semibold text-gray-800 group-hover:text-indigo-700">{r.name}</div>
-              <div className="text-xs text-gray-400 mt-1">Click to view full report →</div>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {activeTab === "reconcile" && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h3 className="font-semibold text-gray-700 mb-4">Bank Reconciliation</h3>
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="bg-gray-50 rounded-lg p-4 text-center">
-              <div className="text-xs text-gray-400 mb-1">Bank Statement Balance</div>
-              <div className="text-2xl font-bold text-gray-800">$42,800</div>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-4 text-center">
-              <div className="text-xs text-gray-400 mb-1">Book Balance</div>
-              <div className="text-2xl font-bold text-gray-800">${totalIncome.toLocaleString()}</div>
-            </div>
-            <div className={`rounded-lg p-4 text-center ${42800 - totalIncome === 0 ? "bg-green-50" : "bg-orange-50"}`}>
-              <div className="text-xs text-gray-400 mb-1">Difference</div>
-              <div className={`text-2xl font-bold ${42800 - totalIncome === 0 ? "text-green-600" : "text-orange-500"}`}>${Math.abs(42800 - totalIncome).toLocaleString()}</div>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <h4 className="font-medium text-gray-700 text-sm">Unreconciled Items</h4>
-            {payments.filter(p => p.status === "unpaid" || p.status === "partial").map(p => (
-              <div key={p.id} className="flex items-center justify-between bg-orange-50 rounded-lg px-4 py-2.5">
-                <div>
-                  <div className="text-sm font-medium text-gray-800">{p.tenant}</div>
-                  <div className="text-xs text-gray-400">{p.property} · {p.date}</div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="font-semibold text-orange-600">${p.amount}</span>
-                  <button className="text-xs bg-white border border-gray-200 text-gray-600 px-3 py-1 rounded-lg hover:bg-green-50 hover:text-green-600 hover:border-green-200">Mark Reconciled</button>
-                </div>
-              </div>
-            ))}
-            {payments.filter(p => p.status === "unpaid" || p.status === "partial").length === 0 && (
-              <div className="text-center py-4 text-gray-400 text-sm">🎉 All items reconciled!</div>
-            )}
-          </div>
-        </div>
-      )}
+      {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} />}
+      {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} />}
+      {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} />}
+      {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} />}
     </div>
   );
 }
