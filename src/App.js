@@ -1850,34 +1850,74 @@ function Documents({ addNotification }) {
     if (!file || !form.name) return;
     setUploading(true);
     const fileName = `${Date.now()}_${file.name}`;
-    const { error: uploadError } = await supabase.storage.from("documents").upload(fileName, file);
+    const { error: uploadError } = await supabase.storage.from("documents").upload(fileName, file, {
+      cacheControl: "3600",
+      upsert: false,
+    });
     if (uploadError) {
       alert("Upload failed: " + uploadError.message);
       setUploading(false);
       return;
     }
-    const { data: { publicUrl } } = supabase.storage.from("documents").getPublicUrl(fileName);
-    await supabase.from("documents").insert([{
+    const { data: urlData } = supabase.storage.from("documents").getPublicUrl(fileName);
+    const publicUrl = urlData?.publicUrl || "";
+    if (!publicUrl) {
+      alert("Upload succeeded but could not generate public URL. Check that your 'documents' bucket is set to Public in Supabase Storage settings.");
+      setUploading(false);
+      return;
+    }
+    const { error: insertError } = await supabase.from("documents").insert([{
       name: form.name,
       property: form.property,
       type: form.type,
       tenant_visible: form.tenant_visible,
       file_url: publicUrl,
+      file_name: fileName,
       uploaded_at: new Date().toISOString(),
     }]);
+    if (insertError) {
+      alert("File uploaded to storage but failed to save record: " + insertError.message);
+      setUploading(false);
+      return;
+    }
     addNotification("📄", `Document uploaded: ${form.name}`);
     setShowForm(false);
     setForm({ name: "", property: "", type: "Lease", tenant_visible: false });
+    if (fileRef.current) fileRef.current.value = "";
     setUploading(false);
     fetchDocs();
   }
 
-  async function deleteDoc(id, name) {
+  async function deleteDoc(id, name, file_name) {
     if (!window.confirm(`Delete "${name}"?`)) return;
+    // Also delete from storage if file_name is known
+    if (file_name) {
+      await supabase.storage.from("documents").remove([file_name]);
+    }
     const { error } = await supabase.from("documents").delete().eq("id", id);
     if (error) { alert("Error deleting document: " + error.message); return; }
     addNotification("🗑️", `Document deleted: ${name}`);
     fetchDocs();
+  }
+
+  // Repair existing documents that have empty/broken file_url
+  async function repairUrls() {
+    let repaired = 0;
+    for (const d of docs) {
+      if (d.file_name && !d.file_url) {
+        const { data } = supabase.storage.from("documents").getPublicUrl(d.file_name);
+        if (data?.publicUrl) {
+          await supabase.from("documents").update({ file_url: data.publicUrl }).eq("id", d.id);
+          repaired++;
+        }
+      }
+    }
+    if (repaired > 0) {
+      addNotification("🔧", `Repaired URLs for ${repaired} document(s)`);
+      fetchDocs();
+    } else {
+      alert("All document URLs look fine — no repairs needed.");
+    }
   }
 
   if (loading) return <Spinner />;
@@ -1888,7 +1928,10 @@ function Documents({ addNotification }) {
     <div>
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-xl font-bold text-gray-800">Document Management</h2>
-        <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">+ Upload Document</button>
+        <div className="flex gap-2">
+          <button onClick={repairUrls} className="bg-amber-500 text-white text-sm px-4 py-2 rounded-lg hover:bg-amber-600" title="Fix broken View links for existing documents">🔧 Repair URLs</button>
+          <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">+ Upload Document</button>
+        </div>
       </div>
 
       {showForm && (
@@ -1936,8 +1979,23 @@ function Documents({ addNotification }) {
                 <td className="px-3 py-2.5">{d.tenant_visible ? "✅" : "🔒"}</td>
                 <td className="px-3 py-2.5">
                   <div className="flex gap-2">
-                    {d.file_url && <a href={d.file_url} target="_blank" rel="noreferrer" className="text-xs text-indigo-600 hover:underline">View</a>}
-                    <button onClick={() => deleteDoc(d.id, d.name)} className="text-xs text-red-400 hover:underline">Delete</button>
+                    {d.file_url ? (
+                      <>
+                        <a href={d.file_url} target="_blank" rel="noreferrer" className="text-xs text-indigo-600 hover:underline">View</a>
+                        <a href={d.file_url} download className="text-xs text-green-600 hover:underline">Download</a>
+                      </>
+                    ) : d.file_name ? (
+                      <>
+                        <button onClick={() => {
+                          const { data } = supabase.storage.from("documents").getPublicUrl(d.file_name);
+                          if (data?.publicUrl) window.open(data.publicUrl, "_blank");
+                          else alert("Could not generate URL for this file.");
+                        }} className="text-xs text-indigo-600 hover:underline">View</button>
+                      </>
+                    ) : (
+                      <span className="text-xs text-gray-400">No file</span>
+                    )}
+                    <button onClick={() => deleteDoc(d.id, d.name, d.file_name)} className="text-xs text-red-400 hover:underline">Delete</button>
                   </div>
                 </td>
               </tr>
