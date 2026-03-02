@@ -1955,6 +1955,366 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
   );
 }
 
+// --- Bank Import Utilities ---
+const KNOWN_BANK_FORMATS = [
+  { id:"chase", name:"Chase Bank", sampleHeaders:["Transaction Date","Post Date","Description","Category","Type","Amount","Memo"], mapping:{date:"Transaction Date",description:"Description",amount:"Amount",memo:"Memo"} },
+  { id:"bofa", name:"Bank of America", sampleHeaders:["Date","Description","Amount","Running Bal."], mapping:{date:"Date",description:"Description",amount:"Amount"} },
+  { id:"wells", name:"Wells Fargo", sampleHeaders:["Date","Amount","* ","* ","Description"], mapping:{date:"Date",description:"Description",amount:"Amount"} },
+  { id:"citi", name:"Citibank", sampleHeaders:["Date","Description","Debit","Credit"], mapping:{date:"Date",description:"Description",debit:"Debit",credit:"Credit"} },
+  { id:"capital_one", name:"Capital One", sampleHeaders:["Transaction Date","Posted Date","Card No.","Description","Category","Debit","Credit"], mapping:{date:"Transaction Date",description:"Description",debit:"Debit",credit:"Credit"} },
+  { id:"usbank", name:"US Bank", sampleHeaders:["Date","Transaction","Name","Memo","Amount"], mapping:{date:"Date",description:"Name",memo:"Memo",amount:"Amount"} },
+  { id:"generic", name:"Generic CSV", sampleHeaders:[], mapping:{} },
+];
+
+function biParseCSV(csvText) {
+  const lines = csvText.trim().split(/\r?\n/);
+  if (lines.length < 2) return { headers:[], rows:[] };
+  const parseRow = (line) => { const result=[]; let cur="",inQ=false; for(let i=0;i<line.length;i++){const ch=line[i]; if(ch==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}else if(ch===","&&!inQ){result.push(cur.trim());cur="";}else cur+=ch;} result.push(cur.trim()); return result; };
+  let hIdx=0; for(let i=0;i<Math.min(5,lines.length);i++){if(lines[i].includes(",")){hIdx=i;break;}}
+  const headers = parseRow(lines[hIdx]).map(h=>h.replace(/^"|"$/g,"").trim());
+  const rows=[]; for(let i=hIdx+1;i<lines.length;i++){const line=lines[i].trim();if(!line||line.startsWith("#"))continue;const vals=parseRow(line);if(vals.length<2)continue;const obj={};headers.forEach((h,idx)=>{obj[h]=(vals[idx]||"").replace(/^"|"$/g,"").trim();});rows.push(obj);}
+  return {headers,rows};
+}
+
+function biDetectFormat(headers) {
+  const norm = headers.map(h=>h.toLowerCase().trim());
+  for(const fmt of KNOWN_BANK_FORMATS){if(fmt.id==="generic")continue;const fh=fmt.sampleHeaders.map(h=>h.toLowerCase().trim());if(fh.filter(h=>h&&norm.includes(h)).length>=2)return fmt;}
+  return KNOWN_BANK_FORMATS.find(f=>f.id==="generic");
+}
+
+function biParseAmount(rawAmt,rawDebit,rawCredit) {
+  const clean=(s)=>{if(!s)return 0;s=String(s).trim().replace(/[$,\s]/g,"");const neg=s.startsWith("(")||s.startsWith("-")||s.toUpperCase().endsWith("DB");s=s.replace(/[()]/g,"").replace(/^-/,"").replace(/DB$/i,"").replace(/CR$/i,"");const v=parseFloat(s)||0;return neg?-v:v;};
+  if(rawDebit!==undefined||rawCredit!==undefined){const d=clean(rawDebit),c=clean(rawCredit);if(c>0)return c;if(d>0)return -d;return 0;}
+  return clean(rawAmt);
+}
+
+function biParseDate(raw) {
+  if(!raw)return "";raw=String(raw).trim();
+  if(/^\d{4}-\d{2}-\d{2}/.test(raw))return raw.substring(0,10);
+  const mdy=raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);if(mdy)return `${mdy[3]}-${mdy[1].padStart(2,"0")}-${mdy[2].padStart(2,"0")}`;
+  const mdy2=raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/);if(mdy2){const yr=parseInt(mdy2[3])>50?"19"+mdy2[3]:"20"+mdy2[3];return `${yr}-${mdy2[1].padStart(2,"0")}-${mdy2[2].padStart(2,"0")}`;}
+  try{const d=new Date(raw);if(!isNaN(d))return d.toISOString().split("T")[0];}catch(_){}
+  return raw;
+}
+
+function biApplyMapping(rows,mapping) {
+  return rows.map((row,idx)=>{
+    const rawD=mapping.date?row[mapping.date]:"",rawDesc=mapping.description?row[mapping.description]:"",rawA=mapping.amount?row[mapping.amount]:undefined,rawDb=mapping.debit?row[mapping.debit]:undefined,rawCr=mapping.credit?row[mapping.credit]:undefined,rawM=mapping.memo?row[mapping.memo]:"";
+    return { id:`IMP-${idx+1}`, date:biParseDate(rawD), description:rawDesc||"(no description)", amount:biParseAmount(rawA,rawDb,rawCr), memo:rawM, rawRow:row, accountId:"", accountName:"", classId:"", status:"pending", matchedJEId:null, matchedRule:null };
+  });
+}
+
+function biDetectDuplicates(importedRows, journalEntries, bankAccountId) {
+  return importedRows.map(row=>{
+    const absAmt=Math.abs(row.amount);
+    const dup=journalEntries.filter(je=>je.status==="posted"&&je.date===row.date).find(je=>(je.lines||[]).some(l=>l.account_id===bankAccountId&&Math.abs(Math.abs(safeNum(l.debit))-absAmt)<0.01));
+    return dup?{...row,status:"duplicate",matchedJEId:dup.id}:row;
+  });
+}
+
+const DEFAULT_IMPORT_RULES = [
+  {id:"R001",matchType:"contains",matchValue:"rent",accountId:"4000",accountName:"Rental Income",classId:""},
+  {id:"R002",matchType:"contains",matchValue:"late fee",accountId:"4010",accountName:"Late Fee Income",classId:""},
+  {id:"R003",matchType:"contains",matchValue:"mortgage",accountId:"5000",accountName:"Mortgage Interest",classId:""},
+  {id:"R004",matchType:"contains",matchValue:"insurance",accountId:"5200",accountName:"Insurance Expense",classId:""},
+  {id:"R005",matchType:"contains",matchValue:"utility",accountId:"5400",accountName:"Utilities",classId:""},
+  {id:"R006",matchType:"contains",matchValue:"electric",accountId:"5400",accountName:"Utilities",classId:""},
+  {id:"R007",matchType:"contains",matchValue:"plumb",accountId:"5300",accountName:"Repairs & Maintenance",classId:""},
+  {id:"R008",matchType:"contains",matchValue:"repair",accountId:"5300",accountName:"Repairs & Maintenance",classId:""},
+  {id:"R009",matchType:"contains",matchValue:"landscap",accountId:"6100",accountName:"Landscaping",classId:""},
+  {id:"R010",matchType:"contains",matchValue:"pest",accountId:"6200",accountName:"Pest Control",classId:""},
+  {id:"R011",matchType:"contains",matchValue:"bank fee",accountId:"6000",accountName:"Bank Charges",classId:""},
+  {id:"R012",matchType:"contains",matchValue:"interest",accountId:"7000",accountName:"Interest Income",classId:""},
+];
+
+function biApplyRules(rows,rules) {
+  return rows.map(row=>{
+    if(row.status==="duplicate")return row;
+    for(const rule of rules){const desc=row.description.toLowerCase(),val=rule.matchValue.toLowerCase();let matched=false;
+      switch(rule.matchType){case "contains":matched=desc.includes(val);break;case "startsWith":matched=desc.startsWith(val);break;case "equals":matched=desc===val;break;case "regex":try{matched=new RegExp(rule.matchValue,"i").test(row.description);}catch(e){matched=false;}break;default:matched=desc.includes(val);}
+      if(matched)return {...row,accountId:rule.accountId,accountName:rule.accountName,classId:rule.classId||"",matchedRule:rule.id};
+    }
+    return row;
+  });
+}
+
+// --- Bank Import Component ---
+function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }) {
+  const [step, setStep] = useState(1);
+  const [wizardData, setWizardData] = useState({});
+  const [rules, setRules] = useState(DEFAULT_IMPORT_RULES);
+  const [importHistory, setImportHistory] = useState([]);
+  const fileRef = useRef();
+
+  // Step 1 state
+  const [file, setFile] = useState(null);
+  const [bankAccountId, setBankAccountId] = useState("");
+  const [error, setError] = useState("");
+
+  // Step 2 state
+  const [mapping, setMapping] = useState({ date:"",description:"",amount:"",debit:"",credit:"",memo:"" });
+
+  // Step 3 state
+  const [transactions, setTransactions] = useState([]);
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [showRules, setShowRules] = useState(false);
+  const [newRule, setNewRule] = useState({ matchType:"contains", matchValue:"", accountId:"", accountName:"", classId:"" });
+
+  // Step 4 state
+  const [posting, setPosting] = useState(false);
+  const [done, setDone] = useState(false);
+  const [postedCount, setPostedCount] = useState(0);
+
+  const bankAccounts = accounts.filter(a => a.type === "Asset" && (a.subtype === "Bank" || a.subtype === "Credit Card") && a.is_active);
+
+  const reset = () => { setStep(1); setWizardData({}); setFile(null); setBankAccountId(""); setError(""); setTransactions([]); setDone(false); setPostedCount(0); setFilterStatus("all"); };
+
+  // --- Step 1: Upload ---
+  const handleUpload = () => {
+    if(!file) return setError("Please select a CSV file.");
+    if(!bankAccountId) return setError("Please select a bank account.");
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const parsed = biParseCSV(e.target.result);
+      if(parsed.headers.length===0) return setError("Could not parse CSV.");
+      const detected = biDetectFormat(parsed.headers);
+      // Auto-fill mapping
+      const m = { date:"",description:"",amount:"",debit:"",credit:"",memo:"" };
+      if(detected.id!=="generic"){ Object.entries(detected.mapping).forEach(([k,v])=>{m[k]=v;}); }
+      else { parsed.headers.forEach(h=>{const hl=h.toLowerCase();if(!m.date&&(hl.includes("date")))m.date=h;if(!m.description&&(hl.includes("desc")||hl.includes("name")||hl==="payee"))m.description=h;if(!m.amount&&(hl==="amount"||hl==="amt"))m.amount=h;if(!m.debit&&hl.includes("debit"))m.debit=h;if(!m.credit&&hl.includes("credit"))m.credit=h;if(!m.memo&&hl.includes("memo"))m.memo=h;}); }
+      setMapping(m);
+      setWizardData({ parsed, bankAccountId, detected, fileName: file.name });
+      setStep(2);
+    };
+    reader.readAsText(file);
+  };
+
+  // --- Step 2: Confirm mapping and go to review ---
+  const mappingValid = mapping.date && mapping.description && (mapping.amount || mapping.debit || mapping.credit);
+  const handleMapping = () => {
+    if(!mappingValid) return;
+    const rows = biApplyMapping(wizardData.parsed.rows, mapping);
+    const withDups = biDetectDuplicates(rows, journalEntries, wizardData.bankAccountId);
+    const withRules = biApplyRules(withDups, rules);
+    setTransactions(withRules);
+    setStep(3);
+  };
+
+  // --- Step 3 helpers ---
+  const setTx = (i,updates) => setTransactions(txs=>txs.map((t,idx)=>idx===i?{...t,...updates}:t));
+  const approveAll = () => setTransactions(txs=>txs.map(t=>t.status==="duplicate"?t:{...t,status:"approved"}));
+  const skipAll = () => setTransactions(txs=>txs.map(t=>t.status==="duplicate"?t:{...t,status:"skipped"}));
+  const reapplyRules = () => setTransactions(txs=>biApplyRules(txs.map(t=>({...t,matchedRule:null})),rules));
+  const counts = { total:transactions.length, pending:transactions.filter(t=>t.status==="pending").length, approved:transactions.filter(t=>t.status==="approved").length, skipped:transactions.filter(t=>t.status==="skipped").length, duplicate:transactions.filter(t=>t.status==="duplicate").length, noAccount:transactions.filter(t=>t.status==="approved"&&!t.accountId).length };
+  const filtered = filterStatus === "all" ? transactions : transactions.filter(t=>t.status===filterStatus);
+  const addRule = () => { if(!newRule.matchValue||!newRule.accountId)return;const acct=accounts.find(a=>a.id===newRule.accountId);setRules(r=>[...r,{...newRule,id:`R${Date.now()}`,accountName:acct?.name||""}]);setNewRule({matchType:"contains",matchValue:"",accountId:"",accountName:"",classId:""}); };
+  const removeRule = (id) => setRules(r=>r.filter(x=>x.id!==id));
+
+  // --- Step 4: Post ---
+  const handlePost = async () => {
+    setPosting(true);
+    const approved = transactions.filter(t=>t.status==="approved");
+    const bankAcct = accounts.find(a=>a.id===wizardData.bankAccountId);
+    for(const tx of approved) {
+      const isDeposit = tx.amount >= 0;
+      const abs = Math.abs(tx.amount);
+      const lines = isDeposit
+        ? [{ account_id:wizardData.bankAccountId, account_name:bankAcct?.name||"Bank", debit:abs, credit:0, class_id:null, memo:tx.memo||"" },
+           { account_id:tx.accountId||"1000", account_name:tx.accountName||"Uncategorized", debit:0, credit:abs, class_id:tx.classId||null, memo:tx.memo||"" }]
+        : [{ account_id:tx.accountId||"1000", account_name:tx.accountName||"Uncategorized", debit:abs, credit:0, class_id:tx.classId||null, memo:tx.memo||"" },
+           { account_id:wizardData.bankAccountId, account_name:bankAcct?.name||"Bank", debit:0, credit:abs, class_id:null, memo:tx.memo||"" }];
+      await onAddJournalEntry({ date:tx.date, description:tx.description, reference:`IMPORT-${tx.id}`, lines, status:"posted" });
+    }
+    setPostedCount(approved.length);
+    setImportHistory(h=>[{ date:acctToday(), bankAccount:bankAcct?.name, count:approved.length, fileName:wizardData.fileName, net:approved.reduce((s,t)=>s+t.amount,0) },...h]);
+    setPosting(false);
+    setDone(true);
+    setStep(5);
+  };
+
+  const bankAcct = accounts.find(a=>a.id===wizardData.bankAccountId);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between mb-4">
+        <div><h3 className="text-lg font-semibold text-gray-900">Bank Statement Import</h3><p className="text-sm text-gray-500">Import CSV from your bank and post to journal entries</p></div>
+        {step > 1 && !done && <button onClick={reset} className="text-xs text-gray-500 hover:text-gray-700 bg-gray-100 px-3 py-1.5 rounded-lg">🔄 Start Over</button>}
+      </div>
+
+      {/* Step Bar */}
+      <div className="flex items-center gap-0 mb-6">
+        {[{n:1,l:"Upload"},{n:2,l:"Map Columns"},{n:3,l:"Review"},{n:4,l:"Post"}].map((s,i)=>(
+          <div key={s.n} className="flex items-center flex-1">
+            <div className="flex flex-col items-center gap-1">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 ${step>s.n?"bg-emerald-500 border-emerald-500 text-white":step===s.n?"bg-slate-800 border-slate-800 text-white":"bg-white border-gray-200 text-gray-400"}`}>{step>s.n?"✓":s.n}</div>
+              <span className={`text-xs font-medium ${step===s.n?"text-slate-800":"text-gray-400"}`}>{s.l}</span>
+            </div>
+            {i<3&&<div className={`flex-1 h-0.5 mb-4 mx-2 ${step>s.n?"bg-emerald-400":"bg-gray-200"}`}/>}
+          </div>
+        ))}
+      </div>
+
+      {/* Step 1: Upload */}
+      {step === 1 && (
+        <div className="space-y-4 max-w-xl mx-auto">
+          <div onClick={()=>fileRef.current?.click()} className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer ${file?"border-emerald-300 bg-emerald-50/50":"border-gray-200 hover:border-gray-400"}`}>
+            <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={e=>{ const f=e.target.files[0]; if(f){setError("");setFile(f);} }} />
+            {file ? <><p className="text-2xl">📄</p><p className="font-semibold text-emerald-800">{file.name}</p><p className="text-xs text-emerald-600">{(file.size/1024).toFixed(1)} KB · Click to change</p></> : <><p className="text-2xl">📤</p><p className="font-semibold text-gray-700">Drop CSV here or click to browse</p></>}
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 block mb-2">Import into Account *</label>
+            {bankAccounts.map(a=>(
+              <button key={a.id} onClick={()=>setBankAccountId(a.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left mb-2 ${bankAccountId===a.id?"border-slate-800 bg-slate-50":"border-gray-200 hover:border-gray-400"}`}>
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${bankAccountId===a.id?"bg-slate-800 text-white":"bg-gray-100 text-gray-400"}`}>🏦</div>
+                <div className="flex-1"><p className="text-sm font-semibold text-gray-800">{a.name}</p><p className="text-xs text-gray-400">#{a.id} · {a.subtype}</p></div>
+                {bankAccountId===a.id&&<span className="text-slate-800">✓</span>}
+              </button>
+            ))}
+            {bankAccounts.length===0&&<p className="text-sm text-amber-600 bg-amber-50 rounded-xl px-4 py-3">No bank accounts found. Add one in Chart of Accounts first.</p>}
+          </div>
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700"><strong>Supported:</strong> Chase, Bank of America, Wells Fargo, Citibank, Capital One, US Bank, and generic CSV</div>
+          {error&&<p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3">⚠ {error}</p>}
+          <div className="flex justify-end"><button onClick={handleUpload} disabled={!file||!bankAccountId} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50 hover:bg-slate-700">Continue →</button></div>
+        </div>
+      )}
+
+      {/* Step 2: Map Columns */}
+      {step === 2 && wizardData.parsed && (
+        <div className="space-y-4 max-w-2xl mx-auto">
+          <div className="flex items-center gap-2 mb-2">
+            <h4 className="font-semibold text-gray-900">Map CSV Columns</h4>
+            {wizardData.detected?.id!=="generic"&&<span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">⚡ Auto-detected: {wizardData.detected.name}</span>}
+          </div>
+          <div className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-2">Headers found:</p><div className="flex flex-wrap gap-1.5">{wizardData.parsed.headers.map(h=><span key={h} className="text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded-lg font-mono">{h}</span>)}</div></div>
+          <div className="grid grid-cols-2 gap-3">
+            {[{f:"date",l:"Date *"},{f:"description",l:"Description *"},{f:"amount",l:"Amount"},{f:"debit",l:"Debit"},{f:"credit",l:"Credit"},{f:"memo",l:"Memo"}].map(({f,l})=>(
+              <div key={f}><label className="text-xs font-medium text-gray-600">{l}</label><select value={mapping[f]} onChange={e=>setMapping(m=>({...m,[f]:e.target.value}))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"><option value="">— Not mapped —</option>{wizardData.parsed.headers.map(h=><option key={h} value={h}>{h}</option>)}</select></div>
+            ))}
+          </div>
+          {!mappingValid&&<p className="text-xs text-amber-600 bg-amber-50 rounded-xl px-3 py-2">⚠ Date, Description, and at least one amount column required</p>}
+          {/* Preview */}
+          {mappingValid && (
+            <div className="bg-white rounded-xl border border-gray-100 p-3 overflow-x-auto">
+              <p className="text-xs font-semibold text-gray-500 mb-2">Preview (first 5 rows)</p>
+              <table className="w-full text-xs"><thead><tr className="bg-gray-50"><th className="px-3 py-1 text-left">Date</th><th className="px-3 py-1 text-left">Description</th><th className="px-3 py-1 text-right">Amount</th></tr></thead>
+              <tbody>{wizardData.parsed.rows.slice(0,5).map((row,i)=><tr key={i} className="border-t border-gray-50"><td className="px-3 py-1">{mapping.date?row[mapping.date]:""}</td><td className="px-3 py-1">{mapping.description?row[mapping.description]:""}</td><td className="px-3 py-1 text-right font-mono">{mapping.amount?row[mapping.amount]:mapping.debit?row[mapping.debit]:mapping.credit?row[mapping.credit]:""}</td></tr>)}</tbody></table>
+            </div>
+          )}
+          <div className="flex justify-between"><button onClick={()=>setStep(1)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">← Back</button><button onClick={handleMapping} disabled={!mappingValid} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Continue →</button></div>
+        </div>
+      )}
+
+      {/* Step 3: Review */}
+      {step === 3 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between"><p className="text-sm text-gray-500">Importing into <strong>{bankAcct?.name}</strong> · {counts.total} transactions</p>
+            <div className="flex gap-2"><button onClick={reapplyRules} className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg">⚡ Re-apply Rules</button><button onClick={()=>setShowRules(!showRules)} className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg">🏷️ Rules</button></div>
+          </div>
+          <div className="grid grid-cols-5 gap-2">
+            {[{k:"all",l:"All",c:counts.total},{k:"pending",l:"Pending",c:counts.pending},{k:"approved",l:"Approved",c:counts.approved},{k:"skipped",l:"Skipped",c:counts.skipped},{k:"duplicate",l:"Duplicate",c:counts.duplicate}].map(s=>(
+              <button key={s.k} onClick={()=>setFilterStatus(s.k)} className={`rounded-xl p-2 text-center border-2 ${filterStatus===s.k?"border-slate-800 bg-slate-50":"border-transparent bg-white"}`}><p className="text-lg font-bold">{s.c}</p><p className="text-xs text-gray-500">{s.l}</p></button>
+            ))}
+          </div>
+          <div className="flex gap-2"><button onClick={approveAll} className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg">✓ Approve All</button><button onClick={skipAll} className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg">⏭ Skip All</button>
+            {counts.noAccount>0&&<span className="text-xs text-amber-600 bg-amber-50 px-3 py-1.5 rounded-lg ml-auto">⚠ {counts.noAccount} approved rows missing account</span>}
+          </div>
+
+          {/* Rules Panel */}
+          {showRules && (
+            <div className="bg-violet-50 border border-violet-100 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-semibold text-violet-700 uppercase">Auto-Categorization Rules</p>
+              {rules.map(r=>(
+                <div key={r.id} className="flex items-center gap-2 text-xs bg-white rounded-lg p-2 border border-violet-100">
+                  <span className="text-gray-500">If</span><span className="bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded">{r.matchType}</span><span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded">"{r.matchValue}"</span><span className="text-gray-500">→</span><span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">{r.accountName||r.accountId}</span>
+                  <button onClick={()=>removeRule(r.id)} className="ml-auto text-gray-300 hover:text-red-500">✕</button>
+                </div>
+              ))}
+              <div className="grid grid-cols-4 gap-2">
+                <select value={newRule.matchType} onChange={e=>setNewRule(r=>({...r,matchType:e.target.value}))} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs"><option value="contains">Contains</option><option value="startsWith">Starts With</option><option value="equals">Equals</option><option value="regex">Regex</option></select>
+                <input value={newRule.matchValue} onChange={e=>setNewRule(r=>({...r,matchValue:e.target.value}))} placeholder="Match text..." className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs" />
+                <select value={newRule.accountId} onChange={e=>setNewRule(r=>({...r,accountId:e.target.value}))} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs"><option value="">Account...</option>{accounts.filter(a=>a.is_active&&!["Bank"].includes(a.subtype)).map(a=><option key={a.id} value={a.id}>{a.id}-{a.name}</option>)}</select>
+                <button onClick={addRule} className="bg-violet-600 text-white text-xs px-3 py-1.5 rounded-lg">+ Add</button>
+              </div>
+            </div>
+          )}
+
+          {/* Transaction Rows */}
+          <div className="space-y-2">
+            {filtered.map((tx,di)=>{
+              const ri=transactions.findIndex(t=>t.id===tx.id);
+              const colors={pending:"border-amber-200 bg-amber-50/30",approved:"border-emerald-200 bg-emerald-50/30",skipped:"border-gray-100 bg-gray-50/50 opacity-60",duplicate:"border-red-200 bg-red-50/30"};
+              return (
+                <div key={tx.id} className={`rounded-xl border-2 p-3 ${colors[tx.status]}`}>
+                  <div className="flex items-start gap-3">
+                    <span className="mt-1">{tx.amount>=0?"🟢":"🔴"}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div><p className="text-sm font-semibold text-gray-800">{tx.description}</p><p className="text-xs text-gray-400">{tx.date}{tx.matchedRule&&<span className="ml-1.5 text-violet-500">⚡ rule matched</span>}{tx.status==="duplicate"&&<span className="ml-1.5 text-red-500">⚠ Duplicate</span>}</p></div>
+                        <span className={`font-mono font-bold text-sm ${tx.amount>=0?"text-emerald-700":"text-red-700"}`}>{tx.amount>=0?"+":""}{acctFmt(tx.amount)}</span>
+                      </div>
+                      {tx.status!=="skipped"&&tx.status!=="duplicate"&&(
+                        <div className="flex gap-2 mt-2">
+                          <select value={tx.accountId||""} onChange={e=>{const a=accounts.find(a=>a.id===e.target.value);setTx(ri,{accountId:e.target.value,accountName:a?.name||""});}} className={`border rounded-lg px-2 py-1 text-xs ${tx.status==="approved"&&!tx.accountId?"border-amber-300":"border-gray-200"}`}>
+                            <option value="">— Assign account —</option>{ACCOUNT_TYPES.map(type=><optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active&&a.id!==wizardData.bankAccountId).map(a=><option key={a.id} value={a.id}>{a.id}–{a.name}</option>)}</optgroup>)}
+                          </select>
+                          <select value={tx.classId||""} onChange={e=>setTx(ri,{classId:e.target.value})} className="border border-gray-200 rounded-lg px-2 py-1 text-xs"><option value="">No class</option>{classes.filter(c=>c.is_active).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-1">
+                      {tx.status!=="duplicate"&&<><button onClick={()=>setTx(ri,{status:"approved"})} className={`p-1.5 rounded-lg ${tx.status==="approved"?"bg-emerald-500 text-white":"text-gray-300 hover:text-emerald-600"}`}>✓</button><button onClick={()=>setTx(ri,{status:"skipped"})} className={`p-1.5 rounded-lg ${tx.status==="skipped"?"bg-gray-400 text-white":"text-gray-300 hover:text-gray-500"}`}>⏭</button></>}
+                      {tx.status==="duplicate"&&<button onClick={()=>setTx(ri,{status:"pending",matchedJEId:null})} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600" title="Import anyway">🔄</button>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {filtered.length===0&&<p className="text-center py-8 text-gray-400 text-sm">No transactions in this filter</p>}
+          </div>
+          <div className="flex justify-between"><button onClick={()=>setStep(2)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">← Back</button><button onClick={()=>setStep(4)} disabled={counts.approved===0||counts.noAccount>0} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Post {counts.approved} Transactions →</button></div>
+        </div>
+      )}
+
+      {/* Step 4: Confirm & Post */}
+      {step === 4 && !done && (
+        <div className="space-y-4 max-w-xl mx-auto">
+          <h4 className="font-semibold text-gray-900">Confirm & Post</h4>
+          <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-2">
+            <div className="flex justify-between text-sm"><span className="text-gray-500">Bank Account</span><span className="font-bold">{bankAcct?.name}</span></div>
+            <div className="flex justify-between text-sm"><span className="text-gray-500">Deposits</span><span className="font-mono text-emerald-700">+{acctFmt(transactions.filter(t=>t.status==="approved"&&t.amount>=0).reduce((s,t)=>s+t.amount,0))} ({transactions.filter(t=>t.status==="approved"&&t.amount>=0).length})</span></div>
+            <div className="flex justify-between text-sm"><span className="text-gray-500">Payments</span><span className="font-mono text-red-700">{acctFmt(transactions.filter(t=>t.status==="approved"&&t.amount<0).reduce((s,t)=>s+t.amount,0))} ({transactions.filter(t=>t.status==="approved"&&t.amount<0).length})</span></div>
+            <div className="flex justify-between text-sm border-t pt-2"><span className="font-bold">Entries to create</span><span className="font-bold">{transactions.filter(t=>t.status==="approved").length}</span></div>
+          </div>
+          <div className="flex justify-between"><button onClick={()=>setStep(3)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">← Back</button><button onClick={handlePost} disabled={posting} className="bg-emerald-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">{posting?"Posting...":"✓ Post All Entries"}</button></div>
+        </div>
+      )}
+
+      {/* Step 5: Done */}
+      {done && (
+        <div className="flex flex-col items-center py-12 gap-4">
+          <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center text-3xl">✓</div>
+          <h4 className="text-xl font-bold text-gray-900">Import Complete!</h4>
+          <p className="text-sm text-gray-500">{postedCount} journal entries posted to <strong>{bankAcct?.name}</strong></p>
+          <button onClick={reset} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg mt-2">Import Another File</button>
+        </div>
+      )}
+
+      {/* Import History */}
+      {importHistory.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mt-4">
+          <h4 className="font-semibold text-gray-700 mb-3">Import History</h4>
+          {importHistory.map((h,i)=>(
+            <div key={i} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+              <div><p className="text-sm font-medium text-gray-700">{h.fileName}</p><p className="text-xs text-gray-400">{h.date} · {h.bankAccount}</p></div>
+              <div className="text-right"><p className={`font-mono text-sm font-semibold ${h.net>=0?"text-emerald-700":"text-red-700"}`}>{acctFmt(h.net,true)}</p><p className="text-xs text-gray-400">{h.count} entries</p></div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Main Accounting Component (Supabase-backed) ---
 function Accounting() {
   const [acctAccounts, setAcctAccounts] = useState([]);
@@ -2070,7 +2430,7 @@ function Accounting() {
     <div>
       <h2 className="text-xl font-bold text-gray-800 mb-5">Accounting & Financials</h2>
       <div className="flex gap-2 mb-5 border-b border-gray-100 overflow-x-auto">
-        {[["overview","Overview"],["coa","Chart of Accounts"],["journal","Journal Entries"],["classes","Class Tracking"],["reports","Reports"]].map(([id,label]) => (
+        {[["overview","Overview"],["coa","Chart of Accounts"],["journal","Journal Entries"],["bankimport","Bank Import"],["classes","Class Tracking"],["reports","Reports"]].map(([id,label]) => (
           <button key={id} onClick={() => setActiveTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
             {label}
             {id === "journal" && pendingCount > 0 && <span className="ml-1.5 bg-amber-100 text-amber-700 text-xs px-1.5 py-0.5 rounded-full">{pendingCount}</span>}
@@ -2122,6 +2482,7 @@ function Accounting() {
 
       {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} />}
       {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} />}
+      {activeTab === "bankimport" && <AcctBankImport accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAddJournalEntry={addJournalEntry} />}
       {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} />}
       {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} />}
     </div>
