@@ -2490,6 +2490,31 @@ function Accounting() {
       jeHeaders.forEach(je => { je.lines = linesByJE[je.id] || []; });
     }
 
+    // Auto-sync: create accounting classes for any properties not yet in acct_classes
+    const { data: allProps } = await supabase.from("properties").select("id, address, type, rent");
+    if (allProps && allProps.length > 0) {
+      const existingNames = new Set(classes.map(c => c.name));
+      const colors = ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4","#F97316","#EC4899"];
+      const missing = allProps.filter(p => !existingNames.has(p.address));
+      if (missing.length > 0) {
+        const newClasses = missing.map(p => ({
+          id: `PROP-${p.id}`,
+          name: p.address,
+          description: `${p.type || "Property"} · $${p.rent || 0}/mo`,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          is_active: true,
+        }));
+        await supabase.from("acct_classes").upsert(newClasses, { onConflict: "id" });
+        // Re-fetch classes after sync
+        const { data: updatedClasses } = await supabase.from("acct_classes").select("*").order("name");
+        setAcctClasses(updatedClasses || []);
+        setAcctAccounts(accounts);
+        setJournalEntries(jeHeaders);
+        setLoading(false);
+        return;
+      }
+    }
+
     setAcctAccounts(accounts);
     setJournalEntries(jeHeaders);
     setAcctClasses(classes);
