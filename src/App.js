@@ -2755,7 +2755,7 @@ function Accounting() {
     <div>
       <h2 className="text-xl font-bold text-gray-800 mb-5">Accounting & Financials</h2>
       <div className="flex gap-2 mb-5 border-b border-gray-100 overflow-x-auto">
-        {[["overview","Overview"],["coa","Chart of Accounts"],["journal","Journal Entries"],["bankimport","Bank Import"],["classes","Class Tracking"],["reports","Reports"]].map(([id,label]) => (
+        {[["overview","Overview"],["coa","Chart of Accounts"],["journal","Journal Entries"],["bankimport","Bank Import"],["reconcile","Reconcile"],["classes","Class Tracking"],["reports","Reports"]].map(([id,label]) => (
           <button key={id} onClick={() => setActiveTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
             {label}
             {id === "journal" && pendingCount > 0 && <span className="ml-1.5 bg-amber-100 text-amber-700 text-xs px-1.5 py-0.5 rounded-full">{pendingCount}</span>}
@@ -2842,6 +2842,7 @@ function Accounting() {
       {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} />}
       {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} />}
       {activeTab === "bankimport" && <AcctBankImport accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAddJournalEntry={addJournalEntry} />}
+      {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} />}
       {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} />}
       {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} />}
     </div>
@@ -3179,12 +3180,1537 @@ function Inspections({ addNotification, userProfile, userRole }) {
   );
 }
 
+// ============ LEASE MANAGEMENT ============
+function LeaseManagement({ addNotification, userProfile, userRole }) {
+  const [leases, setLeases] = useState([]);
+  const [templates, setTemplates] = useState([]);
+  const [tenants, setTenants] = useState([]);
+  const [properties, setProperties] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("active");
+  const [showForm, setShowForm] = useState(false);
+  const [editingLease, setEditingLease] = useState(null);
+  const [showChecklist, setShowChecklist] = useState(null);
+  const [showDepositModal, setShowDepositModal] = useState(null);
+  const [showTemplateForm, setShowTemplateForm] = useState(false);
+
+  const defaultChecklist = ["Keys handed over","Smoke detectors tested","Appliances working","Walls condition documented","Floors condition documented","Plumbing checked","Electrical checked","Windows & doors checked","HVAC filter replaced","Photos taken"];
+  const defaultMoveOutChecklist = ["Keys returned","All personal items removed","Unit cleaned","Walls patched/repaired","Appliances clean","Carpets cleaned","Final inspection done","Forwarding address collected","Utilities transferred","Security deposit review"];
+
+  const [form, setForm] = useState({
+    tenant_name: "", property: "", start_date: "", end_date: "",
+    rent_amount: "", security_deposit: "", rent_escalation_pct: "3",
+    escalation_frequency: "annual", payment_due_day: "1",
+    lease_type: "fixed", auto_renew: false, renewal_notice_days: "60",
+    clauses: "", special_terms: "", template_id: "",
+  });
+  const [templateForm, setTemplateForm] = useState({ name: "", description: "", clauses: "", special_terms: "", default_deposit_months: "1", default_lease_months: "12", default_escalation_pct: "3", payment_due_day: "1" });
+  const [depositForm, setDepositForm] = useState({ amount_returned: "", deductions: "", return_date: new Date().toISOString().slice(0, 10) });
+
+  useEffect(() => { fetchData(); }, []);
+
+  async function fetchData() {
+    setLoading(true);
+    const [l, t, p, tmpl] = await Promise.all([
+      supabase.from("leases").select("*").order("created_at", { ascending: false }),
+      supabase.from("tenants").select("*"),
+      supabase.from("properties").select("*"),
+      supabase.from("lease_templates").select("*").order("name"),
+    ]);
+    setLeases(l.data || []);
+    setTenants(t.data || []);
+    setProperties(p.data || []);
+    setTemplates(tmpl.data || []);
+    setLoading(false);
+  }
+
+  function applyTemplate(templateId) {
+    const tmpl = templates.find(t => t.id === templateId);
+    if (!tmpl) return;
+    const months = tmpl.default_lease_months || 12;
+    const start = form.start_date || new Date().toISOString().slice(0, 10);
+    const endDate = new Date(start);
+    endDate.setMonth(endDate.getMonth() + months);
+    setForm({ ...form, template_id: templateId, clauses: tmpl.clauses || "", special_terms: tmpl.special_terms || "", rent_escalation_pct: String(tmpl.default_escalation_pct || 3), payment_due_day: String(tmpl.payment_due_day || 1), end_date: endDate.toISOString().slice(0, 10) });
+  }
+
+  function prefillFromTenant(tenantName) {
+    const tenant = tenants.find(t => t.name === tenantName);
+    if (tenant) setForm(f => ({ ...f, tenant_name: tenant.name, property: tenant.property || "", rent_amount: String(tenant.rent || "") }));
+  }
+
+  async function saveLease() {
+    if (!form.tenant_name) { alert("Please select a tenant."); return; }
+    if (!form.property) { alert("Please select a property."); return; }
+    if (!form.start_date || !form.end_date) { alert("Lease start and end dates are required."); return; }
+    if (!form.rent_amount || isNaN(Number(form.rent_amount))) { alert("Please enter a valid rent amount."); return; }
+    const tenant = tenants.find(t => t.name === form.tenant_name);
+    const payload = {
+      tenant_id: tenant?.id || null, tenant_name: form.tenant_name, property: form.property,
+      start_date: form.start_date, end_date: form.end_date, rent_amount: Number(form.rent_amount),
+      security_deposit: Number(form.security_deposit || 0), rent_escalation_pct: Number(form.rent_escalation_pct || 0),
+      escalation_frequency: form.escalation_frequency, payment_due_day: Number(form.payment_due_day || 1),
+      lease_type: form.lease_type, auto_renew: form.auto_renew, renewal_notice_days: Number(form.renewal_notice_days || 60),
+      clauses: form.clauses, special_terms: form.special_terms, status: "active",
+      move_in_checklist: JSON.stringify(defaultChecklist.map(item => ({ item, checked: false }))),
+      move_out_checklist: JSON.stringify(defaultMoveOutChecklist.map(item => ({ item, checked: false }))),
+      created_by: userProfile?.email || "",
+    };
+    let error;
+    if (editingLease) {
+      ({ error } = await supabase.from("leases").update(payload).eq("id", editingLease.id));
+    } else {
+      ({ error } = await supabase.from("leases").insert([payload]));
+      if (!error && tenant) {
+        await supabase.from("tenants").update({ lease_status: "active", move_in: form.start_date, move_out: form.end_date, rent: Number(form.rent_amount) }).eq("id", tenant.id);
+      }
+      if (!error && Number(form.security_deposit) > 0) {
+        const classId = await getPropertyClassId(form.property);
+        const dep = Number(form.security_deposit);
+        await autoPostJournalEntry({ date: form.start_date, description: "Security deposit received \u2014 " + form.tenant_name + " \u2014 " + form.property, reference: "DEP-" + Date.now(),
+          lines: [
+            { account_id: "1000", account_name: "Checking Account", debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.tenant_name },
+            { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant_name + " \u2014 " + form.property },
+          ]
+        });
+      }
+    }
+    if (error) { alert("Error saving lease: " + error.message); return; }
+    logAudit(editingLease ? "update" : "create", "leases", (editingLease ? "Updated" : "Created") + " lease: " + form.tenant_name + " at " + form.property, editingLease?.id || "", userProfile?.email, userRole);
+    resetForm(); fetchData();
+  }
+
+  function resetForm() {
+    setShowForm(false); setEditingLease(null);
+    setForm({ tenant_name: "", property: "", start_date: "", end_date: "", rent_amount: "", security_deposit: "", rent_escalation_pct: "3", escalation_frequency: "annual", payment_due_day: "1", lease_type: "fixed", auto_renew: false, renewal_notice_days: "60", clauses: "", special_terms: "", template_id: "" });
+  }
+
+  function startEdit(lease) {
+    setEditingLease(lease);
+    setForm({ tenant_name: lease.tenant_name, property: lease.property, start_date: lease.start_date, end_date: lease.end_date, rent_amount: String(lease.rent_amount), security_deposit: String(lease.security_deposit || 0), rent_escalation_pct: String(lease.rent_escalation_pct || 0), escalation_frequency: lease.escalation_frequency || "annual", payment_due_day: String(lease.payment_due_day || 1), lease_type: lease.lease_type || "fixed", auto_renew: lease.auto_renew || false, renewal_notice_days: String(lease.renewal_notice_days || 60), clauses: lease.clauses || "", special_terms: lease.special_terms || "", template_id: "" });
+    setShowForm(true);
+  }
+
+  async function renewLease(lease) {
+    const escalated = lease.rent_escalation_pct > 0 ? lease.rent_amount * (1 + lease.rent_escalation_pct / 100) : lease.rent_amount;
+    const newStart = lease.end_date;
+    const newEnd = new Date(newStart); newEnd.setFullYear(newEnd.getFullYear() + 1);
+    if (!window.confirm("Renew lease for " + lease.tenant_name + "?\nNew rent: $" + Math.round(escalated * 100) / 100 + "/mo\nNew term: " + newStart + " to " + newEnd.toISOString().slice(0, 10))) return;
+    await supabase.from("leases").update({ status: "renewed" }).eq("id", lease.id);
+    await supabase.from("leases").insert([{ tenant_id: lease.tenant_id, tenant_name: lease.tenant_name, property: lease.property, start_date: newStart, end_date: newEnd.toISOString().slice(0, 10), rent_amount: Math.round(escalated * 100) / 100, security_deposit: lease.security_deposit, rent_escalation_pct: lease.rent_escalation_pct, escalation_frequency: lease.escalation_frequency, payment_due_day: lease.payment_due_day, lease_type: "renewal", auto_renew: lease.auto_renew, renewal_notice_days: lease.renewal_notice_days, clauses: lease.clauses, special_terms: lease.special_terms, status: "active", renewed_from: lease.id, created_by: userProfile?.email || "", move_in_checklist: "[]", move_out_checklist: lease.move_out_checklist }]);
+    if (lease.tenant_id) await supabase.from("tenants").update({ rent: Math.round(escalated * 100) / 100, move_out: newEnd.toISOString().slice(0, 10) }).eq("id", lease.tenant_id);
+    logAudit("create", "leases", "Renewed lease: " + lease.tenant_name + " new rent $" + Math.round(escalated * 100) / 100, lease.id, userProfile?.email, userRole);
+    fetchData();
+  }
+
+  async function terminateLease(lease) {
+    if (!window.confirm("Terminate lease for " + lease.tenant_name + "? This cannot be undone.")) return;
+    await supabase.from("leases").update({ status: "terminated" }).eq("id", lease.id);
+    if (lease.tenant_id) await supabase.from("tenants").update({ lease_status: "inactive" }).eq("id", lease.tenant_id);
+    logAudit("update", "leases", "Terminated lease: " + lease.tenant_name, lease.id, userProfile?.email, userRole);
+    fetchData();
+  }
+
+  async function toggleChecklistItem(lease, type, index) {
+    const field = type === "in" ? "move_in_checklist" : "move_out_checklist";
+    let checklist = []; try { checklist = JSON.parse(lease[field] || "[]"); } catch { checklist = []; }
+    if (checklist[index]) checklist[index].checked = !checklist[index].checked;
+    const allDone = checklist.every(c => c.checked);
+    const update = { [field]: JSON.stringify(checklist) };
+    if (type === "in") update.move_in_completed = allDone;
+    if (type === "out") update.move_out_completed = allDone;
+    await supabase.from("leases").update(update).eq("id", lease.id);
+    fetchData();
+  }
+
+  async function processDepositReturn(lease) {
+    const returned = Number(depositForm.amount_returned || 0);
+    const deposit = safeNum(lease.security_deposit);
+    const deducted = deposit - returned;
+    const status = returned >= deposit ? "returned" : returned > 0 ? "partial_return" : "forfeited";
+    await supabase.from("leases").update({ deposit_status: status, deposit_returned: returned, deposit_return_date: depositForm.return_date, deposit_deductions: depositForm.deductions }).eq("id", lease.id);
+    const classId = await getPropertyClassId(lease.property);
+    if (returned > 0) {
+      await autoPostJournalEntry({ date: depositForm.return_date, description: "Security deposit return \u2014 " + lease.tenant_name, reference: "DEPRET-" + Date.now(),
+        lines: [
+          { account_id: "2100", account_name: "Security Deposits Held", debit: returned, credit: 0, class_id: classId, memo: "Return to " + lease.tenant_name },
+          { account_id: "1000", account_name: "Checking Account", debit: 0, credit: returned, class_id: classId, memo: "Deposit refund" },
+        ]
+      });
+    }
+    if (deducted > 0) {
+      await autoPostJournalEntry({ date: depositForm.return_date, description: "Deposit deduction \u2014 " + lease.tenant_name + " \u2014 " + depositForm.deductions, reference: "DEPDED-" + Date.now(),
+        lines: [
+          { account_id: "2100", account_name: "Security Deposits Held", debit: deducted, credit: 0, class_id: classId, memo: "Deduction: " + depositForm.deductions },
+          { account_id: "4000", account_name: "Rental Income", debit: 0, credit: deducted, class_id: classId, memo: "Deposit forfeiture: " + lease.tenant_name },
+        ]
+      });
+    }
+    logAudit("update", "leases", "Deposit return: $" + returned + " to " + lease.tenant_name, lease.id, userProfile?.email, userRole);
+    setShowDepositModal(null); setDepositForm({ amount_returned: "", deductions: "", return_date: new Date().toISOString().slice(0, 10) });
+    fetchData();
+  }
+
+  async function saveTemplate() {
+    if (!templateForm.name) { alert("Template name is required."); return; }
+    const { error } = await supabase.from("lease_templates").insert([{ ...templateForm, default_deposit_months: Number(templateForm.default_deposit_months || 1), default_lease_months: Number(templateForm.default_lease_months || 12), default_escalation_pct: Number(templateForm.default_escalation_pct || 3), payment_due_day: Number(templateForm.payment_due_day || 1) }]);
+    if (error) { alert("Error: " + error.message); return; }
+    setShowTemplateForm(false); setTemplateForm({ name: "", description: "", clauses: "", special_terms: "", default_deposit_months: "1", default_lease_months: "12", default_escalation_pct: "3", payment_due_day: "1" });
+    fetchData();
+  }
+
+  if (loading) return <Spinner />;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const active = leases.filter(l => l.status === "active");
+  const expiringSoon = active.filter(l => { const d = Math.ceil((new Date(l.end_date) - new Date()) / 86400000); return d <= 90 && d > 0; });
+  const expired = leases.filter(l => l.status === "expired" || (l.status === "active" && l.end_date < today));
+  const totalDeposits = active.reduce((s, l) => s + safeNum(l.security_deposit), 0);
+  const filteredLeases = activeTab === "active" ? active : activeTab === "expiring" ? expiringSoon : activeTab === "expired" ? expired : activeTab === "all" ? leases : leases.filter(l => l.status === activeTab);
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-5">
+        <h2 className="text-xl font-bold text-gray-800">Lease Management</h2>
+        <div className="flex gap-2">
+          <button onClick={() => setShowTemplateForm(true)} className="text-xs border border-gray-200 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-50">Manage Templates</button>
+          <button onClick={() => setShowForm(true)} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-indigo-700">+ New Lease</button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
+        <StatCard label="Active Leases" value={active.length} color="text-green-600" sub="current" />
+        <StatCard label="Expiring (90d)" value={expiringSoon.length} color={expiringSoon.length > 0 ? "text-amber-600" : "text-gray-400"} sub="need attention" />
+        <StatCard label="Total Deposits" value={"$" + totalDeposits.toLocaleString()} color="text-purple-600" sub="held" />
+        <StatCard label="Avg Rent" value={"$" + (active.length > 0 ? Math.round(active.reduce((s, l) => s + safeNum(l.rent_amount), 0) / active.length) : 0)} color="text-blue-600" sub="per lease" />
+      </div>
+
+      {expiringSoon.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+          <div className="font-semibold text-amber-800 text-sm mb-2">Leases Expiring Soon</div>
+          {expiringSoon.map(l => { const d = Math.ceil((new Date(l.end_date) - new Date()) / 86400000); return (
+            <div key={l.id} className="flex justify-between items-center py-1 text-sm">
+              <span className="text-amber-700">{l.tenant_name} \u2014 {l.property}</span>
+              <div className="flex items-center gap-2"><span className="text-amber-600 font-bold">{d} days</span><button onClick={() => renewLease(l)} className="text-xs bg-amber-600 text-white px-2 py-1 rounded hover:bg-amber-700">Renew</button></div>
+            </div>
+          ); })}
+        </div>
+      )}
+
+      <div className="flex gap-1 mb-4 border-b border-gray-100 overflow-x-auto">
+        {[["active","Active"],["expiring","Expiring"],["expired","Expired"],["renewed","Renewed"],["terminated","Terminated"],["all","All"]].map(([id,label]) => (
+          <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500")}>{label}{id === "expiring" && expiringSoon.length > 0 ? " (" + expiringSoon.length + ")" : ""}</button>
+        ))}
+      </div>
+
+      {showTemplateForm && (
+        <Modal title="Lease Template" onClose={() => setShowTemplateForm(false)}>
+          <div className="space-y-3">
+            <input placeholder="Template name *" value={templateForm.name} onChange={e => setTemplateForm({...templateForm, name: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <input placeholder="Description" value={templateForm.description} onChange={e => setTemplateForm({...templateForm, description: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="text-xs text-gray-500">Lease Length (months)</label><input type="number" value={templateForm.default_lease_months} onChange={e => setTemplateForm({...templateForm, default_lease_months: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs text-gray-500">Annual Escalation %</label><input type="number" step="0.1" value={templateForm.default_escalation_pct} onChange={e => setTemplateForm({...templateForm, default_escalation_pct: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            </div>
+            <textarea placeholder="Standard clauses..." value={templateForm.clauses} onChange={e => setTemplateForm({...templateForm, clauses: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={4} />
+            <textarea placeholder="Special terms..." value={templateForm.special_terms} onChange={e => setTemplateForm({...templateForm, special_terms: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={3} />
+            <button onClick={saveTemplate} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-indigo-700">Save Template</button>
+          </div>
+        </Modal>
+      )}
+
+      {showDepositModal && (
+        <Modal title={"Return Deposit \u2014 " + showDepositModal.tenant_name} onClose={() => setShowDepositModal(null)}>
+          <div className="space-y-3">
+            <div className="bg-purple-50 rounded-lg p-3 text-sm"><div className="flex justify-between"><span className="text-gray-500">Original Deposit:</span><span className="font-bold">${safeNum(showDepositModal.security_deposit).toLocaleString()}</span></div></div>
+            <div><label className="text-xs text-gray-500">Amount to Return ($)</label><input type="number" value={depositForm.amount_returned} onChange={e => setDepositForm({...depositForm, amount_returned: e.target.value})} placeholder={String(showDepositModal.security_deposit)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500">Deduction Reasons</label><textarea value={depositForm.deductions} onChange={e => setDepositForm({...depositForm, deductions: e.target.value})} placeholder="Cleaning, damages, unpaid rent..." className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={3} /></div>
+            <div><label className="text-xs text-gray-500">Return Date</label><input type="date" value={depositForm.return_date} onChange={e => setDepositForm({...depositForm, return_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            {Number(depositForm.amount_returned || 0) < safeNum(showDepositModal.security_deposit) && depositForm.amount_returned && (
+              <div className="bg-red-50 rounded-lg p-2 text-xs text-red-700">Deducting ${(safeNum(showDepositModal.security_deposit) - Number(depositForm.amount_returned)).toLocaleString()} from deposit</div>
+            )}
+            <button onClick={() => processDepositReturn(showDepositModal)} className="bg-purple-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-purple-700">Process Return</button>
+          </div>
+        </Modal>
+      )}
+
+      {showChecklist && (
+        <Modal title={(showChecklist.type === "in" ? "Move-In" : "Move-Out") + " Checklist \u2014 " + showChecklist.lease.tenant_name} onClose={() => setShowChecklist(null)}>
+          <div className="space-y-2">
+            {(() => { let items = []; try { items = JSON.parse(showChecklist.lease[showChecklist.type === "in" ? "move_in_checklist" : "move_out_checklist"] || "[]"); } catch {} return items.map((item, i) => (
+              <div key={i} onClick={() => toggleChecklistItem(showChecklist.lease, showChecklist.type, i)} className={"flex items-center gap-3 p-2 rounded-lg cursor-pointer border " + (item.checked ? "bg-green-50 border-green-200" : "bg-white border-gray-100 hover:bg-gray-50")}>
+                <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs " + (item.checked ? "bg-green-500 border-green-500 text-white" : "border-gray-300")}>{item.checked ? "\u2713" : ""}</span>
+                <span className={"text-sm " + (item.checked ? "line-through text-gray-400" : "text-gray-700")}>{item.item}</span>
+              </div>
+            )); })()}
+          </div>
+        </Modal>
+      )}
+
+      {showForm && (
+        <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
+          <h3 className="font-semibold text-gray-800 mb-4">{editingLease ? "Edit Lease" : "Create New Lease"}</h3>
+          {!editingLease && templates.length > 0 && (
+            <div className="mb-4"><label className="text-xs text-gray-500 mb-1 block">Apply Template</label>
+              <select value={form.template_id} onChange={e => { setForm({...form, template_id: e.target.value}); applyTemplate(e.target.value); }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <option value="">Select template...</option>
+                {templates.map(t => <option key={t.id} value={t.id}>{t.name} \u2014 {t.description}</option>)}
+              </select>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div><label className="text-xs text-gray-500 mb-1 block">Tenant *</label>
+              <select value={form.tenant_name} onChange={e => { setForm({...form, tenant_name: e.target.value}); prefillFromTenant(e.target.value); }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <option value="">Select tenant...</option>
+                {tenants.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+              </select>
+            </div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Lease Start *</label><input type="date" value={form.start_date} onChange={e => setForm({...form, start_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Lease End *</label><input type="date" value={form.end_date} onChange={e => setForm({...form, end_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Monthly Rent ($) *</label><input type="number" value={form.rent_amount} onChange={e => setForm({...form, rent_amount: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Security Deposit ($)</label><input type="number" value={form.security_deposit} onChange={e => setForm({...form, security_deposit: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Annual Escalation %</label><input type="number" step="0.1" value={form.rent_escalation_pct} onChange={e => setForm({...form, rent_escalation_pct: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Payment Due Day</label><input type="number" min="1" max="28" value={form.payment_due_day} onChange={e => setForm({...form, payment_due_day: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Lease Type</label>
+              <select value={form.lease_type} onChange={e => setForm({...form, lease_type: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="fixed">Fixed Term</option><option value="month_to_month">Month-to-Month</option><option value="renewal">Renewal</option></select></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Renewal Notice (days)</label><input type="number" value={form.renewal_notice_days} onChange={e => setForm({...form, renewal_notice_days: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+          </div>
+          <div className="flex items-center gap-2 mb-4"><input type="checkbox" checked={form.auto_renew} onChange={e => setForm({...form, auto_renew: e.target.checked})} className="rounded" /><label className="text-sm text-gray-600">Auto-renew at end of term</label></div>
+          <div className="mb-3"><label className="text-xs text-gray-500 mb-1 block">Lease Clauses</label><textarea value={form.clauses} onChange={e => setForm({...form, clauses: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={3} placeholder="Standard clauses..." /></div>
+          <div className="mb-4"><label className="text-xs text-gray-500 mb-1 block">Special Terms</label><textarea value={form.special_terms} onChange={e => setForm({...form, special_terms: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={2} placeholder="Pet deposit, parking, storage..." /></div>
+          <div className="flex gap-2">
+            <button onClick={saveLease} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-indigo-700">{editingLease ? "Update Lease" : "Create Lease"}</button>
+            <button onClick={resetForm} className="text-sm text-gray-500 px-4 py-2 hover:text-gray-700">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {filteredLeases.map(l => {
+          const daysLeft = Math.ceil((new Date(l.end_date) - new Date()) / 86400000);
+          const isExpired = daysLeft <= 0 && l.status === "active";
+          const sc = { active: "bg-green-100 text-green-700", expired: "bg-red-100 text-red-700", renewed: "bg-blue-100 text-blue-700", terminated: "bg-gray-100 text-gray-600", draft: "bg-amber-100 text-amber-700" };
+          const dc = { held: "bg-purple-100 text-purple-700", partial_return: "bg-amber-100 text-amber-700", returned: "bg-green-100 text-green-700", forfeited: "bg-red-100 text-red-700" };
+          return (
+            <div key={l.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (isExpired ? "border-red-200" : "border-gray-100")}>
+              <div className="flex justify-between items-start mb-3">
+                <div><div className="text-sm font-bold text-gray-800">{l.tenant_name}</div><div className="text-xs text-gray-400">{l.property}</div></div>
+                <div className="flex items-center gap-2">
+                  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[isExpired ? "expired" : l.status] || "bg-gray-100")}>{isExpired ? "EXPIRED" : l.status}</span>
+                  {l.lease_type === "renewal" && <span className="px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-600">Renewal</span>}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-3 md:grid-cols-4">
+                <div><span className="text-gray-400">Term:</span> <span className="font-medium">{l.start_date} to {l.end_date}</span></div>
+                <div><span className="text-gray-400">Rent:</span> <span className="font-bold text-gray-800">${safeNum(l.rent_amount).toLocaleString()}/mo</span></div>
+                <div><span className="text-gray-400">Deposit:</span> <span className="font-medium">${safeNum(l.security_deposit).toLocaleString()}</span>{l.security_deposit > 0 && <span className={"ml-1 px-1 py-0.5 rounded text-xs " + (dc[l.deposit_status] || "")}>{l.deposit_status}</span>}</div>
+                <div><span className="text-gray-400">Escalation:</span> <span className="font-medium">{l.rent_escalation_pct || 0}%/yr</span></div>
+                {l.status === "active" && <div><span className="text-gray-400">Days Left:</span> <span className={"font-bold " + (daysLeft <= 30 ? "text-red-600" : daysLeft <= 90 ? "text-amber-600" : "text-green-600")}>{daysLeft}</span></div>}
+                <div><span className="text-gray-400">Due Day:</span> <span className="font-medium">{l.payment_due_day || 1}th</span></div>
+                <div><span className="text-gray-400">Type:</span> <span className="font-medium capitalize">{(l.lease_type || "fixed").replace("_"," ")}</span></div>
+                <div><span className="text-gray-400">Auto-Renew:</span> <span className="font-medium">{l.auto_renew ? "Yes" : "No"}</span></div>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-50">
+                <button onClick={() => startEdit(l)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
+                {l.status === "active" && <button onClick={() => renewLease(l)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">Renew</button>}
+                {l.status === "active" && <button onClick={() => terminateLease(l)} className="text-xs text-red-600 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">Terminate</button>}
+                <button onClick={() => setShowChecklist({ lease: l, type: "in" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_in_completed ? "text-green-600 border-green-200 bg-green-50" : "text-gray-500 border-gray-200 hover:bg-gray-50")}>Move-In {l.move_in_completed ? "\u2713" : ""}</button>
+                <button onClick={() => setShowChecklist({ lease: l, type: "out" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_out_completed ? "text-green-600 border-green-200 bg-green-50" : "text-gray-500 border-gray-200 hover:bg-gray-50")}>Move-Out {l.move_out_completed ? "\u2713" : ""}</button>
+                {safeNum(l.security_deposit) > 0 && l.deposit_status === "held" && (l.status === "terminated" || l.status === "expired" || isExpired) && (
+                  <button onClick={() => { setShowDepositModal(l); setDepositForm({ amount_returned: String(l.security_deposit), deductions: "", return_date: new Date().toISOString().slice(0, 10) }); }} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">Return Deposit</button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {filteredLeases.length === 0 && <div className="text-center py-10 text-gray-400">No leases found</div>}
+      </div>
+    </div>
+  );
+}
+
+
+// ============ VENDOR MANAGEMENT ============
+function VendorManagement({ addNotification, userProfile, userRole }) {
+  const [vendors, setVendors] = useState([]);
+  const [invoices, setInvoices] = useState([]);
+  const [workOrders, setWorkOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("vendors");
+  const [showForm, setShowForm] = useState(false);
+  const [showInvoiceForm, setShowInvoiceForm] = useState(false);
+  const [editingVendor, setEditingVendor] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterSpecialty, setFilterSpecialty] = useState("all");
+
+  const specialties = ["General","Plumbing","Electrical","HVAC","Roofing","Painting","Landscaping","Carpentry","Appliance Repair","Cleaning","Pest Control","Locksmith","Flooring","Drywall","Windows","Other"];
+
+  const [form, setForm] = useState({
+    name: "", company: "", email: "", phone: "", address: "",
+    specialty: "General", license_number: "", insurance_expiry: "",
+    hourly_rate: "", flat_rate: "", notes: "", status: "active",
+  });
+
+  const [invoiceForm, setInvoiceForm] = useState({
+    vendor_id: "", vendor_name: "", work_order_id: "", property: "",
+    description: "", amount: "", invoice_number: "", invoice_date: new Date().toISOString().slice(0, 10),
+    due_date: "", payment_method: "", notes: "",
+  });
+
+  useEffect(() => { fetchData(); }, []);
+
+  async function fetchData() {
+    setLoading(true);
+    const [v, inv, wo] = await Promise.all([
+      supabase.from("vendors").select("*").order("name"),
+      supabase.from("vendor_invoices").select("*").order("created_at", { ascending: false }),
+      supabase.from("work_orders").select("*").order("created_at", { ascending: false }).limit(100),
+    ]);
+    setVendors(v.data || []);
+    setInvoices(inv.data || []);
+    setWorkOrders(wo.data || []);
+    setLoading(false);
+  }
+
+  async function saveVendor() {
+    if (!form.name) { alert("Vendor name is required."); return; }
+    const payload = {
+      ...form,
+      hourly_rate: Number(form.hourly_rate || 0),
+      flat_rate: Number(form.flat_rate || 0),
+      insurance_expiry: form.insurance_expiry || null,
+    };
+    let error;
+    if (editingVendor) {
+      ({ error } = await supabase.from("vendors").update(payload).eq("id", editingVendor.id));
+    } else {
+      ({ error } = await supabase.from("vendors").insert([payload]));
+    }
+    if (error) { alert("Error: " + error.message); return; }
+    logAudit(editingVendor ? "update" : "create", "vendors", (editingVendor ? "Updated" : "Added") + " vendor: " + form.name, editingVendor?.id || "", userProfile?.email, userRole);
+    resetVendorForm();
+    fetchData();
+  }
+
+  function resetVendorForm() {
+    setShowForm(false);
+    setEditingVendor(null);
+    setForm({ name: "", company: "", email: "", phone: "", address: "", specialty: "General", license_number: "", insurance_expiry: "", hourly_rate: "", flat_rate: "", notes: "", status: "active" });
+  }
+
+  function startEditVendor(v) {
+    setEditingVendor(v);
+    setForm({ name: v.name, company: v.company || "", email: v.email || "", phone: v.phone || "", address: v.address || "", specialty: v.specialty || "General", license_number: v.license_number || "", insurance_expiry: v.insurance_expiry || "", hourly_rate: String(v.hourly_rate || ""), flat_rate: String(v.flat_rate || ""), notes: v.notes || "", status: v.status || "active" });
+    setShowForm(true);
+  }
+
+  async function deleteVendor(id, name) {
+    if (!window.confirm("Delete vendor " + name + "?")) return;
+    await supabase.from("vendors").delete().eq("id", id);
+    logAudit("delete", "vendors", "Deleted vendor: " + name, id, userProfile?.email, userRole);
+    fetchData();
+  }
+
+  async function saveInvoice() {
+    if (!invoiceForm.vendor_id) { alert("Please select a vendor."); return; }
+    if (!invoiceForm.amount || isNaN(Number(invoiceForm.amount))) { alert("Please enter a valid amount."); return; }
+    const { error } = await supabase.from("vendor_invoices").insert([{
+      ...invoiceForm,
+      amount: Number(invoiceForm.amount),
+      due_date: invoiceForm.due_date || null,
+    }]);
+    if (error) { alert("Error: " + error.message); return; }
+    logAudit("create", "vendor_invoices", "Invoice: $" + invoiceForm.amount + " from " + invoiceForm.vendor_name, "", userProfile?.email, userRole);
+    setShowInvoiceForm(false);
+    setInvoiceForm({ vendor_id: "", vendor_name: "", work_order_id: "", property: "", description: "", amount: "", invoice_number: "", invoice_date: new Date().toISOString().slice(0, 10), due_date: "", payment_method: "", notes: "" });
+    fetchData();
+  }
+
+  async function payInvoice(inv) {
+    if (!window.confirm("Mark invoice #" + (inv.invoice_number || inv.id.slice(0,8)) + " as paid ($" + inv.amount + ")?")) return;
+    const today = new Date().toISOString().slice(0, 10);
+    await supabase.from("vendor_invoices").update({ status: "paid", paid_date: today }).eq("id", inv.id);
+    // Update vendor total_paid
+    const vendor = vendors.find(v => v.id === inv.vendor_id);
+    if (vendor) {
+      await supabase.from("vendors").update({
+        total_paid: safeNum(vendor.total_paid) + safeNum(inv.amount),
+        total_jobs: (vendor.total_jobs || 0) + 1,
+      }).eq("id", vendor.id);
+    }
+    // Post to accounting
+    const classId = await getPropertyClassId(inv.property);
+    await autoPostJournalEntry({
+      date: today,
+      description: "Vendor payment \u2014 " + inv.vendor_name + " \u2014 " + (inv.description || inv.invoice_number),
+      reference: "VINV-" + Date.now(),
+      lines: [
+        { account_id: "5300", account_name: "Repairs & Maintenance", debit: safeNum(inv.amount), credit: 0, class_id: classId, memo: inv.vendor_name + ": " + inv.description },
+        { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(inv.amount), class_id: classId, memo: "Payment to " + inv.vendor_name },
+      ]
+    });
+    logAudit("update", "vendor_invoices", "Paid invoice: $" + inv.amount + " to " + inv.vendor_name, inv.id, userProfile?.email, userRole);
+    fetchData();
+  }
+
+  async function rateVendor(vendor, rating) {
+    await supabase.from("vendors").update({ rating }).eq("id", vendor.id);
+    fetchData();
+  }
+
+  if (loading) return <Spinner />;
+
+  const activeVendors = vendors.filter(v => v.status === "active" || v.status === "preferred");
+  const pendingInvoices = invoices.filter(i => i.status === "pending" || i.status === "approved");
+  const totalOwed = pendingInvoices.reduce((s, i) => s + safeNum(i.amount), 0);
+  const totalPaidAll = invoices.filter(i => i.status === "paid").reduce((s, i) => s + safeNum(i.amount), 0);
+  const insuranceExpiring = vendors.filter(v => {
+    if (!v.insurance_expiry) return false;
+    const days = Math.ceil((new Date(v.insurance_expiry) - new Date()) / 86400000);
+    return days <= 30 && days > 0;
+  });
+
+  const filteredVendors = vendors.filter(v =>
+    (filterSpecialty === "all" || v.specialty === filterSpecialty) &&
+    (!searchTerm || v.name.toLowerCase().includes(searchTerm.toLowerCase()) || (v.company || "").toLowerCase().includes(searchTerm.toLowerCase()) || (v.specialty || "").toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-5">
+        <h2 className="text-xl font-bold text-gray-800">Vendor Management</h2>
+        <div className="flex gap-2">
+          <button onClick={() => setShowInvoiceForm(true)} className="text-xs border border-gray-200 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-50">+ Invoice</button>
+          <button onClick={() => setShowForm(true)} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-indigo-700">+ New Vendor</button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
+        <StatCard label="Active Vendors" value={activeVendors.length} color="text-green-600" sub="available" />
+        <StatCard label="Pending Invoices" value={pendingInvoices.length} color={pendingInvoices.length > 0 ? "text-amber-600" : "text-gray-400"} sub={"$" + totalOwed.toLocaleString() + " owed"} />
+        <StatCard label="Total Paid (YTD)" value={"$" + totalPaidAll.toLocaleString()} color="text-blue-600" sub="all vendors" />
+        <StatCard label="Insurance Alerts" value={insuranceExpiring.length} color={insuranceExpiring.length > 0 ? "text-red-500" : "text-gray-400"} sub="expiring < 30d" />
+      </div>
+
+      {insuranceExpiring.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
+          <div className="font-semibold text-red-800 text-sm mb-1">Insurance Expiring Soon</div>
+          {insuranceExpiring.map(v => (
+            <div key={v.id} className="text-xs text-red-700">{v.name} ({v.specialty}) \u2014 expires {v.insurance_expiry}</div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-1 mb-4 border-b border-gray-100">
+        {[["vendors","Vendors"],["invoices","Invoices"]].map(([id,label]) => (
+          <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500")}>{label}</button>
+        ))}
+      </div>
+
+      {/* New Vendor Form */}
+      {showForm && (
+        <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
+          <h3 className="font-semibold text-gray-800 mb-4">{editingVendor ? "Edit Vendor" : "Add New Vendor"}</h3>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div><label className="text-xs text-gray-500 mb-1 block">Name *</label><input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="John Smith" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Company</label><input value={form.company} onChange={e => setForm({...form, company: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="ABC Plumbing LLC" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Email</label><input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Phone</label><input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div className="col-span-2"><label className="text-xs text-gray-500 mb-1 block">Address</label><input value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Specialty</label>
+              <select value={form.specialty} onChange={e => setForm({...form, specialty: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                {specialties.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Status</label>
+              <select value={form.status} onChange={e => setForm({...form, status: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <option value="active">Active</option><option value="preferred">Preferred</option><option value="inactive">Inactive</option><option value="blocked">Blocked</option>
+              </select>
+            </div>
+            <div><label className="text-xs text-gray-500 mb-1 block">License #</label><input value={form.license_number} onChange={e => setForm({...form, license_number: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Insurance Expiry</label><input type="date" value={form.insurance_expiry} onChange={e => setForm({...form, insurance_expiry: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Hourly Rate ($)</label><input type="number" value={form.hourly_rate} onChange={e => setForm({...form, hourly_rate: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Flat Rate ($)</label><input type="number" value={form.flat_rate} onChange={e => setForm({...form, flat_rate: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+          </div>
+          <div className="mb-4"><label className="text-xs text-gray-500 mb-1 block">Notes</label><textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={2} /></div>
+          <div className="flex gap-2">
+            <button onClick={saveVendor} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-indigo-700">{editingVendor ? "Update" : "Add Vendor"}</button>
+            <button onClick={resetVendorForm} className="text-sm text-gray-500 px-4 py-2">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Form */}
+      {showInvoiceForm && (
+        <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
+          <h3 className="font-semibold text-gray-800 mb-4">New Vendor Invoice</h3>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div><label className="text-xs text-gray-500 mb-1 block">Vendor *</label>
+              <select value={invoiceForm.vendor_id} onChange={e => { const v = vendors.find(v => v.id === e.target.value); setInvoiceForm({...invoiceForm, vendor_id: e.target.value, vendor_name: v?.name || ""}); }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <option value="">Select vendor...</option>
+                {vendors.filter(v => v.status !== "blocked").map(v => <option key={v.id} value={v.id}>{v.name} ({v.specialty})</option>)}
+              </select>
+            </div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Property</label><PropertySelect value={invoiceForm.property} onChange={v => setInvoiceForm({...invoiceForm, property: v})} /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Amount ($) *</label><input type="number" value={invoiceForm.amount} onChange={e => setInvoiceForm({...invoiceForm, amount: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Invoice #</label><input value={invoiceForm.invoice_number} onChange={e => setInvoiceForm({...invoiceForm, invoice_number: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Invoice Date</label><input type="date" value={invoiceForm.invoice_date} onChange={e => setInvoiceForm({...invoiceForm, invoice_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Due Date</label><input type="date" value={invoiceForm.due_date} onChange={e => setInvoiceForm({...invoiceForm, due_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div className="col-span-2"><label className="text-xs text-gray-500 mb-1 block">Description</label><input value={invoiceForm.description} onChange={e => setInvoiceForm({...invoiceForm, description: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Plumbing repair at 123 Main St" /></div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={saveInvoice} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-indigo-700">Save Invoice</button>
+            <button onClick={() => setShowInvoiceForm(false)} className="text-sm text-gray-500 px-4 py-2">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* VENDORS TAB */}
+      {activeTab === "vendors" && (
+        <div>
+          <div className="flex gap-2 mb-4">
+            <input placeholder="Search vendors..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <select value={filterSpecialty} onChange={e => setFilterSpecialty(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+              <option value="all">All Specialties</option>
+              {specialties.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="space-y-3">
+            {filteredVendors.map(v => {
+              const insExpired = v.insurance_expiry && new Date(v.insurance_expiry) < new Date();
+              const insExpiring = v.insurance_expiry && !insExpired && Math.ceil((new Date(v.insurance_expiry) - new Date()) / 86400000) <= 30;
+              const sc = { active: "bg-green-100 text-green-700", preferred: "bg-indigo-100 text-indigo-700", inactive: "bg-gray-100 text-gray-500", blocked: "bg-red-100 text-red-700" };
+              return (
+                <div key={v.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <div className="text-sm font-bold text-gray-800">{v.name}{v.company ? " \u2014 " + v.company : ""}</div>
+                      <div className="text-xs text-gray-400">{v.specialty}{v.license_number ? " \u00b7 Lic: " + v.license_number : ""}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[v.status] || "bg-gray-100")}>{v.status}</span>
+                      {v.rating > 0 && <span className="text-xs text-amber-500">{"\u2605".repeat(v.rating)}{"\u2606".repeat(5 - v.rating)}</span>}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-2 md:grid-cols-4">
+                    {v.phone && <div><span className="text-gray-400">Phone:</span> <span className="font-medium">{v.phone}</span></div>}
+                    {v.email && <div><span className="text-gray-400">Email:</span> <span className="font-medium">{v.email}</span></div>}
+                    {v.hourly_rate > 0 && <div><span className="text-gray-400">Rate:</span> <span className="font-medium">${v.hourly_rate}/hr</span></div>}
+                    {v.flat_rate > 0 && <div><span className="text-gray-400">Flat:</span> <span className="font-medium">${v.flat_rate}</span></div>}
+                    <div><span className="text-gray-400">Jobs:</span> <span className="font-medium">{v.total_jobs || 0}</span></div>
+                    <div><span className="text-gray-400">Total Paid:</span> <span className="font-medium">${safeNum(v.total_paid).toLocaleString()}</span></div>
+                    {v.insurance_expiry && <div><span className="text-gray-400">Insurance:</span> <span className={"font-medium " + (insExpired ? "text-red-600" : insExpiring ? "text-amber-600" : "text-green-600")}>{v.insurance_expiry}{insExpired ? " (EXPIRED)" : ""}</span></div>}
+                  </div>
+                  {v.notes && <div className="text-xs text-gray-500 mb-2">{v.notes}</div>}
+                  <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-50">
+                    <button onClick={() => startEditVendor(v)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
+                    <button onClick={() => deleteVendor(v.id, v.name)} className="text-xs text-red-500 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">Delete</button>
+                    <div className="flex items-center gap-0.5 ml-2">
+                      {[1,2,3,4,5].map(star => (
+                        <button key={star} onClick={() => rateVendor(v, star)} className={"text-sm " + (star <= (v.rating || 0) ? "text-amber-400" : "text-gray-300")}>{star <= (v.rating || 0) ? "\u2605" : "\u2606"}</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {filteredVendors.length === 0 && <div className="text-center py-10 text-gray-400">No vendors found</div>}
+          </div>
+        </div>
+      )}
+
+      {/* INVOICES TAB */}
+      {activeTab === "invoices" && (
+        <div className="space-y-3">
+          {invoices.map(inv => {
+            const isOverdue = inv.status === "pending" && inv.due_date && new Date(inv.due_date) < new Date();
+            const sc = { pending: "bg-amber-100 text-amber-700", approved: "bg-blue-100 text-blue-700", paid: "bg-green-100 text-green-700", disputed: "bg-red-100 text-red-700" };
+            return (
+              <div key={inv.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (isOverdue ? "border-red-200" : "border-gray-100")}>
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <div className="text-sm font-bold text-gray-800">{inv.vendor_name}</div>
+                    <div className="text-xs text-gray-400">{inv.description || "Invoice"}{inv.invoice_number ? " #" + inv.invoice_number : ""}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-bold text-gray-800">${safeNum(inv.amount).toLocaleString()}</div>
+                    <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[inv.status] || "bg-gray-100")}>{isOverdue ? "OVERDUE" : inv.status}</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 text-xs md:grid-cols-4">
+                  {inv.property && <div><span className="text-gray-400">Property:</span> <span className="font-medium">{inv.property}</span></div>}
+                  <div><span className="text-gray-400">Date:</span> <span className="font-medium">{inv.invoice_date}</span></div>
+                  {inv.due_date && <div><span className="text-gray-400">Due:</span> <span className={"font-medium " + (isOverdue ? "text-red-600" : "")}>{inv.due_date}</span></div>}
+                  {inv.paid_date && <div><span className="text-gray-400">Paid:</span> <span className="font-medium text-green-600">{inv.paid_date}</span></div>}
+                </div>
+                {(inv.status === "pending" || inv.status === "approved") && (
+                  <div className="flex gap-2 pt-2 mt-2 border-t border-gray-50">
+                    <button onClick={() => payInvoice(inv)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">Mark Paid</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {invoices.length === 0 && <div className="text-center py-10 text-gray-400">No invoices yet</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ============ OWNER MANAGEMENT & STATEMENTS ============
+function OwnerManagement({ addNotification, userProfile, userRole }) {
+  const [owners, setOwners] = useState([]);
+  const [properties, setProperties] = useState([]);
+  const [statements, setStatements] = useState([]);
+  const [distributions, setDistributions] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [vendorInvoices, setVendorInvoices] = useState([]);
+  const [utilities, setUtilities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("owners");
+  const [showForm, setShowForm] = useState(false);
+  const [editingOwner, setEditingOwner] = useState(null);
+  const [showGenerate, setShowGenerate] = useState(false);
+  const [genOwner, setGenOwner] = useState("");
+  const [genMonth, setGenMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [viewStatement, setViewStatement] = useState(null);
+
+  const [form, setForm] = useState({
+    name: "", email: "", phone: "", address: "", company: "",
+    tax_id: "", payment_method: "check", bank_name: "", bank_routing: "",
+    bank_account: "", management_fee_pct: "10", notes: "", status: "active",
+  });
+
+  useEffect(() => { fetchData(); }, []);
+
+  async function fetchData() {
+    setLoading(true);
+    const [o, p, s, d, pay, vi, u] = await Promise.all([
+      supabase.from("owners").select("*").order("name"),
+      supabase.from("properties").select("*"),
+      supabase.from("owner_statements").select("*").order("created_at", { ascending: false }),
+      supabase.from("owner_distributions").select("*").order("date", { ascending: false }),
+      supabase.from("payments").select("*").eq("status", "paid"),
+      supabase.from("vendor_invoices").select("*").eq("status", "paid"),
+      supabase.from("utilities").select("*").eq("status", "paid"),
+    ]);
+    setOwners(o.data || []);
+    setProperties(p.data || []);
+    setStatements(s.data || []);
+    setDistributions(d.data || []);
+    setPayments(pay.data || []);
+    setVendorInvoices(vi.data || []);
+    setUtilities(u.data || []);
+    setLoading(false);
+  }
+
+  async function saveOwner() {
+    if (!form.name) { alert("Owner name is required."); return; }
+    const payload = { ...form, management_fee_pct: Number(form.management_fee_pct || 10) };
+    let error;
+    if (editingOwner) {
+      ({ error } = await supabase.from("owners").update(payload).eq("id", editingOwner.id));
+    } else {
+      ({ error } = await supabase.from("owners").insert([payload]));
+    }
+    if (error) { alert("Error: " + error.message); return; }
+    logAudit(editingOwner ? "update" : "create", "owners", (editingOwner ? "Updated" : "Added") + " owner: " + form.name, editingOwner?.id || "", userProfile?.email, userRole);
+    resetForm(); fetchData();
+  }
+
+  function resetForm() {
+    setShowForm(false); setEditingOwner(null);
+    setForm({ name: "", email: "", phone: "", address: "", company: "", tax_id: "", payment_method: "check", bank_name: "", bank_routing: "", bank_account: "", management_fee_pct: "10", notes: "", status: "active" });
+  }
+
+  function startEdit(o) {
+    setEditingOwner(o);
+    setForm({ name: o.name, email: o.email || "", phone: o.phone || "", address: o.address || "", company: o.company || "", tax_id: o.tax_id || "", payment_method: o.payment_method || "check", bank_name: o.bank_name || "", bank_routing: o.bank_routing || "", bank_account: o.bank_account || "", management_fee_pct: String(o.management_fee_pct || 10), notes: o.notes || "", status: o.status || "active" });
+    setShowForm(true);
+  }
+
+  async function assignPropertyToOwner(propertyId, ownerId) {
+    const owner = owners.find(o => o.id === ownerId);
+    await supabase.from("properties").update({ owner_id: ownerId || null, owner_name: owner?.name || "" }).eq("id", propertyId);
+    fetchData();
+  }
+
+  async function generateStatement() {
+    if (!genOwner) { alert("Please select an owner."); return; }
+    const owner = owners.find(o => o.id === genOwner);
+    if (!owner) return;
+    const startDate = genMonth + "-01";
+    const endObj = new Date(startDate); endObj.setMonth(endObj.getMonth() + 1); endObj.setDate(0);
+    const endDate = endObj.toISOString().slice(0, 10);
+
+    const ownerProps = properties.filter(p => p.owner_id === owner.id).map(p => p.address);
+    if (ownerProps.length === 0) { alert("No properties assigned to " + owner.name); return; }
+
+    // Gather income for this owner's properties in this month
+    const monthPayments = payments.filter(p => ownerProps.includes(p.property) && p.date >= startDate && p.date <= endDate);
+    const totalIncome = monthPayments.reduce((s, p) => s + safeNum(p.amount), 0);
+
+    // Gather expenses
+    const monthVendor = vendorInvoices.filter(v => ownerProps.includes(v.property) && v.paid_date && v.paid_date >= startDate && v.paid_date <= endDate);
+    const monthUtils = utilities.filter(u => ownerProps.includes(u.property) && u.status === "paid" && u.due_date >= startDate && u.due_date <= endDate);
+    const totalVendorExp = monthVendor.reduce((s, v) => s + safeNum(v.amount), 0);
+    const totalUtilExp = monthUtils.reduce((s, u) => s + safeNum(u.amount), 0);
+    const totalExpenses = totalVendorExp + totalUtilExp;
+
+    const mgmtFee = Math.round(totalIncome * (owner.management_fee_pct / 100) * 100) / 100;
+    const netToOwner = Math.round((totalIncome - totalExpenses - mgmtFee) * 100) / 100;
+
+    // Build line items
+    const lineItems = [];
+    lineItems.push({ category: "INCOME", items: [] });
+    monthPayments.forEach(p => lineItems[0].items.push({ description: p.type + " \u2014 " + (p.tenant || "Unknown") + " \u2014 " + p.property, amount: safeNum(p.amount), date: p.date }));
+    lineItems.push({ category: "EXPENSES", items: [] });
+    monthVendor.forEach(v => lineItems[1].items.push({ description: "Vendor: " + v.vendor_name + " \u2014 " + v.description, amount: -safeNum(v.amount), date: v.paid_date }));
+    monthUtils.forEach(u => lineItems[1].items.push({ description: "Utility: " + u.provider + " \u2014 " + u.property, amount: -safeNum(u.amount), date: u.due_date }));
+    lineItems.push({ category: "FEES", items: [{ description: "Management Fee (" + owner.management_fee_pct + "%)", amount: -mgmtFee, date: endDate }] });
+
+    const { error } = await supabase.from("owner_statements").insert([{
+      owner_id: owner.id, owner_name: owner.name, period: genMonth,
+      start_date: startDate, end_date: endDate,
+      total_income: totalIncome, total_expenses: totalExpenses,
+      management_fee: mgmtFee, net_to_owner: netToOwner,
+      line_items: JSON.stringify(lineItems), status: "draft",
+    }]);
+    if (error) { alert("Error: " + error.message); return; }
+    logAudit("create", "owner_statements", "Generated statement for " + owner.name + " \u2014 " + genMonth, "", userProfile?.email, userRole);
+    setShowGenerate(false);
+    fetchData();
+  }
+
+  async function markStatementSent(stmt) {
+    await supabase.from("owner_statements").update({ status: "sent", sent_date: new Date().toISOString().slice(0, 10) }).eq("id", stmt.id);
+    fetchData();
+  }
+
+  async function distributeToOwner(stmt) {
+    if (stmt.net_to_owner <= 0) { alert("Net amount is $0 or negative. Nothing to distribute."); return; }
+    if (!window.confirm("Distribute $" + stmt.net_to_owner.toLocaleString() + " to " + stmt.owner_name + "?")) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const owner = owners.find(o => o.id === stmt.owner_id);
+    // Record distribution
+    await supabase.from("owner_distributions").insert([{
+      owner_id: stmt.owner_id, statement_id: stmt.id,
+      amount: stmt.net_to_owner, method: owner?.payment_method || "check",
+      reference: "DIST-" + stmt.period, date: today,
+    }]);
+    await supabase.from("owner_statements").update({ status: "paid", paid_date: today }).eq("id", stmt.id);
+    // Post to accounting
+    await autoPostJournalEntry({
+      date: today,
+      description: "Owner distribution \u2014 " + stmt.owner_name + " \u2014 " + stmt.period,
+      reference: "ODIST-" + Date.now(),
+      lines: [
+        { account_id: "2200", account_name: "Owner Distributions Payable", debit: safeNum(stmt.net_to_owner), credit: 0, memo: stmt.owner_name + " " + stmt.period },
+        { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(stmt.net_to_owner), memo: "Distribution to " + stmt.owner_name },
+      ]
+    });
+    // Post management fee as revenue
+    if (stmt.management_fee > 0) {
+      await autoPostJournalEntry({
+        date: today,
+        description: "Management fee \u2014 " + stmt.owner_name + " \u2014 " + stmt.period,
+        reference: "MGMT-" + Date.now(),
+        lines: [
+          { account_id: "2200", account_name: "Owner Distributions Payable", debit: safeNum(stmt.management_fee), credit: 0, memo: "Mgmt fee " + stmt.period },
+          { account_id: "4200", account_name: "Management Fee Income", debit: 0, credit: safeNum(stmt.management_fee), memo: stmt.owner_name },
+        ]
+      });
+    }
+    logAudit("create", "owner_distributions", "Distributed $" + stmt.net_to_owner + " to " + stmt.owner_name, stmt.id, userProfile?.email, userRole);
+    fetchData();
+  }
+
+  if (loading) return <Spinner />;
+
+  const activeOwners = owners.filter(o => o.status === "active");
+  const totalDistributed = distributions.reduce((s, d) => s + safeNum(d.amount), 0);
+  const pendingStatements = statements.filter(s => s.status === "draft" || s.status === "sent");
+  const pendingAmount = pendingStatements.reduce((s, st) => s + safeNum(st.net_to_owner), 0);
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-5">
+        <h2 className="text-xl font-bold text-gray-800">Owner Management</h2>
+        <div className="flex gap-2">
+          <button onClick={() => setShowGenerate(true)} className="text-xs border border-gray-200 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-50">Generate Statement</button>
+          <button onClick={() => setShowForm(true)} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-indigo-700">+ New Owner</button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
+        <StatCard label="Active Owners" value={activeOwners.length} color="text-green-600" sub={properties.filter(p => p.owner_id).length + " properties assigned"} />
+        <StatCard label="Pending Statements" value={pendingStatements.length} color={pendingStatements.length > 0 ? "text-amber-600" : "text-gray-400"} sub={"$" + pendingAmount.toLocaleString() + " owed"} />
+        <StatCard label="Total Distributed" value={"$" + totalDistributed.toLocaleString()} color="text-blue-600" sub="all time" />
+        <StatCard label="Unassigned Props" value={properties.filter(p => !p.owner_id).length} color={properties.filter(p => !p.owner_id).length > 0 ? "text-orange-500" : "text-gray-400"} sub="no owner" />
+      </div>
+
+      <div className="flex gap-1 mb-4 border-b border-gray-100">
+        {[["owners","Owners"],["properties","Properties"],["statements","Statements"],["distributions","Distributions"]].map(([id,label]) => (
+          <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500")}>{label}</button>
+        ))}
+      </div>
+
+      {/* Generate Statement Modal */}
+      {showGenerate && (
+        <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
+          <h3 className="font-semibold text-gray-800 mb-4">Generate Owner Statement</h3>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div><label className="text-xs text-gray-500 mb-1 block">Owner *</label>
+              <select value={genOwner} onChange={e => setGenOwner(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <option value="">Select owner...</option>
+                {activeOwners.map(o => <option key={o.id} value={o.id}>{o.name} ({properties.filter(p => p.owner_id === o.id).length} properties)</option>)}
+              </select>
+            </div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Month</label><input type="month" value={genMonth} onChange={e => setGenMonth(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+          </div>
+          {genOwner && (
+            <div className="bg-gray-50 rounded-lg p-3 mb-4 text-xs text-gray-600">
+              <div className="font-semibold mb-1">Properties included:</div>
+              {properties.filter(p => p.owner_id === genOwner).map(p => <div key={p.id}>{p.address}</div>)}
+              {properties.filter(p => p.owner_id === genOwner).length === 0 && <div className="text-amber-600">No properties assigned to this owner</div>}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button onClick={generateStatement} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-indigo-700">Generate</button>
+            <button onClick={() => setShowGenerate(false)} className="text-sm text-gray-500 px-4 py-2">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Owner Form */}
+      {showForm && (
+        <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
+          <h3 className="font-semibold text-gray-800 mb-4">{editingOwner ? "Edit Owner" : "Add New Owner"}</h3>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div><label className="text-xs text-gray-500 mb-1 block">Name *</label><input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Company</label><input value={form.company} onChange={e => setForm({...form, company: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Email</label><input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Phone</label><input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div className="col-span-2"><label className="text-xs text-gray-500 mb-1 block">Address</label><input value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Tax ID / EIN</label><input value={form.tax_id} onChange={e => setForm({...form, tax_id: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Management Fee %</label><input type="number" step="0.5" value={form.management_fee_pct} onChange={e => setForm({...form, management_fee_pct: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Payment Method</label>
+              <select value={form.payment_method} onChange={e => setForm({...form, payment_method: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <option value="check">Check</option><option value="ach">ACH</option><option value="wire">Wire</option>
+              </select>
+            </div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Status</label>
+              <select value={form.status} onChange={e => setForm({...form, status: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <option value="active">Active</option><option value="inactive">Inactive</option>
+              </select>
+            </div>
+          </div>
+          <div className="mb-4"><label className="text-xs text-gray-500 mb-1 block">Notes</label><textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={2} /></div>
+          <div className="flex gap-2">
+            <button onClick={saveOwner} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-indigo-700">{editingOwner ? "Update" : "Add Owner"}</button>
+            <button onClick={resetForm} className="text-sm text-gray-500 px-4 py-2">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Statement Detail View */}
+      {viewStatement && (
+        <Modal title={"Statement \u2014 " + viewStatement.owner_name + " \u2014 " + viewStatement.period} onClose={() => setViewStatement(null)}>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Income</div><div className="text-lg font-bold text-green-700">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
+              <div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Expenses</div><div className="text-lg font-bold text-red-600">${safeNum(viewStatement.total_expenses).toLocaleString()}</div></div>
+              <div className="bg-purple-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Mgmt Fee</div><div className="text-lg font-bold text-purple-700">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
+              <div className="bg-indigo-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Net to Owner</div><div className={"text-lg font-bold " + (viewStatement.net_to_owner >= 0 ? "text-indigo-700" : "text-red-600")}>${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
+            </div>
+            {(() => {
+              let items = []; try { items = JSON.parse(viewStatement.line_items || "[]"); } catch {}
+              return items.map((cat, ci) => (
+                <div key={ci}>
+                  <div className="font-semibold text-gray-700 text-sm mt-2 mb-1">{cat.category}</div>
+                  {(cat.items || []).map((item, ii) => (
+                    <div key={ii} className="flex justify-between text-xs py-1 border-b border-gray-50">
+                      <div className="text-gray-600">{item.description}<span className="text-gray-400 ml-2">{item.date}</span></div>
+                      <div className={"font-bold " + (item.amount >= 0 ? "text-green-600" : "text-red-600")}>{item.amount >= 0 ? "+" : ""}${Math.abs(item.amount).toLocaleString()}</div>
+                    </div>
+                  ))}
+                  {(cat.items || []).length === 0 && <div className="text-xs text-gray-400 py-1">None</div>}
+                </div>
+              ));
+            })()}
+            <div className="flex gap-2 pt-3 border-t border-gray-100">
+              {viewStatement.status === "draft" && <button onClick={() => { markStatementSent(viewStatement); setViewStatement(null); }} className="text-xs bg-blue-600 text-white px-4 py-2 rounded-lg">Mark Sent</button>}
+              {(viewStatement.status === "draft" || viewStatement.status === "sent") && <button onClick={() => { distributeToOwner(viewStatement); setViewStatement(null); }} className="text-xs bg-green-600 text-white px-4 py-2 rounded-lg">Distribute ${safeNum(viewStatement.net_to_owner).toLocaleString()}</button>}
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* OWNERS TAB */}
+      {activeTab === "owners" && (
+        <div className="space-y-3">
+          {owners.map(o => {
+            const ownerProps = properties.filter(p => p.owner_id === o.id);
+            const ownerDist = distributions.filter(d => d.owner_id === o.id).reduce((s, d) => s + safeNum(d.amount), 0);
+            return (
+              <div key={o.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <div className="text-sm font-bold text-gray-800">{o.name}{o.company ? " \u2014 " + o.company : ""}</div>
+                    <div className="text-xs text-gray-400">{o.email}{o.phone ? " \u00b7 " + o.phone : ""}</div>
+                  </div>
+                  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (o.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500")}>{o.status}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-2 md:grid-cols-4">
+                  <div><span className="text-gray-400">Properties:</span> <span className="font-bold">{ownerProps.length}</span></div>
+                  <div><span className="text-gray-400">Mgmt Fee:</span> <span className="font-medium">{o.management_fee_pct}%</span></div>
+                  <div><span className="text-gray-400">Total Distributed:</span> <span className="font-medium">${ownerDist.toLocaleString()}</span></div>
+                  <div><span className="text-gray-400">Payment:</span> <span className="font-medium capitalize">{o.payment_method}</span></div>
+                </div>
+                {ownerProps.length > 0 && (
+                  <div className="text-xs text-gray-500 mb-2">{ownerProps.map(p => p.address).join(" \u00b7 ")}</div>
+                )}
+                <div className="flex gap-2 pt-2 border-t border-gray-50">
+                  <button onClick={() => startEdit(o)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
+                  <button onClick={() => { setGenOwner(o.id); setShowGenerate(true); }} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">Generate Statement</button>
+                </div>
+              </div>
+            );
+          })}
+          {owners.length === 0 && <div className="text-center py-10 text-gray-400">No owners added yet</div>}
+        </div>
+      )}
+
+      {/* PROPERTIES TAB - assign owners */}
+      {activeTab === "properties" && (
+        <div className="space-y-2">
+          <div className="text-sm text-gray-500 mb-3">Assign owners to properties. This determines which income and expenses appear on each owner's statement.</div>
+          {properties.map(p => (
+            <div key={p.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex justify-between items-center">
+              <div>
+                <div className="text-sm font-medium text-gray-800">{p.address}</div>
+                <div className="text-xs text-gray-400">{p.type} \u00b7 {p.status}</div>
+              </div>
+              <select value={p.owner_id || ""} onChange={e => assignPropertyToOwner(p.id, e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm min-w-40">
+                <option value="">No owner</option>
+                {owners.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* STATEMENTS TAB */}
+      {activeTab === "statements" && (
+        <div className="space-y-3">
+          {statements.map(s => {
+            const sc = { draft: "bg-amber-100 text-amber-700", sent: "bg-blue-100 text-blue-700", paid: "bg-green-100 text-green-700" };
+            return (
+              <div key={s.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 cursor-pointer hover:border-indigo-200" onClick={() => setViewStatement(s)}>
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <div className="text-sm font-bold text-gray-800">{s.owner_name}</div>
+                    <div className="text-xs text-gray-400">Period: {s.period}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-bold text-gray-800">${safeNum(s.net_to_owner).toLocaleString()}</div>
+                    <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[s.status] || "bg-gray-100")}>{s.status}</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div><span className="text-gray-400">Income:</span> <span className="text-green-600 font-medium">${safeNum(s.total_income).toLocaleString()}</span></div>
+                  <div><span className="text-gray-400">Expenses:</span> <span className="text-red-600 font-medium">${safeNum(s.total_expenses).toLocaleString()}</span></div>
+                  <div><span className="text-gray-400">Mgmt Fee:</span> <span className="text-purple-600 font-medium">${safeNum(s.management_fee).toLocaleString()}</span></div>
+                </div>
+              </div>
+            );
+          })}
+          {statements.length === 0 && <div className="text-center py-10 text-gray-400">No statements generated yet. Click "Generate Statement" to create one.</div>}
+        </div>
+      )}
+
+      {/* DISTRIBUTIONS TAB */}
+      {activeTab === "distributions" && (
+        <div className="space-y-2">
+          {distributions.map(d => (
+            <div key={d.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex justify-between items-center">
+              <div>
+                <div className="text-sm font-medium text-gray-800">{owners.find(o => o.id === d.owner_id)?.name || "Unknown"}</div>
+                <div className="text-xs text-gray-400">{d.date} \u00b7 {d.method} \u00b7 {d.reference}</div>
+              </div>
+              <div className="text-sm font-bold text-green-600">${safeNum(d.amount).toLocaleString()}</div>
+            </div>
+          ))}
+          {distributions.length === 0 && <div className="text-center py-10 text-gray-400">No distributions yet</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ============ BANK RECONCILIATION ============
+function AcctBankReconciliation({ accounts, journalEntries }) {
+  const [reconPeriod, setReconPeriod] = useState(new Date().toISOString().slice(0, 7));
+  const [bankBalance, setBankBalance] = useState("");
+  const [reconItems, setReconItems] = useState([]);
+  const [reconciliations, setReconciliations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showReconcile, setShowReconcile] = useState(false);
+  const [viewRecon, setViewRecon] = useState(null);
+
+  useEffect(() => { fetchRecons(); }, []);
+
+  async function fetchRecons() {
+    const { data } = await supabase.from("bank_reconciliations").select("*").order("created_at", { ascending: false });
+    setReconciliations(data || []);
+    setLoading(false);
+  }
+
+  async function startReconciliation() {
+    if (!bankBalance || isNaN(Number(bankBalance))) { alert("Please enter the bank ending balance."); return; }
+    const startDate = reconPeriod + "-01";
+    const endObj = new Date(startDate); endObj.setMonth(endObj.getMonth() + 1); endObj.setDate(0);
+    const endDate = endObj.toISOString().slice(0, 10);
+
+    // Pull all journal lines hitting the Checking Account (1000) in this period
+    const { data: entries } = await supabase.from("acct_journal_entries").select("id, date, description, reference, status").gte("date", startDate).lte("date", endDate).eq("status", "posted");
+    if (!entries || entries.length === 0) { alert("No posted journal entries found for " + reconPeriod); return; }
+
+    const entryIds = entries.map(e => e.id);
+    const { data: lines } = await supabase.from("acct_journal_lines").select("*").in("journal_entry_id", entryIds).eq("account_id", "1000");
+    if (!lines || lines.length === 0) { alert("No checking account transactions found for " + reconPeriod); return; }
+
+    // Build reconciliation items
+    const items = lines.map(l => {
+      const entry = entries.find(e => e.id === l.journal_entry_id);
+      const amount = safeNum(l.debit) - safeNum(l.credit);
+      return {
+        id: l.id,
+        journal_entry_id: l.journal_entry_id,
+        date: entry?.date || "",
+        description: entry?.description || "",
+        reference: entry?.reference || "",
+        amount: amount,
+        memo: l.memo || "",
+        reconciled: l.reconciled || false,
+      };
+    }).sort((a, b) => a.date.localeCompare(b.date));
+
+    setReconItems(items);
+    setShowReconcile(true);
+  }
+
+  function toggleReconItem(index) {
+    const updated = [...reconItems];
+    updated[index].reconciled = !updated[index].reconciled;
+    setReconItems(updated);
+  }
+
+  function toggleAllRecon() {
+    const allChecked = reconItems.every(i => i.reconciled);
+    setReconItems(reconItems.map(i => ({ ...i, reconciled: !allChecked })));
+  }
+
+  async function saveReconciliation() {
+    const reconciledTotal = reconItems.filter(i => i.reconciled).reduce((s, i) => s + i.amount, 0);
+    const unreconciledTotal = reconItems.filter(i => !i.reconciled).reduce((s, i) => s + i.amount, 0);
+
+    // Calculate book balance from all checking account entries
+    const { data: allLines } = await supabase.from("acct_journal_lines").select("debit, credit").eq("account_id", "1000");
+    const bookBal = (allLines || []).reduce((s, l) => s + safeNum(l.debit) - safeNum(l.credit), 0);
+    const bankBal = Number(bankBalance);
+    const diff = Math.round((bankBal - bookBal) * 100) / 100;
+    const status = Math.abs(diff) < 0.01 && reconItems.every(i => i.reconciled) ? "reconciled" : Math.abs(diff) < 0.01 ? "reconciled" : "discrepancy";
+
+    // Save reconciliation record
+    const { error } = await supabase.from("bank_reconciliations").insert([{
+      period: reconPeriod,
+      bank_ending_balance: bankBal,
+      book_balance: Math.round(bookBal * 100) / 100,
+      difference: diff,
+      status: status,
+      reconciled_items: JSON.stringify(reconItems.filter(i => i.reconciled)),
+      unreconciled_items: JSON.stringify(reconItems.filter(i => !i.reconciled)),
+      reconciled_by: "",
+    }]);
+    if (error) { alert("Error: " + error.message); return; }
+
+    // Mark journal lines as reconciled in DB
+    const reconIds = reconItems.filter(i => i.reconciled).map(i => i.id);
+    if (reconIds.length > 0) {
+      const today = new Date().toISOString().slice(0, 10);
+      await supabase.from("acct_journal_lines").update({ reconciled: true, reconciled_date: today }).in("id", reconIds);
+    }
+
+    logAudit("create", "bank_reconciliation", "Bank reconciliation for " + reconPeriod + " \u2014 diff: $" + diff, "", "", "");
+    setShowReconcile(false);
+    setBankBalance("");
+    setReconItems([]);
+    fetchRecons();
+  }
+
+  if (loading) return <Spinner />;
+
+  const reconciledCount = reconItems.filter(i => i.reconciled).length;
+  const reconciledTotal = reconItems.filter(i => i.reconciled).reduce((s, i) => s + i.amount, 0);
+  const unreconciledTotal = reconItems.filter(i => !i.reconciled).reduce((s, i) => s + i.amount, 0);
+
+  return (
+    <div>
+      {!showReconcile && !viewRecon && (
+        <div>
+          <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-5">
+            <h3 className="font-semibold text-gray-800 mb-3">Start Bank Reconciliation</h3>
+            <div className="grid grid-cols-3 gap-3">
+              <div><label className="text-xs text-gray-500 mb-1 block">Month</label><input type="month" value={reconPeriod} onChange={e => setReconPeriod(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs text-gray-500 mb-1 block">Bank Ending Balance ($)</label><input type="number" step="0.01" value={bankBalance} onChange={e => setBankBalance(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Enter from bank statement" /></div>
+              <div className="flex items-end"><button onClick={startReconciliation} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-indigo-700 w-full">Begin Reconciliation</button></div>
+            </div>
+          </div>
+
+          <h3 className="font-semibold text-gray-700 mb-3">Previous Reconciliations</h3>
+          <div className="space-y-2">
+            {reconciliations.map(r => {
+              const sc = { reconciled: "bg-green-100 text-green-700", in_progress: "bg-amber-100 text-amber-700", discrepancy: "bg-red-100 text-red-700" };
+              return (
+                <div key={r.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-indigo-200" onClick={() => setViewRecon(r)}>
+                  <div>
+                    <div className="text-sm font-medium text-gray-800">{r.period}</div>
+                    <div className="text-xs text-gray-400">{new Date(r.created_at).toLocaleDateString()}</div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right text-xs">
+                      <div>Bank: <span className="font-bold">${safeNum(r.bank_ending_balance).toLocaleString()}</span></div>
+                      <div>Book: <span className="font-bold">${safeNum(r.book_balance).toLocaleString()}</span></div>
+                    </div>
+                    <div className="text-right">
+                      {Math.abs(r.difference) > 0.01 && <div className="text-xs font-bold text-red-600">Diff: ${safeNum(r.difference).toLocaleString()}</div>}
+                      <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[r.status] || "")}>{r.status.replace("_"," ")}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {reconciliations.length === 0 && <div className="text-center py-8 text-gray-400">No reconciliations yet</div>}
+          </div>
+        </div>
+      )}
+
+      {viewRecon && (
+        <div>
+          <button onClick={() => setViewRecon(null)} className="text-sm text-indigo-600 mb-3 hover:underline">\u2190 Back</button>
+          <div className="bg-white rounded-xl border border-gray-100 p-5">
+            <div className="flex justify-between items-start mb-4">
+              <div><h3 className="font-semibold text-gray-800">Reconciliation \u2014 {viewRecon.period}</h3><div className="text-xs text-gray-400">{new Date(viewRecon.created_at).toLocaleDateString()}</div></div>
+              <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewRecon.status === "reconciled" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")}>{viewRecon.status}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="bg-blue-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Bank Balance</div><div className="text-lg font-bold text-blue-700">${safeNum(viewRecon.bank_ending_balance).toLocaleString()}</div></div>
+              <div className="bg-indigo-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Book Balance</div><div className="text-lg font-bold text-indigo-700">${safeNum(viewRecon.book_balance).toLocaleString()}</div></div>
+              <div className={"rounded-lg p-3 text-center " + (Math.abs(viewRecon.difference) < 0.01 ? "bg-green-50" : "bg-red-50")}><div className="text-xs text-gray-500">Difference</div><div className={"text-lg font-bold " + (Math.abs(viewRecon.difference) < 0.01 ? "text-green-700" : "text-red-600")}>${safeNum(viewRecon.difference).toLocaleString()}</div></div>
+            </div>
+            {(() => { let items = []; try { items = JSON.parse(viewRecon.unreconciled_items || "[]"); } catch {} return items.length > 0 ? (
+              <div><div className="font-semibold text-red-700 text-sm mb-2">Unreconciled Items ({items.length})</div>
+                {items.map((it, i) => (<div key={i} className="flex justify-between text-xs py-1 border-b border-gray-50"><span className="text-gray-600">{it.date} \u2014 {it.description}</span><span className="font-bold">${it.amount.toLocaleString()}</span></div>))}
+              </div>) : null; })()}
+          </div>
+        </div>
+      )}
+
+      {showReconcile && (
+        <div>
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h3 className="font-semibold text-gray-800">Reconcile \u2014 {reconPeriod}</h3>
+              <div className="text-xs text-gray-400">Bank balance: ${Number(bankBalance).toLocaleString()} \u00b7 Check items that match your bank statement</div>
+            </div>
+            <button onClick={() => { setShowReconcile(false); setReconItems([]); }} className="text-sm text-gray-500 hover:text-gray-700">Cancel</button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Reconciled ({reconciledCount})</div><div className="text-lg font-bold text-green-700">${reconciledTotal.toLocaleString()}</div></div>
+            <div className="bg-amber-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Unreconciled ({reconItems.length - reconciledCount})</div><div className="text-lg font-bold text-amber-700">${unreconciledTotal.toLocaleString()}</div></div>
+            <div className={"rounded-lg p-3 text-center " + (Math.abs(Number(bankBalance) - reconciledTotal) < 0.01 ? "bg-green-50" : "bg-red-50")}><div className="text-xs text-gray-500">Remaining Diff</div><div className={"text-lg font-bold " + (Math.abs(Number(bankBalance) - reconciledTotal) < 0.01 ? "text-green-700" : "text-red-600")}>${(Number(bankBalance) - reconciledTotal).toLocaleString()}</div></div>
+          </div>
+
+          <div className="mb-3 flex items-center gap-2">
+            <button onClick={toggleAllRecon} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">{reconItems.every(i => i.reconciled) ? "Uncheck All" : "Check All"}</button>
+            <span className="text-xs text-gray-400">{reconItems.length} transactions</span>
+          </div>
+
+          <div className="space-y-1 mb-4">
+            {reconItems.map((item, i) => (
+              <div key={i} onClick={() => toggleReconItem(i)} className={"flex items-center gap-3 px-4 py-2.5 rounded-lg cursor-pointer border " + (item.reconciled ? "bg-green-50 border-green-200" : "bg-white border-gray-100 hover:bg-gray-50")}>
+                <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs flex-shrink-0 " + (item.reconciled ? "bg-green-500 border-green-500 text-white" : "border-gray-300")}>{item.reconciled ? "\u2713" : ""}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-gray-800 truncate">{item.description}</div>
+                  <div className="text-xs text-gray-400">{item.date} \u00b7 {item.reference} \u00b7 {item.memo}</div>
+                </div>
+                <div className={"text-sm font-bold flex-shrink-0 " + (item.amount >= 0 ? "text-green-600" : "text-red-600")}>{item.amount >= 0 ? "+" : ""}${item.amount.toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+
+          <button onClick={saveReconciliation} className="bg-indigo-600 text-white text-sm px-8 py-2.5 rounded-lg hover:bg-indigo-700">Save Reconciliation</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ============ EMAIL NOTIFICATIONS ============
+function EmailNotifications({ addNotification, userProfile, userRole }) {
+  const [settings, setSettings] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [tenants, setTenants] = useState([]);
+  const [leases, setLeases] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("settings");
+  const [showTest, setShowTest] = useState(null);
+
+  const eventLabels = {
+    rent_due: { label: "Rent Due Reminder", icon: "\ud83d\udcb0", desc: "Sent X days before rent is due" },
+    rent_overdue: { label: "Rent Overdue Notice", icon: "\u26a0\ufe0f", desc: "Sent when rent is past due" },
+    lease_expiring: { label: "Lease Expiration Alert", icon: "\ud83d\udcdd", desc: "Sent X days before lease expires" },
+    work_order_update: { label: "Work Order Status Update", icon: "\ud83d\udd27", desc: "Sent when maintenance request changes status" },
+    payment_received: { label: "Payment Confirmation", icon: "\u2705", desc: "Sent when payment is recorded" },
+    lease_created: { label: "New Lease Created", icon: "\ud83c\udfe0", desc: "Sent when a new lease is signed" },
+    insurance_expiring: { label: "Vendor Insurance Alert", icon: "\ud83d\udee1\ufe0f", desc: "Sent when vendor insurance is expiring" },
+    inspection_due: { label: "Inspection Reminder", icon: "\ud83d\udd0d", desc: "Sent before scheduled inspection" },
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
+  async function fetchData() {
+    setLoading(true);
+    const [s, l, t, le] = await Promise.all([
+      supabase.from("notification_settings").select("*").order("event_type"),
+      supabase.from("notification_log").select("*").order("created_at", { ascending: false }).limit(100),
+      supabase.from("tenants").select("*"),
+      supabase.from("leases").select("*").eq("status", "active"),
+    ]);
+    setSettings(s.data || []);
+    setLogs(l.data || []);
+    setTenants(t.data || []);
+    setLeases(le.data || []);
+    setLoading(false);
+  }
+
+  async function toggleSetting(setting) {
+    await supabase.from("notification_settings").update({ enabled: !setting.enabled }).eq("id", setting.id);
+    fetchData();
+  }
+
+  async function updateDaysBefore(setting, days) {
+    await supabase.from("notification_settings").update({ days_before: Number(days) }).eq("id", setting.id);
+    fetchData();
+  }
+
+  async function updateTemplate(setting, template) {
+    await supabase.from("notification_settings").update({ template }).eq("id", setting.id);
+  }
+
+  async function sendTestNotification(setting) {
+    // Simulate sending by logging it
+    const testRecipient = userProfile?.email || "test@example.com";
+    await supabase.from("notification_log").insert([{
+      event_type: setting.event_type,
+      recipient_email: testRecipient,
+      subject: "[TEST] " + (eventLabels[setting.event_type]?.label || setting.event_type),
+      message: setting.template || "Test notification",
+      status: "sent",
+      related_id: "test",
+    }]);
+    addNotification("\u2709\ufe0f", "Test notification sent for " + (eventLabels[setting.event_type]?.label || setting.event_type));
+    fetchData();
+  }
+
+  async function runNotificationCheck() {
+    const today = new Date();
+    let count = 0;
+
+    // Check rent due
+    const rentDueSetting = settings.find(s => s.event_type === "rent_due" && s.enabled);
+    if (rentDueSetting) {
+      const daysBefore = rentDueSetting.days_before || 3;
+      for (const lease of leases) {
+        const dueDay = lease.payment_due_day || 1;
+        const nextDue = new Date(today.getFullYear(), today.getMonth(), dueDay);
+        if (nextDue < today) nextDue.setMonth(nextDue.getMonth() + 1);
+        const daysUntilDue = Math.ceil((nextDue - today) / 86400000);
+        if (daysUntilDue <= daysBefore && daysUntilDue >= 0) {
+          const tenant = tenants.find(t => t.name === lease.tenant_name);
+          if (tenant?.email) {
+            const msg = (rentDueSetting.template || "").replace("${amount}", "$" + lease.rent_amount).replace("${due_date}", nextDue.toLocaleDateString()).replace("${property}", lease.property);
+            await supabase.from("notification_log").insert([{ event_type: "rent_due", recipient_email: tenant.email, subject: "Rent Due Reminder", message: msg, status: "sent", related_id: lease.id }]);
+            count++;
+          }
+        }
+      }
+    }
+
+    // Check lease expiring
+    const leaseExpSetting = settings.find(s => s.event_type === "lease_expiring" && s.enabled);
+    if (leaseExpSetting) {
+      const daysBefore = leaseExpSetting.days_before || 60;
+      for (const lease of leases) {
+        const daysLeft = Math.ceil((new Date(lease.end_date) - today) / 86400000);
+        if (daysLeft <= daysBefore && daysLeft > 0) {
+          const tenant = tenants.find(t => t.name === lease.tenant_name);
+          if (tenant?.email) {
+            const msg = (leaseExpSetting.template || "").replace("${property}", lease.property).replace("${end_date}", lease.end_date);
+            await supabase.from("notification_log").insert([{ event_type: "lease_expiring", recipient_email: tenant.email, subject: "Lease Expiration Notice", message: msg, status: "sent", related_id: lease.id }]);
+            count++;
+          }
+        }
+      }
+    }
+
+    addNotification("\ud83d\udce8", count + " notifications sent");
+    logAudit("create", "notifications", "Ran notification check: " + count + " sent", "", userProfile?.email, userRole);
+    fetchData();
+  }
+
+  if (loading) return <Spinner />;
+
+  const sentToday = logs.filter(l => l.created_at && new Date(l.created_at).toDateString() === new Date().toDateString()).length;
+  const enabledCount = settings.filter(s => s.enabled).length;
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-5">
+        <h2 className="text-xl font-bold text-gray-800">Email Notifications</h2>
+        <button onClick={runNotificationCheck} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-indigo-700">Run Notification Check</button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
+        <StatCard label="Active Rules" value={enabledCount + "/" + settings.length} color="text-green-600" sub="notification types" />
+        <StatCard label="Sent Today" value={sentToday} color="text-blue-600" sub="notifications" />
+        <StatCard label="Total Sent" value={logs.length} color="text-indigo-600" sub="all time" />
+        <StatCard label="Failed" value={logs.filter(l => l.status === "failed").length} color={logs.filter(l => l.status === "failed").length > 0 ? "text-red-500" : "text-gray-400"} sub="delivery errors" />
+      </div>
+
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5 text-sm text-amber-800">
+        <span className="font-semibold">Note:</span> Notifications are currently logged to the database. To send actual emails, connect a Supabase Edge Function with SendGrid, Resend, or Postmark. The templates and triggers are ready to wire up.
+      </div>
+
+      <div className="flex gap-1 mb-4 border-b border-gray-100">
+        {[["settings","Settings"],["log","Send Log"],["rentroll","Rent Roll"]].map(([id,label]) => (
+          <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500")}>{label}</button>
+        ))}
+      </div>
+
+      {/* SETTINGS TAB */}
+      {activeTab === "settings" && (
+        <div className="space-y-3">
+          {settings.map(s => {
+            const info = eventLabels[s.event_type] || { label: s.event_type, icon: "\ud83d\udce7", desc: "" };
+            return (
+              <div key={s.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (s.enabled ? "border-gray-100" : "border-gray-50 opacity-60")}>
+                <div className="flex justify-between items-start mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{info.icon}</span>
+                    <div>
+                      <div className="text-sm font-bold text-gray-800">{info.label}</div>
+                      <div className="text-xs text-gray-400">{info.desc}</div>
+                    </div>
+                  </div>
+                  <button onClick={() => toggleSetting(s)} className={"relative w-10 h-5 rounded-full transition-colors " + (s.enabled ? "bg-green-500" : "bg-gray-300")}>
+                    <span className={"absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow " + (s.enabled ? "left-5" : "left-0.5")} />
+                  </button>
+                </div>
+                <div className="flex items-center gap-3 text-xs mb-2">
+                  <span className="text-gray-400">Recipients:</span>
+                  <span className="font-medium text-gray-600">{s.recipients}</span>
+                  {s.days_before > 0 && (
+                    <div className="flex items-center gap-1">
+                      <span className="text-gray-400">Days before:</span>
+                      <input type="number" value={s.days_before} onChange={e => updateDaysBefore(s, e.target.value)} className="w-12 border border-gray-200 rounded px-1 py-0.5 text-xs text-center" min="0" />
+                    </div>
+                  )}
+                </div>
+                <div className="mb-2">
+                  <textarea value={s.template} onChange={e => updateTemplate(s, e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-600" rows={2} />
+                </div>
+                <button onClick={() => sendTestNotification(s)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Send Test</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* LOG TAB */}
+      {activeTab === "log" && (
+        <div className="space-y-2">
+          {logs.map(l => (
+            <div key={l.id} className="bg-white rounded-xl border border-gray-100 px-4 py-2.5 flex justify-between items-center">
+              <div>
+                <div className="text-sm text-gray-800">{l.subject}</div>
+                <div className="text-xs text-gray-400">{l.recipient_email} \u00b7 {new Date(l.created_at).toLocaleString()}</div>
+              </div>
+              <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (l.status === "sent" ? "bg-green-100 text-green-700" : l.status === "failed" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700")}>{l.status}</span>
+            </div>
+          ))}
+          {logs.length === 0 && <div className="text-center py-8 text-gray-400">No notifications sent yet</div>}
+        </div>
+      )}
+
+      {/* RENT ROLL TAB */}
+      {activeTab === "rentroll" && (
+        <div>
+          <h3 className="font-semibold text-gray-700 mb-3">Rent Roll</h3>
+          <div className="bg-white rounded-xl border border-gray-100 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-xs text-gray-500">
+                <tr>
+                  <th className="text-left px-4 py-2">Tenant</th>
+                  <th className="text-left px-4 py-2">Property</th>
+                  <th className="text-right px-4 py-2">Rent</th>
+                  <th className="text-right px-4 py-2">Balance</th>
+                  <th className="text-left px-4 py-2">Lease End</th>
+                  <th className="text-left px-4 py-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tenants.filter(t => t.lease_status === "active" || !t.lease_status).map(t => (
+                  <tr key={t.id} className="border-t border-gray-50">
+                    <td className="px-4 py-2 font-medium text-gray-800">{t.name}</td>
+                    <td className="px-4 py-2 text-gray-600">{t.property}</td>
+                    <td className="px-4 py-2 text-right font-bold">${safeNum(t.rent).toLocaleString()}</td>
+                    <td className={"px-4 py-2 text-right font-bold " + (safeNum(t.balance) > 0 ? "text-red-600" : "text-green-600")}>${safeNum(t.balance).toLocaleString()}</td>
+                    <td className="px-4 py-2 text-gray-600">{t.move_out || "\u2014"}</td>
+                    <td className="px-4 py-2"><span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (t.lease_status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500")}>{t.lease_status || "active"}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-gray-50 font-bold text-sm">
+                <tr>
+                  <td className="px-4 py-2" colSpan="2">Total ({tenants.filter(t => t.lease_status === "active" || !t.lease_status).length} tenants)</td>
+                  <td className="px-4 py-2 text-right">${tenants.filter(t => t.lease_status === "active" || !t.lease_status).reduce((s, t) => s + safeNum(t.rent), 0).toLocaleString()}</td>
+                  <td className="px-4 py-2 text-right">${tenants.filter(t => t.lease_status === "active" || !t.lease_status).reduce((s, t) => s + safeNum(t.balance), 0).toLocaleString()}</td>
+                  <td colSpan="2"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
-  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","accounting","documents","inspections","autopay","latefees","audittrail"] },
-  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","documents","inspections"] },
+  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","accounting","documents","inspections","autopay","latefees","audittrail","leases","vendors","owners","notifications"] },
+  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","documents","inspections","leases","vendors","owners","notifications"] },
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
-  maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance"] },
+  maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
   tenant: { label: "Tenant", color: "bg-gray-500", pages: ["tenant_portal"] },
 };
 
@@ -3201,6 +4727,10 @@ const ALL_NAV = [
   { id: "autopay", label: "Autopay", icon: "🔄" },
   { id: "latefees", label: "Late Fees", icon: "⚠️" },
   { id: "audittrail", label: "Audit Trail", icon: "📋" },
+  { id: "leases", label: "Leases", icon: "📝" },
+  { id: "vendors", label: "Vendors", icon: "🛠️" },
+  { id: "owners", label: "Owners", icon: "👤" },
+  { id: "notifications", label: "Notifications", icon: "📨" },
 ];
 
 // ============ AUTOPAY / RECURRING RENT ============
@@ -4243,6 +5773,10 @@ const pageComponents = {
   autopay: Autopay,
   latefees: LateFees,
   audittrail: AuditTrail,
+  leases: LeaseManagement,
+  vendors: VendorManagement,
+  owners: OwnerManagement,
+  notifications: EmailNotifications,
   roles: RoleManagement,
   tenant_portal: TenantPortal,
 };
