@@ -16,6 +16,30 @@ async function logAudit(action, module, details = "", recordId = "", userEmail =
   } catch (e) { console.warn("Audit log failed:", e); }
 }
 
+// ============ UNIFIED AUTO-POSTING TO ACCOUNTING ============
+async function autoPostJournalEntry({ date, description, reference, lines, status = "posted" }) {
+  try {
+    const { data: existingJEs } = await supabase.from("acct_journal_entries").select("number").order("number", { ascending: false }).limit(1);
+    const lastNum = existingJEs?.[0]?.number ? parseInt(existingJEs[0].number.replace("JE-",""), 10) : 0;
+    const number = `JE-${String(lastNum + 1).padStart(4, "0")}`;
+    const jeId = number;
+    await supabase.from("acct_journal_entries").insert([{ id: jeId, number, date, description, reference: reference || "", status }]);
+    if (lines?.length > 0) {
+      await supabase.from("acct_journal_lines").insert(lines.map(l => ({
+        journal_entry_id: jeId, account_id: l.account_id, account_name: l.account_name,
+        debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || ""
+      })));
+    }
+    return jeId;
+  } catch (e) { console.warn("Auto-post JE failed:", e); return null; }
+}
+
+async function getPropertyClassId(propertyAddress) {
+  if (!propertyAddress) return null;
+  const { data } = await supabase.from("acct_classes").select("id").eq("name", propertyAddress).limit(1);
+  return data?.[0]?.id || null;
+}
+
 // ============ STYLES ============
 const statusColors = {
   occupied: "bg-green-100 text-green-700",
@@ -1081,6 +1105,20 @@ function Payments({ addNotification, userProfile, userRole }) {
     if (!form.date) { alert("Payment date is required."); return; }
     const { error } = await supabase.from("payments").insert([{ ...form, amount: Number(form.amount) }]);
     if (error) { alert("Error recording payment: " + error.message); return; }
+    // AUTO-POST TO ACCOUNTING: DR Bank, CR Revenue (tagged to property)
+    const classId = await getPropertyClassId(form.property);
+    const amt = Number(form.amount);
+    const revenueAcct = form.type === "late_fee" ? "4010" : "4000";
+    const revenueAcctName = form.type === "late_fee" ? "Late Fee Income" : "Rental Income";
+    await autoPostJournalEntry({
+      date: form.date,
+      description: `${form.type === "rent" ? "Rent" : form.type} payment — ${form.tenant} — ${form.property}`,
+      reference: `PAY-${Date.now()}`,
+      lines: [
+        { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: `${form.method} from ${form.tenant}` },
+        { account_id: revenueAcct, account_name: revenueAcctName, debit: 0, credit: amt, class_id: classId, memo: `${form.tenant} — ${form.property}` },
+      ]
+    });
     addNotification("💳", `Payment recorded: $${form.amount} from ${form.tenant}`);
     logAudit("create", "payments", `Payment: $${form.amount} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole);
     setShowForm(false);
@@ -1199,6 +1237,20 @@ function Maintenance({ addNotification, userProfile, userRole }) {
   async function updateStatus(wo, newStatus) {
     const { error } = await supabase.from("work_orders").update({ status: newStatus }).eq("id", wo.id);
     if (error) { alert("Error updating status: " + error.message); return; }
+    // AUTO-POST TO ACCOUNTING when completed with a cost
+    if (newStatus === "completed" && safeNum(wo.cost) > 0) {
+      const classId = await getPropertyClassId(wo.property);
+      const amt = safeNum(wo.cost);
+      await autoPostJournalEntry({
+        date: new Date().toISOString().slice(0, 10),
+        description: `Maintenance: ${wo.issue} — ${wo.property}`,
+        reference: `WO-${wo.id}`,
+        lines: [
+          { account_id: "5300", account_name: "Repairs & Maintenance", debit: amt, credit: 0, class_id: classId, memo: `${wo.issue} — ${wo.assigned || "unassigned"}` },
+          { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid for: ${wo.issue}` },
+        ]
+      });
+    }
     addNotification("🔧", `Work order "${wo.issue}" marked as ${newStatus.replace("_", " ")}`);
     fetchWorkOrders();
   }
@@ -1385,6 +1437,20 @@ function Utilities({ addNotification, userProfile, userRole }) {
       paid_at: now,
     }]);
     addNotification("✅", `Utility paid: ${u.provider} $${u.amount} for ${u.property}`);
+    // AUTO-POST TO ACCOUNTING: DR Utilities Expense, CR Bank
+    const classId = await getPropertyClassId(u.property);
+    const amt = safeNum(u.amount);
+    if (amt > 0) {
+      await autoPostJournalEntry({
+        date: new Date().toISOString().slice(0, 10),
+        description: `Utility: ${u.provider} — ${u.property}`,
+        reference: `UTIL-${u.id}`,
+        lines: [
+          { account_id: "5400", account_name: "Utilities", debit: amt, credit: 0, class_id: classId, memo: `${u.provider} — ${u.property}` },
+          { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid: ${u.provider}` },
+        ]
+      });
+    }
     fetchUtilities();
   }
 
@@ -2616,6 +2682,40 @@ function Accounting() {
             <StatCard label="Net Income" value={acctFmt(plData.netIncome)} color={plData.netIncome >= 0 ? "text-blue-700" : "text-red-600"} sub="Year to date" />
             <StatCard label="Total Assets" value={acctFmt(bsData.totalAssets)} color="text-purple-700" sub="Balance sheet" />
           </div>
+          {/* Monthly Rent Accrual */}
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-blue-800">Monthly Rent Accrual</p>
+              <p className="text-xs text-blue-600">Generate AR entries for all active leases this month (DR Accounts Receivable, CR Rental Income)</p>
+            </div>
+            <button onClick={async () => {
+              const { data: activeTenants } = await supabase.from("tenants").select("*").eq("lease_status", "active");
+              if (!activeTenants || activeTenants.length === 0) { alert("No active leases found."); return; }
+              const today = new Date().toISOString().slice(0, 10);
+              const month = today.slice(0, 7);
+              // Check if already accrued this month
+              const { data: existing } = await supabase.from("acct_journal_entries").select("id").like("reference", `ACCR-${month}%`);
+              if (existing && existing.length > 0) { alert("Rent already accrued for " + month + ". " + existing.length + " entries exist."); return; }
+              let count = 0;
+              for (const t of activeTenants) {
+                const rent = safeNum(t.rent);
+                if (rent <= 0) continue;
+                const classId = await getPropertyClassId(t.property);
+                await autoPostJournalEntry({
+                  date: today,
+                  description: `Rent accrual ${month} \u2014 ${t.name} \u2014 ${t.property}`,
+                  reference: `ACCR-${month}-${t.id}`,
+                  lines: [
+                    { account_id: "1100", account_name: "Accounts Receivable", debit: rent, credit: 0, class_id: classId, memo: `${t.name} rent due` },
+                    { account_id: "4000", account_name: "Rental Income", debit: 0, credit: rent, class_id: classId, memo: `${t.name} \u2014 ${t.property}` },
+                  ]
+                });
+                count++;
+              }
+              alert("Accrued rent for " + count + " active leases for " + month);
+              fetchAll();
+            }} className="bg-blue-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-blue-700 shrink-0">Generate Accruals</button>
+          </div>
           {pendingCount > 0 && <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 mb-4 text-sm text-amber-700">⏳ {pendingCount} draft journal {pendingCount === 1 ? "entry" : "entries"} awaiting review</div>}
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mb-4">
             <h3 className="font-semibold text-gray-700 mb-3">Recent Journal Entries</h3>
@@ -3213,6 +3313,19 @@ function LateFees({ addNotification, userProfile, userRole }) {
       await supabase.from("tenants").update({ balance: newBalance }).eq("id", tenant.id);
     }
     addNotification("⚠️", `Late fee $${feeAmount} applied to ${payment.tenant}`);
+    // AUTO-POST TO ACCOUNTING: DR Accounts Receivable, CR Late Fee Income
+    const classId = await getPropertyClassId(payment.property);
+    if (feeAmount > 0) {
+      await autoPostJournalEntry({
+        date: new Date().toISOString().slice(0, 10),
+        description: "Late fee - " + payment.tenant + " - " + payment.property,
+        reference: "LATE-" + Date.now(),
+        lines: [
+          { account_id: "1100", account_name: "Accounts Receivable", debit: feeAmount, credit: 0, class_id: classId, memo: "Late fee: " + payment.tenant },
+          { account_id: "4010", account_name: "Late Fee Income", debit: 0, credit: feeAmount, class_id: classId, memo: payment.daysLate + " days overdue" },
+        ]
+      });
+    }
     fetchData();
   }
 
