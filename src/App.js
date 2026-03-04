@@ -22,7 +22,7 @@ async function autoPostJournalEntry({ date, description, reference, lines, statu
     const { data: existingJEs } = await supabase.from("acct_journal_entries").select("number").order("number", { ascending: false }).limit(1);
     const lastNum = existingJEs?.[0]?.number ? parseInt(existingJEs[0].number.replace("JE-",""), 10) : 0;
     const number = `JE-${String(lastNum + 1).padStart(4, "0")}`;
-    const jeId = number;
+    const jeId = `je-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
     await supabase.from("acct_journal_entries").insert([{ id: jeId, number, date, description, reference: reference || "", status }]);
     if (lines?.length > 0) {
       await supabase.from("acct_journal_lines").insert(lines.map(l => ({
@@ -712,17 +712,14 @@ function Tenants({ addNotification, userProfile, userRole }) {
     if (!window.confirm("Send portal invite to " + tenant.email + "?\n\nThis will:\n1. Create a Supabase auth account\n2. Set their role to 'tenant'\n3. They can log in and access the Tenant Portal")) return;
     try {
       // Create Supabase auth user (they'll get a confirmation email)
-      const { data: authData, error: authErr } = await supabase.auth.admin.createUser({
+      // Send magic link invite - works client-side
+      const { error: authErr } = await supabase.auth.signInWithOtp({
         email: tenant.email,
-        email_confirm: true,
-        password: "TempPass" + Math.random().toString(36).slice(2, 10) + "!",
-        user_metadata: { name: tenant.name, role: "tenant" }
+        options: { data: { name: tenant.name, role: "tenant" } }
       });
-      // If admin.createUser is not available (client-side), use invite
       if (authErr) {
-        // Fallback: use signUp or just create app_users entry
-        // The tenant will need to sign up themselves
-        console.warn("Admin create failed, creating app_users entry:", authErr.message);
+        console.warn("Auth invite failed:", authErr.message);
+        // Still create app_users entry so role is set when they sign up
       }
       // Create app_users entry with tenant role
       await supabase.from("app_users").upsert([{
@@ -1134,7 +1131,7 @@ function Tenants({ addNotification, userProfile, userRole }) {
               <button onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="text-xs text-gray-600 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">📄 Lease</button>
               <button onClick={() => startEdit(t)} className="text-xs text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50">✏️ Edit</button>
               <button onClick={() => deleteTenant(t.id, t.name)} className="text-xs text-red-500 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50">🗑️ Delete</button>
-                <button onClick={() => inviteTenant(t)} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50" title="Send portal access">\u2709\ufe0f Invite</button>
+                <button onClick={() => inviteTenant(t)} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50" title="Send portal access">✉️ Invite</button>
             </div>
           </div>
         ))}
@@ -1164,6 +1161,15 @@ function Payments({ addNotification, userProfile, userRole }) {
     if (!form.date) { alert("Payment date is required."); return; }
     const { error } = await supabase.from("payments").insert([{ ...form, amount: Number(form.amount) }]);
     if (error) { alert("Error recording payment: " + error.message); return; }
+    // Only auto-post to accounting if payment is actually paid (not unpaid/partial)
+    if (form.status !== "paid") {
+      addNotification("💳", `Payment recorded (${form.status}): $${form.amount} from ${form.tenant}`);
+      logAudit("create", "payments", `Payment (${form.status}): $${form.amount} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole);
+      setShowForm(false);
+      setForm({ tenant: "", property: "", amount: "", type: "rent", method: "ACH", status: "paid", date: new Date().toISOString().slice(0, 10) });
+      fetchPayments();
+      return;
+    }
     // AUTO-POST TO ACCOUNTING: Smart posting - settle AR if accrual exists, else direct revenue
     const classId = await getPropertyClassId(form.property);
     const amt = Number(form.amount);
@@ -2855,7 +2861,7 @@ function Documents({ addNotification, userProfile, userRole }) {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState("all");
-  const [form, setForm] = useState({ name: "", property: "", type: "Lease", tenant_visible: false });
+  const [form, setForm] = useState({ name: "", property: "", tenant: "", type: "Lease", tenant_visible: false });
   const fileRef = useRef();
   const [uploading, setUploading] = useState(false);
 
@@ -2891,6 +2897,7 @@ function Documents({ addNotification, userProfile, userRole }) {
     const { error: insertError } = await supabase.from("documents").insert([{
       name: form.name,
       property: form.property,
+      tenant: form.tenant || "",
       type: form.type,
       tenant_visible: form.tenant_visible,
       url: publicUrl,
@@ -2904,7 +2911,7 @@ function Documents({ addNotification, userProfile, userRole }) {
     }
     addNotification("📄", `Document uploaded: ${form.name}`);
     setShowForm(false);
-    setForm({ name: "", property: "", type: "Lease", tenant_visible: false });
+    setForm({ name: "", property: "", tenant: "", type: "Lease", tenant_visible: false });
     if (fileRef.current) fileRef.current.value = "";
     setUploading(false);
     fetchDocs();
@@ -2962,6 +2969,7 @@ function Documents({ addNotification, userProfile, userRole }) {
           <div className="grid grid-cols-2 gap-3">
             <input placeholder="Document name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" />
+            <input placeholder="Tenant name (optional)" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
               {["Lease", "Inspection", "Maintenance", "Financial", "Notice", "Other"].map(t => <option key={t}>{t}</option>)}
             </select>
@@ -3342,7 +3350,7 @@ function LeaseManagement({ addNotification, userProfile, userRole }) {
       await autoPostJournalEntry({ date: depositForm.return_date, description: "Deposit deduction \u2014 " + lease.tenant_name + " \u2014 " + depositForm.deductions, reference: "DEPDED-" + Date.now(),
         lines: [
           { account_id: "2100", account_name: "Security Deposits Held", debit: deducted, credit: 0, class_id: classId, memo: "Deduction: " + depositForm.deductions },
-          { account_id: "4000", account_name: "Rental Income", debit: 0, credit: deducted, class_id: classId, memo: "Deposit forfeiture: " + lease.tenant_name },
+          { account_id: "4100", account_name: "Other Income", debit: 0, credit: deducted, class_id: classId, memo: "Deposit forfeiture: " + lease.tenant_name },
         ]
       });
     }
@@ -4402,7 +4410,7 @@ function AcctBankReconciliation({ accounts, journalEntries }) {
 
       {viewRecon && (
         <div>
-          <button onClick={() => setViewRecon(null)} className="text-sm text-indigo-600 mb-3 hover:underline">\u2190 Back</button>
+          <button onClick={() => setViewRecon(null)} className="text-sm text-indigo-600 mb-3 hover:underline">← Back</button>
           <div className="bg-white rounded-xl border border-gray-100 p-5">
             <div className="flex justify-between items-start mb-4">
               <div><h3 className="font-semibold text-gray-800">Reconciliation \u2014 {viewRecon.period}</h3><div className="text-xs text-gray-400">{new Date(viewRecon.created_at).toLocaleDateString()}</div></div>
@@ -5077,7 +5085,7 @@ function TenantPortal({ currentUser }) {
     async function fetchData() {
       const email = currentUser?.email;
       if (!email) { setLoading(false); return; }
-      const { data: tenant } = await supabase.from("tenants").select("*").eq("email", email).maybeSingle();
+      const { data: tenant } = await supabase.from("tenants").select("*").ilike("email", email).maybeSingle();
       if (!tenant) { setLoading(false); return; }
       setTenantData(tenant);
       setPaymentAmount(String(tenant.rent || ""));
@@ -5111,7 +5119,7 @@ function TenantPortal({ currentUser }) {
     setWorkOrders(w.data || []);
     setMessages(m.data || []);
     // Refresh tenant balance
-    const { data: t } = await supabase.from("tenants").select("*").eq("email", currentUser?.email).maybeSingle();
+    const { data: t } = await supabase.from("tenants").select("*").ilike("email", currentUser?.email || "").maybeSingle();
     if (t) setTenantData(t);
   }
 
@@ -5128,7 +5136,7 @@ function TenantPortal({ currentUser }) {
       const amt = Number(paymentAmount);
       const today = new Date().toISOString().slice(0, 10);
       // Record payment
-      await supabase.from("payments").insert([{
+      const { error: payErr } = await supabase.from("payments").insert([{
         tenant: tenantData.name,
         property: tenantData.property,
         amount: amt,
@@ -5137,6 +5145,7 @@ function TenantPortal({ currentUser }) {
         status: "paid",
         date: today,
       }]);
+      if (payErr) throw new Error("Failed to record payment: " + payErr.message);
       // Update tenant balance
       const newBalance = Math.max(0, safeNum(tenantData.balance) - amt);
       await supabase.from("tenants").update({ balance: newBalance }).eq("id", tenantData.id);
@@ -5227,7 +5236,7 @@ function TenantPortal({ currentUser }) {
   if (loading) return <Spinner />;
   if (!tenantData) return (
     <div className="text-center py-20">
-      <div className="text-5xl mb-4">\ud83c\udfe0</div>
+      <div className="text-5xl mb-4">🏠</div>
       <div className="text-gray-600 font-semibold text-lg">No tenant account linked to this email.</div>
       <div className="text-gray-400 text-sm mt-2">Contact your property manager to get access.</div>
       <div className="text-xs text-gray-300 mt-4">{currentUser?.email}</div>
@@ -5301,13 +5310,13 @@ function TenantPortal({ currentUser }) {
             <h3 className="font-semibold text-gray-700 mb-3">Recent Activity</h3>
             {payments.slice(0, 3).map(p => (
               <div key={p.id} className="flex justify-between py-2 border-b border-gray-50 last:border-0 text-sm">
-                <div><span className="text-green-600 font-medium">Payment</span> <span className="text-gray-400">\u2014 {p.date}</span></div>
+                <div><span className="text-green-600 font-medium">Payment</span> <span className="text-gray-400">— {p.date}</span></div>
                 <span className="font-semibold text-gray-800">${safeNum(p.amount).toLocaleString()}</span>
               </div>
             ))}
             {workOrders.slice(0, 2).map(w => (
               <div key={w.id} className="flex justify-between py-2 border-b border-gray-50 last:border-0 text-sm">
-                <div><span className="text-orange-600 font-medium">Maintenance</span> <span className="text-gray-400">\u2014 {w.issue}</span></div>
+                <div><span className="text-orange-600 font-medium">Maintenance</span> <span className="text-gray-400">— {w.issue}</span></div>
                 <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (w.status === "completed" ? "bg-green-100 text-green-700" : w.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{w.status}</span>
               </div>
             ))}
@@ -5321,7 +5330,7 @@ function TenantPortal({ currentUser }) {
         <div className="max-w-md mx-auto">
           {paymentSuccess && (
             <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 text-center">
-              <div className="text-2xl mb-1">\u2705</div>
+              <div className="text-2xl mb-1">✅</div>
               <div className="text-green-800 font-semibold">Payment Successful!</div>
               <div className="text-green-600 text-sm">Your payment has been recorded and your balance updated.</div>
             </div>
