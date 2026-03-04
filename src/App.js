@@ -6944,7 +6944,8 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
   async function createCompany() {
     if (!createForm.name.trim()) { alert("Company name is required."); return; }
     const companyId = "co-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-    const companyCode = createForm.name.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase() + Math.floor(Math.random() * 900 + 100);
+    // Generate unique 8-digit numeric company code
+    const companyCode = String(10000000 + Math.floor(Math.random() * 89999999));
     const { data, error } = await supabase.from("companies").insert([{
       id: companyId, name: createForm.name, type: createForm.type, company_code: companyCode,
       address: createForm.address, phone: createForm.phone, email: createForm.email,
@@ -7100,7 +7101,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-4">
             <h3 className="font-bold text-gray-800 mb-4">Join a Company</h3>
             <div className="space-y-3">
-              <div><label className="text-xs font-medium text-gray-600">Company Code</label><input value={joinCode} onChange={e => setJoinCode(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="e.g. SIGMA123" /></div>
+              <div><label className="text-xs font-medium text-gray-600">Company ID (8-digit code)</label><input value={joinCode} onChange={e => setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 8))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="e.g. 12345678" maxLength={8} /></div>
               <div className="text-xs text-gray-400 text-center">— or —</div>
               <div><label className="text-xs font-medium text-gray-600">Search by Name</label><input value={joinSearch} onChange={e => setJoinSearch(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="e.g. Sigma Housing" /></div>
               <div className="flex gap-2">
@@ -7220,22 +7221,18 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Auto-select company for tenant/owner roles or if only one company
+  // Auto-select company ONLY for tenant/owner roles — everyone else sees the company selector
   async function autoSelectCompany(user) {
     if (!user?.email) return;
     const { data: memberships } = await supabase.from("company_members").select("company_id, role, status").eq("user_email", user.email).eq("status", "active");
     if (!memberships || memberships.length === 0) { setScreen("company_select"); return; }
-    // Tenants and owners auto-select their company
+    // Tenants and owners auto-select their company (skip selector)
     const tenantOwner = memberships.find(m => m.role === "tenant" || m.role === "owner");
     if (tenantOwner) {
       const { data: company } = await supabase.from("companies").select("*").eq("id", tenantOwner.company_id).maybeSingle();
       if (company) { handleSelectCompany(company, tenantOwner.role); return; }
     }
-    // If only one company, auto-select
-    if (memberships.length === 1) {
-      const { data: company } = await supabase.from("companies").select("*").eq("id", memberships[0].company_id).maybeSingle();
-      if (company) { handleSelectCompany(company, memberships[0].role); return; }
-    }
+    // Everyone else always sees the company selector
     setScreen("company_select");
   }
 
