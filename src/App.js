@@ -1266,7 +1266,7 @@ function Payments({ addNotification, userProfile, userRole }) {
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
-            <tr>{["Tenant", "Property", "Amount", "Date", "Type", "Method", "Status"].map(h => <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>)}</tr>
+            <tr>{["Tenant", "Property", "Amount", "Date", "Type", "Method", "Status", ""].map(h => <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>)}</tr>
           </thead>
           <tbody>
             {payments.map(p => (
@@ -1278,6 +1278,7 @@ function Payments({ addNotification, userProfile, userRole }) {
                 <td className="px-3 py-2.5 capitalize text-gray-600">{p.type?.replace("_", " ")}</td>
                 <td className="px-3 py-2.5 text-gray-500">{p.method}</td>
                 <td className="px-3 py-2.5"><Badge status={p.status} /></td>
+                <td className="px-3 py-2.5">{p.status === "paid" && <button onClick={() => generatePaymentReceipt(p)} className="text-xs text-green-600 border border-green-200 px-2 py-0.5 rounded hover:bg-green-50">Receipt</button>}</td>
               </tr>
             ))}
           </tbody>
@@ -3201,6 +3202,7 @@ function LeaseManagement({ addNotification, userProfile, userRole }) {
   const [showChecklist, setShowChecklist] = useState(null);
   const [showDepositModal, setShowDepositModal] = useState(null);
   const [showTemplateForm, setShowTemplateForm] = useState(false);
+  const [showESign, setShowESign] = useState(null);
 
   const defaultChecklist = ["Keys handed over","Smoke detectors tested","Appliances working","Walls condition documented","Floors condition documented","Plumbing checked","Electrical checked","Windows & doors checked","HVAC filter replaced","Photos taken"];
   const defaultMoveOutChecklist = ["Keys returned","All personal items removed","Unit cleaned","Walls patched/repaired","Appliances clean","Carpets cleaned","Final inspection done","Forwarding address collected","Utilities transferred","Security deposit review"];
@@ -3427,6 +3429,8 @@ function LeaseManagement({ addNotification, userProfile, userRole }) {
         </Modal>
       )}
 
+      {showESign && <ESignatureModal lease={showESign} onClose={() => setShowESign(null)} onSigned={() => fetchData()} userProfile={userProfile} />}
+
       {showDepositModal && (
         <Modal title={"Return Deposit \u2014 " + showDepositModal.tenant_name} onClose={() => setShowDepositModal(null)}>
           <div className="space-y-3">
@@ -3521,6 +3525,7 @@ function LeaseManagement({ addNotification, userProfile, userRole }) {
               </div>
               <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-50">
                 <button onClick={() => startEdit(l)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
+                <button onClick={() => setShowESign(l)} className={"text-xs border px-3 py-1 rounded-lg " + (l.signature_status === "fully_signed" ? "text-green-600 border-green-200 bg-green-50" : "text-purple-600 border-purple-200 hover:bg-purple-50")}>{l.signature_status === "fully_signed" ? "\u2713 Signed" : "\u270d\ufe0f E-Sign"}</button>
                 {l.status === "active" && <button onClick={() => renewLease(l)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">Renew</button>}
                 {l.status === "active" && <button onClick={() => terminateLease(l)} className="text-xs text-red-600 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">Terminate</button>}
                 <button onClick={() => setShowChecklist({ lease: l, type: "in" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_in_completed ? "text-green-600 border-green-200 bg-green-50" : "text-gray-500 border-gray-200 hover:bg-gray-50")}>Move-In {l.move_in_completed ? "\u2713" : ""}</button>
@@ -4713,6 +4718,505 @@ function EmailNotifications({ addNotification, userProfile, userRole }) {
 }
 
 
+// ============ E-SIGNATURE COMPONENT ============
+function ESignatureModal({ lease, onClose, onSigned, userProfile }) {
+  const canvasRef = useRef(null);
+  const [signing, setSigning] = useState(false);
+  const [signers, setSigners] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [typedName, setTypedName] = useState("");
+  const [signMethod, setSignMethod] = useState("draw");
+
+  useEffect(() => { fetchSigners(); }, [lease]);
+
+  async function fetchSigners() {
+    const { data } = await supabase.from("lease_signatures").select("*").eq("lease_id", lease.id).order("created_at");
+    setSigners(data || []);
+    setLoading(false);
+  }
+
+  async function initSignatureRequest() {
+    // Create signature requests for tenant and landlord
+    const existing = signers.map(s => s.signer_role);
+    const toCreate = [];
+    if (!existing.includes("tenant")) {
+      toCreate.push({ lease_id: lease.id, signer_name: lease.tenant_name, signer_email: "", signer_role: "tenant", status: "pending" });
+    }
+    if (!existing.includes("landlord")) {
+      toCreate.push({ lease_id: lease.id, signer_name: userProfile?.name || "Property Manager", signer_email: userProfile?.email || "", signer_role: "landlord", status: "pending" });
+    }
+    if (toCreate.length > 0) {
+      await supabase.from("lease_signatures").insert(toCreate);
+      await supabase.from("leases").update({ signature_status: "pending" }).eq("id", lease.id);
+    }
+    fetchSigners();
+  }
+
+  function startDraw(e) {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    setIsDrawing(true);
+    const ctx = canvas.getContext("2d");
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  }
+
+  function draw(e) {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#1e3a5f";
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  }
+
+  function endDraw() { setIsDrawing(false); }
+
+  function clearCanvas() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  async function submitSignature(signer) {
+    let sigData = "";
+    if (signMethod === "draw") {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      sigData = canvas.toDataURL("image/png");
+      // Check if canvas is blank
+      const ctx = canvas.getContext("2d");
+      const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      const hasContent = pixels.some((v, i) => i % 4 === 3 && v > 0);
+      if (!hasContent) { alert("Please draw your signature first."); return; }
+    } else {
+      if (!typedName.trim()) { alert("Please type your name."); return; }
+      sigData = "typed:" + typedName.trim();
+    }
+
+    setSigning(true);
+    await supabase.from("lease_signatures").update({
+      status: "signed",
+      signed_at: new Date().toISOString(),
+      signature_data: sigData,
+      ip_address: "client",
+    }).eq("id", signer.id);
+
+    // Check if all signers have signed
+    const { data: allSigs } = await supabase.from("lease_signatures").select("status").eq("lease_id", lease.id);
+    const allSigned = allSigs && allSigs.every(s => s.status === "signed");
+    await supabase.from("leases").update({
+      signature_status: allSigned ? "fully_signed" : "partially_signed"
+    }).eq("id", lease.id);
+
+    logAudit("update", "leases", "E-signature: " + signer.signer_name + " signed lease for " + lease.tenant_name, lease.id, userProfile?.email, "");
+    setSigning(false);
+    fetchSigners();
+    if (onSigned) onSigned();
+  }
+
+  if (loading) return <Modal title="E-Signature" onClose={onClose}><Spinner /></Modal>;
+
+  const pendingSigners = signers.filter(s => s.status === "pending");
+  const signedSigners = signers.filter(s => s.status === "signed");
+  const allSigned = signers.length > 0 && signers.every(s => s.status === "signed");
+
+  return (
+    <Modal title={"E-Signature \u2014 " + lease.tenant_name} onClose={onClose}>
+      <div className="space-y-4">
+        {/* Lease Summary */}
+        <div className="bg-indigo-50 rounded-lg p-3">
+          <div className="text-sm font-semibold text-indigo-800">{lease.property}</div>
+          <div className="text-xs text-indigo-600">{lease.start_date} to {lease.end_date} \u00b7 ${safeNum(lease.rent_amount).toLocaleString()}/mo</div>
+        </div>
+
+        {/* Lease Terms Preview */}
+        <div className="bg-gray-50 rounded-lg p-3 max-h-32 overflow-y-auto">
+          <div className="text-xs font-semibold text-gray-600 mb-1">Lease Terms</div>
+          <div className="text-xs text-gray-500 whitespace-pre-wrap">{lease.clauses || "Standard residential lease terms apply."}</div>
+          {lease.special_terms && <div className="text-xs text-gray-500 mt-1"><span className="font-semibold">Special Terms:</span> {lease.special_terms}</div>}
+        </div>
+
+        {/* Signer Status */}
+        <div>
+          <div className="text-sm font-semibold text-gray-700 mb-2">Signatures</div>
+          {signers.length === 0 && (
+            <div className="text-center py-4">
+              <div className="text-sm text-gray-500 mb-3">No signature requests yet</div>
+              <button onClick={initSignatureRequest} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-indigo-700">Send for Signature</button>
+            </div>
+          )}
+          {signers.map(s => (
+            <div key={s.id} className={"flex items-center justify-between px-3 py-2 rounded-lg mb-2 " + (s.status === "signed" ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200")}>
+              <div>
+                <div className="text-sm font-medium text-gray-800">{s.signer_name}</div>
+                <div className="text-xs text-gray-400 capitalize">{s.signer_role}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                {s.status === "signed" ? (
+                  <div className="text-right">
+                    <span className="text-xs font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">\u2713 Signed</span>
+                    <div className="text-xs text-gray-400 mt-0.5">{new Date(s.signed_at).toLocaleDateString()}</div>
+                  </div>
+                ) : (
+                  <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">Pending</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Signing Pad - show for pending signers */}
+        {pendingSigners.length > 0 && !allSigned && (
+          <div className="border border-gray-200 rounded-xl p-4">
+            <div className="text-sm font-semibold text-gray-700 mb-2">Sign as: {pendingSigners[0].signer_name} ({pendingSigners[0].signer_role})</div>
+
+            <div className="flex gap-2 mb-3">
+              <button onClick={() => setSignMethod("draw")} className={"text-xs px-3 py-1.5 rounded-lg font-medium " + (signMethod === "draw" ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600")}>Draw Signature</button>
+              <button onClick={() => setSignMethod("type")} className={"text-xs px-3 py-1.5 rounded-lg font-medium " + (signMethod === "type" ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600")}>Type Name</button>
+            </div>
+
+            {signMethod === "draw" ? (
+              <div>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg bg-white relative mb-2">
+                  <canvas ref={canvasRef} width={400} height={120}
+                    onMouseDown={startDraw} onMouseMove={draw} onMouseUp={endDraw} onMouseLeave={endDraw}
+                    onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={endDraw}
+                    className="w-full cursor-crosshair" style={{ touchAction: "none" }} />
+                  <div className="absolute bottom-1 left-3 text-xs text-gray-300">Sign above this line</div>
+                </div>
+                <button onClick={clearCanvas} className="text-xs text-gray-500 hover:text-gray-700">Clear</button>
+              </div>
+            ) : (
+              <div>
+                <input value={typedName} onChange={e => setTypedName(e.target.value)} placeholder="Type your full legal name"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-1" />
+                {typedName && <div className="text-2xl text-indigo-800 italic font-serif py-2 px-3 bg-gray-50 rounded-lg">{typedName}</div>}
+              </div>
+            )}
+
+            <div className="flex items-start gap-2 mt-3 mb-3 bg-amber-50 rounded-lg p-2">
+              <input type="checkbox" id="esign-agree" className="mt-1" />
+              <label htmlFor="esign-agree" className="text-xs text-gray-600">I agree that my electronic signature is the legal equivalent of my manual/handwritten signature and I consent to be legally bound by this lease agreement.</label>
+            </div>
+
+            <button onClick={() => submitSignature(pendingSigners[0])} disabled={signing}
+              className={"w-full py-2.5 rounded-lg text-white font-semibold text-sm " + (signing ? "bg-gray-400" : "bg-indigo-600 hover:bg-indigo-700")}>
+              {signing ? "Signing..." : "Apply Signature"}
+            </button>
+          </div>
+        )}
+
+        {allSigned && (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+            <div className="text-2xl mb-1">\u2705</div>
+            <div className="text-sm font-bold text-green-700">Lease Fully Signed</div>
+            <div className="text-xs text-green-600">All parties have signed this lease agreement.</div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+
+// ============ PDF RECEIPT GENERATOR ============
+function generatePaymentReceipt(payment, companyName = "PropManager") {
+  const receiptDate = new Date(payment.date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const receiptNum = "REC-" + String(payment.id || Date.now()).slice(-8).toUpperCase();
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Payment Receipt ${receiptNum}</title>
+<style>
+  @media print { @page { margin: 0.5in; } body { -webkit-print-color-adjust: exact; } }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1f2937; background: #fff; padding: 40px; }
+  .receipt { max-width: 600px; margin: 0 auto; border: 2px solid #e5e7eb; border-radius: 12px; overflow: hidden; }
+  .header { background: linear-gradient(135deg, #4338ca, #6366f1); color: white; padding: 30px; }
+  .header h1 { font-size: 24px; margin-bottom: 4px; }
+  .header .subtitle { font-size: 13px; opacity: 0.85; }
+  .badge { display: inline-block; background: rgba(255,255,255,0.2); border-radius: 20px; padding: 4px 14px; font-size: 12px; font-weight: 600; margin-top: 10px; }
+  .body { padding: 30px; }
+  .row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f3f4f6; }
+  .row:last-child { border-bottom: none; }
+  .label { color: #6b7280; font-size: 13px; }
+  .value { font-weight: 600; font-size: 14px; text-align: right; }
+  .amount-row { background: #f0fdf4; border-radius: 8px; padding: 16px; margin: 16px 0; display: flex; justify-content: space-between; align-items: center; }
+  .amount-row .label { font-size: 15px; font-weight: 600; color: #1f2937; }
+  .amount-row .value { font-size: 22px; color: #059669; font-weight: 700; }
+  .footer { background: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb; }
+  .footer p { font-size: 11px; color: #9ca3af; }
+  .stamp { color: #059669; font-size: 18px; font-weight: 700; border: 3px solid #059669; border-radius: 8px; padding: 6px 20px; display: inline-block; transform: rotate(-3deg); margin-bottom: 10px; }
+</style></head>
+<body>
+<div class="receipt">
+  <div class="header">
+    <h1>${companyName}</h1>
+    <div class="subtitle">Payment Receipt</div>
+    <div class="badge">Receipt #${receiptNum}</div>
+  </div>
+  <div class="body">
+    <div class="row"><span class="label">Date</span><span class="value">${receiptDate}</span></div>
+    <div class="row"><span class="label">Tenant</span><span class="value">${payment.tenant || "N/A"}</span></div>
+    <div class="row"><span class="label">Property</span><span class="value">${payment.property || "N/A"}</span></div>
+    <div class="row"><span class="label">Payment Type</span><span class="value" style="text-transform:capitalize">${payment.type || "rent"}</span></div>
+    <div class="row"><span class="label">Payment Method</span><span class="value" style="text-transform:uppercase">${payment.method || "N/A"}</span></div>
+    <div class="row"><span class="label">Status</span><span class="value" style="text-transform:capitalize">${payment.status || "paid"}</span></div>
+    <div class="amount-row"><span class="label">Amount Paid</span><span class="value">$${safeNum(payment.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}</span></div>
+  </div>
+  <div class="footer">
+    <div class="stamp">PAID</div>
+    <p>This is an electronic receipt generated by ${companyName}.</p>
+    <p>For questions, contact your property manager.</p>
+  </div>
+</div>
+</body></html>`;
+
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (win) {
+    win.onload = () => { setTimeout(() => win.print(), 500); };
+  }
+}
+
+// ============ OWNER PORTAL ============
+function OwnerPortal({ currentUser }) {
+  const [ownerData, setOwnerData] = useState(null);
+  const [properties, setProperties] = useState([]);
+  const [statements, setStatements] = useState([]);
+  const [distributions, setDistributions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("overview");
+  const [viewStatement, setViewStatement] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => { loadOwnerData(); }, [currentUser]);
+
+  async function loadOwnerData() {
+    if (!currentUser?.email) { setError("Not logged in"); setLoading(false); return; }
+    const { data: owner } = await supabase.from("owners").select("*").ilike("email", currentUser.email).maybeSingle();
+    if (!owner) { setError("No owner account found for " + currentUser.email); setLoading(false); return; }
+    setOwnerData(owner);
+
+    const [p, s, d] = await Promise.all([
+      supabase.from("properties").select("*").eq("owner_id", owner.id),
+      supabase.from("owner_statements").select("*").eq("owner_id", owner.id).order("created_at", { ascending: false }),
+      supabase.from("owner_distributions").select("*").eq("owner_id", owner.id).order("date", { ascending: false }),
+    ]);
+    setProperties(p.data || []);
+    setStatements(s.data || []);
+    setDistributions(d.data || []);
+    setLoading(false);
+  }
+
+  if (loading) return <div className="flex items-center justify-center h-64"><Spinner /></div>;
+
+  if (error) return (
+    <div className="max-w-lg mx-auto mt-16 text-center">
+      <div className="text-5xl mb-4">\ud83c\udfe0</div>
+      <h2 className="text-xl font-bold text-gray-800 mb-2">Owner Portal</h2>
+      <p className="text-gray-500 mb-4">{error}</p>
+      <p className="text-sm text-gray-400">Please contact your property manager to set up your owner portal access.</p>
+    </div>
+  );
+
+  const totalIncome = statements.reduce((s, st) => s + safeNum(st.total_income), 0);
+  const totalExpenses = statements.reduce((s, st) => s + safeNum(st.total_expenses), 0);
+  const totalDistributed = distributions.reduce((s, d) => s + safeNum(d.amount), 0);
+  const pendingStatements = statements.filter(s => s.status === "draft" || s.status === "sent");
+
+  return (
+    <div className="max-w-4xl mx-auto">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-6 mb-6 text-white">
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-2xl font-bold mb-1">Welcome, {ownerData.name}</h1>
+            <p className="text-indigo-200 text-sm">{properties.length} {properties.length === 1 ? "property" : "properties"} \u00b7 {ownerData.company || "Individual Owner"}</p>
+          </div>
+          <div className="text-right">
+            <div className="text-sm text-indigo-200">Management Fee</div>
+            <div className="text-lg font-bold">{ownerData.management_fee_pct}%</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-3 mb-6 md:grid-cols-4">
+        <div className="bg-white rounded-xl border border-gray-100 p-4 text-center">
+          <div className="text-xs text-gray-500 mb-1">Total Income</div>
+          <div className="text-lg font-bold text-green-600">${totalIncome.toLocaleString()}</div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-4 text-center">
+          <div className="text-xs text-gray-500 mb-1">Total Expenses</div>
+          <div className="text-lg font-bold text-red-500">${totalExpenses.toLocaleString()}</div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-4 text-center">
+          <div className="text-xs text-gray-500 mb-1">Distributions</div>
+          <div className="text-lg font-bold text-indigo-600">${totalDistributed.toLocaleString()}</div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-4 text-center">
+          <div className="text-xs text-gray-500 mb-1">Pending</div>
+          <div className="text-lg font-bold text-amber-600">{pendingStatements.length}</div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 mb-5 border-b border-gray-100">
+        {[["overview","\ud83c\udfe0 Overview"],["statements","\ud83d\udcca Statements"],["distributions","\ud83d\udcb0 Distributions"],["properties","\ud83c\udfe2 Properties"]].map(([id, label]) => (
+          <button key={id} onClick={() => { setActiveTab(id); setViewStatement(null); }} className={"px-4 py-2.5 text-sm font-medium border-b-2 transition-colors " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:text-gray-700")}>{label}</button>
+        ))}
+      </div>
+
+      {/* OVERVIEW TAB */}
+      {activeTab === "overview" && (
+        <div className="space-y-4">
+          <h3 className="font-semibold text-gray-700">Your Properties</h3>
+          <div className="grid gap-3 md:grid-cols-2">
+            {properties.map(p => (
+              <div key={p.id} className="bg-white rounded-xl border border-gray-100 p-4">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="font-semibold text-gray-800 text-sm">{p.address}</div>
+                    <div className="text-xs text-gray-400">{p.type || "Residential"}</div>
+                  </div>
+                  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (p.status === "occupied" ? "bg-green-100 text-green-700" : p.status === "vacant" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500")}>{p.status || "active"}</span>
+                </div>
+                {p.rent && <div className="text-sm font-bold text-green-600 mt-2">${safeNum(p.rent).toLocaleString()}/mo</div>}
+              </div>
+            ))}
+            {properties.length === 0 && <div className="text-center py-8 text-gray-400">No properties assigned yet</div>}
+          </div>
+
+          {/* Recent statements */}
+          {statements.length > 0 && (
+            <div>
+              <h3 className="font-semibold text-gray-700 mt-4 mb-2">Recent Statements</h3>
+              {statements.slice(0, 3).map(s => (
+                <div key={s.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex justify-between items-center mb-2 cursor-pointer hover:border-indigo-200" onClick={() => { setActiveTab("statements"); setViewStatement(s); }}>
+                  <div>
+                    <div className="text-sm font-medium text-gray-800">{s.period}</div>
+                    <div className="text-xs text-gray-400">Net: ${safeNum(s.net_to_owner).toLocaleString()}</div>
+                  </div>
+                  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (s.status === "paid" ? "bg-green-100 text-green-700" : s.status === "sent" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{s.status}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* STATEMENTS TAB */}
+      {activeTab === "statements" && !viewStatement && (
+        <div className="space-y-2">
+          {statements.map(s => (
+            <div key={s.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-indigo-200" onClick={() => setViewStatement(s)}>
+              <div>
+                <div className="text-sm font-semibold text-gray-800">{s.period}</div>
+                <div className="text-xs text-gray-400">{new Date(s.created_at).toLocaleDateString()}</div>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                  <div className="text-xs text-gray-400">Income: <span className="text-green-600 font-bold">${safeNum(s.total_income).toLocaleString()}</span></div>
+                  <div className="text-xs text-gray-400">Net: <span className="text-indigo-600 font-bold">${safeNum(s.net_to_owner).toLocaleString()}</span></div>
+                </div>
+                <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (s.status === "paid" ? "bg-green-100 text-green-700" : s.status === "sent" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{s.status}</span>
+              </div>
+            </div>
+          ))}
+          {statements.length === 0 && <div className="text-center py-8 text-gray-400">No statements yet</div>}
+        </div>
+      )}
+
+      {/* STATEMENT DETAIL */}
+      {activeTab === "statements" && viewStatement && (
+        <div>
+          <button onClick={() => setViewStatement(null)} className="text-sm text-indigo-600 mb-3 hover:underline">\u2190 Back to Statements</button>
+          <div className="bg-white rounded-xl border border-gray-100 p-5">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h3 className="font-bold text-gray-800">Owner Statement \u2014 {viewStatement.period}</h3>
+                <div className="text-xs text-gray-400">{viewStatement.owner_name} \u00b7 Generated {new Date(viewStatement.created_at).toLocaleDateString()}</div>
+              </div>
+              <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewStatement.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{viewStatement.status}</span>
+            </div>
+            <div className="grid grid-cols-4 gap-3 mb-4">
+              <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Income</div><div className="text-lg font-bold text-green-600">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
+              <div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Expenses</div><div className="text-lg font-bold text-red-500">${safeNum(viewStatement.total_expenses).toLocaleString()}</div></div>
+              <div className="bg-purple-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Mgmt Fee</div><div className="text-lg font-bold text-purple-600">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
+              <div className="bg-indigo-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Net to You</div><div className="text-lg font-bold text-indigo-700">${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
+            </div>
+            {/* Line items */}
+            {(() => { let items = []; try { items = JSON.parse(viewStatement.line_items || "[]"); } catch {} return items.map((cat, ci) => (
+              <div key={ci} className="mb-3">
+                <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">{cat.category}</div>
+                {(cat.items || []).map((item, ii) => (
+                  <div key={ii} className="flex justify-between text-xs py-1 border-b border-gray-50">
+                    <span className="text-gray-600">{item.date} \u2014 {item.description}</span>
+                    <span className={"font-bold " + (item.amount >= 0 ? "text-green-600" : "text-red-500")}>${Math.abs(item.amount).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            )); })()}
+          </div>
+        </div>
+      )}
+
+      {/* DISTRIBUTIONS TAB */}
+      {activeTab === "distributions" && (
+        <div className="space-y-2">
+          {distributions.map(d => (
+            <div key={d.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex justify-between items-center">
+              <div>
+                <div className="text-sm font-medium text-gray-800">${safeNum(d.amount).toLocaleString()}</div>
+                <div className="text-xs text-gray-400">{d.reference} \u00b7 {new Date(d.date).toLocaleDateString()}</div>
+              </div>
+              <div className="text-right">
+                <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700">{d.method?.toUpperCase()}</span>
+              </div>
+            </div>
+          ))}
+          {distributions.length === 0 && <div className="text-center py-8 text-gray-400">No distributions yet</div>}
+        </div>
+      )}
+
+      {/* PROPERTIES TAB */}
+      {activeTab === "properties" && (
+        <div className="space-y-3">
+          {properties.map(p => (
+            <div key={p.id} className="bg-white rounded-xl border border-gray-100 p-4">
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <div className="font-semibold text-gray-800">{p.address}</div>
+                  <div className="text-xs text-gray-400">{p.type || "Residential"} \u00b7 {p.bedrooms || "?"} bd / {p.bathrooms || "?"} ba \u00b7 {p.sqft || "?"} sqft</div>
+                </div>
+                <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (p.status === "occupied" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{p.status}</span>
+              </div>
+              {p.rent && <div className="text-sm">Rent: <span className="font-bold text-green-600">${safeNum(p.rent).toLocaleString()}/mo</span></div>}
+            </div>
+          ))}
+          {properties.length === 0 && <div className="text-center py-8 text-gray-400">No properties assigned</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
   admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","accounting","documents","inspections","autopay","latefees","audittrail","leases","vendors","owners","notifications"] },
@@ -4720,6 +5224,7 @@ const ROLES = {
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
   tenant: { label: "Tenant", color: "bg-gray-500", pages: ["tenant_portal"] },
+  owner: { label: "Owner", color: "bg-purple-600", pages: ["owner_portal"] },
 };
 
 const ALL_NAV = [
@@ -5379,11 +5884,14 @@ function TenantPortal({ currentUser }) {
               <div key={p.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex justify-between items-center">
                 <div>
                   <div className="text-sm font-medium text-gray-800">{p.type === "rent" ? "Rent Payment" : p.type}</div>
-                  <div className="text-xs text-gray-400">{p.date} \u00b7 {p.method}</div>
+                  <div className="text-xs text-gray-400">{p.date} · {p.method}</div>
                 </div>
-                <div className="text-right">
-                  <div className="text-sm font-bold text-green-600">${safeNum(p.amount).toLocaleString()}</div>
-                  <span className={"text-xs px-2 py-0.5 rounded-full " + (p.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{p.status}</span>
+                <div className="flex items-center gap-3">
+                  {p.status === "paid" && <button onClick={() => generatePaymentReceipt(p)} className="text-xs text-indigo-600 border border-indigo-200 px-2 py-0.5 rounded hover:bg-indigo-50">Receipt</button>}
+                  <div className="text-right">
+                    <div className="text-sm font-bold text-green-600">${safeNum(p.amount).toLocaleString()}</div>
+                    <span className={"text-xs px-2 py-0.5 rounded-full " + (p.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{p.status}</span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -5788,6 +6296,7 @@ const pageComponents = {
   notifications: EmailNotifications,
   roles: RoleManagement,
   tenant_portal: TenantPortal,
+  owner_portal: OwnerPortal,
 };
 
 // ============ AUDIT TRAIL (Admin Panel) ============
@@ -6010,7 +6519,7 @@ export default function App() {
     : navItems;
 
   // If tenant, show tenant portal
-  const effectivePage = userRole === "tenant" ? "tenant_portal" : page;
+  const effectivePage = userRole === "tenant" ? "tenant_portal" : userRole === "owner" ? "owner_portal" : page;
   const Page = pageComponents[effectivePage] || Dashboard;
 
   // Redirect if page not allowed
