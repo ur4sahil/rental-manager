@@ -7313,11 +7313,10 @@ export default function App() {
         <div className="px-5 py-4 border-b border-gray-100">
           <div className="text-lg font-bold text-indigo-700">🏡 PropManager</div>
           {activeCompany && (
-            <button onClick={switchCompany} className="flex items-center gap-1 mt-1 text-xs text-gray-500 hover:text-indigo-600 transition-colors group">
-              <span className="w-5 h-5 rounded bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold">{activeCompany.name[0]}</span>
-              <span className="truncate max-w-28">{activeCompany.name}</span>
-              <span className="text-gray-300 group-hover:text-indigo-400 ml-auto">⇄</span>
-            </button>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className="w-4 h-4 rounded bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold">{activeCompany.name[0]}</span>
+              <span className="text-xs text-gray-500 truncate max-w-32">{activeCompany.name}</span>
+            </div>
           )}
         </div>
         <nav className="flex-1 py-3 overflow-y-auto">
@@ -7349,7 +7348,9 @@ export default function App() {
         <header className="bg-white border-b border-gray-100 px-4 py-3 flex items-center gap-3">
           <button className="md:hidden text-gray-500 text-xl" onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button>
           <div className="flex-1 text-sm text-gray-400 capitalize">{page.replace("_", " ")}</div>
-          {activeCompany && <span className="hidden md:inline-block text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{activeCompany.name}</span>}
+          <button onClick={switchCompany} className="hidden md:flex items-center gap-1.5 text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors font-medium border border-indigo-100">
+            <span>⇄</span> Switch Company
+          </button>
           <span className={`hidden md:inline-block text-white text-xs px-2 py-0.5 rounded-full font-semibold ${ROLES[userRole]?.color || "bg-indigo-600"}`}>
             {ROLES[userRole]?.label}
           </span>
