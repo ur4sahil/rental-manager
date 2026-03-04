@@ -4,26 +4,43 @@ import { supabase } from "./supabase";
 // Safe number conversion - prevents NaN from breaking calculations
 const safeNum = (val) => { const n = Number(val); return isNaN(n) ? 0 : n; };
 
+// ============ COMPANY-SCOPED SUPABASE HELPERS ============
+// Use these instead of raw supabase.from() to automatically filter by company_id
+function companyQuery(table, companyId) {
+  return supabase.from(table).select("*").eq("company_id", companyId || "sandbox-llc");
+}
+function companyInsert(table, rows, companyId) {
+  const cid = companyId || "sandbox-llc";
+  const withCompany = (Array.isArray(rows) ? rows : [rows]).map(r => ({ ...r, company_id: cid }));
+  return supabase.from(table).insert(withCompany);
+}
+function companyUpsert(table, rows, companyId, onConflict) {
+  const cid = companyId || "sandbox-llc";
+  const withCompany = (Array.isArray(rows) ? rows : [rows]).map(r => ({ ...r, company_id: cid }));
+  return supabase.from(table).upsert(withCompany, onConflict ? { onConflict } : undefined);
+}
+
 // ============ AUDIT TRAIL HELPER ============
 // Call this from any module to log an action
-async function logAudit(action, module, details = "", recordId = "", userEmail = "", userRoleVal = "admin") {
+async function logAudit(action, module, details = "", recordId = "", userEmail = "", userRoleVal = "admin", companyId = "sandbox-llc") {
   try {
     if (!userEmail) {
       const { data: { user } } = await supabase.auth.getUser();
       userEmail = user?.email || "unknown";
     }
-    await supabase.from("audit_trail").insert([{ action, module, details, record_id: String(recordId), user_email: userEmail, user_role: userRoleVal }]);
+    await supabase.from("audit_trail").insert([{ company_id: companyId || "sandbox-llc", action, module, details, record_id: String(recordId), user_email: userEmail, user_role: userRoleVal }]);
   } catch (e) { console.warn("Audit log failed:", e); }
 }
 
 // ============ UNIFIED AUTO-POSTING TO ACCOUNTING ============
-async function autoPostJournalEntry({ date, description, reference, lines, status = "posted" }) {
+async function autoPostJournalEntry({ date, description, reference, property, lines, status = "posted", companyId = "sandbox-llc" }) {
   try {
-    const { data: existingJEs } = await supabase.from("acct_journal_entries").select("number").order("number", { ascending: false }).limit(1);
+    const cid = companyId || "sandbox-llc";
+    const { data: existingJEs } = await supabase.from("acct_journal_entries").select("number").eq("company_id", cid).order("number", { ascending: false }).limit(1);
     const lastNum = existingJEs?.[0]?.number ? parseInt(existingJEs[0].number.replace("JE-",""), 10) : 0;
     const number = `JE-${String(lastNum + 1).padStart(4, "0")}`;
     const jeId = `je-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-    await supabase.from("acct_journal_entries").insert([{ id: jeId, number, date, description, reference: reference || "", status }]);
+    await supabase.from("acct_journal_entries").insert([{ company_id: cid, id: jeId, number, date, description, reference: reference || "", property: property || "", status }]);
     if (lines?.length > 0) {
       await supabase.from("acct_journal_lines").insert(lines.map(l => ({
         journal_entry_id: jeId, account_id: l.account_id, account_name: l.account_name,
@@ -34,10 +51,99 @@ async function autoPostJournalEntry({ date, description, reference, lines, statu
   } catch (e) { console.warn("Auto-post JE failed:", e); return null; }
 }
 
-async function getPropertyClassId(propertyAddress) {
+async function getPropertyClassId(propertyAddress, companyId) {
   if (!propertyAddress) return null;
-  const { data } = await supabase.from("acct_classes").select("id").eq("name", propertyAddress).limit(1);
+  let q = supabase.from("acct_classes").select("id").eq("name", propertyAddress).limit(1);
+  if (companyId) q = q.eq("company_id", companyId);
+  const { data } = await q;
   return data?.[0]?.id || null;
+}
+
+// ============ AUTOMATIC RENT CHARGE ENGINE ============
+// Runs on app load. For every active lease, posts monthly rent charges
+// (DR Accounts Receivable / CR Rental Income) for each month in the lease term
+// up to the current month. Idempotent — won't double-post.
+async function autoPostRentCharges(companyId) {
+  try {
+    const cid = companyId || "sandbox-llc";
+    const today = new Date();
+    const currentMonth = today.toISOString().slice(0, 7); // "2026-03"
+
+    // 1. Fetch all active leases for this company
+    const { data: leases } = await supabase.from("leases").select("*").eq("company_id", cid).eq("status", "active");
+    if (!leases || leases.length === 0) return;
+
+    // 2. Fetch existing rent charge JEs to avoid duplicates
+    const { data: existingJEs } = await supabase.from("acct_journal_entries").select("reference").eq("company_id", cid)
+      .eq("company_id", cid).like("reference", "RENT-AUTO-%");
+    const postedRefs = new Set((existingJEs || []).map(j => j.reference));
+
+    let posted = 0;
+
+    for (const lease of leases) {
+      if (!lease.rent_amount || lease.rent_amount <= 0) continue;
+      if (!lease.start_date || !lease.end_date) continue;
+
+      const leaseStart = new Date(lease.start_date);
+      const leaseEnd = new Date(lease.end_date);
+      const rent = safeNum(lease.rent_amount);
+      const classId = await getPropertyClassId(lease.property);
+
+      // Calculate rent with escalation for each year
+      function getRentForDate(date) {
+        if (!lease.rent_escalation_pct || lease.rent_escalation_pct <= 0) return rent;
+        const yearsElapsed = Math.floor((date - leaseStart) / (365.25 * 86400000));
+        return Math.round(rent * Math.pow(1 + lease.rent_escalation_pct / 100, yearsElapsed) * 100) / 100;
+      }
+
+      // 3. Walk through each month in the lease term up to current month
+      let cursor = new Date(leaseStart.getFullYear(), leaseStart.getMonth(), 1);
+      const endCap = new Date(Math.min(leaseEnd.getTime(), today.getTime()));
+
+      while (cursor <= endCap) {
+        const monthStr = cursor.toISOString().slice(0, 7); // "2025-06"
+        const chargeDate = monthStr + "-" + String(lease.payment_due_day || 1).padStart(2, "0");
+        const ref = "RENT-AUTO-" + lease.id.toString().slice(-8) + "-" + monthStr;
+
+        // Skip if already posted
+        if (!postedRefs.has(ref)) {
+          const monthRent = getRentForDate(cursor);
+          await autoPostJournalEntry({
+            companyId,
+            date: chargeDate,
+            description: "Rent charge — " + lease.tenant_name + " — " + lease.property + " — " + monthStr,
+            reference: ref,
+            property: lease.property,
+            lines: [
+              { account_id: "1100", account_name: "Accounts Receivable", debit: monthRent, credit: 0, class_id: classId, memo: lease.tenant_name + " rent " + monthStr },
+              { account_id: "4000", account_name: "Rental Income", debit: 0, credit: monthRent, class_id: classId, memo: lease.property + " " + monthStr },
+            ]
+          });
+
+          // Also update tenant balance (add the charge)
+          if (lease.tenant_id) {
+            const { data: tenant } = await supabase.from("tenants").select("balance").eq("id", lease.tenant_id).maybeSingle();
+            if (tenant) {
+              await supabase.from("tenants").update({ balance: safeNum(tenant.balance) + monthRent }).eq("id", lease.tenant_id);
+            }
+          }
+
+          posted++;
+          postedRefs.add(ref); // prevent re-posting within same run
+        }
+
+        // Advance to next month
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+    }
+
+    if (posted > 0) {
+      console.log("🏠 Auto-posted " + posted + " rent charge(s) to accounting");
+      logAudit("create", "accounting", "Auto-posted " + posted + " monthly rent charges from active leases", "", "system", "system");
+    }
+  } catch (e) {
+    console.warn("Auto rent charge posting failed:", e);
+  }
 }
 
 // ============ STYLES ============
@@ -103,11 +209,13 @@ function Modal({ title, onClose, children }) {
 }
 
 // ============ SHARED PROPERTY DROPDOWN ============
-function PropertyDropdown({ value, onChange, className = "", required = false, label = "Property" }) {
+function PropertyDropdown({ value, onChange, className = "", required = false, label = "Property", companyId }) {
   const [properties, setProperties] = useState([]);
   useEffect(() => {
-    supabase.from("properties").select("id, address, type, status").order("address").then(({ data }) => setProperties(data || []));
-  }, []);
+    let q = supabase.from("properties").select("id, address, type, status").order("address");
+    if (companyId) q = q.eq("company_id", companyId);
+    q.then(({ data }) => setProperties(data || []));
+  }, [companyId]);
   return (
     <div>
       {label && <label className="text-xs font-medium text-gray-600 block mb-1">{label} {required && "*"}</label>}
@@ -119,11 +227,13 @@ function PropertyDropdown({ value, onChange, className = "", required = false, l
   );
 }
 
-function PropertySelect({ value, onChange, className = "" }) {
+function PropertySelect({ value, onChange, className = "", companyId }) {
   const [properties, setProperties] = useState([]);
   useEffect(() => {
-    supabase.from("properties").select("id, address, type").order("address").then(({ data }) => setProperties(data || []));
-  }, []);
+    let q = supabase.from("properties").select("id, address, type").order("address");
+    if (companyId) q = q.eq("company_id", companyId);
+    q.then(({ data }) => setProperties(data || []));
+  }, [companyId]);
   return (
     <select value={value || ""} onChange={e => onChange(e.target.value)} className={`border border-gray-200 rounded-lg px-3 py-2 text-sm ${className}`}>
       <option value="">Select property...</option>
@@ -236,7 +346,7 @@ function LoginPage({ onLogin, onBack }) {
 }
 
 // ============ DASHBOARD ============
-function Dashboard({ notifications, setPage }) {
+function Dashboard({ notifications, setPage, companyId }) {
   const [properties, setProperties] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [workOrders, setWorkOrders] = useState([]);
@@ -249,12 +359,15 @@ function Dashboard({ notifications, setPage }) {
 
   useEffect(() => {
     async function fetchData() {
+      // Auto-post rent charges for all active leases before loading dashboard
+      await autoPostRentCharges(companyId);
+
       const [p, t, w, pay, u] = await Promise.all([
-        supabase.from("properties").select("*"),
-        supabase.from("tenants").select("*"),
-        supabase.from("work_orders").select("*"),
-        supabase.from("payments").select("*"),
-        supabase.from("utilities").select("*"),
+        companyQuery("properties", companyId),
+        companyQuery("tenants", companyId),
+        companyQuery("work_orders", companyId),
+        companyQuery("payments", companyId),
+        companyQuery("utilities", companyId),
       ]);
       setProperties(p.data || []);
       setTenants(t.data || []);
@@ -263,8 +376,10 @@ function Dashboard({ notifications, setPage }) {
       setUtilities(u.data || []);
       // Pull financials from accounting (source of truth)
       try {
-        const { data: jeLines } = await supabase.from("acct_journal_lines").select("account_id, debit, credit");
-        const { data: accounts } = await supabase.from("acct_accounts").select("id, type");
+        const { data: jeHeaders } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId || "sandbox-llc");
+        const jeIds = (jeHeaders || []).map(j => j.id);
+        const { data: jeLines } = jeIds.length > 0 ? await supabase.from("acct_journal_lines").select("account_id, debit, credit").in("journal_entry_id", jeIds) : { data: [] };
+        const { data: accounts } = await supabase.from("acct_accounts").select("id, type").eq("company_id", companyId || "sandbox-llc");
         if (jeLines && accounts) {
           const acctMap = {};
           accounts.forEach(a => { acctMap[a.id] = a.type; });
@@ -281,7 +396,7 @@ function Dashboard({ notifications, setPage }) {
       setLoading(false);
     }
     fetchData();
-  }, []);
+  }, [companyId]);
 
   if (loading) return <Spinner />;
 
@@ -385,7 +500,7 @@ function Dashboard({ notifications, setPage }) {
 }
 
 // ============ PROPERTIES (Admin-Controlled with Approval Workflow) ============
-function Properties({ addNotification, userRole, userProfile }) {
+function Properties({ addNotification, userRole, userProfile, companyId }) {
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -405,13 +520,13 @@ function Properties({ addNotification, userRole, userProfile }) {
   useEffect(() => { fetchProperties(); fetchChangeRequests(); }, []);
 
   async function fetchProperties() {
-    const { data } = await supabase.from("properties").select("*");
+    const { data } = await supabase.from("properties").select("*").eq("company_id", companyId || "sandbox-llc");
     setProperties(data || []);
     setLoading(false);
   }
 
   async function fetchChangeRequests() {
-    const { data } = await supabase.from("property_change_requests").select("*").order("requested_at", { ascending: false });
+    const { data } = await supabase.from("property_change_requests").select("*").eq("company_id", companyId || "sandbox-llc").order("requested_at", { ascending: false });
     setChangeRequests(data || []);
   }
 
@@ -423,19 +538,19 @@ function Properties({ addNotification, userRole, userProfile }) {
       // Admin: direct save
       const { error } = editingProperty
         ? await supabase.from("properties").update(form).eq("id", editingProperty.id)
-        : await supabase.from("properties").insert([form]);
+        : await supabase.from("properties").insert([{ ...form, company_id: companyId || "sandbox-llc" }]);
       if (error) { alert("Error saving property: " + error.message); return; }
       // Auto-create accounting class for new properties
       if (!editingProperty) {
         const classId = `PROP-${String(Math.random()).slice(2,8)}`;
-        await supabase.from("acct_classes").upsert([{ id: classId, name: form.address, description: `${form.type} · $${form.rent}/mo`, color: ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4"][Math.floor(Math.random()*6)], is_active: true }], { onConflict: "id" });
+        await supabase.from("acct_classes").upsert([{ id: classId, name: form.address, description: `${form.type} · $${form.rent}/mo`, color: ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4"][Math.floor(Math.random()*6)], is_active: true, company_id: companyId || "sandbox-llc" }], { onConflict: "id" });
       }
       addNotification("🏠", editingProperty ? `Property updated: ${form.address}` : `New property added: ${form.address}`);
       logAudit(editingProperty ? "update" : "create", "properties", `${editingProperty ? "Updated" : "Added"} property: ${form.address}`, editingProperty?.id || "", userProfile?.email, userRole);
     } else {
       // Non-admin: submit change request
       const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase.from("property_change_requests").insert([{
+      const { error } = await supabase.from("property_change_requests").insert([{ company_id: companyId || "sandbox-llc",
         request_type: editingProperty ? "edit" : "add",
         property_id: editingProperty?.id || null,
         requested_by: user?.email || "unknown",
@@ -470,10 +585,10 @@ function Properties({ addNotification, userRole, userProfile }) {
   // Admin: approve change request
   async function approveRequest(req) {
     if (req.request_type === "add") {
-      await supabase.from("properties").insert([{ address: req.address, type: req.type, status: req.property_status, rent: req.rent, tenant: req.tenant, lease_end: req.lease_end, notes: req.notes }]);
+      await supabase.from("properties").insert([{ company_id: companyId || "sandbox-llc", address: req.address, type: req.type, status: req.property_status, rent: req.rent, tenant: req.tenant, lease_end: req.lease_end, notes: req.notes }]);
       // Auto-create accounting class for this property
       const classId = `PROP-${String(Math.random()).slice(2,8)}`;
-      await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · $${req.rent}/mo`, color: ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4","#F97316","#EC4899"][Math.floor(Math.random()*8)], is_active: true }], { onConflict: "id" });
+      await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · $${req.rent}/mo`, color: ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4","#F97316","#EC4899"][Math.floor(Math.random()*8)], is_active: true, company_id: companyId || "sandbox-llc" }], { onConflict: "id" });
       addNotification("✅", `Property approved & added: ${req.address}`);
     } else if (req.request_type === "edit" && req.property_id) {
       await supabase.from("properties").update({ address: req.address, type: req.type, status: req.property_status, rent: req.rent, tenant: req.tenant, lease_end: req.lease_end, notes: req.notes }).eq("id", req.property_id);
@@ -501,9 +616,9 @@ function Properties({ addNotification, userRole, userProfile }) {
   async function loadTimeline(p) {
     setTimelineProperty(p);
     const [pay, wo, docs] = await Promise.all([
-      supabase.from("payments").select("*").eq("property", p.address),
-      supabase.from("work_orders").select("*").eq("property", p.address),
-      supabase.from("documents").select("*").eq("property", p.address),
+      supabase.from("payments").select("*").eq("company_id", companyId || "sandbox-llc").eq("property", p.address),
+      supabase.from("work_orders").select("*").eq("company_id", companyId || "sandbox-llc").eq("property", p.address),
+      supabase.from("documents").select("*").eq("company_id", companyId || "sandbox-llc").eq("property", p.address),
     ]);
     const all = [
       ...(pay.data || []).map(x => ({ ...x, _type: "payment", _date: x.date })),
@@ -648,7 +763,7 @@ function Properties({ addNotification, userRole, userProfile }) {
 }
 
 // ============ TENANTS ============
-function Tenants({ addNotification, userProfile, userRole }) {
+function Tenants({ addNotification, userProfile, userRole, companyId }) {
   const [tenants, setTenants] = useState([]);
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -668,11 +783,11 @@ function Tenants({ addNotification, userProfile, userRole }) {
 
   useEffect(() => {
     fetchTenants();
-    supabase.from("properties").select("*").then(({ data }) => setProperties(data || []));
+    supabase.from("properties").select("*").eq("company_id", companyId || "sandbox-llc").then(({ data }) => setProperties(data || []));
   }, []);
 
   async function fetchTenants() {
-    const { data } = await supabase.from("tenants").select("*");
+    const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId || "sandbox-llc");
     setTenants(data || []);
     setLoading(false);
   }
@@ -683,7 +798,7 @@ function Tenants({ addNotification, userProfile, userRole }) {
     if (!form.property) { alert("Please select a property."); return; }
     const { error } = editingTenant
       ? await supabase.from("tenants").update(form).eq("id", editingTenant.id)
-      : await supabase.from("tenants").insert([{ ...form, balance: 0 }]);
+      : await supabase.from("tenants").insert([{ company_id: companyId || "sandbox-llc", ...form, balance: 0 }]);
     if (error) { alert("Error saving tenant: " + error.message); return; }
     if (editingTenant) {
       addNotification("👤", `Tenant updated: ${form.name}`);
@@ -745,21 +860,21 @@ function Tenants({ addNotification, userProfile, userRole }) {
   async function openLedger(tenant) {
     setSelectedTenant(tenant);
     setActivePanel("ledger");
-    const { data } = await supabase.from("ledger_entries").select("*").eq("tenant", tenant.name).order("date", { ascending: false });
+    const { data } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId || "sandbox-llc").eq("tenant", tenant.name).order("date", { ascending: false });
     setLedger(data || []);
   }
 
   async function openMessages(tenant) {
     setSelectedTenant(tenant);
     setActivePanel("messages");
-    const { data } = await supabase.from("messages").select("*").eq("tenant", tenant.name).order("created_at", { ascending: true });
+    const { data } = await supabase.from("messages").select("*").eq("company_id", companyId || "sandbox-llc").eq("tenant", tenant.name).order("created_at", { ascending: true });
     setMessages(data || []);
     await supabase.from("messages").update({ read: true }).eq("tenant", tenant.name);
   }
 
   async function sendMessage() {
     if (!newMessage.trim()) return;
-    await supabase.from("messages").insert([{
+    await supabase.from("messages").insert([{ company_id: companyId || "sandbox-llc",
       tenant: selectedTenant.name,
       property: selectedTenant.property,
       sender: "admin",
@@ -767,7 +882,7 @@ function Tenants({ addNotification, userProfile, userRole }) {
       read: false,
     }]);
     setNewMessage("");
-    const { data } = await supabase.from("messages").select("*").eq("tenant", selectedTenant.name).order("created_at", { ascending: true });
+    const { data } = await supabase.from("messages").select("*").eq("company_id", companyId || "sandbox-llc").eq("tenant", selectedTenant.name).order("created_at", { ascending: true });
     setMessages(data || []);
   }
 
@@ -778,7 +893,7 @@ function Tenants({ addNotification, userProfile, userRole }) {
       : Math.abs(Number(newCharge.amount));
     const currentBalance = ledger.length > 0 ? ledger[0].balance : 0;
     const newBalance = currentBalance + amount;
-    await supabase.from("ledger_entries").insert([{
+    await supabase.from("ledger_entries").insert([{ company_id: companyId || "sandbox-llc",
       tenant: selectedTenant.name,
       property: selectedTenant.property,
       date: new Date().toISOString().slice(0, 10),
@@ -1141,7 +1256,7 @@ function Tenants({ addNotification, userProfile, userRole }) {
 }
 
 // ============ PAYMENTS ============
-function Payments({ addNotification, userProfile, userRole }) {
+function Payments({ addNotification, userProfile, userRole, companyId }) {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -1150,7 +1265,7 @@ function Payments({ addNotification, userProfile, userRole }) {
   useEffect(() => { fetchPayments(); }, []);
 
   async function fetchPayments() {
-    const { data } = await supabase.from("payments").select("*").order("date", { ascending: false });
+    const { data } = await supabase.from("payments").select("*").eq("company_id", companyId || "sandbox-llc").order("date", { ascending: false });
     setPayments(data || []);
     setLoading(false);
   }
@@ -1159,7 +1274,7 @@ function Payments({ addNotification, userProfile, userRole }) {
     if (!form.tenant.trim()) { alert("Tenant name is required."); return; }
     if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0) { alert("Please enter a valid amount."); return; }
     if (!form.date) { alert("Payment date is required."); return; }
-    const { error } = await supabase.from("payments").insert([{ ...form, amount: Number(form.amount) }]);
+    const { error } = await supabase.from("payments").insert([{ company_id: companyId || "sandbox-llc", ...form, amount: Number(form.amount) }]);
     if (error) { alert("Error recording payment: " + error.message); return; }
     // Only auto-post to accounting if payment is actually paid (not unpaid/partial)
     if (form.status !== "paid") {
@@ -1178,7 +1293,7 @@ function Payments({ addNotification, userProfile, userRole }) {
     const month = form.date.slice(0, 7);
     let hasAccrual = false;
     if (!isLateFee) {
-      const { data: accrualJEs } = await supabase.from("acct_journal_entries").select("id, reference").like("reference", `ACCR-${month}%`);
+      const { data: accrualJEs } = await supabase.from("acct_journal_entries").select("id, reference").eq("company_id", companyId || "sandbox-llc").like("reference", `ACCR-${month}%`);
       if (accrualJEs && accrualJEs.length > 0) {
         for (const je of accrualJEs) {
           const { data: jLines } = await supabase.from("acct_journal_lines").select("memo").eq("journal_entry_id", je.id);
@@ -1186,15 +1301,17 @@ function Payments({ addNotification, userProfile, userRole }) {
         }
       }
     } else {
-      const { data: lateJEs } = await supabase.from("acct_journal_entries").select("id").ilike("description", `%Late fee%${form.tenant}%`);
+      const { data: lateJEs } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId || "sandbox-llc").ilike("description", `%Late fee%${form.tenant}%`);
       if (lateJEs && lateJEs.length > 0) hasAccrual = true;
     }
     if (hasAccrual) {
       // Settle AR: DR Bank, CR Accounts Receivable (revenue already recognized at accrual)
       await autoPostJournalEntry({
+        companyId,
         date: form.date,
         description: `Payment received \u2014 ${form.tenant} \u2014 ${form.property} (settling AR)`,
         reference: `PAY-${Date.now()}`,
+        property: form.property,
         lines: [
           { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: `${form.method} from ${form.tenant}` },
           { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: `AR settlement \u2014 ${form.tenant}` },
@@ -1205,9 +1322,11 @@ function Payments({ addNotification, userProfile, userRole }) {
       const revenueAcct = isLateFee ? "4010" : "4000";
       const revenueAcctName = isLateFee ? "Late Fee Income" : "Rental Income";
       await autoPostJournalEntry({
+        companyId,
         date: form.date,
         description: `${form.type === "rent" ? "Rent" : form.type} payment \u2014 ${form.tenant} \u2014 ${form.property}`,
         reference: `PAY-${Date.now()}`,
+        property: form.property,
         lines: [
           { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: `${form.method} from ${form.tenant}` },
           { account_id: revenueAcct, account_name: revenueAcctName, debit: 0, credit: amt, class_id: classId, memo: `${form.tenant} \u2014 ${form.property}` },
@@ -1289,7 +1408,7 @@ function Payments({ addNotification, userProfile, userRole }) {
 }
 
 // ============ MAINTENANCE ============
-function Maintenance({ addNotification, userProfile, userRole }) {
+function Maintenance({ addNotification, userProfile, userRole, companyId }) {
   const [workOrders, setWorkOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
@@ -1304,7 +1423,7 @@ function Maintenance({ addNotification, userProfile, userRole }) {
   useEffect(() => { fetchWorkOrders(); }, []);
 
   async function fetchWorkOrders() {
-    const { data } = await supabase.from("work_orders").select("*").order("created_at", { ascending: false });
+    const { data } = await supabase.from("work_orders").select("*").eq("company_id", companyId || "sandbox-llc").order("created_at", { ascending: false });
     setWorkOrders(data || []);
     setLoading(false);
   }
@@ -1315,7 +1434,7 @@ function Maintenance({ addNotification, userProfile, userRole }) {
     const payload = editingWO ? form : { ...form, created: new Date().toISOString().slice(0, 10) };
     const { error } = editingWO
       ? await supabase.from("work_orders").update(payload).eq("id", editingWO.id)
-      : await supabase.from("work_orders").insert([payload]);
+      : await supabase.from("work_orders").insert([{ ...payload, company_id: companyId || "sandbox-llc" }]);
     if (error) { alert("Error saving work order: " + error.message); return; }
     if (editingWO) {
       addNotification("🔧", `Work order updated: ${form.issue}`);
@@ -1338,9 +1457,11 @@ function Maintenance({ addNotification, userProfile, userRole }) {
       const classId = await getPropertyClassId(wo.property);
       const amt = safeNum(wo.cost);
       await autoPostJournalEntry({
+        companyId,
         date: new Date().toISOString().slice(0, 10),
         description: `Maintenance: ${wo.issue} — ${wo.property}`,
         reference: `WO-${wo.id}`,
+        property: wo.property,
         lines: [
           { account_id: "5300", account_name: "Repairs & Maintenance", debit: amt, credit: 0, class_id: classId, memo: `${wo.issue} — ${wo.assigned || "unassigned"}` },
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid for: ${wo.issue}` },
@@ -1491,7 +1612,7 @@ function Maintenance({ addNotification, userProfile, userRole }) {
 }
 
 // ============ UTILITIES ============
-function Utilities({ addNotification, userProfile, userRole }) {
+function Utilities({ addNotification, userProfile, userRole, companyId }) {
   const [utilities, setUtilities] = useState([]);
   const [auditLog, setAuditLog] = useState([]);
   const [showAudit, setShowAudit] = useState(null);
@@ -1502,7 +1623,7 @@ function Utilities({ addNotification, userProfile, userRole }) {
   useEffect(() => { fetchUtilities(); }, []);
 
   async function fetchUtilities() {
-    const { data } = await supabase.from("utilities").select("*").order("due", { ascending: true });
+    const { data } = await supabase.from("utilities").select("*").eq("company_id", companyId || "sandbox-llc").order("due", { ascending: true });
     setUtilities(data || []);
     setLoading(false);
   }
@@ -1512,7 +1633,7 @@ function Utilities({ addNotification, userProfile, userRole }) {
     if (!form.provider.trim()) { alert("Provider name is required."); return; }
     if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0) { alert("Please enter a valid amount."); return; }
     if (!form.due) { alert("Due date is required."); return; }
-    const { error } = await supabase.from("utilities").insert([{ ...form, amount: Number(form.amount) }]);
+    const { error } = await supabase.from("utilities").insert([{ company_id: companyId || "sandbox-llc", ...form, amount: Number(form.amount) }]);
     if (error) { alert("Error adding utility: " + error.message); return; }
     addNotification("⚡", `Utility bill added: ${form.provider} at ${form.property}`);
     setShowForm(false);
@@ -1524,7 +1645,7 @@ function Utilities({ addNotification, userProfile, userRole }) {
     const now = new Date().toISOString();
     const { error } = await supabase.from("utilities").update({ status: "paid", paid_at: now }).eq("id", u.id);
     if (error) { alert("Error approving payment: " + error.message); return; }
-    await supabase.from("utility_audit").insert([{
+    await supabase.from("utility_audit").insert([{ company_id: companyId || "sandbox-llc",
       utility_id: u.id,
       property: u.property,
       provider: u.provider,
@@ -1538,9 +1659,11 @@ function Utilities({ addNotification, userProfile, userRole }) {
     const amt = safeNum(u.amount);
     if (amt > 0) {
       await autoPostJournalEntry({
+        companyId,
         date: new Date().toISOString().slice(0, 10),
         description: `Utility: ${u.provider} — ${u.property}`,
         reference: `UTIL-${u.id}`,
+        property: u.property,
         lines: [
           { account_id: "5400", account_name: "Utilities", debit: amt, credit: 0, class_id: classId, memo: `${u.provider} — ${u.property}` },
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid: ${u.provider}` },
@@ -1639,8 +1762,8 @@ function Utilities({ addNotification, userProfile, userRole }) {
 // ============ ACCOUNTING (QuickBooks-Style with Supabase) ============
 
 // --- Accounting Utility Functions ---
-const ACCOUNT_TYPES = ["Asset","Liability","Equity","Revenue","Cost of Goods Sold","Expense","Other Income","Other Expense"];
-const ACCOUNT_SUBTYPES = {
+const DEFAULT_ACCOUNT_TYPES = ["Asset","Liability","Equity","Revenue","Cost of Goods Sold","Expense","Other Income","Other Expense"];
+const DEFAULT_ACCOUNT_SUBTYPES = {
   Asset: ["Bank","Accounts Receivable","Other Current Asset","Fixed Asset","Other Asset"],
   Liability: ["Accounts Payable","Credit Card","Other Current Liability","Long Term Liability"],
   Equity: ["Owners Equity","Retained Earnings","Common Stock"],
@@ -1650,6 +1773,20 @@ const ACCOUNT_SUBTYPES = {
   "Other Income": ["Interest Earned","Late Fees","Other Miscellaneous Income"],
   "Other Expense": ["Depreciation","Other Miscellaneous Expense"],
 };
+
+// Build dynamic types/subtypes from existing accounts + defaults
+const getAccountTypes = (accounts) => {
+  const types = new Set(DEFAULT_ACCOUNT_TYPES);
+  (accounts || []).forEach(a => { if (a.type) types.add(a.type); });
+  return [...types];
+};
+const getAccountSubtypes = (accounts, type) => {
+  const subs = new Set(DEFAULT_ACCOUNT_SUBTYPES[type] || []);
+  (accounts || []).filter(a => a.type === type && a.subtype).forEach(a => subs.add(a.subtype));
+  return [...subs];
+};
+const ACCOUNT_TYPES = DEFAULT_ACCOUNT_TYPES; // kept for backward compat in non-dynamic contexts
+const ACCOUNT_SUBTYPES = DEFAULT_ACCOUNT_SUBTYPES;
 const DEBIT_NORMAL = ["Asset","Cost of Goods Sold","Expense","Other Expense"];
 const acctFmt = (amount, showSign = false) => {
   const abs = Math.abs(amount);
@@ -1700,7 +1837,55 @@ const getBalanceSheetData = (accounts, journalEntries, asOfDate) => {
   const equity = accounts.filter(a => a.type === "Equity" && a.is_active).map(a => ({ ...a, amount: calc(a.id, a.type) }));
   let netIncome = 0;
   filtered.forEach(je => { (je.lines || []).forEach(l => { const acct = accounts.find(a => a.id === l.account_id); if (!acct) return; const nb = getNormalBalance(acct.type); if (["Revenue","Other Income"].includes(acct.type)) netIncome += nb === "credit" ? safeNum(l.credit) - safeNum(l.debit) : safeNum(l.debit) - safeNum(l.credit); if (["Expense","Cost of Goods Sold","Other Expense"].includes(acct.type)) netIncome -= nb === "debit" ? safeNum(l.debit) - safeNum(l.credit) : safeNum(l.credit) - safeNum(l.debit); }); });
-  return { assets, liabilities, equity, totalAssets: assets.reduce((s,a) => s + a.amount, 0), totalLiabilities: liabilities.reduce((s,a) => s + a.amount, 0), totalEquity: equity.reduce((s,a) => s + a.amount, 0) + netIncome, netIncome };
+
+  // Build AR sub-ledger: group all 1100 (AR) lines by tenant name from memo
+  const arSubLedger = {};
+  filtered.forEach(je => {
+    (je.lines || []).filter(l => l.account_id === "1100").forEach(l => {
+      // Extract tenant name from memo (format: "TenantName rent 2025-06" or "TenantName — PropertyAddr")
+      const memo = l.memo || je.description || "";
+      let tenantKey = "Unassigned";
+      // Try to extract tenant from "Rent charge — TenantName — Property — Month"
+      const descMatch = je.description ? je.description.match(/(?:Rent charge|Payment received|AR Settlement|Security deposit).*?—\s*([^—]+?)(?:\s*—|$)/) : null;
+      // Try memo format "TenantName rent YYYY-MM"
+      const memoMatch = memo.match(/^(.+?)\s+(?:rent|payment|deposit)/i);
+      if (descMatch) tenantKey = descMatch[1].trim();
+      else if (memoMatch) tenantKey = memoMatch[1].trim();
+      else if (memo && memo !== "") tenantKey = memo.split(" ")[0] + " " + (memo.split(" ")[1] || "");
+
+      if (!arSubLedger[tenantKey]) arSubLedger[tenantKey] = { debits: 0, credits: 0 };
+      arSubLedger[tenantKey].debits += safeNum(l.debit);
+      arSubLedger[tenantKey].credits += safeNum(l.credit);
+    });
+  });
+  const arByTenant = Object.entries(arSubLedger).map(([tenant, bal]) => ({
+    tenant, balance: bal.debits - bal.credits
+  })).filter(t => Math.abs(t.balance) > 0.01).sort((a, b) => b.balance - a.balance);
+
+  // AR Aging: bucket by how old the charges are
+  const today = new Date();
+  const arAging = { current: 0, days30: 0, days60: 0, days90: 0, over90: 0 };
+  const arAgingByTenant = {};
+  filtered.forEach(je => {
+    (je.lines || []).filter(l => l.account_id === "1100" && safeNum(l.debit) > 0).forEach(l => {
+      const jeDate = new Date(je.date);
+      const daysDiff = Math.floor((today - jeDate) / 86400000);
+      const amount = safeNum(l.debit);
+      const bucket = daysDiff <= 30 ? "current" : daysDiff <= 60 ? "days30" : daysDiff <= 90 ? "days60" : daysDiff <= 120 ? "days90" : "over90";
+      arAging[bucket] += amount;
+
+      // Per-tenant aging
+      const memo = l.memo || je.description || "";
+      const descMatch = je.description ? je.description.match(/(?:Rent charge|Payment).*?—\s*([^—]+?)(?:\s*—|$)/) : null;
+      const memoMatch = memo.match(/^(.+?)\s+(?:rent|payment)/i);
+      let tenantKey = descMatch ? descMatch[1].trim() : memoMatch ? memoMatch[1].trim() : "Unassigned";
+      if (!arAgingByTenant[tenantKey]) arAgingByTenant[tenantKey] = { current: 0, days30: 0, days60: 0, days90: 0, over90: 0, total: 0 };
+      arAgingByTenant[tenantKey][bucket] += amount;
+      arAgingByTenant[tenantKey].total += amount;
+    });
+  });
+
+  return { assets, liabilities, equity, totalAssets: assets.reduce((s,a) => s + a.amount, 0), totalLiabilities: liabilities.reduce((s,a) => s + a.amount, 0), totalEquity: equity.reduce((s,a) => s + a.amount, 0) + netIncome, netIncome, arByTenant, arAging, arAgingByTenant };
 };
 
 const getTrialBalance = (accounts, journalEntries, endDate) => {
@@ -1803,7 +1988,10 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   const [modal, setModal] = useState(null);
   const [filter, setFilter] = useState("All");
   const [showInactive, setShowInactive] = useState(false);
-  const [form, setForm] = useState({ name:"", type:"Asset", subtype:"Bank", description:"" });
+  const [form, setForm] = useState({ name:"", type:"Asset", subtype:"Bank", description:"", customType:"", customSubtype:"" });
+
+  const dynamicTypes = getAccountTypes(accounts);
+  const dynamicSubtypes = getAccountSubtypes(accounts, form.type === "__custom__" ? form.customType : form.type);
 
   const withBalances = calcAllBalances(accounts, journalEntries);
   const filtered = withBalances.filter(a => {
@@ -1815,21 +2003,25 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   const grouped = {};
   filtered.forEach(a => { if (!grouped[a.type]) grouped[a.type] = []; grouped[a.type].push(a); });
 
-  const openAdd = () => { setForm({ name:"", type:"Asset", subtype:"Bank", description:"" }); setModal("add"); };
-  const openEdit = (a) => { setForm({ name: a.name, type: a.type, subtype: a.subtype, description: a.description || "" }); setModal(a); };
+  const openAdd = () => { setForm({ name:"", type:"Asset", subtype:"Bank", description:"", customType:"", customSubtype:"" }); setModal("add"); };
+  const openEdit = (a) => { setForm({ name: a.name, type: a.type, subtype: a.subtype, description: a.description || "", customType:"", customSubtype:"" }); setModal(a); };
 
   const saveAccount = async () => {
     if (!form.name.trim()) return;
+    const finalType = form.type === "__custom__" ? form.customType.trim() : form.type;
+    const finalSubtype = form.subtype === "__custom__" ? form.customSubtype.trim() : form.subtype;
+    if (!finalType) { alert("Please enter an account type."); return; }
     if (modal === "add") {
-      const newId = nextAccountId(accounts, form.type);
-      await onAdd({ id: newId, ...form, balance: 0, is_active: true });
+      const newId = nextAccountId(accounts, finalType);
+      await onAdd({ id: newId, name: form.name, type: finalType, subtype: finalSubtype || "", description: form.description, balance: 0, is_active: true });
     } else {
-      await onUpdate({ ...modal, ...form });
+      await onUpdate({ ...modal, name: form.name, type: finalType, subtype: finalSubtype || "", description: form.description });
     }
     setModal(null);
   };
 
-  const typeOrder = ["Asset","Liability","Equity","Revenue","Cost of Goods Sold","Expense","Other Income","Other Expense"];
+  const allTypes = [...new Set([...dynamicTypes, ...Object.keys(grouped)])];
+  const typeOrder = [...DEFAULT_ACCOUNT_TYPES, ...allTypes.filter(t => !DEFAULT_ACCOUNT_TYPES.includes(t))];
 
   return (
     <div className="space-y-4">
@@ -1844,11 +2036,11 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
         </div>
       </div>
       <div className="flex flex-wrap gap-2 mb-4">
-        {["All", ...ACCOUNT_TYPES].map(t => (
+        {["All", ...typeOrder.filter((t, i, a) => a.indexOf(t) === i)].map(t => (
           <button key={t} onClick={() => setFilter(t)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${filter === t ? "bg-slate-800 text-white border-slate-800" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"}`}>{t}</button>
         ))}
       </div>
-      {typeOrder.map(type => {
+      {typeOrder.filter((t, i, a) => a.indexOf(t) === i).map(type => {
         const accts = grouped[type];
         if (!accts?.length) return null;
         return (
@@ -1880,8 +2072,23 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
         <div className="space-y-3">
           <div><label className="text-xs font-medium text-gray-600">Account Name *</label><input value={form.name} onChange={e => setForm({...form, name:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="e.g. Operating Checking" /></div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-medium text-gray-600">Type *</label><select value={form.type} onChange={e => { setForm({...form, type:e.target.value, subtype: ACCOUNT_SUBTYPES[e.target.value]?.[0] || "" }); }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1">{ACCOUNT_TYPES.map(t => <option key={t}>{t}</option>)}</select></div>
-            <div><label className="text-xs font-medium text-gray-600">Subtype *</label><select value={form.subtype} onChange={e => setForm({...form, subtype:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1">{(ACCOUNT_SUBTYPES[form.type]||[]).map(s => <option key={s}>{s}</option>)}</select></div>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Type *</label>
+              <select value={form.type} onChange={e => { const v = e.target.value; setForm({...form, type: v, subtype: v === "__custom__" ? "" : (getAccountSubtypes(accounts, v)[0] || ""), customType: v === "__custom__" ? form.customType : "" }); }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1">
+                {dynamicTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                <option value="__custom__">+ Add Custom Type...</option>
+              </select>
+              {form.type === "__custom__" && <input value={form.customType} onChange={e => setForm({...form, customType: e.target.value})} className="w-full border border-indigo-300 rounded-lg px-3 py-2 text-sm mt-1 bg-indigo-50" placeholder="Enter new account type" autoFocus />}
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600">Subtype</label>
+              <select value={form.subtype} onChange={e => setForm({...form, subtype: e.target.value, customSubtype: e.target.value === "__custom__" ? form.customSubtype : ""})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1">
+                {(form.type === "__custom__" ? [] : dynamicSubtypes).map(s => <option key={s} value={s}>{s}</option>)}
+                <option value="__custom__">+ Add Custom Subtype...</option>
+                <option value="">None</option>
+              </select>
+              {form.subtype === "__custom__" && <input value={form.customSubtype} onChange={e => setForm({...form, customSubtype: e.target.value})} className="w-full border border-indigo-300 rounded-lg px-3 py-2 text-sm mt-1 bg-indigo-50" placeholder="Enter new subtype" />}
+            </div>
           </div>
           <div><label className="text-xs font-medium text-gray-600">Description</label><textarea value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" rows={2} /></div>
           <div className="flex justify-end gap-2 pt-2">
@@ -1895,21 +2102,30 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
 }
 
 // --- Journal Entries Sub-Page ---
-function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate, onPost, onVoid }) {
+function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate, onPost, onVoid, companyId }) {
   const [modal, setModal] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
-  const [form, setForm] = useState({ date: acctToday(), description: "", reference: "", lines: [{ account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }, { account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }] });
+  const [searchProperty, setSearchProperty] = useState("");
+  const [properties, setProperties] = useState([]);
+  const [form, setForm] = useState({ date: acctToday(), description: "", reference: "", property: "", lines: [{ account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }, { account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }] });
 
-  const filtered = [...journalEntries].sort((a,b) => b.date.localeCompare(a.date)).filter(je => filterStatus === "all" || je.status === filterStatus);
+  useEffect(() => { let q = supabase.from("properties").select("address"); if (companyId) q = q.eq("company_id", companyId); q.then(r => setProperties((r.data || []).map(p => p.address))); }, [companyId]);
+
+  const filtered = [...journalEntries].sort((a,b) => b.date.localeCompare(a.date))
+    .filter(je => filterStatus === "all" || je.status === filterStatus)
+    .filter(je => !searchProperty || (je.property || "").toLowerCase().includes(searchProperty.toLowerCase()));
   const counts = { all: journalEntries.length, posted: journalEntries.filter(j=>j.status==="posted").length, draft: journalEntries.filter(j=>j.status==="draft").length, voided: journalEntries.filter(j=>j.status==="voided").length };
 
+  // Get unique properties from existing JEs for the filter dropdown
+  const jeProperties = [...new Set(journalEntries.map(je => je.property).filter(Boolean))].sort();
+
   const openAdd = () => {
-    setForm({ date: acctToday(), description: "", reference: "", lines: [{ account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }, { account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }] });
+    setForm({ date: acctToday(), description: "", reference: "", property: "", lines: [{ account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }, { account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }] });
     setModal("add");
   };
 
   const openEdit = (je) => {
-    setForm({ date: je.date, description: je.description, reference: je.reference || "", lines: (je.lines || []).map(l => ({ ...l, debit: l.debit || "", credit: l.credit || "" })) });
+    setForm({ date: je.date, description: je.description, reference: je.reference || "", property: je.property || "", lines: (je.lines || []).map(l => ({ ...l, debit: l.debit || "", credit: l.credit || "" })) });
     setModal({ mode: "edit", je });
   };
 
@@ -1930,6 +2146,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   const validation = validateJE(form.lines.filter(l => l.account_id));
 
   const saveEntry = async (status) => {
+    if (!form.property) { alert("Please select a property."); return; }
     if (!form.description.trim() || !validation.isValid) return;
     const lines = form.lines.filter(l => l.account_id).map(l => ({ ...l, debit: parseFloat(l.debit) || 0, credit: parseFloat(l.credit) || 0 }));
     if (modal === "add") {
@@ -1945,6 +2162,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
       <div className="grid grid-cols-3 gap-3">
         <div><label className="text-xs font-medium text-gray-600">Date *</label><input type="date" value={form.date} onChange={e => setForm({...form, date:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" /></div>
         <div><label className="text-xs font-medium text-gray-600">Reference</label><input value={form.reference} onChange={e => setForm({...form, reference:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="Invoice #, Check #..." /></div>
+        <div><label className="text-xs font-medium text-gray-600">Property *</label><select value={form.property} onChange={e => setForm({...form, property:e.target.value})} className={`w-full border rounded-lg px-3 py-2 text-sm mt-1 ${!form.property ? "border-red-300 bg-red-50" : "border-gray-200"}`}><option value="">-- Select Property --</option>{properties.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
         <div className="col-span-3"><label className="text-xs font-medium text-gray-600">Description *</label><input value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="What is this entry for?" /></div>
       </div>
       <div className="flex items-center justify-between mb-2">
@@ -1974,8 +2192,8 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
       <div className="flex justify-between pt-2">
         <button onClick={() => setModal(null)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
         <div className="flex gap-2">
-          <button onClick={() => saveEntry("draft")} disabled={!form.description || !validation.isValid} className="bg-gray-200 text-gray-700 text-sm px-4 py-2 rounded-lg disabled:opacity-50">Save Draft</button>
-          <button onClick={() => saveEntry("posted")} disabled={!form.description || !validation.isValid} className="bg-emerald-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50 hover:bg-emerald-700">Post Entry</button>
+          <button onClick={() => saveEntry("draft")} disabled={!form.description || !form.property || !validation.isValid} className="bg-gray-200 text-gray-700 text-sm px-4 py-2 rounded-lg disabled:opacity-50">Save Draft</button>
+          <button onClick={() => saveEntry("posted")} disabled={!form.description || !form.property || !validation.isValid} className="bg-emerald-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50 hover:bg-emerald-700">Post Entry</button>
         </div>
       </div>
     </div>
@@ -1991,10 +2209,14 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
         {[{k:"all",l:`All (${counts.all})`},{k:"posted",l:`Posted (${counts.posted})`},{k:"draft",l:`Drafts (${counts.draft})`},{k:"voided",l:`Voided (${counts.voided})`}].map(f => (
           <button key={f.k} onClick={() => setFilterStatus(f.k)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${filterStatus === f.k ? "bg-slate-800 text-white border-slate-800" : "bg-white text-gray-500 border-gray-200"}`}>{f.l}</button>
         ))}
+        <select value={searchProperty} onChange={e => setSearchProperty(e.target.value)} className="text-xs px-3 py-1.5 rounded-xl border border-gray-200 bg-white text-gray-600 ml-auto">
+          <option value="">All Properties</option>
+          {jeProperties.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
       </div>
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="text-xs text-gray-400 uppercase bg-gray-50"><tr><th className="px-4 py-2 text-left">Entry #</th><th className="px-4 py-2 text-left">Date</th><th className="px-4 py-2 text-left">Description</th><th className="px-4 py-2 text-left">Ref</th><th className="px-4 py-2 text-left">Status</th><th className="px-4 py-2 text-right">Amount</th><th className="px-4 py-2">Actions</th></tr></thead>
+          <thead className="text-xs text-gray-400 uppercase bg-gray-50"><tr><th className="px-4 py-2 text-left">Entry #</th><th className="px-4 py-2 text-left">Date</th><th className="px-4 py-2 text-left">Property</th><th className="px-4 py-2 text-left">Description</th><th className="px-4 py-2 text-left">Ref</th><th className="px-4 py-2 text-left">Status</th><th className="px-4 py-2 text-right">Amount</th><th className="px-4 py-2">Actions</th></tr></thead>
           <tbody>
             {filtered.map(je => {
               const total = (je.lines || []).reduce((s,l) => s + safeNum(l.debit), 0);
@@ -2002,6 +2224,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
                 <tr key={je.id} className="border-t border-gray-50 hover:bg-blue-50/30 cursor-pointer" onClick={() => openView(je)}>
                   <td className="px-4 py-2 font-mono text-xs font-semibold text-gray-700">{je.number}</td>
                   <td className="px-4 py-2 text-gray-600">{acctFmtDate(je.date)}</td>
+                  <td className="px-4 py-2 text-xs text-gray-600">{je.property || "—"}</td>
                   <td className="px-4 py-2 font-medium text-gray-800">{je.description}</td>
                   <td className="px-4 py-2 text-xs text-gray-400">{je.reference || "—"}</td>
                   <td className="px-4 py-2"><AcctStatusBadge status={je.status} /></td>
@@ -2016,7 +2239,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
                 </tr>
               );
             })}
-            {filtered.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No journal entries found</td></tr>}
+            {filtered.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">No journal entries found</td></tr>}
           </tbody>
         </table>
       </div>
@@ -2028,10 +2251,11 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
       {modal?.mode === "view" && (
         <AcctModal isOpen={true} onClose={() => setModal(null)} title={`Journal Entry: ${modal.je.number}`} size="xl">
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 bg-gray-50 rounded-xl p-4">
+            <div className="grid grid-cols-3 gap-3 bg-gray-50 rounded-xl p-4">
               <div><p className="text-xs text-gray-500">Entry #</p><p className="font-mono font-semibold">{modal.je.number}</p></div>
               <div><p className="text-xs text-gray-500">Date</p><p className="font-semibold">{acctFmtDate(modal.je.date)}</p></div>
-              <div><p className="text-xs text-gray-500">Description</p><p className="font-semibold">{modal.je.description}</p></div>
+              <div><p className="text-xs text-gray-500">Property</p><p className="font-semibold">{modal.je.property || "—"}</p></div>
+              <div className="col-span-2"><p className="text-xs text-gray-500">Description</p><p className="font-semibold">{modal.je.description}</p></div>
               <div><p className="text-xs text-gray-500">Status</p><AcctStatusBadge status={modal.je.status} /></div>
             </div>
             <table className="w-full text-sm rounded-xl border border-gray-200 overflow-hidden">
@@ -2144,6 +2368,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
   const [asOfDate, setAsOfDate] = useState(acctToday());
   const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id || "");
   const [classFilter, setClassFilter] = useState("");
+  const [showARSub, setShowARSub] = useState(false);
 
   const { start, end } = period === "Custom" ? customDates : getPeriodDates(period);
 
@@ -2174,8 +2399,8 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
         <div><h3 className="text-lg font-semibold text-gray-900">Financial Reports</h3><p className="text-sm text-gray-500">P&L, Balance Sheet, Trial Balance, General Ledger</p></div>
         <button onClick={() => window.print()} className="bg-gray-100 text-gray-600 text-xs px-3 py-1.5 rounded-lg hover:bg-gray-200">🖨️ Print</button>
       </div>
-      <div className="flex gap-1 border-b border-gray-100 mb-4">
-        {[{id:"pl",l:"Profit & Loss"},{id:"bs",l:"Balance Sheet"},{id:"tb",l:"Trial Balance"},{id:"gl",l:"General Ledger"}].map(t => (
+      <div className="flex gap-1 border-b border-gray-100 mb-4 flex-wrap">
+        {[{id:"pl",l:"Profit & Loss"},{id:"bs",l:"Balance Sheet"},{id:"ar",l:"AR Aging"},{id:"tb",l:"Trial Balance"},{id:"gl",l:"General Ledger"}].map(t => (
           <button key={t.id} onClick={() => setActiveReport(t.id)} className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px ${activeReport===t.id ? "border-slate-800 text-slate-800" : "border-transparent text-gray-400 hover:text-gray-600"}`}>{t.l}</button>
         ))}
       </div>
@@ -2206,7 +2431,29 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
               <p className="text-base font-black text-gray-900 mb-3">ASSETS</p>
-              {bsData.assets.filter(a=>a.amount!==0).map(a => <div key={a.id} className="flex justify-between py-1 px-2 hover:bg-gray-50 rounded"><span className="text-sm text-gray-700">{a.name}</span><span className={`font-mono text-sm ${a.amount<0?"text-red-600":"text-gray-800"}`}>{acctFmt(a.amount, true)}</span></div>)}
+              {bsData.assets.filter(a=>a.amount!==0).map(a => (
+                <div key={a.id}>
+                  <div className="flex justify-between py-1 px-2 hover:bg-gray-50 rounded cursor-pointer" onClick={() => a.id === "1100" && setShowARSub(!showARSub)}>
+                    <span className="text-sm text-gray-700">{a.name}{a.id === "1100" && bsData.arByTenant?.length > 0 && <span className="text-xs text-indigo-500 ml-1">{showARSub ? "▾" : "▸"} {bsData.arByTenant.length} tenants</span>}</span>
+                    <span className={`font-mono text-sm ${a.amount<0?"text-red-600":"text-gray-800"}`}>{acctFmt(a.amount, true)}</span>
+                  </div>
+                  {a.id === "1100" && showARSub && bsData.arByTenant?.length > 0 && (
+                    <div className="ml-4 mb-2 border-l-2 border-indigo-200 pl-3">
+                      <div className="text-xs font-bold text-indigo-600 uppercase tracking-wide py-1">Tenant Sub-Ledger</div>
+                      {bsData.arByTenant.map((t, i) => (
+                        <div key={i} className="flex justify-between py-0.5 px-1">
+                          <span className="text-xs text-gray-600">{t.tenant}</span>
+                          <span className={`font-mono text-xs ${t.balance < 0 ? "text-green-600" : "text-gray-700"}`}>{acctFmt(t.balance, true)}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between py-1 px-1 border-t border-indigo-200 mt-1">
+                        <span className="text-xs font-bold text-indigo-700">Sub-Ledger Total</span>
+                        <span className="font-mono text-xs font-bold text-indigo-700">{acctFmt(bsData.arByTenant.reduce((s,t) => s + t.balance, 0), true)}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
               <div className="flex justify-between py-3 border-t-4 border-gray-800 bg-blue-50 px-2 rounded-xl mt-3 font-black"><span>TOTAL ASSETS</span><span className="font-mono text-blue-700">{acctFmt(bsData.totalAssets)}</span></div>
             </div>
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
@@ -2219,6 +2466,93 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
               <div className="flex justify-between py-3 border-t-4 border-gray-800 bg-violet-50 px-2 rounded-xl mt-3 font-black"><span>TOTAL L + E</span><span className="font-mono text-violet-700">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</span></div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* AR Aging Report */}
+      {activeReport === "ar" && (
+        <div>
+          <div className="flex items-center gap-3 mb-4"><span className="text-sm text-gray-600">As of:</span><input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm" /></div>
+
+          {/* Aging Summary Buckets */}
+          <div className="grid grid-cols-5 gap-3 mb-5">
+            {[
+              { label: "Current (0-30)", val: bsData.arAging?.current || 0, color: "text-green-700 bg-green-50" },
+              { label: "31-60 Days", val: bsData.arAging?.days30 || 0, color: "text-yellow-700 bg-yellow-50" },
+              { label: "61-90 Days", val: bsData.arAging?.days60 || 0, color: "text-orange-700 bg-orange-50" },
+              { label: "91-120 Days", val: bsData.arAging?.days90 || 0, color: "text-red-600 bg-red-50" },
+              { label: "120+ Days", val: bsData.arAging?.over90 || 0, color: "text-red-800 bg-red-100" },
+            ].map((b, i) => (
+              <div key={i} className={`rounded-xl p-3 ${b.color}`}>
+                <div className="text-xs font-medium opacity-75">{b.label}</div>
+                <div className="text-lg font-bold font-mono">{acctFmt(b.val)}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Total AR */}
+          <div className="bg-indigo-50 rounded-xl p-4 mb-5 flex justify-between items-center">
+            <div><span className="text-sm font-bold text-indigo-800">Total Accounts Receivable</span><span className="text-xs text-indigo-500 ml-2">(Account 1100)</span></div>
+            <span className="text-xl font-black font-mono text-indigo-800">{acctFmt((bsData.arAging?.current || 0) + (bsData.arAging?.days30 || 0) + (bsData.arAging?.days60 || 0) + (bsData.arAging?.days90 || 0) + (bsData.arAging?.over90 || 0))}</span>
+          </div>
+
+          {/* Per-Tenant Aging Table */}
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
+              <h4 className="text-sm font-bold text-gray-800">AR Aging by Tenant</h4>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase">
+                  <th className="px-4 py-2 text-left">Tenant</th>
+                  <th className="px-3 py-2 text-right">Current</th>
+                  <th className="px-3 py-2 text-right">31-60</th>
+                  <th className="px-3 py-2 text-right">61-90</th>
+                  <th className="px-3 py-2 text-right">91-120</th>
+                  <th className="px-3 py-2 text-right">120+</th>
+                  <th className="px-4 py-2 text-right font-bold">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(bsData.arAgingByTenant || {}).filter(([,v]) => v.total > 0.01).sort((a, b) => b[1].total - a[1].total).map(([tenant, aging], i) => (
+                  <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className="px-4 py-2 font-medium text-gray-800">{tenant}</td>
+                    <td className="px-3 py-2 text-right font-mono text-xs">{aging.current > 0 ? acctFmt(aging.current) : "—"}</td>
+                    <td className="px-3 py-2 text-right font-mono text-xs text-yellow-700">{aging.days30 > 0 ? acctFmt(aging.days30) : "—"}</td>
+                    <td className="px-3 py-2 text-right font-mono text-xs text-orange-700">{aging.days60 > 0 ? acctFmt(aging.days60) : "—"}</td>
+                    <td className="px-3 py-2 text-right font-mono text-xs text-red-600">{aging.days90 > 0 ? acctFmt(aging.days90) : "—"}</td>
+                    <td className="px-3 py-2 text-right font-mono text-xs text-red-800">{aging.over90 > 0 ? acctFmt(aging.over90) : "—"}</td>
+                    <td className="px-4 py-2 text-right font-mono text-sm font-bold">{acctFmt(aging.total)}</td>
+                  </tr>
+                ))}
+                {Object.keys(bsData.arAgingByTenant || {}).length === 0 && (
+                  <tr><td colSpan="7" className="px-4 py-6 text-center text-gray-400">No outstanding receivables</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Tenant Sub-Ledger (Net Balances) */}
+          {bsData.arByTenant?.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mt-4">
+              <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
+                <h4 className="text-sm font-bold text-gray-800">Tenant Sub-Ledger (Net AR Balance)</h4>
+                <p className="text-xs text-gray-500">Charges minus payments per tenant — rolls up to master AR on Balance Sheet</p>
+              </div>
+              <div className="p-4 space-y-1">
+                {bsData.arByTenant.map((t, i) => (
+                  <div key={i} className="flex justify-between py-1.5 px-3 rounded hover:bg-gray-50">
+                    <span className="text-sm text-gray-700">{t.tenant}</span>
+                    <span className={`font-mono text-sm font-medium ${t.balance > 0 ? "text-red-600" : "text-green-600"}`}>{t.balance > 0 ? acctFmt(t.balance) + " owed" : acctFmt(Math.abs(t.balance)) + " credit"}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between py-2 px-3 border-t-2 border-gray-200 mt-2 font-bold">
+                  <span className="text-sm text-gray-900">Total AR (must match Balance Sheet 1100)</span>
+                  <span className="font-mono text-sm text-indigo-700">{acctFmt(bsData.arByTenant.reduce((s, t) => s + t.balance, 0))}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -2623,7 +2957,7 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
 }
 
 // --- Main Accounting Component (Supabase-backed) ---
-function Accounting() {
+function Accounting({ companyId }) {
   const [acctAccounts, setAcctAccounts] = useState([]);
   const [journalEntries, setJournalEntries] = useState([]);
   const [acctClasses, setAcctClasses] = useState([]);
@@ -2636,24 +2970,25 @@ function Accounting() {
   async function fetchAll() {
     setLoading(true);
     const [acctsRes, jesRes, clsRes] = await Promise.all([
-      supabase.from("acct_accounts").select("*").order("id"),
-      supabase.from("acct_journal_entries").select("*").order("date", { ascending: false }),
-      supabase.from("acct_classes").select("*").order("name"),
+      supabase.from("acct_accounts").select("*").eq("company_id", companyId || "sandbox-llc").order("id"),
+      supabase.from("acct_journal_entries").select("*").eq("company_id", companyId || "sandbox-llc").order("date", { ascending: false }),
+      supabase.from("acct_classes").select("*").eq("company_id", companyId || "sandbox-llc").order("name"),
     ]);
     const accounts = acctsRes.data || [];
     const jeHeaders = jesRes.data || [];
     const classes = clsRes.data || [];
 
-    // Fetch all journal lines and attach to entries
+    // Fetch all journal lines for this company's JEs and attach to entries
     if (jeHeaders.length > 0) {
-      const { data: allLines } = await supabase.from("acct_journal_lines").select("*");
+      const jeIds = jeHeaders.map(je => je.id);
+      const { data: allLines } = await supabase.from("acct_journal_lines").select("*").in("journal_entry_id", jeIds);
       const linesByJE = {};
       (allLines || []).forEach(l => { if (!linesByJE[l.journal_entry_id]) linesByJE[l.journal_entry_id] = []; linesByJE[l.journal_entry_id].push(l); });
       jeHeaders.forEach(je => { je.lines = linesByJE[je.id] || []; });
     }
 
     // Auto-sync: create accounting classes for any properties not yet in acct_classes
-    const { data: allProps } = await supabase.from("properties").select("id, address, type, rent");
+    const { data: allProps } = await supabase.from("properties").select("id, address, type, rent").eq("company_id", companyId || "sandbox-llc");
     if (allProps && allProps.length > 0) {
       const existingNames = new Set(classes.map(c => c.name));
       const colors = ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4","#F97316","#EC4899"];
@@ -2665,10 +3000,11 @@ function Accounting() {
           description: `${p.type || "Property"} · $${p.rent || 0}/mo`,
           color: colors[Math.floor(Math.random() * colors.length)],
           is_active: true,
+          company_id: companyId || "sandbox-llc",
         }));
         await supabase.from("acct_classes").upsert(newClasses, { onConflict: "id" });
         // Re-fetch classes after sync
-        const { data: updatedClasses } = await supabase.from("acct_classes").select("*").order("name");
+        const { data: updatedClasses } = await supabase.from("acct_classes").select("*").eq("company_id", companyId || "sandbox-llc").order("name");
         setAcctClasses(updatedClasses || []);
         setAcctAccounts(accounts);
         setJournalEntries(jeHeaders);
@@ -2685,7 +3021,7 @@ function Accounting() {
 
   // --- Account CRUD ---
   async function addAccount(acct) {
-    await supabase.from("acct_accounts").insert([acct]);
+    await supabase.from("acct_accounts").insert([{ ...acct, company_id: companyId || "sandbox-llc" }]);
     fetchAll();
   }
   async function updateAccount(acct) {
@@ -2706,7 +3042,7 @@ function Accounting() {
     const number = nextJENumber(journalEntries);
     const jeId = number;
     const { lines, ...header } = data;
-    await supabase.from("acct_journal_entries").insert([{ id: jeId, number, date: header.date, description: header.description, reference: header.reference || "", status: header.status || "draft" }]);
+    await supabase.from("acct_journal_entries").insert([{ company_id: companyId || "sandbox-llc", id: jeId, number, date: header.date, description: header.description, reference: header.reference || "", property: header.property || "", status: header.status || "draft" }]);
     if (lines?.length > 0) {
       await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: jeId, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "" })));
     }
@@ -2716,7 +3052,7 @@ function Accounting() {
     const { id, lines, ...header } = data;
     delete header.created_at;
     delete header.number;
-    await supabase.from("acct_journal_entries").update({ date: header.date, description: header.description, reference: header.reference || "", status: header.status }).eq("id", id);
+    await supabase.from("acct_journal_entries").update({ date: header.date, description: header.description, reference: header.reference || "", property: header.property || "", status: header.status }).eq("id", id);
     // Replace lines
     await supabase.from("acct_journal_lines").delete().eq("journal_entry_id", id);
     if (lines?.length > 0) {
@@ -2735,7 +3071,7 @@ function Accounting() {
 
   // --- Class CRUD ---
   async function addClass(cls) {
-    await supabase.from("acct_classes").insert([cls]);
+    await supabase.from("acct_classes").insert([{ ...cls, company_id: companyId || "sandbox-llc" }]);
     fetchAll();
   }
   async function updateClass(cls) {
@@ -2785,12 +3121,12 @@ function Accounting() {
               <p className="text-xs text-blue-600">Generate AR entries for all active leases this month (DR Accounts Receivable, CR Rental Income)</p>
             </div>
             <button onClick={async () => {
-              const { data: activeTenants } = await supabase.from("tenants").select("*").eq("lease_status", "active");
+              const { data: activeTenants } = await supabase.from("tenants").select("*").eq("company_id", companyId || "sandbox-llc").eq("lease_status", "active");
               if (!activeTenants || activeTenants.length === 0) { alert("No active leases found."); return; }
               const today = new Date().toISOString().slice(0, 10);
               const month = today.slice(0, 7);
               // Check if already accrued this month
-              const { data: existing } = await supabase.from("acct_journal_entries").select("id").like("reference", `ACCR-${month}%`);
+              const { data: existing } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId || "sandbox-llc").like("reference", `ACCR-${month}%`);
               if (existing && existing.length > 0) { alert("Rent already accrued for " + month + ". " + existing.length + " entries exist."); return; }
               let count = 0;
               for (const t of activeTenants) {
@@ -2798,9 +3134,11 @@ function Accounting() {
                 if (rent <= 0) continue;
                 const classId = await getPropertyClassId(t.property);
                 await autoPostJournalEntry({
+                  companyId,
                   date: today,
                   description: `Rent accrual ${month} \u2014 ${t.name} \u2014 ${t.property}`,
                   reference: `ACCR-${month}-${t.id}`,
+                  property: t.property,
                   lines: [
                     { account_id: "1100", account_name: "Accounts Receivable", debit: rent, credit: 0, class_id: classId, memo: `${t.name} rent due` },
                     { account_id: "4000", account_name: "Rental Income", debit: 0, credit: rent, class_id: classId, memo: `${t.name} \u2014 ${t.property}` },
@@ -2847,7 +3185,7 @@ function Accounting() {
       )}
 
       {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} />}
-      {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} />}
+      {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} />}
       {activeTab === "bankimport" && <AcctBankImport accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAddJournalEntry={addJournalEntry} />}
       {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} />}
       {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} />}
@@ -2857,7 +3195,7 @@ function Accounting() {
 }
 
 // ============ DOCUMENTS ============
-function Documents({ addNotification, userProfile, userRole }) {
+function Documents({ addNotification, userProfile, userRole, companyId }) {
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -2869,7 +3207,7 @@ function Documents({ addNotification, userProfile, userRole }) {
   useEffect(() => { fetchDocs(); }, []);
 
   async function fetchDocs() {
-    const { data } = await supabase.from("documents").select("*").order("uploaded_at", { ascending: false });
+    const { data } = await supabase.from("documents").select("*").eq("company_id", companyId || "sandbox-llc").order("uploaded_at", { ascending: false });
     setDocs(data || []);
     setLoading(false);
   }
@@ -2895,7 +3233,7 @@ function Documents({ addNotification, userProfile, userRole }) {
       setUploading(false);
       return;
     }
-    const { error: insertError } = await supabase.from("documents").insert([{
+    const { error: insertError } = await supabase.from("documents").insert([{ company_id: companyId || "sandbox-llc",
       name: form.name,
       property: form.property,
       tenant: form.tenant || "",
@@ -3042,7 +3380,7 @@ function Documents({ addNotification, userProfile, userRole }) {
 }
 
 // ============ INSPECTIONS ============
-function Inspections({ addNotification, userProfile, userRole }) {
+function Inspections({ addNotification, userProfile, userRole, companyId }) {
   const [inspections, setInspections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -3060,7 +3398,7 @@ function Inspections({ addNotification, userProfile, userRole }) {
   useEffect(() => { fetchInspections(); }, []);
 
   async function fetchInspections() {
-    const { data } = await supabase.from("inspections").select("*").order("date", { ascending: false });
+    const { data } = await supabase.from("inspections").select("*").eq("company_id", companyId || "sandbox-llc").order("date", { ascending: false });
     setInspections(data || []);
     setLoading(false);
   }
@@ -3068,7 +3406,7 @@ function Inspections({ addNotification, userProfile, userRole }) {
   async function saveInspection() {
     if (!form.property.trim()) { alert("Property is required."); return; }
     if (!form.date) { alert("Inspection date is required."); return; }
-    const { error } = await supabase.from("inspections").insert([{ ...form, checklist: JSON.stringify(checklist) }]);
+    const { error } = await supabase.from("inspections").insert([{ company_id: companyId || "sandbox-llc", ...form, checklist: JSON.stringify(checklist) }]);
     if (error) { alert("Error saving inspection: " + error.message); return; }
     addNotification("🔍", `Inspection scheduled: ${form.type} at ${form.property}`);
     setShowForm(false);
@@ -3190,7 +3528,7 @@ function Inspections({ addNotification, userProfile, userRole }) {
 }
 
 // ============ LEASE MANAGEMENT ============
-function LeaseManagement({ addNotification, userProfile, userRole }) {
+function LeaseManagement({ addNotification, userProfile, userRole, companyId }) {
   const [leases, setLeases] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -3222,10 +3560,10 @@ function LeaseManagement({ addNotification, userProfile, userRole }) {
   async function fetchData() {
     setLoading(true);
     const [l, t, p, tmpl] = await Promise.all([
-      supabase.from("leases").select("*").order("created_at", { ascending: false }),
-      supabase.from("tenants").select("*"),
-      supabase.from("properties").select("*"),
-      supabase.from("lease_templates").select("*").order("name"),
+      supabase.from("leases").select("*").eq("company_id", companyId || "sandbox-llc").order("created_at", { ascending: false }),
+      supabase.from("tenants").select("*").eq("company_id", companyId || "sandbox-llc"),
+      supabase.from("properties").select("*").eq("company_id", companyId || "sandbox-llc"),
+      supabase.from("lease_templates").select("*").eq("company_id", companyId || "sandbox-llc").order("name"),
     ]);
     setLeases(l.data || []);
     setTenants(t.data || []);
@@ -3270,14 +3608,14 @@ function LeaseManagement({ addNotification, userProfile, userRole }) {
     if (editingLease) {
       ({ error } = await supabase.from("leases").update(payload).eq("id", editingLease.id));
     } else {
-      ({ error } = await supabase.from("leases").insert([payload]));
+      ({ error } = await supabase.from("leases").insert([{ ...payload, company_id: companyId || "sandbox-llc" }]));
       if (!error && tenant) {
         await supabase.from("tenants").update({ lease_status: "active", move_in: form.start_date, move_out: form.end_date, rent: Number(form.rent_amount) }).eq("id", tenant.id);
       }
       if (!error && Number(form.security_deposit) > 0) {
         const classId = await getPropertyClassId(form.property);
         const dep = Number(form.security_deposit);
-        await autoPostJournalEntry({ date: form.start_date, description: "Security deposit received \u2014 " + form.tenant_name + " \u2014 " + form.property, reference: "DEP-" + Date.now(),
+        await autoPostJournalEntry({ companyId, date: form.start_date, description: "Security deposit received \u2014 " + form.tenant_name + " \u2014 " + form.property, reference: "DEP-" + Date.now(), property: form.property,
           lines: [
             { account_id: "1000", account_name: "Checking Account", debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.tenant_name },
             { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant_name + " \u2014 " + form.property },
@@ -3286,6 +3624,8 @@ function LeaseManagement({ addNotification, userProfile, userRole }) {
       }
     }
     if (error) { alert("Error saving lease: " + error.message); return; }
+    // Auto-post rent charges for this lease immediately
+    if (!editingLease) await autoPostRentCharges();
     logAudit(editingLease ? "update" : "create", "leases", (editingLease ? "Updated" : "Created") + " lease: " + form.tenant_name + " at " + form.property, editingLease?.id || "", userProfile?.email, userRole);
     resetForm(); fetchData();
   }
@@ -3307,9 +3647,10 @@ function LeaseManagement({ addNotification, userProfile, userRole }) {
     const newEnd = new Date(newStart); newEnd.setFullYear(newEnd.getFullYear() + 1);
     if (!window.confirm("Renew lease for " + lease.tenant_name + "?\nNew rent: $" + Math.round(escalated * 100) / 100 + "/mo\nNew term: " + newStart + " to " + newEnd.toISOString().slice(0, 10))) return;
     await supabase.from("leases").update({ status: "renewed" }).eq("id", lease.id);
-    await supabase.from("leases").insert([{ tenant_id: lease.tenant_id, tenant_name: lease.tenant_name, property: lease.property, start_date: newStart, end_date: newEnd.toISOString().slice(0, 10), rent_amount: Math.round(escalated * 100) / 100, security_deposit: lease.security_deposit, rent_escalation_pct: lease.rent_escalation_pct, escalation_frequency: lease.escalation_frequency, payment_due_day: lease.payment_due_day, lease_type: "renewal", auto_renew: lease.auto_renew, renewal_notice_days: lease.renewal_notice_days, clauses: lease.clauses, special_terms: lease.special_terms, status: "active", renewed_from: lease.id, created_by: userProfile?.email || "", move_in_checklist: "[]", move_out_checklist: lease.move_out_checklist }]);
+    await supabase.from("leases").insert([{ company_id: companyId || "sandbox-llc", tenant_id: lease.tenant_id, tenant_name: lease.tenant_name, property: lease.property, start_date: newStart, end_date: newEnd.toISOString().slice(0, 10), rent_amount: Math.round(escalated * 100) / 100, security_deposit: lease.security_deposit, rent_escalation_pct: lease.rent_escalation_pct, escalation_frequency: lease.escalation_frequency, payment_due_day: lease.payment_due_day, lease_type: "renewal", auto_renew: lease.auto_renew, renewal_notice_days: lease.renewal_notice_days, clauses: lease.clauses, special_terms: lease.special_terms, status: "active", renewed_from: lease.id, created_by: userProfile?.email || "", move_in_checklist: "[]", move_out_checklist: lease.move_out_checklist }]);
     if (lease.tenant_id) await supabase.from("tenants").update({ rent: Math.round(escalated * 100) / 100, move_out: newEnd.toISOString().slice(0, 10) }).eq("id", lease.tenant_id);
     logAudit("create", "leases", "Renewed lease: " + lease.tenant_name + " new rent $" + Math.round(escalated * 100) / 100, lease.id, userProfile?.email, userRole);
+    await autoPostRentCharges(); // Post rent charges for renewed lease
     fetchData();
   }
 
@@ -3341,7 +3682,7 @@ function LeaseManagement({ addNotification, userProfile, userRole }) {
     await supabase.from("leases").update({ deposit_status: status, deposit_returned: returned, deposit_return_date: depositForm.return_date, deposit_deductions: depositForm.deductions }).eq("id", lease.id);
     const classId = await getPropertyClassId(lease.property);
     if (returned > 0) {
-      await autoPostJournalEntry({ date: depositForm.return_date, description: "Security deposit return \u2014 " + lease.tenant_name, reference: "DEPRET-" + Date.now(),
+      await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Security deposit return \u2014 " + lease.tenant_name, reference: "DEPRET-" + Date.now(), property: lease.property,
         lines: [
           { account_id: "2100", account_name: "Security Deposits Held", debit: returned, credit: 0, class_id: classId, memo: "Return to " + lease.tenant_name },
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: returned, class_id: classId, memo: "Deposit refund" },
@@ -3349,7 +3690,7 @@ function LeaseManagement({ addNotification, userProfile, userRole }) {
       });
     }
     if (deducted > 0) {
-      await autoPostJournalEntry({ date: depositForm.return_date, description: "Deposit deduction \u2014 " + lease.tenant_name + " \u2014 " + depositForm.deductions, reference: "DEPDED-" + Date.now(),
+      await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Deposit deduction \u2014 " + lease.tenant_name + " \u2014 " + depositForm.deductions, reference: "DEPDED-" + Date.now(), property: lease.property,
         lines: [
           { account_id: "2100", account_name: "Security Deposits Held", debit: deducted, credit: 0, class_id: classId, memo: "Deduction: " + depositForm.deductions },
           { account_id: "4100", account_name: "Other Income", debit: 0, credit: deducted, class_id: classId, memo: "Deposit forfeiture: " + lease.tenant_name },
@@ -3363,7 +3704,7 @@ function LeaseManagement({ addNotification, userProfile, userRole }) {
 
   async function saveTemplate() {
     if (!templateForm.name) { alert("Template name is required."); return; }
-    const { error } = await supabase.from("lease_templates").insert([{ ...templateForm, default_deposit_months: Number(templateForm.default_deposit_months || 1), default_lease_months: Number(templateForm.default_lease_months || 12), default_escalation_pct: Number(templateForm.default_escalation_pct || 3), payment_due_day: Number(templateForm.payment_due_day || 1) }]);
+    const { error } = await supabase.from("lease_templates").insert([{ company_id: companyId || "sandbox-llc", ...templateForm, default_deposit_months: Number(templateForm.default_deposit_months || 1), default_lease_months: Number(templateForm.default_lease_months || 12), default_escalation_pct: Number(templateForm.default_escalation_pct || 3), payment_due_day: Number(templateForm.payment_due_day || 1) }]);
     if (error) { alert("Error: " + error.message); return; }
     setShowTemplateForm(false); setTemplateForm({ name: "", description: "", clauses: "", special_terms: "", default_deposit_months: "1", default_lease_months: "12", default_escalation_pct: "3", payment_due_day: "1" });
     fetchData();
@@ -3545,7 +3886,7 @@ function LeaseManagement({ addNotification, userProfile, userRole }) {
 
 
 // ============ VENDOR MANAGEMENT ============
-function VendorManagement({ addNotification, userProfile, userRole }) {
+function VendorManagement({ addNotification, userProfile, userRole, companyId }) {
   const [vendors, setVendors] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [workOrders, setWorkOrders] = useState([]);
@@ -3576,9 +3917,9 @@ function VendorManagement({ addNotification, userProfile, userRole }) {
   async function fetchData() {
     setLoading(true);
     const [v, inv, wo] = await Promise.all([
-      supabase.from("vendors").select("*").order("name"),
-      supabase.from("vendor_invoices").select("*").order("created_at", { ascending: false }),
-      supabase.from("work_orders").select("*").order("created_at", { ascending: false }).limit(100),
+      supabase.from("vendors").select("*").eq("company_id", companyId || "sandbox-llc").order("name"),
+      supabase.from("vendor_invoices").select("*").eq("company_id", companyId || "sandbox-llc").order("created_at", { ascending: false }),
+      supabase.from("work_orders").select("*").eq("company_id", companyId || "sandbox-llc").order("created_at", { ascending: false }).limit(100),
     ]);
     setVendors(v.data || []);
     setInvoices(inv.data || []);
@@ -3598,7 +3939,7 @@ function VendorManagement({ addNotification, userProfile, userRole }) {
     if (editingVendor) {
       ({ error } = await supabase.from("vendors").update(payload).eq("id", editingVendor.id));
     } else {
-      ({ error } = await supabase.from("vendors").insert([payload]));
+      ({ error } = await supabase.from("vendors").insert([{ ...payload, company_id: companyId || "sandbox-llc" }]));
     }
     if (error) { alert("Error: " + error.message); return; }
     logAudit(editingVendor ? "update" : "create", "vendors", (editingVendor ? "Updated" : "Added") + " vendor: " + form.name, editingVendor?.id || "", userProfile?.email, userRole);
@@ -3628,7 +3969,7 @@ function VendorManagement({ addNotification, userProfile, userRole }) {
   async function saveInvoice() {
     if (!invoiceForm.vendor_id) { alert("Please select a vendor."); return; }
     if (!invoiceForm.amount || isNaN(Number(invoiceForm.amount))) { alert("Please enter a valid amount."); return; }
-    const { error } = await supabase.from("vendor_invoices").insert([{
+    const { error } = await supabase.from("vendor_invoices").insert([{ company_id: companyId || "sandbox-llc",
       ...invoiceForm,
       amount: Number(invoiceForm.amount),
       due_date: invoiceForm.due_date || null,
@@ -3655,9 +3996,11 @@ function VendorManagement({ addNotification, userProfile, userRole }) {
     // Post to accounting
     const classId = await getPropertyClassId(inv.property);
     await autoPostJournalEntry({
+      companyId,
       date: today,
       description: "Vendor payment \u2014 " + inv.vendor_name + " \u2014 " + (inv.description || inv.invoice_number),
       reference: "VINV-" + Date.now(),
+      property: inv.property || "",
       lines: [
         { account_id: "5300", account_name: "Repairs & Maintenance", debit: safeNum(inv.amount), credit: 0, class_id: classId, memo: inv.vendor_name + ": " + inv.description },
         { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(inv.amount), class_id: classId, memo: "Payment to " + inv.vendor_name },
@@ -3874,7 +4217,7 @@ function VendorManagement({ addNotification, userProfile, userRole }) {
 
 
 // ============ OWNER MANAGEMENT & STATEMENTS ============
-function OwnerManagement({ addNotification, userProfile, userRole }) {
+function OwnerManagement({ addNotification, userProfile, userRole, companyId }) {
   const [owners, setOwners] = useState([]);
   const [properties, setProperties] = useState([]);
   const [statements, setStatements] = useState([]);
@@ -3902,13 +4245,13 @@ function OwnerManagement({ addNotification, userProfile, userRole }) {
   async function fetchData() {
     setLoading(true);
     const [o, p, s, d, pay, vi, u] = await Promise.all([
-      supabase.from("owners").select("*").order("name"),
-      supabase.from("properties").select("*"),
-      supabase.from("owner_statements").select("*").order("created_at", { ascending: false }),
-      supabase.from("owner_distributions").select("*").order("date", { ascending: false }),
-      supabase.from("payments").select("*").eq("status", "paid"),
-      supabase.from("vendor_invoices").select("*").eq("status", "paid"),
-      supabase.from("utilities").select("*").eq("status", "paid"),
+      supabase.from("owners").select("*").eq("company_id", companyId || "sandbox-llc").order("name"),
+      supabase.from("properties").select("*").eq("company_id", companyId || "sandbox-llc"),
+      supabase.from("owner_statements").select("*").eq("company_id", companyId || "sandbox-llc").order("created_at", { ascending: false }),
+      supabase.from("owner_distributions").select("*").eq("company_id", companyId || "sandbox-llc").order("date", { ascending: false }),
+      supabase.from("payments").select("*").eq("company_id", companyId || "sandbox-llc").eq("status", "paid"),
+      supabase.from("vendor_invoices").select("*").eq("company_id", companyId || "sandbox-llc").eq("status", "paid"),
+      supabase.from("utilities").select("*").eq("company_id", companyId || "sandbox-llc").eq("status", "paid"),
     ]);
     setOwners(o.data || []);
     setProperties(p.data || []);
@@ -3927,7 +4270,7 @@ function OwnerManagement({ addNotification, userProfile, userRole }) {
     if (editingOwner) {
       ({ error } = await supabase.from("owners").update(payload).eq("id", editingOwner.id));
     } else {
-      ({ error } = await supabase.from("owners").insert([payload]));
+      ({ error } = await supabase.from("owners").insert([{ ...payload, company_id: companyId || "sandbox-llc" }]));
     }
     if (error) { alert("Error: " + error.message); return; }
     logAudit(editingOwner ? "update" : "create", "owners", (editingOwner ? "Updated" : "Added") + " owner: " + form.name, editingOwner?.id || "", userProfile?.email, userRole);
@@ -3943,6 +4286,28 @@ function OwnerManagement({ addNotification, userProfile, userRole }) {
     setEditingOwner(o);
     setForm({ name: o.name, email: o.email || "", phone: o.phone || "", address: o.address || "", company: o.company || "", tax_id: o.tax_id || "", payment_method: o.payment_method || "check", bank_name: o.bank_name || "", bank_routing: o.bank_routing || "", bank_account: o.bank_account || "", management_fee_pct: String(o.management_fee_pct || 10), notes: o.notes || "", status: o.status || "active" });
     setShowForm(true);
+  }
+
+  async function inviteOwner(owner) {
+    if (!owner.email) { alert("This owner has no email address. Please add one first."); return; }
+    if (!window.confirm("Send portal invite to " + owner.name + " (" + owner.email + ")?\n\nThis will:\n1. Create their authentication account\n2. Send a magic link to their email\n3. They can log in and access the Owner Portal")) return;
+    try {
+      const { error: authErr } = await supabase.auth.signInWithOtp({
+        email: owner.email,
+        options: { data: { name: owner.name, role: "owner" } }
+      });
+      if (authErr) console.warn("Auth invite failed:", authErr.message);
+      await supabase.from("app_users").upsert([{
+        email: owner.email,
+        name: owner.name,
+        role: "owner",
+      }], { onConflict: "email" });
+      addNotification("✉️", "Portal invite sent to " + owner.name);
+      logAudit("create", "owners", "Invited owner to portal: " + owner.email, owner.id, userProfile?.email, userRole);
+      alert("Owner portal invite sent to " + owner.email + "!\n\nThey can log in and see their properties, statements, and distributions.");
+    } catch (e) {
+      alert("Error inviting owner: " + e.message);
+    }
   }
 
   async function assignPropertyToOwner(propertyId, ownerId) {
@@ -3985,7 +4350,7 @@ function OwnerManagement({ addNotification, userProfile, userRole }) {
     monthUtils.forEach(u => lineItems[1].items.push({ description: "Utility: " + u.provider + " \u2014 " + u.property, amount: -safeNum(u.amount), date: u.due_date }));
     lineItems.push({ category: "FEES", items: [{ description: "Management Fee (" + owner.management_fee_pct + "%)", amount: -mgmtFee, date: endDate }] });
 
-    const { error } = await supabase.from("owner_statements").insert([{
+    const { error } = await supabase.from("owner_statements").insert([{ company_id: companyId || "sandbox-llc",
       owner_id: owner.id, owner_name: owner.name, period: genMonth,
       start_date: startDate, end_date: endDate,
       total_income: totalIncome, total_expenses: totalExpenses,
@@ -4009,7 +4374,7 @@ function OwnerManagement({ addNotification, userProfile, userRole }) {
     const today = new Date().toISOString().slice(0, 10);
     const owner = owners.find(o => o.id === stmt.owner_id);
     // Record distribution
-    await supabase.from("owner_distributions").insert([{
+    await supabase.from("owner_distributions").insert([{ company_id: companyId || "sandbox-llc",
       owner_id: stmt.owner_id, statement_id: stmt.id,
       amount: stmt.net_to_owner, method: owner?.payment_method || "check",
       reference: "DIST-" + stmt.period, date: today,
@@ -4017,9 +4382,11 @@ function OwnerManagement({ addNotification, userProfile, userRole }) {
     await supabase.from("owner_statements").update({ status: "paid", paid_date: today }).eq("id", stmt.id);
     // Post to accounting
     await autoPostJournalEntry({
+      companyId,
       date: today,
       description: "Owner distribution \u2014 " + stmt.owner_name + " \u2014 " + stmt.period,
       reference: "ODIST-" + Date.now(),
+      property: stmt.property || "",
       lines: [
         { account_id: "2200", account_name: "Owner Distributions Payable", debit: safeNum(stmt.net_to_owner), credit: 0, memo: stmt.owner_name + " " + stmt.period },
         { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(stmt.net_to_owner), memo: "Distribution to " + stmt.owner_name },
@@ -4028,9 +4395,11 @@ function OwnerManagement({ addNotification, userProfile, userRole }) {
     // Post management fee as revenue
     if (stmt.management_fee > 0) {
       await autoPostJournalEntry({
+        companyId,
         date: today,
         description: "Management fee \u2014 " + stmt.owner_name + " \u2014 " + stmt.period,
         reference: "MGMT-" + Date.now(),
+        property: stmt.property || "",
         lines: [
           { account_id: "2200", account_name: "Owner Distributions Payable", debit: safeNum(stmt.management_fee), credit: 0, memo: "Mgmt fee " + stmt.period },
           { account_id: "4200", account_name: "Management Fee Income", debit: 0, credit: safeNum(stmt.management_fee), memo: stmt.owner_name },
@@ -4187,6 +4556,7 @@ function OwnerManagement({ addNotification, userProfile, userRole }) {
                   <div className="text-xs text-gray-500 mb-2">{ownerProps.map(p => p.address).join(" \u00b7 ")}</div>
                 )}
                 <div className="flex gap-2 pt-2 border-t border-gray-50">
+                  <button onClick={() => inviteOwner(o)} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">✉️ Invite</button>
                   <button onClick={() => startEdit(o)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
                   <button onClick={() => { setGenOwner(o.id); setShowGenerate(true); }} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">Generate Statement</button>
                 </div>
@@ -4278,7 +4648,7 @@ function AcctBankReconciliation({ accounts, journalEntries }) {
   useEffect(() => { fetchRecons(); }, []);
 
   async function fetchRecons() {
-    const { data } = await supabase.from("bank_reconciliations").select("*").order("created_at", { ascending: false });
+    const { data } = await supabase.from("bank_reconciliations").select("*").eq("company_id", companyId || "sandbox-llc").order("created_at", { ascending: false });
     setReconciliations(data || []);
     setLoading(false);
   }
@@ -4290,7 +4660,7 @@ function AcctBankReconciliation({ accounts, journalEntries }) {
     const endDate = endObj.toISOString().slice(0, 10);
 
     // Pull all journal lines hitting the Checking Account (1000) in this period
-    const { data: entries } = await supabase.from("acct_journal_entries").select("id, date, description, reference, status").gte("date", startDate).lte("date", endDate).eq("status", "posted");
+    const { data: entries } = await supabase.from("acct_journal_entries").select("id, date, description, reference, status").eq("company_id", companyId || "sandbox-llc").gte("date", startDate).lte("date", endDate).eq("status", "posted");
     if (!entries || entries.length === 0) { alert("No posted journal entries found for " + reconPeriod); return; }
 
     const entryIds = entries.map(e => e.id);
@@ -4340,7 +4710,7 @@ function AcctBankReconciliation({ accounts, journalEntries }) {
     const status = Math.abs(diff) < 0.01 && reconItems.every(i => i.reconciled) ? "reconciled" : Math.abs(diff) < 0.01 ? "reconciled" : "discrepancy";
 
     // Save reconciliation record
-    const { error } = await supabase.from("bank_reconciliations").insert([{
+    const { error } = await supabase.from("bank_reconciliations").insert([{ company_id: companyId || "sandbox-llc",
       period: reconPeriod,
       bank_ending_balance: bankBal,
       book_balance: Math.round(bookBal * 100) / 100,
@@ -4477,7 +4847,7 @@ function AcctBankReconciliation({ accounts, journalEntries }) {
 
 
 // ============ EMAIL NOTIFICATIONS ============
-function EmailNotifications({ addNotification, userProfile, userRole }) {
+function EmailNotifications({ addNotification, userProfile, userRole, companyId }) {
   const [settings, setSettings] = useState([]);
   const [logs, setLogs] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -4502,10 +4872,10 @@ function EmailNotifications({ addNotification, userProfile, userRole }) {
   async function fetchData() {
     setLoading(true);
     const [s, l, t, le] = await Promise.all([
-      supabase.from("notification_settings").select("*").order("event_type"),
-      supabase.from("notification_log").select("*").order("created_at", { ascending: false }).limit(100),
-      supabase.from("tenants").select("*"),
-      supabase.from("leases").select("*").eq("status", "active"),
+      supabase.from("notification_settings").select("*").eq("company_id", companyId || "sandbox-llc").order("event_type"),
+      supabase.from("notification_log").select("*").eq("company_id", companyId || "sandbox-llc").order("created_at", { ascending: false }).limit(100),
+      supabase.from("tenants").select("*").eq("company_id", companyId || "sandbox-llc"),
+      supabase.from("leases").select("*").eq("company_id", companyId || "sandbox-llc").eq("status", "active"),
     ]);
     setSettings(s.data || []);
     setLogs(l.data || []);
@@ -4531,7 +4901,7 @@ function EmailNotifications({ addNotification, userProfile, userRole }) {
   async function sendTestNotification(setting) {
     // Simulate sending by logging it
     const testRecipient = userProfile?.email || "test@example.com";
-    await supabase.from("notification_log").insert([{
+    await supabase.from("notification_log").insert([{ company_id: companyId || "sandbox-llc",
       event_type: setting.event_type,
       recipient_email: testRecipient,
       subject: "[TEST] " + (eventLabels[setting.event_type]?.label || setting.event_type),
@@ -4560,7 +4930,7 @@ function EmailNotifications({ addNotification, userProfile, userRole }) {
           const tenant = tenants.find(t => t.name === lease.tenant_name);
           if (tenant?.email) {
             const msg = (rentDueSetting.template || "").replace("${amount}", "$" + lease.rent_amount).replace("${due_date}", nextDue.toLocaleDateString()).replace("${property}", lease.property);
-            await supabase.from("notification_log").insert([{ event_type: "rent_due", recipient_email: tenant.email, subject: "Rent Due Reminder", message: msg, status: "sent", related_id: lease.id }]);
+            await supabase.from("notification_log").insert([{ company_id: companyId || "sandbox-llc", event_type: "rent_due", recipient_email: tenant.email, subject: "Rent Due Reminder", message: msg, status: "sent", related_id: lease.id }]);
             count++;
           }
         }
@@ -4577,7 +4947,7 @@ function EmailNotifications({ addNotification, userProfile, userRole }) {
           const tenant = tenants.find(t => t.name === lease.tenant_name);
           if (tenant?.email) {
             const msg = (leaseExpSetting.template || "").replace("${property}", lease.property).replace("${end_date}", lease.end_date);
-            await supabase.from("notification_log").insert([{ event_type: "lease_expiring", recipient_email: tenant.email, subject: "Lease Expiration Notice", message: msg, status: "sent", related_id: lease.id }]);
+            await supabase.from("notification_log").insert([{ company_id: companyId || "sandbox-llc", event_type: "lease_expiring", recipient_email: tenant.email, subject: "Lease Expiration Notice", message: msg, status: "sent", related_id: lease.id }]);
             count++;
           }
         }
@@ -4747,7 +5117,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile }) {
       toCreate.push({ lease_id: lease.id, signer_name: userProfile?.name || "Property Manager", signer_email: userProfile?.email || "", signer_role: "landlord", status: "pending" });
     }
     if (toCreate.length > 0) {
-      await supabase.from("lease_signatures").insert(toCreate);
+      await supabase.from("lease_signatures").insert(toCreate.map(s => ({ ...s, company_id: companyId || "sandbox-llc" })));
       await supabase.from("leases").update({ signature_status: "pending" }).eq("id", lease.id);
     }
     fetchSigners();
@@ -4994,7 +5364,7 @@ function generatePaymentReceipt(payment, companyName = "PropManager") {
 }
 
 // ============ OWNER PORTAL ============
-function OwnerPortal({ currentUser }) {
+function OwnerPortal({ currentUser, companyId }) {
   const [ownerData, setOwnerData] = useState(null);
   const [properties, setProperties] = useState([]);
   const [statements, setStatements] = useState([]);
@@ -5008,12 +5378,12 @@ function OwnerPortal({ currentUser }) {
 
   async function loadOwnerData() {
     if (!currentUser?.email) { setError("Not logged in"); setLoading(false); return; }
-    const { data: owner } = await supabase.from("owners").select("*").ilike("email", currentUser.email).maybeSingle();
+    const { data: owner } = await supabase.from("owners").select("*").eq("company_id", companyId || "sandbox-llc").ilike("email", currentUser.email).maybeSingle();
     if (!owner) { setError("No owner account found for " + currentUser.email); setLoading(false); return; }
     setOwnerData(owner);
 
     const [p, s, d] = await Promise.all([
-      supabase.from("properties").select("*").eq("owner_id", owner.id),
+      supabase.from("properties").select("*").eq("company_id", companyId || "sandbox-llc").eq("owner_id", owner.id),
       supabase.from("owner_statements").select("*").eq("owner_id", owner.id).order("created_at", { ascending: false }),
       supabase.from("owner_distributions").select("*").eq("owner_id", owner.id).order("date", { ascending: false }),
     ]);
@@ -5247,7 +5617,7 @@ const ALL_NAV = [
 ];
 
 // ============ AUTOPAY / RECURRING RENT ============
-function Autopay({ addNotification, userProfile, userRole }) {
+function Autopay({ addNotification, userProfile, userRole, companyId }) {
   const [schedules, setSchedules] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -5259,8 +5629,8 @@ function Autopay({ addNotification, userProfile, userRole }) {
   async function fetchData() {
     try {
       const [s, t] = await Promise.all([
-        supabase.from("autopay_schedules").select("*").order("created_at", { ascending: false }),
-        supabase.from("tenants").select("*"),
+        supabase.from("autopay_schedules").select("*").eq("company_id", companyId || "sandbox-llc").order("created_at", { ascending: false }),
+        supabase.from("tenants").select("*").eq("company_id", companyId || "sandbox-llc"),
       ]);
       setSchedules(s.data || []);
       setTenants(t.data || []);
@@ -5275,7 +5645,7 @@ function Autopay({ addNotification, userProfile, userRole }) {
     if (!form.tenant) { alert("Please select a tenant."); return; }
     if (!form.amount || isNaN(Number(form.amount))) { alert("Please enter a valid amount."); return; }
     if (!form.start_date) { alert("Start date is required."); return; }
-    const { error } = await supabase.from("autopay_schedules").insert([{ ...form, amount: Number(form.amount) }]);
+    const { error } = await supabase.from("autopay_schedules").insert([{ company_id: companyId || "sandbox-llc", ...form, amount: Number(form.amount) }]);
     if (error) { alert("Error saving schedule: " + error.message); return; }
     addNotification("🔄", `Autopay schedule created for ${form.tenant}`);
     setShowForm(false);
@@ -5297,14 +5667,14 @@ function Autopay({ addNotification, userProfile, userRole }) {
 
   async function runNow(s) {
     const today = new Date().toISOString().slice(0, 10);
-    const { error } = await supabase.from("payments").insert([{ tenant: s.tenant, property: s.property, amount: s.amount, type: "rent", method: s.method, status: "paid", date: today }]);
+    const { error } = await supabase.from("payments").insert([{ company_id: companyId || "sandbox-llc", tenant: s.tenant, property: s.property, amount: s.amount, type: "rent", method: s.method, status: "paid", date: today }]);
     if (error) { alert("Error: " + error.message); return; }
     // AUTO-POST TO ACCOUNTING: Same smart AR logic as manual payments
     const classId = await getPropertyClassId(s.property);
     const amt = safeNum(s.amount);
     const month = today.slice(0, 7);
     let hasAccrual = false;
-    const { data: accrualJEs } = await supabase.from("acct_journal_entries").select("id").like("reference", `ACCR-${month}%`);
+    const { data: accrualJEs } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId || "sandbox-llc").like("reference", `ACCR-${month}%`);
     if (accrualJEs && accrualJEs.length > 0) {
       for (const je of accrualJEs) {
         const { data: jLines } = await supabase.from("acct_journal_lines").select("memo").eq("journal_entry_id", je.id);
@@ -5312,14 +5682,14 @@ function Autopay({ addNotification, userProfile, userRole }) {
       }
     }
     if (hasAccrual) {
-      await autoPostJournalEntry({ date: today, description: "Autopay received \u2014 " + s.tenant + " \u2014 " + s.property + " (settling AR)", reference: "APAY-" + Date.now(),
+      await autoPostJournalEntry({ companyId, date: today, description: "Autopay received \u2014 " + s.tenant + " \u2014 " + s.property + " (settling AR)", reference: "APAY-" + Date.now(), property: s.property,
         lines: [
           { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay " + s.method + " from " + s.tenant },
           { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement \u2014 " + s.tenant },
         ]
       });
     } else {
-      await autoPostJournalEntry({ date: today, description: "Autopay \u2014 " + s.tenant + " \u2014 " + s.property, reference: "APAY-" + Date.now(),
+      await autoPostJournalEntry({ companyId, date: today, description: "Autopay \u2014 " + s.tenant + " \u2014 " + s.property, reference: "APAY-" + Date.now(), property: s.property,
         lines: [
           { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay " + s.method + " from " + s.tenant },
           { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: s.tenant + " \u2014 " + s.property },
@@ -5424,7 +5794,7 @@ function Autopay({ addNotification, userProfile, userRole }) {
 }
 
 // ============ LATE FEES ============
-function LateFees({ addNotification, userProfile, userRole }) {
+function LateFees({ addNotification, userProfile, userRole, companyId }) {
   const [rules, setRules] = useState([]);
   const [flagged, setFlagged] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -5437,9 +5807,9 @@ function LateFees({ addNotification, userProfile, userRole }) {
   async function fetchData() {
     try {
       const [r, p, t] = await Promise.all([
-        supabase.from("late_fee_rules").select("*"),
-        supabase.from("payments").select("*").eq("status", "unpaid"),
-        supabase.from("tenants").select("*"),
+        supabase.from("late_fee_rules").select("*").eq("company_id", companyId || "sandbox-llc"),
+        supabase.from("payments").select("*").eq("company_id", companyId || "sandbox-llc").eq("status", "unpaid"),
+        supabase.from("tenants").select("*").eq("company_id", companyId || "sandbox-llc"),
       ]);
       setRules(r.data || []);
       setTenants(t.data || []);
@@ -5457,7 +5827,7 @@ function LateFees({ addNotification, userProfile, userRole }) {
 
   async function saveRule() {
     if (!form.grace_days || !form.fee_amount) { alert("Please fill all fields."); return; }
-    const { error } = await supabase.from("late_fee_rules").insert([{ ...form, grace_days: Number(form.grace_days), fee_amount: Number(form.fee_amount) }]);
+    const { error } = await supabase.from("late_fee_rules").insert([{ company_id: companyId || "sandbox-llc", ...form, grace_days: Number(form.grace_days), fee_amount: Number(form.fee_amount) }]);
     if (error) { alert("Error: " + error.message); return; }
     addNotification("⚠️", `Late fee rule "${form.name}" created`);
     setShowForm(false);
@@ -5469,7 +5839,7 @@ function LateFees({ addNotification, userProfile, userRole }) {
     const tenant = tenants.find(t => t.name === payment.tenant);
     if (tenant) {
       const newBalance = safeNum(tenant.balance) + feeAmount;
-      await supabase.from("ledger_entries").insert([{ tenant: payment.tenant, property: payment.property, date: new Date().toISOString().slice(0, 10), description: `Late fee — ${payment.daysLate} days overdue`, amount: feeAmount, type: "late_fee", balance: newBalance }]);
+      await supabase.from("ledger_entries").insert([{ company_id: companyId || "sandbox-llc", tenant: payment.tenant, property: payment.property, date: new Date().toISOString().slice(0, 10), description: `Late fee — ${payment.daysLate} days overdue`, amount: feeAmount, type: "late_fee", balance: newBalance }]);
       await supabase.from("tenants").update({ balance: newBalance }).eq("id", tenant.id);
     }
     addNotification("⚠️", `Late fee $${feeAmount} applied to ${payment.tenant}`);
@@ -5477,9 +5847,11 @@ function LateFees({ addNotification, userProfile, userRole }) {
     const classId = await getPropertyClassId(payment.property);
     if (feeAmount > 0) {
       await autoPostJournalEntry({
+        companyId,
         date: new Date().toISOString().slice(0, 10),
         description: "Late fee - " + payment.tenant + " - " + payment.property,
         reference: "LATE-" + Date.now(),
+        property: payment.property,
         lines: [
           { account_id: "1100", account_name: "Accounts Receivable", debit: feeAmount, credit: 0, class_id: classId, memo: "Late fee: " + payment.tenant },
           { account_id: "4010", account_name: "Late Fee Income", debit: 0, credit: feeAmount, class_id: classId, memo: payment.daysLate + " days overdue" },
@@ -5568,7 +5940,7 @@ function LateFees({ addNotification, userProfile, userRole }) {
 }
 
 // ============ TENANT PORTAL ============
-function TenantPortal({ currentUser }) {
+function TenantPortal({ currentUser, companyId }) {
   const [tenantData, setTenantData] = useState(null);
   const [ledger, setLedger] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -5590,16 +5962,16 @@ function TenantPortal({ currentUser }) {
     async function fetchData() {
       const email = currentUser?.email;
       if (!email) { setLoading(false); return; }
-      const { data: tenant } = await supabase.from("tenants").select("*").ilike("email", email).maybeSingle();
+      const { data: tenant } = await supabase.from("tenants").select("*").eq("company_id", companyId || "sandbox-llc").ilike("email", email).maybeSingle();
       if (!tenant) { setLoading(false); return; }
       setTenantData(tenant);
       setPaymentAmount(String(tenant.rent || ""));
       const [l, m, p, w, d] = await Promise.all([
-        supabase.from("ledger_entries").select("*").eq("tenant", tenant.name).order("date", { ascending: false }),
-        supabase.from("messages").select("*").eq("tenant", tenant.name).order("created_at", { ascending: true }),
-        supabase.from("payments").select("*").eq("tenant", tenant.name).order("date", { ascending: false }),
-        supabase.from("work_orders").select("*").eq("tenant", tenant.name).order("created_at", { ascending: false }),
-        supabase.from("documents").select("*").eq("tenant", tenant.name).order("uploaded_at", { ascending: false }),
+        supabase.from("ledger_entries").select("*").eq("company_id", companyId || "sandbox-llc").eq("tenant", tenant.name).order("date", { ascending: false }),
+        supabase.from("messages").select("*").eq("company_id", companyId || "sandbox-llc").eq("tenant", tenant.name).order("created_at", { ascending: true }),
+        supabase.from("payments").select("*").eq("company_id", companyId || "sandbox-llc").eq("tenant", tenant.name).order("date", { ascending: false }),
+        supabase.from("work_orders").select("*").eq("company_id", companyId || "sandbox-llc").eq("tenant", tenant.name).order("created_at", { ascending: false }),
+        supabase.from("documents").select("*").eq("company_id", companyId || "sandbox-llc").eq("tenant", tenant.name).order("uploaded_at", { ascending: false }),
       ]);
       setLedger(l.data || []);
       setMessages(m.data || []);
@@ -5614,17 +5986,17 @@ function TenantPortal({ currentUser }) {
   async function refreshData() {
     if (!tenantData) return;
     const [l, p, w, m] = await Promise.all([
-      supabase.from("ledger_entries").select("*").eq("tenant", tenantData.name).order("date", { ascending: false }),
-      supabase.from("payments").select("*").eq("tenant", tenantData.name).order("date", { ascending: false }),
-      supabase.from("work_orders").select("*").eq("tenant", tenantData.name).order("created_at", { ascending: false }),
-      supabase.from("messages").select("*").eq("tenant", tenantData.name).order("created_at", { ascending: true }),
+      supabase.from("ledger_entries").select("*").eq("company_id", companyId || "sandbox-llc").eq("tenant", tenantData.name).order("date", { ascending: false }),
+      supabase.from("payments").select("*").eq("company_id", companyId || "sandbox-llc").eq("tenant", tenantData.name).order("date", { ascending: false }),
+      supabase.from("work_orders").select("*").eq("company_id", companyId || "sandbox-llc").eq("tenant", tenantData.name).order("created_at", { ascending: false }),
+      supabase.from("messages").select("*").eq("company_id", companyId || "sandbox-llc").eq("tenant", tenantData.name).order("created_at", { ascending: true }),
     ]);
     setLedger(l.data || []);
     setPayments(p.data || []);
     setWorkOrders(w.data || []);
     setMessages(m.data || []);
     // Refresh tenant balance
-    const { data: t } = await supabase.from("tenants").select("*").ilike("email", currentUser?.email || "").maybeSingle();
+    const { data: t } = await supabase.from("tenants").select("*").eq("company_id", companyId || "sandbox-llc").ilike("email", currentUser?.email || "").maybeSingle();
     if (t) setTenantData(t);
   }
 
@@ -5641,7 +6013,7 @@ function TenantPortal({ currentUser }) {
       const amt = Number(paymentAmount);
       const today = new Date().toISOString().slice(0, 10);
       // Record payment
-      const { error: payErr } = await supabase.from("payments").insert([{
+      const { error: payErr } = await supabase.from("payments").insert([{ company_id: companyId || "sandbox-llc",
         tenant: tenantData.name,
         property: tenantData.property,
         amount: amt,
@@ -5655,7 +6027,7 @@ function TenantPortal({ currentUser }) {
       const newBalance = Math.max(0, safeNum(tenantData.balance) - amt);
       await supabase.from("tenants").update({ balance: newBalance }).eq("id", tenantData.id);
       // Add ledger entry
-      await supabase.from("ledger_entries").insert([{
+      await supabase.from("ledger_entries").insert([{ company_id: companyId || "sandbox-llc",
         tenant: tenantData.name,
         property: tenantData.property,
         date: today,
@@ -5668,7 +6040,7 @@ function TenantPortal({ currentUser }) {
       const classId = await getPropertyClassId(tenantData.property);
       const month = today.slice(0, 7);
       let hasAccrual = false;
-      const { data: accrualJEs } = await supabase.from("acct_journal_entries").select("id").like("reference", "ACCR-" + month + "%");
+      const { data: accrualJEs } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId || "sandbox-llc").like("reference", "ACCR-" + month + "%");
       if (accrualJEs && accrualJEs.length > 0) {
         for (const je of accrualJEs) {
           const { data: jLines } = await supabase.from("acct_journal_lines").select("memo").eq("journal_entry_id", je.id);
@@ -5676,14 +6048,14 @@ function TenantPortal({ currentUser }) {
         }
       }
       if (hasAccrual) {
-        await autoPostJournalEntry({ date: today, description: "Online payment \u2014 " + tenantData.name + " \u2014 " + tenantData.property + " (settling AR)", reference: "SPAY-" + Date.now(),
+        await autoPostJournalEntry({ companyId, date: today, description: "Online payment \u2014 " + tenantData.name + " \u2014 " + tenantData.property + " (settling AR)", reference: "SPAY-" + Date.now(), property: tenantData.property,
           lines: [
             { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Stripe from " + tenantData.name },
             { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement \u2014 " + tenantData.name },
           ]
         });
       } else {
-        await autoPostJournalEntry({ date: today, description: "Online rent payment \u2014 " + tenantData.name + " \u2014 " + tenantData.property, reference: "SPAY-" + Date.now(),
+        await autoPostJournalEntry({ companyId, date: today, description: "Online rent payment \u2014 " + tenantData.name + " \u2014 " + tenantData.property, reference: "SPAY-" + Date.now(), property: tenantData.property,
           lines: [
             { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Stripe from " + tenantData.name },
             { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: tenantData.name + " \u2014 " + tenantData.property },
@@ -5712,7 +6084,7 @@ function TenantPortal({ currentUser }) {
         photoUrl = urlData?.publicUrl;
       }
     }
-    const { error } = await supabase.from("work_orders").insert([{
+    const { error } = await supabase.from("work_orders").insert([{ company_id: companyId || "sandbox-llc",
       property: tenantData.property,
       tenant: tenantData.name,
       issue: maintForm.issue,
@@ -5732,9 +6104,9 @@ function TenantPortal({ currentUser }) {
   // ---- MESSAGING ----
   async function sendMessage() {
     if (!newMessage.trim() || !tenantData) return;
-    await supabase.from("messages").insert([{ tenant: tenantData.name, property: tenantData.property, sender: tenantData.name, message: newMessage, read: false }]);
+    await supabase.from("messages").insert([{ company_id: companyId || "sandbox-llc", tenant: tenantData.name, property: tenantData.property, sender: tenantData.name, message: newMessage, read: false }]);
     setNewMessage("");
-    const { data } = await supabase.from("messages").select("*").eq("tenant", tenantData.name).order("created_at", { ascending: true });
+    const { data } = await supabase.from("messages").select("*").eq("company_id", companyId || "sandbox-llc").eq("tenant", tenantData.name).order("created_at", { ascending: true });
     setMessages(data || []);
   }
 
@@ -6013,7 +6385,7 @@ function TenantPortal({ currentUser }) {
 
 
 // ============ ROLE MANAGEMENT ============
-function RoleManagement({ addNotification }) {
+function RoleManagement({ addNotification, companyId }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -6028,7 +6400,7 @@ function RoleManagement({ addNotification }) {
   useEffect(() => { fetchUsers(); }, []);
 
   async function fetchUsers() {
-    const { data } = await supabase.from("app_users").select("*").order("created_at", { ascending: false });
+    const { data } = await supabase.from("app_users").select("*").eq("company_id", companyId || "sandbox-llc").order("created_at", { ascending: false });
     setUsers(data || []);
     setLoading(false);
   }
@@ -6071,16 +6443,25 @@ function RoleManagement({ addNotification }) {
       role: form.role,
       name: form.name,
       custom_pages: JSON.stringify(customPages),
+      company_id: companyId || "sandbox-llc",
     };
 
     if (editingUser) {
       const { error } = await supabase.from("app_users").update(payload).eq("id", editingUser.id);
       if (error) { alert("Error: " + error.message); return; }
+      // Also update company_members
+      await supabase.from("company_members").upsert([{ company_id: companyId || "sandbox-llc", user_email: form.email, user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
       addNotification("👥", `${form.name}'s access updated`);
     } else {
-      const { error } = await supabase.from("app_users").insert([payload]);
+      const { error, data: newUser } = await supabase.from("app_users").insert([payload]).select();
       if (error) { alert("Error: " + error.message); return; }
+      // Also add to company_members
+      await supabase.from("company_members").upsert([{ company_id: companyId || "sandbox-llc", user_email: form.email, user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
       addNotification("👥", `${form.name} added as ${ROLES[form.role]?.label}`);
+      // Offer to send invite
+      if (newUser?.[0] && window.confirm(`${form.name} has been added!\n\nWould you like to send them a login invite now?`)) {
+        await inviteUser({ ...newUser[0], ...payload });
+      }
     }
 
     setShowForm(false);
@@ -6095,6 +6476,39 @@ function RoleManagement({ addNotification }) {
     await supabase.from("app_users").delete().eq("id", id);
     addNotification("👥", `${name} removed`);
     fetchUsers();
+  }
+
+  async function inviteUser(user) {
+    if (!user.email) { alert("This user has no email address."); return; }
+    const roleName = ROLES[user.role]?.label || user.role;
+    if (!window.confirm(`Send login invite to ${user.name} (${user.email})?\n\nRole: ${roleName}\n\nThis will:\n1. Create their authentication account\n2. Send a magic link to their email\n3. They can log in and access their assigned modules`)) return;
+    try {
+      const { error: authErr } = await supabase.auth.signInWithOtp({
+        email: user.email,
+        options: { data: { name: user.name, role: user.role } }
+      });
+      if (authErr) {
+        console.warn("Auth invite failed:", authErr.message);
+      }
+      // Ensure app_users entry exists with correct role
+      await supabase.from("app_users").upsert([{
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        company_id: companyId || "sandbox-llc",
+        custom_pages: user.custom_pages || JSON.stringify(ROLES[user.role]?.pages || []),
+      }], { onConflict: "email" });
+      // Ensure company_members entry
+      await supabase.from("company_members").upsert([{
+        company_id: companyId || "sandbox-llc", user_email: user.email, user_name: user.name,
+        role: user.role, status: "active", invited_by: "admin",
+      }], { onConflict: "company_id,user_email" });
+      addNotification("✉️", `Invite sent to ${user.name} (${roleName})`);
+      logAudit("create", "team", "Invited " + user.name + " as " + roleName + ": " + user.email, user.id || "", "", "admin");
+      alert(`Invite sent to ${user.email}!\n\nThey will receive a magic link to log in.\n\nIf they don't see it, they can use 'Forgot Password' on the login page to set their password.`);
+    } catch (e) {
+      alert("Error sending invite: " + e.message);
+    }
   }
 
   // Get the effective pages for a user — custom_pages takes priority over role default
@@ -6243,6 +6657,9 @@ function RoleManagement({ addNotification }) {
                   <span className={`text-xs font-semibold text-white px-2 py-0.5 rounded-full ${ROLES[u.role]?.color || "bg-gray-400"}`}>
                     {ROLES[u.role]?.label}
                   </span>
+                  <button onClick={() => inviteUser(u)} className="text-xs text-emerald-500 border border-emerald-200 px-2 py-1 rounded-lg hover:bg-emerald-50">
+                    ✉️ Invite
+                  </button>
                   <button onClick={() => startEdit(u)} className="text-xs text-indigo-500 border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50">
                     ✏️ Edit
                   </button>
@@ -6300,7 +6717,7 @@ const pageComponents = {
 };
 
 // ============ AUDIT TRAIL (Admin Panel) ============
-function AuditTrail() {
+function AuditTrail({ companyId }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterModule, setFilterModule] = useState("all");
@@ -6313,7 +6730,7 @@ function AuditTrail() {
 
   async function fetchLogs() {
     setLoading(true);
-    const { data } = await supabase.from("audit_trail").select("*").order("created_at", { ascending: false }).limit(500);
+    const { data } = await supabase.from("audit_trail").select("*").eq("company_id", companyId || "sandbox-llc").order("created_at", { ascending: false }).limit(500);
     setLogs(data || []);
     setLoading(false);
   }
@@ -6430,6 +6847,287 @@ function AuditTrail() {
   );
 }
 
+// ============ COMPANY SELECTOR ============
+function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
+  const [companies, setCompanies] = useState([]);
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [showJoin, setShowJoin] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: "", type: "LLC", address: "", phone: "", email: "" });
+  const [joinCode, setJoinCode] = useState("");
+  const [joinSearch, setJoinSearch] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [joinMessage, setJoinMessage] = useState("");
+
+  useEffect(() => { fetchCompanies(); }, []);
+
+  async function fetchCompanies() {
+    setLoading(true);
+    const email = currentUser?.email;
+    if (!email) { setLoading(false); return; }
+    // Get all companies this user is an active member of
+    const { data: memberships } = await supabase.from("company_members").select("company_id, role, status").eq("user_email", email);
+    const active = (memberships || []).filter(m => m.status === "active");
+    const pending = (memberships || []).filter(m => m.status === "pending");
+    setPendingRequests(pending);
+    if (active.length > 0) {
+      const companyIds = active.map(m => m.company_id);
+      const { data: companyData } = await supabase.from("companies").select("*").in("id", companyIds);
+      // Attach role to each company
+      const withRoles = (companyData || []).map(c => {
+        const membership = active.find(m => m.company_id === c.id);
+        return { ...c, memberRole: membership?.role || "admin" };
+      });
+      setCompanies(withRoles);
+    } else {
+      setCompanies([]);
+    }
+    setLoading(false);
+  }
+
+  async function createCompany() {
+    if (!createForm.name.trim()) { alert("Company name is required."); return; }
+    const companyId = "co-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    const companyCode = createForm.name.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase() + Math.floor(Math.random() * 900 + 100);
+    const { data, error } = await supabase.from("companies").insert([{
+      id: companyId, name: createForm.name, type: createForm.type, company_code: companyCode,
+      address: createForm.address, phone: createForm.phone, email: createForm.email,
+      created_by: currentUser?.email || "",
+    }]).select();
+    if (error) { alert("Error creating company: " + error.message); return; }
+    // Add creator as admin
+    await supabase.from("company_members").insert([{
+      company_id: companyId, user_email: currentUser?.email, user_name: currentUser?.email?.split("@")[0] || "",
+      role: "admin", status: "active", invited_by: "self",
+    }]);
+    // Also add to app_users
+    await supabase.from("app_users").upsert([{
+      email: currentUser?.email, name: currentUser?.email?.split("@")[0] || "",
+      role: "admin", company_id: companyId,
+    }], { onConflict: "email" });
+    // Seed default chart of accounts for this company
+    const defaultAccounts = [
+      { id: "1000", name: "Checking Account", type: "Asset", subtype: "Bank", is_active: true, company_id: companyId },
+      { id: "1100", name: "Accounts Receivable", type: "Asset", subtype: "Accounts Receivable", is_active: true, company_id: companyId },
+      { id: "2100", name: "Security Deposits Held", type: "Liability", subtype: "Other Current Liability", is_active: true, company_id: companyId },
+      { id: "2200", name: "Owner Distributions Payable", type: "Liability", subtype: "Other Current Liability", is_active: true, company_id: companyId },
+      { id: "4000", name: "Rental Income", type: "Revenue", subtype: "Rental Income", is_active: true, company_id: companyId },
+      { id: "4010", name: "Late Fee Income", type: "Revenue", subtype: "Other Primary Income", is_active: true, company_id: companyId },
+      { id: "4100", name: "Other Income", type: "Revenue", subtype: "Other Primary Income", is_active: true, company_id: companyId },
+      { id: "4200", name: "Management Fee Income", type: "Revenue", subtype: "Service Income", is_active: true, company_id: companyId },
+      { id: "5300", name: "Repairs & Maintenance", type: "Expense", subtype: "Maintenance & Repairs", is_active: true, company_id: companyId },
+      { id: "5400", name: "Utilities", type: "Expense", subtype: "Utilities", is_active: true, company_id: companyId },
+    ];
+    await supabase.from("acct_accounts").upsert(defaultAccounts.map(a => ({ ...a, id: companyId.slice(0, 8) + "-" + a.id })), { onConflict: "id" });
+    alert("Company created!\n\nCompany Code: " + companyCode + "\n\nShare this code with people you want to invite.");
+    setShowCreate(false);
+    setCreateForm({ name: "", type: "LLC", address: "", phone: "", email: "" });
+    fetchCompanies();
+  }
+
+  async function searchCompanies() {
+    if (!joinSearch.trim() && !joinCode.trim()) return;
+    let query = supabase.from("companies").select("id, name, type, company_code");
+    if (joinCode.trim()) {
+      query = query.ilike("company_code", joinCode.trim());
+    } else {
+      query = query.ilike("name", "%" + joinSearch.trim() + "%");
+    }
+    const { data } = await query.limit(10);
+    setSearchResults(data || []);
+  }
+
+  async function requestJoin(company) {
+    // Check if already a member
+    const { data: existing } = await supabase.from("company_members").select("status").eq("company_id", company.id).eq("user_email", currentUser?.email).maybeSingle();
+    if (existing) {
+      if (existing.status === "active") { alert("You're already a member of " + company.name); return; }
+      if (existing.status === "pending") { alert("Your request to join " + company.name + " is pending admin approval."); return; }
+    }
+    await supabase.from("company_members").upsert([{
+      company_id: company.id, user_email: currentUser?.email, user_name: currentUser?.email?.split("@")[0] || "",
+      role: "office_assistant", status: "pending", invited_by: "self-request",
+    }], { onConflict: "company_id,user_email" });
+    setJoinMessage("Request sent to join " + company.name + "! An admin will review your request.");
+    setSearchResults([]);
+    setJoinCode("");
+    setJoinSearch("");
+    fetchCompanies();
+  }
+
+  if (loading) return <div className="flex items-center justify-center h-screen bg-gray-50"><Spinner /></div>;
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-white flex items-center justify-center p-4">
+      <div className="w-full max-w-2xl">
+        <div className="text-center mb-8">
+          <div className="text-3xl font-bold text-indigo-700 mb-1">🏡 PropManager</div>
+          <div className="text-sm text-gray-500">Welcome, {currentUser?.email}</div>
+        </div>
+
+        {/* Your Companies */}
+        {companies.length > 0 && (
+          <div className="mb-6">
+            <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-3">Your Companies</h2>
+            <div className="space-y-2">
+              {companies.map(c => (
+                <button key={c.id} onClick={() => onSelectCompany(c, c.memberRole)}
+                  className="w-full bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between hover:border-indigo-300 hover:shadow-md transition-all text-left">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg">
+                      {c.name[0]}
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-800">{c.name}</div>
+                      <div className="text-xs text-gray-400">{c.type} · Code: {c.company_code} · {c.memberRole}</div>
+                    </div>
+                  </div>
+                  <span className="text-indigo-600 text-sm font-medium">Open →</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Pending Requests */}
+        {pendingRequests.length > 0 && (
+          <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <div className="text-sm font-semibold text-amber-800 mb-1">⏳ Pending Requests</div>
+            <div className="text-xs text-amber-600">You have {pendingRequests.length} pending request(s) waiting for admin approval.</div>
+          </div>
+        )}
+
+        {joinMessage && (
+          <div className="mb-4 bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-700">{joinMessage}</div>
+        )}
+
+        {/* Actions */}
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <button onClick={() => { setShowCreate(true); setShowJoin(false); }}
+            className="bg-indigo-600 text-white rounded-xl p-4 text-center hover:bg-indigo-700 transition-colors">
+            <div className="text-2xl mb-1">🏢</div>
+            <div className="text-sm font-semibold">Create Company</div>
+            <div className="text-xs text-indigo-200">Start a new LLC or org</div>
+          </button>
+          <button onClick={() => { setShowJoin(true); setShowCreate(false); }}
+            className="bg-white border-2 border-indigo-200 text-indigo-700 rounded-xl p-4 text-center hover:border-indigo-400 transition-colors">
+            <div className="text-2xl mb-1">🔗</div>
+            <div className="text-sm font-semibold">Join Company</div>
+            <div className="text-xs text-gray-400">Enter code or search</div>
+          </button>
+        </div>
+
+        {/* Create Company Form */}
+        {showCreate && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-4">
+            <h3 className="font-bold text-gray-800 mb-4">Create New Company</h3>
+            <div className="space-y-3">
+              <div><label className="text-xs font-medium text-gray-600">Company Name *</label><input value={createForm.name} onChange={e => setCreateForm({...createForm, name: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="e.g. Sigma Housing LLC" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="text-xs font-medium text-gray-600">Entity Type</label><select value={createForm.type} onChange={e => setCreateForm({...createForm, type: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"><option>LLC</option><option>Corporation</option><option>Partnership</option><option>Sole Proprietorship</option><option>Trust</option><option>Other</option></select></div>
+                <div><label className="text-xs font-medium text-gray-600">Email</label><input value={createForm.email} onChange={e => setCreateForm({...createForm, email: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="company@email.com" /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="text-xs font-medium text-gray-600">Address</label><input value={createForm.address} onChange={e => setCreateForm({...createForm, address: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" /></div>
+                <div><label className="text-xs font-medium text-gray-600">Phone</label><input value={createForm.phone} onChange={e => setCreateForm({...createForm, phone: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" /></div>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button onClick={createCompany} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-lg hover:bg-indigo-700">Create Company</button>
+                <button onClick={() => setShowCreate(false)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Join Company Form */}
+        {showJoin && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-4">
+            <h3 className="font-bold text-gray-800 mb-4">Join a Company</h3>
+            <div className="space-y-3">
+              <div><label className="text-xs font-medium text-gray-600">Company Code</label><input value={joinCode} onChange={e => setJoinCode(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="e.g. SIGMA123" /></div>
+              <div className="text-xs text-gray-400 text-center">— or —</div>
+              <div><label className="text-xs font-medium text-gray-600">Search by Name</label><input value={joinSearch} onChange={e => setJoinSearch(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="e.g. Sigma Housing" /></div>
+              <div className="flex gap-2">
+                <button onClick={searchCompanies} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-lg hover:bg-indigo-700">Search</button>
+                <button onClick={() => setShowJoin(false)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+              </div>
+              {searchResults.length > 0 && (
+                <div className="space-y-2 mt-3">
+                  {searchResults.map(c => (
+                    <div key={c.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                      <div><div className="text-sm font-semibold text-gray-800">{c.name}</div><div className="text-xs text-gray-400">{c.type} · {c.company_code}</div></div>
+                      <button onClick={() => requestJoin(c)} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700">Request to Join</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {searchResults.length === 0 && (joinCode || joinSearch) && <div className="text-xs text-gray-400 text-center">Click Search to find companies</div>}
+            </div>
+          </div>
+        )}
+
+        <div className="text-center">
+          <button onClick={onLogout} className="text-sm text-gray-400 hover:text-red-500">Logout</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============ ADMIN: PENDING MEMBER REQUESTS ============
+function PendingRequestsPanel({ companyId, addNotification }) {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { fetchRequests(); }, [companyId]);
+
+  async function fetchRequests() {
+    const { data } = await supabase.from("company_members").select("*").eq("company_id", companyId).eq("status", "pending").order("created_at", { ascending: false });
+    setRequests(data || []);
+    setLoading(false);
+  }
+
+  async function handleRequest(member, action) {
+    const newStatus = action === "approve" ? "active" : "rejected";
+    await supabase.from("company_members").update({ status: newStatus }).eq("id", member.id);
+    if (action === "approve") {
+      // Also add to app_users
+      await supabase.from("app_users").upsert([{
+        email: member.user_email, name: member.user_name, role: member.role, company_id: companyId,
+      }], { onConflict: "email" });
+      addNotification("✅", member.user_name + " approved to join");
+    } else {
+      addNotification("❌", member.user_name + "'s request rejected");
+    }
+    fetchRequests();
+  }
+
+  if (loading || requests.length === 0) return null;
+
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm font-bold text-amber-800">⏳ Pending Join Requests ({requests.length})</div>
+      </div>
+      <div className="space-y-2">
+        {requests.map(r => (
+          <div key={r.id} className="flex items-center justify-between bg-white rounded-lg p-3">
+            <div>
+              <div className="text-sm font-semibold text-gray-800">{r.user_name || r.user_email}</div>
+              <div className="text-xs text-gray-400">{r.user_email} · Requested: {new Date(r.created_at).toLocaleDateString()}</div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => handleRequest(r, "approve")} className="bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-green-700">Approve</button>
+              <button onClick={() => handleRequest(r, "reject")} className="bg-red-100 text-red-600 text-xs px-3 py-1.5 rounded-lg hover:bg-red-200">Reject</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [screen, setScreen] = useState("landing");
   const [page, setPage] = useState("dashboard");
@@ -6440,53 +7138,73 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState("admin");
   const [userProfile, setUserProfile] = useState(null);
-  const [customAllowedPages, setCustomAllowedPages] = useState(null); // null = use role default
+  const [customAllowedPages, setCustomAllowedPages] = useState(null);
+  // Company context
+  const [activeCompany, setActiveCompany] = useState(null);
+  const [companyRole, setCompanyRole] = useState("admin");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) { setCurrentUser(session.user); setScreen("app"); fetchUserRole(session.user); }
+      if (session) { setCurrentUser(session.user); setScreen("company_select"); autoSelectCompany(session.user); }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         setCurrentUser(session.user);
-        setScreen("app");
-        fetchUserRole(session.user);
+        if (!activeCompany) { setScreen("company_select"); autoSelectCompany(session.user); }
       } else {
         setCurrentUser(null);
         setUserRole("admin");
-        setScreen(prev => prev === "app" ? "landing" : prev);
+        setActiveCompany(null);
+        setScreen("landing");
       }
     });
     return () => subscription.unsubscribe();
   }, []);
 
-  async function fetchUserRole(user) {
+  // Auto-select company for tenant/owner roles or if only one company
+  async function autoSelectCompany(user) {
     if (!user?.email) return;
+    const { data: memberships } = await supabase.from("company_members").select("company_id, role, status").eq("user_email", user.email).eq("status", "active");
+    if (!memberships || memberships.length === 0) { setScreen("company_select"); return; }
+    // Tenants and owners auto-select their company
+    const tenantOwner = memberships.find(m => m.role === "tenant" || m.role === "owner");
+    if (tenantOwner) {
+      const { data: company } = await supabase.from("companies").select("*").eq("id", tenantOwner.company_id).maybeSingle();
+      if (company) { handleSelectCompany(company, tenantOwner.role); return; }
+    }
+    // If only one company, auto-select
+    if (memberships.length === 1) {
+      const { data: company } = await supabase.from("companies").select("*").eq("id", memberships[0].company_id).maybeSingle();
+      if (company) { handleSelectCompany(company, memberships[0].role); return; }
+    }
+    setScreen("company_select");
+  }
+
+  function handleSelectCompany(company, role) {
+    setActiveCompany(company);
+    setCompanyRole(role);
+    setUserRole(role);
+    setUserProfile({ name: currentUser?.email?.split("@")[0] || "User", email: currentUser?.email, role: role });
+    fetchUserRoleForCompany(currentUser, company.id);
+    setScreen("app");
+    setPage("dashboard");
+  }
+
+  async function fetchUserRoleForCompany(user, companyId) {
+    if (!user?.email || !companyId) return;
     try {
-      const { data } = await supabase.from("app_users").select("*").eq("email", user.email).maybeSingle();
+      const { data } = await supabase.from("company_members").select("*").eq("company_id", companyId).eq("user_email", user.email).eq("status", "active").maybeSingle();
       if (data) {
         setUserRole(data.role);
-        setUserProfile(data);
-        // If the user has custom_pages saved, override the role default
+        setCompanyRole(data.role);
+        setUserProfile({ name: data.user_name || user.email.split("@")[0], email: user.email, role: data.role });
         if (data.custom_pages) {
-          try {
-            const parsed = JSON.parse(data.custom_pages);
-            if (Array.isArray(parsed)) setCustomAllowedPages(parsed);
-          } catch { /* ignore invalid json */ }
+          try { const parsed = JSON.parse(data.custom_pages); if (Array.isArray(parsed)) setCustomAllowedPages(parsed); } catch { setCustomAllowedPages(null); }
         } else {
-          setCustomAllowedPages(null); // use role default
+          setCustomAllowedPages(null);
         }
-      } else {
-        setUserRole("admin");
-        setUserProfile({ name: user.email.split("@")[0], email: user.email, role: "admin" });
-        setCustomAllowedPages(null);
       }
-    } catch {
-      // Table may not exist yet — default to admin
-      setUserRole("admin");
-      setUserProfile({ name: user.email.split("@")[0], email: user.email, role: "admin" });
-      setCustomAllowedPages(null);
-    }
+    } catch { /* ignore */ }
   }
 
   function addNotification(icon, message) {
@@ -6503,26 +7221,28 @@ export default function App() {
     setCurrentUser(null);
     setUserRole("admin");
     setCustomAllowedPages(null);
+    setActiveCompany(null);
+  }
+
+  function switchCompany() {
+    setActiveCompany(null);
+    setScreen("company_select");
+    setPage("dashboard");
   }
 
   if (screen === "landing") return <LandingPage onGetStarted={() => setScreen("login")} />;
-  if (screen === "login") return <LoginPage onLogin={() => setScreen("app")} onBack={() => setScreen("landing")} />;
+  if (screen === "login") return <LoginPage onLogin={() => {}} onBack={() => setScreen("landing")} />;
+  if (screen === "company_select") return <CompanySelector currentUser={currentUser} onSelectCompany={handleSelectCompany} onLogout={handleLogout} />;
 
   // Build nav based on role
-  // Use custom pages if set for this user, otherwise fall back to role default
   const allowedPages = customAllowedPages || ROLES[userRole]?.pages || ROLES.admin.pages;
   const navItems = ALL_NAV.filter(n => allowedPages.includes(n.id));
-
-  // Add Roles page for admin only
   const adminNav = userRole === "admin"
     ? [...navItems, { id: "roles", label: "Team & Roles", icon: "👥" }]
     : navItems;
 
-  // If tenant, show tenant portal
   const effectivePage = userRole === "tenant" ? "tenant_portal" : userRole === "owner" ? "owner_portal" : page;
   const Page = pageComponents[effectivePage] || Dashboard;
-
-  // Redirect if page not allowed
   const safePage = allowedPages.includes(page) ? page : allowedPages[0];
 
   return (
@@ -6531,7 +7251,13 @@ export default function App() {
       <div className={`${sidebarOpen ? "flex" : "hidden"} md:flex flex-col w-56 bg-white border-r border-gray-100 shadow-sm z-20 fixed md:relative h-full`}>
         <div className="px-5 py-4 border-b border-gray-100">
           <div className="text-lg font-bold text-indigo-700">🏡 PropManager</div>
-          <div className="text-xs text-gray-400">Property Management</div>
+          {activeCompany && (
+            <button onClick={switchCompany} className="flex items-center gap-1 mt-1 text-xs text-gray-500 hover:text-indigo-600 transition-colors group">
+              <span className="w-5 h-5 rounded bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold">{activeCompany.name[0]}</span>
+              <span className="truncate max-w-28">{activeCompany.name}</span>
+              <span className="text-gray-300 group-hover:text-indigo-400 ml-auto">⇄</span>
+            </button>
+          )}
         </div>
         <nav className="flex-1 py-3 overflow-y-auto">
           {adminNav.map(n => (
@@ -6562,13 +7288,10 @@ export default function App() {
         <header className="bg-white border-b border-gray-100 px-4 py-3 flex items-center gap-3">
           <button className="md:hidden text-gray-500 text-xl" onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button>
           <div className="flex-1 text-sm text-gray-400 capitalize">{page.replace("_", " ")}</div>
-
-          {/* Role Badge */}
+          {activeCompany && <span className="hidden md:inline-block text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{activeCompany.name}</span>}
           <span className={`hidden md:inline-block text-white text-xs px-2 py-0.5 rounded-full font-semibold ${ROLES[userRole]?.color || "bg-indigo-600"}`}>
             {ROLES[userRole]?.label}
           </span>
-
-          {/* Notifications Bell */}
           <div className="relative">
             <button onClick={() => { setShowNotifications(!showNotifications); setUnreadCount(0); }} className="relative text-gray-400 hover:text-gray-600 p-1">
               🔔
@@ -6576,7 +7299,6 @@ export default function App() {
                 <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{unreadCount > 9 ? "9+" : unreadCount}</span>
               )}
             </button>
-
             {showNotifications && (
               <div className="absolute right-0 top-8 w-80 bg-white rounded-xl shadow-xl border border-gray-100 z-50">
                 <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center">
@@ -6604,6 +7326,7 @@ export default function App() {
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
+          {userRole === "admin" && activeCompany && <PendingRequestsPanel companyId={activeCompany.id} addNotification={addNotification} />}
           <Page
             addNotification={addNotification}
             notifications={notifications}
@@ -6611,6 +7334,8 @@ export default function App() {
             currentUser={currentUser}
             userRole={userRole}
             userProfile={userProfile}
+            companyId={activeCompany?.id || "sandbox-llc"}
+            activeCompany={activeCompany}
           />
         </main>
       </div>
