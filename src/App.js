@@ -53,9 +53,7 @@ async function autoPostJournalEntry({ date, description, reference, property, li
 
 async function getPropertyClassId(propertyAddress, companyId) {
   if (!propertyAddress) return null;
-  let q = supabase.from("acct_classes").select("id").eq("name", propertyAddress).limit(1);
-  if (companyId) q = q.eq("company_id", companyId);
-  const { data } = await q;
+  const { data } = await supabase.from("acct_classes").select("id").eq("name", propertyAddress).eq("company_id", companyId || "sandbox-llc").limit(1);
   return data?.[0]?.id || null;
 }
 
@@ -212,9 +210,7 @@ function Modal({ title, onClose, children }) {
 function PropertyDropdown({ value, onChange, className = "", required = false, label = "Property", companyId }) {
   const [properties, setProperties] = useState([]);
   useEffect(() => {
-    let q = supabase.from("properties").select("id, address, type, status").order("address");
-    if (companyId) q = q.eq("company_id", companyId);
-    q.then(({ data }) => setProperties(data || []));
+    supabase.from("properties").select("id, address, type, status").eq("company_id", companyId || "sandbox-llc").order("address").then(({ data }) => setProperties(data || []));
   }, [companyId]);
   return (
     <div>
@@ -230,9 +226,7 @@ function PropertyDropdown({ value, onChange, className = "", required = false, l
 function PropertySelect({ value, onChange, className = "", companyId }) {
   const [properties, setProperties] = useState([]);
   useEffect(() => {
-    let q = supabase.from("properties").select("id, address, type").order("address");
-    if (companyId) q = q.eq("company_id", companyId);
-    q.then(({ data }) => setProperties(data || []));
+    supabase.from("properties").select("id, address, type").eq("company_id", companyId || "sandbox-llc").order("address").then(({ data }) => setProperties(data || []));
   }, [companyId]);
   return (
     <select value={value || ""} onChange={e => onChange(e.target.value)} className={`border border-gray-200 rounded-lg px-3 py-2 text-sm ${className}`}>
@@ -305,6 +299,8 @@ function LoginPage({ onLogin, onBack }) {
   // eslint-disable-next-line no-unused-vars
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState("login"); // "login" or "signup"
+  const [signupSuccess, setSignupSuccess] = useState(false);
 
   const handleLogin = async () => {
     setLoading(true);
@@ -318,6 +314,38 @@ function LoginPage({ onLogin, onBack }) {
     setLoading(false);
   };
 
+  const handleSignup = async () => {
+    if (!email || !password) { setError("Email and password are required."); return; }
+    if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
+    setLoading(true);
+    setError("");
+    const { error } = await supabase.auth.signUp({ email, password });
+    if (error) {
+      setError(error.message);
+    } else {
+      setSignupSuccess(true);
+    }
+    setLoading(false);
+  };
+
+  if (signupSuccess) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-white flex flex-col">
+        <nav className="flex items-center justify-between px-8 py-4">
+          <button onClick={onBack} className="text-xl font-bold text-indigo-700">🏡 PropManager</button>
+        </nav>
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 w-full max-w-sm text-center">
+            <div className="text-4xl mb-3">✅</div>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">Account Created!</h2>
+            <p className="text-sm text-gray-500 mb-4">Check your email for a confirmation link. Once confirmed, you can sign in.</p>
+            <button onClick={() => { setSignupSuccess(false); setMode("login"); setError(""); }} className="bg-indigo-600 text-white py-2.5 px-6 rounded-lg font-semibold text-sm hover:bg-indigo-700">Back to Sign In</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-white flex flex-col">
       <nav className="flex items-center justify-between px-8 py-4">
@@ -325,8 +353,8 @@ function LoginPage({ onLogin, onBack }) {
       </nav>
       <div className="flex-1 flex items-center justify-center px-4">
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 w-full max-w-sm">
-          <h2 className="text-2xl font-bold text-gray-800 mb-1">Welcome back</h2>
-          <p className="text-sm text-gray-400 mb-6">Sign in to your account</p>
+          <h2 className="text-2xl font-bold text-gray-800 mb-1">{mode === "login" ? "Welcome back" : "Create account"}</h2>
+          <p className="text-sm text-gray-400 mb-6">{mode === "login" ? "Sign in to your account" : "Sign up to get started"}</p>
           {error && <div className="bg-red-50 text-red-600 text-xs rounded-lg px-3 py-2 mb-4">{error}</div>}
           <div className="mb-4">
             <label className="text-xs font-medium text-gray-600 block mb-1">Email</label>
@@ -334,11 +362,18 @@ function LoginPage({ onLogin, onBack }) {
           </div>
           <div className="mb-6">
             <label className="text-xs font-medium text-gray-600 block mb-1">Password</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" onKeyDown={e => e.key === "Enter" && handleLogin()} />
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" onKeyDown={e => e.key === "Enter" && (mode === "login" ? handleLogin() : handleSignup())} />
           </div>
-          <button onClick={handleLogin} disabled={loading} className="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-indigo-700 disabled:opacity-50">
-            {loading ? "Signing in..." : "Sign In"}
+          <button onClick={mode === "login" ? handleLogin : handleSignup} disabled={loading} className="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-indigo-700 disabled:opacity-50">
+            {loading ? (mode === "login" ? "Signing in..." : "Creating account...") : (mode === "login" ? "Sign In" : "Create Account")}
           </button>
+          <div className="text-center mt-4">
+            {mode === "login" ? (
+              <button onClick={() => { setMode("signup"); setError(""); }} className="text-xs text-indigo-600 hover:underline">Don't have an account? Sign up</button>
+            ) : (
+              <button onClick={() => { setMode("login"); setError(""); }} className="text-xs text-indigo-600 hover:underline">Already have an account? Sign in</button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -826,22 +861,29 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
     if (!tenant.email) { alert("This tenant has no email address. Please add one first."); return; }
     if (!window.confirm("Send portal invite to " + tenant.email + "?\n\nThis will:\n1. Create a Supabase auth account\n2. Set their role to 'tenant'\n3. They can log in and access the Tenant Portal")) return;
     try {
-      // Create Supabase auth user (they'll get a confirmation email)
-      // Send magic link invite - works client-side
       const { error: authErr } = await supabase.auth.signInWithOtp({
         email: tenant.email,
         options: { data: { name: tenant.name, role: "tenant" } }
       });
       if (authErr) {
         console.warn("Auth invite failed:", authErr.message);
-        // Still create app_users entry so role is set when they sign up
       }
       // Create app_users entry with tenant role
       await supabase.from("app_users").upsert([{
         email: tenant.email,
         name: tenant.name,
         role: "tenant",
+        company_id: companyId || "sandbox-llc",
       }], { onConflict: "email" });
+      // Create company_members entry so tenant is auto-routed to this company
+      await supabase.from("company_members").upsert([{
+        company_id: companyId || "sandbox-llc",
+        user_email: tenant.email,
+        user_name: tenant.name,
+        role: "tenant",
+        status: "active",
+        invited_by: userProfile?.email || "admin",
+      }], { onConflict: "company_id,user_email" });
       addNotification("\u2709\ufe0f", "Portal invite sent to " + tenant.email);
       logAudit("create", "tenants", "Invited tenant to portal: " + tenant.email, tenant.id, userProfile?.email, userRole);
       alert("Tenant portal access created for " + tenant.email + "\n\nThey can now log in at your app URL with their email.\n\nNote: They will need to use 'Forgot Password' to set their password, or you can set one in Supabase Auth dashboard.");
@@ -1203,7 +1245,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
             <input placeholder="Full name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <input placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <input placeholder="Phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} />
+            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} />
             <input placeholder="Monthly Rent ($)" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
               {["active", "notice", "expired"].map(s => <option key={s}>{s}</option>)}
@@ -1357,7 +1399,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
           <h3 className="font-semibold text-gray-700 mb-3">New Payment</h3>
           <div className="grid grid-cols-2 gap-3">
             <input placeholder="Tenant name" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" />
+            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" companyId={companyId} />
             <input placeholder="Amount" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
@@ -1553,7 +1595,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
           <h3 className="font-semibold text-gray-700 mb-3">{editingWO ? "Edit Work Order" : "New Work Order"}</h3>
           <div className="grid grid-cols-2 gap-3">
-            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" />
+            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" companyId={companyId} />
             <input placeholder="Tenant" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <input placeholder="Issue description" value={form.issue} onChange={e => setForm({ ...form, issue: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" />
             <select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
@@ -1712,7 +1754,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
           <h3 className="font-semibold text-gray-700 mb-3">New Utility Bill</h3>
           <div className="grid grid-cols-2 gap-3">
-            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" />
+            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" companyId={companyId} />
             <input placeholder="Provider (e.g. Gas Co)" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <input placeholder="Amount" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <input type="date" value={form.due} onChange={e => setForm({ ...form, due: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
@@ -2957,13 +2999,13 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
 }
 
 // --- Main Accounting Component (Supabase-backed) ---
-function Accounting({ companyId }) {
+function Accounting({ companyId, activeCompany }) {
   const [acctAccounts, setAcctAccounts] = useState([]);
   const [journalEntries, setJournalEntries] = useState([]);
   const [acctClasses, setAcctClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
-  const companyName = "Sigma Housing LLC";
+  const companyName = activeCompany?.name || "My Company";
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -3187,7 +3229,7 @@ function Accounting({ companyId }) {
       {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} />}
       {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} />}
       {activeTab === "bankimport" && <AcctBankImport accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAddJournalEntry={addJournalEntry} />}
-      {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} />}
+      {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} />}
       {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} />}
       {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} />}
     </div>
@@ -3307,7 +3349,7 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
           <h3 className="font-semibold text-gray-700 mb-3">Upload Document</h3>
           <div className="grid grid-cols-2 gap-3">
             <input placeholder="Document name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" />
+            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" companyId={companyId} />
             <input placeholder="Tenant name (optional)" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
               {["Lease", "Inspection", "Maintenance", "Financial", "Notice", "Other"].map(t => <option key={t}>{t}</option>)}
@@ -3472,7 +3514,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId }) {
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
           <h3 className="font-semibold text-gray-700 mb-3">New Inspection</h3>
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" />
+            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" companyId={companyId} />
             <select value={form.type} onChange={e => { setForm({ ...form, type: e.target.value }); initChecklist(e.target.value); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
               {["Move-In", "Move-Out", "Periodic"].map(t => <option key={t}>{t}</option>)}
             </select>
@@ -3770,7 +3812,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
         </Modal>
       )}
 
-      {showESign && <ESignatureModal lease={showESign} onClose={() => setShowESign(null)} onSigned={() => fetchData()} userProfile={userProfile} />}
+      {showESign && <ESignatureModal lease={showESign} onClose={() => setShowESign(null)} onSigned={() => fetchData()} userProfile={userProfile} companyId={companyId} />}
 
       {showDepositModal && (
         <Modal title={"Return Deposit \u2014 " + showDepositModal.tenant_name} onClose={() => setShowDepositModal(null)}>
@@ -3818,7 +3860,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
                 {tenants.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
               </select>
             </div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Lease Start *</label><input type="date" value={form.start_date} onChange={e => setForm({...form, start_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Lease End *</label><input type="date" value={form.end_date} onChange={e => setForm({...form, end_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Monthly Rent ($) *</label><input type="number" value={form.rent_amount} onChange={e => setForm({...form, rent_amount: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
@@ -4108,7 +4150,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
                 {vendors.filter(v => v.status !== "blocked").map(v => <option key={v.id} value={v.id}>{v.name} ({v.specialty})</option>)}
               </select>
             </div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Property</label><PropertySelect value={invoiceForm.property} onChange={v => setInvoiceForm({...invoiceForm, property: v})} /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Property</label><PropertySelect value={invoiceForm.property} onChange={v => setInvoiceForm({...invoiceForm, property: v})} companyId={companyId} /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Amount ($) *</label><input type="number" value={invoiceForm.amount} onChange={e => setInvoiceForm({...invoiceForm, amount: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Invoice #</label><input value={invoiceForm.invoice_number} onChange={e => setInvoiceForm({...invoiceForm, invoice_number: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Invoice Date</label><input type="date" value={invoiceForm.invoice_date} onChange={e => setInvoiceForm({...invoiceForm, invoice_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
@@ -4301,7 +4343,17 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
         email: owner.email,
         name: owner.name,
         role: "owner",
+        company_id: companyId || "sandbox-llc",
       }], { onConflict: "email" });
+      // Create company_members entry so owner is auto-routed to this company
+      await supabase.from("company_members").upsert([{
+        company_id: companyId || "sandbox-llc",
+        user_email: owner.email,
+        user_name: owner.name,
+        role: "owner",
+        status: "active",
+        invited_by: userProfile?.email || "admin",
+      }], { onConflict: "company_id,user_email" });
       addNotification("✉️", "Portal invite sent to " + owner.name);
       logAudit("create", "owners", "Invited owner to portal: " + owner.email, owner.id, userProfile?.email, userRole);
       alert("Owner portal invite sent to " + owner.email + "!\n\nThey can log in and see their properties, statements, and distributions.");
@@ -4636,7 +4688,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
 
 
 // ============ BANK RECONCILIATION ============
-function AcctBankReconciliation({ accounts, journalEntries }) {
+function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
   const [reconPeriod, setReconPeriod] = useState(new Date().toISOString().slice(0, 7));
   const [bankBalance, setBankBalance] = useState("");
   const [reconItems, setReconItems] = useState([]);
@@ -4702,8 +4754,11 @@ function AcctBankReconciliation({ accounts, journalEntries }) {
     const reconciledTotal = reconItems.filter(i => i.reconciled).reduce((s, i) => s + i.amount, 0);
     const unreconciledTotal = reconItems.filter(i => !i.reconciled).reduce((s, i) => s + i.amount, 0);
 
-    // Calculate book balance from all checking account entries
-    const { data: allLines } = await supabase.from("acct_journal_lines").select("debit, credit").eq("account_id", "1000");
+    // Calculate book balance from all checking account entries (scoped to this company)
+    const cJeIds = journalEntries.map(j => j.id);
+    const { data: allLines } = cJeIds.length > 0
+      ? await supabase.from("acct_journal_lines").select("debit, credit").eq("account_id", "1000").in("journal_entry_id", cJeIds)
+      : { data: [] };
     const bookBal = (allLines || []).reduce((s, l) => s + safeNum(l.debit) - safeNum(l.credit), 0);
     const bankBal = Number(bankBalance);
     const diff = Math.round((bankBal - bookBal) * 100) / 100;
@@ -5089,7 +5144,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
 
 
 // ============ E-SIGNATURE COMPONENT ============
-function ESignatureModal({ lease, onClose, onSigned, userProfile }) {
+function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   const canvasRef = useRef(null);
   const [signing, setSigning] = useState(false);
   const [signers, setSigners] = useState([]);
@@ -5727,7 +5782,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
               <option value="">Select tenant...</option>
               {tenants.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
             </select>
-            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" />
+            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" companyId={companyId} />
             <input placeholder="Amount ($)" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
             <select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
               {["ACH", "card", "cash", "check"].map(m => <option key={m}>{m}</option>)}
@@ -7150,7 +7205,11 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         setCurrentUser(session.user);
-        if (!activeCompany) { setScreen("company_select"); autoSelectCompany(session.user); }
+        // Only redirect to company_select if we don't have a company yet
+        setActiveCompany(prev => {
+          if (!prev) { setScreen("company_select"); autoSelectCompany(session.user); }
+          return prev;
+        });
       } else {
         setCurrentUser(null);
         setUserRole("admin");
@@ -7226,6 +7285,11 @@ export default function App() {
 
   function switchCompany() {
     setActiveCompany(null);
+    setCompanyRole("admin");
+    setUserRole("admin");
+    setCustomAllowedPages(null);
+    setNotifications([]);
+    setUnreadCount(0);
     setScreen("company_select");
     setPage("dashboard");
   }
