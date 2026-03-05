@@ -663,34 +663,41 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     setTimelineData(all);
   }
 
+  const [viewMode, setViewMode] = useState("card");
+  const [filterType, setFilterType] = useState("all");
+  const [visibleCols, setVisibleCols] = useState(["address","type","status","rent","tenant","lease_end"]);
+  const [showColPicker, setShowColPicker] = useState(false);
+  const allCols = [
+    { id: "address", label: "Address" }, { id: "type", label: "Type" }, { id: "status", label: "Status" },
+    { id: "rent", label: "Rent" }, { id: "tenant", label: "Tenant" }, { id: "lease_end", label: "Lease End" },
+    { id: "notes", label: "Notes" }, { id: "owner_name", label: "Owner" },
+  ];
+  const propertyTypes = [...new Set(properties.map(p => p.type).filter(Boolean))];
   const pendingRequests = changeRequests.filter(r => r.status === "pending");
 
   if (loading) return <Spinner />;
   const filtered = properties.filter(p =>
     (filter === "all" || p.status === filter) &&
-    (p.address?.toLowerCase().includes(search.toLowerCase()) || p.type?.toLowerCase().includes(search.toLowerCase()))
+    (filterType === "all" || p.type === filterType) &&
+    (p.address?.toLowerCase().includes(search.toLowerCase()) || p.type?.toLowerCase().includes(search.toLowerCase()) || p.tenant?.toLowerCase()?.includes(search.toLowerCase()))
   );
 
   return (
     <div>
       <h2 className="text-xl font-bold text-gray-800 mb-4">Properties</h2>
 
-      {/* Pending requests banner (admin only) */}
       {isAdmin && pendingRequests.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 flex items-center justify-between">
-          <span className="text-sm text-amber-800">📋 <strong>{pendingRequests.length}</strong> property change {pendingRequests.length === 1 ? "request" : "requests"} awaiting your review</span>
+          <span className="text-sm text-amber-800">📋 <strong>{pendingRequests.length}</strong> property change {pendingRequests.length === 1 ? "request" : "requests"} awaiting review</span>
           <button onClick={() => setShowRequests(!showRequests)} className="text-xs bg-amber-200 text-amber-800 px-3 py-1.5 rounded-lg font-medium hover:bg-amber-300">{showRequests ? "Hide" : "Review"}</button>
         </div>
       )}
-
-      {/* Non-admin: show their pending requests */}
       {!isAdmin && changeRequests.filter(r => r.status === "pending").length > 0 && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
-          <span className="text-sm text-blue-800">📋 You have <strong>{changeRequests.filter(r => r.status === "pending").length}</strong> pending {changeRequests.filter(r => r.status === "pending").length === 1 ? "request" : "requests"} awaiting admin approval</span>
+          <span className="text-sm text-blue-800">📋 You have <strong>{changeRequests.filter(r => r.status === "pending").length}</strong> pending request(s)</span>
         </div>
       )}
 
-      {/* Approval Queue (admin only) */}
       {isAdmin && showRequests && pendingRequests.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mb-4 space-y-3">
           <h3 className="font-semibold text-gray-800">Pending Approval</h3>
@@ -699,17 +706,17 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${req.request_type === "add" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>{req.request_type === "add" ? "New Property" : "Edit Property"}</span>
-                    <span className="text-xs text-gray-400">by {req.requested_by} · {new Date(req.requested_at).toLocaleDateString()}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${req.request_type === "add" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>{req.request_type === "add" ? "New" : "Edit"}</span>
+                    <span className="text-xs text-gray-400">by {req.requested_by}</span>
                   </div>
                   <p className="font-semibold text-gray-800">{req.address}</p>
-                  <p className="text-xs text-gray-500 mt-1">{req.type} · ${req.rent}/mo · Status: {req.property_status}{req.notes ? ` · Notes: ${req.notes}` : ""}</p>
+                  <p className="text-xs text-gray-500 mt-1">{req.type} · ${req.rent}/mo</p>
                 </div>
                 <div className="flex flex-col gap-2 shrink-0">
-                  <input value={reviewNote} onChange={e => setReviewNote(e.target.value)} placeholder="Note (optional)" className="border border-gray-200 rounded-lg px-2 py-1 text-xs w-40" />
+                  <input value={reviewNote} onChange={e => setReviewNote(e.target.value)} placeholder="Note" className="border border-gray-200 rounded-lg px-2 py-1 text-xs w-32" />
                   <div className="flex gap-1">
-                    <button onClick={() => approveRequest(req)} className="bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-emerald-700">✓ Approve</button>
-                    <button onClick={() => rejectRequest(req)} className="bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-red-600">✕ Reject</button>
+                    <button onClick={() => approveRequest(req)} className="bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-lg">✓ Approve</button>
+                    <button onClick={() => rejectRequest(req)} className="bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg">✕ Reject</button>
                   </div>
                 </div>
               </div>
@@ -723,60 +730,138 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
         <select value={filter} onChange={e => setFilter(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
           <option value="all">All Status</option><option value="occupied">Occupied</option><option value="vacant">Vacant</option><option value="maintenance">Maintenance</option>
         </select>
-        <button onClick={() => { setEditingProperty(null); setForm({ address: "", type: "Single Family", status: "vacant", rent: "", tenant: "", lease_end: "", notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">
-          {isAdmin ? "+ Add Property" : "+ Request New Property"}
+        <select value={filterType} onChange={e => setFilterType(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+          <option value="all">All Types</option>
+          {propertyTypes.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <div className="flex bg-gray-100 rounded-lg p-0.5">
+          {[["card","▦"],["table","☰"],["compact","≡"]].map(([m,icon]) => (
+            <button key={m} onClick={() => setViewMode(m)} className={`px-3 py-1.5 text-sm rounded-md ${viewMode === m ? "bg-white shadow-sm text-indigo-700 font-semibold" : "text-gray-500"}`} title={m}>{icon}</button>
+          ))}
+        </div>
+        {viewMode === "table" && (
+          <div className="relative">
+            <button onClick={() => setShowColPicker(!showColPicker)} className="border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-500 hover:bg-gray-50">⚙️ Columns</button>
+            {showColPicker && (
+              <div className="absolute right-0 top-10 bg-white border border-gray-200 rounded-xl shadow-lg p-3 z-50 w-48">
+                {allCols.map(c => (
+                  <label key={c.id} className="flex items-center gap-2 py-1 text-xs text-gray-700 cursor-pointer">
+                    <input type="checkbox" checked={visibleCols.includes(c.id)} onChange={() => setVisibleCols(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id])} className="rounded" />
+                    {c.label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        <button onClick={() => { setEditingProperty(null); setForm({ address: "", type: "Single Family", status: "vacant", rent: "", tenant: "", lease_end: "", notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 whitespace-nowrap">
+          {isAdmin ? "+ Add" : "+ Request"}
         </button>
       </div>
 
       {showForm && (
         <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm mb-4">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">{editingProperty ? (isAdmin ? "Edit Property" : "Request Edit") : (isAdmin ? "Add Property" : "Request New Property")}</h3>
-          {!isAdmin && <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 mb-3">Your changes will be submitted for admin approval before taking effect.</p>}
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">{editingProperty ? "Edit Property" : "Add Property"}</h3>
+          {!isAdmin && <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 mb-3">Submitted for admin approval.</p>}
           <div className="grid grid-cols-2 gap-3">
             <input placeholder="Address" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" />
-            <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
-              <option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option>
-            </select>
-            <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
-              <option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option>
-            </select>
-            <input placeholder="Rent amount" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input placeholder="Lease end date" type="date" value={form.lease_end} onChange={e => setForm({ ...form, lease_end: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input placeholder="Notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" />
+            <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm"><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></select>
+            <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option></select>
+            <input placeholder="Rent" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <input placeholder="Tenant" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <input type="date" value={form.lease_end} onChange={e => setForm({ ...form, lease_end: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <textarea placeholder="Notes" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" rows={2} />
           </div>
           <div className="flex gap-2 mt-3">
-            <button onClick={saveProperty} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">{isAdmin ? "Save" : "Submit for Approval"}</button>
+            <button onClick={saveProperty} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">{isAdmin ? "Save" : "Submit"}</button>
             <button onClick={() => { setShowForm(false); setEditingProperty(null); }} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
           </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {filtered.map(p => (
-          <div key={p.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-            <div className="flex items-start justify-between mb-2">
-              <div>
-                <h3 className="font-semibold text-gray-800 text-sm">{p.address}</h3>
-                <p className="text-xs text-gray-400">{p.type}</p>
-              </div>
-              <Badge status={p.status} label={p.status} />
-            </div>
-            <div className="text-sm text-gray-600 space-y-1">
-              <div className="flex justify-between"><span>Rent:</span><span className="font-semibold">${safeNum(p.rent).toLocaleString()}</span></div>
-              {p.tenant && <div className="flex justify-between"><span>Tenant:</span><span>{p.tenant}</span></div>}
-              {p.lease_end && <div className="flex justify-between"><span>Lease End:</span><span>{p.lease_end}</span></div>}
-            </div>
-            <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50">
-              <button onClick={() => { setEditingProperty(p); setForm({ address: p.address, type: p.type, status: p.status, rent: p.rent || "", tenant: p.tenant || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">{isAdmin ? "Edit" : "Request Edit"}</button>
-              {isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline">Delete</button>}
-              <button onClick={() => loadTimeline(p)} className="text-xs text-gray-400 hover:underline ml-auto">Timeline</button>
-            </div>
-          </div>
-        ))}
+      <div className="flex gap-3 mb-4">
+        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-gray-800">{properties.length}</div><div className="text-xs text-gray-400">Total</div></div>
+        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">{properties.filter(p => p.status === "occupied").length}</div><div className="text-xs text-gray-400">Occupied</div></div>
+        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{properties.filter(p => p.status === "vacant").length}</div><div className="text-xs text-gray-400">Vacant</div></div>
+        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-indigo-600">${properties.reduce((s, p) => s + safeNum(p.rent), 0).toLocaleString()}</div><div className="text-xs text-gray-400">Total Rent</div></div>
       </div>
-      {filtered.length === 0 && <p className="text-center text-gray-400 py-8">No properties found.</p>}
 
-      {/* Timeline Modal */}
+      {viewMode === "card" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {filtered.map(p => (
+            <div key={p.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+              <div className="flex items-start justify-between mb-2"><div><h3 className="font-semibold text-gray-800 text-sm">{p.address}</h3><p className="text-xs text-gray-400">{p.type}</p></div><Badge status={p.status} label={p.status} /></div>
+              <div className="text-sm text-gray-600 space-y-1">
+                <div className="flex justify-between"><span>Rent:</span><span className="font-semibold">${safeNum(p.rent).toLocaleString()}</span></div>
+                {p.tenant && <div className="flex justify-between"><span>Tenant:</span><span>{p.tenant}</span></div>}
+                {p.lease_end && <div className="flex justify-between"><span>Lease End:</span><span>{p.lease_end}</span></div>}
+              </div>
+              <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50">
+                <button onClick={() => { setEditingProperty(p); setForm({ address: p.address, type: p.type, status: p.status, rent: p.rent || "", tenant: p.tenant || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>
+                {isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline">Delete</button>}
+                <button onClick={() => loadTimeline(p)} className="text-xs text-gray-400 hover:underline ml-auto">Timeline</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {viewMode === "table" && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-xs text-gray-400 uppercase">
+              <tr>
+                {visibleCols.includes("address") && <th className="px-4 py-3 text-left">Address</th>}
+                {visibleCols.includes("type") && <th className="px-4 py-3 text-left">Type</th>}
+                {visibleCols.includes("status") && <th className="px-4 py-3 text-left">Status</th>}
+                {visibleCols.includes("rent") && <th className="px-4 py-3 text-right">Rent</th>}
+                {visibleCols.includes("tenant") && <th className="px-4 py-3 text-left">Tenant</th>}
+                {visibleCols.includes("lease_end") && <th className="px-4 py-3 text-left">Lease End</th>}
+                {visibleCols.includes("owner_name") && <th className="px-4 py-3 text-left">Owner</th>}
+                {visibleCols.includes("notes") && <th className="px-4 py-3 text-left">Notes</th>}
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(p => (
+                <tr key={p.id} className="border-t border-gray-50 hover:bg-gray-50/50">
+                  {visibleCols.includes("address") && <td className="px-4 py-2.5 font-medium text-gray-800">{p.address}</td>}
+                  {visibleCols.includes("type") && <td className="px-4 py-2.5 text-gray-600">{p.type}</td>}
+                  {visibleCols.includes("status") && <td className="px-4 py-2.5"><Badge status={p.status} label={p.status} /></td>}
+                  {visibleCols.includes("rent") && <td className="px-4 py-2.5 text-right font-semibold">${safeNum(p.rent).toLocaleString()}</td>}
+                  {visibleCols.includes("tenant") && <td className="px-4 py-2.5 text-gray-600">{p.tenant || "—"}</td>}
+                  {visibleCols.includes("lease_end") && <td className="px-4 py-2.5 text-gray-500">{p.lease_end || "—"}</td>}
+                  {visibleCols.includes("owner_name") && <td className="px-4 py-2.5 text-gray-600">{p.owner_name || "—"}</td>}
+                  {visibleCols.includes("notes") && <td className="px-4 py-2.5 text-xs text-gray-400 max-w-32 truncate">{p.notes || "—"}</td>}
+                  <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                    <button onClick={() => { setEditingProperty(p); setForm({ address: p.address, type: p.type, status: p.status, rent: p.rent || "", tenant: p.tenant || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>
+                    {isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline mr-2">Del</button>}
+                    <button onClick={() => loadTimeline(p)} className="text-xs text-gray-400 hover:underline">TL</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filtered.length === 0 && <div className="text-center py-8 text-gray-400 text-sm">No properties found</div>}
+        </div>
+      )}
+
+      {viewMode === "compact" && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm divide-y divide-gray-50">
+          {filtered.map(p => (
+            <div key={p.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50/50">
+              <div className={`w-2 h-2 rounded-full ${p.status === "occupied" ? "bg-emerald-500" : p.status === "vacant" ? "bg-amber-500" : "bg-red-500"}`} />
+              <div className="flex-1 min-w-0"><span className="text-sm font-medium text-gray-800">{p.address}</span><span className="text-xs text-gray-400 ml-2">{p.type}</span></div>
+              <span className="text-sm font-semibold text-gray-700">${safeNum(p.rent).toLocaleString()}</span>
+              <span className="text-xs text-gray-500 w-28 truncate">{p.tenant || "—"}</span>
+              <Badge status={p.status} label={p.status} />
+              <button onClick={() => { setEditingProperty(p); setForm({ address: p.address, type: p.type, status: p.status, rent: p.rent || "", tenant: p.tenant || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>
+            </div>
+          ))}
+          {filtered.length === 0 && <div className="text-center py-8 text-gray-400 text-sm">No properties found</div>}
+        </div>
+      )}
+
       {timelineProperty && (
         <Modal title={`Timeline: ${timelineProperty.address}`} onClose={() => setTimelineProperty(null)}>
           <div className="space-y-3 max-h-96 overflow-y-auto">
@@ -789,13 +874,14 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
                 </div>
               </div>
             ))}
-            {timelineData.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No activity found for this property.</p>}
+            {timelineData.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No activity found.</p>}
           </div>
         </Modal>
       )}
     </div>
   );
 }
+
 
 // ============ TENANTS ============
 function Tenants({ addNotification, userProfile, userRole, companyId }) {
@@ -1351,12 +1437,12 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
       await autoPostJournalEntry({
         companyId,
         date: form.date,
-        description: `Payment received \u2014 ${form.tenant} \u2014 ${form.property} (settling AR)`,
+        description: `Payment received — ${form.tenant} — ${form.property} (settling AR)`,
         reference: `PAY-${Date.now()}`,
         property: form.property,
         lines: [
           { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: `${form.method} from ${form.tenant}` },
-          { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: `AR settlement \u2014 ${form.tenant}` },
+          { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: `AR settlement — ${form.tenant}` },
         ]
       });
     } else {
@@ -1366,12 +1452,12 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
       await autoPostJournalEntry({
         companyId,
         date: form.date,
-        description: `${form.type === "rent" ? "Rent" : form.type} payment \u2014 ${form.tenant} \u2014 ${form.property}`,
+        description: `${form.type === "rent" ? "Rent" : form.type} payment — ${form.tenant} — ${form.property}`,
         reference: `PAY-${Date.now()}`,
         property: form.property,
         lines: [
           { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: `${form.method} from ${form.tenant}` },
-          { account_id: revenueAcct, account_name: revenueAcctName, debit: 0, credit: amt, class_id: classId, memo: `${form.tenant} \u2014 ${form.property}` },
+          { account_id: revenueAcct, account_name: revenueAcctName, debit: 0, credit: amt, class_id: classId, memo: `${form.tenant} — ${form.property}` },
         ]
       });
     }
@@ -3178,12 +3264,12 @@ function Accounting({ companyId, activeCompany }) {
                 await autoPostJournalEntry({
                   companyId,
                   date: today,
-                  description: `Rent accrual ${month} \u2014 ${t.name} \u2014 ${t.property}`,
+                  description: `Rent accrual ${month} — ${t.name} — ${t.property}`,
                   reference: `ACCR-${month}-${t.id}`,
                   property: t.property,
                   lines: [
                     { account_id: "1100", account_name: "Accounts Receivable", debit: rent, credit: 0, class_id: classId, memo: `${t.name} rent due` },
-                    { account_id: "4000", account_name: "Rental Income", debit: 0, credit: rent, class_id: classId, memo: `${t.name} \u2014 ${t.property}` },
+                    { account_id: "4000", account_name: "Rental Income", debit: 0, credit: rent, class_id: classId, memo: `${t.name} — ${t.property}` },
                   ]
                 });
                 count++;
@@ -3657,10 +3743,10 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
       if (!error && Number(form.security_deposit) > 0) {
         const classId = await getPropertyClassId(form.property);
         const dep = Number(form.security_deposit);
-        await autoPostJournalEntry({ companyId, date: form.start_date, description: "Security deposit received \u2014 " + form.tenant_name + " \u2014 " + form.property, reference: "DEP-" + Date.now(), property: form.property,
+        await autoPostJournalEntry({ companyId, date: form.start_date, description: "Security deposit received — " + form.tenant_name + " — " + form.property, reference: "DEP-" + Date.now(), property: form.property,
           lines: [
             { account_id: "1000", account_name: "Checking Account", debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.tenant_name },
-            { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant_name + " \u2014 " + form.property },
+            { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant_name + " — " + form.property },
           ]
         });
       }
@@ -3724,7 +3810,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     await supabase.from("leases").update({ deposit_status: status, deposit_returned: returned, deposit_return_date: depositForm.return_date, deposit_deductions: depositForm.deductions }).eq("id", lease.id);
     const classId = await getPropertyClassId(lease.property);
     if (returned > 0) {
-      await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Security deposit return \u2014 " + lease.tenant_name, reference: "DEPRET-" + Date.now(), property: lease.property,
+      await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Security deposit return — " + lease.tenant_name, reference: "DEPRET-" + Date.now(), property: lease.property,
         lines: [
           { account_id: "2100", account_name: "Security Deposits Held", debit: returned, credit: 0, class_id: classId, memo: "Return to " + lease.tenant_name },
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: returned, class_id: classId, memo: "Deposit refund" },
@@ -3732,7 +3818,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
       });
     }
     if (deducted > 0) {
-      await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Deposit deduction \u2014 " + lease.tenant_name + " \u2014 " + depositForm.deductions, reference: "DEPDED-" + Date.now(), property: lease.property,
+      await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Deposit deduction — " + lease.tenant_name + " — " + depositForm.deductions, reference: "DEPDED-" + Date.now(), property: lease.property,
         lines: [
           { account_id: "2100", account_name: "Security Deposits Held", debit: deducted, credit: 0, class_id: classId, memo: "Deduction: " + depositForm.deductions },
           { account_id: "4100", account_name: "Other Income", debit: 0, credit: deducted, class_id: classId, memo: "Deposit forfeiture: " + lease.tenant_name },
@@ -3783,7 +3869,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
           <div className="font-semibold text-amber-800 text-sm mb-2">Leases Expiring Soon</div>
           {expiringSoon.map(l => { const d = Math.ceil((new Date(l.end_date) - new Date()) / 86400000); return (
             <div key={l.id} className="flex justify-between items-center py-1 text-sm">
-              <span className="text-amber-700">{l.tenant_name} \u2014 {l.property}</span>
+              <span className="text-amber-700">{l.tenant_name} — {l.property}</span>
               <div className="flex items-center gap-2"><span className="text-amber-600 font-bold">{d} days</span><button onClick={() => renewLease(l)} className="text-xs bg-amber-600 text-white px-2 py-1 rounded hover:bg-amber-700">Renew</button></div>
             </div>
           ); })}
@@ -3815,7 +3901,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
       {showESign && <ESignatureModal lease={showESign} onClose={() => setShowESign(null)} onSigned={() => fetchData()} userProfile={userProfile} companyId={companyId} />}
 
       {showDepositModal && (
-        <Modal title={"Return Deposit \u2014 " + showDepositModal.tenant_name} onClose={() => setShowDepositModal(null)}>
+        <Modal title={"Return Deposit — " + showDepositModal.tenant_name} onClose={() => setShowDepositModal(null)}>
           <div className="space-y-3">
             <div className="bg-purple-50 rounded-lg p-3 text-sm"><div className="flex justify-between"><span className="text-gray-500">Original Deposit:</span><span className="font-bold">${safeNum(showDepositModal.security_deposit).toLocaleString()}</span></div></div>
             <div><label className="text-xs text-gray-500">Amount to Return ($)</label><input type="number" value={depositForm.amount_returned} onChange={e => setDepositForm({...depositForm, amount_returned: e.target.value})} placeholder={String(showDepositModal.security_deposit)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
@@ -3830,11 +3916,11 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
       )}
 
       {showChecklist && (
-        <Modal title={(showChecklist.type === "in" ? "Move-In" : "Move-Out") + " Checklist \u2014 " + showChecklist.lease.tenant_name} onClose={() => setShowChecklist(null)}>
+        <Modal title={(showChecklist.type === "in" ? "Move-In" : "Move-Out") + " Checklist — " + showChecklist.lease.tenant_name} onClose={() => setShowChecklist(null)}>
           <div className="space-y-2">
             {(() => { let items = []; try { items = JSON.parse(showChecklist.lease[showChecklist.type === "in" ? "move_in_checklist" : "move_out_checklist"] || "[]"); } catch {} return items.map((item, i) => (
               <div key={i} onClick={() => toggleChecklistItem(showChecklist.lease, showChecklist.type, i)} className={"flex items-center gap-3 p-2 rounded-lg cursor-pointer border " + (item.checked ? "bg-green-50 border-green-200" : "bg-white border-gray-100 hover:bg-gray-50")}>
-                <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs " + (item.checked ? "bg-green-500 border-green-500 text-white" : "border-gray-300")}>{item.checked ? "\u2713" : ""}</span>
+                <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs " + (item.checked ? "bg-green-500 border-green-500 text-white" : "border-gray-300")}>{item.checked ? "✓" : ""}</span>
                 <span className={"text-sm " + (item.checked ? "line-through text-gray-400" : "text-gray-700")}>{item.item}</span>
               </div>
             )); })()}
@@ -3849,7 +3935,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
             <div className="mb-4"><label className="text-xs text-gray-500 mb-1 block">Apply Template</label>
               <select value={form.template_id} onChange={e => { setForm({...form, template_id: e.target.value}); applyTemplate(e.target.value); }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
                 <option value="">Select template...</option>
-                {templates.map(t => <option key={t.id} value={t.id}>{t.name} \u2014 {t.description}</option>)}
+                {templates.map(t => <option key={t.id} value={t.id}>{t.name} — {t.description}</option>)}
               </select>
             </div>
           )}
@@ -3908,11 +3994,11 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
               </div>
               <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-50">
                 <button onClick={() => startEdit(l)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
-                <button onClick={() => setShowESign(l)} className={"text-xs border px-3 py-1 rounded-lg " + (l.signature_status === "fully_signed" ? "text-green-600 border-green-200 bg-green-50" : "text-purple-600 border-purple-200 hover:bg-purple-50")}>{l.signature_status === "fully_signed" ? "\u2713 Signed" : "\u270d\ufe0f E-Sign"}</button>
+                <button onClick={() => setShowESign(l)} className={"text-xs border px-3 py-1 rounded-lg " + (l.signature_status === "fully_signed" ? "text-green-600 border-green-200 bg-green-50" : "text-purple-600 border-purple-200 hover:bg-purple-50")}>{l.signature_status === "fully_signed" ? "✓ Signed" : "\u270d\ufe0f E-Sign"}</button>
                 {l.status === "active" && <button onClick={() => renewLease(l)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">Renew</button>}
                 {l.status === "active" && <button onClick={() => terminateLease(l)} className="text-xs text-red-600 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">Terminate</button>}
-                <button onClick={() => setShowChecklist({ lease: l, type: "in" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_in_completed ? "text-green-600 border-green-200 bg-green-50" : "text-gray-500 border-gray-200 hover:bg-gray-50")}>Move-In {l.move_in_completed ? "\u2713" : ""}</button>
-                <button onClick={() => setShowChecklist({ lease: l, type: "out" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_out_completed ? "text-green-600 border-green-200 bg-green-50" : "text-gray-500 border-gray-200 hover:bg-gray-50")}>Move-Out {l.move_out_completed ? "\u2713" : ""}</button>
+                <button onClick={() => setShowChecklist({ lease: l, type: "in" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_in_completed ? "text-green-600 border-green-200 bg-green-50" : "text-gray-500 border-gray-200 hover:bg-gray-50")}>Move-In {l.move_in_completed ? "✓" : ""}</button>
+                <button onClick={() => setShowChecklist({ lease: l, type: "out" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_out_completed ? "text-green-600 border-green-200 bg-green-50" : "text-gray-500 border-gray-200 hover:bg-gray-50")}>Move-Out {l.move_out_completed ? "✓" : ""}</button>
                 {safeNum(l.security_deposit) > 0 && l.deposit_status === "held" && (l.status === "terminated" || l.status === "expired" || isExpired) && (
                   <button onClick={() => { setShowDepositModal(l); setDepositForm({ amount_returned: String(l.security_deposit), deductions: "", return_date: new Date().toISOString().slice(0, 10) }); }} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">Return Deposit</button>
                 )}
@@ -4040,7 +4126,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
     await autoPostJournalEntry({
       companyId,
       date: today,
-      description: "Vendor payment \u2014 " + inv.vendor_name + " \u2014 " + (inv.description || inv.invoice_number),
+      description: "Vendor payment — " + inv.vendor_name + " — " + (inv.description || inv.invoice_number),
       reference: "VINV-" + Date.now(),
       property: inv.property || "",
       lines: [
@@ -4095,7 +4181,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
         <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
           <div className="font-semibold text-red-800 text-sm mb-1">Insurance Expiring Soon</div>
           {insuranceExpiring.map(v => (
-            <div key={v.id} className="text-xs text-red-700">{v.name} ({v.specialty}) \u2014 expires {v.insurance_expiry}</div>
+            <div key={v.id} className="text-xs text-red-700">{v.name} ({v.specialty}) — expires {v.insurance_expiry}</div>
           ))}
         </div>
       )}
@@ -4183,8 +4269,8 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
                 <div key={v.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <div className="text-sm font-bold text-gray-800">{v.name}{v.company ? " \u2014 " + v.company : ""}</div>
-                      <div className="text-xs text-gray-400">{v.specialty}{v.license_number ? " \u00b7 Lic: " + v.license_number : ""}</div>
+                      <div className="text-sm font-bold text-gray-800">{v.name}{v.company ? " — " + v.company : ""}</div>
+                      <div className="text-xs text-gray-400">{v.specialty}{v.license_number ? " · Lic: " + v.license_number : ""}</div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[v.status] || "bg-gray-100")}>{v.status}</span>
@@ -4396,10 +4482,10 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
     // Build line items
     const lineItems = [];
     lineItems.push({ category: "INCOME", items: [] });
-    monthPayments.forEach(p => lineItems[0].items.push({ description: p.type + " \u2014 " + (p.tenant || "Unknown") + " \u2014 " + p.property, amount: safeNum(p.amount), date: p.date }));
+    monthPayments.forEach(p => lineItems[0].items.push({ description: p.type + " — " + (p.tenant || "Unknown") + " — " + p.property, amount: safeNum(p.amount), date: p.date }));
     lineItems.push({ category: "EXPENSES", items: [] });
-    monthVendor.forEach(v => lineItems[1].items.push({ description: "Vendor: " + v.vendor_name + " \u2014 " + v.description, amount: -safeNum(v.amount), date: v.paid_date }));
-    monthUtils.forEach(u => lineItems[1].items.push({ description: "Utility: " + u.provider + " \u2014 " + u.property, amount: -safeNum(u.amount), date: u.due_date }));
+    monthVendor.forEach(v => lineItems[1].items.push({ description: "Vendor: " + v.vendor_name + " — " + v.description, amount: -safeNum(v.amount), date: v.paid_date }));
+    monthUtils.forEach(u => lineItems[1].items.push({ description: "Utility: " + u.provider + " — " + u.property, amount: -safeNum(u.amount), date: u.due_date }));
     lineItems.push({ category: "FEES", items: [{ description: "Management Fee (" + owner.management_fee_pct + "%)", amount: -mgmtFee, date: endDate }] });
 
     const { error } = await supabase.from("owner_statements").insert([{ company_id: companyId || "sandbox-llc",
@@ -4410,7 +4496,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
       line_items: JSON.stringify(lineItems), status: "draft",
     }]);
     if (error) { alert("Error: " + error.message); return; }
-    logAudit("create", "owner_statements", "Generated statement for " + owner.name + " \u2014 " + genMonth, "", userProfile?.email, userRole);
+    logAudit("create", "owner_statements", "Generated statement for " + owner.name + " — " + genMonth, "", userProfile?.email, userRole);
     setShowGenerate(false);
     fetchData();
   }
@@ -4436,7 +4522,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
     await autoPostJournalEntry({
       companyId,
       date: today,
-      description: "Owner distribution \u2014 " + stmt.owner_name + " \u2014 " + stmt.period,
+      description: "Owner distribution — " + stmt.owner_name + " — " + stmt.period,
       reference: "ODIST-" + Date.now(),
       property: stmt.property || "",
       lines: [
@@ -4449,7 +4535,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
       await autoPostJournalEntry({
         companyId,
         date: today,
-        description: "Management fee \u2014 " + stmt.owner_name + " \u2014 " + stmt.period,
+        description: "Management fee — " + stmt.owner_name + " — " + stmt.period,
         reference: "MGMT-" + Date.now(),
         property: stmt.property || "",
         lines: [
@@ -4552,7 +4638,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
 
       {/* Statement Detail View */}
       {viewStatement && (
-        <Modal title={"Statement \u2014 " + viewStatement.owner_name + " \u2014 " + viewStatement.period} onClose={() => setViewStatement(null)}>
+        <Modal title={"Statement — " + viewStatement.owner_name + " — " + viewStatement.period} onClose={() => setViewStatement(null)}>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Income</div><div className="text-lg font-bold text-green-700">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
@@ -4593,8 +4679,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
               <div key={o.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                 <div className="flex justify-between items-start mb-2">
                   <div>
-                    <div className="text-sm font-bold text-gray-800">{o.name}{o.company ? " \u2014 " + o.company : ""}</div>
-                    <div className="text-xs text-gray-400">{o.email}{o.phone ? " \u00b7 " + o.phone : ""}</div>
+                    <div className="text-sm font-bold text-gray-800">{o.name}{o.company ? " — " + o.company : ""}</div>
+                    <div className="text-xs text-gray-400">{o.email}{o.phone ? " · " + o.phone : ""}</div>
                   </div>
                   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (o.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500")}>{o.status}</span>
                 </div>
@@ -4605,7 +4691,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
                   <div><span className="text-gray-400">Payment:</span> <span className="font-medium capitalize">{o.payment_method}</span></div>
                 </div>
                 {ownerProps.length > 0 && (
-                  <div className="text-xs text-gray-500 mb-2">{ownerProps.map(p => p.address).join(" \u00b7 ")}</div>
+                  <div className="text-xs text-gray-500 mb-2">{ownerProps.map(p => p.address).join(" · ")}</div>
                 )}
                 <div className="flex gap-2 pt-2 border-t border-gray-50">
                   <button onClick={() => inviteOwner(o)} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">✉️ Invite</button>
@@ -4627,7 +4713,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
             <div key={p.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex justify-between items-center">
               <div>
                 <div className="text-sm font-medium text-gray-800">{p.address}</div>
-                <div className="text-xs text-gray-400">{p.type} \u00b7 {p.status}</div>
+                <div className="text-xs text-gray-400">{p.type} · {p.status}</div>
               </div>
               <select value={p.owner_id || ""} onChange={e => assignPropertyToOwner(p.id, e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm min-w-40">
                 <option value="">No owner</option>
@@ -4674,7 +4760,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
             <div key={d.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex justify-between items-center">
               <div>
                 <div className="text-sm font-medium text-gray-800">{owners.find(o => o.id === d.owner_id)?.name || "Unknown"}</div>
-                <div className="text-xs text-gray-400">{d.date} \u00b7 {d.method} \u00b7 {d.reference}</div>
+                <div className="text-xs text-gray-400">{d.date} · {d.method} · {d.reference}</div>
               </div>
               <div className="text-sm font-bold text-green-600">${safeNum(d.amount).toLocaleString()}</div>
             </div>
@@ -4784,7 +4870,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
       await supabase.from("acct_journal_lines").update({ reconciled: true, reconciled_date: today }).in("id", reconIds);
     }
 
-    logAudit("create", "bank_reconciliation", "Bank reconciliation for " + reconPeriod + " \u2014 diff: $" + diff, "", "", "");
+    logAudit("create", "bank_reconciliation", "Bank reconciliation for " + reconPeriod + " — diff: $" + diff, "", "", "");
     setShowReconcile(false);
     setBankBalance("");
     setReconItems([]);
@@ -4843,7 +4929,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
           <button onClick={() => setViewRecon(null)} className="text-sm text-indigo-600 mb-3 hover:underline">← Back</button>
           <div className="bg-white rounded-xl border border-gray-100 p-5">
             <div className="flex justify-between items-start mb-4">
-              <div><h3 className="font-semibold text-gray-800">Reconciliation \u2014 {viewRecon.period}</h3><div className="text-xs text-gray-400">{new Date(viewRecon.created_at).toLocaleDateString()}</div></div>
+              <div><h3 className="font-semibold text-gray-800">Reconciliation — {viewRecon.period}</h3><div className="text-xs text-gray-400">{new Date(viewRecon.created_at).toLocaleDateString()}</div></div>
               <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewRecon.status === "reconciled" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")}>{viewRecon.status}</span>
             </div>
             <div className="grid grid-cols-3 gap-3 mb-4">
@@ -4853,7 +4939,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
             </div>
             {(() => { let items = []; try { items = JSON.parse(viewRecon.unreconciled_items || "[]"); } catch {} return items.length > 0 ? (
               <div><div className="font-semibold text-red-700 text-sm mb-2">Unreconciled Items ({items.length})</div>
-                {items.map((it, i) => (<div key={i} className="flex justify-between text-xs py-1 border-b border-gray-50"><span className="text-gray-600">{it.date} \u2014 {it.description}</span><span className="font-bold">${it.amount.toLocaleString()}</span></div>))}
+                {items.map((it, i) => (<div key={i} className="flex justify-between text-xs py-1 border-b border-gray-50"><span className="text-gray-600">{it.date} — {it.description}</span><span className="font-bold">${it.amount.toLocaleString()}</span></div>))}
               </div>) : null; })()}
           </div>
         </div>
@@ -4863,8 +4949,8 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
         <div>
           <div className="flex justify-between items-center mb-4">
             <div>
-              <h3 className="font-semibold text-gray-800">Reconcile \u2014 {reconPeriod}</h3>
-              <div className="text-xs text-gray-400">Bank balance: ${Number(bankBalance).toLocaleString()} \u00b7 Check items that match your bank statement</div>
+              <h3 className="font-semibold text-gray-800">Reconcile — {reconPeriod}</h3>
+              <div className="text-xs text-gray-400">Bank balance: ${Number(bankBalance).toLocaleString()} · Check items that match your bank statement</div>
             </div>
             <button onClick={() => { setShowReconcile(false); setReconItems([]); }} className="text-sm text-gray-500 hover:text-gray-700">Cancel</button>
           </div>
@@ -4883,10 +4969,10 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
           <div className="space-y-1 mb-4">
             {reconItems.map((item, i) => (
               <div key={i} onClick={() => toggleReconItem(i)} className={"flex items-center gap-3 px-4 py-2.5 rounded-lg cursor-pointer border " + (item.reconciled ? "bg-green-50 border-green-200" : "bg-white border-gray-100 hover:bg-gray-50")}>
-                <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs flex-shrink-0 " + (item.reconciled ? "bg-green-500 border-green-500 text-white" : "border-gray-300")}>{item.reconciled ? "\u2713" : ""}</span>
+                <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs flex-shrink-0 " + (item.reconciled ? "bg-green-500 border-green-500 text-white" : "border-gray-300")}>{item.reconciled ? "✓" : ""}</span>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm text-gray-800 truncate">{item.description}</div>
-                  <div className="text-xs text-gray-400">{item.date} \u00b7 {item.reference} \u00b7 {item.memo}</div>
+                  <div className="text-xs text-gray-400">{item.date} · {item.reference} · {item.memo}</div>
                 </div>
                 <div className={"text-sm font-bold flex-shrink-0 " + (item.amount >= 0 ? "text-green-600" : "text-red-600")}>{item.amount >= 0 ? "+" : ""}${item.amount.toLocaleString()}</div>
               </div>
@@ -4912,10 +4998,10 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
   const [showTest, setShowTest] = useState(null);
 
   const eventLabels = {
-    rent_due: { label: "Rent Due Reminder", icon: "\ud83d\udcb0", desc: "Sent X days before rent is due" },
+    rent_due: { label: "Rent Due Reminder", icon: "💰", desc: "Sent X days before rent is due" },
     rent_overdue: { label: "Rent Overdue Notice", icon: "\u26a0\ufe0f", desc: "Sent when rent is past due" },
     lease_expiring: { label: "Lease Expiration Alert", icon: "\ud83d\udcdd", desc: "Sent X days before lease expires" },
-    work_order_update: { label: "Work Order Status Update", icon: "\ud83d\udd27", desc: "Sent when maintenance request changes status" },
+    work_order_update: { label: "Work Order Status Update", icon: "🔧", desc: "Sent when maintenance request changes status" },
     payment_received: { label: "Payment Confirmation", icon: "\u2705", desc: "Sent when payment is recorded" },
     lease_created: { label: "New Lease Created", icon: "\ud83c\udfe0", desc: "Sent when a new lease is signed" },
     insurance_expiring: { label: "Vendor Insurance Alert", icon: "\ud83d\udee1\ufe0f", desc: "Sent when vendor insurance is expiring" },
@@ -5089,7 +5175,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
             <div key={l.id} className="bg-white rounded-xl border border-gray-100 px-4 py-2.5 flex justify-between items-center">
               <div>
                 <div className="text-sm text-gray-800">{l.subject}</div>
-                <div className="text-xs text-gray-400">{l.recipient_email} \u00b7 {new Date(l.created_at).toLocaleString()}</div>
+                <div className="text-xs text-gray-400">{l.recipient_email} · {new Date(l.created_at).toLocaleString()}</div>
               </div>
               <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (l.status === "sent" ? "bg-green-100 text-green-700" : l.status === "failed" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700")}>{l.status}</span>
             </div>
@@ -5121,7 +5207,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
                     <td className="px-4 py-2 text-gray-600">{t.property}</td>
                     <td className="px-4 py-2 text-right font-bold">${safeNum(t.rent).toLocaleString()}</td>
                     <td className={"px-4 py-2 text-right font-bold " + (safeNum(t.balance) > 0 ? "text-red-600" : "text-green-600")}>${safeNum(t.balance).toLocaleString()}</td>
-                    <td className="px-4 py-2 text-gray-600">{t.move_out || "\u2014"}</td>
+                    <td className="px-4 py-2 text-gray-600">{t.move_out || "—"}</td>
                     <td className="px-4 py-2"><span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (t.lease_status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500")}>{t.lease_status || "active"}</span></td>
                   </tr>
                 ))}
@@ -5258,12 +5344,12 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   const allSigned = signers.length > 0 && signers.every(s => s.status === "signed");
 
   return (
-    <Modal title={"E-Signature \u2014 " + lease.tenant_name} onClose={onClose}>
+    <Modal title={"E-Signature — " + lease.tenant_name} onClose={onClose}>
       <div className="space-y-4">
         {/* Lease Summary */}
         <div className="bg-indigo-50 rounded-lg p-3">
           <div className="text-sm font-semibold text-indigo-800">{lease.property}</div>
-          <div className="text-xs text-indigo-600">{lease.start_date} to {lease.end_date} \u00b7 ${safeNum(lease.rent_amount).toLocaleString()}/mo</div>
+          <div className="text-xs text-indigo-600">{lease.start_date} to {lease.end_date} · ${safeNum(lease.rent_amount).toLocaleString()}/mo</div>
         </div>
 
         {/* Lease Terms Preview */}
@@ -5291,7 +5377,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
               <div className="flex items-center gap-2">
                 {s.status === "signed" ? (
                   <div className="text-right">
-                    <span className="text-xs font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">\u2713 Signed</span>
+                    <span className="text-xs font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">✓ Signed</span>
                     <div className="text-xs text-gray-400 mt-0.5">{new Date(s.signed_at).toLocaleDateString()}</div>
                   </div>
                 ) : (
@@ -5471,7 +5557,7 @@ function OwnerPortal({ currentUser, companyId }) {
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-2xl font-bold mb-1">Welcome, {ownerData.name}</h1>
-            <p className="text-indigo-200 text-sm">{properties.length} {properties.length === 1 ? "property" : "properties"} \u00b7 {ownerData.company || "Individual Owner"}</p>
+            <p className="text-indigo-200 text-sm">{properties.length} {properties.length === 1 ? "property" : "properties"} · {ownerData.company || "Individual Owner"}</p>
           </div>
           <div className="text-right">
             <div className="text-sm text-indigo-200">Management Fee</div>
@@ -5502,7 +5588,7 @@ function OwnerPortal({ currentUser, companyId }) {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-5 border-b border-gray-100">
-        {[["overview","\ud83c\udfe0 Overview"],["statements","\ud83d\udcca Statements"],["distributions","\ud83d\udcb0 Distributions"],["properties","\ud83c\udfe2 Properties"]].map(([id, label]) => (
+        {[["overview","\ud83c\udfe0 Overview"],["statements","\ud83d\udcca Statements"],["distributions","💰 Distributions"],["properties","\ud83c\udfe2 Properties"]].map(([id, label]) => (
           <button key={id} onClick={() => { setActiveTab(id); setViewStatement(null); }} className={"px-4 py-2.5 text-sm font-medium border-b-2 transition-colors " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:text-gray-700")}>{label}</button>
         ))}
       </div>
@@ -5574,8 +5660,8 @@ function OwnerPortal({ currentUser, companyId }) {
           <div className="bg-white rounded-xl border border-gray-100 p-5">
             <div className="flex justify-between items-start mb-4">
               <div>
-                <h3 className="font-bold text-gray-800">Owner Statement \u2014 {viewStatement.period}</h3>
-                <div className="text-xs text-gray-400">{viewStatement.owner_name} \u00b7 Generated {new Date(viewStatement.created_at).toLocaleDateString()}</div>
+                <h3 className="font-bold text-gray-800">Owner Statement — {viewStatement.period}</h3>
+                <div className="text-xs text-gray-400">{viewStatement.owner_name} · Generated {new Date(viewStatement.created_at).toLocaleDateString()}</div>
               </div>
               <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewStatement.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{viewStatement.status}</span>
             </div>
@@ -5591,7 +5677,7 @@ function OwnerPortal({ currentUser, companyId }) {
                 <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">{cat.category}</div>
                 {(cat.items || []).map((item, ii) => (
                   <div key={ii} className="flex justify-between text-xs py-1 border-b border-gray-50">
-                    <span className="text-gray-600">{item.date} \u2014 {item.description}</span>
+                    <span className="text-gray-600">{item.date} — {item.description}</span>
                     <span className={"font-bold " + (item.amount >= 0 ? "text-green-600" : "text-red-500")}>${Math.abs(item.amount).toLocaleString()}</span>
                   </div>
                 ))}
@@ -5608,7 +5694,7 @@ function OwnerPortal({ currentUser, companyId }) {
             <div key={d.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex justify-between items-center">
               <div>
                 <div className="text-sm font-medium text-gray-800">${safeNum(d.amount).toLocaleString()}</div>
-                <div className="text-xs text-gray-400">{d.reference} \u00b7 {new Date(d.date).toLocaleDateString()}</div>
+                <div className="text-xs text-gray-400">{d.reference} · {new Date(d.date).toLocaleDateString()}</div>
               </div>
               <div className="text-right">
                 <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700">{d.method?.toUpperCase()}</span>
@@ -5627,7 +5713,7 @@ function OwnerPortal({ currentUser, companyId }) {
               <div className="flex justify-between items-start mb-2">
                 <div>
                   <div className="font-semibold text-gray-800">{p.address}</div>
-                  <div className="text-xs text-gray-400">{p.type || "Residential"} \u00b7 {p.bedrooms || "?"} bd / {p.bathrooms || "?"} ba \u00b7 {p.sqft || "?"} sqft</div>
+                  <div className="text-xs text-gray-400">{p.type || "Residential"} · {p.bedrooms || "?"} bd / {p.bathrooms || "?"} ba · {p.sqft || "?"} sqft</div>
                 </div>
                 <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (p.status === "occupied" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{p.status}</span>
               </div>
@@ -5737,17 +5823,17 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
       }
     }
     if (hasAccrual) {
-      await autoPostJournalEntry({ companyId, date: today, description: "Autopay received \u2014 " + s.tenant + " \u2014 " + s.property + " (settling AR)", reference: "APAY-" + Date.now(), property: s.property,
+      await autoPostJournalEntry({ companyId, date: today, description: "Autopay received — " + s.tenant + " — " + s.property + " (settling AR)", reference: "APAY-" + Date.now(), property: s.property,
         lines: [
           { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay " + s.method + " from " + s.tenant },
-          { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement \u2014 " + s.tenant },
+          { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement — " + s.tenant },
         ]
       });
     } else {
-      await autoPostJournalEntry({ companyId, date: today, description: "Autopay \u2014 " + s.tenant + " \u2014 " + s.property, reference: "APAY-" + Date.now(), property: s.property,
+      await autoPostJournalEntry({ companyId, date: today, description: "Autopay — " + s.tenant + " — " + s.property, reference: "APAY-" + Date.now(), property: s.property,
         lines: [
           { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay " + s.method + " from " + s.tenant },
-          { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: s.tenant + " \u2014 " + s.property },
+          { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: s.tenant + " — " + s.property },
         ]
       });
     }
@@ -6103,17 +6189,17 @@ function TenantPortal({ currentUser, companyId }) {
         }
       }
       if (hasAccrual) {
-        await autoPostJournalEntry({ companyId, date: today, description: "Online payment \u2014 " + tenantData.name + " \u2014 " + tenantData.property + " (settling AR)", reference: "SPAY-" + Date.now(), property: tenantData.property,
+        await autoPostJournalEntry({ companyId, date: today, description: "Online payment — " + tenantData.name + " — " + tenantData.property + " (settling AR)", reference: "SPAY-" + Date.now(), property: tenantData.property,
           lines: [
             { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Stripe from " + tenantData.name },
-            { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement \u2014 " + tenantData.name },
+            { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement — " + tenantData.name },
           ]
         });
       } else {
-        await autoPostJournalEntry({ companyId, date: today, description: "Online rent payment \u2014 " + tenantData.name + " \u2014 " + tenantData.property, reference: "SPAY-" + Date.now(), property: tenantData.property,
+        await autoPostJournalEntry({ companyId, date: today, description: "Online rent payment — " + tenantData.name + " — " + tenantData.property, reference: "SPAY-" + Date.now(), property: tenantData.property,
           lines: [
             { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Stripe from " + tenantData.name },
-            { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: tenantData.name + " \u2014 " + tenantData.property },
+            { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: tenantData.name + " — " + tenantData.property },
           ]
         });
       }
@@ -6178,8 +6264,8 @@ function TenantPortal({ currentUser, companyId }) {
   const tabs = [
     ["overview", "\ud83c\udfe0 Overview"],
     ["pay", "\ud83d\udcb3 Pay Rent"],
-    ["history", "\ud83d\udccb History"],
-    ["maintenance", "\ud83d\udd27 Maintenance"],
+    ["history", "📋 History"],
+    ["maintenance", "🔧 Maintenance"],
     ["documents", "\ud83d\udcc1 Documents"],
     ["messages", "\ud83d\udcac Messages"],
   ];
@@ -6208,7 +6294,7 @@ function TenantPortal({ currentUser, companyId }) {
           </div>
           <div className="bg-white/10 backdrop-blur rounded-lg p-3 text-center">
             <div className="text-xs text-indigo-200">Lease End</div>
-            <div className="text-sm font-bold mt-1">{tenantData.move_out || "\u2014"}</div>
+            <div className="text-sm font-bold mt-1">{tenantData.move_out || "—"}</div>
           </div>
         </div>
       </div>
@@ -6225,7 +6311,7 @@ function TenantPortal({ currentUser, companyId }) {
         <div className="space-y-4">
           <div className="bg-white rounded-xl border border-gray-100 p-4">
             <h3 className="font-semibold text-gray-700 mb-3">Lease Details</h3>
-            {[["Status", (tenantData.lease_status || "active")], ["Property", tenantData.property], ["Move-in", tenantData.move_in || "\u2014"], ["Lease End", tenantData.move_out || "\u2014"], ["Monthly Rent", "$" + safeNum(tenantData.rent).toLocaleString()], ["Email", tenantData.email || "\u2014"], ["Phone", tenantData.phone || "\u2014"]].map(([l, v]) => (
+            {[["Status", (tenantData.lease_status || "active")], ["Property", tenantData.property], ["Move-in", tenantData.move_in || "—"], ["Lease End", tenantData.move_out || "—"], ["Monthly Rent", "$" + safeNum(tenantData.rent).toLocaleString()], ["Email", tenantData.email || "—"], ["Phone", tenantData.phone || "—"]].map(([l, v]) => (
               <div key={l} className="flex justify-between py-2 border-b border-gray-50 text-sm last:border-0"><span className="text-gray-400">{l}</span><span className="font-medium text-gray-800 capitalize">{v}</span></div>
             ))}
           </div>
@@ -6375,7 +6461,7 @@ function TenantPortal({ currentUser, companyId }) {
                 <div className="flex justify-between items-start">
                   <div>
                     <div className="text-sm font-medium text-gray-800">{w.issue}</div>
-                    <div className="text-xs text-gray-400">{w.property} \u00b7 {new Date(w.created_at).toLocaleDateString()}</div>
+                    <div className="text-xs text-gray-400">{w.property} · {new Date(w.created_at).toLocaleDateString()}</div>
                     {w.notes && <div className="text-xs text-gray-500 mt-1">{w.notes}</div>}
                   </div>
                   <div className="text-right">
@@ -6399,11 +6485,11 @@ function TenantPortal({ currentUser, companyId }) {
               <div key={d.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex justify-between items-center">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600 text-lg">
-                    {d.type === "lease" ? "\ud83d\udcdc" : d.type === "notice" ? "\ud83d\udce8" : "\ud83d\udcc4"}
+                    {d.type === "lease" ? "\ud83d\udcdc" : d.type === "notice" ? "\ud83d\udce8" : "📄"}
                   </div>
                   <div>
                     <div className="text-sm font-medium text-gray-800">{d.name || d.file_name}</div>
-                    <div className="text-xs text-gray-400">{d.type || "Document"} \u00b7 {new Date(d.uploaded_at).toLocaleDateString()}</div>
+                    <div className="text-xs text-gray-400">{d.type || "Document"} · {new Date(d.uploaded_at).toLocaleDateString()}</div>
                   </div>
                 </div>
                 {d.url && <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">View</a>}
@@ -6422,7 +6508,7 @@ function TenantPortal({ currentUser, companyId }) {
               <div key={m.id} className={"flex " + (m.sender !== tenantData.name ? "justify-start" : "justify-end")}>
                 <div className={"max-w-xs rounded-2xl px-4 py-2.5 " + (m.sender !== tenantData.name ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-800")}>
                   <div className="text-sm">{m.message}</div>
-                  <div className={"text-xs mt-1 " + (m.sender !== tenantData.name ? "text-indigo-200" : "text-gray-400")}>{m.sender} \u00b7 {new Date(m.created_at).toLocaleDateString()}</div>
+                  <div className={"text-xs mt-1 " + (m.sender !== tenantData.name ? "text-indigo-200" : "text-gray-400")}>{m.sender} · {new Date(m.created_at).toLocaleDateString()}</div>
                 </div>
               </div>
             ))}
