@@ -85,7 +85,7 @@ async function autoPostRentCharges(companyId) {
       const leaseStart = new Date(lease.start_date);
       const leaseEnd = new Date(lease.end_date);
       const rent = safeNum(lease.rent_amount);
-      const classId = await getPropertyClassId(lease.property);
+      const classId = await getPropertyClassId(lease.property, companyId);
 
       // Calculate rent with escalation for each year
       function getRentForDate(date) {
@@ -1473,7 +1473,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
       return;
     }
     // AUTO-POST TO ACCOUNTING: Smart posting - settle AR if accrual exists, else direct revenue
-    const classId = await getPropertyClassId(form.property);
+    const classId = await getPropertyClassId(form.property, companyId);
     const amt = Number(form.amount);
     const isLateFee = form.type === "late_fee";
     // Check if an accrual (AR) entry exists for this tenant/property this month
@@ -1641,7 +1641,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
     if (error) { alert("Error updating status: " + error.message); return; }
     // AUTO-POST TO ACCOUNTING when completed with a cost
     if (newStatus === "completed" && safeNum(wo.cost) > 0) {
-      const classId = await getPropertyClassId(wo.property);
+      const classId = await getPropertyClassId(wo.property, companyId);
       const amt = safeNum(wo.cost);
       await autoPostJournalEntry({
         companyId,
@@ -1846,7 +1846,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
     }]);
     addNotification("✅", `Utility paid: ${u.provider} $${u.amount} for ${u.property}`);
     // AUTO-POST TO ACCOUNTING: DR Utilities Expense, CR Bank
-    const classId = await getPropertyClassId(u.property);
+    const classId = await getPropertyClassId(u.property, companyId);
     const amt = safeNum(u.amount);
     if (amt > 0) {
       await autoPostJournalEntry({
@@ -3374,7 +3374,7 @@ function Accounting({ companyId, activeCompany }) {
               for (const t of activeTenants) {
                 const rent = safeNum(t.rent);
                 if (rent <= 0) continue;
-                const classId = await getPropertyClassId(t.property);
+                const classId = await getPropertyClassId(t.property, companyId);
                 await autoPostJournalEntry({
                   companyId,
                   date: today,
@@ -3818,7 +3818,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
   }
 
   function applyTemplate(templateId) {
-    const tmpl = templates.find(t => t.id === templateId);
+    const tmpl = templates.find(t => String(t.id) === String(templateId));
     if (!tmpl) return;
     const months = tmpl.default_lease_months || 12;
     const start = form.start_date || new Date().toISOString().slice(0, 10);
@@ -3859,7 +3859,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
         await supabase.from("tenants").update({ lease_status: "active", move_in: form.start_date, move_out: form.end_date, rent: Number(form.rent_amount) }).eq("id", tenant.id);
       }
       if (!error && Number(form.security_deposit) > 0) {
-        const classId = await getPropertyClassId(form.property);
+        const classId = await getPropertyClassId(form.property, companyId);
         const dep = Number(form.security_deposit);
         await autoPostJournalEntry({ companyId, date: form.start_date, description: "Security deposit received — " + form.tenant_name + " — " + form.property, reference: "DEP-" + Date.now(), property: form.property,
           lines: [
@@ -3926,7 +3926,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     const deducted = deposit - returned;
     const status = returned >= deposit ? "returned" : returned > 0 ? "partial_return" : "forfeited";
     await supabase.from("leases").update({ deposit_status: status, deposit_returned: returned, deposit_return_date: depositForm.return_date, deposit_deductions: depositForm.deductions }).eq("id", lease.id);
-    const classId = await getPropertyClassId(lease.property);
+    const classId = await getPropertyClassId(lease.property, companyId);
     if (returned > 0) {
       await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Security deposit return — " + lease.tenant_name, reference: "DEPRET-" + Date.now(), property: lease.property,
         lines: [
@@ -4273,7 +4273,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
     const today = new Date().toISOString().slice(0, 10);
     await supabase.from("vendor_invoices").update({ status: "paid", paid_date: today }).eq("id", inv.id);
     // Update vendor total_paid
-    const vendor = vendors.find(v => v.id === inv.vendor_id);
+    const vendor = vendors.find(v => String(v.id) === String(inv.vendor_id));
     if (vendor) {
       await supabase.from("vendors").update({
         total_paid: safeNum(vendor.total_paid) + safeNum(inv.amount),
@@ -4281,7 +4281,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
       }).eq("id", vendor.id);
     }
     // Post to accounting
-    const classId = await getPropertyClassId(inv.property);
+    const classId = await getPropertyClassId(inv.property, companyId);
     await autoPostJournalEntry({
       companyId,
       date: today,
@@ -4390,7 +4390,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
           <h3 className="font-semibold text-gray-800 mb-4">New Vendor Invoice</h3>
           <div className="grid grid-cols-2 gap-3 mb-4">
             <div><label className="text-xs text-gray-500 mb-1 block">Vendor *</label>
-              <select value={invoiceForm.vendor_id} onChange={e => { const v = vendors.find(v => v.id === e.target.value); setInvoiceForm({...invoiceForm, vendor_id: e.target.value, vendor_name: v?.name || ""}); }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+              <select value={invoiceForm.vendor_id} onChange={e => { const v = vendors.find(v => String(v.id) === String(e.target.value)); setInvoiceForm({...invoiceForm, vendor_id: e.target.value, vendor_name: v?.name || ""}); }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
                 <option value="">Select vendor...</option>
                 {vendors.filter(v => v.status !== "blocked").map(v => <option key={v.id} value={v.id}>{v.name} ({v.specialty})</option>)}
               </select>
@@ -4608,20 +4608,20 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
   }
 
   async function assignPropertyToOwner(propertyId, ownerId) {
-    const owner = owners.find(o => o.id === ownerId);
+    const owner = owners.find(o => String(o.id) === String(ownerId));
     await supabase.from("properties").update({ owner_id: ownerId || null, owner_name: owner?.name || "" }).eq("id", propertyId);
     fetchData();
   }
 
   async function generateStatement() {
     if (!genOwner) { alert("Please select an owner."); return; }
-    const owner = owners.find(o => o.id === genOwner);
+    const owner = owners.find(o => String(o.id) === String(genOwner));
     if (!owner) return;
     const startDate = genMonth + "-01";
     const endObj = new Date(startDate); endObj.setMonth(endObj.getMonth() + 1); endObj.setDate(0);
     const endDate = endObj.toISOString().slice(0, 10);
 
-    const ownerProps = properties.filter(p => p.owner_id === owner.id).map(p => p.address);
+    const ownerProps = properties.filter(p => String(p.owner_id) === String(owner.id)).map(p => p.address);
     if (ownerProps.length === 0) { alert("No properties assigned to " + owner.name); return; }
 
     // Gather income for this owner's properties in this month
@@ -4630,7 +4630,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
 
     // Gather expenses
     const monthVendor = vendorInvoices.filter(v => ownerProps.includes(v.property) && v.paid_date && v.paid_date >= startDate && v.paid_date <= endDate);
-    const monthUtils = utilities.filter(u => ownerProps.includes(u.property) && u.status === "paid" && u.due_date >= startDate && u.due_date <= endDate);
+    const monthUtils = utilities.filter(u => ownerProps.includes(u.property) && u.status === "paid" && u.due >= startDate && u.due <= endDate);
     const totalVendorExp = monthVendor.reduce((s, v) => s + safeNum(v.amount), 0);
     const totalUtilExp = monthUtils.reduce((s, u) => s + safeNum(u.amount), 0);
     const totalExpenses = totalVendorExp + totalUtilExp;
@@ -4644,7 +4644,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
     monthPayments.forEach(p => lineItems[0].items.push({ description: p.type + " — " + (p.tenant || "Unknown") + " — " + p.property, amount: safeNum(p.amount), date: p.date }));
     lineItems.push({ category: "EXPENSES", items: [] });
     monthVendor.forEach(v => lineItems[1].items.push({ description: "Vendor: " + v.vendor_name + " — " + v.description, amount: -safeNum(v.amount), date: v.paid_date }));
-    monthUtils.forEach(u => lineItems[1].items.push({ description: "Utility: " + u.provider + " — " + u.property, amount: -safeNum(u.amount), date: u.due_date }));
+    monthUtils.forEach(u => lineItems[1].items.push({ description: "Utility: " + u.provider + " — " + u.property, amount: -safeNum(u.amount), date: u.due }));
     lineItems.push({ category: "FEES", items: [{ description: "Management Fee (" + owner.management_fee_pct + "%)", amount: -mgmtFee, date: endDate }] });
 
     const { error } = await supabase.from("owner_statements").insert([{ company_id: companyId || "sandbox-llc",
@@ -4669,7 +4669,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
     if (stmt.net_to_owner <= 0) { alert("Net amount is $0 or negative. Nothing to distribute."); return; }
     if (!window.confirm("Distribute $" + stmt.net_to_owner.toLocaleString() + " to " + stmt.owner_name + "?")) return;
     const today = new Date().toISOString().slice(0, 10);
-    const owner = owners.find(o => o.id === stmt.owner_id);
+    const owner = owners.find(o => String(o.id) === String(stmt.owner_id));
     // Record distribution
     await supabase.from("owner_distributions").insert([{ company_id: companyId || "sandbox-llc",
       owner_id: stmt.owner_id, statement_id: stmt.id,
@@ -4745,7 +4745,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
             <div><label className="text-xs text-gray-500 mb-1 block">Owner *</label>
               <select value={genOwner} onChange={e => setGenOwner(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
                 <option value="">Select owner...</option>
-                {activeOwners.map(o => <option key={o.id} value={o.id}>{o.name} ({properties.filter(p => p.owner_id === o.id).length} properties)</option>)}
+                {activeOwners.map(o => <option key={o.id} value={o.id}>{o.name} ({properties.filter(p => String(p.owner_id) === String(o.id)).length} properties)</option>)}
               </select>
             </div>
             <div><label className="text-xs text-gray-500 mb-1 block">Month</label><input type="month" value={genMonth} onChange={e => setGenMonth(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
@@ -4753,8 +4753,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
           {genOwner && (
             <div className="bg-gray-50 rounded-lg p-3 mb-4 text-xs text-gray-600">
               <div className="font-semibold mb-1">Properties included:</div>
-              {properties.filter(p => p.owner_id === genOwner).map(p => <div key={p.id}>{p.address}</div>)}
-              {properties.filter(p => p.owner_id === genOwner).length === 0 && <div className="text-amber-600">No properties assigned to this owner</div>}
+              {properties.filter(p => String(p.owner_id) === String(genOwner)).map(p => <div key={p.id}>{p.address}</div>)}
+              {properties.filter(p => String(p.owner_id) === String(genOwner)).length === 0 && <div className="text-amber-600">No properties assigned to this owner</div>}
             </div>
           )}
           <div className="flex gap-2">
@@ -4832,8 +4832,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
       {activeTab === "owners" && (
         <div className="space-y-3">
           {owners.map(o => {
-            const ownerProps = properties.filter(p => p.owner_id === o.id);
-            const ownerDist = distributions.filter(d => d.owner_id === o.id).reduce((s, d) => s + safeNum(d.amount), 0);
+            const ownerProps = properties.filter(p => String(p.owner_id) === String(o.id));
+            const ownerDist = distributions.filter(d => String(d.owner_id) === String(o.id)).reduce((s, d) => s + safeNum(d.amount), 0);
             return (
               <div key={o.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                 <div className="flex justify-between items-start mb-2">
@@ -4918,7 +4918,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
           {distributions.map(d => (
             <div key={d.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex justify-between items-center">
               <div>
-                <div className="text-sm font-medium text-gray-800">{owners.find(o => o.id === d.owner_id)?.name || "Unknown"}</div>
+                <div className="text-sm font-medium text-gray-800">{owners.find(o => String(o.id) === String(d.owner_id))?.name || "Unknown"}</div>
                 <div className="text-xs text-gray-400">{d.date} · {d.method} · {d.reference}</div>
               </div>
               <div className="text-sm font-bold text-green-600">${safeNum(d.amount).toLocaleString()}</div>
@@ -6103,7 +6103,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
     const { error } = await supabase.from("payments").insert([{ company_id: companyId || "sandbox-llc", tenant: s.tenant, property: s.property, amount: s.amount, type: "rent", method: s.method, status: "paid", date: today }]);
     if (error) { alert("Error: " + error.message); return; }
     // AUTO-POST TO ACCOUNTING: Same smart AR logic as manual payments
-    const classId = await getPropertyClassId(s.property);
+    const classId = await getPropertyClassId(s.property, companyId);
     const amt = safeNum(s.amount);
     const month = today.slice(0, 7);
     let hasAccrual = false;
@@ -6277,7 +6277,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
     }
     addNotification("⚠️", `Late fee $${feeAmount} applied to ${payment.tenant}`);
     // AUTO-POST TO ACCOUNTING: DR Accounts Receivable, CR Late Fee Income
-    const classId = await getPropertyClassId(payment.property);
+    const classId = await getPropertyClassId(payment.property, companyId);
     if (feeAmount > 0) {
       await autoPostJournalEntry({
         companyId,
@@ -6470,7 +6470,7 @@ function TenantPortal({ currentUser, companyId }) {
         balance: newBalance,
       }]);
       // Auto-post to accounting
-      const classId = await getPropertyClassId(tenantData.property);
+      const classId = await getPropertyClassId(tenantData.property, companyId);
       const month = today.slice(0, 7);
       let hasAccrual = false;
       const { data: accrualJEs } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId || "sandbox-llc").like("reference", "ACCR-" + month + "%");
