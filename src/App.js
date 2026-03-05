@@ -897,6 +897,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
   const [newMessage, setNewMessage] = useState("");
   const [newCharge, setNewCharge] = useState({ description: "", amount: "", type: "charge" });
   const [form, setForm] = useState({ name: "", email: "", phone: "", property: "", lease_status: "active", move_in: "", move_out: "", rent: "" });
+  const [tenantView, setTenantView] = useState("card");
+  const [tenantSearch, setTenantSearch] = useState("");
+  const [tenantFilter, setTenantFilter] = useState("all");
   const [leaseModal, setLeaseModal] = useState(null); // 'renew' | 'notice'
   const [leaseInput, setLeaseInput] = useState("");
   // eslint-disable-next-line no-unused-vars
@@ -1319,9 +1322,21 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-5">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold text-gray-800">Tenants</h2>
-        <button onClick={() => { setEditingTenant(null); setForm({ name: "", email: "", phone: "", property: "", lease_status: "active", move_in: "", move_out: "", rent: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">+ Add Tenant</button>
+        <div className="flex gap-2 items-center">
+          <input placeholder="Search..." value={tenantSearch || ""} onChange={e => setTenantSearch(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-40" />
+          <select value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <option value="all">All Status</option><option value="active">Active</option><option value="notice">Notice</option><option value="expired">Expired</option>
+          </select>
+          <div className="flex bg-gray-100 rounded-lg p-0.5">
+            {[["card","\u25a6"],["table","\u2630"],["compact","\u2261"]].map(([m,icon]) => (
+              <button key={m} onClick={() => setTenantView(m)} className={`px-3 py-1.5 text-sm rounded-md ${tenantView === m ? "bg-white shadow-sm text-indigo-700 font-semibold" : "text-gray-500"}`}>{icon}</button>
+            ))}
+          </div>
+          <button onClick={() => { setEditingTenant(null); setForm({ name: "", email: "", phone: "", property: "", lease_status: "active", move_in: "", move_out: "", rent: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 whitespace-nowrap">+ Add</button>
+        </div>
       </div>
 
       {showForm && (
@@ -1337,48 +1352,92 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
               {["active", "notice", "expired"].map(s => <option key={s}>{s}</option>)}
             </select>
             <input type="date" placeholder="Move-in" value={form.move_in} onChange={e => setForm({ ...form, move_in: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input type="date" placeholder="Move-out / Lease end" value={form.move_out} onChange={e => setForm({ ...form, move_out: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <input type="date" placeholder="Move-out" value={form.move_out} onChange={e => setForm({ ...form, move_out: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
           </div>
           <div className="flex gap-2 mt-3">
-            <button onClick={saveTenant} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">Save</button>
+            <button onClick={saveTenant} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
             <button onClick={() => { setShowForm(false); setEditingTenant(null); }} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
           </div>
         </div>
       )}
 
-      <div className="space-y-3">
-        {tenants.map(t => (
-          <div key={t.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">{t.name?.[0]}</div>
-                <div>
-                  <div className="font-semibold text-gray-800">{t.name}</div>
-                  <div className="text-xs text-gray-400">{t.property}</div>
-                </div>
-              </div>
-              <Badge status={t.lease_status} />
-            </div>
-            <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-              <div><span className="text-gray-400">Email</span><div className="font-semibold text-gray-700 truncate">{t.email}</div></div>
-              <div><span className="text-gray-400">Balance</span>
-                <div className={`font-semibold ${t.balance > 0 ? "text-red-500" : t.balance < 0 ? "text-green-600" : "text-gray-700"}`}>
-                  {t.balance > 0 ? `-$${t.balance}` : t.balance < 0 ? `Credit $${Math.abs(t.balance)}` : "Current"}
-                </div>
-              </div>
-              <div><span className="text-gray-400">Rent</span><div className="font-semibold text-gray-700">{t.rent ? `$${t.rent}/mo` : "—"}</div></div>
-            </div>
-            <div className="mt-3 flex gap-2 flex-wrap">
-              <button onClick={() => openLedger(t)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-lg hover:bg-indigo-50">📒 Ledger</button>
-              <button onClick={() => openMessages(t)} className="text-xs text-gray-600 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">💬 Message</button>
-              <button onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="text-xs text-gray-600 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50">📄 Lease</button>
-              <button onClick={() => startEdit(t)} className="text-xs text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50">✏️ Edit</button>
-              <button onClick={() => deleteTenant(t.id, t.name)} className="text-xs text-red-500 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50">🗑️ Delete</button>
-                <button onClick={() => inviteTenant(t)} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50" title="Send portal access">✉️ Invite</button>
-            </div>
+      {(() => {
+        const ft = tenants.filter(t =>
+          (tenantFilter === "all" || !tenantFilter || t.lease_status === tenantFilter) &&
+          (!tenantSearch || t.name?.toLowerCase().includes(tenantSearch.toLowerCase()) || t.email?.toLowerCase().includes(tenantSearch.toLowerCase()) || t.property?.toLowerCase().includes(tenantSearch.toLowerCase()))
+        );
+        const TenantActions = ({t}) => (
+          <div className="flex gap-1.5 flex-wrap">
+            <button onClick={() => openLedger(t)} className="text-xs text-indigo-600 border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50">Ledger</button>
+            <button onClick={() => openMessages(t)} className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded-lg hover:bg-gray-50">Msg</button>
+            <button onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded-lg hover:bg-gray-50">Lease</button>
+            <button onClick={() => startEdit(t)} className="text-xs text-blue-600 hover:underline">Edit</button>
+            <button onClick={() => deleteTenant(t.id, t.name)} className="text-xs text-red-500 hover:underline">Del</button>
+            <button onClick={() => inviteTenant(t)} className="text-xs text-purple-600 hover:underline">Invite</button>
           </div>
-        ))}
-      </div>
+        );
+        return <>
+          {tenantView === "card" && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {ft.map(t => (
+                <div key={t.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">{t.name?.[0]}</div>
+                      <div><div className="font-semibold text-gray-800">{t.name}</div><div className="text-xs text-gray-400">{t.property}</div></div>
+                    </div>
+                    <Badge status={t.lease_status} />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs mt-2">
+                    <div><span className="text-gray-400">Email</span><div className="font-semibold text-gray-700 truncate">{t.email}</div></div>
+                    <div><span className="text-gray-400">Balance</span><div className={`font-semibold ${t.balance > 0 ? "text-red-500" : "text-gray-700"}`}>{t.balance > 0 ? `-$${t.balance}` : "Current"}</div></div>
+                    <div><span className="text-gray-400">Rent</span><div className="font-semibold text-gray-700">{t.rent ? `$${t.rent}/mo` : "\u2014"}</div></div>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-gray-50"><TenantActions t={t} /></div>
+                </div>
+              ))}
+            </div>
+          )}
+          {tenantView === "table" && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-xs text-gray-400 uppercase">
+                  <tr><th className="px-4 py-3 text-left">Name</th><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Email</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-right">Rent</th><th className="px-4 py-3 text-right">Balance</th><th className="px-4 py-3 text-right">Actions</th></tr>
+                </thead>
+                <tbody>
+                  {ft.map(t => (
+                    <tr key={t.id} className="border-t border-gray-50 hover:bg-gray-50/50">
+                      <td className="px-4 py-2.5 font-medium text-gray-800">{t.name}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{t.property}</td>
+                      <td className="px-4 py-2.5 text-gray-500 text-xs">{t.email}</td>
+                      <td className="px-4 py-2.5"><Badge status={t.lease_status} /></td>
+                      <td className="px-4 py-2.5 text-right font-semibold">{t.rent ? `$${t.rent}` : "\u2014"}</td>
+                      <td className={`px-4 py-2.5 text-right font-semibold ${t.balance > 0 ? "text-red-500" : "text-gray-700"}`}>{t.balance > 0 ? `-$${t.balance}` : "Current"}</td>
+                      <td className="px-4 py-2.5 text-right"><TenantActions t={t} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {tenantView === "compact" && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm divide-y divide-gray-50">
+              {ft.map(t => (
+                <div key={t.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50/50">
+                  <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">{t.name?.[0]}</div>
+                  <div className="flex-1 min-w-0"><span className="text-sm font-medium text-gray-800">{t.name}</span><span className="text-xs text-gray-400 ml-2">{t.property}</span></div>
+                  <span className="text-sm font-semibold text-gray-700">{t.rent ? `$${t.rent}/mo` : "\u2014"}</span>
+                  <span className={`text-xs font-semibold ${t.balance > 0 ? "text-red-500" : "text-gray-500"}`}>{t.balance > 0 ? `-$${t.balance}` : "Current"}</span>
+                  <Badge status={t.lease_status} />
+                  <button onClick={() => openLedger(t)} className="text-xs text-indigo-600 hover:underline">Ledger</button>
+                  <button onClick={() => startEdit(t)} className="text-xs text-blue-600 hover:underline">Edit</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {ft.length === 0 && <div className="text-center py-8 text-gray-400">No tenants found</div>}
+        </>;
+      })()}
     </div>
   );
 }
@@ -1747,6 +1806,10 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ property: "", provider: "", amount: "", due: "", responsibility: "owner", status: "pending" });
+  const [utilView, setUtilView] = useState("card");
+  const [utilSearch, setUtilSearch] = useState("");
+  const [utilFilterStatus, setUtilFilterStatus] = useState("all");
+  const [utilFilterProp, setUtilFilterProp] = useState("all");
 
   useEffect(() => { fetchUtilities(); }, []);
 
@@ -1831,9 +1894,31 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
         </Modal>
       )}
 
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="text-xl font-bold text-gray-800">Utility Management</h2>
-        <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">+ Add Bill</button>
+      {/* Toolbar */}
+      <div className="flex flex-col md:flex-row gap-3 mb-4">
+        <h2 className="text-xl font-bold text-gray-800 mr-auto">Utility Management</h2>
+        <input placeholder="Search..." value={utilSearch} onChange={e => setUtilSearch(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-40" />
+        <select value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+          <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
+        </select>
+        <select value={utilFilterProp} onChange={e => setUtilFilterProp(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+          <option value="all">All Properties</option>
+          {[...new Set(utilities.map(u => u.property).filter(Boolean))].map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <div className="flex bg-gray-100 rounded-lg p-0.5">
+          {[["card","▦"],["table","☰"]].map(([m,icon]) => (
+            <button key={m} onClick={() => setUtilView(m)} className={`px-3 py-1.5 text-sm rounded-md ${utilView === m ? "bg-white shadow-sm text-indigo-700 font-semibold" : "text-gray-500"}`}>{icon}</button>
+          ))}
+        </div>
+        <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 whitespace-nowrap">+ Add Bill</button>
+      </div>
+
+      {/* Stats */}
+      <div className="flex gap-3 mb-4">
+        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-gray-800">{utilities.length}</div><div className="text-xs text-gray-400">Total</div></div>
+        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{utilities.filter(u => u.status === "pending").length}</div><div className="text-xs text-gray-400">Pending</div></div>
+        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">${utilities.filter(u => u.status === "paid").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-gray-400">Paid</div></div>
+        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-red-500">${utilities.filter(u => u.status === "pending").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-gray-400">Outstanding</div></div>
       </div>
 
       {showForm && (
@@ -1849,39 +1934,68 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
             </select>
           </div>
           <div className="flex gap-2 mt-3">
-            <button onClick={addUtility} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">Save</button>
-            <button onClick={() => setShowForm(false)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg hover:bg-gray-200">Cancel</button>
+            <button onClick={addUtility} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
+            <button onClick={() => setShowForm(false)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
           </div>
         </div>
       )}
 
-      <div className="space-y-3">
-        {utilities.map(u => (
-          <div key={u.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="font-semibold text-gray-800">{u.provider}</div>
-                <div className="text-xs text-gray-400 mt-0.5">{u.property}</div>
-              </div>
-              <div className="text-right">
-                <div className="text-lg font-bold text-gray-800">${u.amount}</div>
-                <Badge status={u.status} />
-              </div>
+      {(() => {
+        const fu = utilities.filter(u =>
+          (utilFilterStatus === "all" || u.status === utilFilterStatus) &&
+          (utilFilterProp === "all" || u.property === utilFilterProp) &&
+          (!utilSearch || u.provider?.toLowerCase().includes(utilSearch.toLowerCase()) || u.property?.toLowerCase().includes(utilSearch.toLowerCase()))
+        );
+        return <>
+          {utilView === "card" && (
+            <div className="space-y-3">
+              {fu.map(u => (
+                <div key={u.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                  <div className="flex justify-between items-start">
+                    <div><div className="font-semibold text-gray-800">{u.provider}</div><div className="text-xs text-gray-400 mt-0.5">{u.property}</div></div>
+                    <div className="text-right"><div className="text-lg font-bold text-gray-800">${u.amount}</div><Badge status={u.status} /></div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                    <div><span className="text-gray-400">Due</span><div className="font-semibold text-gray-700">{u.due}</div></div>
+                    <div><span className="text-gray-400">Responsibility</span><div className="font-semibold capitalize text-gray-700">{u.responsibility}</div></div>
+                    <div><span className="text-gray-400">Paid</span><div className="font-semibold text-gray-700">{u.paid_at ? new Date(u.paid_at).toLocaleDateString() : "—"}</div></div>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    {u.status === "pending" && <button onClick={() => approvePay(u)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">✓ Pay</button>}
+                    <button onClick={() => openAuditLog(u)} className="text-xs text-gray-600 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50">Audit</button>
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-              <div><span className="text-gray-400">Due Date</span><div className="font-semibold text-gray-700">{u.due}</div></div>
-              <div><span className="text-gray-400">Responsibility</span><div className="font-semibold capitalize text-gray-700">{u.responsibility}</div></div>
-              <div><span className="text-gray-400">Paid At</span><div className="font-semibold text-gray-700">{u.paid_at ? new Date(u.paid_at).toLocaleDateString() : "—"}</div></div>
+          )}
+          {utilView === "table" && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-xs text-gray-400 uppercase">
+                  <tr><th className="px-4 py-3 text-left">Provider</th><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-left">Due</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Resp.</th><th className="px-4 py-3 text-right">Actions</th></tr>
+                </thead>
+                <tbody>
+                  {fu.map(u => (
+                    <tr key={u.id} className="border-t border-gray-50 hover:bg-gray-50/50">
+                      <td className="px-4 py-2.5 font-medium text-gray-800">{u.provider}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{u.property}</td>
+                      <td className="px-4 py-2.5 text-right font-semibold">${u.amount}</td>
+                      <td className="px-4 py-2.5 text-gray-500">{u.due}</td>
+                      <td className="px-4 py-2.5"><Badge status={u.status} /></td>
+                      <td className="px-4 py-2.5 text-gray-600 capitalize">{u.responsibility}</td>
+                      <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                        {u.status === "pending" && <button onClick={() => approvePay(u)} className="text-xs text-green-600 hover:underline mr-2">Pay</button>}
+                        <button onClick={() => openAuditLog(u)} className="text-xs text-gray-400 hover:underline">Audit</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div className="mt-3 flex gap-2">
-              {u.status === "pending" && (
-                <button onClick={() => approvePay(u)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">✓ Approve & Pay</button>
-              )}
-              <button onClick={() => openAuditLog(u)} className="text-xs text-gray-600 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50">📋 Audit Log</button>
-            </div>
-          </div>
-        ))}
-      </div>
+          )}
+          {fu.length === 0 && <div className="text-center py-8 text-gray-400">No utility bills found</div>}
+        </>;
+      })()}
     </div>
   );
 }
@@ -3679,7 +3793,10 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     escalation_frequency: "annual", payment_due_day: "1",
     lease_type: "fixed", auto_renew: false, renewal_notice_days: "60",
     clauses: "", special_terms: "", template_id: "",
+    late_fee_amount: "50", late_fee_type: "flat", late_fee_grace_days: "5",
   });
+  const [showRentIncrease, setShowRentIncrease] = useState(null);
+  const [rentIncreaseForm, setRentIncreaseForm] = useState({ new_amount: "", effective_date: "", reason: "" });
   const [templateForm, setTemplateForm] = useState({ name: "", description: "", clauses: "", special_terms: "", default_deposit_months: "1", default_lease_months: "12", default_escalation_pct: "3", payment_due_day: "1" });
   const [depositForm, setDepositForm] = useState({ amount_returned: "", deductions: "", return_date: new Date().toISOString().slice(0, 10) });
 
@@ -3728,6 +3845,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
       escalation_frequency: form.escalation_frequency, payment_due_day: Number(form.payment_due_day || 1),
       lease_type: form.lease_type, auto_renew: form.auto_renew, renewal_notice_days: Number(form.renewal_notice_days || 60),
       clauses: form.clauses, special_terms: form.special_terms, status: "active",
+      late_fee_amount: Number(form.late_fee_amount || 50), late_fee_type: form.late_fee_type || "flat", late_fee_grace_days: Number(form.late_fee_grace_days || 5),
       move_in_checklist: JSON.stringify(defaultChecklist.map(item => ({ item, checked: false }))),
       move_out_checklist: JSON.stringify(defaultMoveOutChecklist.map(item => ({ item, checked: false }))),
       created_by: userProfile?.email || "",
@@ -3760,12 +3878,12 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
 
   function resetForm() {
     setShowForm(false); setEditingLease(null);
-    setForm({ tenant_name: "", property: "", start_date: "", end_date: "", rent_amount: "", security_deposit: "", rent_escalation_pct: "3", escalation_frequency: "annual", payment_due_day: "1", lease_type: "fixed", auto_renew: false, renewal_notice_days: "60", clauses: "", special_terms: "", template_id: "" });
+    setForm({ tenant_name: "", property: "", start_date: "", end_date: "", rent_amount: "", security_deposit: "", rent_escalation_pct: "3", escalation_frequency: "annual", payment_due_day: "1", lease_type: "fixed", auto_renew: false, renewal_notice_days: "60", clauses: "", special_terms: "", template_id: "", late_fee_amount: "50", late_fee_type: "flat", late_fee_grace_days: "5" });
   }
 
   function startEdit(lease) {
     setEditingLease(lease);
-    setForm({ tenant_name: lease.tenant_name, property: lease.property, start_date: lease.start_date, end_date: lease.end_date, rent_amount: String(lease.rent_amount), security_deposit: String(lease.security_deposit || 0), rent_escalation_pct: String(lease.rent_escalation_pct || 0), escalation_frequency: lease.escalation_frequency || "annual", payment_due_day: String(lease.payment_due_day || 1), lease_type: lease.lease_type || "fixed", auto_renew: lease.auto_renew || false, renewal_notice_days: String(lease.renewal_notice_days || 60), clauses: lease.clauses || "", special_terms: lease.special_terms || "", template_id: "" });
+    setForm({ tenant_name: lease.tenant_name, property: lease.property, start_date: lease.start_date, end_date: lease.end_date, rent_amount: String(lease.rent_amount), security_deposit: String(lease.security_deposit || 0), rent_escalation_pct: String(lease.rent_escalation_pct || 0), escalation_frequency: lease.escalation_frequency || "annual", payment_due_day: String(lease.payment_due_day || 1), lease_type: lease.lease_type || "fixed", auto_renew: lease.auto_renew || false, renewal_notice_days: String(lease.renewal_notice_days || 60), clauses: lease.clauses || "", special_terms: lease.special_terms || "", template_id: "", late_fee_amount: String(lease.late_fee_amount || 50), late_fee_type: lease.late_fee_type || "flat", late_fee_grace_days: String(lease.late_fee_grace_days || 5) });
     setShowForm(true);
   }
 
@@ -3957,6 +4075,16 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
               <select value={form.lease_type} onChange={e => setForm({...form, lease_type: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="fixed">Fixed Term</option><option value="month_to_month">Month-to-Month</option><option value="renewal">Renewal</option></select></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Renewal Notice (days)</label><input type="number" value={form.renewal_notice_days} onChange={e => setForm({...form, renewal_notice_days: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
           </div>
+          {/* Late Fee Settings */}
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+            <div className="text-sm font-semibold text-amber-800 mb-2">⚠️ Late Fee Settings</div>
+            <div className="grid grid-cols-3 gap-3">
+              <div><label className="text-xs text-gray-500 mb-1 block">Grace Period (days)</label><input type="number" min="0" max="30" value={form.late_fee_grace_days} onChange={e => setForm({...form, late_fee_grace_days: e.target.value})} className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white" /></div>
+              <div><label className="text-xs text-gray-500 mb-1 block">Fee Type</label><select value={form.late_fee_type} onChange={e => setForm({...form, late_fee_type: e.target.value})} className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></select></div>
+              <div><label className="text-xs text-gray-500 mb-1 block">{form.late_fee_type === "flat" ? "Fee Amount ($)" : "Fee Percentage (%)"}</label><input type="number" step="0.01" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white" /></div>
+            </div>
+            <p className="text-xs text-amber-600 mt-2">Late fees auto-apply to tenant ledger after grace period. Admin can waive from ledger.</p>
+          </div>
           <div className="flex items-center gap-2 mb-4"><input type="checkbox" checked={form.auto_renew} onChange={e => setForm({...form, auto_renew: e.target.checked})} className="rounded" /><label className="text-sm text-gray-600">Auto-renew at end of term</label></div>
           <div className="mb-3"><label className="text-xs text-gray-500 mb-1 block">Lease Clauses</label><textarea value={form.clauses} onChange={e => setForm({...form, clauses: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={3} placeholder="Standard clauses..." /></div>
           <div className="mb-4"><label className="text-xs text-gray-500 mb-1 block">Special Terms</label><textarea value={form.special_terms} onChange={e => setForm({...form, special_terms: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={2} placeholder="Pet deposit, parking, storage..." /></div>
@@ -3996,6 +4124,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
                 <button onClick={() => startEdit(l)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
                 <button onClick={() => setShowESign(l)} className={"text-xs border px-3 py-1 rounded-lg " + (l.signature_status === "fully_signed" ? "text-green-600 border-green-200 bg-green-50" : "text-purple-600 border-purple-200 hover:bg-purple-50")}>{l.signature_status === "fully_signed" ? "✓ Signed" : "\u270d\ufe0f E-Sign"}</button>
                 {l.status === "active" && <button onClick={() => renewLease(l)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">Renew</button>}
+                {l.status === "active" && <button onClick={() => { setShowRentIncrease(l); setRentIncreaseForm({ new_amount: String(l.rent_amount), effective_date: new Date().toISOString().slice(0, 10), reason: "" }); }} className="text-xs text-blue-600 border border-blue-200 px-3 py-1 rounded-lg hover:bg-blue-50">📈 Rent Increase</button>}
                 {l.status === "active" && <button onClick={() => terminateLease(l)} className="text-xs text-red-600 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">Terminate</button>}
                 <button onClick={() => setShowChecklist({ lease: l, type: "in" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_in_completed ? "text-green-600 border-green-200 bg-green-50" : "text-gray-500 border-gray-200 hover:bg-gray-50")}>Move-In {l.move_in_completed ? "✓" : ""}</button>
                 <button onClick={() => setShowChecklist({ lease: l, type: "out" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_out_completed ? "text-green-600 border-green-200 bg-green-50" : "text-gray-500 border-gray-200 hover:bg-gray-50")}>Move-Out {l.move_out_completed ? "✓" : ""}</button>
@@ -4008,6 +4137,36 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
         })}
         {filteredLeases.length === 0 && <div className="text-center py-10 text-gray-400">No leases found</div>}
       </div>
+
+      {/* Rent Increase Modal */}
+      {showRentIncrease && (
+        <Modal title={`Rent Increase — ${showRentIncrease.tenant_name}`} onClose={() => setShowRentIncrease(null)}>
+          <div className="space-y-3">
+            <div className="bg-gray-50 rounded-xl p-3 text-sm">
+              <div className="flex justify-between"><span className="text-gray-500">Current Rent:</span><span className="font-bold">${showRentIncrease.rent_amount}/mo</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Property:</span><span>{showRentIncrease.property}</span></div>
+            </div>
+            <div><label className="text-xs text-gray-500 mb-1 block">New Monthly Rent ($) *</label><input type="number" value={rentIncreaseForm.new_amount} onChange={e => setRentIncreaseForm({...rentIncreaseForm, new_amount: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Effective Date *</label><input type="date" value={rentIncreaseForm.effective_date} onChange={e => setRentIncreaseForm({...rentIncreaseForm, effective_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Reason</label><input value={rentIncreaseForm.reason} onChange={e => setRentIncreaseForm({...rentIncreaseForm, reason: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Market adjustment, annual increase..." /></div>
+            {rentIncreaseForm.new_amount && Number(rentIncreaseForm.new_amount) !== showRentIncrease.rent_amount && (
+              <div className={`text-sm font-semibold rounded-lg p-2 text-center ${Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
+                {Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "+" : ""}{Math.round((Number(rentIncreaseForm.new_amount) - showRentIncrease.rent_amount) / showRentIncrease.rent_amount * 100)}% ({Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "+" : ""}${Number(rentIncreaseForm.new_amount) - showRentIncrease.rent_amount}/mo)
+              </div>
+            )}
+            <button onClick={async () => {
+              if (!rentIncreaseForm.new_amount || !rentIncreaseForm.effective_date) { alert("Amount and date required."); return; }
+              const newAmt = Number(rentIncreaseForm.new_amount);
+              await supabase.from("leases").update({ rent_amount: newAmt, rent_increase_history: JSON.stringify([...(JSON.parse(showRentIncrease.rent_increase_history || "[]")), { from: showRentIncrease.rent_amount, to: newAmt, date: rentIncreaseForm.effective_date, reason: rentIncreaseForm.reason }]) }).eq("id", showRentIncrease.id);
+              if (showRentIncrease.tenant_id) await supabase.from("tenants").update({ rent: newAmt }).eq("id", showRentIncrease.tenant_id);
+              addNotification("📈", `Rent increased to $${newAmt}/mo for ${showRentIncrease.tenant_name}`);
+              logAudit("update", "leases", `Rent increase: $${showRentIncrease.rent_amount} → $${newAmt} for ${showRentIncrease.tenant_name}`, showRentIncrease.id, userProfile?.email, userRole);
+              setShowRentIncrease(null);
+              fetchData();
+            }} className="w-full bg-indigo-600 text-white text-sm py-2.5 rounded-lg hover:bg-indigo-700">Apply Rent Increase</button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -5728,9 +5887,142 @@ function OwnerPortal({ currentUser, companyId }) {
 }
 
 
+// ============ HOA PAYMENTS ============
+function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
+  const [hoaPayments, setHoaPayments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingHoa, setEditingHoa] = useState(null);
+  const [form, setForm] = useState({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "" });
+  const [hoaFilter, setHoaFilter] = useState("all");
+
+  useEffect(() => { fetchHOA(); }, []);
+
+  async function fetchHOA() {
+    const { data } = await supabase.from("hoa_payments").select("*").eq("company_id", companyId || "sandbox-llc").order("due_date", { ascending: false });
+    setHoaPayments(data || []);
+    setLoading(false);
+  }
+
+  async function saveHOA() {
+    if (!form.property || !form.hoa_name || !form.amount || !form.due_date) { alert("All fields required."); return; }
+    const payload = { ...form, amount: Number(form.amount) };
+    if (editingHoa) {
+      await supabase.from("hoa_payments").update(payload).eq("id", editingHoa.id);
+      addNotification("🏘️", `HOA payment updated: ${form.hoa_name}`);
+    } else {
+      await supabase.from("hoa_payments").insert([{ company_id: companyId || "sandbox-llc", ...payload }]);
+      addNotification("🏘️", `HOA payment added: ${form.hoa_name} — $${form.amount}`);
+    }
+    setShowForm(false);
+    setEditingHoa(null);
+    setForm({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "" });
+    fetchHOA();
+  }
+
+  async function payHOA(h) {
+    const today = new Date().toISOString().slice(0, 10);
+    await supabase.from("hoa_payments").update({ status: "paid", paid_date: today }).eq("id", h.id);
+    addNotification("✅", `HOA paid: ${h.hoa_name} $${h.amount}`);
+    // Auto-post to accounting
+    const classId = await getPropertyClassId(h.property, companyId);
+    if (safeNum(h.amount) > 0) {
+      await autoPostJournalEntry({
+        companyId,
+        date: today,
+        description: `HOA payment: ${h.hoa_name} — ${h.property}`,
+        reference: `HOA-${h.id}`,
+        property: h.property,
+        lines: [
+          { account_id: "5300", account_name: "Repairs & Maintenance", debit: safeNum(h.amount), credit: 0, class_id: classId, memo: `HOA: ${h.hoa_name}` },
+          { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(h.amount), class_id: classId, memo: `HOA: ${h.hoa_name}` },
+        ]
+      });
+    }
+    fetchHOA();
+  }
+
+  async function deleteHOA(id) {
+    if (!window.confirm("Delete this HOA payment?")) return;
+    await supabase.from("hoa_payments").delete().eq("id", id);
+    fetchHOA();
+  }
+
+  if (loading) return <Spinner />;
+  const filtered = hoaPayments.filter(h =>
+    (hoaFilter === "all" || h.status === hoaFilter)
+  );
+
+  return (
+    <div>
+      <div className="flex flex-col md:flex-row gap-3 mb-4">
+        <h2 className="text-xl font-bold text-gray-800 mr-auto">HOA Payments</h2>
+        <select value={hoaFilter} onChange={e => setHoaFilter(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+          <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
+        </select>
+        <button onClick={() => { setEditingHoa(null); setForm({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">+ Add HOA</button>
+      </div>
+
+      {/* Stats */}
+      <div className="flex gap-3 mb-4">
+        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-gray-800">{hoaPayments.length}</div><div className="text-xs text-gray-400">Total</div></div>
+        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{hoaPayments.filter(h => h.status === "pending").length}</div><div className="text-xs text-gray-400">Pending</div></div>
+        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">${hoaPayments.filter(h => h.status === "paid").reduce((s, h) => s + safeNum(h.amount), 0).toLocaleString()}</div><div className="text-xs text-gray-400">Paid</div></div>
+      </div>
+
+      {showForm && (
+        <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
+          <h3 className="font-semibold text-gray-700 mb-3">{editingHoa ? "Edit HOA Payment" : "New HOA Payment"}</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} />
+            <input placeholder="HOA Company Name" value={form.hoa_name} onChange={e => setForm({ ...form, hoa_name: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <input placeholder="Amount ($)" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+              <option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="annual">Annual</option>
+            </select>
+            <input placeholder="Notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button onClick={saveHOA} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
+            <button onClick={() => { setShowForm(false); setEditingHoa(null); }} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-xs text-gray-400 uppercase">
+            <tr><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">HOA Company</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-left">Due Date</th><th className="px-4 py-3 text-left">Frequency</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-right">Actions</th></tr>
+          </thead>
+          <tbody>
+            {filtered.map(h => (
+              <tr key={h.id} className="border-t border-gray-50 hover:bg-gray-50/50">
+                <td className="px-4 py-2.5 text-gray-800">{h.property}</td>
+                <td className="px-4 py-2.5 font-medium text-gray-800">{h.hoa_name}</td>
+                <td className="px-4 py-2.5 text-right font-semibold">${safeNum(h.amount).toLocaleString()}</td>
+                <td className="px-4 py-2.5 text-gray-500">{h.due_date}</td>
+                <td className="px-4 py-2.5 text-gray-600 capitalize">{h.frequency}</td>
+                <td className="px-4 py-2.5"><Badge status={h.status} /></td>
+                <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                  {h.status === "pending" && <button onClick={() => payHOA(h)} className="text-xs text-green-600 hover:underline mr-2">Pay</button>}
+                  <button onClick={() => { setEditingHoa(h); setForm({ property: h.property, hoa_name: h.hoa_name, amount: String(h.amount), due_date: h.due_date, frequency: h.frequency || "monthly", status: h.status, notes: h.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>
+                  <button onClick={() => deleteHOA(h.id)} className="text-xs text-red-500 hover:underline">Del</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {filtered.length === 0 && <div className="text-center py-8 text-gray-400">No HOA payments found</div>}
+      </div>
+    </div>
+  );
+}
+
+
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
-  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","accounting","documents","inspections","autopay","latefees","audittrail","leases","vendors","owners","notifications"] },
+  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","accounting","documents","inspections","autopay","hoa","audittrail","leases","vendors","owners","notifications"] },
   office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","documents","inspections","leases","vendors","owners","notifications"] },
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
@@ -5749,7 +6041,7 @@ const ALL_NAV = [
   { id: "documents", label: "Documents", icon: "📁" },
   { id: "inspections", label: "Inspections", icon: "🔍" },
   { id: "autopay", label: "Autopay", icon: "🔄" },
-  { id: "latefees", label: "Late Fees", icon: "⚠️" },
+  { id: "hoa", label: "HOA Payments", icon: "🏘️" },
   { id: "audittrail", label: "Audit Trail", icon: "📋" },
   { id: "leases", label: "Leases", icon: "📝" },
   { id: "vendors", label: "Vendors", icon: "🛠️" },
@@ -6846,7 +7138,7 @@ const pageComponents = {
   documents: Documents,
   inspections: Inspections,
   autopay: Autopay,
-  latefees: LateFees,
+  hoa: HOAPayments,
   audittrail: AuditTrail,
   leases: LeaseManagement,
   vendors: VendorManagement,
@@ -6901,7 +7193,7 @@ function AuditTrail({ companyId }) {
   const moduleIcons = {
     properties: "🏠", tenants: "👤", payments: "💳", maintenance: "🔧",
     utilities: "⚡", accounting: "📊", documents: "📄", inspections: "🔍",
-    autopay: "🔁", latefees: "⏰",
+    autopay: "🔁",
   };
 
   if (loading) return <Spinner />;
