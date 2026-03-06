@@ -196,7 +196,7 @@ async function autoPostRentCharges(companyId) {
 
     if (posted > 0) {
       console.log("🏠 Auto-posted " + posted + " rent charge(s) to accounting");
-      logAudit("create", "accounting", "Auto-posted " + posted + " monthly rent charges from active leases", "", "system", "system");
+      logAudit("create", "accounting", "Auto-posted " + posted + " monthly rent charges from active leases", "", "system", "system", companyId);
     }
   } catch (e) {
     console.warn("Auto rent charge posting failed:", e);
@@ -395,11 +395,17 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
     setLoading(true);
     setError("");
 
-    // For tenant signup, validate invite code first
+    // For tenant signup, validate invite code first via RPC (table not directly readable)
     if (userType === "tenant") {
       if (!inviteCode.trim()) { setError("Invite code is required."); setLoading(false); return; }
-      const { data: codeData, error: codeErr } = await supabase.from("tenant_invite_codes").select("*").eq("code", inviteCode.trim().toUpperCase()).eq("used", false).maybeSingle();
-      if (codeErr || !codeData) { setError("Invalid or expired invite code."); setLoading(false); return; }
+      try {
+        const { data: rpcResult, error: rpcErr } = await supabase.rpc("validate_invite_code", { p_code: inviteCode.trim().toUpperCase() });
+        if (rpcErr || !rpcResult?.valid) { setError("Invalid or expired invite code."); setLoading(false); return; }
+      } catch {
+        // Fallback to direct query if RPC not deployed
+        const { data: codeData, error: codeErr } = await supabase.from("tenant_invite_codes").select("code").eq("code", inviteCode.trim().toUpperCase()).eq("used", false).maybeSingle();
+        if (codeErr || !codeData) { setError("Invalid or expired invite code."); setLoading(false); return; }
+      }
     }
 
     const { data: signupData, error: signupErr } = await supabase.auth.signUp({
@@ -778,7 +784,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
         await supabase.from("acct_classes").upsert([{ id: classId, name: form.address, description: `${form.type} · $${form.rent}/mo`, color: ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4"][Math.floor(Math.random()*6)], is_active: true, company_id: companyId || "sandbox-llc" }], { onConflict: "id" });
       }
       addNotification("🏠", editingProperty ? `Property updated: ${form.address}` : `New property added: ${form.address}`);
-      logAudit(editingProperty ? "update" : "create", "properties", `${editingProperty ? "Updated" : "Added"} property: ${form.address}`, editingProperty?.id || "", userProfile?.email, userRole);
+      logAudit(editingProperty ? "update" : "create", "properties", `${editingProperty ? "Updated" : "Added"} property: ${form.address}`, editingProperty?.id || "", userProfile?.email, userRole, companyId);
     } else {
       // Non-admin: submit change request
       const { data: { user } } = await supabase.auth.getUser();
@@ -796,7 +802,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       }]);
       if (error) { alert("Error submitting request: " + error.message); return; }
       addNotification("📋", `Change request submitted for: ${form.address} — awaiting admin approval`);
-      logAudit("request", "properties", `Requested ${editingProperty ? "edit" : "add"}: ${form.address}`, editingProperty?.id || "", userProfile?.email, userRole);
+      logAudit("request", "properties", `Requested ${editingProperty ? "edit" : "add"}: ${form.address}`, editingProperty?.id || "", userProfile?.email, userRole, companyId);
       fetchChangeRequests();
     }
     setShowForm(false);
@@ -811,7 +817,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     const { error } = await supabase.from("properties").delete().eq("id", id).eq("company_id", companyId || "sandbox-llc");
     if (error) { alert("Error deleting property: " + error.message); return; }
     addNotification("🗑️", `Property deleted: ${address}`);
-    logAudit("delete", "properties", `Deleted property: ${address}`, id, userProfile?.email, userRole);
+    logAudit("delete", "properties", `Deleted property: ${address}`, id, userProfile?.email, userRole, companyId);
   }
 
   // Admin: approve change request
@@ -828,7 +834,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     }
     const { data: { user } } = await supabase.auth.getUser();
     await supabase.from("property_change_requests").update({ status: "approved", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNotes[req.id] || "" }).eq("id", req.id);
-    logAudit("approve", "properties", `Approved ${req.request_type} request: ${req.address} (requested by ${req.requested_by})`, req.id, user?.email, "admin");
+    logAudit("approve", "properties", `Approved ${req.request_type} request: ${req.address} (requested by ${req.requested_by})`, req.id, user?.email, "admin", companyId);
     setReviewNote("");
     fetchProperties();
     fetchChangeRequests();
@@ -839,7 +845,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     const { data: { user } } = await supabase.auth.getUser();
     await supabase.from("property_change_requests").update({ status: "rejected", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNotes[req.id] || "" }).eq("id", req.id);
     addNotification("❌", `Property request rejected: ${req.address}`);
-    logAudit("reject", "properties", `Rejected ${req.request_type} request: ${req.address} (requested by ${req.requested_by})`, req.id, user?.email, "admin");
+    logAudit("reject", "properties", `Rejected ${req.request_type} request: ${req.address} (requested by ${req.requested_by})`, req.id, user?.email, "admin", companyId);
     setReviewNote("");
     fetchChangeRequests();
   }
@@ -869,7 +875,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     await supabase.from("properties").update({ pm_company_id: pmCompany.id, pm_company_name: pmCompany.name }).eq("id", property.id).eq("company_id", companyId || "sandbox-llc");
     // Also add this property to the PM's company scope by inserting a shadow record or just let them query cross-company
     addNotification("🏢", pmCompany.name + " assigned as PM for " + property.address);
-    logAudit("update", "properties", "Assigned PM: " + pmCompany.name + " to " + property.address, property.id, userProfile?.email, userRole);
+    logAudit("update", "properties", "Assigned PM: " + pmCompany.name + " to " + property.address, property.id, userProfile?.email, userRole, companyId);
     setShowPmAssign(null);
     setPmCode("");
     fetchProperties();
@@ -879,7 +885,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     if (!window.confirm("Remove " + (property.pm_company_name || "PM") + " as property manager for " + property.address + "?\n\nYou will regain full operational control.")) return;
     await supabase.from("properties").update({ pm_company_id: null, pm_company_name: null }).eq("id", property.id).eq("company_id", companyId || "sandbox-llc");
     addNotification("🏠", "PM removed from " + property.address + ". You now have full control.");
-    logAudit("update", "properties", "Removed PM from " + property.address, property.id, userProfile?.email, userRole);
+    logAudit("update", "properties", "Removed PM from " + property.address, property.id, userProfile?.email, userRole, companyId);
     fetchProperties();
   }
 
@@ -1195,10 +1201,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
     if (error) { alert("Error saving tenant: " + error.message); return; }
     if (editingTenant) {
       addNotification("👤", `Tenant updated: ${form.name}`);
-      logAudit("update", "tenants", `Updated tenant: ${form.name}`, editingTenant?.id, userProfile?.email, userRole);
+      logAudit("update", "tenants", `Updated tenant: ${form.name}`, editingTenant?.id, userProfile?.email, userRole, companyId);
     } else {
       addNotification("👤", `New tenant added: ${form.name}`);
-      logAudit("create", "tenants", `Added tenant: ${form.name} at ${form.property}`, "", userProfile?.email, userRole);
+      logAudit("create", "tenants", `Added tenant: ${form.name} at ${form.property}`, "", userProfile?.email, userRole, companyId);
     }
     setShowForm(false);
     setEditingTenant(null);
@@ -1211,7 +1217,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
     const { error } = await supabase.from("tenants").delete().eq("id", id).eq("company_id", companyId || "sandbox-llc");
     if (error) { alert("Error deleting tenant: " + error.message); return; }
     addNotification("🗑️", `Tenant deleted: ${name}`);
-    logAudit("delete", "tenants", `Deleted tenant: ${name}`, id, userProfile?.email, userRole);
+    logAudit("delete", "tenants", `Deleted tenant: ${name}`, id, userProfile?.email, userRole, companyId);
     fetchTenants();
   }
 
@@ -1258,7 +1264,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         invited_by: userProfile?.email || "admin",
       }], { onConflict: "company_id,user_email" });
       addNotification("✉️", "Invite code generated for " + tenant.email + ": " + code);
-      logAudit("create", "tenants", "Invited tenant to portal: " + tenant.email + " code: " + code, tenant.id, userProfile?.email, userRole);
+      logAudit("create", "tenants", "Invited tenant to portal: " + tenant.email + " code: " + code, tenant.id, userProfile?.email, userRole, companyId);
       alert("Tenant invite created!\n\nInvite Code: " + code + "\n\nShare this code with " + tenant.name + ". They can sign up at your app URL by selecting 'I'm a Tenant' and entering this code.\n\nA magic link email was also sent to " + tenant.email);
     } catch (e) {
       alert("Error inviting tenant: " + e.message);
@@ -1750,7 +1756,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
     // Only auto-post to accounting if payment is actually paid (not unpaid/partial)
     if (form.status !== "paid") {
       addNotification("💳", `Payment recorded (${form.status}): $${form.amount} from ${form.tenant}`);
-      logAudit("create", "payments", `Payment (${form.status}): $${form.amount} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole);
+      logAudit("create", "payments", `Payment (${form.status}): $${form.amount} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole, companyId);
       setShowForm(false);
       setForm({ tenant: "", property: "", amount: "", type: "rent", method: "ACH", status: "paid", date: new Date().toISOString().slice(0, 10) });
       fetchPayments();
@@ -1805,7 +1811,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
       });
     }
     addNotification("💳", `Payment recorded: $${form.amount} from ${form.tenant}`);
-    logAudit("create", "payments", `Payment: $${form.amount} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole);
+    logAudit("create", "payments", `Payment: $${form.amount} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole, companyId);
     setShowForm(false);
     setForm({ tenant: "", property: "", amount: "", type: "rent", method: "ACH", status: "paid", date: new Date().toISOString().slice(0, 10) });
     fetchPayments();
@@ -1909,10 +1915,10 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
     if (error) { alert("Error saving work order: " + error.message); return; }
     if (editingWO) {
       addNotification("🔧", `Work order updated: ${form.issue}`);
-      logAudit("update", "maintenance", `Updated work order: ${form.issue}`, editingWO?.id, userProfile?.email, userRole);
+      logAudit("update", "maintenance", `Updated work order: ${form.issue}`, editingWO?.id, userProfile?.email, userRole, companyId);
     } else {
       addNotification("🔧", `New work order: ${form.issue} at ${form.property}`);
-      logAudit("create", "maintenance", `Work order: ${form.issue} at ${form.property}`, "", userProfile?.email, userRole);
+      logAudit("create", "maintenance", `Work order: ${form.issue} at ${form.property}`, "", userProfile?.email, userRole, companyId);
     }
     setShowForm(false);
     setEditingWO(null);
@@ -4156,7 +4162,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     if (error) { alert("Error saving lease: " + error.message); return; }
     // Auto-post rent charges for this lease immediately
     if (!editingLease) await autoPostRentCharges(companyId);
-    logAudit(editingLease ? "update" : "create", "leases", (editingLease ? "Updated" : "Created") + " lease: " + form.tenant_name + " at " + form.property, editingLease?.id || "", userProfile?.email, userRole);
+    logAudit(editingLease ? "update" : "create", "leases", (editingLease ? "Updated" : "Created") + " lease: " + form.tenant_name + " at " + form.property, editingLease?.id || "", userProfile?.email, userRole, companyId);
     resetForm(); fetchData();
   }
 
@@ -4179,7 +4185,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     await supabase.from("leases").update({ status: "renewed" }).eq("id", lease.id);
     await supabase.from("leases").insert([{ company_id: companyId || "sandbox-llc", tenant_id: lease.tenant_id, tenant_name: lease.tenant_name, property: lease.property, start_date: newStart, end_date: newEnd.toISOString().slice(0, 10), rent_amount: Math.round(escalated * 100) / 100, security_deposit: lease.security_deposit, rent_escalation_pct: lease.rent_escalation_pct, escalation_frequency: lease.escalation_frequency, payment_due_day: lease.payment_due_day, lease_type: "renewal", auto_renew: lease.auto_renew, renewal_notice_days: lease.renewal_notice_days, clauses: lease.clauses, special_terms: lease.special_terms, status: "active", renewed_from: lease.id, created_by: userProfile?.email || "", move_in_checklist: "[]", move_out_checklist: lease.move_out_checklist }]);
     if (lease.tenant_id) await supabase.from("tenants").update({ rent: Math.round(escalated * 100) / 100, move_out: newEnd.toISOString().slice(0, 10) }).eq("id", lease.tenant_id);
-    logAudit("create", "leases", "Renewed lease: " + lease.tenant_name + " new rent $" + Math.round(escalated * 100) / 100, lease.id, userProfile?.email, userRole);
+    logAudit("create", "leases", "Renewed lease: " + lease.tenant_name + " new rent $" + Math.round(escalated * 100) / 100, lease.id, userProfile?.email, userRole, companyId);
     await autoPostRentCharges(companyId); // Post rent charges for renewed lease
     fetchData();
   }
@@ -4188,7 +4194,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     if (!window.confirm("Terminate lease for " + lease.tenant_name + "? This cannot be undone.")) return;
     await supabase.from("leases").update({ status: "terminated" }).eq("id", lease.id);
     if (lease.tenant_id) await supabase.from("tenants").update({ lease_status: "inactive" }).eq("id", lease.tenant_id);
-    logAudit("update", "leases", "Terminated lease: " + lease.tenant_name, lease.id, userProfile?.email, userRole);
+    logAudit("update", "leases", "Terminated lease: " + lease.tenant_name, lease.id, userProfile?.email, userRole, companyId);
     fetchData();
   }
 
@@ -4227,7 +4233,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
         ]
       });
     }
-    logAudit("update", "leases", "Deposit return: $" + returned + " to " + lease.tenant_name, lease.id, userProfile?.email, userRole);
+    logAudit("update", "leases", "Deposit return: $" + returned + " to " + lease.tenant_name, lease.id, userProfile?.email, userRole, companyId);
     setShowDepositModal(null); setDepositForm({ amount_returned: "", deductions: "", return_date: new Date().toISOString().slice(0, 10) });
     fetchData();
   }
@@ -4444,7 +4450,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
               await supabase.from("leases").update({ rent_amount: newAmt, rent_increase_history: JSON.stringify([...(JSON.parse(showRentIncrease.rent_increase_history || "[]")), { from: showRentIncrease.rent_amount, to: newAmt, date: rentIncreaseForm.effective_date, reason: rentIncreaseForm.reason }]) }).eq("id", showRentIncrease.id);
               if (showRentIncrease.tenant_id) await supabase.from("tenants").update({ rent: newAmt }).eq("id", showRentIncrease.tenant_id);
               addNotification("📈", `Rent increased to $${newAmt}/mo for ${showRentIncrease.tenant_name}`);
-              logAudit("update", "leases", `Rent increase: $${showRentIncrease.rent_amount} → $${newAmt} for ${showRentIncrease.tenant_name}`, showRentIncrease.id, userProfile?.email, userRole);
+              logAudit("update", "leases", `Rent increase: $${showRentIncrease.rent_amount} → $${newAmt} for ${showRentIncrease.tenant_name}`, showRentIncrease.id, userProfile?.email, userRole, companyId);
               setShowRentIncrease(null);
               fetchData();
             }} className="w-full bg-indigo-600 text-white text-sm py-2.5 rounded-lg hover:bg-indigo-700">Apply Rent Increase</button>
@@ -4513,7 +4519,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
       ({ error } = await supabase.from("vendors").insert([{ ...payload, company_id: companyId || "sandbox-llc" }]));
     }
     if (error) { alert("Error: " + error.message); return; }
-    logAudit(editingVendor ? "update" : "create", "vendors", (editingVendor ? "Updated" : "Added") + " vendor: " + form.name, editingVendor?.id || "", userProfile?.email, userRole);
+    logAudit(editingVendor ? "update" : "create", "vendors", (editingVendor ? "Updated" : "Added") + " vendor: " + form.name, editingVendor?.id || "", userProfile?.email, userRole, companyId);
     resetVendorForm();
     fetchData();
   }
@@ -4533,7 +4539,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
   async function deleteVendor(id, name) {
     if (!window.confirm("Delete vendor " + name + "?")) return;
     await supabase.from("vendors").delete().eq("id", id).eq("company_id", companyId || "sandbox-llc");
-    logAudit("delete", "vendors", "Deleted vendor: " + name, id, userProfile?.email, userRole);
+    logAudit("delete", "vendors", "Deleted vendor: " + name, id, userProfile?.email, userRole, companyId);
     fetchData();
   }
 
@@ -4546,7 +4552,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
       due_date: invoiceForm.due_date || null,
     }]);
     if (error) { alert("Error: " + error.message); return; }
-    logAudit("create", "vendor_invoices", "Invoice: $" + invoiceForm.amount + " from " + invoiceForm.vendor_name, "", userProfile?.email, userRole);
+    logAudit("create", "vendor_invoices", "Invoice: $" + invoiceForm.amount + " from " + invoiceForm.vendor_name, "", userProfile?.email, userRole, companyId);
     setShowInvoiceForm(false);
     setInvoiceForm({ vendor_id: "", vendor_name: "", work_order_id: "", property: "", description: "", amount: "", invoice_number: "", invoice_date: new Date().toISOString().slice(0, 10), due_date: "", payment_method: "", notes: "" });
     fetchData();
@@ -4577,7 +4583,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
         { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(inv.amount), class_id: classId, memo: "Payment to " + inv.vendor_name },
       ]
     });
-    logAudit("update", "vendor_invoices", "Paid invoice: $" + inv.amount + " to " + inv.vendor_name, inv.id, userProfile?.email, userRole);
+    logAudit("update", "vendor_invoices", "Paid invoice: $" + inv.amount + " to " + inv.vendor_name, inv.id, userProfile?.email, userRole, companyId);
     fetchData();
   }
 
@@ -4844,7 +4850,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
       ({ error } = await supabase.from("owners").insert([{ ...payload, company_id: companyId || "sandbox-llc" }]));
     }
     if (error) { alert("Error: " + error.message); return; }
-    logAudit(editingOwner ? "update" : "create", "owners", (editingOwner ? "Updated" : "Added") + " owner: " + form.name, editingOwner?.id || "", userProfile?.email, userRole);
+    logAudit(editingOwner ? "update" : "create", "owners", (editingOwner ? "Updated" : "Added") + " owner: " + form.name, editingOwner?.id || "", userProfile?.email, userRole, companyId);
     resetForm(); fetchData();
   }
 
@@ -4884,7 +4890,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
         invited_by: userProfile?.email || "admin",
       }], { onConflict: "company_id,user_email" });
       addNotification("✉️", "Portal invite sent to " + owner.name);
-      logAudit("create", "owners", "Invited owner to portal: " + owner.email, owner.id, userProfile?.email, userRole);
+      logAudit("create", "owners", "Invited owner to portal: " + owner.email, owner.id, userProfile?.email, userRole, companyId);
       alert("Owner portal invite sent to " + owner.email + "!\n\nThey can log in and see their properties, statements, and distributions.");
     } catch (e) {
       alert("Error inviting owner: " + e.message);
@@ -4939,7 +4945,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
       line_items: JSON.stringify(lineItems), status: "draft",
     }]);
     if (error) { alert("Error: " + error.message); return; }
-    logAudit("create", "owner_statements", "Generated statement for " + owner.name + " — " + genMonth, "", userProfile?.email, userRole);
+    logAudit("create", "owner_statements", "Generated statement for " + owner.name + " — " + genMonth, "", userProfile?.email, userRole, companyId);
     setShowGenerate(false);
     fetchData();
   }
@@ -4987,7 +4993,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
         ]
       });
     }
-    logAudit("create", "owner_distributions", "Distributed $" + stmt.net_to_owner + " to " + stmt.owner_name, stmt.id, userProfile?.email, userRole);
+    logAudit("create", "owner_distributions", "Distributed $" + stmt.net_to_owner + " to " + stmt.owner_name, stmt.id, userProfile?.email, userRole, companyId);
     fetchData();
   }
 
@@ -5313,7 +5319,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
       await supabase.from("acct_journal_lines").update({ reconciled: true, reconciled_date: today }).in("id", reconIds);
     }
 
-    logAudit("create", "bank_reconciliation", "Bank reconciliation for " + reconPeriod + " — diff: $" + diff, "", "", "");
+    logAudit("create", "bank_reconciliation", "Bank reconciliation for " + reconPeriod + " — diff: $" + diff, "", "", "", companyId);
     setShowReconcile(false);
     setBankBalance("");
     setReconItems([]);
@@ -5539,7 +5545,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
     }
 
     addNotification("\ud83d\udce8", count + " notifications sent");
-    logAudit("create", "notifications", "Ran notification check: " + count + " sent", "", userProfile?.email, userRole);
+    logAudit("create", "notifications", "Ran notification check: " + count + " sent", "", userProfile?.email, userRole, companyId);
     fetchData();
   }
 
@@ -5774,7 +5780,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
       signature_status: allSigned ? "fully_signed" : "partially_signed"
     }).eq("id", lease.id);
 
-    logAudit("update", "leases", "E-signature: " + signer.signer_name + " signed lease for " + lease.tenant_name, lease.id, userProfile?.email, "");
+    logAudit("update", "leases", "E-signature: " + signer.signer_name + " signed lease for " + lease.tenant_name, lease.id, userProfile?.email, "", companyId);
     setSigning(false);
     fetchSigners();
     if (onSigned) onSigned();
@@ -6413,7 +6419,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
         ]
       });
     }
-    logAudit("create", "payments", "Autopay: $" + s.amount + " from " + s.tenant + " at " + s.property, "", userProfile?.email, userRole);
+    logAudit("create", "payments", "Autopay: $" + s.amount + " from " + s.tenant + " at " + s.property, "", userProfile?.email, userRole, companyId);
     addNotification("\ud83d\udcb3", "Autopay $" + s.amount + " processed for " + s.tenant);
   }
 
@@ -6779,7 +6785,7 @@ function TenantPortal({ currentUser, companyId }) {
           ]
         });
       }
-      logAudit("create", "payments", "Online payment: $" + amt + " from " + tenantData.name, "", currentUser?.email, "tenant");
+      logAudit("create", "payments", "Online payment: $" + amt + " from " + tenantData.name, "", currentUser?.email, "tenant", companyId);
       setPaymentSuccess(true);
       setTimeout(() => setPaymentSuccess(false), 5000);
       await refreshData();
@@ -6811,7 +6817,7 @@ function TenantPortal({ currentUser, companyId }) {
       cost: 0,
     }]);
     if (error) { alert("Error submitting request: " + error.message); return; }
-    logAudit("create", "maintenance", "Tenant submitted: " + maintForm.issue, "", currentUser?.email, "tenant");
+    logAudit("create", "maintenance", "Tenant submitted: " + maintForm.issue, "", currentUser?.email, "tenant", companyId);
     setMaintForm({ issue: "", priority: "normal", notes: "" });
     setMaintPhoto(null);
     setShowMaintForm(false);
@@ -7221,7 +7227,7 @@ function RoleManagement({ addNotification, companyId }) {
         role: user.role, status: "active", invited_by: "admin",
       }], { onConflict: "company_id,user_email" });
       addNotification("✉️", `Invite sent to ${user.name} (${roleName})`);
-      logAudit("create", "team", "Invited " + user.name + " as " + roleName + ": " + user.email, user.id || "", "", "admin");
+      logAudit("create", "team", "Invited " + user.name + " as " + roleName + ": " + user.email, user.id || "", "", "admin", companyId);
       alert(`Invite sent to ${user.email}!\n\nThey will receive a magic link to log in.\n\nIf they don't see it, they can use 'Forgot Password' on the login page to set their password.`);
     } catch (e) {
       alert("Error sending invite: " + e.message);
@@ -7976,6 +7982,24 @@ export default function App() {
   if (screen === "login") return <LoginPage onLogin={() => {}} onBack={() => setScreen("landing")} initialMode={loginMode} />;
   if (screen === "company_select") return <CompanySelector currentUser={currentUser} onSelectCompany={handleSelectCompany} onLogout={handleLogout} />;
 
+  // Guard: never render app without a valid company — redirect to selector
+  useEffect(() => {
+    if (screen === "app" && !activeCompany?.id) {
+      setScreen("company_select");
+    }
+  }, [screen, activeCompany]);
+
+  if (!activeCompany?.id) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="text-center">
+          <Spinner />
+          <p className="text-sm text-gray-400 mt-4">Loading company...</p>
+        </div>
+      </div>
+    );
+  }
+
   // Build nav based on role
   const allowedPages = customAllowedPages || ROLES[userRole]?.pages || ROLES.admin.pages;
   const navItems = ALL_NAV.filter(n => allowedPages.includes(n.id));
@@ -8079,7 +8103,7 @@ export default function App() {
             currentUser={currentUser}
             userRole={userRole}
             userProfile={userProfile}
-            companyId={activeCompany?.id || "sandbox-llc"}
+            companyId={activeCompany.id}
             activeCompany={activeCompany}
           />
         </main>
