@@ -487,11 +487,11 @@ function Dashboard({ notifications, setPage, companyId }) {
   const [acctRevenue, setAcctRevenue] = useState(0);
   const [acctExpenses, setAcctExpenses] = useState(0);
 
+  const [rentPostLoading, setRentPostLoading] = useState(false);
+  const [lastRentPost, setLastRentPost] = useState(null);
+
   useEffect(() => {
     async function fetchData() {
-      // Auto-post rent charges for all active leases before loading dashboard
-      await autoPostRentCharges(companyId);
-
       const [p, t, w, pay, u] = await Promise.all([
         companyQuery("properties", companyId),
         companyQuery("tenants", companyId),
@@ -499,7 +499,11 @@ function Dashboard({ notifications, setPage, companyId }) {
         companyQuery("payments", companyId),
         companyQuery("utilities", companyId),
       ]);
-      setProperties(p.data || []);
+      // Also fetch PM-managed properties from other companies
+      const { data: managedProps } = await supabase.from("properties").select("*").eq("pm_company_id", companyId || "sandbox-llc");
+      const allProps = [...(p.data || [])];
+      (managedProps || []).forEach(mp => { if (!allProps.find(x => x.id === mp.id)) allProps.push(mp); });
+      setProperties(allProps);
       setTenants(t.data || []);
       setWorkOrders(w.data || []);
       setPayments(pay.data || []);
@@ -537,7 +541,37 @@ function Dashboard({ notifications, setPage, companyId }) {
 
   return (
     <div>
-      <h2 className="text-xl font-bold text-gray-800 mb-5">Dashboard</h2>
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-xl font-bold text-gray-800">Dashboard</h2>
+        <button onClick={async () => {
+          setRentPostLoading(true);
+          try {
+            // Try server-side batch function first (atomic, no N+1)
+            const { data: rpcResult, error: rpcErr } = await supabase.rpc("batch_post_rent_charges", { p_company_id: companyId || "sandbox-llc" });
+            if (rpcErr) {
+              // Fallback to client-side if RPC not yet deployed
+              console.warn("Batch RPC not available, using client-side:", rpcErr.message);
+              await autoPostRentCharges(companyId);
+            } else {
+              const count = rpcResult?.charges_posted || 0;
+              if (count > 0) addNotification("⚡", `Posted ${count} rent charge(s) for this month`);
+            }
+          } catch (e) {
+            console.warn("Rent posting error:", e);
+            await autoPostRentCharges(companyId);
+          }
+          setLastRentPost(new Date().toLocaleTimeString());
+          setRentPostLoading(false);
+          // Refresh data
+          const { data: refreshPay } = await companyQuery("payments", companyId);
+          setPayments(refreshPay || []);
+          const { data: refreshT } = await companyQuery("tenants", companyId);
+          setTenants(refreshT || []);
+        }} disabled={rentPostLoading} className="flex items-center gap-2 bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+          {rentPostLoading ? "Processing..." : "⚡ Run Monthly Charges"}
+          {lastRentPost && <span className="text-xs text-indigo-200">Last: {lastRentPost}</span>}
+        </button>
+      </div>
 
       {/* Notifications Banner */}
       {notifications.length > 0 && (
@@ -650,8 +684,16 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   useEffect(() => { fetchProperties(); fetchChangeRequests(); }, []);
 
   async function fetchProperties() {
-    const { data } = await supabase.from("properties").select("*").eq("company_id", companyId || "sandbox-llc");
-    setProperties(data || []);
+    // Fetch properties owned by this company
+    const { data: ownedProps } = await supabase.from("properties").select("*").eq("company_id", companyId || "sandbox-llc");
+    // Also fetch properties where this company is assigned as PM (cross-company)
+    const { data: managedProps } = await supabase.from("properties").select("*").eq("pm_company_id", companyId || "sandbox-llc");
+    // Merge and deduplicate
+    const allProps = [...(ownedProps || [])];
+    (managedProps || []).forEach(mp => {
+      if (!allProps.find(p => p.id === mp.id)) allProps.push(mp);
+    });
+    setProperties(allProps);
     setLoading(false);
   }
 
@@ -4053,7 +4095,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     }
     if (error) { alert("Error saving lease: " + error.message); return; }
     // Auto-post rent charges for this lease immediately
-    if (!editingLease) await autoPostRentCharges();
+    if (!editingLease) await autoPostRentCharges(companyId);
     logAudit(editingLease ? "update" : "create", "leases", (editingLease ? "Updated" : "Created") + " lease: " + form.tenant_name + " at " + form.property, editingLease?.id || "", userProfile?.email, userRole);
     resetForm(); fetchData();
   }
@@ -4078,7 +4120,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     await supabase.from("leases").insert([{ company_id: companyId || "sandbox-llc", tenant_id: lease.tenant_id, tenant_name: lease.tenant_name, property: lease.property, start_date: newStart, end_date: newEnd.toISOString().slice(0, 10), rent_amount: Math.round(escalated * 100) / 100, security_deposit: lease.security_deposit, rent_escalation_pct: lease.rent_escalation_pct, escalation_frequency: lease.escalation_frequency, payment_due_day: lease.payment_due_day, lease_type: "renewal", auto_renew: lease.auto_renew, renewal_notice_days: lease.renewal_notice_days, clauses: lease.clauses, special_terms: lease.special_terms, status: "active", renewed_from: lease.id, created_by: userProfile?.email || "", move_in_checklist: "[]", move_out_checklist: lease.move_out_checklist }]);
     if (lease.tenant_id) await supabase.from("tenants").update({ rent: Math.round(escalated * 100) / 100, move_out: newEnd.toISOString().slice(0, 10) }).eq("id", lease.tenant_id);
     logAudit("create", "leases", "Renewed lease: " + lease.tenant_name + " new rent $" + Math.round(escalated * 100) / 100, lease.id, userProfile?.email, userRole);
-    await autoPostRentCharges(); // Post rent charges for renewed lease
+    await autoPostRentCharges(companyId); // Post rent charges for renewed lease
     fetchData();
   }
 
