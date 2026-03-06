@@ -20,6 +20,32 @@ function companyUpsert(table, rows, companyId, onConflict) {
   return supabase.from(table).upsert(withCompany, onConflict ? { onConflict } : undefined);
 }
 
+// Generate secure random ID (better than Date.now + Math.random)
+function generateId(prefix = "") {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let id = "";
+  const arr = new Uint8Array(16);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    crypto.getRandomValues(arr);
+  } else {
+    for (let i = 0; i < 16; i++) arr[i] = Math.floor(Math.random() * 256);
+  }
+  for (let i = 0; i < 16; i++) id += chars[arr[i] % chars.length];
+  return (prefix ? prefix + "-" : "") + id;
+}
+
+// Safe write wrapper — logs errors instead of silently failing
+async function safeWrite(operation, context = "") {
+  try {
+    const result = await operation;
+    if (result?.error) console.warn("DB write error" + (context ? " in " + context : "") + ":", result.error.message);
+    return result;
+  } catch (e) {
+    console.warn("DB write failed" + (context ? " in " + context : "") + ":", e.message);
+    return { error: e };
+  }
+}
+
 // Guard: require companyId — log warning if missing (fallback kept for safety but flagged)
 function requireCompanyId(companyId, context = "") {
   if (!companyId) {
@@ -44,10 +70,26 @@ async function logAudit(action, module, details = "", recordId = "", userEmail =
 async function autoPostJournalEntry({ date, description, reference, property, lines, status = "posted", companyId = "sandbox-llc" }) {
   try {
     const cid = companyId || "sandbox-llc";
+    // Try atomic server-side function first (fixes race condition + transactional)
+    try {
+      const { data: jeId, error: rpcErr } = await supabase.rpc("create_journal_entry", {
+        p_company_id: cid,
+        p_date: date,
+        p_description: description,
+        p_reference: reference || "",
+        p_property: property || "",
+        p_status: status,
+        p_lines: JSON.stringify(lines || []),
+      });
+      if (!rpcErr && jeId) return jeId;
+      console.warn("JE RPC fallback:", rpcErr?.message);
+    } catch (e) { console.warn("JE RPC not available, using client-side:", e.message); }
+    
+    // Fallback: client-side (non-atomic, race-prone but functional)
     const { data: existingJEs } = await supabase.from("acct_journal_entries").select("number").eq("company_id", cid).order("number", { ascending: false }).limit(1);
     const lastNum = existingJEs?.[0]?.number ? parseInt(existingJEs[0].number.replace("JE-",""), 10) : 0;
     const number = `JE-${String(lastNum + 1).padStart(4, "0")}`;
-    const jeId = `je-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+    const jeId = generateId("je");
     await supabase.from("acct_journal_entries").insert([{ company_id: cid, id: jeId, number, date, description, reference: reference || "", property: property || "", status }]);
     if (lines?.length > 0) {
       await supabase.from("acct_journal_lines").insert(lines.map(l => ({
@@ -132,7 +174,14 @@ async function autoPostRentCharges(companyId) {
           if (lease.tenant_id) {
             const { data: tenant } = await supabase.from("tenants").select("balance").eq("id", lease.tenant_id).maybeSingle();
             if (tenant) {
-              await supabase.from("tenants").update({ balance: safeNum(tenant.balance) + monthRent }).eq("id", lease.tenant_id);
+              // Update tenant balance atomically (prevents drift)
+              try {
+                await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: monthRent });
+              } catch {
+                // Fallback to client-side if RPC not deployed
+                const { data: tenant } = await supabase.from("tenants").select("balance").eq("id", lease.tenant_id).maybeSingle();
+                await supabase.from("tenants").update({ balance: safeNum(tenant?.balance) + monthRent }).eq("id", lease.tenant_id);
+              }
             }
           }
 
@@ -365,20 +414,31 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
       user_type: userType,
     }], { onConflict: "email" });
 
-    // For tenant, redeem invite code and create company_members entry
+    // For tenant, redeem invite code atomically via RPC (prevents race condition)
     if (userType === "tenant") {
-      const { data: codeData } = await supabase.from("tenant_invite_codes").select("*").eq("code", inviteCode.trim().toUpperCase()).eq("used", false).maybeSingle();
-      if (codeData) {
-        await supabase.from("tenant_invite_codes").update({ used: true, used_by: email, used_at: new Date().toISOString() }).eq("id", codeData.id);
-        // Auto-add to company_members
-        await supabase.from("company_members").upsert([{
-          company_id: codeData.company_id, user_email: email, user_name: name.trim(),
-          role: "tenant", status: "active", invited_by: codeData.created_by || "system",
-        }], { onConflict: "company_id,user_email" });
-        // Link tenant record
-        if (codeData.tenant_id) {
-          await supabase.from("tenants").update({ email: email }).eq("id", codeData.tenant_id);
+      try {
+        const { data: rpcResult, error: rpcErr } = await supabase.rpc("redeem_invite_code", {
+          p_code: inviteCode.trim().toUpperCase(),
+          p_email: email,
+          p_name: name.trim(),
+        });
+        if (rpcErr || !rpcResult?.success) {
+          // Fallback to client-side if RPC not deployed yet
+          console.warn("RPC fallback:", rpcErr?.message || rpcResult?.error);
+          const { data: codeData } = await supabase.from("tenant_invite_codes").select("*").eq("code", inviteCode.trim().toUpperCase()).eq("used", false).maybeSingle();
+          if (codeData) {
+            await supabase.from("tenant_invite_codes").update({ used: true, used_by: email, used_at: new Date().toISOString() }).eq("id", codeData.id);
+            await supabase.from("company_members").upsert([{
+              company_id: codeData.company_id, user_email: email, user_name: name.trim(),
+              role: "tenant", status: "active", invited_by: codeData.created_by || "system",
+            }], { onConflict: "company_id,user_email" });
+            if (codeData.tenant_id) {
+              await supabase.from("tenants").update({ email: email }).eq("id", codeData.tenant_id);
+            }
+          }
         }
+      } catch (e) {
+        console.warn("Invite code redemption error:", e);
       }
     }
 
@@ -714,7 +774,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       if (error) { alert("Error saving property: " + error.message); return; }
       // Auto-create accounting class for new properties
       if (!editingProperty) {
-        const classId = `PROP-${String(Math.random()).slice(2,8)}`;
+        const classId = generateId("PROP");
         await supabase.from("acct_classes").upsert([{ id: classId, name: form.address, description: `${form.type} · $${form.rent}/mo`, color: ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4"][Math.floor(Math.random()*6)], is_active: true, company_id: companyId || "sandbox-llc" }], { onConflict: "id" });
       }
       addNotification("🏠", editingProperty ? `Property updated: ${form.address}` : `New property added: ${form.address}`);
@@ -759,7 +819,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     if (req.request_type === "add") {
       await supabase.from("properties").insert([{ company_id: companyId || "sandbox-llc", address: req.address, type: req.type, status: req.property_status, rent: req.rent, tenant: req.tenant, lease_end: req.lease_end, notes: req.notes }]);
       // Auto-create accounting class for this property
-      const classId = `PROP-${String(Math.random()).slice(2,8)}`;
+      const classId = generateId("PROP");
       await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · $${req.rent}/mo`, color: ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4","#F97316","#EC4899"][Math.floor(Math.random()*8)], is_active: true, company_id: companyId || "sandbox-llc" }], { onConflict: "id" });
       addNotification("✅", `Property approved & added: ${req.address}`);
     } else if (req.request_type === "edit" && req.property_id) {
@@ -4076,7 +4136,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     };
     let error;
     if (editingLease) {
-      ({ error } = await supabase.from("leases").update(payload).eq("id", editingLease.id));
+      ({ error } = await supabase.from("leases").update({ tenant_name: payload.tenant_name, property: payload.property, start_date: payload.start_date, end_date: payload.end_date, rent_amount: payload.rent_amount, security_deposit: payload.security_deposit, rent_escalation_pct: payload.rent_escalation_pct, escalation_frequency: payload.escalation_frequency, payment_due_day: payload.payment_due_day, lease_type: payload.lease_type, auto_renew: payload.auto_renew, renewal_notice_days: payload.renewal_notice_days, clauses: payload.clauses, special_terms: payload.special_terms, late_fee_amount: payload.late_fee_amount, late_fee_type: payload.late_fee_type, late_fee_grace_days: payload.late_fee_grace_days }).eq("id", editingLease.id).eq("company_id", companyId || "sandbox-llc"));
     } else {
       ({ error } = await supabase.from("leases").insert([{ ...payload, company_id: companyId || "sandbox-llc" }]));
       if (!error && tenant) {
@@ -4448,7 +4508,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
     };
     let error;
     if (editingVendor) {
-      ({ error } = await supabase.from("vendors").update(payload).eq("id", editingVendor.id));
+      ({ error } = await supabase.from("vendors").update({ name: payload.name, email: payload.email, phone: payload.phone, specialty: payload.specialty, license: payload.license, insurance_exp: payload.insurance_exp, notes: payload.notes, status: payload.status }).eq("id", editingVendor.id).eq("company_id", companyId || "sandbox-llc"));
     } else {
       ({ error } = await supabase.from("vendors").insert([{ ...payload, company_id: companyId || "sandbox-llc" }]));
     }
@@ -4779,7 +4839,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
     const payload = { ...form, management_fee_pct: Number(form.management_fee_pct || 10) };
     let error;
     if (editingOwner) {
-      ({ error } = await supabase.from("owners").update(payload).eq("id", editingOwner.id));
+      ({ error } = await supabase.from("owners").update({ name: payload.name, email: payload.email, phone: payload.phone, address: payload.address, company: payload.company, tax_id: payload.tax_id, payment_method: payload.payment_method, bank_name: payload.bank_name, bank_routing: payload.bank_routing, bank_account: payload.bank_account, management_fee_pct: payload.management_fee_pct, notes: payload.notes, status: payload.status }).eq("id", editingOwner.id).eq("company_id", companyId || "sandbox-llc"));
     } else {
       ({ error } = await supabase.from("owners").insert([{ ...payload, company_id: companyId || "sandbox-llc" }]));
     }
@@ -6132,7 +6192,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
     if (!form.property || !form.hoa_name || !form.amount || !form.due_date) { alert("All fields required."); return; }
     const payload = { ...form, amount: Number(form.amount) };
     if (editingHoa) {
-      await supabase.from("hoa_payments").update(payload).eq("id", editingHoa.id);
+      await supabase.from("hoa_payments").update({ property: payload.property, hoa_name: payload.hoa_name, amount: payload.amount, due_date: payload.due_date, frequency: payload.frequency, status: payload.status, notes: payload.notes }).eq("id", editingHoa.id).eq("company_id", companyId || "sandbox-llc");
       addNotification("🏘️", `HOA payment updated: ${form.hoa_name}`);
     } else {
       await supabase.from("hoa_payments").insert([{ company_id: companyId || "sandbox-llc", ...payload }]);
@@ -7104,7 +7164,7 @@ function RoleManagement({ addNotification, companyId }) {
     };
 
     if (editingUser) {
-      const { error } = await supabase.from("app_users").update(payload).eq("id", editingUser.id);
+      const { error } = await supabase.from("app_users").update({ email: payload.email, role: payload.role, name: payload.name, custom_pages: payload.custom_pages, company_id: payload.company_id }).eq("id", editingUser.id);
       if (error) { alert("Error: " + error.message); return; }
       // Also update company_members
       await supabase.from("company_members").upsert([{ company_id: companyId || "sandbox-llc", user_email: form.email, user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
