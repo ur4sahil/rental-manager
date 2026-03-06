@@ -20,6 +20,14 @@ function companyUpsert(table, rows, companyId, onConflict) {
   return supabase.from(table).upsert(withCompany, onConflict ? { onConflict } : undefined);
 }
 
+// Guard: require companyId — log warning if missing (fallback kept for safety but flagged)
+function requireCompanyId(companyId, context = "") {
+  if (!companyId) {
+    console.warn("WARNING: Missing companyId" + (context ? " in " + context : "") + " — using sandbox-llc fallback");
+  }
+  return companyId || "sandbox-llc";
+}
+
 // ============ AUDIT TRAIL HELPER ============
 // Call this from any module to log an action
 async function logAudit(action, module, details = "", recordId = "", userEmail = "", userRoleVal = "admin", companyId = "sandbox-llc") {
@@ -100,7 +108,9 @@ async function autoPostRentCharges(companyId) {
 
       while (cursor <= endCap) {
         const monthStr = cursor.toISOString().slice(0, 7); // "2025-06"
-        const chargeDate = monthStr + "-" + String(lease.payment_due_day || 1).padStart(2, "0");
+        // Clamp payment_due_day to valid day for this month (avoids Feb 30 etc)
+        const dueDay = Math.min(lease.payment_due_day || 1, new Date(year, month, 0).getDate());
+        const chargeDate = monthStr + "-" + String(dueDay).padStart(2, "0");
         const ref = "RENT-AUTO-" + lease.id.toString().slice(-8) + "-" + monthStr;
 
         // Skip if already posted
@@ -238,45 +248,59 @@ function PropertySelect({ value, onChange, className = "", companyId }) {
 
 // ============ LANDING PAGE ============
 function LandingPage({ onGetStarted }) {
-  const features = [
-    { icon: "🏠", title: "Property Management", desc: "Track all your properties, units, and their status in one place." },
-    { icon: "👤", title: "Tenant Management", desc: "Manage tenant profiles, leases, and communication effortlessly." },
-    { icon: "💳", title: "Rent Collection", desc: "Collect rent via ACH, card, or autopay with automated reminders." },
-    { icon: "🔧", title: "Maintenance Tracking", desc: "Handle work orders from submission to completion with ease." },
-    { icon: "⚡", title: "Utility Management", desc: "Track and pay utility bills with full audit logs." },
-    { icon: "📊", title: "Full Accounting", desc: "General ledger, bank reconciliation, and financial reports." },
-  ];
-
   return (
     <div className="min-h-screen bg-white">
       <nav className="flex items-center justify-between px-8 py-4 border-b border-gray-100">
         <div className="text-xl font-bold text-indigo-700">🏡 PropManager</div>
-        <div className="flex items-center gap-4">
-          <a href="#features" className="text-sm text-gray-600 hover:text-indigo-600">Features</a>
-          <a href="#pricing" className="text-sm text-gray-600 hover:text-indigo-600">Pricing</a>
-          <button onClick={onGetStarted} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">Login</button>
-        </div>
+        <button onClick={() => onGetStarted("login")} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">Sign In</button>
       </nav>
-      <div className="bg-gradient-to-br from-indigo-50 to-white px-8 py-20 text-center">
-        <div className="inline-block bg-indigo-100 text-indigo-700 text-xs font-semibold px-3 py-1 rounded-full mb-4">Built for Property Managers</div>
-        <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4 leading-tight">Manage Your Properties<br />Like a Pro</h1>
-        <p className="text-lg text-gray-500 mb-8 max-w-xl mx-auto">Everything you need to manage 100+ properties — tenants, rent, maintenance, utilities, and accounting in one place.</p>
-        <div className="flex gap-3 justify-center">
-          <button onClick={onGetStarted} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-indigo-700 shadow-md">Get Started</button>
+      <div className="bg-gradient-to-br from-indigo-50 to-white px-8 py-16 text-center">
+        <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4 leading-tight">Property Management<br />Made Simple</h1>
+        <p className="text-lg text-gray-500 mb-12 max-w-xl mx-auto">Manage properties, tenants, rent, maintenance, and accounting — all in one place.</p>
+
+        <h2 className="text-lg font-semibold text-gray-700 mb-6">I am a...</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+          {/* Property Manager */}
+          <button onClick={() => onGetStarted("signup_pm")} className="bg-white rounded-2xl border-2 border-indigo-200 p-8 text-center hover:border-indigo-500 hover:shadow-lg transition-all group">
+            <div className="w-16 h-16 rounded-2xl bg-indigo-100 flex items-center justify-center text-3xl mx-auto mb-4 group-hover:bg-indigo-200">🏢</div>
+            <div className="text-lg font-bold text-gray-800 mb-2">Property Manager</div>
+            <p className="text-sm text-gray-500">I manage properties on behalf of owners. Full access to all management tools.</p>
+            <div className="mt-4 text-indigo-600 text-sm font-semibold">Get Started →</div>
+          </button>
+
+          {/* Property Owner */}
+          <button onClick={() => onGetStarted("signup_owner")} className="bg-white rounded-2xl border-2 border-emerald-200 p-8 text-center hover:border-emerald-500 hover:shadow-lg transition-all group">
+            <div className="w-16 h-16 rounded-2xl bg-emerald-100 flex items-center justify-center text-3xl mx-auto mb-4 group-hover:bg-emerald-200">🏠</div>
+            <div className="text-lg font-bold text-gray-800 mb-2">Property Owner</div>
+            <p className="text-sm text-gray-500">I own properties and want to manage them directly or assign a property manager.</p>
+            <div className="mt-4 text-emerald-600 text-sm font-semibold">Get Started →</div>
+          </button>
+
+          {/* Tenant */}
+          <button onClick={() => onGetStarted("signup_tenant")} className="bg-white rounded-2xl border-2 border-amber-200 p-8 text-center hover:border-amber-500 hover:shadow-lg transition-all group">
+            <div className="w-16 h-16 rounded-2xl bg-amber-100 flex items-center justify-center text-3xl mx-auto mb-4 group-hover:bg-amber-200">🔑</div>
+            <div className="text-lg font-bold text-gray-800 mb-2">Tenant</div>
+            <p className="text-sm text-gray-500">I have an invite code from my landlord or property manager to access my portal.</p>
+            <div className="mt-4 text-amber-600 text-sm font-semibold">Enter Invite Code →</div>
+          </button>
+        </div>
+
+        <div className="mt-10">
+          <button onClick={() => onGetStarted("login")} className="text-sm text-gray-500 hover:text-indigo-600">Already have an account? <span className="font-semibold">Sign In</span></button>
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-6 max-w-2xl mx-auto px-8 py-12 text-center">
-        {[["100+", "Properties Managed"], ["99.9%", "Uptime"], ["$0", "To Get Started"]].map(([v, l]) => (
-          <div key={l}>
-            <div className="text-3xl font-bold text-indigo-700">{v}</div>
-            <div className="text-sm text-gray-400 mt-1">{l}</div>
-          </div>
-        ))}
-      </div>
-      <div id="features" className="px-8 py-16 bg-gray-50">
+
+      <div className="px-8 py-16 bg-gray-50">
         <h2 className="text-2xl font-bold text-center text-gray-800 mb-10">Everything You Need</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-          {features.map(f => (
+          {[
+            { icon: "🏠", title: "Property Management", desc: "Track all your properties, units, and their status in one place." },
+            { icon: "👤", title: "Tenant Management", desc: "Manage tenant profiles, leases, and communication effortlessly." },
+            { icon: "💳", title: "Rent Collection", desc: "Collect rent via ACH, card, or autopay with automated reminders." },
+            { icon: "🔧", title: "Maintenance Tracking", desc: "Handle work orders from submission to completion with ease." },
+            { icon: "⚡", title: "Utility Management", desc: "Track and pay utility bills with full audit logs." },
+            { icon: "📊", title: "Full Accounting", desc: "General ledger, bank reconciliation, and financial reports." },
+          ].map(f => (
             <div key={f.title} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
               <div className="text-3xl mb-3">{f.icon}</div>
               <div className="font-semibold text-gray-800 mb-1">{f.title}</div>
@@ -292,15 +316,16 @@ function LandingPage({ onGetStarted }) {
   );
 }
 
-// ============ LOGIN PAGE (Real Supabase Auth) ============
-function LoginPage({ onLogin, onBack }) {
+// ============ LOGIN / SIGNUP PAGE (Role-Aware) ============
+function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  // eslint-disable-next-line no-unused-vars
+  const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState("login"); // "login" or "signup"
+  const [mode, setMode] = useState(initialMode); // "login", "signup_pm", "signup_owner", "signup_tenant"
   const [signupSuccess, setSignupSuccess] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
 
   const handleLogin = async () => {
     setLoading(true);
@@ -314,18 +339,57 @@ function LoginPage({ onLogin, onBack }) {
     setLoading(false);
   };
 
-  const handleSignup = async () => {
+  const handleSignup = async (userType) => {
     if (!email || !password) { setError("Email and password are required."); return; }
     if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
+    if (!name.trim()) { setError("Name is required."); return; }
     setLoading(true);
     setError("");
-    const { error } = await supabase.auth.signUp({ email, password });
-    if (error) {
-      setError(error.message);
-    } else {
-      setSignupSuccess(true);
+
+    // For tenant signup, validate invite code first
+    if (userType === "tenant") {
+      if (!inviteCode.trim()) { setError("Invite code is required."); setLoading(false); return; }
+      const { data: codeData, error: codeErr } = await supabase.from("tenant_invite_codes").select("*").eq("code", inviteCode.trim().toUpperCase()).eq("used", false).maybeSingle();
+      if (codeErr || !codeData) { setError("Invalid or expired invite code."); setLoading(false); return; }
     }
+
+    const { data: signupData, error: signupErr } = await supabase.auth.signUp({
+      email, password,
+      options: { data: { name: name.trim(), user_type: userType } }
+    });
+    if (signupErr) { setError(signupErr.message); setLoading(false); return; }
+
+    // Save user_type to app_users
+    await supabase.from("app_users").upsert([{
+      email, name: name.trim(), role: userType === "tenant" ? "tenant" : userType === "owner" ? "owner" : "admin",
+      user_type: userType,
+    }], { onConflict: "email" });
+
+    // For tenant, redeem invite code and create company_members entry
+    if (userType === "tenant") {
+      const { data: codeData } = await supabase.from("tenant_invite_codes").select("*").eq("code", inviteCode.trim().toUpperCase()).eq("used", false).maybeSingle();
+      if (codeData) {
+        await supabase.from("tenant_invite_codes").update({ used: true, used_by: email, used_at: new Date().toISOString() }).eq("id", codeData.id);
+        // Auto-add to company_members
+        await supabase.from("company_members").upsert([{
+          company_id: codeData.company_id, user_email: email, user_name: name.trim(),
+          role: "tenant", status: "active", invited_by: codeData.created_by || "system",
+        }], { onConflict: "company_id,user_email" });
+        // Link tenant record
+        if (codeData.tenant_id) {
+          await supabase.from("tenants").update({ email: email }).eq("id", codeData.tenant_id);
+        }
+      }
+    }
+
+    setSignupSuccess(true);
     setLoading(false);
+  };
+
+  const userTypeLabels = {
+    signup_pm: { title: "Property Manager Sign Up", subtitle: "Create your management account", color: "indigo", icon: "🏢" },
+    signup_owner: { title: "Property Owner Sign Up", subtitle: "Create your owner account", color: "emerald", icon: "🏠" },
+    signup_tenant: { title: "Tenant Sign Up", subtitle: "Join with your invite code", color: "amber", icon: "🔑" },
   };
 
   if (signupSuccess) {
@@ -346,6 +410,9 @@ function LoginPage({ onLogin, onBack }) {
     );
   }
 
+  const isSignup = mode.startsWith("signup_");
+  const typeInfo = userTypeLabels[mode] || {};
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-white flex flex-col">
       <nav className="flex items-center justify-between px-8 py-4">
@@ -353,25 +420,53 @@ function LoginPage({ onLogin, onBack }) {
       </nav>
       <div className="flex-1 flex items-center justify-center px-4">
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 w-full max-w-sm">
-          <h2 className="text-2xl font-bold text-gray-800 mb-1">{mode === "login" ? "Welcome back" : "Create account"}</h2>
-          <p className="text-sm text-gray-400 mb-6">{mode === "login" ? "Sign in to your account" : "Sign up to get started"}</p>
+          {isSignup && (
+            <div className="text-center mb-4">
+              <span className="text-3xl">{typeInfo.icon}</span>
+              <h2 className="text-xl font-bold text-gray-800 mt-2">{typeInfo.title}</h2>
+              <p className="text-sm text-gray-400">{typeInfo.subtitle}</p>
+            </div>
+          )}
+          {!isSignup && (
+            <>
+              <h2 className="text-2xl font-bold text-gray-800 mb-1">Welcome back</h2>
+              <p className="text-sm text-gray-400 mb-6">Sign in to your account</p>
+            </>
+          )}
           {error && <div className="bg-red-50 text-red-600 text-xs rounded-lg px-3 py-2 mb-4">{error}</div>}
+
+          {isSignup && (
+            <div className="mb-4">
+              <label className="text-xs font-medium text-gray-600 block mb-1">Full Name</label>
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="John Smith" className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
+            </div>
+          )}
           <div className="mb-4">
             <label className="text-xs font-medium text-gray-600 block mb-1">Email</label>
             <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
           </div>
-          <div className="mb-6">
+          <div className="mb-4">
             <label className="text-xs font-medium text-gray-600 block mb-1">Password</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" onKeyDown={e => e.key === "Enter" && (mode === "login" ? handleLogin() : handleSignup())} />
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" onKeyDown={e => e.key === "Enter" && (isSignup ? handleSignup(mode.replace("signup_", "")) : handleLogin())} />
           </div>
-          <button onClick={mode === "login" ? handleLogin : handleSignup} disabled={loading} className="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-indigo-700 disabled:opacity-50">
-            {loading ? (mode === "login" ? "Signing in..." : "Creating account...") : (mode === "login" ? "Sign In" : "Create Account")}
+
+          {mode === "signup_tenant" && (
+            <div className="mb-4">
+              <label className="text-xs font-medium text-gray-600 block mb-1">Invite Code *</label>
+              <input value={inviteCode} onChange={e => setInviteCode(e.target.value.toUpperCase())} placeholder="e.g. TNT-38472916" className="w-full border border-amber-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500 bg-amber-50 font-mono tracking-wider" />
+              <p className="text-xs text-gray-400 mt-1">Check your invite email from your landlord or property manager</p>
+            </div>
+          )}
+
+          <button onClick={isSignup ? () => handleSignup(mode.replace("signup_", "")) : handleLogin} disabled={loading} className={`w-full text-white py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50 ${isSignup ? (mode === "signup_pm" ? "bg-indigo-600 hover:bg-indigo-700" : mode === "signup_owner" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700") : "bg-indigo-600 hover:bg-indigo-700"}`}>
+            {loading ? "Please wait..." : isSignup ? "Create Account" : "Sign In"}
           </button>
-          <div className="text-center mt-4">
-            {mode === "login" ? (
-              <button onClick={() => { setMode("signup"); setError(""); }} className="text-xs text-indigo-600 hover:underline">Don't have an account? Sign up</button>
-            ) : (
+
+          <div className="text-center mt-4 space-y-2">
+            {isSignup ? (
               <button onClick={() => { setMode("login"); setError(""); }} className="text-xs text-indigo-600 hover:underline">Already have an account? Sign in</button>
+            ) : (
+              <button onClick={onBack} className="text-xs text-indigo-600 hover:underline">Back to role selection</button>
             )}
           </div>
         </div>
@@ -548,7 +643,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   // Approval workflow
   const [changeRequests, setChangeRequests] = useState([]);
   const [showRequests, setShowRequests] = useState(false);
-  const [reviewNote, setReviewNote] = useState("");
+  const [reviewNotes, setReviewNotes] = useState({});
 
   const isAdmin = userRole === "admin";
 
@@ -572,7 +667,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     if (isAdmin) {
       // Admin: direct save
       const { error } = editingProperty
-        ? await supabase.from("properties").update(form).eq("id", editingProperty.id)
+        ? await supabase.from("properties").update({ address: form.address, type: form.type, status: form.status, rent: form.rent, tenant: form.tenant, lease_end: form.lease_end, notes: form.notes }).eq("id", editingProperty.id).eq("company_id", companyId || "sandbox-llc")
         : await supabase.from("properties").insert([{ ...form, company_id: companyId || "sandbox-llc" }]);
       if (error) { alert("Error saving property: " + error.message); return; }
       // Auto-create accounting class for new properties
@@ -611,7 +706,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   async function deleteProperty(id, address) {
     if (!isAdmin) { alert("Only admins can delete properties."); return; }
     if (!window.confirm(`Delete property "${address}"? This cannot be undone.`)) return;
-    const { error } = await supabase.from("properties").delete().eq("id", id);
+    const { error } = await supabase.from("properties").delete().eq("id", id).eq("company_id", companyId || "sandbox-llc");
     if (error) { alert("Error deleting property: " + error.message); return; }
     addNotification("🗑️", `Property deleted: ${address}`);
     logAudit("delete", "properties", `Deleted property: ${address}`, id, userProfile?.email, userRole);
@@ -626,11 +721,11 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · $${req.rent}/mo`, color: ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4","#F97316","#EC4899"][Math.floor(Math.random()*8)], is_active: true, company_id: companyId || "sandbox-llc" }], { onConflict: "id" });
       addNotification("✅", `Property approved & added: ${req.address}`);
     } else if (req.request_type === "edit" && req.property_id) {
-      await supabase.from("properties").update({ address: req.address, type: req.type, status: req.property_status, rent: req.rent, tenant: req.tenant, lease_end: req.lease_end, notes: req.notes }).eq("id", req.property_id);
+      await supabase.from("properties").update({ address: req.address, type: req.type, status: req.property_status, rent: req.rent, tenant: req.tenant, lease_end: req.lease_end, notes: req.notes }).eq("id", req.property_id).eq("company_id", companyId || "sandbox-llc");
       addNotification("✅", `Property edit approved: ${req.address}`);
     }
     const { data: { user } } = await supabase.auth.getUser();
-    await supabase.from("property_change_requests").update({ status: "approved", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNote }).eq("id", req.id);
+    await supabase.from("property_change_requests").update({ status: "approved", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNotes[req.id] || "" }).eq("id", req.id);
     logAudit("approve", "properties", `Approved ${req.request_type} request: ${req.address} (requested by ${req.requested_by})`, req.id, user?.email, "admin");
     setReviewNote("");
     fetchProperties();
@@ -640,7 +735,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   // Admin: reject change request
   async function rejectRequest(req) {
     const { data: { user } } = await supabase.auth.getUser();
-    await supabase.from("property_change_requests").update({ status: "rejected", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNote }).eq("id", req.id);
+    await supabase.from("property_change_requests").update({ status: "rejected", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNotes[req.id] || "" }).eq("id", req.id);
     addNotification("❌", `Property request rejected: ${req.address}`);
     logAudit("reject", "properties", `Rejected ${req.request_type} request: ${req.address} (requested by ${req.requested_by})`, req.id, user?.email, "admin");
     setReviewNote("");
@@ -663,10 +758,40 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     setTimelineData(all);
   }
 
+  async function assignPM(property) {
+    if (!pmCode.trim()) { alert("Please enter the PM company's 8-digit code."); return; }
+    const { data: pmCompany } = await supabase.from("companies").select("*").eq("company_code", pmCode.trim()).maybeSingle();
+    if (!pmCompany) { alert("No company found with code: " + pmCode); return; }
+    if (pmCompany.company_role !== "management") { alert(pmCompany.name + " is not a management company. Only management companies can be assigned as PM."); return; }
+    if (!window.confirm("Assign " + pmCompany.name + " as property manager for " + property.address + "?\n\nThey will get operational control of this property. You can remove them later.")) return;
+    await supabase.from("properties").update({ pm_company_id: pmCompany.id, pm_company_name: pmCompany.name }).eq("id", property.id).eq("company_id", companyId || "sandbox-llc");
+    // Also add this property to the PM's company scope by inserting a shadow record or just let them query cross-company
+    addNotification("🏢", pmCompany.name + " assigned as PM for " + property.address);
+    logAudit("update", "properties", "Assigned PM: " + pmCompany.name + " to " + property.address, property.id, userProfile?.email, userRole);
+    setShowPmAssign(null);
+    setPmCode("");
+    fetchProperties();
+  }
+
+  async function removePM(property) {
+    if (!window.confirm("Remove " + (property.pm_company_name || "PM") + " as property manager for " + property.address + "?\n\nYou will regain full operational control.")) return;
+    await supabase.from("properties").update({ pm_company_id: null, pm_company_name: null }).eq("id", property.id).eq("company_id", companyId || "sandbox-llc");
+    addNotification("🏠", "PM removed from " + property.address + ". You now have full control.");
+    logAudit("update", "properties", "Removed PM from " + property.address, property.id, userProfile?.email, userRole);
+    fetchProperties();
+  }
+
+  // Check if current company is an owner company viewing a PM-managed property
+  function isReadOnly(property) {
+    return property.pm_company_id && property.pm_company_id !== (companyId || "sandbox-llc");
+  }
+
   const [viewMode, setViewMode] = useState("card");
   const [filterType, setFilterType] = useState("all");
   const [visibleCols, setVisibleCols] = useState(["address","type","status","rent","tenant","lease_end"]);
   const [showColPicker, setShowColPicker] = useState(false);
+  const [showPmAssign, setShowPmAssign] = useState(null);
+  const [pmCode, setPmCode] = useState("");
   const allCols = [
     { id: "address", label: "Address" }, { id: "type", label: "Type" }, { id: "status", label: "Status" },
     { id: "rent", label: "Rent" }, { id: "tenant", label: "Tenant" }, { id: "lease_end", label: "Lease End" },
@@ -713,7 +838,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
                   <p className="text-xs text-gray-500 mt-1">{req.type} · ${req.rent}/mo</p>
                 </div>
                 <div className="flex flex-col gap-2 shrink-0">
-                  <input value={reviewNote} onChange={e => setReviewNote(e.target.value)} placeholder="Note" className="border border-gray-200 rounded-lg px-2 py-1 text-xs w-32" />
+                  <input value={reviewNotes[req.id] || ""} onChange={e => setReviewNotes(prev => ({...prev, [req.id]: e.target.value}))} placeholder="Note" className="border border-gray-200 rounded-lg px-2 py-1 text-xs w-32" />
                   <div className="flex gap-1">
                     <button onClick={() => approveRequest(req)} className="bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-lg">✓ Approve</button>
                     <button onClick={() => rejectRequest(req)} className="bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg">✕ Reject</button>
@@ -789,16 +914,28 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       {viewMode === "card" && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {filtered.map(p => (
-            <div key={p.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-              <div className="flex items-start justify-between mb-2"><div><h3 className="font-semibold text-gray-800 text-sm">{p.address}</h3><p className="text-xs text-gray-400">{p.type}</p></div><Badge status={p.status} label={p.status} /></div>
+            <div key={p.id} className={`bg-white rounded-xl border shadow-sm p-4 ${isReadOnly(p) ? "border-purple-200 bg-purple-50/30" : "border-gray-100"}`}>
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <h3 className="font-semibold text-gray-800 text-sm">{p.address}</h3>
+                  <p className="text-xs text-gray-400">{p.type}</p>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <Badge status={p.status} label={p.status} />
+                  {p.pm_company_name && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">PM: {p.pm_company_name}</span>}
+                </div>
+              </div>
               <div className="text-sm text-gray-600 space-y-1">
                 <div className="flex justify-between"><span>Rent:</span><span className="font-semibold">${safeNum(p.rent).toLocaleString()}</span></div>
                 {p.tenant && <div className="flex justify-between"><span>Tenant:</span><span>{p.tenant}</span></div>}
                 {p.lease_end && <div className="flex justify-between"><span>Lease End:</span><span>{p.lease_end}</span></div>}
               </div>
-              <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50">
-                <button onClick={() => { setEditingProperty(p); setForm({ address: p.address, type: p.type, status: p.status, rent: p.rent || "", tenant: p.tenant || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>
-                {isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline">Delete</button>}
+              {isReadOnly(p) && <div className="mt-2 text-xs text-purple-600 bg-purple-50 rounded-lg px-2 py-1">🔒 Managed by {p.pm_company_name} — view only</div>}
+              <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50 flex-wrap">
+                {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address: p.address, type: p.type, status: p.status, rent: p.rent || "", tenant: p.tenant || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
+                {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline">Delete</button>}
+                {!p.pm_company_id && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline">Assign PM</button>}
+                {p.pm_company_id && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline">Remove PM</button>}
                 <button onClick={() => loadTimeline(p)} className="text-xs text-gray-400 hover:underline ml-auto">Timeline</button>
               </div>
             </div>
@@ -834,8 +971,11 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
                   {visibleCols.includes("owner_name") && <td className="px-4 py-2.5 text-gray-600">{p.owner_name || "—"}</td>}
                   {visibleCols.includes("notes") && <td className="px-4 py-2.5 text-xs text-gray-400 max-w-32 truncate">{p.notes || "—"}</td>}
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                    <button onClick={() => { setEditingProperty(p); setForm({ address: p.address, type: p.type, status: p.status, rent: p.rent || "", tenant: p.tenant || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>
-                    {isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline mr-2">Del</button>}
+                    {p.pm_company_name && <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded mr-2">PM</span>}
+                    {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address: p.address, type: p.type, status: p.status, rent: p.rent || "", tenant: p.tenant || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>}
+                    {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline mr-2">Del</button>}
+                    {!p.pm_company_id && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline mr-2">PM</button>}
+                    {p.pm_company_id && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline mr-2">-PM</button>}
                     <button onClick={() => loadTimeline(p)} className="text-xs text-gray-400 hover:underline">TL</button>
                   </td>
                 </tr>
@@ -849,17 +989,44 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       {viewMode === "compact" && (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm divide-y divide-gray-50">
           {filtered.map(p => (
-            <div key={p.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50/50">
+            <div key={p.id} className={`flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50/50 ${isReadOnly(p) ? "bg-purple-50/30" : ""}`}>
               <div className={`w-2 h-2 rounded-full ${p.status === "occupied" ? "bg-emerald-500" : p.status === "vacant" ? "bg-amber-500" : "bg-red-500"}`} />
-              <div className="flex-1 min-w-0"><span className="text-sm font-medium text-gray-800">{p.address}</span><span className="text-xs text-gray-400 ml-2">{p.type}</span></div>
+              <div className="flex-1 min-w-0">
+                <span className="text-sm font-medium text-gray-800">{p.address}</span>
+                <span className="text-xs text-gray-400 ml-2">{p.type}</span>
+                {p.pm_company_name && <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded ml-2">PM: {p.pm_company_name}</span>}
+              </div>
               <span className="text-sm font-semibold text-gray-700">${safeNum(p.rent).toLocaleString()}</span>
               <span className="text-xs text-gray-500 w-28 truncate">{p.tenant || "—"}</span>
               <Badge status={p.status} label={p.status} />
-              <button onClick={() => { setEditingProperty(p); setForm({ address: p.address, type: p.type, status: p.status, rent: p.rent || "", tenant: p.tenant || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>
+              {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address: p.address, type: p.type, status: p.status, rent: p.rent || "", tenant: p.tenant || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
+              {isReadOnly(p) && <span className="text-xs text-purple-400">🔒</span>}
             </div>
           ))}
           {filtered.length === 0 && <div className="text-center py-8 text-gray-400 text-sm">No properties found</div>}
         </div>
+      )}
+
+      {/* PM Assignment Modal */}
+      {showPmAssign && (
+        <Modal title={`Assign Property Manager — ${showPmAssign.address}`} onClose={() => setShowPmAssign(null)}>
+          <div className="space-y-4">
+            <div className="bg-purple-50 rounded-xl p-3 text-sm">
+              <div className="font-semibold text-purple-800 mb-1">What this does:</div>
+              <div className="text-xs text-purple-600 space-y-1">
+                <div>The PM company gets operational control (tenants, leases, maintenance, payments)</div>
+                <div>You retain financial oversight and can view statements</div>
+                <div>You can remove the PM at any time to regain full control</div>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">PM Company's 8-Digit Code</label>
+              <input value={pmCode} onChange={e => setPmCode(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="e.g. 12345678" maxLength={8} className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm font-mono tracking-wider" />
+              <p className="text-xs text-gray-400 mt-1">Ask the property manager for their company code</p>
+            </div>
+            <button onClick={() => assignPM(showPmAssign)} className="w-full bg-purple-600 text-white text-sm py-2.5 rounded-lg hover:bg-purple-700 font-semibold">Assign Property Manager</button>
+          </div>
+        </Modal>
       )}
 
       {timelineProperty && (
@@ -921,7 +1088,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
     if (!form.email.trim()) { alert("Tenant email is required."); return; }
     if (!form.property) { alert("Please select a property."); return; }
     const { error } = editingTenant
-      ? await supabase.from("tenants").update(form).eq("id", editingTenant.id)
+      ? await supabase.from("tenants").update({ name: form.name, email: form.email, phone: form.phone, property: form.property, lease_status: form.lease_status, move_in: form.move_in, move_out: form.move_out, rent: form.rent }).eq("id", editingTenant.id).eq("company_id", companyId || "sandbox-llc")
       : await supabase.from("tenants").insert([{ company_id: companyId || "sandbox-llc", ...form, balance: 0 }]);
     if (error) { alert("Error saving tenant: " + error.message); return; }
     if (editingTenant) {
@@ -939,7 +1106,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
 
   async function deleteTenant(id, name) {
     if (!window.confirm(`Delete tenant "${name}"? This cannot be undone.`)) return;
-    const { error } = await supabase.from("tenants").delete().eq("id", id);
+    const { error } = await supabase.from("tenants").delete().eq("id", id).eq("company_id", companyId || "sandbox-llc");
     if (error) { alert("Error deleting tenant: " + error.message); return; }
     addNotification("🗑️", `Tenant deleted: ${name}`);
     logAudit("delete", "tenants", `Deleted tenant: ${name}`, id, userProfile?.email, userRole);
@@ -948,8 +1115,22 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
 
   async function inviteTenant(tenant) {
     if (!tenant.email) { alert("This tenant has no email address. Please add one first."); return; }
-    if (!window.confirm("Send portal invite to " + tenant.email + "?\n\nThis will:\n1. Create a Supabase auth account\n2. Set their role to 'tenant'\n3. They can log in and access the Tenant Portal")) return;
+    if (!window.confirm("Send portal invite to " + tenant.email + "?\n\nThis will:\n1. Generate a unique invite code for this tenant\n2. Send a magic link to their email\n3. They can sign up using the invite code to access their portal")) return;
     try {
+      // Generate unique invite code
+      const code = "TNT-" + String(10000000 + Math.floor(Math.random() * 89999999));
+      await supabase.from("tenant_invite_codes").insert([{
+        code: code,
+        company_id: companyId || "sandbox-llc",
+        property: tenant.property || "",
+        tenant_id: tenant.id,
+        tenant_name: tenant.name,
+        tenant_email: tenant.email,
+        created_by: userProfile?.email || "admin",
+        used: false,
+      }]);
+
+      // Also send magic link as before
       const { error: authErr } = await supabase.auth.signInWithOtp({
         email: tenant.email,
         options: { data: { name: tenant.name, role: "tenant" } }
@@ -962,6 +1143,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         email: tenant.email,
         name: tenant.name,
         role: "tenant",
+        user_type: "tenant",
         company_id: companyId || "sandbox-llc",
       }], { onConflict: "email" });
       // Create company_members entry so tenant is auto-routed to this company
@@ -973,9 +1155,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         status: "active",
         invited_by: userProfile?.email || "admin",
       }], { onConflict: "company_id,user_email" });
-      addNotification("\u2709\ufe0f", "Portal invite sent to " + tenant.email);
-      logAudit("create", "tenants", "Invited tenant to portal: " + tenant.email, tenant.id, userProfile?.email, userRole);
-      alert("Tenant portal access created for " + tenant.email + "\n\nThey can now log in at your app URL with their email.\n\nNote: They will need to use 'Forgot Password' to set their password, or you can set one in Supabase Auth dashboard.");
+      addNotification("✉️", "Invite code generated for " + tenant.email + ": " + code);
+      logAudit("create", "tenants", "Invited tenant to portal: " + tenant.email + " code: " + code, tenant.id, userProfile?.email, userRole);
+      alert("Tenant invite created!\n\nInvite Code: " + code + "\n\nShare this code with " + tenant.name + ". They can sign up at your app URL by selecting 'I'm a Tenant' and entering this code.\n\nA magic link email was also sent to " + tenant.email);
     } catch (e) {
       alert("Error inviting tenant: " + e.message);
     }
@@ -1620,7 +1802,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
     if (!form.issue.trim()) { alert("Issue description is required."); return; }
     const payload = editingWO ? form : { ...form, created: new Date().toISOString().slice(0, 10) };
     const { error } = editingWO
-      ? await supabase.from("work_orders").update(payload).eq("id", editingWO.id)
+      ? await supabase.from("work_orders").update({ property: payload.property, tenant: payload.tenant, issue: payload.issue, priority: payload.priority, status: payload.status, assigned: payload.assigned, cost: payload.cost, notes: payload.notes }).eq("id", editingWO.id).eq("company_id", companyId || "sandbox-llc")
       : await supabase.from("work_orders").insert([{ ...payload, company_id: companyId || "sandbox-llc" }]);
     if (error) { alert("Error saving work order: " + error.message); return; }
     if (editingWO) {
@@ -3504,7 +3686,7 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
     if (file_name) {
       await supabase.storage.from("documents").remove([file_name]);
     }
-    const { error } = await supabase.from("documents").delete().eq("id", id);
+    const { error } = await supabase.from("documents").delete().eq("id", id).eq("company_id", companyId || "sandbox-llc");
     if (error) { alert("Error deleting document: " + error.message); return; }
     addNotification("🗑️", `Document deleted: ${name}`);
     fetchDocs();
@@ -4248,7 +4430,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
 
   async function deleteVendor(id, name) {
     if (!window.confirm("Delete vendor " + name + "?")) return;
-    await supabase.from("vendors").delete().eq("id", id);
+    await supabase.from("vendors").delete().eq("id", id).eq("company_id", companyId || "sandbox-llc");
     logAudit("delete", "vendors", "Deleted vendor: " + name, id, userProfile?.email, userRole);
     fetchData();
   }
@@ -5944,7 +6126,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
 
   async function deleteHOA(id) {
     if (!window.confirm("Delete this HOA payment?")) return;
-    await supabase.from("hoa_payments").delete().eq("id", id);
+    await supabase.from("hoa_payments").delete().eq("id", id).eq("company_id", companyId || "sandbox-llc");
     fetchHOA();
   }
 
@@ -6094,7 +6276,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
 
   async function deleteSchedule(id, tenant) {
     if (!window.confirm(`Delete autopay schedule for ${tenant}?`)) return;
-    await supabase.from("autopay_schedules").delete().eq("id", id);
+    await supabase.from("autopay_schedules").delete().eq("id", id).eq("company_id", companyId || "sandbox-llc");
     fetchData();
   }
 
@@ -6325,7 +6507,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
                 <div className="font-semibold text-indigo-800 text-sm">{r.name}</div>
                 <div className="text-xs text-indigo-500">{r.grace_days} day grace · {r.fee_type === "flat" ? `$${r.fee_amount} flat` : `${r.fee_amount}% of rent`}</div>
               </div>
-              <button onClick={async () => { await supabase.from("late_fee_rules").delete().eq("id", r.id); fetchData(); }} className="text-xs text-red-400 hover:text-red-600">Delete</button>
+              <button onClick={async () => { await supabase.from("late_fee_rules").delete().eq("id", r.id).eq("company_id", companyId || "sandbox-llc"); fetchData(); }} className="text-xs text-red-400 hover:text-red-600">Delete</button>
             </div>
           ))}
         </div>
@@ -6906,7 +7088,7 @@ function RoleManagement({ addNotification, companyId }) {
 
   async function removeUser(id, name) {
     if (!window.confirm(`Remove ${name}?`)) return;
-    await supabase.from("app_users").delete().eq("id", id);
+    await supabase.from("app_users").delete().eq("id", id).eq("company_id", companyId || "sandbox-llc");
     addNotification("👥", `${name} removed`);
     fetchUsers();
   }
@@ -7287,7 +7469,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: "", type: "LLC", address: "", phone: "", email: "" });
+  const [createForm, setCreateForm] = useState({ name: "", type: "LLC", company_role: "management", address: "", phone: "", email: "" });
   const [joinCode, setJoinCode] = useState("");
   const [joinSearch, setJoinSearch] = useState("");
   const [searchResults, setSearchResults] = useState([]);
@@ -7326,6 +7508,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
     const companyCode = String(10000000 + Math.floor(Math.random() * 89999999));
     const { data, error } = await supabase.from("companies").insert([{
       id: companyId, name: createForm.name, type: createForm.type, company_code: companyCode,
+      company_role: createForm.company_role || "management",
       address: createForm.address, phone: createForm.phone, email: createForm.email,
       created_by: currentUser?.email || "",
     }]).select();
@@ -7356,7 +7539,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
     await supabase.from("acct_accounts").upsert(defaultAccounts.map(a => ({ ...a, id: companyId.slice(0, 8) + "-" + a.id })), { onConflict: "id" });
     alert("Company created!\n\nCompany Code: " + companyCode + "\n\nShare this code with people you want to invite.");
     setShowCreate(false);
-    setCreateForm({ name: "", type: "LLC", address: "", phone: "", email: "" });
+    setCreateForm({ name: "", type: "LLC", company_role: "management", address: "", phone: "", email: "" });
     fetchCompanies();
   }
 
@@ -7457,7 +7640,23 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-4">
             <h3 className="font-bold text-gray-800 mb-4">Create New Company</h3>
             <div className="space-y-3">
-              <div><label className="text-xs font-medium text-gray-600">Company Name *</label><input value={createForm.name} onChange={e => setCreateForm({...createForm, name: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="e.g. Sigma Housing LLC" /></div>
+              {/* Company Role Selection */}
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-2">Company Type *</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button type="button" onClick={() => setCreateForm({...createForm, company_role: "management"})} className={`p-3 rounded-xl border-2 text-left transition-all ${createForm.company_role === "management" ? "border-indigo-500 bg-indigo-50" : "border-gray-200 hover:border-gray-300"}`}>
+                    <div className="text-lg mb-1">🏢</div>
+                    <div className="text-sm font-semibold text-gray-800">Property Management</div>
+                    <div className="text-xs text-gray-500">I manage properties for owners</div>
+                  </button>
+                  <button type="button" onClick={() => setCreateForm({...createForm, company_role: "owner"})} className={`p-3 rounded-xl border-2 text-left transition-all ${createForm.company_role === "owner" ? "border-emerald-500 bg-emerald-50" : "border-gray-200 hover:border-gray-300"}`}>
+                    <div className="text-lg mb-1">🏠</div>
+                    <div className="text-sm font-semibold text-gray-800">Property Owner</div>
+                    <div className="text-xs text-gray-500">I own and manage my properties</div>
+                  </button>
+                </div>
+              </div>
+              <div><label className="text-xs font-medium text-gray-600">Company Name *</label><input value={createForm.name} onChange={e => setCreateForm({...createForm, name: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder={createForm.company_role === "management" ? "e.g. Sigma Property Management" : "e.g. Smith Properties LLC"} /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-xs font-medium text-gray-600">Entity Type</label><select value={createForm.type} onChange={e => setCreateForm({...createForm, type: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"><option>LLC</option><option>Corporation</option><option>Partnership</option><option>Sole Proprietorship</option><option>Trust</option><option>Other</option></select></div>
                 <div><label className="text-xs font-medium text-gray-600">Email</label><input value={createForm.email} onChange={e => setCreateForm({...createForm, email: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="company@email.com" /></div>
@@ -7604,13 +7803,13 @@ export default function App() {
     if (!user?.email) return;
     const { data: memberships } = await supabase.from("company_members").select("company_id, role, status").eq("user_email", user.email).eq("status", "active");
     if (!memberships || memberships.length === 0) { setScreen("company_select"); return; }
-    // Tenants and owners auto-select their company (skip selector)
-    const tenantOwner = memberships.find(m => m.role === "tenant" || m.role === "owner");
-    if (tenantOwner) {
-      const { data: company } = await supabase.from("companies").select("*").eq("id", tenantOwner.company_id).maybeSingle();
-      if (company) { handleSelectCompany(company, tenantOwner.role); return; }
+    // Only tenants auto-select their company (skip selector)
+    const tenantMembership = memberships.find(m => m.role === "tenant");
+    if (tenantMembership) {
+      const { data: company } = await supabase.from("companies").select("*").eq("id", tenantMembership.company_id).maybeSingle();
+      if (company) { handleSelectCompany(company, tenantMembership.role); return; }
     }
-    // Everyone else always sees the company selector
+    // Everyone else (PM, owner, staff) always sees the company selector
     setScreen("company_select");
   }
 
@@ -7669,8 +7868,10 @@ export default function App() {
     setPage("dashboard");
   }
 
-  if (screen === "landing") return <LandingPage onGetStarted={() => setScreen("login")} />;
-  if (screen === "login") return <LoginPage onLogin={() => {}} onBack={() => setScreen("landing")} />;
+  const [loginMode, setLoginMode] = useState("login");
+
+  if (screen === "landing") return <LandingPage onGetStarted={(mode) => { setLoginMode(mode); setScreen("login"); }} />;
+  if (screen === "login") return <LoginPage onLogin={() => {}} onBack={() => setScreen("landing")} initialMode={loginMode} />;
   if (screen === "company_select") return <CompanySelector currentUser={currentUser} onSelectCompany={handleSelectCompany} onLogout={handleLogout} />;
 
   // Build nav based on role
@@ -7680,7 +7881,9 @@ export default function App() {
     ? [...navItems, { id: "roles", label: "Team & Roles", icon: "👥" }]
     : navItems;
 
-  const effectivePage = userRole === "tenant" ? "tenant_portal" : userRole === "owner" ? "owner_portal" : page;
+  // Owner-admins (created their own company) get full app access
+  // Only force owner_portal for owners invited into a PM's company
+  const effectivePage = userRole === "tenant" ? "tenant_portal" : (userRole === "owner" && companyRole !== "admin") ? "owner_portal" : page;
   const Page = pageComponents[effectivePage] || Dashboard;
   const safePage = allowedPages.includes(page) ? page : allowedPages[0];
 
