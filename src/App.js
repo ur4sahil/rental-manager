@@ -395,17 +395,11 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
     setLoading(true);
     setError("");
 
-    // For tenant signup, validate invite code first via RPC (table not directly readable)
+    // For tenant signup, validate invite code first via RPC (SECURITY DEFINER bypasses RLS)
     if (userType === "tenant") {
       if (!inviteCode.trim()) { setError("Invite code is required."); setLoading(false); return; }
-      try {
-        const { data: rpcResult, error: rpcErr } = await supabase.rpc("validate_invite_code", { p_code: inviteCode.trim().toUpperCase() });
-        if (rpcErr || !rpcResult?.valid) { setError("Invalid or expired invite code."); setLoading(false); return; }
-      } catch {
-        // Fallback to direct query if RPC not deployed
-        const { data: codeData, error: codeErr } = await supabase.from("tenant_invite_codes").select("code").eq("code", inviteCode.trim().toUpperCase()).eq("used", false).maybeSingle();
-        if (codeErr || !codeData) { setError("Invalid or expired invite code."); setLoading(false); return; }
-      }
+      const { data: rpcResult, error: rpcErr } = await supabase.rpc("validate_invite_code", { p_code: inviteCode.trim().toUpperCase() });
+      if (rpcErr || !rpcResult?.valid) { setError("Invalid or expired invite code."); setLoading(false); return; }
     }
 
     const { data: signupData, error: signupErr } = await supabase.auth.signUp({
@@ -420,31 +414,15 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
       user_type: userType,
     }], { onConflict: "email" });
 
-    // For tenant, redeem invite code atomically via RPC (prevents race condition)
+    // For tenant, redeem invite code atomically via RPC (SECURITY DEFINER, prevents race condition)
     if (userType === "tenant") {
-      try {
-        const { data: rpcResult, error: rpcErr } = await supabase.rpc("redeem_invite_code", {
-          p_code: inviteCode.trim().toUpperCase(),
-          p_email: email,
-          p_name: name.trim(),
-        });
-        if (rpcErr || !rpcResult?.success) {
-          // Fallback to client-side if RPC not deployed yet
-          console.warn("RPC fallback:", rpcErr?.message || rpcResult?.error);
-          const { data: codeData } = await supabase.from("tenant_invite_codes").select("*").eq("code", inviteCode.trim().toUpperCase()).eq("used", false).maybeSingle();
-          if (codeData) {
-            await supabase.from("tenant_invite_codes").update({ used: true, used_by: email, used_at: new Date().toISOString() }).eq("id", codeData.id);
-            await supabase.from("company_members").upsert([{
-              company_id: codeData.company_id, user_email: email, user_name: name.trim(),
-              role: "tenant", status: "active", invited_by: codeData.created_by || "system",
-            }], { onConflict: "company_id,user_email" });
-            if (codeData.tenant_id) {
-              await supabase.from("tenants").update({ email: email }).eq("id", codeData.tenant_id);
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("Invite code redemption error:", e);
+      const { data: rpcResult, error: rpcErr } = await supabase.rpc("redeem_invite_code", {
+        p_code: inviteCode.trim().toUpperCase(),
+        p_email: email,
+        p_name: name.trim(),
+      });
+      if (rpcErr || !rpcResult?.success) {
+        console.warn("Invite code redemption failed:", rpcErr?.message || rpcResult?.error);
       }
     }
 
