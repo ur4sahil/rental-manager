@@ -3,6 +3,23 @@ import { supabase } from "./supabase";
 
 // Safe number conversion - prevents NaN from breaking calculations
 const safeNum = (val) => { const n = Number(val); return isNaN(n) ? 0 : n; };
+// Parse "YYYY-MM-DD" as LOCAL date (not UTC) to avoid timezone day-shift
+function parseLocalDate(str) {
+  if (!str) return new Date(NaN);
+  const [y, m, d] = str.split("-").map(Number);
+  return new Date(y, m - 1, d || 1);
+}
+function formatLocalDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+async function safeLedgerInsert(entry) {
+  const { error } = await supabase.from("ledger_entries").insert([entry]);
+  if (error) console.warn("Ledger entry failed:", error.message, entry);
+  return !error;
+}
 
 // ============ COMPANY-SCOPED SUPABASE HELPERS ============
 // Use these instead of raw supabase.from() to automatically filter by company_id
@@ -56,7 +73,7 @@ function requireCompanyId(companyId, context = "") {
 
 // ============ AUDIT TRAIL HELPER ============
 // Call this from any module to log an action
-async function logAudit(action, module, details = "", recordId = "", userEmail = "", userRoleVal = "admin", companyId = "sandbox-llc") {
+async function logAudit(action, module, details = "", recordId = "", userEmail = "", userRoleVal = "unknown", companyId = "sandbox-llc") {
   try {
     if (!userEmail) {
       const { data: { user } } = await supabase.auth.getUser();
@@ -70,6 +87,14 @@ async function logAudit(action, module, details = "", recordId = "", userEmail =
 async function autoPostJournalEntry({ date, description, reference, property, lines, status = "posted", companyId = "sandbox-llc" }) {
   try {
     const cid = companyId || "sandbox-llc";
+    // Resolve bare account IDs (1100, 4000, etc.) to actual DB IDs for this company
+    if (lines?.length > 0) {
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].account_id && /^\d{4}$/.test(lines[i].account_id)) {
+          lines[i].account_id = await resolveAccountId(lines[i].account_id, cid);
+        }
+      }
+    }
     // Try atomic server-side function first (fixes race condition + transactional)
     try {
       const { data: jeId, error: rpcErr } = await supabase.rpc("create_journal_entry", {
@@ -90,12 +115,19 @@ async function autoPostJournalEntry({ date, description, reference, property, li
     const lastNum = existingJEs?.[0]?.number ? parseInt(existingJEs[0].number.replace("JE-",""), 10) : 0;
     const number = `JE-${String(lastNum + 1).padStart(4, "0")}`;
     const jeId = generateId("je");
-    await supabase.from("acct_journal_entries").insert([{ company_id: cid, id: jeId, number, date, description, reference: reference || "", property: property || "", status }]);
+    const { error: headerErr } = await supabase.from("acct_journal_entries").insert([{ company_id: cid, id: jeId, number, date, description, reference: reference || "", property: property || "", status }]);
+    if (headerErr) { console.warn("JE header insert failed:", headerErr.message); return null; }
     if (lines?.length > 0) {
-      await supabase.from("acct_journal_lines").insert(lines.map(l => ({
+      const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({
         journal_entry_id: jeId, account_id: l.account_id, account_name: l.account_name,
         debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || ""
       })));
+      if (linesErr) {
+        // Clean up orphaned header to prevent partial accounting records
+        console.warn("JE lines insert failed, cleaning up header:", linesErr.message);
+        await supabase.from("acct_journal_entries").delete().eq("id", jeId);
+        return null;
+      }
     }
     return jeId;
   } catch (e) { console.warn("Auto-post JE failed:", e); return null; }
@@ -107,6 +139,25 @@ async function getPropertyClassId(propertyAddress, companyId) {
   return data?.[0]?.id || null;
 }
 
+// Resolve bare account codes (1000, 1100, etc.) to actual DB IDs for this company
+const _acctIdCache = {};
+async function resolveAccountId(bareCode, companyId) {
+  const cid = companyId || "sandbox-llc";
+  const key = cid + ":" + bareCode;
+  if (_acctIdCache[key]) return _acctIdCache[key];
+  // Try prefixed format first (co-abc12-1000), then bare code
+  const prefix = cid.slice(0, 8) + "-" + bareCode;
+  let resolved = bareCode;
+  const { data: d1 } = await supabase.from("acct_accounts").select("id").eq("company_id", cid).eq("id", prefix).limit(1);
+  if (d1?.length > 0) { resolved = d1[0].id; }
+  else {
+    const { data: d2 } = await supabase.from("acct_accounts").select("id").eq("company_id", cid).eq("id", bareCode).limit(1);
+    if (d2?.length > 0) resolved = d2[0].id;
+  }
+  _acctIdCache[key] = resolved;
+  return resolved;
+}
+
 // ============ AUTOMATIC RENT CHARGE ENGINE ============
 // Runs on app load. For every active lease, posts monthly rent charges
 // (DR Accounts Receivable / CR Rental Income) for each month in the lease term
@@ -115,7 +166,7 @@ async function autoPostRentCharges(companyId) {
   try {
     const cid = companyId || "sandbox-llc";
     const today = new Date();
-    const currentMonth = today.toISOString().slice(0, 7); // "2026-03"
+    const currentMonth = formatLocalDate(today).slice(0, 7); // "2026-03"
 
     // 1. Fetch all active leases for this company
     const { data: leases } = await supabase.from("leases").select("*").eq("company_id", cid).eq("status", "active");
@@ -123,7 +174,7 @@ async function autoPostRentCharges(companyId) {
 
     // 2. Fetch existing rent charge JEs to avoid duplicates
     const { data: existingJEs } = await supabase.from("acct_journal_entries").select("reference").eq("company_id", cid)
-      .eq("company_id", cid).like("reference", "RENT-AUTO-%");
+      .like("reference", "RENT-AUTO-%").neq("status", "voided");
     const postedRefs = new Set((existingJEs || []).map(j => j.reference));
 
     let posted = 0;
@@ -132,16 +183,22 @@ async function autoPostRentCharges(companyId) {
       if (!lease.rent_amount || lease.rent_amount <= 0) continue;
       if (!lease.start_date || !lease.end_date) continue;
 
-      const leaseStart = new Date(lease.start_date);
-      const leaseEnd = new Date(lease.end_date);
+      const leaseStart = parseLocalDate(lease.start_date);
+      const leaseEnd = parseLocalDate(lease.end_date);
       const rent = safeNum(lease.rent_amount);
       const classId = await getPropertyClassId(lease.property, companyId);
 
       // Calculate rent with escalation for each year
       function getRentForDate(date) {
         if (!lease.rent_escalation_pct || lease.rent_escalation_pct <= 0) return rent;
-        const yearsElapsed = Math.floor((date - leaseStart) / (365.25 * 86400000));
-        return Math.round(rent * Math.pow(1 + lease.rent_escalation_pct / 100, yearsElapsed) * 100) / 100;
+        const yearsElapsed = (date - leaseStart) / (365.25 * 86400000);
+        const freq = lease.escalation_frequency || "annual";
+        // Calculate periods elapsed based on frequency (capped at 50 to prevent overflow)
+        let periods;
+        if (freq === "quarterly") periods = Math.min(Math.floor(yearsElapsed * 4), 200);
+        else if (freq === "semi-annual") periods = Math.min(Math.floor(yearsElapsed * 2), 100);
+        else periods = Math.min(Math.floor(yearsElapsed), 50); // annual
+        return Math.round(rent * Math.pow(1 + lease.rent_escalation_pct / 100, periods) * 100) / 100;
       }
 
       // 3. Walk through each month in the lease term up to current month
@@ -149,11 +206,13 @@ async function autoPostRentCharges(companyId) {
       const endCap = new Date(Math.min(leaseEnd.getTime(), today.getTime()));
 
       while (cursor <= endCap) {
-        const monthStr = cursor.toISOString().slice(0, 7); // "2025-06"
+        const monthStr = formatLocalDate(cursor).slice(0, 7); // "2025-06"
         // Clamp payment_due_day to valid day for this month (avoids Feb 30 etc)
+        const year = cursor.getFullYear();
+        const month = cursor.getMonth() + 1; // 1-based month for Date constructor
         const dueDay = Math.min(lease.payment_due_day || 1, new Date(year, month, 0).getDate());
         const chargeDate = monthStr + "-" + String(dueDay).padStart(2, "0");
-        const ref = "RENT-AUTO-" + lease.id.toString().slice(-8) + "-" + monthStr;
+        const ref = "RENT-AUTO-" + lease.id + "-" + monthStr;
 
         // Skip if already posted
         if (!postedRefs.has(ref)) {
@@ -172,16 +231,20 @@ async function autoPostRentCharges(companyId) {
 
           // Also update tenant balance (add the charge)
           if (lease.tenant_id) {
-            const { data: tenant } = await supabase.from("tenants").select("balance").eq("id", lease.tenant_id).maybeSingle();
-            if (tenant) {
-              // Update tenant balance atomically (prevents drift)
-              try {
-                await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: monthRent });
-              } catch {
-                // Fallback to client-side if RPC not deployed
-                const { data: tenant } = await supabase.from("tenants").select("balance").eq("id", lease.tenant_id).maybeSingle();
-                await supabase.from("tenants").update({ balance: safeNum(tenant?.balance) + monthRent }).eq("id", lease.tenant_id);
-              }
+            // Create ledger entry for this rent charge
+            await safeLedgerInsert({ company_id: cid,
+              tenant: lease.tenant_name, property: lease.property,
+              date: chargeDate, description: "Rent charge — " + monthStr,
+              amount: monthRent, type: "charge", balance: 0,
+            });
+
+            // Update tenant balance atomically (prevents drift)
+            try {
+              await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: monthRent });
+            } catch {
+              // Fallback to client-side if RPC not deployed
+              const { data: tenant } = await supabase.from("tenants").select("balance").eq("id", lease.tenant_id).maybeSingle();
+              await supabase.from("tenants").update({ balance: safeNum(tenant?.balance) + monthRent }).eq("company_id", companyId || "sandbox-llc").eq("id", lease.tenant_id); // balance update (unchecked ok — RPC primary)
             }
           }
 
@@ -410,7 +473,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
 
     // Save user_type to app_users
     await supabase.from("app_users").upsert([{
-      email, name: name.trim(), role: userType === "tenant" ? "tenant" : userType === "owner" ? "owner" : "admin",
+      email: email.toLowerCase(), name: name.trim(), role: userType === "tenant" ? "tenant" : userType === "owner" ? "owner" : "pm",
       user_type: userType,
     }], { onConflict: "email" });
 
@@ -422,7 +485,11 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
         p_name: name.trim(),
       });
       if (rpcErr || !rpcResult?.success) {
-        console.warn("Invite code redemption failed:", rpcErr?.message || rpcResult?.error);
+        // Redemption failed — likely race condition (code used between validate and redeem)
+        // Account was already created but has no company access
+        setError("Your account was created, but the invite code could not be redeemed (it may have already been used). Please contact your landlord or property manager for a new invite code. You can log in and enter a new code later.");
+        setLoading(false);
+        return;
       }
     }
 
@@ -554,7 +621,7 @@ function Dashboard({ notifications, setPage, companyId }) {
       setUtilities(u.data || []);
       // Pull financials from accounting (source of truth)
       try {
-        const { data: jeHeaders } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId || "sandbox-llc");
+        const { data: jeHeaders } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId || "sandbox-llc").eq("status", "posted");
         const jeIds = (jeHeaders || []).map(j => j.id);
         const { data: jeLines } = jeIds.length > 0 ? await supabase.from("acct_journal_lines").select("account_id, debit, credit").in("journal_entry_id", jeIds) : { data: [] };
         const { data: accounts } = await supabase.from("acct_accounts").select("id, type").eq("company_id", companyId || "sandbox-llc");
@@ -869,7 +936,8 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
 
   // Check if current company is an owner company viewing a PM-managed property
   function isReadOnly(property) {
-    return property.pm_company_id && property.pm_company_id !== (companyId || "sandbox-llc");
+    // Property is read-only if it belongs to another company (PM viewing managed property)
+    return property.company_id !== (companyId || "sandbox-llc");
   }
 
   const [viewMode, setViewMode] = useState("card");
@@ -1016,12 +1084,12 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
                 {p.tenant && <div className="flex justify-between"><span>Tenant:</span><span>{p.tenant}</span></div>}
                 {p.lease_end && <div className="flex justify-between"><span>Lease End:</span><span>{p.lease_end}</span></div>}
               </div>
-              {isReadOnly(p) && <div className="mt-2 text-xs text-purple-600 bg-purple-50 rounded-lg px-2 py-1">🔒 Managed by {p.pm_company_name} — view only</div>}
+              {isReadOnly(p) && <div className="mt-2 text-xs text-purple-600 bg-purple-50 rounded-lg px-2 py-1">🔒 Managed property — view only</div>}
               <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50 flex-wrap">
                 {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address: p.address, type: p.type, status: p.status, rent: p.rent || "", tenant: p.tenant || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
                 {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline">Delete</button>}
-                {!p.pm_company_id && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline">Assign PM</button>}
-                {p.pm_company_id && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline">Remove PM</button>}
+                {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline">Assign PM</button>}
+                {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline">Remove PM</button>}
                 <button onClick={() => loadTimeline(p)} className="text-xs text-gray-400 hover:underline ml-auto">Timeline</button>
               </div>
             </div>
@@ -1058,10 +1126,11 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
                   {visibleCols.includes("notes") && <td className="px-4 py-2.5 text-xs text-gray-400 max-w-32 truncate">{p.notes || "—"}</td>}
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     {p.pm_company_name && <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded mr-2">PM</span>}
+                    {isReadOnly(p) && <span className="text-xs text-purple-500 mr-2">🔒 view only</span>}
                     {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address: p.address, type: p.type, status: p.status, rent: p.rent || "", tenant: p.tenant || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>}
                     {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline mr-2">Del</button>}
-                    {!p.pm_company_id && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline mr-2">PM</button>}
-                    {p.pm_company_id && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline mr-2">-PM</button>}
+                    {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline mr-2">PM</button>}
+                    {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline mr-2">-PM</button>}
                     <button onClick={() => loadTimeline(p)} className="text-xs text-gray-400 hover:underline">TL</button>
                   </td>
                 </tr>
@@ -1204,7 +1273,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
     if (!window.confirm("Send portal invite to " + tenant.email + "?\n\nThis will:\n1. Generate a unique invite code for this tenant\n2. Send a magic link to their email\n3. They can sign up using the invite code to access their portal")) return;
     try {
       // Generate unique invite code
-      const code = "TNT-" + String(10000000 + Math.floor(Math.random() * 89999999));
+      const codeArr = new Uint32Array(1); crypto.getRandomValues(codeArr); const code = "TNT-" + String(10000000 + (codeArr[0] % 89999999));
       await supabase.from("tenant_invite_codes").insert([{
         code: code,
         company_id: companyId || "sandbox-llc",
@@ -1225,17 +1294,18 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         console.warn("Auth invite failed:", authErr.message);
       }
       // Create app_users entry with tenant role
+      // Insert only if no existing row — don't overwrite other company's data
       await supabase.from("app_users").upsert([{
-        email: tenant.email,
+        email: (tenant.email || "").toLowerCase(),
         name: tenant.name,
         role: "tenant",
         user_type: "tenant",
         company_id: companyId || "sandbox-llc",
-      }], { onConflict: "email" });
+      }], { onConflict: "email", ignoreDuplicates: true });
       // Create company_members entry so tenant is auto-routed to this company
       await supabase.from("company_members").upsert([{
         company_id: companyId || "sandbox-llc",
-        user_email: tenant.email,
+        user_email: (tenant.email || "").toLowerCase(),
         user_name: tenant.name,
         role: "tenant",
         status: "active",
@@ -1259,7 +1329,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
   async function openLedger(tenant) {
     setSelectedTenant(tenant);
     setActivePanel("ledger");
-    const { data } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId || "sandbox-llc").eq("tenant", tenant.name).order("date", { ascending: false });
+    const { data } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId || "sandbox-llc").eq("tenant", tenant.name).eq("property", tenant.property || "").order("date", { ascending: false });
     setLedger(data || []);
   }
 
@@ -1292,16 +1362,41 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
       : Math.abs(Number(newCharge.amount));
     const currentBalance = ledger.length > 0 ? ledger[0].balance : 0;
     const newBalance = currentBalance + amount;
-    await supabase.from("ledger_entries").insert([{ company_id: companyId || "sandbox-llc",
+    const ledgerOk = await safeLedgerInsert({ company_id: companyId || "sandbox-llc",
       tenant: selectedTenant.name,
       property: selectedTenant.property,
-      date: new Date().toISOString().slice(0, 10),
+      date: formatLocalDate(new Date()),
       description: newCharge.description,
       amount,
       type: newCharge.type,
       balance: newBalance,
-    }]);
-    await supabase.from("tenants").update({ balance: newBalance }).eq("id", selectedTenant.id);
+    });
+    if (!ledgerOk) { alert("Failed to create ledger entry. Please try again."); return; }
+    // Atomic balance update (prevents drift from concurrent writes)
+    try {
+      await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: amount });
+    } catch {
+      await supabase.from("tenants").update({ balance: newBalance }).eq("company_id", companyId || "sandbox-llc").eq("id", selectedTenant.id); // balance update (unchecked ok — RPC primary)
+    }
+    // Post accounting JE for manual charges/credits
+    if (Math.abs(amount) > 0) {
+      const classId = await getPropertyClassId(selectedTenant.property, companyId);
+      if (newCharge.type === "charge") {
+        await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "Manual charge — " + selectedTenant.name + " — " + newCharge.description, reference: "MANUAL-" + Date.now(), property: selectedTenant.property || "",
+          lines: [
+            { account_id: "1100", account_name: "Accounts Receivable", debit: Math.abs(amount), credit: 0, class_id: classId, memo: selectedTenant.name + ": " + newCharge.description },
+            { account_id: "4100", account_name: "Other Income", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
+          ]
+        });
+      } else if (newCharge.type === "payment" || newCharge.type === "credit") {
+        await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "Manual " + newCharge.type + " — " + selectedTenant.name + " — " + newCharge.description, reference: "MANUAL-" + Date.now(), property: selectedTenant.property || "",
+          lines: [
+            { account_id: "1000", account_name: "Checking Account", debit: Math.abs(amount), credit: 0, class_id: classId, memo: selectedTenant.name + ": " + newCharge.description },
+            { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
+          ]
+        });
+      }
+    }
     setSelectedTenant({ ...selectedTenant, balance: newBalance });
     setNewCharge({ description: "", amount: "", type: "charge" });
     openLedger(selectedTenant);
@@ -1310,9 +1405,14 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
 
   async function renewLease(newMoveOut) {
     if (!newMoveOut) return;
-    const { error } = await supabase.from("tenants").update({ move_out: newMoveOut, lease_status: "active" }).eq("id", selectedTenant.id);
+    const { error } = await supabase.from("tenants").update({ move_out: newMoveOut, lease_status: "active" }).eq("company_id", companyId || "sandbox-llc").eq("id", selectedTenant.id);
     if (error) { setError("Failed to renew lease: " + error.message); return; }
-    addNotification("📄", `Lease renewed for ${selectedTenant.name} until ${newMoveOut}`);
+    // Also update active lease end_date if one exists
+    const { data: activeLease } = await supabase.from("leases").select("id").eq("company_id", companyId || "sandbox-llc").eq("tenant_name", selectedTenant.name).eq("status", "active").limit(1);
+    if (activeLease?.[0]) {
+      await supabase.from("leases").update({ end_date: newMoveOut }).eq("company_id", companyId || "sandbox-llc").eq("id", activeLease[0].id);
+    }
+    addNotification("📄", `Lease extended for ${selectedTenant.name} until ${newMoveOut}`);
     setLeaseModal(null);
     fetchTenants();
     setSelectedTenant({ ...selectedTenant, move_out: newMoveOut, lease_status: "active" });
@@ -1322,8 +1422,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
     if (!days) return;
     const noticeDate = new Date();
     noticeDate.setDate(noticeDate.getDate() + parseInt(days));
-    const moveOutDate = noticeDate.toISOString().slice(0, 10);
-    const { error } = await supabase.from("tenants").update({ lease_status: "notice", move_out: moveOutDate }).eq("id", selectedTenant.id);
+    const moveOutDate = formatLocalDate(noticeDate);
+    const { error } = await supabase.from("tenants").update({ lease_status: "notice", move_out: moveOutDate }).eq("company_id", companyId || "sandbox-llc").eq("id", selectedTenant.id);
     if (error) { setError("Failed to generate notice: " + error.message); return; }
     addNotification("📋", `${days}-day move-out notice generated for ${selectedTenant.name}`);
     setLeaseModal(null);
@@ -1715,7 +1815,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ tenant: "", property: "", amount: "", type: "rent", method: "ACH", status: "paid", date: new Date().toISOString().slice(0, 10) });
+  const [form, setForm] = useState({ tenant: "", property: "", amount: "", type: "rent", method: "ACH", status: "paid", date: formatLocalDate(new Date()) });
 
   useEffect(() => { fetchPayments(); }, []);
 
@@ -1729,6 +1829,11 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
     if (!form.tenant.trim()) { alert("Tenant name is required."); return; }
     if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0) { alert("Please enter a valid amount."); return; }
     if (!form.date) { alert("Payment date is required."); return; }
+    // Duplicate detection: check for same tenant + amount + date in last 5 minutes
+    const { data: recentDup } = await supabase.from("payments").select("id").eq("company_id", companyId || "sandbox-llc").eq("tenant", form.tenant).eq("amount", Number(form.amount)).eq("date", form.date).limit(1);
+    if (recentDup && recentDup.length > 0) {
+      if (!window.confirm("A payment for $" + form.amount + " from " + form.tenant + " on " + form.date + " already exists. Record another?")) return;
+    }
     const { error } = await supabase.from("payments").insert([{ company_id: companyId || "sandbox-llc", ...form, amount: Number(form.amount) }]);
     if (error) { alert("Error recording payment: " + error.message); return; }
     // Only auto-post to accounting if payment is actually paid (not unpaid/partial)
@@ -1736,7 +1841,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
       addNotification("💳", `Payment recorded (${form.status}): $${form.amount} from ${form.tenant}`);
       logAudit("create", "payments", `Payment (${form.status}): $${form.amount} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole, companyId);
       setShowForm(false);
-      setForm({ tenant: "", property: "", amount: "", type: "rent", method: "ACH", status: "paid", date: new Date().toISOString().slice(0, 10) });
+      setForm({ tenant: "", property: "", amount: "", type: "rent", method: "ACH", status: "paid", date: formatLocalDate(new Date()) });
       fetchPayments();
       return;
     }
@@ -1748,7 +1853,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
     const month = form.date.slice(0, 7);
     let hasAccrual = false;
     if (!isLateFee) {
-      const { data: accrualJEs } = await supabase.from("acct_journal_entries").select("id, reference").eq("company_id", companyId || "sandbox-llc").like("reference", `ACCR-${month}%`);
+      const { data: accrualJEs } = await supabase.from("acct_journal_entries").select("id, reference").eq("company_id", companyId || "sandbox-llc").like("reference", `ACCR-${month}%`).neq("status", "voided");
       if (accrualJEs && accrualJEs.length > 0) {
         for (const je of accrualJEs) {
           const { data: jLines } = await supabase.from("acct_journal_lines").select("memo").eq("journal_entry_id", je.id);
@@ -1790,8 +1895,27 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
     }
     addNotification("💳", `Payment recorded: $${form.amount} from ${form.tenant}`);
     logAudit("create", "payments", `Payment: $${form.amount} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole, companyId);
+
+    // Update tenant balance and create ledger entry
+    const { data: tenantRow } = await supabase.from("tenants").select("id, balance").eq("name", form.tenant).eq("company_id", companyId || "sandbox-llc").maybeSingle();
+    if (tenantRow) {
+      const payAmt = Number(form.amount);
+      // Decrease balance (payment reduces what tenant owes)
+      try {
+        await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -payAmt });
+      } catch {
+        await supabase.from("tenants").update({ balance: safeNum(tenantRow.balance) - payAmt }).eq("company_id", companyId || "sandbox-llc").eq("id", tenantRow.id); // balance update (unchecked ok — RPC primary)
+      }
+      // Create ledger entry
+      await safeLedgerInsert({ company_id: companyId || "sandbox-llc",
+        tenant: form.tenant, property: form.property,
+        date: form.date, description: `${form.type} payment (${form.method})`,
+        amount: -payAmt, type: "payment", balance: safeNum(tenantRow.balance) - payAmt,
+      });
+    }
+
     setShowForm(false);
-    setForm({ tenant: "", property: "", amount: "", type: "rent", method: "ACH", status: "paid", date: new Date().toISOString().slice(0, 10) });
+    setForm({ tenant: "", property: "", amount: "", type: "rent", method: "ACH", status: "paid", date: formatLocalDate(new Date()) });
     fetchPayments();
   }
 
@@ -1886,7 +2010,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
   async function saveWorkOrder() {
     if (!form.property.trim()) { alert("Property is required."); return; }
     if (!form.issue.trim()) { alert("Issue description is required."); return; }
-    const payload = editingWO ? form : { ...form, created: new Date().toISOString().slice(0, 10) };
+    const payload = editingWO ? form : { ...form, created: formatLocalDate(new Date()) };
     const { error } = editingWO
       ? await supabase.from("work_orders").update({ property: payload.property, tenant: payload.tenant, issue: payload.issue, priority: payload.priority, status: payload.status, assigned: payload.assigned, cost: payload.cost, notes: payload.notes }).eq("id", editingWO.id).eq("company_id", companyId || "sandbox-llc")
       : await supabase.from("work_orders").insert([{ ...payload, company_id: companyId || "sandbox-llc" }]);
@@ -1905,15 +2029,17 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
   }
 
   async function updateStatus(wo, newStatus) {
-    const { error } = await supabase.from("work_orders").update({ status: newStatus }).eq("id", wo.id);
+    const { error } = await supabase.from("work_orders").update({ status: newStatus }).eq("company_id", companyId || "sandbox-llc").eq("id", wo.id);
     if (error) { alert("Error updating status: " + error.message); return; }
-    // AUTO-POST TO ACCOUNTING when completed with a cost
+    // AUTO-POST TO ACCOUNTING when completed with a cost (with duplicate guard)
     if (newStatus === "completed" && safeNum(wo.cost) > 0) {
+      const { data: existingWoJE } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId || "sandbox-llc").eq("reference", "WO-" + wo.id).limit(1);
+      if (existingWoJE && existingWoJE.length > 0) { addNotification("⚠️", "Accounting entry already exists for this work order"); fetchWorkOrders(); return; }
       const classId = await getPropertyClassId(wo.property, companyId);
       const amt = safeNum(wo.cost);
       await autoPostJournalEntry({
         companyId,
-        date: new Date().toISOString().slice(0, 10),
+        date: formatLocalDate(new Date()),
         description: `Maintenance: ${wo.issue} — ${wo.property}`,
         reference: `WO-${wo.id}`,
         property: wo.property,
@@ -2102,7 +2228,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
 
   async function approvePay(u) {
     const now = new Date().toISOString();
-    const { error } = await supabase.from("utilities").update({ status: "paid", paid_at: now }).eq("id", u.id);
+    const { error } = await supabase.from("utilities").update({ status: "paid", paid_at: now }).eq("company_id", companyId || "sandbox-llc").eq("id", u.id);
     if (error) { alert("Error approving payment: " + error.message); return; }
     await supabase.from("utility_audit").insert([{ company_id: companyId || "sandbox-llc",
       utility_id: u.id,
@@ -2119,7 +2245,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
     if (amt > 0) {
       await autoPostJournalEntry({
         companyId,
-        date: new Date().toISOString().slice(0, 10),
+        date: formatLocalDate(new Date()),
         description: `Utility: ${u.provider} — ${u.property}`,
         reference: `UTIL-${u.id}`,
         property: u.property,
@@ -2306,7 +2432,7 @@ const acctFmt = (amount, showSign = false) => {
   return str;
 };
 const acctFmtDate = (d) => { if (!d) return ""; const [y,m,dd] = d.split("-"); return `${m}/${dd}/${y}`; };
-const acctToday = () => new Date().toISOString().split("T")[0];
+const acctToday = () => formatLocalDate(new Date());
 const getNormalBalance = (type) => DEBIT_NORMAL.includes(type) ? "debit" : "credit";
 
 const calcAccountBalance = (accountId, journalEntries, account) => {
@@ -2377,17 +2503,18 @@ const getBalanceSheetData = (accounts, journalEntries, asOfDate) => {
   const arAging = { current: 0, days30: 0, days60: 0, days90: 0, over90: 0 };
   const arAgingByTenant = {};
   filtered.forEach(je => {
-    (je.lines || []).filter(l => l.account_id === "1100" && safeNum(l.debit) > 0).forEach(l => {
-      const jeDate = new Date(je.date);
+    (je.lines || []).filter(l => arAccountIds.has(l.account_id) && (safeNum(l.debit) > 0 || safeNum(l.credit) > 0)).forEach(l => {
+      const jeDate = parseLocalDate(je.date);
       const daysDiff = Math.floor((today - jeDate) / 86400000);
-      const amount = safeNum(l.debit);
+      // Net amount: debits increase AR, credits decrease AR
+      const amount = safeNum(l.debit) - safeNum(l.credit);
       const bucket = daysDiff <= 30 ? "current" : daysDiff <= 60 ? "days30" : daysDiff <= 90 ? "days60" : daysDiff <= 120 ? "days90" : "over90";
       arAging[bucket] += amount;
 
       // Per-tenant aging
       const memo = l.memo || je.description || "";
-      const descMatch = je.description ? je.description.match(/(?:Rent charge|Payment).*?—\s*([^—]+?)(?:\s*—|$)/) : null;
-      const memoMatch = memo.match(/^(.+?)\s+(?:rent|payment)/i);
+      const descMatch = je.description ? je.description.match(/(?:Rent charge|Payment|Late fee|Rent accrual).*?—\s*([^—]+?)(?:\s*—|$)/) : null;
+      const memoMatch = memo.match(/^(.+?)\s+(?:rent|payment|AR|Late)/i);
       let tenantKey = descMatch ? descMatch[1].trim() : memoMatch ? memoMatch[1].trim() : "Unassigned";
       if (!arAgingByTenant[tenantKey]) arAgingByTenant[tenantKey] = { current: 0, days30: 0, days60: 0, days90: 0, over90: 0, total: 0 };
       arAgingByTenant[tenantKey][bucket] += amount;
@@ -2453,9 +2580,9 @@ const nextAccountId = (accounts, type) => {
 const getPeriodDates = (period) => {
   const now = new Date(), y = now.getFullYear(), m = now.getMonth();
   switch(period) {
-    case "This Month": return { start: `${y}-${String(m+1).padStart(2,"0")}-01`, end: new Date(y,m+1,0).toISOString().split("T")[0] };
-    case "Last Month": return { start: `${y}-${String(m).padStart(2,"0")}-01`, end: new Date(y,m,0).toISOString().split("T")[0] };
-    case "This Quarter": { const q = Math.floor(m/3); return { start: `${y}-${String(q*3+1).padStart(2,"0")}-01`, end: new Date(y,q*3+3,0).toISOString().split("T")[0] }; }
+    case "This Month": return { start: `${y}-${String(m+1).padStart(2,"0")}-01`, end: formatLocalDate(new Date(y,m+1,0)) };
+    case "Last Month": return { start: `${y}-${String(m).padStart(2,"0")}-01`, end: formatLocalDate(new Date(y,m,0)) };
+    case "This Quarter": { const q = Math.floor(m/3); return { start: `${y}-${String(q*3+1).padStart(2,"0")}-01`, end: formatLocalDate(new Date(y,q*3+3,0)) }; }
     case "This Year": return { start: `${y}-01-01`, end: `${y}-12-31` };
     case "Last Year": return { start: `${y-1}-01-01`, end: `${y-1}-12-31` };
     default: return { start: `${y}-01-01`, end: `${y}-12-31` };
@@ -3142,9 +3269,9 @@ function biParseAmount(rawAmt,rawDebit,rawCredit) {
 function biParseDate(raw) {
   if(!raw)return "";raw=String(raw).trim();
   if(/^\d{4}-\d{2}-\d{2}/.test(raw))return raw.substring(0,10);
-  const mdy=raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);if(mdy)return `${mdy[3]}-${mdy[1].padStart(2,"0")}-${mdy[2].padStart(2,"0")}`;
+  const mdy=raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);if(mdy&&Number(mdy[1])>=1&&Number(mdy[1])<=12&&Number(mdy[2])>=1&&Number(mdy[2])<=31)return `${mdy[3]}-${mdy[1].padStart(2,"0")}-${mdy[2].padStart(2,"0")}`;
   const mdy2=raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/);if(mdy2){const yr=parseInt(mdy2[3])>50?"19"+mdy2[3]:"20"+mdy2[3];return `${yr}-${mdy2[1].padStart(2,"0")}-${mdy2[2].padStart(2,"0")}`;}
-  try{const d=new Date(raw);if(!isNaN(d))return d.toISOString().split("T")[0];}catch(_){}
+  try{const d=new Date(raw);if(!isNaN(d))return formatLocalDate(d);}catch(_){}
   return raw;
 }
 
@@ -3274,7 +3401,7 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
            { account_id:tx.accountId||"1000", account_name:tx.accountName||"Uncategorized", debit:0, credit:abs, class_id:tx.classId||null, memo:tx.memo||"" }]
         : [{ account_id:tx.accountId||"1000", account_name:tx.accountName||"Uncategorized", debit:abs, credit:0, class_id:tx.classId||null, memo:tx.memo||"" },
            { account_id:wizardData.bankAccountId, account_name:bankAcct?.name||"Bank", debit:0, credit:abs, class_id:null, memo:tx.memo||"" }];
-      await onAddJournalEntry({ date:tx.date, description:tx.description, reference:`IMPORT-${tx.id}`, lines, status:"posted" });
+      await onAddJournalEntry({ date:tx.date, description:tx.description, reference:`IMPORT-${tx.id}`, lines, status:"draft" });
     }
     setPostedCount(approved.length);
     setImportHistory(h=>[{ date:acctToday(), bankAccount:bankAcct?.name, count:approved.length, fileName:wizardData.fileName, net:approved.reduce((s,t)=>s+t.amount,0) },...h]);
@@ -3497,7 +3624,8 @@ function Accounting({ companyId, activeCompany }) {
       jeHeaders.forEach(je => { je.lines = linesByJE[je.id] || []; });
     }
 
-    // Auto-sync: create accounting classes for any properties not yet in acct_classes
+    // Auto-sync property classes (only on first load, not every re-fetch)
+    if (!window._propClassesSynced) {
     const { data: allProps } = await supabase.from("properties").select("id, address, type, rent").eq("company_id", companyId || "sandbox-llc");
     if (allProps && allProps.length > 0) {
       const existingNames = new Set(classes.map(c => c.name));
@@ -3522,6 +3650,7 @@ function Accounting({ companyId, activeCompany }) {
         return;
       }
     }
+    } // end _propClassesSynced guard
 
     setAcctAccounts(accounts);
     setJournalEntries(jeHeaders);
@@ -3535,26 +3664,49 @@ function Accounting({ companyId, activeCompany }) {
     fetchAll();
   }
   async function updateAccount(acct) {
-    const { id, ...rest } = acct;
-    // Remove computed fields
-    delete rest.computedBalance;
-    delete rest.created_at;
-    await supabase.from("acct_accounts").update(rest).eq("id", id);
+    const { id } = acct;
+    await supabase.from("acct_accounts").update({
+      name: acct.name, type: acct.type, subtype: acct.subtype, 
+      is_active: acct.is_active, description: acct.description || "",
+      parent_id: acct.parent_id || null
+    }).eq("id", id);
     fetchAll();
   }
   async function toggleAccount(id, currentActive) {
-    await supabase.from("acct_accounts").update({ is_active: !currentActive }).eq("id", id);
+    await supabase.from("acct_accounts").update({ is_active: !currentActive }).eq("company_id", companyId || "sandbox-llc").eq("id", id);
     fetchAll();
   }
 
   // --- Journal Entry CRUD ---
   async function addJournalEntry(data) {
-    const number = nextJENumber(journalEntries);
-    const jeId = number;
     const { lines, ...header } = data;
-    await supabase.from("acct_journal_entries").insert([{ company_id: companyId || "sandbox-llc", id: jeId, number, date: header.date, description: header.description, reference: header.reference || "", property: header.property || "", status: header.status || "draft" }]);
+    // Try atomic RPC first
+    try {
+      const { data: jeId, error: rpcErr } = await supabase.rpc("create_journal_entry", {
+        p_company_id: companyId || "sandbox-llc",
+        p_date: header.date,
+        p_description: header.description,
+        p_reference: header.reference || "",
+        p_property: header.property || "",
+        p_status: header.status || "draft",
+        p_lines: JSON.stringify(lines || []),
+      });
+      if (!rpcErr && jeId) { fetchAll(); return; }
+      console.warn("addJE RPC fallback:", rpcErr?.message);
+    } catch (e) { console.warn("addJE RPC not available:", e.message); }
+    // Fallback: client-side with cleanup
+    const number = nextJENumber(journalEntries);
+    const jeId = generateId("je");
+    const { error: headerErr } = await supabase.from("acct_journal_entries").insert([{ company_id: companyId || "sandbox-llc", id: jeId, number, date: header.date, description: header.description, reference: header.reference || "", property: header.property || "", status: header.status || "draft" }]);
+    if (headerErr) { alert("Error creating journal entry: " + headerErr.message); return; }
     if (lines?.length > 0) {
-      await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: jeId, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "" })));
+      const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: jeId, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "" })));
+      if (linesErr) {
+        console.warn("JE lines failed, cleaning up:", linesErr.message);
+        await supabase.from("acct_journal_entries").delete().eq("id", jeId);
+        alert("Error creating journal entry lines: " + linesErr.message);
+        return;
+      }
     }
     fetchAll();
   }
@@ -3562,20 +3714,65 @@ function Accounting({ companyId, activeCompany }) {
     const { id, lines, ...header } = data;
     delete header.created_at;
     delete header.number;
-    await supabase.from("acct_journal_entries").update({ date: header.date, description: header.description, reference: header.reference || "", property: header.property || "", status: header.status }).eq("id", id);
+    // Save old lines before deleting so we can restore on failure
+    const { data: oldLines } = await supabase.from("acct_journal_lines").select("*").eq("journal_entry_id", id);
+    await supabase.from("acct_journal_entries").update({ date: header.date, description: header.description, reference: header.reference || "", property: header.property || "", status: header.status }).eq("company_id", companyId || "sandbox-llc").eq("id", id);
     // Replace lines
     await supabase.from("acct_journal_lines").delete().eq("journal_entry_id", id);
     if (lines?.length > 0) {
-      await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: id, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "" })));
+      const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: id, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "" })));
+      if (linesErr) {
+        // Restore old lines
+        console.warn("Update lines failed, restoring:", linesErr.message);
+        if (oldLines?.length > 0) {
+          await supabase.from("acct_journal_lines").insert(oldLines.map(l => ({ journal_entry_id: id, account_id: l.account_id, account_name: l.account_name, debit: l.debit, credit: l.credit, class_id: l.class_id, memo: l.memo })));
+        }
+        alert("Error updating journal lines: " + linesErr.message);
+        fetchAll();
+        return;
+      }
     }
     fetchAll();
   }
   async function postJournalEntry(id) {
-    await supabase.from("acct_journal_entries").update({ status: "posted" }).eq("id", id);
+    await supabase.from("acct_journal_entries").update({ status: "posted" }).eq("company_id", companyId || "sandbox-llc").eq("id", id);
     fetchAll();
   }
   async function voidJournalEntry(id) {
-    await supabase.from("acct_journal_entries").update({ status: "voided" }).eq("id", id);
+    // Find the JE to check if it affected a tenant balance
+    const je = journalEntries.find(j => j.id === id);
+    await supabase.from("acct_journal_entries").update({ status: "voided" }).eq("company_id", companyId || "sandbox-llc").eq("id", id);
+    // Reverse tenant balance based on JE type
+    if (je) {
+      const { data: jeLines } = await supabase.from("acct_journal_lines").select("*").eq("journal_entry_id", id);
+      const arAccountIds = new Set(accounts.filter(a => a.name === "Accounts Receivable").map(a => a.id));
+      const tenantName = (je.description || "").split(" — ")[1] || "";
+      
+      if (tenantName.trim()) {
+        const { data: tenantRow } = await supabase.from("tenants").select("id, balance").ilike("name", tenantName.trim()).eq("company_id", companyId || "sandbox-llc").maybeSingle();
+        
+        if (tenantRow && jeLines) {
+          // Calculate AR impact: net of debits and credits on AR accounts
+          const arImpact = jeLines.filter(l => arAccountIds.has(l.account_id))
+            .reduce((s, l) => s + safeNum(l.debit) - safeNum(l.credit), 0);
+          
+          if (Math.abs(arImpact) > 0.01) {
+            // Reverse: if charge increased AR (positive), decrease balance; if payment decreased AR (negative), increase balance
+            try {
+              await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -arImpact });
+            } catch {
+              await supabase.from("tenants").update({ balance: safeNum(tenantRow.balance) - arImpact }).eq("company_id", companyId || "sandbox-llc").eq("id", tenantRow.id); // balance update (unchecked ok — RPC primary)
+            }
+            await safeLedgerInsert({ company_id: companyId || "sandbox-llc",
+              tenant: tenantName.trim(), property: je.property || "",
+              date: formatLocalDate(new Date()),
+              description: "Voided: " + (je.description || "").slice(0, 60),
+              amount: -arImpact, type: "void", balance: 0,
+            });
+          }
+        }
+      }
+    }
     fetchAll();
   }
 
@@ -3585,10 +3782,11 @@ function Accounting({ companyId, activeCompany }) {
     fetchAll();
   }
   async function updateClass(cls) {
-    const { id, ...rest } = cls;
-    delete rest.created_at;
-    delete rest.revenue; delete rest.expenses; delete rest.netIncome;
-    await supabase.from("acct_classes").update(rest).eq("id", id);
+    const { id } = cls;
+    await supabase.from("acct_classes").update({
+      name: cls.name, type: cls.type, is_active: cls.is_active,
+      description: cls.description || "", color: cls.color || "#3B82F6"
+    }).eq("id", id);
     fetchAll();
   }
   async function toggleClass(id, currentActive) {
@@ -3633,10 +3831,10 @@ function Accounting({ companyId, activeCompany }) {
             <button onClick={async () => {
               const { data: activeTenants } = await supabase.from("tenants").select("*").eq("company_id", companyId || "sandbox-llc").eq("lease_status", "active");
               if (!activeTenants || activeTenants.length === 0) { alert("No active leases found."); return; }
-              const today = new Date().toISOString().slice(0, 10);
+              const today = formatLocalDate(new Date());
               const month = today.slice(0, 7);
               // Check if already accrued this month
-              const { data: existing } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId || "sandbox-llc").like("reference", `ACCR-${month}%`);
+              const { data: existing } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId || "sandbox-llc").like("reference", `ACCR-${month}%`).neq("status", "voided");
               if (existing && existing.length > 0) { alert("Rent already accrued for " + month + ". " + existing.length + " entries exist."); return; }
               let count = 0;
               for (const t of activeTenants) {
@@ -3653,6 +3851,17 @@ function Accounting({ companyId, activeCompany }) {
                     { account_id: "1100", account_name: "Accounts Receivable", debit: rent, credit: 0, class_id: classId, memo: `${t.name} rent due` },
                     { account_id: "4000", account_name: "Rental Income", debit: 0, credit: rent, class_id: classId, memo: `${t.name} — ${t.property}` },
                   ]
+                });
+                // Update tenant balance (they now owe this amount)
+                try {
+                  await supabase.rpc("update_tenant_balance", { p_tenant_id: t.id, p_amount_change: rent });
+                } catch {
+                  await supabase.from("tenants").update({ balance: safeNum(t.balance) + rent }).eq("company_id", companyId || "sandbox-llc").eq("id", t.id); // balance update (unchecked ok — RPC primary)
+                }
+                // Create ledger entry
+                await safeLedgerInsert({ company_id: companyId || "sandbox-llc",
+                  tenant: t.name, property: t.property, date: today,
+                  description: `Rent accrual — ${month}`, amount: rent, type: "charge", balance: 0,
                 });
                 count++;
               }
@@ -3785,7 +3994,7 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
       if (d.file_name && !d.url) {
         const { data } = supabase.storage.from("documents").getPublicUrl(d.file_name);
         if (data?.publicUrl) {
-          await supabase.from("documents").update({ url: data.publicUrl }).eq("id", d.id);
+          await supabase.from("documents").update({ url: data.publicUrl }).eq("company_id", companyId || "sandbox-llc").eq("id", d.id);
           repaired++;
         }
       }
@@ -3895,7 +4104,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId }) {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [selectedInspection, setSelectedInspection] = useState(null);
-  const [form, setForm] = useState({ property: "", type: "Move-In", inspector: "", date: new Date().toISOString().slice(0, 10), status: "scheduled", notes: "" });
+  const [form, setForm] = useState({ property: "", type: "Move-In", inspector: "", date: formatLocalDate(new Date()), status: "scheduled", notes: "" });
 
   const checklistTemplates = {
     "Move-In": ["Front door & locks", "Windows & screens", "Walls & ceilings", "Floors & carpets", "Kitchen appliances", "Bathrooms", "HVAC system", "Smoke detectors", "Garage/parking"],
@@ -3920,7 +4129,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId }) {
     if (error) { alert("Error saving inspection: " + error.message); return; }
     addNotification("🔍", `Inspection scheduled: ${form.type} at ${form.property}`);
     setShowForm(false);
-    setForm({ property: "", type: "Move-In", inspector: "", date: new Date().toISOString().slice(0, 10), status: "scheduled", notes: "" });
+    setForm({ property: "", type: "Move-In", inspector: "", date: formatLocalDate(new Date()), status: "scheduled", notes: "" });
     setChecklist({});
     fetchInspections();
   }
@@ -4066,7 +4275,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
   const [showRentIncrease, setShowRentIncrease] = useState(null);
   const [rentIncreaseForm, setRentIncreaseForm] = useState({ new_amount: "", effective_date: "", reason: "" });
   const [templateForm, setTemplateForm] = useState({ name: "", description: "", clauses: "", special_terms: "", default_deposit_months: "1", default_lease_months: "12", default_escalation_pct: "3", payment_due_day: "1" });
-  const [depositForm, setDepositForm] = useState({ amount_returned: "", deductions: "", return_date: new Date().toISOString().slice(0, 10) });
+  const [depositForm, setDepositForm] = useState({ amount_returned: "", deductions: "", return_date: formatLocalDate(new Date()) });
 
   useEffect(() => { fetchData(); }, []);
 
@@ -4089,10 +4298,13 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     const tmpl = templates.find(t => String(t.id) === String(templateId));
     if (!tmpl) return;
     const months = tmpl.default_lease_months || 12;
-    const start = form.start_date || new Date().toISOString().slice(0, 10);
-    const endDate = new Date(start);
+    const start = form.start_date || formatLocalDate(new Date());
+    const endDate = parseLocalDate(start);
+    const origDay = endDate.getDate();
     endDate.setMonth(endDate.getMonth() + months);
-    setForm({ ...form, template_id: templateId, clauses: tmpl.clauses || "", special_terms: tmpl.special_terms || "", rent_escalation_pct: String(tmpl.default_escalation_pct || 3), payment_due_day: String(tmpl.payment_due_day || 1), end_date: endDate.toISOString().slice(0, 10) });
+    // Clamp if month overflow (e.g., Jan 31 + 1 month = Mar 3 → Feb 28)
+    if (endDate.getDate() !== origDay) endDate.setDate(0); // setDate(0) = last day of prev month
+    setForm({ ...form, template_id: templateId, clauses: tmpl.clauses || "", special_terms: tmpl.special_terms || "", rent_escalation_pct: String(tmpl.default_escalation_pct || 3), payment_due_day: String(tmpl.payment_due_day || 1), end_date: formatLocalDate(endDate) });
   }
 
   function prefillFromTenant(tenantName) {
@@ -4104,13 +4316,14 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     if (!form.tenant_name) { alert("Please select a tenant."); return; }
     if (!form.property) { alert("Please select a property."); return; }
     if (!form.start_date || !form.end_date) { alert("Lease start and end dates are required."); return; }
-    if (!form.rent_amount || isNaN(Number(form.rent_amount))) { alert("Please enter a valid rent amount."); return; }
+    if (!form.rent_amount || isNaN(Number(form.rent_amount)) || Number(form.rent_amount) <= 0) { alert("Please enter a valid positive rent amount."); return; }
+    if (form.start_date >= form.end_date) { alert("Lease end date must be after start date."); return; }
     const tenant = tenants.find(t => t.name === form.tenant_name);
     const payload = {
       tenant_id: tenant?.id || null, tenant_name: form.tenant_name, property: form.property,
       start_date: form.start_date, end_date: form.end_date, rent_amount: Number(form.rent_amount),
       security_deposit: Number(form.security_deposit || 0), rent_escalation_pct: Number(form.rent_escalation_pct || 0),
-      escalation_frequency: form.escalation_frequency, payment_due_day: Number(form.payment_due_day || 1),
+      escalation_frequency: form.escalation_frequency, payment_due_day: Math.max(1, Math.min(31, Number(form.payment_due_day || 1))),
       lease_type: form.lease_type, auto_renew: form.auto_renew, renewal_notice_days: Number(form.renewal_notice_days || 60),
       clauses: form.clauses, special_terms: form.special_terms, status: "active",
       late_fee_amount: Number(form.late_fee_amount || 50), late_fee_type: form.late_fee_type || "flat", late_fee_grace_days: Number(form.late_fee_grace_days || 5),
@@ -4124,7 +4337,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     } else {
       ({ error } = await supabase.from("leases").insert([{ ...payload, company_id: companyId || "sandbox-llc" }]));
       if (!error && tenant) {
-        await supabase.from("tenants").update({ lease_status: "active", move_in: form.start_date, move_out: form.end_date, rent: Number(form.rent_amount) }).eq("id", tenant.id);
+        await supabase.from("tenants").update({ lease_status: "active", move_in: form.start_date, move_out: form.end_date, rent: Number(form.rent_amount) }).eq("company_id", companyId || "sandbox-llc").eq("id", tenant.id);
       }
       if (!error && Number(form.security_deposit) > 0) {
         const classId = await getPropertyClassId(form.property, companyId);
@@ -4135,6 +4348,13 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
             { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant_name + " — " + form.property },
           ]
         });
+        // Create ledger entry for deposit collection
+        if (tenant?.id) {
+          await safeLedgerInsert({ company_id: companyId || "sandbox-llc",
+            tenant: form.tenant_name, property: form.property, date: form.start_date,
+            description: "Security deposit collected", amount: dep, type: "deposit", balance: 0,
+          });
+        }
       }
     }
     if (error) { alert("Error saving lease: " + error.message); return; }
@@ -4156,22 +4376,47 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
   }
 
   async function renewLease(lease) {
-    const escalated = lease.rent_escalation_pct > 0 ? lease.rent_amount * (1 + lease.rent_escalation_pct / 100) : lease.rent_amount;
+    // Apply escalation based on frequency (Bug 19: was ignoring frequency)
+    let escalationMultiplier = 1;
+    const pct = lease.rent_escalation_pct > 0 ? lease.rent_escalation_pct / 100 : 0;
+    if (pct > 0) {
+      const freq = lease.escalation_frequency || "annual";
+      if (freq === "semi-annual") escalationMultiplier = Math.min(Math.pow(1 + pct, 2), 10);
+      else if (freq === "quarterly") escalationMultiplier = Math.min(Math.pow(1 + pct, 4), 10);
+      else escalationMultiplier = 1 + pct; // annual or default
+    }
+    const escalated = lease.rent_amount * escalationMultiplier;
     const newStart = lease.end_date;
-    const newEnd = new Date(newStart); newEnd.setFullYear(newEnd.getFullYear() + 1);
-    if (!window.confirm("Renew lease for " + lease.tenant_name + "?\nNew rent: $" + Math.round(escalated * 100) / 100 + "/mo\nNew term: " + newStart + " to " + newEnd.toISOString().slice(0, 10))) return;
-    await supabase.from("leases").update({ status: "renewed" }).eq("id", lease.id);
-    await supabase.from("leases").insert([{ company_id: companyId || "sandbox-llc", tenant_id: lease.tenant_id, tenant_name: lease.tenant_name, property: lease.property, start_date: newStart, end_date: newEnd.toISOString().slice(0, 10), rent_amount: Math.round(escalated * 100) / 100, security_deposit: lease.security_deposit, rent_escalation_pct: lease.rent_escalation_pct, escalation_frequency: lease.escalation_frequency, payment_due_day: lease.payment_due_day, lease_type: "renewal", auto_renew: lease.auto_renew, renewal_notice_days: lease.renewal_notice_days, clauses: lease.clauses, special_terms: lease.special_terms, status: "active", renewed_from: lease.id, created_by: userProfile?.email || "", move_in_checklist: "[]", move_out_checklist: lease.move_out_checklist }]);
-    if (lease.tenant_id) await supabase.from("tenants").update({ rent: Math.round(escalated * 100) / 100, move_out: newEnd.toISOString().slice(0, 10) }).eq("id", lease.tenant_id);
+    const newEnd = parseLocalDate(newStart); newEnd.setFullYear(newEnd.getFullYear() + 1);
+    // Bug 15: Clamp for leap year (Feb 29 in non-leap year → Feb 28)
+    const endLastDay = new Date(newEnd.getFullYear(), newEnd.getMonth() + 1, 0).getDate();
+    if (newEnd.getDate() > endLastDay) newEnd.setDate(endLastDay);
+    if (!window.confirm("Renew lease for " + lease.tenant_name + "?\nNew rent: $" + Math.round(escalated * 100) / 100 + "/mo\nNew term: " + newStart + " to " + formatLocalDate(newEnd))) return;
+    // Bug 1-2: Check errors and rollback on failure
+    const { error: updateErr } = await supabase.from("leases").update({ status: "renewed" }).eq("company_id", companyId || "sandbox-llc").eq("id", lease.id);
+    if (updateErr) { alert("Error updating old lease: " + updateErr.message); return; }
+    const { error: insertErr } = await supabase.from("leases").insert([{ company_id: companyId || "sandbox-llc", tenant_id: lease.tenant_id, tenant_name: lease.tenant_name, property: lease.property, start_date: newStart, end_date: formatLocalDate(newEnd), rent_amount: Math.round(escalated * 100) / 100, security_deposit: lease.security_deposit, rent_escalation_pct: lease.rent_escalation_pct, escalation_frequency: lease.escalation_frequency, payment_due_day: lease.payment_due_day, lease_type: "renewal", auto_renew: lease.auto_renew, renewal_notice_days: lease.renewal_notice_days, clauses: lease.clauses, special_terms: lease.special_terms, status: "active", renewed_from: lease.id, created_by: userProfile?.email || "", move_in_checklist: "[]", move_out_checklist: lease.move_out_checklist }]);
+    if (insertErr) {
+      await supabase.from("leases").update({ status: "active" }).eq("company_id", companyId || "sandbox-llc").eq("id", lease.id); // rollback
+      alert("Error creating renewed lease: " + insertErr.message); return;
+    }
+    if (lease.tenant_id) await supabase.from("tenants").update({ rent: Math.round(escalated * 100) / 100, move_out: formatLocalDate(newEnd) }).eq("company_id", companyId || "sandbox-llc").eq("id", lease.tenant_id);
     logAudit("create", "leases", "Renewed lease: " + lease.tenant_name + " new rent $" + Math.round(escalated * 100) / 100, lease.id, userProfile?.email, userRole, companyId);
-    await autoPostRentCharges(companyId); // Post rent charges for renewed lease
+    await autoPostRentCharges(companyId);
     fetchData();
   }
 
   async function terminateLease(lease) {
     if (!window.confirm("Terminate lease for " + lease.tenant_name + "? This cannot be undone.")) return;
-    await supabase.from("leases").update({ status: "terminated" }).eq("id", lease.id);
-    if (lease.tenant_id) await supabase.from("tenants").update({ lease_status: "inactive" }).eq("id", lease.tenant_id);
+    await supabase.from("leases").update({ status: "terminated" }).eq("company_id", companyId || "sandbox-llc").eq("id", lease.id);
+    if (lease.tenant_id) {
+      await supabase.from("tenants").update({ lease_status: "inactive" }).eq("company_id", companyId || "sandbox-llc").eq("id", lease.tenant_id);
+      // Create termination ledger entry
+      await safeLedgerInsert({ company_id: companyId || "sandbox-llc",
+        tenant: lease.tenant_name, property: lease.property, date: formatLocalDate(new Date()),
+        description: "Lease terminated", amount: 0, type: "adjustment", balance: 0,
+      });
+    }
     logAudit("update", "leases", "Terminated lease: " + lease.tenant_name, lease.id, userProfile?.email, userRole, companyId);
     fetchData();
   }
@@ -4184,7 +4429,8 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     const update = { [field]: JSON.stringify(checklist) };
     if (type === "in") update.move_in_completed = allDone;
     if (type === "out") update.move_out_completed = allDone;
-    await supabase.from("leases").update(update).eq("id", lease.id);
+    // update only contains checklist field + completion flag — safe
+    await supabase.from("leases").update(update).eq("id", lease.id).eq("company_id", companyId || "sandbox-llc");
     fetchData();
   }
 
@@ -4193,7 +4439,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     const deposit = safeNum(lease.security_deposit);
     const deducted = deposit - returned;
     const status = returned >= deposit ? "returned" : returned > 0 ? "partial_return" : "forfeited";
-    await supabase.from("leases").update({ deposit_status: status, deposit_returned: returned, deposit_return_date: depositForm.return_date, deposit_deductions: depositForm.deductions }).eq("id", lease.id);
+    await supabase.from("leases").update({ deposit_status: status, deposit_returned: returned, deposit_return_date: depositForm.return_date, deposit_deductions: depositForm.deductions }).eq("company_id", companyId || "sandbox-llc").eq("id", lease.id);
     const classId = await getPropertyClassId(lease.property, companyId);
     if (returned > 0) {
       await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Security deposit return — " + lease.tenant_name, reference: "DEPRET-" + Date.now(), property: lease.property,
@@ -4211,14 +4457,28 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
         ]
       });
     }
+    // Create ledger entry and update balance for deposit return
+    if (returned > 0 && lease.tenant_id) {
+      await safeLedgerInsert({ company_id: companyId || "sandbox-llc",
+        tenant: lease.tenant_name, property: lease.property, date: depositForm.return_date,
+        description: "Security deposit returned", amount: -returned, type: "deposit_return", balance: 0,
+      });
+      try { await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: -returned }); } catch {}
+    }
+    if (deducted > 0 && lease.tenant_id) {
+      await safeLedgerInsert({ company_id: companyId || "sandbox-llc",
+        tenant: lease.tenant_name, property: lease.property, date: depositForm.return_date,
+        description: "Deposit deduction: " + depositForm.deductions, amount: deducted, type: "deposit_deduction", balance: 0,
+      });
+    }
     logAudit("update", "leases", "Deposit return: $" + returned + " to " + lease.tenant_name, lease.id, userProfile?.email, userRole, companyId);
-    setShowDepositModal(null); setDepositForm({ amount_returned: "", deductions: "", return_date: new Date().toISOString().slice(0, 10) });
+    setShowDepositModal(null); setDepositForm({ amount_returned: "", deductions: "", return_date: formatLocalDate(new Date()) });
     fetchData();
   }
 
   async function saveTemplate() {
     if (!templateForm.name) { alert("Template name is required."); return; }
-    const { error } = await supabase.from("lease_templates").insert([{ company_id: companyId || "sandbox-llc", ...templateForm, default_deposit_months: Number(templateForm.default_deposit_months || 1), default_lease_months: Number(templateForm.default_lease_months || 12), default_escalation_pct: Number(templateForm.default_escalation_pct || 3), payment_due_day: Number(templateForm.payment_due_day || 1) }]);
+    const { error } = await supabase.from("lease_templates").insert([{ company_id: companyId || "sandbox-llc", ...templateForm, default_deposit_months: Number(templateForm.default_deposit_months || 1), default_lease_months: Number(templateForm.default_lease_months || 12), default_escalation_pct: Number(templateForm.default_escalation_pct || 3), payment_due_day: Math.max(1, Math.min(31, Number(templateForm.payment_due_day || 1))) }]);
     if (error) { alert("Error: " + error.message); return; }
     setShowTemplateForm(false); setTemplateForm({ name: "", description: "", clauses: "", special_terms: "", default_deposit_months: "1", default_lease_months: "12", default_escalation_pct: "3", payment_due_day: "1" });
     fetchData();
@@ -4226,9 +4486,9 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
 
   if (loading) return <Spinner />;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = formatLocalDate(new Date());
   const active = leases.filter(l => l.status === "active");
-  const expiringSoon = active.filter(l => { const d = Math.ceil((new Date(l.end_date) - new Date()) / 86400000); return d <= 90 && d > 0; });
+  const expiringSoon = active.filter(l => { const d = Math.ceil((parseLocalDate(l.end_date) - new Date()) / 86400000); return d <= 90 && d > 0; });
   const expired = leases.filter(l => l.status === "expired" || (l.status === "active" && l.end_date < today));
   const totalDeposits = active.reduce((s, l) => s + safeNum(l.security_deposit), 0);
   const filteredLeases = activeTab === "active" ? active : activeTab === "expiring" ? expiringSoon : activeTab === "expired" ? expired : activeTab === "all" ? leases : leases.filter(l => l.status === activeTab);
@@ -4253,7 +4513,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
       {expiringSoon.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
           <div className="font-semibold text-amber-800 text-sm mb-2">Leases Expiring Soon</div>
-          {expiringSoon.map(l => { const d = Math.ceil((new Date(l.end_date) - new Date()) / 86400000); return (
+          {expiringSoon.map(l => { const d = Math.ceil((parseLocalDate(l.end_date) - new Date()) / 86400000); return (
             <div key={l.id} className="flex justify-between items-center py-1 text-sm">
               <span className="text-amber-700">{l.tenant_name} — {l.property}</span>
               <div className="flex items-center gap-2"><span className="text-amber-600 font-bold">{d} days</span><button onClick={() => renewLease(l)} className="text-xs bg-amber-600 text-white px-2 py-1 rounded hover:bg-amber-700">Renew</button></div>
@@ -4338,7 +4598,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
             <div><label className="text-xs text-gray-500 mb-1 block">Monthly Rent ($) *</label><input type="number" value={form.rent_amount} onChange={e => setForm({...form, rent_amount: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Security Deposit ($)</label><input type="number" value={form.security_deposit} onChange={e => setForm({...form, security_deposit: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Annual Escalation %</label><input type="number" step="0.1" value={form.rent_escalation_pct} onChange={e => setForm({...form, rent_escalation_pct: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Payment Due Day</label><input type="number" min="1" max="28" value={form.payment_due_day} onChange={e => setForm({...form, payment_due_day: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Payment Due Day</label><input type="number" min="1" max="31" value={form.payment_due_day} onChange={e => setForm({...form, payment_due_day: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Lease Type</label>
               <select value={form.lease_type} onChange={e => setForm({...form, lease_type: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="fixed">Fixed Term</option><option value="month_to_month">Month-to-Month</option><option value="renewal">Renewal</option></select></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Renewal Notice (days)</label><input type="number" value={form.renewal_notice_days} onChange={e => setForm({...form, renewal_notice_days: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
@@ -4365,7 +4625,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
 
       <div className="space-y-3">
         {filteredLeases.map(l => {
-          const daysLeft = Math.ceil((new Date(l.end_date) - new Date()) / 86400000);
+          const daysLeft = Math.ceil((parseLocalDate(l.end_date) - new Date()) / 86400000);
           const isExpired = daysLeft <= 0 && l.status === "active";
           const sc = { active: "bg-green-100 text-green-700", expired: "bg-red-100 text-red-700", renewed: "bg-blue-100 text-blue-700", terminated: "bg-gray-100 text-gray-600", draft: "bg-amber-100 text-amber-700" };
           const dc = { held: "bg-purple-100 text-purple-700", partial_return: "bg-amber-100 text-amber-700", returned: "bg-green-100 text-green-700", forfeited: "bg-red-100 text-red-700" };
@@ -4392,12 +4652,12 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
                 <button onClick={() => startEdit(l)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
                 <button onClick={() => setShowESign(l)} className={"text-xs border px-3 py-1 rounded-lg " + (l.signature_status === "fully_signed" ? "text-green-600 border-green-200 bg-green-50" : "text-purple-600 border-purple-200 hover:bg-purple-50")}>{l.signature_status === "fully_signed" ? "✓ Signed" : "\u270d\ufe0f E-Sign"}</button>
                 {l.status === "active" && <button onClick={() => renewLease(l)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">Renew</button>}
-                {l.status === "active" && <button onClick={() => { setShowRentIncrease(l); setRentIncreaseForm({ new_amount: String(l.rent_amount), effective_date: new Date().toISOString().slice(0, 10), reason: "" }); }} className="text-xs text-blue-600 border border-blue-200 px-3 py-1 rounded-lg hover:bg-blue-50">📈 Rent Increase</button>}
+                {l.status === "active" && <button onClick={() => { setShowRentIncrease(l); setRentIncreaseForm({ new_amount: String(l.rent_amount), effective_date: formatLocalDate(new Date()), reason: "" }); }} className="text-xs text-blue-600 border border-blue-200 px-3 py-1 rounded-lg hover:bg-blue-50">📈 Rent Increase</button>}
                 {l.status === "active" && <button onClick={() => terminateLease(l)} className="text-xs text-red-600 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">Terminate</button>}
                 <button onClick={() => setShowChecklist({ lease: l, type: "in" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_in_completed ? "text-green-600 border-green-200 bg-green-50" : "text-gray-500 border-gray-200 hover:bg-gray-50")}>Move-In {l.move_in_completed ? "✓" : ""}</button>
                 <button onClick={() => setShowChecklist({ lease: l, type: "out" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_out_completed ? "text-green-600 border-green-200 bg-green-50" : "text-gray-500 border-gray-200 hover:bg-gray-50")}>Move-Out {l.move_out_completed ? "✓" : ""}</button>
                 {safeNum(l.security_deposit) > 0 && l.deposit_status === "held" && (l.status === "terminated" || l.status === "expired" || isExpired) && (
-                  <button onClick={() => { setShowDepositModal(l); setDepositForm({ amount_returned: String(l.security_deposit), deductions: "", return_date: new Date().toISOString().slice(0, 10) }); }} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">Return Deposit</button>
+                  <button onClick={() => { setShowDepositModal(l); setDepositForm({ amount_returned: String(l.security_deposit), deductions: "", return_date: formatLocalDate(new Date()) }); }} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">Return Deposit</button>
                 )}
               </div>
             </div>
@@ -4425,8 +4685,8 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
             <button onClick={async () => {
               if (!rentIncreaseForm.new_amount || !rentIncreaseForm.effective_date) { alert("Amount and date required."); return; }
               const newAmt = Number(rentIncreaseForm.new_amount);
-              await supabase.from("leases").update({ rent_amount: newAmt, rent_increase_history: JSON.stringify([...(JSON.parse(showRentIncrease.rent_increase_history || "[]")), { from: showRentIncrease.rent_amount, to: newAmt, date: rentIncreaseForm.effective_date, reason: rentIncreaseForm.reason }]) }).eq("id", showRentIncrease.id);
-              if (showRentIncrease.tenant_id) await supabase.from("tenants").update({ rent: newAmt }).eq("id", showRentIncrease.tenant_id);
+              await supabase.from("leases").update({ rent_amount: newAmt, rent_increase_history: JSON.stringify([...(JSON.parse(showRentIncrease.rent_increase_history || "[]")), { from: showRentIncrease.rent_amount, to: newAmt, date: rentIncreaseForm.effective_date, reason: rentIncreaseForm.reason }]) }).eq("company_id", companyId || "sandbox-llc").eq("id", showRentIncrease.id);
+              if (showRentIncrease.tenant_id) await supabase.from("tenants").update({ rent: newAmt }).eq("company_id", companyId || "sandbox-llc").eq("id", showRentIncrease.tenant_id);
               addNotification("📈", `Rent increased to $${newAmt}/mo for ${showRentIncrease.tenant_name}`);
               logAudit("update", "leases", `Rent increase: $${showRentIncrease.rent_amount} → $${newAmt} for ${showRentIncrease.tenant_name}`, showRentIncrease.id, userProfile?.email, userRole, companyId);
               setShowRentIncrease(null);
@@ -4463,7 +4723,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
 
   const [invoiceForm, setInvoiceForm] = useState({
     vendor_id: "", vendor_name: "", work_order_id: "", property: "",
-    description: "", amount: "", invoice_number: "", invoice_date: new Date().toISOString().slice(0, 10),
+    description: "", amount: "", invoice_number: "", invoice_date: formatLocalDate(new Date()),
     due_date: "", payment_method: "", notes: "",
   });
 
@@ -4492,7 +4752,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
     };
     let error;
     if (editingVendor) {
-      ({ error } = await supabase.from("vendors").update({ name: payload.name, email: payload.email, phone: payload.phone, specialty: payload.specialty, license: payload.license, insurance_exp: payload.insurance_exp, notes: payload.notes, status: payload.status }).eq("id", editingVendor.id).eq("company_id", companyId || "sandbox-llc"));
+      ({ error } = await supabase.from("vendors").update({ name: payload.name, company: payload.company, email: payload.email, phone: payload.phone, address: payload.address, specialty: payload.specialty, license_number: payload.license_number, insurance_expiry: payload.insurance_expiry, hourly_rate: payload.hourly_rate, flat_rate: payload.flat_rate, notes: payload.notes, status: payload.status }).eq("id", editingVendor.id).eq("company_id", companyId || "sandbox-llc"));
     } else {
       ({ error } = await supabase.from("vendors").insert([{ ...payload, company_id: companyId || "sandbox-llc" }]));
     }
@@ -4532,21 +4792,25 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
     if (error) { alert("Error: " + error.message); return; }
     logAudit("create", "vendor_invoices", "Invoice: $" + invoiceForm.amount + " from " + invoiceForm.vendor_name, "", userProfile?.email, userRole, companyId);
     setShowInvoiceForm(false);
-    setInvoiceForm({ vendor_id: "", vendor_name: "", work_order_id: "", property: "", description: "", amount: "", invoice_number: "", invoice_date: new Date().toISOString().slice(0, 10), due_date: "", payment_method: "", notes: "" });
+    setInvoiceForm({ vendor_id: "", vendor_name: "", work_order_id: "", property: "", description: "", amount: "", invoice_number: "", invoice_date: formatLocalDate(new Date()), due_date: "", payment_method: "", notes: "" });
     fetchData();
   }
 
   async function payInvoice(inv) {
     if (!window.confirm("Mark invoice #" + (inv.invoice_number || inv.id.slice(0,8)) + " as paid ($" + inv.amount + ")?")) return;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = formatLocalDate(new Date());
     await supabase.from("vendor_invoices").update({ status: "paid", paid_date: today }).eq("id", inv.id);
     // Update vendor total_paid
     const vendor = vendors.find(v => String(v.id) === String(inv.vendor_id));
     if (vendor) {
-      await supabase.from("vendors").update({
-        total_paid: safeNum(vendor.total_paid) + safeNum(inv.amount),
-        total_jobs: (vendor.total_jobs || 0) + 1,
-      }).eq("id", vendor.id);
+      // Atomic increment (fetch fresh, then update — still not perfect but reads fresh data)
+      const { data: freshVendor } = await supabase.from("vendors").select("total_paid, total_jobs").eq("id", vendor.id).maybeSingle();
+      if (freshVendor) {
+        await supabase.from("vendors").update({
+          total_paid: safeNum(freshVendor.total_paid) + safeNum(inv.amount),
+          total_jobs: (freshVendor.total_jobs || 0) + 1,
+        }).eq("id", vendor.id);
+      }
     }
     // Post to accounting
     const classId = await getPropertyClassId(inv.property, companyId);
@@ -4566,7 +4830,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
   }
 
   async function rateVendor(vendor, rating) {
-    await supabase.from("vendors").update({ rating }).eq("id", vendor.id);
+    await supabase.from("vendors").update({ rating }).eq("company_id", companyId || "sandbox-llc").eq("id", vendor.id);
     fetchData();
   }
 
@@ -4735,7 +4999,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
       {activeTab === "invoices" && (
         <div className="space-y-3">
           {invoices.map(inv => {
-            const isOverdue = inv.status === "pending" && inv.due_date && new Date(inv.due_date) < new Date();
+            const isOverdue = inv.status === "pending" && inv.due_date && parseLocalDate(inv.due_date) < new Date();
             const sc = { pending: "bg-amber-100 text-amber-700", approved: "bg-blue-100 text-blue-700", paid: "bg-green-100 text-green-700", disputed: "bg-red-100 text-red-700" };
             return (
               <div key={inv.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (isOverdue ? "border-red-200" : "border-gray-100")}>
@@ -4786,7 +5050,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
   const [editingOwner, setEditingOwner] = useState(null);
   const [showGenerate, setShowGenerate] = useState(false);
   const [genOwner, setGenOwner] = useState("");
-  const [genMonth, setGenMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [genMonth, setGenMonth] = useState(formatLocalDate(new Date()).slice(0, 7));
   const [viewStatement, setViewStatement] = useState(null);
 
   const [form, setForm] = useState({
@@ -4852,16 +5116,17 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
         options: { data: { name: owner.name, role: "owner" } }
       });
       if (authErr) console.warn("Auth invite failed:", authErr.message);
+      // Insert only if no existing row — don't overwrite other company's data
       await supabase.from("app_users").upsert([{
-        email: owner.email,
+        email: (owner.email || "").toLowerCase(),
         name: owner.name,
         role: "owner",
         company_id: companyId || "sandbox-llc",
-      }], { onConflict: "email" });
+      }], { onConflict: "email", ignoreDuplicates: true });
       // Create company_members entry so owner is auto-routed to this company
       await supabase.from("company_members").upsert([{
         company_id: companyId || "sandbox-llc",
-        user_email: owner.email,
+        user_email: (owner.email || "").toLowerCase(),
         user_name: owner.name,
         role: "owner",
         status: "active",
@@ -4877,7 +5142,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
 
   async function assignPropertyToOwner(propertyId, ownerId) {
     const owner = owners.find(o => String(o.id) === String(ownerId));
-    await supabase.from("properties").update({ owner_id: ownerId || null, owner_name: owner?.name || "" }).eq("id", propertyId);
+    await supabase.from("properties").update({ owner_id: ownerId || null, owner_name: owner?.name || "" }).eq("company_id", companyId || "sandbox-llc").eq("id", propertyId);
     fetchData();
   }
 
@@ -4886,19 +5151,22 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
     const owner = owners.find(o => String(o.id) === String(genOwner));
     if (!owner) return;
     const startDate = genMonth + "-01";
-    const endObj = new Date(startDate); endObj.setMonth(endObj.getMonth() + 1); endObj.setDate(0);
-    const endDate = endObj.toISOString().slice(0, 10);
+    const endObj = parseLocalDate(startDate); endObj.setMonth(endObj.getMonth() + 1); endObj.setDate(0);
+    const endDate = formatLocalDate(endObj);
 
     const ownerProps = properties.filter(p => String(p.owner_id) === String(owner.id)).map(p => p.address);
     if (ownerProps.length === 0) { alert("No properties assigned to " + owner.name); return; }
 
-    // Gather income for this owner's properties in this month
-    const monthPayments = payments.filter(p => ownerProps.includes(p.property) && p.date >= startDate && p.date <= endDate);
+    // Fetch FRESH data from DB for accurate statement (not stale component state)
+    const { data: freshPayments } = await supabase.from("payments").select("*").eq("company_id", companyId || "sandbox-llc").eq("status", "paid").gte("date", startDate).lte("date", endDate);
+    const monthPayments = (freshPayments || []).filter(p => ownerProps.includes(p.property));
     const totalIncome = monthPayments.reduce((s, p) => s + safeNum(p.amount), 0);
 
-    // Gather expenses
-    const monthVendor = vendorInvoices.filter(v => ownerProps.includes(v.property) && v.paid_date && v.paid_date >= startDate && v.paid_date <= endDate);
-    const monthUtils = utilities.filter(u => ownerProps.includes(u.property) && u.status === "paid" && u.due >= startDate && u.due <= endDate);
+    // Gather expenses (fresh from DB)
+    const { data: freshVendor } = await supabase.from("vendor_invoices").select("*").eq("company_id", companyId || "sandbox-llc").eq("status", "paid");
+    const monthVendor = (freshVendor || []).filter(v => ownerProps.includes(v.property) && v.paid_date && v.paid_date >= startDate && v.paid_date <= endDate);
+    const { data: freshUtils } = await supabase.from("utilities").select("*").eq("company_id", companyId || "sandbox-llc").eq("status", "paid");
+    const monthUtils = (freshUtils || []).filter(u => ownerProps.includes(u.property) && u.due >= startDate && u.due <= endDate);
     const totalVendorExp = monthVendor.reduce((s, v) => s + safeNum(v.amount), 0);
     const totalUtilExp = monthUtils.reduce((s, u) => s + safeNum(u.amount), 0);
     const totalExpenses = totalVendorExp + totalUtilExp;
@@ -4929,14 +5197,14 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
   }
 
   async function markStatementSent(stmt) {
-    await supabase.from("owner_statements").update({ status: "sent", sent_date: new Date().toISOString().slice(0, 10) }).eq("id", stmt.id);
+    await supabase.from("owner_statements").update({ status: "sent", sent_date: formatLocalDate(new Date()) }).eq("id", stmt.id);
     fetchData();
   }
 
   async function distributeToOwner(stmt) {
     if (stmt.net_to_owner <= 0) { alert("Net amount is $0 or negative. Nothing to distribute."); return; }
     if (!window.confirm("Distribute $" + stmt.net_to_owner.toLocaleString() + " to " + stmt.owner_name + "?")) return;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = formatLocalDate(new Date());
     const owner = owners.find(o => String(o.id) === String(stmt.owner_id));
     // Record distribution
     await supabase.from("owner_distributions").insert([{ company_id: companyId || "sandbox-llc",
@@ -5202,7 +5470,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
 
 // ============ BANK RECONCILIATION ============
 function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
-  const [reconPeriod, setReconPeriod] = useState(new Date().toISOString().slice(0, 7));
+  const [reconPeriod, setReconPeriod] = useState(formatLocalDate(new Date()).slice(0, 7));
   const [bankBalance, setBankBalance] = useState("");
   const [reconItems, setReconItems] = useState([]);
   const [reconciliations, setReconciliations] = useState([]);
@@ -5221,15 +5489,15 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
   async function startReconciliation() {
     if (!bankBalance || isNaN(Number(bankBalance))) { alert("Please enter the bank ending balance."); return; }
     const startDate = reconPeriod + "-01";
-    const endObj = new Date(startDate); endObj.setMonth(endObj.getMonth() + 1); endObj.setDate(0);
-    const endDate = endObj.toISOString().slice(0, 10);
+    const endObj = parseLocalDate(startDate); endObj.setMonth(endObj.getMonth() + 1); endObj.setDate(0);
+    const endDate = formatLocalDate(endObj);
 
     // Pull all journal lines hitting the Checking Account (1000) in this period
     const { data: entries } = await supabase.from("acct_journal_entries").select("id, date, description, reference, status").eq("company_id", companyId || "sandbox-llc").gte("date", startDate).lte("date", endDate).eq("status", "posted");
     if (!entries || entries.length === 0) { alert("No posted journal entries found for " + reconPeriod); return; }
 
     const entryIds = entries.map(e => e.id);
-    const { data: lines } = await supabase.from("acct_journal_lines").select("*").in("journal_entry_id", entryIds).eq("account_id", "1000");
+    const { data: lines } = await supabase.from("acct_journal_lines").select("*").in("journal_entry_id", entryIds).eq("account_name", "Checking Account");
     if (!lines || lines.length === 0) { alert("No checking account transactions found for " + reconPeriod); return; }
 
     // Build reconciliation items
@@ -5268,9 +5536,9 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
     const unreconciledTotal = reconItems.filter(i => !i.reconciled).reduce((s, i) => s + i.amount, 0);
 
     // Calculate book balance from all checking account entries (scoped to this company)
-    const cJeIds = journalEntries.map(j => j.id);
+    const cJeIds = journalEntries.filter(j => j.status === "posted").map(j => j.id);
     const { data: allLines } = cJeIds.length > 0
-      ? await supabase.from("acct_journal_lines").select("debit, credit").eq("account_id", "1000").in("journal_entry_id", cJeIds)
+      ? await supabase.from("acct_journal_lines").select("debit, credit").eq("account_name", "Checking Account").in("journal_entry_id", cJeIds)
       : { data: [] };
     const bookBal = (allLines || []).reduce((s, l) => s + safeNum(l.debit) - safeNum(l.credit), 0);
     const bankBal = Number(bankBalance);
@@ -5293,7 +5561,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
     // Mark journal lines as reconciled in DB
     const reconIds = reconItems.filter(i => i.reconciled).map(i => i.id);
     if (reconIds.length > 0) {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = formatLocalDate(new Date());
       await supabase.from("acct_journal_lines").update({ reconciled: true, reconciled_date: today }).in("id", reconIds);
     }
 
@@ -5490,9 +5758,17 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
     if (rentDueSetting) {
       const daysBefore = rentDueSetting.days_before || 3;
       for (const lease of leases) {
-        const dueDay = lease.payment_due_day || 1;
+        const rawDueDay = lease.payment_due_day || 1;
+        // Clamp due day to valid day for this month (avoids Feb 30 etc)
+        const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+        const dueDay = Math.min(rawDueDay, daysInMonth);
         const nextDue = new Date(today.getFullYear(), today.getMonth(), dueDay);
-        if (nextDue < today) nextDue.setMonth(nextDue.getMonth() + 1);
+        if (nextDue < today) {
+          nextDue.setMonth(nextDue.getMonth() + 1);
+          // Re-clamp for next month (e.g., due day 31 in Feb → 28)
+          const nextMonthDays = new Date(nextDue.getFullYear(), nextDue.getMonth() + 1, 0).getDate();
+          if (nextDue.getDate() > nextMonthDays) nextDue.setDate(nextMonthDays);
+        }
         const daysUntilDue = Math.ceil((nextDue - today) / 86400000);
         if (daysUntilDue <= daysBefore && daysUntilDue >= 0) {
           const tenant = tenants.find(t => t.name === lease.tenant_name);
@@ -5510,7 +5786,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
     if (leaseExpSetting) {
       const daysBefore = leaseExpSetting.days_before || 60;
       for (const lease of leases) {
-        const daysLeft = Math.ceil((new Date(lease.end_date) - today) / 86400000);
+        const daysLeft = Math.ceil((parseLocalDate(lease.end_date) - today) / 86400000);
         if (daysLeft <= daysBefore && daysLeft > 0) {
           const tenant = tenants.find(t => t.name === lease.tenant_name);
           if (tenant?.email) {
@@ -5686,7 +5962,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
     }
     if (toCreate.length > 0) {
       await supabase.from("lease_signatures").insert(toCreate.map(s => ({ ...s, company_id: companyId || "sandbox-llc" })));
-      await supabase.from("leases").update({ signature_status: "pending" }).eq("id", lease.id);
+      await supabase.from("leases").update({ signature_status: "pending" }).eq("company_id", companyId || "sandbox-llc").eq("id", lease.id);
     }
     fetchSigners();
   }
@@ -6189,7 +6465,8 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
   }
 
   async function payHOA(h) {
-    const today = new Date().toISOString().slice(0, 10);
+    if (h.status === "paid") { alert("This HOA payment is already marked as paid."); return; }
+    const today = formatLocalDate(new Date());
     await supabase.from("hoa_payments").update({ status: "paid", paid_date: today }).eq("id", h.id);
     addNotification("✅", `HOA paid: ${h.hoa_name} $${h.amount}`);
     // Auto-post to accounting
@@ -6202,7 +6479,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
         reference: `HOA-${h.id}`,
         property: h.property,
         lines: [
-          { account_id: "5300", account_name: "Repairs & Maintenance", debit: safeNum(h.amount), credit: 0, class_id: classId, memo: `HOA: ${h.hoa_name}` },
+          { account_id: "5500", account_name: "HOA Fees", debit: safeNum(h.amount), credit: 0, class_id: classId, memo: `HOA: ${h.hoa_name}` },
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(h.amount), class_id: classId, memo: `HOA: ${h.hoa_name}` },
         ]
       });
@@ -6367,7 +6644,11 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
   }
 
   async function runNow(s) {
-    const today = new Date().toISOString().slice(0, 10);
+    if (s._processing) return; s._processing = true;
+    const today = formatLocalDate(new Date());
+    // Duplicate guard: check for existing payment today
+    const { data: todayPay } = await supabase.from("payments").select("id").eq("company_id", companyId || "sandbox-llc").eq("tenant", s.tenant).eq("date", today).eq("method", s.method).limit(1);
+    if (todayPay?.length > 0) { if (!window.confirm("A payment from " + s.tenant + " was already recorded today. Run again?")) { s._processing = false; return; } }
     const { error } = await supabase.from("payments").insert([{ company_id: companyId || "sandbox-llc", tenant: s.tenant, property: s.property, amount: s.amount, type: "rent", method: s.method, status: "paid", date: today }]);
     if (error) { alert("Error: " + error.message); return; }
     // AUTO-POST TO ACCOUNTING: Same smart AR logic as manual payments
@@ -6375,7 +6656,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
     const amt = safeNum(s.amount);
     const month = today.slice(0, 7);
     let hasAccrual = false;
-    const { data: accrualJEs } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId || "sandbox-llc").like("reference", `ACCR-${month}%`);
+    const { data: accrualJEs } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId || "sandbox-llc").like("reference", `ACCR-${month}%`).neq("status", "voided");
     if (accrualJEs && accrualJEs.length > 0) {
       for (const je of accrualJEs) {
         const { data: jLines } = await supabase.from("acct_journal_lines").select("memo").eq("journal_entry_id", je.id);
@@ -6399,13 +6680,39 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
     }
     logAudit("create", "payments", "Autopay: $" + s.amount + " from " + s.tenant + " at " + s.property, "", userProfile?.email, userRole, companyId);
     addNotification("\ud83d\udcb3", "Autopay $" + s.amount + " processed for " + s.tenant);
+
+    // Update tenant balance and create ledger entry
+    const { data: tenantRow } = await supabase.from("tenants").select("id, balance").eq("name", s.tenant).eq("company_id", companyId || "sandbox-llc").maybeSingle();
+    if (tenantRow) {
+      try {
+        await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -amt });
+      } catch {
+        await supabase.from("tenants").update({ balance: safeNum(tenantRow.balance) - amt }).eq("company_id", companyId || "sandbox-llc").eq("id", tenantRow.id); // balance update (unchecked ok — RPC primary)
+      }
+      await safeLedgerInsert({ company_id: companyId || "sandbox-llc",
+        tenant: s.tenant, property: s.property,
+        date: today, description: "Autopay payment (" + s.method + ")",
+        amount: -amt, type: "payment", balance: safeNum(tenantRow.balance) - amt,
+      });
+    }
+
+    fetchData();
   }
 
   function nextDue(s) {
     const today = new Date();
-    const next = new Date(today.getFullYear(), today.getMonth(), parseInt(s.day_of_month));
-    if (next <= today) next.setMonth(next.getMonth() + 1);
-    if (s.end_date && next > new Date(s.end_date)) return "Expired";
+    const rawDay = parseInt(s.day_of_month) || 1;
+    // Clamp day to valid range for current month
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    const day = Math.min(rawDay, daysInMonth);
+    const next = new Date(today.getFullYear(), today.getMonth(), day);
+    if (next <= today) {
+      next.setMonth(next.getMonth() + 1);
+      // Re-clamp for next month (e.g., 31 in Feb → 28)
+      const nextDaysInMonth = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+      if (next.getDate() > nextDaysInMonth) next.setDate(nextDaysInMonth);
+    }
+    if (s.end_date && next > parseLocalDate(s.end_date)) return "Expired";
     return next.toLocaleDateString();
   }
 
@@ -6515,8 +6822,8 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
       setRules(r.data || []);
       setTenants(t.data || []);
       const today = new Date();
-      const overdue = (p.data || []).filter(pay => pay.date && Math.floor((today - new Date(pay.date)) / 86400000) > 0)
-        .map(pay => ({ ...pay, daysLate: Math.floor((today - new Date(pay.date)) / 86400000) }));
+      const overdue = (p.data || []).filter(pay => pay.date && Math.floor((today - parseLocalDate(pay.date)) / 86400000) > 0)
+        .map(pay => ({ ...pay, daysLate: Math.floor((today - parseLocalDate(pay.date)) / 86400000) }));
       setFlagged(overdue);
     } catch {
       setRules([]);
@@ -6528,6 +6835,8 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
 
   async function saveRule() {
     if (!form.grace_days || !form.fee_amount) { alert("Please fill all fields."); return; }
+    if (isNaN(Number(form.grace_days)) || Number(form.grace_days) < 0) { alert("Grace days must be a valid number."); return; }
+    if (isNaN(Number(form.fee_amount)) || Number(form.fee_amount) <= 0) { alert("Fee amount must be a positive number."); return; }
     const { error } = await supabase.from("late_fee_rules").insert([{ company_id: companyId || "sandbox-llc", ...form, grace_days: Number(form.grace_days), fee_amount: Number(form.fee_amount) }]);
     if (error) { alert("Error: " + error.message); return; }
     addNotification("⚠️", `Late fee rule "${form.name}" created`);
@@ -6536,12 +6845,26 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
   }
 
   async function applyLateFee(payment, rule) {
-    const feeAmount = rule.fee_type === "flat" ? rule.fee_amount : Math.round(payment.amount * rule.fee_amount / 100);
+    // Duplicate guard: check if late fee already applied for this tenant this month
+    const thisMonth = formatLocalDate(new Date()).slice(0, 7);
+    const { data: existingFee } = await supabase.from("ledger_entries").select("id")
+      .eq("company_id", companyId || "sandbox-llc").eq("tenant", payment.tenant)
+      .eq("property", payment.property).eq("type", "late_fee").gte("date", thisMonth + "-01").limit(1);
+    if (existingFee && existingFee.length > 0) {
+      console.warn("Late fee already applied for " + payment.tenant + " this month");
+      return;
+    }
     const tenant = tenants.find(t => t.name === payment.tenant);
+    const feeAmount = rule.fee_type === "flat" ? rule.fee_amount : Math.round((tenant?.rent || payment.amount) * rule.fee_amount / 100);
     if (tenant) {
       const newBalance = safeNum(tenant.balance) + feeAmount;
-      await supabase.from("ledger_entries").insert([{ company_id: companyId || "sandbox-llc", tenant: payment.tenant, property: payment.property, date: new Date().toISOString().slice(0, 10), description: `Late fee — ${payment.daysLate} days overdue`, amount: feeAmount, type: "late_fee", balance: newBalance }]);
-      await supabase.from("tenants").update({ balance: newBalance }).eq("id", tenant.id);
+      await safeLedgerInsert({ company_id: companyId || "sandbox-llc", tenant: payment.tenant, property: payment.property, date: formatLocalDate(new Date()), description: `Late fee — ${payment.daysLate} days overdue`, amount: feeAmount, type: "late_fee", balance: newBalance });
+      // Atomic balance update (prevents drift from concurrent writes)
+      try {
+        await supabase.rpc("update_tenant_balance", { p_tenant_id: tenant.id, p_amount_change: feeAmount });
+      } catch {
+        await supabase.from("tenants").update({ balance: newBalance }).eq("company_id", companyId || "sandbox-llc").eq("id", tenant.id); // balance update (unchecked ok — RPC primary)
+      }
     }
     addNotification("⚠️", `Late fee $${feeAmount} applied to ${payment.tenant}`);
     // AUTO-POST TO ACCOUNTING: DR Accounts Receivable, CR Late Fee Income
@@ -6549,7 +6872,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
     if (feeAmount > 0) {
       await autoPostJournalEntry({
         companyId,
-        date: new Date().toISOString().slice(0, 10),
+        date: formatLocalDate(new Date()),
         description: "Late fee - " + payment.tenant + " - " + payment.property,
         reference: "LATE-" + Date.now(),
         property: payment.property,
@@ -6593,7 +6916,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
                 <div className="font-semibold text-indigo-800 text-sm">{r.name}</div>
                 <div className="text-xs text-indigo-500">{r.grace_days} day grace · {r.fee_type === "flat" ? `$${r.fee_amount} flat` : `${r.fee_amount}% of rent`}</div>
               </div>
-              <button onClick={async () => { await supabase.from("late_fee_rules").delete().eq("id", r.id).eq("company_id", companyId || "sandbox-llc"); fetchData(); }} className="text-xs text-red-400 hover:text-red-600">Delete</button>
+              <button onClick={async () => { if(!window.confirm("Delete this late fee rule?"))return; await supabase.from("late_fee_rules").delete().eq("id", r.id).eq("company_id", companyId || "sandbox-llc"); fetchData(); }} className="text-xs text-red-400 hover:text-red-600">Delete</button>
             </div>
           ))}
         </div>
@@ -6706,42 +7029,44 @@ function TenantPortal({ currentUser, companyId }) {
     if (!paymentAmount || isNaN(Number(paymentAmount)) || Number(paymentAmount) <= 0) {
       alert("Please enter a valid payment amount."); return;
     }
+    if (Number(paymentAmount) > safeNum(tenantData.balance) * 2) {
+      if (!window.confirm("Payment amount ($" + paymentAmount + ") is significantly more than your balance ($" + safeNum(tenantData.balance).toFixed(2) + "). Continue?")) return;
+    }
     setPaymentProcessing(true);
     try {
       // Call Stripe Checkout via serverless function or edge function
       // For now, we create a payment intent simulation and record the payment
       // In production, replace this with actual Stripe API call to your backend
       const amt = Number(paymentAmount);
-      const today = new Date().toISOString().slice(0, 10);
-      // Record payment
-      const { error: payErr } = await supabase.from("payments").insert([{ company_id: companyId || "sandbox-llc",
-        tenant: tenantData.name,
-        property: tenantData.property,
-        amount: amt,
-        type: "rent",
-        method: "stripe",
-        status: "paid",
-        date: today,
-      }]);
-      if (payErr) throw new Error("Failed to record payment: " + payErr.message);
-      // Update tenant balance
-      const newBalance = Math.max(0, safeNum(tenantData.balance) - amt);
-      await supabase.from("tenants").update({ balance: newBalance }).eq("id", tenantData.id);
-      // Add ledger entry
-      await supabase.from("ledger_entries").insert([{ company_id: companyId || "sandbox-llc",
-        tenant: tenantData.name,
-        property: tenantData.property,
-        date: today,
-        description: "Rent payment (online)",
-        amount: -amt,
-        type: "payment",
-        balance: newBalance,
-      }]);
+      const today = formatLocalDate(new Date());
+      // Use dedicated tenant payment RPC (atomic, role-validated)
+      try {
+        const { data: payResult, error: payErr } = await supabase.rpc("tenant_make_payment", {
+          p_company_id: companyId || "sandbox-llc",
+          p_tenant_id: tenantData.id,
+          p_amount: amt,
+          p_method: "stripe",
+        });
+        if (payErr) throw new Error(payErr.message);
+      } catch (rpcE) {
+        // Fallback: direct insert (for when RPC not deployed)
+        const { error: payErr } = await supabase.from("payments").insert([{ company_id: companyId || "sandbox-llc",
+          tenant: tenantData.name, property: tenantData.property, amount: amt,
+          type: "rent", method: "stripe", status: "paid", date: today,
+        }]);
+        if (payErr) throw new Error("Failed to record payment: " + payErr.message);
+        await supabase.from("tenants").update({ balance: safeNum(tenantData.balance) - amt }).eq("company_id", companyId || "sandbox-llc").eq("id", tenantData.id); // balance update (unchecked ok — RPC primary)
+        await safeLedgerInsert({ company_id: companyId || "sandbox-llc",
+          tenant: tenantData.name, property: tenantData.property, date: today,
+          description: "Rent payment (online)", amount: -amt, type: "payment", balance: 0,
+        });
+      }
+      const newBalance = safeNum(tenantData.balance) - amt;
       // Auto-post to accounting
       const classId = await getPropertyClassId(tenantData.property, companyId);
       const month = today.slice(0, 7);
       let hasAccrual = false;
-      const { data: accrualJEs } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId || "sandbox-llc").like("reference", "ACCR-" + month + "%");
+      const { data: accrualJEs } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId || "sandbox-llc").like("reference", "ACCR-" + month + "%").neq("status", "voided");
       if (accrualJEs && accrualJEs.length > 0) {
         for (const je of accrualJEs) {
           const { data: jLines } = await supabase.from("acct_journal_lines").select("memo").eq("journal_entry_id", je.id);
@@ -7151,13 +7476,13 @@ function RoleManagement({ addNotification, companyId }) {
       const { error } = await supabase.from("app_users").update({ email: payload.email, role: payload.role, name: payload.name, custom_pages: payload.custom_pages, company_id: payload.company_id }).eq("id", editingUser.id);
       if (error) { alert("Error: " + error.message); return; }
       // Also update company_members
-      await supabase.from("company_members").upsert([{ company_id: companyId || "sandbox-llc", user_email: form.email, user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
+      await supabase.from("company_members").upsert([{ company_id: companyId || "sandbox-llc", user_email: (form.email || "").toLowerCase(), user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
       addNotification("👥", `${form.name}'s access updated`);
     } else {
       const { error, data: newUser } = await supabase.from("app_users").insert([payload]).select();
       if (error) { alert("Error: " + error.message); return; }
       // Also add to company_members
-      await supabase.from("company_members").upsert([{ company_id: companyId || "sandbox-llc", user_email: form.email, user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
+      await supabase.from("company_members").upsert([{ company_id: companyId || "sandbox-llc", user_email: (form.email || "").toLowerCase(), user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
       addNotification("👥", `${form.name} added as ${ROLES[form.role]?.label}`);
       // Offer to send invite
       if (newUser?.[0] && window.confirm(`${form.name} has been added!\n\nWould you like to send them a login invite now?`)) {
@@ -7172,9 +7497,13 @@ function RoleManagement({ addNotification, companyId }) {
     fetchUsers();
   }
 
-  async function removeUser(id, name) {
+  async function removeUser(id, name, email) {
     if (!window.confirm(`Remove ${name}?`)) return;
     await supabase.from("app_users").delete().eq("id", id).eq("company_id", companyId || "sandbox-llc");
+    // Also deactivate their company membership
+    if (email) {
+      await supabase.from("company_members").update({ status: "removed" }).eq("company_id", companyId || "sandbox-llc").eq("user_email", email.toLowerCase());
+    }
     addNotification("👥", `${name} removed`);
     fetchUsers();
   }
@@ -7192,16 +7521,17 @@ function RoleManagement({ addNotification, companyId }) {
         console.warn("Auth invite failed:", authErr.message);
       }
       // Ensure app_users entry exists with correct role
+      // Insert only if no existing row — don't overwrite other company's data
       await supabase.from("app_users").upsert([{
-        email: user.email,
+        email: (user.email || "").toLowerCase(),
         name: user.name,
         role: user.role,
         company_id: companyId || "sandbox-llc",
         custom_pages: user.custom_pages || JSON.stringify(ROLES[user.role]?.pages || []),
-      }], { onConflict: "email" });
+      }], { onConflict: "email", ignoreDuplicates: true });
       // Ensure company_members entry
       await supabase.from("company_members").upsert([{
-        company_id: companyId || "sandbox-llc", user_email: user.email, user_name: user.name,
+        company_id: companyId || "sandbox-llc", user_email: (user.email || "").toLowerCase(), user_name: user.name,
         role: user.role, status: "active", invited_by: "admin",
       }], { onConflict: "company_id,user_email" });
       addNotification("✉️", `Invite sent to ${user.name} (${roleName})`);
@@ -7364,7 +7694,7 @@ function RoleManagement({ addNotification, companyId }) {
                   <button onClick={() => startEdit(u)} className="text-xs text-indigo-500 border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50">
                     ✏️ Edit
                   </button>
-                  <button onClick={() => removeUser(u.id, u.name)} className="text-xs text-red-400 hover:text-red-600 border border-red-100 px-2 py-1 rounded-lg hover:bg-red-50">
+                  <button onClick={() => removeUser(u.id, u.name, u.email)} className="text-xs text-red-400 hover:text-red-600 border border-red-100 px-2 py-1 rounded-lg hover:bg-red-50">
                     Remove
                   </button>
                 </div>
@@ -7591,7 +7921,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
     if (!createForm.name.trim()) { alert("Company name is required."); return; }
     const companyId = "co-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     // Generate unique 8-digit numeric company code
-    const companyCode = String(10000000 + Math.floor(Math.random() * 89999999));
+    const ccArr = new Uint32Array(1); crypto.getRandomValues(ccArr); const companyCode = String(10000000 + (ccArr[0] % 89999999));
     const { data, error } = await supabase.from("companies").insert([{
       id: companyId, name: createForm.name, type: createForm.type, company_code: companyCode,
       company_role: createForm.company_role || "management",
@@ -7615,12 +7945,14 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
       { id: "1100", name: "Accounts Receivable", type: "Asset", subtype: "Accounts Receivable", is_active: true, company_id: companyId },
       { id: "2100", name: "Security Deposits Held", type: "Liability", subtype: "Other Current Liability", is_active: true, company_id: companyId },
       { id: "2200", name: "Owner Distributions Payable", type: "Liability", subtype: "Other Current Liability", is_active: true, company_id: companyId },
+      { id: "3000", name: "Owner Equity", type: "Equity", subtype: "Owner's Equity", is_active: true, company_id: companyId },
       { id: "4000", name: "Rental Income", type: "Revenue", subtype: "Rental Income", is_active: true, company_id: companyId },
       { id: "4010", name: "Late Fee Income", type: "Revenue", subtype: "Other Primary Income", is_active: true, company_id: companyId },
       { id: "4100", name: "Other Income", type: "Revenue", subtype: "Other Primary Income", is_active: true, company_id: companyId },
       { id: "4200", name: "Management Fee Income", type: "Revenue", subtype: "Service Income", is_active: true, company_id: companyId },
       { id: "5300", name: "Repairs & Maintenance", type: "Expense", subtype: "Maintenance & Repairs", is_active: true, company_id: companyId },
       { id: "5400", name: "Utilities", type: "Expense", subtype: "Utilities", is_active: true, company_id: companyId },
+      { id: "5500", name: "HOA Fees", type: "Expense", subtype: "HOA & Association Fees", is_active: true, company_id: companyId },
     ];
     await supabase.from("acct_accounts").upsert(defaultAccounts.map(a => ({ ...a, id: companyId.slice(0, 8) + "-" + a.id })), { onConflict: "id" });
     alert("Company created!\n\nCompany Code: " + companyCode + "\n\nShare this code with people you want to invite.");
@@ -7647,6 +7979,8 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
     if (existing) {
       if (existing.status === "active") { alert("You're already a member of " + company.name); return; }
       if (existing.status === "pending") { alert("Your request to join " + company.name + " is pending admin approval."); return; }
+      if (existing.status === "rejected") { alert("Your previous request to join " + company.name + " was rejected. Please contact the company admin directly."); return; }
+      if (existing.status === "removed") { alert("You were previously removed from " + company.name + ". Please contact the company admin to be re-added."); return; }
     }
     await supabase.from("company_members").upsert([{
       company_id: company.id, user_email: currentUser?.email, user_name: currentUser?.email?.split("@")[0] || "",
@@ -7812,9 +8146,10 @@ function PendingRequestsPanel({ companyId, addNotification }) {
     await supabase.from("company_members").update({ status: newStatus }).eq("id", member.id);
     if (action === "approve") {
       // Also add to app_users
+      // Insert only if no existing row — don't overwrite other company's data
       await supabase.from("app_users").upsert([{
-        email: member.user_email, name: member.user_name, role: member.role, company_id: companyId,
-      }], { onConflict: "email" });
+        email: (member.user_email || "").toLowerCase(), name: member.user_name, role: member.role, company_id: companyId,
+      }], { onConflict: "email", ignoreDuplicates: true });
       addNotification("✅", member.user_name + " approved to join");
     } else {
       addNotification("❌", member.user_name + "'s request rejected");
@@ -7855,7 +8190,7 @@ export default function App() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [currentUser, setCurrentUser] = useState(null);
-  const [userRole, setUserRole] = useState("admin");
+  const [userRole, setUserRole] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [customAllowedPages, setCustomAllowedPages] = useState(null);
   // Company context
@@ -7887,7 +8222,7 @@ export default function App() {
   // Auto-select company ONLY for tenant/owner roles — everyone else sees the company selector
   async function autoSelectCompany(user) {
     if (!user?.email) return;
-    const { data: memberships } = await supabase.from("company_members").select("company_id, role, status").eq("user_email", user.email).eq("status", "active");
+    const { data: memberships } = await supabase.from("company_members").select("company_id, role, status").ilike("user_email", user.email).eq("status", "active");
     if (!memberships || memberships.length === 0) { setScreen("company_select"); return; }
     // Only tenants auto-select their company (skip selector)
     const tenantMembership = memberships.find(m => m.role === "tenant");
@@ -7912,7 +8247,7 @@ export default function App() {
   async function fetchUserRoleForCompany(user, companyId) {
     if (!user?.email || !companyId) return;
     try {
-      const { data } = await supabase.from("company_members").select("*").eq("company_id", companyId).eq("user_email", user.email).eq("status", "active").maybeSingle();
+      const { data } = await supabase.from("company_members").select("*").eq("company_id", companyId).ilike("user_email", user.email).eq("status", "active").maybeSingle();
       if (data) {
         setUserRole(data.role);
         setCompanyRole(data.role);
@@ -7979,7 +8314,7 @@ export default function App() {
   }
 
   // Build nav based on role
-  const allowedPages = customAllowedPages || ROLES[userRole]?.pages || ROLES.admin.pages;
+  const allowedPages = customAllowedPages || ROLES[userRole]?.pages || [];
   const navItems = ALL_NAV.filter(n => allowedPages.includes(n.id));
   const adminNav = userRole === "admin"
     ? [...navItems, { id: "roles", label: "Team & Roles", icon: "👥" }]
@@ -7987,7 +8322,7 @@ export default function App() {
 
   // Owner-admins (created their own company) get full app access
   // Only force owner_portal for owners invited into a PM's company
-  const effectivePage = userRole === "tenant" ? "tenant_portal" : (userRole === "owner" && companyRole !== "admin") ? "owner_portal" : page;
+  const effectivePage = !userRole ? "dashboard" : userRole === "tenant" ? "tenant_portal" : (userRole === "owner" && companyRole !== "admin") ? "owner_portal" : page;
   const Page = pageComponents[effectivePage] || Dashboard;
   const safePage = allowedPages.includes(page) ? page : allowedPages[0];
 
