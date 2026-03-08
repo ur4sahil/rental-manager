@@ -101,6 +101,9 @@ async function safeWrite(operation, context = "") {
 function normalizeEmail(email) {
   return (email || "").toLowerCase().trim();
 }
+function formatCurrency(amount) {
+  return "$" + safeNum(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 function escapeHtml(str) {
   if (!str) return "";
   return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
@@ -733,12 +736,12 @@ function Dashboard({ notifications, setPage, companyId }) {
 
       <div className="grid grid-cols-2 gap-3 mb-4 md:grid-cols-4">
         <StatCard label="Occupancy" value={`${occupied}/${properties.length}`} sub={`${properties.length ? Math.round(occupied / properties.length * 100) : 0}% occupied`} color="text-green-600" />
-        <StatCard label="Revenue (Acctg)" value={`$${acctRevenue.toLocaleString()}`} sub="from journal entries" color="text-blue-600" />
-        <StatCard label="Expenses (Acctg)" value={`$${acctExpenses.toLocaleString()}`} sub="from journal entries" color="text-red-500" />
+        <StatCard label="Revenue (Acctg)" value={`${formatCurrency(acctRevenue)}`} sub="from journal entries" color="text-blue-600" />
+        <StatCard label="Expenses (Acctg)" value={`${formatCurrency(acctExpenses)}`} sub="from journal entries" color="text-red-500" />
         <StatCard label="Net Income" value={`$${(acctRevenue - acctExpenses).toLocaleString()}`} sub="revenue - expenses" color={acctRevenue - acctExpenses >= 0 ? "text-emerald-600" : "text-red-600"} />
       </div>
       <div className="grid grid-cols-2 gap-3 mb-6 md:grid-cols-4">
-        <StatCard label="Rent Collected" value={`$${totalRent.toLocaleString()}`} sub="payments table" color="text-indigo-600" />
+        <StatCard label="Rent Collected" value={`${formatCurrency(totalRent)}`} sub="payments table" color="text-indigo-600" />
         <StatCard label="Delinquent" value={delinquent} sub="tenants with balance" color="text-orange-500" />
         <StatCard label="Open Work Orders" value={openWO} sub={`${workOrders.filter(w => w.priority === "emergency").length} emergency`} color="text-orange-500" />
         <StatCard label="Pending Utilities" value={utilities.filter(u => u.status === "pending").length} sub="awaiting payment" color="text-yellow-600" />
@@ -789,7 +792,7 @@ function Dashboard({ notifications, setPage, companyId }) {
           <h3 className="font-semibold text-gray-700 mb-3">Net Operating Income</h3>
           <div className="space-y-2">
             {[
-              ["Gross Rent Collected", `$${totalRent.toLocaleString()}`, "text-green-600"],
+              ["Gross Rent Collected", `${formatCurrency(totalRent)}`, "text-green-600"],
               ["Maintenance Costs", `-$${workOrders.reduce((s, w) => s + safeNum(w.cost), 0).toLocaleString()}`, "text-red-500"],
               ["Utility Expenses", `-$${utilities.reduce((s, u) => s + safeNum(u.amount), 0).toLocaleString()}`, "text-red-500"],
               ["NOI", `$${(totalRent - workOrders.reduce((s, w) => s + safeNum(w.cost), 0) - utilities.reduce((s, u) => s + safeNum(u.amount), 0)).toLocaleString()}`, "text-blue-700 font-bold"],
@@ -2116,8 +2119,8 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
       )}
 
       <div className="grid grid-cols-3 gap-3 mb-5">
-        <StatCard label="Expected" value={`$${totalExpected.toLocaleString()}`} color="text-gray-700" />
-        <StatCard label="Collected" value={`$${totalCollected.toLocaleString()}`} color="text-green-600" />
+        <StatCard label="Expected" value={`${formatCurrency(totalExpected)}`} color="text-gray-700" />
+        <StatCard label="Collected" value={`${formatCurrency(totalCollected)}`} color="text-green-600" />
         <StatCard label="Outstanding" value={`$${(totalExpected - totalCollected).toLocaleString()}`} color="text-red-500" />
       </div>
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
@@ -3123,7 +3126,7 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   const saveClass = async () => {
     if (!form.name.trim()) return;
     if (modal === "add") {
-      await onAdd({ id: `CLS-${String(Math.random()).slice(2,8)}`, ...form, is_active: true });
+      await onAdd({ id: `CLS-${shortId().slice(0,8)}`, ...form, is_active: true });
     } else {
       await onUpdate({ ...modal.cls, ...form });
     }
