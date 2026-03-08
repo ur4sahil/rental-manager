@@ -123,7 +123,9 @@ async function logAudit(action, module, details = "", recordId = "", userEmail =
       userEmail = user?.email || "unknown";
     }
     if (!companyId) { console.warn("logAudit: missing companyId — skipping"); return; }
-    await supabase.from("audit_trail").insert([{ company_id: companyId, action, module, details, record_id: String(recordId), user_email: normalizeEmail(userEmail), user_role: userRoleVal }]);
+    // Sanitize audit details: truncate and strip potential injection
+    const safeDetails = String(details || "").replace(/<[^>]*>/g, "").slice(0, 500);
+    await supabase.from("audit_trail").insert([{ company_id: companyId, action, module, details: safeDetails, record_id: String(recordId), user_email: normalizeEmail(userEmail), user_role: userRoleVal }]);
   } catch (e) { console.warn("Audit log failed:", e); }
 }
 
@@ -1397,8 +1399,15 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
     if (!window.confirm("Send portal invite to " + tenant.email + "?\n\nThis will:\n1. Generate a unique invite code for this tenant\n2. Send a magic link to their email\n3. They can sign up using the invite code to access their portal")) return;
     try {
       // Generate unique invite code
-      const codeArr = new Uint32Array(1); crypto.getRandomValues(codeArr); const code = "TNT-" + String(10000000 + (codeArr[0] % 89999999));
-      await supabase.from("tenant_invite_codes").insert([{
+      // Generate unique invite code with collision retry
+      let code, codeInsertErr;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const codeArr = new Uint32Array(1); crypto.getRandomValues(codeArr);
+        code = "TNT-" + String(10000000 + (codeArr[0] % 89999999));
+        const { error: checkErr } = await supabase.from("tenant_invite_codes").select("id").eq("code", code).maybeSingle();
+        if (!checkErr) break; // No collision
+      }
+      const { error: codeInsertError } = await supabase.from("tenant_invite_codes").insert([{
         code: code,
         company_id: companyId,
         property: tenant.property || "",
@@ -1435,7 +1444,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         status: "active",
         invited_by: userProfile?.email || "admin",
       }], { onConflict: "company_id,user_email" });
-      addNotification("✉️", "Invite code generated for " + tenant.email + ": " + code);
+      addNotification("✉️", "Invite code generated for " + tenant.email);
       logAudit("create", "tenants", "Invited tenant to portal: " + tenant.email, tenant.id, userProfile?.email, userRole, companyId);
       alert("Tenant invite created!\n\nInvite Code: " + code + "\n\nShare this code with " + tenant.name + ". They can sign up at your app URL by selecting 'I'm a Tenant' and entering this code.\n\nA magic link email was also sent to " + tenant.email);
     } catch (e) {
@@ -5053,7 +5062,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
     const vendor = vendors.find(v => String(v.id) === String(inv.vendor_id));
     if (vendor) {
       // Atomic increment (fetch fresh, then update — still not perfect but reads fresh data)
-      const { data: freshVendor } = await supabase.from("vendors").select("total_paid, total_jobs").eq("id", vendor.id).maybeSingle();
+      const { data: freshVendor } = await supabase.from("vendors").select("total_paid, total_jobs").eq("company_id", companyId).eq("id", vendor.id).maybeSingle();
       if (freshVendor) {
         await supabase.from("vendors").update({
           total_paid: safeNum(freshVendor.total_paid) + safeNum(inv.amount),
@@ -5473,8 +5482,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
       reference: "DIST-" + stmt.period, date: today,
     }]);
     if (distErr) { alert("Error recording distribution: " + distErr.message); return; }
-    await supabase.from("owner_statements").update({ status: "paid", paid_date: today }).eq("company_id", companyId).eq("id", stmt.id);
-    // Post to accounting
+    // Post to accounting BEFORE marking statement as paid
     await autoPostJournalEntry({
       companyId,
       date: today,
@@ -5500,6 +5508,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
         ]
       });
     }
+    // Mark statement as paid only AFTER distribution + JE posting succeed
+    await supabase.from("owner_statements").update({ status: "paid", paid_date: today }).eq("company_id", companyId).eq("id", stmt.id);
     logAudit("create", "owner_distributions", "Distributed $" + stmt.net_to_owner + " to " + stmt.owner_name, stmt.id, userProfile?.email, userRole, companyId);
     fetchData();
     } finally { guardRelease("distributeToOwner"); }
@@ -5807,7 +5817,8 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
     const bookBal = (allLines || []).reduce((s, l) => s + safeNum(l.debit) - safeNum(l.credit), 0);
     const bankBal = Number(bankBalance);
     const diff = Math.round((bankBal - bookBal) * 100) / 100;
-    const status = Math.abs(diff) < 0.01 && reconItems.every(i => i.reconciled) ? "reconciled" : Math.abs(diff) < 0.01 ? "reconciled" : "discrepancy";
+    const allItemsReconciled = reconItems.every(i => i.reconciled);
+    const status = Math.abs(diff) < 0.01 && allItemsReconciled ? "reconciled" : Math.abs(diff) < 0.01 && !allItemsReconciled ? "pending_items" : "discrepancy";
 
     // Save reconciliation record
     const { error } = await supabase.from("bank_reconciliations").insert([{ company_id: companyId,
@@ -5826,7 +5837,11 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
     const reconIds = reconItems.filter(i => i.reconciled).map(i => i.id);
     if (reconIds.length > 0) {
       const today = formatLocalDate(new Date());
-      await supabase.from("acct_journal_lines").update({ reconciled: true, reconciled_date: today }).in("id", reconIds);
+      // Verify these lines belong to this company's JEs before marking reconciled
+      const validJeIds = new Set((journalEntries || []).map(j => j.id));
+      const { data: checkLines } = await supabase.from("acct_journal_lines").select("id, journal_entry_id").in("id", reconIds);
+      const safeIds = (checkLines || []).filter(l => validJeIds.has(l.journal_entry_id)).map(l => l.id);
+      if (safeIds.length > 0) await supabase.from("acct_journal_lines").update({ reconciled: true, reconciled_date: today }).in("id", safeIds);
     }
 
     logAudit("create", "bank_reconciliation", "Bank reconciliation for " + reconPeriod + " — diff: $" + diff, "", "", "", companyId);
@@ -6220,7 +6235,9 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
     const existing = signers.map(s => s.signer_role);
     const toCreate = [];
     if (!existing.includes("tenant")) {
-      toCreate.push({ lease_id: lease.id, signer_name: lease.tenant_name, signer_email: "", signer_role: "tenant", status: "pending" });
+      // Find tenant email for signature tracking
+    const { data: sigTenant } = await supabase.from("tenants").select("email").eq("company_id", companyId).eq("name", lease.tenant_name).maybeSingle();
+    toCreate.push({ lease_id: lease.id, signer_name: lease.tenant_name, signer_email: sigTenant?.email || "", signer_role: "tenant", status: "pending" });
     }
     if (!existing.includes("landlord")) {
       toCreate.push({ lease_id: lease.id, signer_name: userProfile?.name || "Property Manager", signer_email: userProfile?.email || "", signer_role: "landlord", status: "pending" });
@@ -7795,7 +7812,7 @@ function RoleManagement({ addNotification, companyId }) {
     };
 
     if (editingUser) {
-      const { error } = await supabase.from("app_users").update({ email: normalizeEmail(payload.email), role: payload.role, name: payload.name, custom_pages: payload.custom_pages, company_id: payload.company_id }).eq("id", editingUser.id);
+      const { error } = await supabase.from("app_users").update({ email: normalizeEmail(payload.email), role: payload.role, name: payload.name, custom_pages: payload.custom_pages, company_id: payload.company_id }).eq("company_id", companyId).eq("id", editingUser.id);
       if (error) { alert("Error: " + error.message); return; }
       // Also update company_members
       await supabase.from("company_members").upsert([{ company_id: companyId, user_email: (form.email || "").toLowerCase(), user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
@@ -7860,7 +7877,7 @@ function RoleManagement({ addNotification, companyId }) {
       // Ensure company_members entry
       await supabase.from("company_members").upsert([{
         company_id: companyId, user_email: (user.email || "").toLowerCase(), user_name: user.name,
-        role: user.role, status: "active", invited_by: "admin",
+        role: user.role, status: "invited", invited_by: "admin",
       }], { onConflict: "company_id,user_email" });
       addNotification("✉️", `Invite sent to ${user.name} (${roleName})`);
       logAudit("create", "team", "Invited " + user.name + " as " + roleName + ": " + user.email, user.id || "", "", "admin", companyId);
@@ -8250,7 +8267,15 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
     if (!createForm.name.trim()) { alert("Company name is required."); return; }
     const companyId = "co-" + shortId() + shortId().slice(0, 4);
     // Generate unique 8-digit numeric company code
-    const ccArr = new Uint32Array(1); crypto.getRandomValues(ccArr); const companyCode = String(10000000 + (ccArr[0] % 89999999));
+    // Generate unique company code with collision retry
+    let companyCode;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const ccArr = new Uint32Array(1); crypto.getRandomValues(ccArr);
+      companyCode = String(10000000 + (ccArr[0] % 89999999));
+      const { data: existing } = await supabase.from("companies").select("id").eq("company_code", companyCode).maybeSingle();
+      if (!existing) break;
+      if (attempt === 4) { alert("Could not generate unique company code. Please try again."); return; }
+    }
     const { data, error } = await supabase.from("companies").insert([{
       id: companyId, name: createForm.name, type: createForm.type, company_code: companyCode,
       company_role: createForm.company_role || "management",
@@ -8293,13 +8318,16 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
 
   async function searchCompanies() {
     if (!joinSearch.trim() && !joinCode.trim()) return;
+    // Require minimum input length to prevent enumeration
+    if (joinCode.trim() && joinCode.trim().length < 8) { alert("Please enter the full 8-digit company code."); return; }
+    if (!joinCode.trim() && joinSearch.trim().length < 3) { alert("Please enter at least 3 characters to search."); return; }
     let query = supabase.from("companies").select("id, name, type, company_code");
     if (joinCode.trim()) {
-      query = query.ilike("company_code", joinCode.trim());
+      query = query.eq("company_code", joinCode.trim());
     } else {
       query = query.ilike("name", "%" + joinSearch.trim() + "%");
     }
-    const { data } = await query.limit(10);
+    const { data } = await query.limit(5);
     setSearchResults(data || []);
   }
 
