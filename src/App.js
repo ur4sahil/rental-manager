@@ -294,7 +294,7 @@ async function autoPostRentCharges(companyId) {
             } catch {
               // Fallback to client-side if RPC not deployed
               const { data: tenant } = await supabase.from("tenants").select("balance").eq("id", lease.tenant_id).maybeSingle();
-              await supabase.from("tenants").update({ balance: safeNum(tenant?.balance) + monthRent }).eq("company_id", companyId).eq("id", lease.tenant_id); // balance update (unchecked ok — RPC primary)
+              await supabase.from("tenants").update({ balance: safeNum(tenant?.balance) + monthRent }).eq("company_id", companyId).eq("id", lease.tenant_id); // FALLBACK: race-prone read-modify-write — deploy security-fixes.sql for atomic RPC
             }
           }
 
@@ -521,12 +521,13 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
     });
     if (signupErr) { setError(signupErr.message); setLoading(false); return; }
 
-    // Save user_type to app_users
-    const { error: appUserErr } = await supabase.from("app_users").upsert([{
+    // Save user_type to app_users (no company_id yet — will be set when they create/join a company)
+    // Use insert with ignore to avoid overwriting existing rows for other companies
+    const { error: appUserErr } = await supabase.from("app_users").insert([{
       email: email.toLowerCase(), name: name.trim(), role: userType === "tenant" ? "tenant" : userType === "owner" ? "owner" : "pm",
       user_type: userType,
-    }], { onConflict: "email" });
-    if (appUserErr) { console.warn("app_users write failed:", appUserErr.message); }
+    }]).select();
+    if (appUserErr && !appUserErr.message.includes("duplicate")) { console.warn("app_users write failed:", appUserErr.message); }
 
     // For tenant, redeem invite code atomically via RPC (SECURITY DEFINER, prevents race condition)
     if (userType === "tenant") {
@@ -1429,7 +1430,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         role: "tenant",
         user_type: "tenant",
         company_id: companyId,
-      }], { onConflict: "email", ignoreDuplicates: true });
+      }], { onConflict: "email,company_id" });
       // Create company_members entry so tenant is auto-routed to this company
       await supabase.from("company_members").upsert([{
         company_id: companyId,
@@ -1507,7 +1508,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
     try {
       await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: amount });
     } catch {
-      await supabase.from("tenants").update({ balance: newBalance }).eq("company_id", companyId).eq("id", selectedTenant.id); // balance update (unchecked ok — RPC primary)
+      await supabase.from("tenants").update({ balance: newBalance }).eq("company_id", companyId).eq("id", selectedTenant.id); // FALLBACK: race-prone read-modify-write — deploy security-fixes.sql for atomic RPC
     }
     // Post accounting JE for manual charges/credits
     if (Math.abs(amount) > 0) {
@@ -2044,7 +2045,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
       try {
         await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -payAmt });
       } catch {
-        await supabase.from("tenants").update({ balance: safeNum(tenantRow.balance) - payAmt }).eq("company_id", companyId).eq("id", tenantRow.id); // balance update (unchecked ok — RPC primary)
+        await supabase.from("tenants").update({ balance: safeNum(tenantRow.balance) - payAmt }).eq("company_id", companyId).eq("id", tenantRow.id); // FALLBACK: race-prone read-modify-write — deploy security-fixes.sql for atomic RPC
       }
       // Create ledger entry
       await safeLedgerInsert({ company_id: companyId,
@@ -3949,7 +3950,7 @@ function Accounting({ companyId, activeCompany }) {
             try {
               await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -arImpact });
             } catch {
-              await supabase.from("tenants").update({ balance: safeNum(tenantRow.balance) - arImpact }).eq("company_id", companyId).eq("id", tenantRow.id); // balance update (unchecked ok — RPC primary)
+              await supabase.from("tenants").update({ balance: safeNum(tenantRow.balance) - arImpact }).eq("company_id", companyId).eq("id", tenantRow.id); // FALLBACK: race-prone read-modify-write — deploy security-fixes.sql for atomic RPC
             }
             await safeLedgerInsert({ company_id: companyId,
               tenant: tenantName.trim(), property: je.property || "",
@@ -4585,7 +4586,6 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     // Auto-post rent charges for this lease immediately
     if (!editingLease) await autoPostRentCharges(companyId);
     logAudit(editingLease ? "update" : "create", "leases", (editingLease ? "Updated" : "Created") + " lease: " + form.tenant_name + " at " + form.property, editingLease?.id || "", userProfile?.email, userRole, companyId);
-    guardRelease("saveLease");
     resetForm(); fetchData();
     } finally { guardRelease("saveLease"); }
   }
@@ -5389,7 +5389,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
         name: owner.name,
         role: "owner",
         company_id: companyId,
-      }], { onConflict: "email", ignoreDuplicates: true });
+      }], { onConflict: "email,company_id" });
       // Create company_members entry so owner is auto-routed to this company
       await supabase.from("company_members").upsert([{
         company_id: companyId,
@@ -6298,11 +6298,18 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
     }
 
     setSigning(true);
+    // Attempt to get real IP via edge function, fall back to hostname
+    let signerIp = window.location.hostname || "browser-client";
+    try {
+      const { data: ipData } = await supabase.functions.invoke("get-signer-ip");
+      if (ipData?.ip) signerIp = ipData.ip;
+    } catch { /* Edge function not deployed — use fallback */ }
     const { error: sigErr } = await supabase.from("lease_signatures").update({
       status: "signed",
       signed_at: new Date().toISOString(),
       signature_data: sigData,
-      ip_address: window.location.hostname || "browser-client",
+      ip_address: signerIp,
+      user_agent: navigator.userAgent || "",
     }).eq("lease_id", lease.id).eq("id", signer.id);
     if (sigErr) { alert("Error recording signature: " + sigErr.message); setSigning(false); return; }
 
@@ -6987,7 +6994,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
       try {
         await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -amt });
       } catch {
-        await supabase.from("tenants").update({ balance: safeNum(tenantRow.balance) - amt }).eq("company_id", companyId).eq("id", tenantRow.id); // balance update (unchecked ok — RPC primary)
+        await supabase.from("tenants").update({ balance: safeNum(tenantRow.balance) - amt }).eq("company_id", companyId).eq("id", tenantRow.id); // FALLBACK: race-prone read-modify-write — deploy security-fixes.sql for atomic RPC
       }
       await safeLedgerInsert({ company_id: companyId,
         tenant: s.tenant, property: s.property,
@@ -7180,7 +7187,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
       try {
         await supabase.rpc("update_tenant_balance", { p_tenant_id: tenant.id, p_amount_change: feeAmount });
       } catch {
-        await supabase.from("tenants").update({ balance: newBalance }).eq("company_id", companyId).eq("id", tenant.id); // balance update (unchecked ok — RPC primary)
+        await supabase.from("tenants").update({ balance: newBalance }).eq("company_id", companyId).eq("id", tenant.id); // FALLBACK: race-prone read-modify-write — deploy security-fixes.sql for atomic RPC
       }
     }
     addNotification("⚠️", `Late fee $${feeAmount} applied to ${payment.tenant}`);
@@ -7863,7 +7870,7 @@ function RoleManagement({ addNotification, companyId }) {
         role: user.role,
         company_id: companyId,
         custom_pages: user.custom_pages || JSON.stringify(ROLES[user.role]?.pages || []),
-      }], { onConflict: "email", ignoreDuplicates: true });
+      }], { onConflict: "email,company_id" });
       // Ensure company_members entry
       await supabase.from("company_members").upsert([{
         company_id: companyId, user_email: (user.email || "").toLowerCase(), user_name: user.name,
@@ -8274,7 +8281,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
     await supabase.from("app_users").upsert([{
       email: normalizeEmail(currentUser?.email), name: currentUser?.email?.split("@")[0] || "",
       role: "admin", company_id: companyId,
-    }], { onConflict: "email" });
+    }], { onConflict: "email,company_id" });
     // Seed default chart of accounts for this company
     const defaultAccounts = [
       { id: "1000", name: "Checking Account", type: "Asset", subtype: "Bank", is_active: true, company_id: companyId },
@@ -8487,7 +8494,7 @@ function PendingRequestsPanel({ companyId, addNotification }) {
       // Insert only if no existing row — don't overwrite other company's data
       await supabase.from("app_users").upsert([{
         email: (member.user_email || "").toLowerCase(), name: member.user_name, role: member.role, company_id: companyId,
-      }], { onConflict: "email", ignoreDuplicates: true });
+      }], { onConflict: "email,company_id" });
       addNotification("✅", member.user_name + " approved to join");
     } else {
       addNotification("❌", member.user_name + "'s request rejected");
@@ -8534,6 +8541,7 @@ export default function App() {
   // Company context
   const [activeCompany, setActiveCompany] = useState(null);
   const [companyRole, setCompanyRole] = useState("");
+  const [roleLoaded, setRoleLoaded] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -8576,6 +8584,7 @@ export default function App() {
     setActiveCompany(company);
     setCompanyRole(role);
     setUserRole(role);
+    setRoleLoaded(true);
     setUserProfile({ name: currentUser?.email?.split("@")[0] || "User", email: currentUser?.email, role: role });
     fetchUserRoleForCompany(currentUser, company.id); // async — role updates via setState after fetch
     setScreen("app");
@@ -8596,7 +8605,8 @@ export default function App() {
           setCustomAllowedPages(null);
         }
       }
-    } catch { /* ignore */ }
+      setRoleLoaded(true);
+    } catch { setRoleLoaded(true); /* still mark loaded so UI doesn't hang */ }
   }
 
   function addNotification(icon, message) {
@@ -8612,6 +8622,7 @@ export default function App() {
     setUnreadCount(0);
     setCurrentUser(null);
     setUserRole(null);
+    setRoleLoaded(false);
     setCustomAllowedPages(null);
     setActiveCompany(null);
   }
@@ -8620,6 +8631,7 @@ export default function App() {
     setActiveCompany(null);
     setCompanyRole("");
     setUserRole(null);
+    setRoleLoaded(false);
     setCustomAllowedPages(null);
     setNotifications([]);
     setUnreadCount(0);
@@ -8640,20 +8652,19 @@ export default function App() {
   if (screen === "login") return <LoginPage onLogin={() => {}} onBack={() => setScreen("landing")} initialMode={loginMode} />;
   if (screen === "company_select") return <CompanySelector currentUser={currentUser} onSelectCompany={handleSelectCompany} onLogout={handleLogout} />;
 
-  if (!activeCompany?.id) {
+  if (!activeCompany?.id || !roleLoaded) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
         <div className="text-center">
           <Spinner />
-          <p className="text-sm text-gray-400 mt-4">Loading company...</p>
+          <p className="text-sm text-gray-400 mt-4">{!activeCompany?.id ? "Loading company..." : "Loading your access..."}</p>
         </div>
       </div>
     );
   }
 
-  // Build nav based on role
-  // If role hasn't loaded yet but user selected a company, show admin pages as fallback
-  const allowedPages = customAllowedPages || ROLES[userRole]?.pages || ROLES[companyRole]?.pages || ROLES["admin"].pages;
+  // Build nav based on confirmed role (roleLoaded is true at this point)
+  const allowedPages = customAllowedPages || ROLES[userRole]?.pages || ROLES[companyRole]?.pages || ["dashboard"];
   const navItems = ALL_NAV.filter(n => allowedPages.includes(n.id));
   const adminNav = (userRole === "admin" || companyRole === "admin")
     ? [...navItems, { id: "roles", label: "Team & Roles", icon: "👥" }]
@@ -8661,7 +8672,7 @@ export default function App() {
 
   // Owner-admins (created their own company) get full app access
   // Only force owner_portal for owners invited into a PM's company
-  const effectiveRole = userRole || companyRole || "admin";
+  const effectiveRole = userRole || companyRole || "office_assistant";
   const effectivePage = effectiveRole === "tenant" ? "tenant_portal" : (effectiveRole === "owner" && companyRole !== "admin") ? "owner_portal" : page;
   const Page = pageComponents[effectivePage] || Dashboard;
   const safePage = allowedPages.includes(page) ? page : allowedPages[0];
