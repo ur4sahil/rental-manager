@@ -66,6 +66,12 @@ function shortId() {
 }
 
 // Generate secure random ID (better than Date.now + Math.random)
+const CLASS_COLORS = ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4","#F97316","#EC4899"];
+function pickColor(str) {
+  let hash = 0;
+  for (let i = 0; i < (str || "").length; i++) hash = ((hash << 5) - hash) + str.charCodeAt(i);
+  return CLASS_COLORS[Math.abs(hash) % CLASS_COLORS.length];
+}
 function generateId(prefix = "") {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
   let id = "";
@@ -516,10 +522,11 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
     if (signupErr) { setError(signupErr.message); setLoading(false); return; }
 
     // Save user_type to app_users
-    await supabase.from("app_users").upsert([{
+    const { error: appUserErr } = await supabase.from("app_users").upsert([{
       email: email.toLowerCase(), name: name.trim(), role: userType === "tenant" ? "tenant" : userType === "owner" ? "owner" : "pm",
       user_type: userType,
     }], { onConflict: "email" });
+    if (appUserErr) { console.warn("app_users write failed:", appUserErr.message); }
 
     // For tenant, redeem invite code atomically via RPC (SECURITY DEFINER, prevents race condition)
     if (userType === "tenant") {
@@ -884,7 +891,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       // Auto-create accounting class for new properties
       if (!editingProperty) {
         const classId = generateId("PROP");
-        await supabase.from("acct_classes").upsert([{ id: classId, name: form.address, description: `${form.type} · $${form.rent}/mo`, color: ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4"][Math.floor(Math.random()*6)], is_active: true, company_id: companyId }], { onConflict: "id" });
+        await supabase.from("acct_classes").upsert([{ id: classId, name: form.address, description: `${form.type} · $${form.rent}/mo`, color: pickColor(form?.address || req?.address || ""), is_active: true, company_id: companyId }], { onConflict: "id" });
       }
       addNotification("🏠", editingProperty ? `Property updated: ${form.address}` : `New property added: ${form.address}`);
       logAudit(editingProperty ? "update" : "create", "properties", `${editingProperty ? "Updated" : "Added"} property: ${form.address}`, editingProperty?.id || "", userProfile?.email, userRole, companyId);
@@ -950,12 +957,13 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       if (apErr) { alert("Error adding property: " + apErr.message); return; }
       // Auto-create accounting class for this property
       const classId = generateId("PROP");
-      await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · $${req.rent}/mo`, color: ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4","#F97316","#EC4899"][Math.floor(Math.random()*8)], is_active: true, company_id: companyId }], { onConflict: "id" });
+      await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · $${req.rent}/mo`, color: pickColor(form?.address || req?.address || ""), is_active: true, company_id: companyId }], { onConflict: "id" });
       addNotification("✅", `Property approved & added: ${req.address}`);
     } else if (req.request_type === "edit" && req.property_id) {
       // Check if address changed and cascade
-      const { data: oldProp } = await supabase.from("properties").select("address").eq("id", req.property_id).maybeSingle();
-      await supabase.from("properties").update({ address: req.address, type: req.type, status: req.property_status, rent: req.rent, tenant: req.tenant, lease_end: req.lease_end, notes: req.notes }).eq("id", req.property_id).eq("company_id", companyId);
+      const { data: oldProp } = await supabase.from("properties").select("address").eq("company_id", companyId).eq("id", req.property_id).maybeSingle();
+      const { error: editErr } = await supabase.from("properties").update({ address: req.address, type: req.type, status: req.property_status, rent: req.rent, tenant: req.tenant, lease_end: req.lease_end, notes: req.notes }).eq("id", req.property_id).eq("company_id", companyId);
+      if (editErr) { alert("Error updating property: " + editErr.message); return; }
       if (oldProp && oldProp.address !== req.address) {
         const cascadeTables = ["tenants", "payments", "ledger_entries", "work_orders", "utilities", "autopay_schedules", "documents", "hoa_payments"];
         for (const table of cascadeTables) await supabase.from(table).update({ property: req.address }).eq("company_id", companyId).eq("property", oldProp.address);
@@ -978,7 +986,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       if (!guardSubmit("rejectRequest")) return;
       try {
     const { data: { user } } = await supabase.auth.getUser();
-    await supabase.from("property_change_requests").update({ status: "rejected", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNotes[req.id] || "" }).eq("id", req.id);
+    await supabase.from("property_change_requests").update({ status: "rejected", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNotes[req.id] || "" }).eq("company_id", companyId).eq("id", req.id);
     addNotification("❌", `Property request rejected: ${req.address}`);
     logAudit("reject", "properties", `Rejected ${req.request_type} request: ${req.address} (requested by ${req.requested_by})`, req.id, user?.email, "admin", companyId);
     setReviewNotes(prev => { const n = {...prev}; delete n[req.id]; return n; });
@@ -1432,7 +1440,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         invited_by: userProfile?.email || "admin",
       }], { onConflict: "company_id,user_email" });
       addNotification("✉️", "Invite code generated for " + tenant.email + ": " + code);
-      logAudit("create", "tenants", "Invited tenant to portal: " + tenant.email + " code: " + code, tenant.id, userProfile?.email, userRole, companyId);
+      logAudit("create", "tenants", "Invited tenant to portal: " + tenant.email, tenant.id, userProfile?.email, userRole, companyId);
       alert("Tenant invite created!\n\nInvite Code: " + code + "\n\nShare this code with " + tenant.name + ". They can sign up at your app URL by selecting 'I'm a Tenant' and entering this code.\n\nA magic link email was also sent to " + tenant.email);
     } catch (e) {
       alert("Error inviting tenant: " + e.message);
@@ -2046,7 +2054,6 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
       });
     }
 
-    guardRelease("addPayment");
     setShowForm(false);
     setForm({ tenant: "", property: "", amount: "", type: "rent", method: "ACH", status: "paid", date: formatLocalDate(new Date()) });
     fetchPayments();
@@ -3792,7 +3799,7 @@ function Accounting({ companyId, activeCompany }) {
           id: `PROP-${p.id}`,
           name: p.address,
           description: `${p.type || "Property"} · $${p.rent || 0}/mo`,
-          color: colors[Math.floor(Math.random() * colors.length)],
+          color: pickColor(p.address),
           is_active: true,
           company_id: companyId,
         }));
@@ -5464,6 +5471,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
 
   async function distributeToOwner(stmt) {
     if (!guardSubmit("distributeToOwner")) return;
+    try {
     if (stmt.status === "paid") { alert("This statement has already been distributed."); return; }
     if (stmt.net_to_owner <= 0) { alert("Net amount is $0 or negative. Nothing to distribute."); return; }
     if (!window.confirm("Distribute $" + stmt.net_to_owner.toLocaleString() + " to " + stmt.owner_name + "?")) return;
@@ -5504,8 +5512,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
       });
     }
     logAudit("create", "owner_distributions", "Distributed $" + stmt.net_to_owner + " to " + stmt.owner_name, stmt.id, userProfile?.email, userRole, companyId);
-    guardRelease("distributeToOwner");
     fetchData();
+    } finally { guardRelease("distributeToOwner"); }
   }
 
   if (loading) return <Spinner />;
@@ -6722,6 +6730,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
 
   async function saveHOA() {
       if (!guardSubmit("saveHOA")) return;
+    try {
     if (!form.property || !form.hoa_name || !form.amount || !form.due_date) { alert("All fields required."); return; }
     const payload = { ...form, amount: Number(form.amount) };
     if (editingHoa) {
@@ -6733,11 +6742,11 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
       if (hoaErr) { alert("Error saving HOA: " + hoaErr.message); return; }
       addNotification("🏘️", `HOA payment added: ${form.hoa_name} — $${form.amount}`);
     }
-    guardRelease("saveHOA");
     setShowForm(false);
     setEditingHoa(null);
     setForm({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "" });
     fetchHOA();
+    } finally { guardRelease("saveHOA"); }
   }
 
   async function payHOA(h) {
@@ -8591,7 +8600,7 @@ export default function App() {
   }
 
   function addNotification(icon, message) {
-    const n = { id: performance.now() + Math.random(), icon, message, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
+    const n = { id: shortId(), icon, message, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
     setNotifications(prev => [n, ...prev].slice(0, 20));
     setUnreadCount(prev => prev + 1);
   }
