@@ -289,13 +289,8 @@ async function autoPostRentCharges(companyId) {
             });
 
             // Update tenant balance atomically (prevents drift)
-            try {
-              await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: monthRent });
-            } catch {
-              // Fallback to client-side if RPC not deployed
-              const { data: tenant } = await supabase.from("tenants").select("balance").eq("id", lease.tenant_id).maybeSingle();
-              await supabase.from("tenants").update({ balance: safeNum(tenant?.balance) + monthRent }).eq("company_id", companyId).eq("id", lease.tenant_id); // FALLBACK: race-prone read-modify-write — deploy security-fixes.sql for atomic RPC
-            }
+            const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: monthRent });
+            if (balErr) console.warn("Balance update failed for", lease.tenant_name, ":", balErr.message);
           }
 
           posted++;
@@ -1506,10 +1501,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
     if (!ledgerOk) { alert("Failed to create ledger entry. Please try again."); return; }
     // Atomic balance update (prevents drift from concurrent writes)
     try {
-      await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: amount });
-    } catch {
-      await supabase.from("tenants").update({ balance: newBalance }).eq("company_id", companyId).eq("id", selectedTenant.id); // FALLBACK: race-prone read-modify-write — deploy security-fixes.sql for atomic RPC
-    }
+      const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: amount });
+      if (balErr) { alert("Balance update failed: " + balErr.message); }
+    } catch (e) { alert("Balance update failed: " + e.message); }
     // Post accounting JE for manual charges/credits
     if (Math.abs(amount) > 0) {
       const classId = await getPropertyClassId(selectedTenant.property, companyId);
@@ -2043,10 +2037,9 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
       const payAmt = Number(form.amount);
       // Decrease balance (payment reduces what tenant owes)
       try {
-        await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -payAmt });
-      } catch {
-        await supabase.from("tenants").update({ balance: safeNum(tenantRow.balance) - payAmt }).eq("company_id", companyId).eq("id", tenantRow.id); // FALLBACK: race-prone read-modify-write — deploy security-fixes.sql for atomic RPC
-      }
+        const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -payAmt });
+        if (balErr) console.warn("Balance update failed:", balErr.message);
+      } catch (e) { console.warn("Balance RPC error:", e.message); }
       // Create ledger entry
       await safeLedgerInsert({ company_id: companyId,
         tenant: form.tenant, property: form.property,
@@ -3948,10 +3941,9 @@ function Accounting({ companyId, activeCompany }) {
           if (Math.abs(arImpact) > 0.01) {
             // Reverse: if charge increased AR (positive), decrease balance; if payment decreased AR (negative), increase balance
             try {
-              await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -arImpact });
-            } catch {
-              await supabase.from("tenants").update({ balance: safeNum(tenantRow.balance) - arImpact }).eq("company_id", companyId).eq("id", tenantRow.id); // FALLBACK: race-prone read-modify-write — deploy security-fixes.sql for atomic RPC
-            }
+              const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -arImpact });
+              if (balErr) console.warn("Void balance reversal failed:", balErr.message);
+            } catch (e) { console.warn("Void balance RPC error:", e.message); }
             await safeLedgerInsert({ company_id: companyId,
               tenant: tenantName.trim(), property: je.property || "",
               date: formatLocalDate(new Date()),
@@ -4050,12 +4042,8 @@ function Accounting({ companyId, activeCompany }) {
                 });
                 // Update tenant balance (they now owe this amount)
                 if (lease.tenant_id) {
-                  try {
-                    await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: rent });
-                  } catch {
-                    const { data: t } = await supabase.from("tenants").select("balance").eq("id", lease.tenant_id).maybeSingle();
-                    if (t) await supabase.from("tenants").update({ balance: safeNum(t.balance) + rent }).eq("company_id", companyId).eq("id", lease.tenant_id);
-                  }
+                  const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: rent });
+                  if (balErr) console.warn("Accrual balance update failed:", balErr.message);
                 }
                 // Create ledger entry
                 await safeLedgerInsert({ company_id: companyId,
@@ -4703,7 +4691,8 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
         tenant: lease.tenant_name, property: lease.property, date: depositForm.return_date,
         description: "Security deposit returned", amount: -returned, type: "deposit_return", balance: 0,
       });
-      try { await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: -returned }); } catch {}
+      const { error: depBalErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: -returned });
+      if (depBalErr) console.warn("Deposit return balance update failed:", depBalErr.message);
     }
     if (deducted > 0 && lease.tenant_id) {
       await safeLedgerInsert({ company_id: companyId,
@@ -6992,10 +6981,9 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
     const { data: tenantRow } = await supabase.from("tenants").select("id, balance").eq("name", s.tenant).eq("company_id", companyId).maybeSingle();
     if (tenantRow) {
       try {
-        await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -amt });
-      } catch {
-        await supabase.from("tenants").update({ balance: safeNum(tenantRow.balance) - amt }).eq("company_id", companyId).eq("id", tenantRow.id); // FALLBACK: race-prone read-modify-write — deploy security-fixes.sql for atomic RPC
-      }
+        const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -amt });
+        if (balErr) console.warn("Autopay balance update failed:", balErr.message);
+      } catch (e) { console.warn("Autopay balance RPC error:", e.message); }
       await safeLedgerInsert({ company_id: companyId,
         tenant: s.tenant, property: s.property,
         date: today, description: "Autopay payment (" + s.method + ")",
@@ -7185,10 +7173,9 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
       await safeLedgerInsert({ company_id: companyId, tenant: payment.tenant, property: payment.property, date: formatLocalDate(new Date()), description: `Late fee — ${payment.daysLate} days overdue`, amount: feeAmount, type: "late_fee", balance: newBalance });
       // Atomic balance update (prevents drift from concurrent writes)
       try {
-        await supabase.rpc("update_tenant_balance", { p_tenant_id: tenant.id, p_amount_change: feeAmount });
-      } catch {
-        await supabase.from("tenants").update({ balance: newBalance }).eq("company_id", companyId).eq("id", tenant.id); // FALLBACK: race-prone read-modify-write — deploy security-fixes.sql for atomic RPC
-      }
+        const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenant.id, p_amount_change: feeAmount });
+        if (balErr) console.warn("Late fee balance update failed:", balErr.message);
+      } catch (e) { console.warn("Late fee balance RPC error:", e.message); }
     }
     addNotification("⚠️", `Late fee $${feeAmount} applied to ${payment.tenant}`);
     // AUTO-POST TO ACCOUNTING: DR Accounts Receivable, CR Late Fee Income
@@ -7375,15 +7362,14 @@ function TenantPortal({ currentUser, companyId }) {
         });
         if (payErr) throw new Error(payErr.message);
       } catch (rpcE) {
-        // Fallback: direct insert (for when RPC not deployed)
+        // RPC not available — record payment and update balance via RPC retry
         const { error: payErr } = await supabase.from("payments").insert([{ company_id: companyId,
           tenant: tenantData.name, property: tenantData.property, amount: amt,
           type: "rent", method: "stripe", status: "paid", date: today,
         }]);
         if (payErr) throw new Error("Failed to record payment: " + payErr.message);
-        // Fetch fresh balance to avoid stale read-modify-write
-        const { data: freshT } = await supabase.from("tenants").select("balance").eq("id", tenantData.id).maybeSingle();
-        await supabase.from("tenants").update({ balance: safeNum(freshT?.balance || tenantData.balance) - amt }).eq("company_id", companyId).eq("id", tenantData.id);
+        const { error: balErr2 } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantData.id, p_amount_change: -amt });
+        if (balErr2) console.warn("Tenant portal balance update failed:", balErr2.message);
         await safeLedgerInsert({ company_id: companyId,
           tenant: tenantData.name, property: tenantData.property, date: today,
           description: "Rent payment (online)", amount: -amt, type: "payment", balance: 0,
