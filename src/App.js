@@ -155,29 +155,11 @@ async function autoPostJournalEntry({ date, description, reference, property, li
       });
       if (!rpcErr && jeId) return jeId;
       console.warn("JE RPC fallback:", rpcErr?.message);
-    } catch (e) { console.warn("JE RPC not available, using client-side:", e.message); }
-    
-    // Fallback: client-side (non-atomic, race-prone but functional)
-    const { data: existingJEs } = await supabase.from("acct_journal_entries").select("number").eq("company_id", cid).order("number", { ascending: false }).limit(1);
-    const lastNum = existingJEs?.[0]?.number ? parseInt(existingJEs[0].number.replace("JE-",""), 10) : 0;
-    const number = `JE-${String(lastNum + 1).padStart(4, "0")}`;
-    const jeId = generateId("je");
-    const { error: headerErr } = await supabase.from("acct_journal_entries").insert([{ company_id: cid, id: jeId, number, date, description, reference: reference || "", property: property || "", status }]);
-    if (headerErr) { console.warn("JE header insert failed:", headerErr.message); return null; }
-    if (lines?.length > 0) {
-      const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({
-        journal_entry_id: jeId, account_id: l.account_id, account_name: l.account_name,
-        debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || ""
-      })));
-      if (linesErr) {
-        // Clean up orphaned header to prevent partial accounting records
-        console.warn("JE lines insert failed, cleaning up header:", linesErr.message);
-        await supabase.from("acct_journal_lines").delete().eq("journal_entry_id", jeId);
-        await supabase.from("acct_journal_entries").delete().eq("id", jeId).eq("company_id", cid);
-        return null;
-      }
+    } catch (e) {
+      console.error("Journal entry RPC failed:", e.message);
+      return null; // RPC is required — no client-side fallback
     }
-    return jeId;
+    return null;
   } catch (e) { console.warn("Auto-post JE failed:", e); return null; }
   // Note: callers should check return value if JE posting is critical
 }
@@ -877,14 +859,24 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       if (error) { alert("Error saving property: " + error.message); return; }
       // Cascade address change to all related tables
       if (editingProperty && editingProperty.address !== form.address) {
-        const oldAddr = editingProperty.address;
-        const tables = ["tenants", "payments", "ledger_entries", "work_orders", "utilities", "autopay_schedules", "documents", "hoa_payments"];
-        for (const table of tables) {
-          await supabase.from(table).update({ property: form.address }).eq("company_id", companyId).eq("property", oldAddr);
+        // Atomic cascade rename via server-side RPC
+        try {
+          const { error: renameErr } = await supabase.rpc("rename_property_cascade", {
+            p_company_id: companyId, p_property_id: editingProperty.id,
+            p_old_address: editingProperty.address, p_new_address: form.address
+          });
+          if (renameErr) console.warn("Cascade rename RPC failed, using client-side:", renameErr.message);
+          else { /* RPC succeeded */ }
+        } catch {
+          // Fallback to client-side cascade
+          const oldAddr = editingProperty.address;
+          const tables = ["tenants", "payments", "ledger_entries", "work_orders", "utilities", "autopay_schedules", "documents", "hoa_payments"];
+          for (const table of tables) {
+            await supabase.from(table).update({ property: form.address }).eq("company_id", companyId).eq("property", oldAddr);
+          }
+          await supabase.from("leases").update({ property: form.address }).eq("company_id", companyId).eq("property", oldAddr);
+          await supabase.from("acct_classes").update({ name: form.address }).eq("company_id", companyId).eq("name", oldAddr);
         }
-        await supabase.from("leases").update({ property: form.address }).eq("company_id", companyId).eq("property", oldAddr);
-        // Update accounting class name
-        await supabase.from("acct_classes").update({ name: form.address }).eq("company_id", companyId).eq("name", oldAddr);
       }
       // Auto-create accounting class for new properties
       if (!editingProperty) {
@@ -932,13 +924,19 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       return;
     }
     if (!window.confirm(`Delete property "${address}"? This will also remove associated work orders. This cannot be undone.`)) return;
-    // Clean up all related data
-    await supabase.from("work_orders").delete().eq("company_id", companyId).eq("property", address);
-    await supabase.from("autopay_schedules").delete().eq("company_id", companyId).eq("property", address);
-    await supabase.from("utilities").delete().eq("company_id", companyId).eq("property", address);
-    await supabase.from("hoa_payments").delete().eq("company_id", companyId).eq("property", address);
-    await supabase.from("ledger_entries").delete().eq("company_id", companyId).eq("property", address);
-    await supabase.from("documents").delete().eq("company_id", companyId).eq("property", address);
+    // Atomic cascade delete via server-side RPC (single transaction)
+    try {
+      const { error: rpcErr } = await supabase.rpc("delete_property_cascade", { p_company_id: companyId, p_property_id: id, p_address: address });
+      if (rpcErr) throw new Error(rpcErr.message);
+    } catch (e) {
+      // Fallback to client-side if RPC not deployed
+      await supabase.from("work_orders").delete().eq("company_id", companyId).eq("property", address);
+      await supabase.from("autopay_schedules").delete().eq("company_id", companyId).eq("property", address);
+      await supabase.from("utilities").delete().eq("company_id", companyId).eq("property", address);
+      await supabase.from("hoa_payments").delete().eq("company_id", companyId).eq("property", address);
+      await supabase.from("ledger_entries").delete().eq("company_id", companyId).eq("property", address);
+      await supabase.from("documents").delete().eq("company_id", companyId).eq("property", address);
+    }
     const { error } = await supabase.from("properties").delete().eq("id", id).eq("company_id", companyId);
     if (error) { alert("Error deleting property: " + error.message); return; }
     addNotification("🗑️", `Property deleted: ${address}`);
@@ -1354,12 +1352,21 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
     if (editingTenant) {
       // Cascade name change to all related tables
       if (editingTenant.name !== form.name) {
-        const oldName = editingTenant.name;
-        const tables = ["payments", "ledger_entries", "work_orders", "messages", "autopay_schedules"];
-        for (const table of tables) {
-          await supabase.from(table).update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName);
+        // Atomic cascade rename via server-side RPC
+        try {
+          const { error: renameErr } = await supabase.rpc("rename_tenant_cascade", {
+            p_company_id: companyId, p_old_name: editingTenant.name, p_new_name: form.name
+          });
+          if (renameErr) console.warn("Tenant rename RPC failed, using client-side:", renameErr.message);
+        } catch {
+          // Fallback
+          const oldName = editingTenant.name;
+          const tables = ["payments", "ledger_entries", "work_orders", "messages", "autopay_schedules"];
+          for (const table of tables) {
+            await supabase.from(table).update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName);
+          }
+          await supabase.from("leases").update({ tenant_name: form.name }).eq("company_id", companyId).eq("tenant_name", oldName);
         }
-        await supabase.from("leases").update({ tenant_name: form.name }).eq("company_id", companyId).eq("tenant_name", oldName);
       }
       addNotification("👤", `Tenant updated: ${form.name}`);
       logAudit("update", "tenants", `Updated tenant: ${form.name}`, editingTenant?.id, userProfile?.email, userRole, companyId);
@@ -1378,12 +1385,18 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
       if (!guardSubmit("deleteTenant")) return;
       try {
     if (!window.confirm(`Delete tenant "${name}"? This will also remove their ledger entries and messages. This cannot be undone.`)) return;
-    // Clean up all related data first
-    await supabase.from("ledger_entries").delete().eq("company_id", companyId).eq("tenant", name);
-    await supabase.from("messages").delete().eq("company_id", companyId).eq("tenant", name);
-    await supabase.from("payments").delete().eq("company_id", companyId).eq("tenant", name);
-    await supabase.from("work_orders").delete().eq("company_id", companyId).eq("tenant", name);
-    await supabase.from("autopay_schedules").delete().eq("company_id", companyId).eq("tenant", name);
+    // Atomic cascade delete via server-side RPC
+    try {
+      const { error: rpcErr } = await supabase.rpc("delete_tenant_cascade", { p_company_id: companyId, p_tenant_id: id, p_tenant_name: name });
+      if (rpcErr) throw new Error(rpcErr.message);
+    } catch (e) {
+      // Fallback
+      await supabase.from("ledger_entries").delete().eq("company_id", companyId).eq("tenant", name);
+      await supabase.from("messages").delete().eq("company_id", companyId).eq("tenant", name);
+      await supabase.from("payments").delete().eq("company_id", companyId).eq("tenant", name);
+      await supabase.from("work_orders").delete().eq("company_id", companyId).eq("tenant", name);
+      await supabase.from("autopay_schedules").delete().eq("company_id", companyId).eq("tenant", name);
+    }
     const { error } = await supabase.from("tenants").delete().eq("id", id).eq("company_id", companyId);
     if (error) { alert("Error deleting tenant: " + error.message); return; }
     addNotification("🗑️", `Tenant deleted: ${name}`);
@@ -1401,11 +1414,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
       // Generate unique invite code
       // Generate unique invite code with collision retry
       let code, codeInsertErr;
-      for (let attempt = 0; attempt < 3; attempt++) {
+      for (let attempt = 0; attempt < 5; attempt++) {
         const codeArr = new Uint32Array(1); crypto.getRandomValues(codeArr);
         code = "TNT-" + String(10000000 + (codeArr[0] % 89999999));
-        const { error: checkErr } = await supabase.from("tenant_invite_codes").select("id").eq("code", code).maybeSingle();
-        if (!checkErr) break; // No collision
+        const { data: existing } = await supabase.from("tenant_invite_codes").select("id").eq("code", code).maybeSingle();
+        if (!existing) break; // No collision — code is unique
+        if (attempt === 4) { alert("Could not generate unique invite code. Please try again."); return; }
       }
       const { error: codeInsertError } = await supabase.from("tenant_invite_codes").insert([{
         code: code,
@@ -1472,7 +1486,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
     setActivePanel("messages");
     const { data } = await supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tenant.name).order("created_at", { ascending: true });
     setMessages(data || []);
-    await supabase.from("messages").update({ read: true }).eq("tenant", tenant.name);
+    await supabase.from("messages").update({ read: true }).eq("company_id", companyId).eq("tenant", tenant.name);
   }
 
   async function sendMessage() {
@@ -1505,7 +1519,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
       description: newCharge.description,
       amount,
       type: newCharge.type,
-      balance: newBalance,
+      balance: 0,
     });
     if (!ledgerOk) { alert("Failed to create ledger entry. Please try again."); return; }
     // Atomic balance update (prevents drift from concurrent writes)
@@ -1584,7 +1598,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Lease Agreement — ${tenant.name}</title>
+        <title>Lease Agreement — ${escapeHtml(tenant.name)}</title>
         <style>
           body { font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; color: #333; }
           h1 { text-align: center; color: #1e3a5f; border-bottom: 2px solid #1e3a5f; padding-bottom: 10px; }
@@ -2223,7 +2237,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
     const { error: uploadError } = await supabase.storage.from("maintenance-photos").upload(fileName, file);
     if (uploadError) { alert("Upload failed: " + uploadError.message); setUploadingPhoto(false); return; }
     const { data: { publicUrl } } = supabase.storage.from("maintenance-photos").getPublicUrl(fileName);
-    await supabase.from("work_order_photos").insert([{ work_order_id: viewingPhotos.id, property: viewingPhotos.property, url: publicUrl, caption: file.name }]);
+    await supabase.from("work_order_photos").insert([{ work_order_id: viewingPhotos.id, property: viewingPhotos.property, url: publicUrl, caption: file.name, company_id: companyId }]);
     addNotification("📸", `Photo uploaded for: ${viewingPhotos.issue}`);
     setUploadingPhoto(false);
     if (photoRef.current) photoRef.current.value = "";
@@ -7004,7 +7018,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
       await safeLedgerInsert({ company_id: companyId,
         tenant: s.tenant, property: s.property,
         date: today, description: "Autopay payment (" + s.method + ")",
-        amount: -amt, type: "payment", balance: safeNum(tenantRow.balance) - amt,
+        amount: -amt, type: "payment", balance: 0,
       });
     }
 
@@ -7187,7 +7201,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
     const feeAmount = rule.fee_type === "flat" ? rule.fee_amount : Math.round((tenant?.rent || payment.amount) * rule.fee_amount / 100);
     if (tenant) {
       const newBalance = safeNum(tenant.balance) + feeAmount;
-      await safeLedgerInsert({ company_id: companyId, tenant: payment.tenant, property: payment.property, date: formatLocalDate(new Date()), description: `Late fee — ${payment.daysLate} days overdue`, amount: feeAmount, type: "late_fee", balance: newBalance });
+      await safeLedgerInsert({ company_id: companyId, tenant: payment.tenant, property: payment.property, date: formatLocalDate(new Date()), description: `Late fee — ${payment.daysLate} days overdue`, amount: feeAmount, type: "late_fee", balance: 0 });
       // Atomic balance update (prevents drift from concurrent writes)
       try {
         const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenant.id, p_amount_change: feeAmount });
@@ -7382,7 +7396,7 @@ function TenantPortal({ currentUser, companyId }) {
         // RPC not available — record payment and update balance via RPC retry
         const { error: payErr } = await supabase.from("payments").insert([{ company_id: companyId,
           tenant: tenantData.name, property: tenantData.property, amount: amt,
-          type: "rent", method: "stripe", status: "paid", date: today,
+          type: "rent", method: "stripe", status: "pending_approval", date: today,
         }]);
         if (payErr) throw new Error("Failed to record payment: " + payErr.message);
         const { error: balErr2 } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantData.id, p_amount_change: -amt });
@@ -7392,6 +7406,16 @@ function TenantPortal({ currentUser, companyId }) {
           description: "Rent payment (online)", amount: -amt, type: "payment", balance: 0,
         });
       }
+      // Payment recorded as pending — balance and accounting updated when admin approves
+      // Show success to tenant
+      setPaymentSuccess(true);
+      setPaymentAmount("");
+      addNotification("💳", "Payment of $" + amt.toFixed(2) + " submitted for approval");
+      // Refresh tenant data
+      const { data: refreshed } = await supabase.from("tenants").select("*").eq("company_id", companyId).ilike("email", currentUser?.email || "").maybeSingle();
+      if (refreshed) setTenantData(refreshed);
+      setPaymentProcessing(false);
+      return; // Don't post to accounting until admin approves
       const newBalance = safeNum(tenantData.balance) - amt;
       // Auto-post to accounting
       const classId = await getPropertyClassId(tenantData.property, companyId);
