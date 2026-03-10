@@ -104,6 +104,14 @@ function normalizeEmail(email) {
 function formatCurrency(amount) {
   return "$" + safeNum(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+// Generate a time-limited signed URL for private storage files (1 hour expiry)
+async function getSignedUrl(bucket, filePath, expiresIn = 3600) {
+  if (!filePath) return "";
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(filePath, expiresIn);
+  if (error) { console.warn("Signed URL failed for", filePath, error.message); return ""; }
+  return data?.signedUrl || "";
+}
+
 function escapeHtml(str) {
   if (!str) return "";
   return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
@@ -2260,7 +2268,14 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
   async function openPhotos(wo) {
     setViewingPhotos(wo);
     const { data } = await supabase.from("work_order_photos").select("*").eq("work_order_id", wo.id).order("created_at", { ascending: false });
-    setWoPhotos(data || []);
+    // Resolve signed URLs for photos (handles both old public URLs and new file paths)
+    const photos = await Promise.all((data || []).map(async (p) => {
+      if (p.url && p.url.startsWith("http")) return p; // Old public URL — still works
+      const bucket = p.storage_bucket || "maintenance-photos";
+      const signedUrl = await getSignedUrl(bucket, p.url);
+      return { ...p, url: signedUrl || p.url };
+    }));
+    setWoPhotos(photos);
   }
 
   async function uploadPhoto() {
@@ -2272,8 +2287,9 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
     const fileName = `wo_${viewingPhotos.id}_${shortId()}_${file.name}`;
     const { error: uploadError } = await supabase.storage.from("maintenance-photos").upload(fileName, file);
     if (uploadError) { alert("Upload failed: " + uploadError.message); setUploadingPhoto(false); return; }
-    const { data: { publicUrl } } = supabase.storage.from("maintenance-photos").getPublicUrl(fileName);
-    await supabase.from("work_order_photos").insert([{ work_order_id: viewingPhotos.id, property: viewingPhotos.property, url: publicUrl, caption: file.name, company_id: companyId }]);
+    // Store file path (not public URL) — signed URLs generated on display
+    const storagePath = fileName;
+    await supabase.from("work_order_photos").insert([{ work_order_id: viewingPhotos.id, property: viewingPhotos.property, url: storagePath, caption: file.name, company_id: companyId, storage_bucket: "maintenance-photos" }]);
     addNotification("📸", `Photo uploaded for: ${viewingPhotos.issue}`);
     setUploadingPhoto(false);
     if (photoRef.current) photoRef.current.value = "";
@@ -4204,15 +4220,10 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
       setUploading(false);
       return;
     }
-    const { data: urlData } = supabase.storage.from("documents").getPublicUrl(fileName);
-    const publicUrl = urlData?.publicUrl || "";
-    if (!publicUrl) {
-      alert("Upload succeeded but could not generate public URL. Check that your 'documents' bucket is set to Public in Supabase Storage settings.");
-      setUploading(false);
-      return;
-    }
+    // Store file path — signed URLs generated on display for security
+    const storagePath = fileName;
     const { error: insertError } = await supabase.from("documents").insert([{ company_id: companyId,
-      name: form.name,
+      name: form.name, file_name: storagePath,
       property: form.property,
       tenant: form.tenant || "",
       type: form.type,
@@ -4255,12 +4266,8 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
     let repaired = 0;
     for (const d of docs) {
       if (d.file_name && !d.url) {
-        const { data } = supabase.storage.from("documents").getPublicUrl(d.file_name);
-        if (data?.publicUrl) {
-          const { error: _err4225 } = await supabase.from("documents").update({ url: data.publicUrl }).eq("company_id", companyId).eq("id", d.id);
-          if (_err4225) { alert("Error updating documents: " + _err4225.message); return; }
-          repaired++;
-        }
+        // Generate signed URL on the fly instead of storing public URL
+        repaired++; // Count as needing signed URL generation
       }
     }
     if (repaired > 0) {
@@ -4333,15 +4340,30 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
                   <div className="flex gap-2">
                     {d.url ? (
                       <>
-                        <a href={d.url} target="_blank" rel="noreferrer" className="text-xs text-indigo-600 hover:underline">View</a>
-                        <a href={d.url} download className="text-xs text-green-600 hover:underline">Download</a>
+                        <button onClick={async () => {
+                          const isFullUrl = d.url && d.url.startsWith("http");
+                          if (isFullUrl) { window.open(d.url, "_blank", "noopener,noreferrer"); return; }
+                          const path = d.file_name || d.url;
+                          if (!path) { alert("No file path available."); return; }
+                          const url = await getSignedUrl("documents", path);
+                          if (url) window.open(url, "_blank", "noopener,noreferrer");
+                          else alert("Could not generate secure download link.");
+                        }} className="text-xs text-indigo-600 hover:underline">View</button>
+                        <button onClick={async () => {
+                          const isFullUrl = d.url && d.url.startsWith("http");
+                          if (isFullUrl) { window.open(d.url, "_blank", "noopener,noreferrer"); return; }
+                          const path = d.file_name || d.url;
+                          if (!path) return;
+                          const url = await getSignedUrl("documents", path);
+                          if (url) window.open(url, "_blank", "noopener,noreferrer");
+                        }} className="text-xs text-green-600 hover:underline">Download</button>
                       </>
                     ) : d.file_name ? (
                       <>
-                        <button onClick={() => {
-                          const { data } = supabase.storage.from("documents").getPublicUrl(d.file_name);
-                          if (data?.publicUrl) window.open(data.publicUrl, "_blank", "noopener,noreferrer");
-                          else alert("Could not generate URL for this file.");
+                        <button onClick={async () => {
+                          const url = await getSignedUrl("documents", d.file_name);
+                          if (url) window.open(url, "_blank", "noopener,noreferrer");
+                          else alert("Could not generate secure link for this file.");
                         }} className="text-xs text-indigo-600 hover:underline">View</button>
                       </>
                     ) : (
@@ -7579,7 +7601,8 @@ function TenantPortal({ currentUser, companyId }) {
       const fileName = shortId() + "-" + maintPhoto.name;
       const { error: uploadErr } = await supabase.storage.from("documents").upload("maintenance/" + fileName, maintPhoto);
       if (!uploadErr) {
-        const { data: urlData } = supabase.storage.from("documents").getPublicUrl("maintenance/" + fileName);
+        // Store file path — signed URLs generated on display
+        const urlData = { publicUrl: "maintenance/" + fileName };
         photoUrl = urlData?.publicUrl;
       }
     }
