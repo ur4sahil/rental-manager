@@ -137,8 +137,13 @@ function requireCompanyId(companyId, context = "") {
 
 // ============ AUDIT TRAIL HELPER ============
 // Call this from any module to log an action
+const AUDIT_ACTIONS = new Set(["create","update","delete","approve","reject","login","logout","invite","void"]);
+const AUDIT_MODULES = new Set(["properties","tenants","payments","maintenance","leases","vendors","owners","accounting","documents","team","pm_requests","bank_reconciliation","owner_distributions","settings"]);
 async function logAudit(action, module, details = "", recordId = "", userEmail = "", userRoleVal = "unknown", companyId) {
   try {
+    // Validate action and module to prevent injection of arbitrary audit entries
+    if (!AUDIT_ACTIONS.has(action)) { console.warn("logAudit: invalid action:", action); return; }
+    if (!AUDIT_MODULES.has(module)) { console.warn("logAudit: invalid module:", module); return; }
     if (!userEmail) {
       const { data: { user } } = await supabase.auth.getUser();
       userEmail = user?.email || "unknown";
@@ -156,12 +161,11 @@ async function autoPostJournalEntry({ date, description, reference, property, li
   try {
     if (!companyId) { console.error("autoPostJournalEntry: missing companyId — blocked"); return null; }
     const cid = companyId;
-    // Resolve bare account IDs (1100, 4000, etc.) to actual DB IDs for this company
-    if (lines?.length > 0) {
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].account_id && /^\d{4}$/.test(lines[i].account_id)) {
-          lines[i].account_id = await resolveAccountId(lines[i].account_id, cid);
-        }
+    // Resolve bare account IDs — work on a COPY to avoid mutating caller's data
+    const resolvedLines = lines?.length > 0 ? lines.map(l => ({ ...l })) : [];
+    for (let i = 0; i < resolvedLines.length; i++) {
+      if (resolvedLines[i].account_id && /^\d{4}$/.test(resolvedLines[i].account_id)) {
+        resolvedLines[i].account_id = await resolveAccountId(resolvedLines[i].account_id, cid);
       }
     }
     // Try atomic server-side function first (fixes race condition + transactional)
@@ -173,7 +177,7 @@ async function autoPostJournalEntry({ date, description, reference, property, li
         p_reference: reference || "",
         p_property: property || "",
         p_status: status,
-        p_lines: JSON.stringify(lines || []),
+        p_lines: JSON.stringify(resolvedLines || []),
       });
       if (!rpcErr && jeId) return jeId;
       console.warn("JE RPC fallback:", rpcErr?.message);
@@ -234,8 +238,14 @@ async function autoPostRentCharges(companyId) {
     const postedRefs = new Set((existingJEs || []).map(j => j.reference));
 
     let posted = 0;
+    let failed = 0;
+    const MAX_CHARGES_PER_RUN = 50; // Safety cap — prevents runaway posting
 
     for (const lease of leases) {
+      if (posted >= MAX_CHARGES_PER_RUN) {
+        console.warn("Rent charge cap reached (" + MAX_CHARGES_PER_RUN + "). Remaining charges will post on next run.");
+        break;
+      }
       if (!lease.rent_amount || lease.rent_amount <= 0) continue;
       if (!lease.start_date || !lease.end_date) continue;
 
@@ -284,7 +294,7 @@ async function autoPostRentCharges(companyId) {
               { account_id: "4000", account_name: "Rental Income", debit: 0, credit: monthRent, class_id: classId, memo: lease.property + " " + monthStr },
             ]
           });
-          if (!jeResult) { console.warn("Rent JE failed for", lease.tenant_name, monthStr, "— skipping balance update"); cursor.setMonth(cursor.getMonth() + 1); continue; }
+          if (!jeResult) { console.warn("Rent JE failed for", lease.tenant_name, monthStr, "— skipping balance update"); failed++; cursor.setMonth(cursor.getMonth() + 1); continue; }
 
           // Also update tenant balance (add the charge)
           if (lease.tenant_id) {
@@ -313,8 +323,11 @@ async function autoPostRentCharges(companyId) {
       console.log("🏠 Auto-posted " + posted + " rent charge(s) to accounting");
       logAudit("create", "accounting", "Auto-posted " + posted + " monthly rent charges from active leases", "", "system", "system", companyId);
     }
+    if (failed > 0) console.warn("autoPostRentCharges:", failed, "charges failed");
+    return { posted, failed };
   } catch (e) {
     console.warn("Auto rent charge posting failed:", e);
+    return { posted: 0, failed: -1 };
   }
 }
 
@@ -718,8 +731,11 @@ function Dashboard({ notifications, setPage, companyId }) {
             if (rpcErr) {
               // Fallback to client-side if RPC not yet deployed
               console.warn("Batch RPC not available, using client-side:", rpcErr.message);
-              await autoPostRentCharges(companyId);
-              rentPostSuccess = true;
+              const clientResult = await autoPostRentCharges(companyId);
+              if (clientResult?.posted > 0) addNotification("⚡", "Posted " + clientResult.posted + " rent charge(s)" + (clientResult.failed > 0 ? " (" + clientResult.failed + " failed)" : ""));
+              else if (clientResult?.failed > 0) addNotification("⚠️", clientResult.failed + " rent charge(s) failed to post");
+              else addNotification("ℹ️", "No new rent charges needed for this period");
+              rentPostSuccess = clientResult?.failed === 0;
             } else {
               const count = rpcResult?.charges_posted || 0;
               if (count > 0) addNotification("⚡", `Posted ${count} rent charge(s) for this month`);
@@ -727,7 +743,11 @@ function Dashboard({ notifications, setPage, companyId }) {
             }
           } catch (e) {
             console.warn("Rent posting error:", e);
-            try { await autoPostRentCharges(companyId); rentPostSuccess = true; } catch {}
+            try {
+              const fallbackResult = await autoPostRentCharges(companyId);
+              if (fallbackResult?.posted > 0) addNotification("⚡", "Posted " + fallbackResult.posted + " rent charge(s)");
+              rentPostSuccess = (fallbackResult?.failed || 0) === 0;
+            } catch {}
           }
           if (rentPostSuccess) setLastRentPost(new Date().toLocaleTimeString());
           else addNotification("⚠️", "Rent charge posting encountered errors — check console");
@@ -895,12 +915,15 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
           if (renameErr) console.warn("Cascade rename RPC failed, using client-side:", renameErr.message);
           else { /* RPC succeeded */ }
         } catch {
-          // Fallback to client-side cascade
+          // Fallback to client-side cascade — check each step
           const oldAddr = editingProperty.address;
           const tables = ["tenants", "payments", "ledger_entries", "work_orders", "utilities", "autopay_schedules", "documents", "hoa_payments"];
+          let cascadeFailed = false;
           for (const table of tables) {
-            await supabase.from(table).update({ property: form.address }).eq("company_id", companyId).eq("property", oldAddr);
+            const { error: cascErr } = await supabase.from(table).update({ property: form.address }).eq("company_id", companyId).eq("property", oldAddr);
+            if (cascErr) { console.warn("Rename cascade failed on " + table + ":", cascErr.message); cascadeFailed = true; }
           }
+          if (cascadeFailed) { alert("Property renamed but some related records may not have updated. Please check tenants, payments, and work orders for this property."); }
           const { error: _err881 } = await supabase.from("leases").update({ property: form.address }).eq("company_id", companyId).eq("property", oldAddr);
           if (_err881) { alert("Error updating leases: " + _err881.message); return; }
           const { error: _err882 } = await supabase.from("acct_classes").update({ name: form.address }).eq("company_id", companyId).eq("name", oldAddr);
@@ -959,8 +982,11 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       if (rpcErr) throw new Error(rpcErr.message);
     } catch (e) {
       // Fallback to client-side if RPC not deployed
-      await supabase.from("work_orders").delete().eq("company_id", companyId).eq("property", address);
-      await supabase.from("autopay_schedules").delete().eq("company_id", companyId).eq("property", address);
+      let deleteFailed = false;
+      const { error: _woDelErr } = await supabase.from("work_orders").delete().eq("company_id", companyId).eq("property", address);
+      if (_woDelErr) { console.warn("work_orders delete failed:", _woDelErr.message); deleteFailed = true; }
+      const { error: _autoDelErr } = await supabase.from("autopay_schedules").delete().eq("company_id", companyId).eq("property", address);
+      if (_autoDelErr) { console.warn("autopay delete failed:", _autoDelErr.message); deleteFailed = true; }
       const { error: _err939 } = await supabase.from("utilities").delete().eq("company_id", companyId).eq("property", address);
       if (_err939) console.warn("utilities write failed:", _err939.message);
       const { error: _err940 } = await supabase.from("hoa_payments").delete().eq("company_id", companyId).eq("property", address);
@@ -968,7 +994,12 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       const { error: _err941 } = await supabase.from("ledger_entries").delete().eq("company_id", companyId).eq("property", address);
       if (_err941) console.warn("ledger_entries write failed:", _err941.message);
       const { error: _err942 } = await supabase.from("documents").delete().eq("company_id", companyId).eq("property", address);
-      if (_err942) console.warn("documents write failed:", _err942.message);
+      if (_err942) { console.warn("documents write failed:", _err942.message); deleteFailed = true; }
+      if (deleteFailed) {
+        alert("Some related records could not be deleted. The property will NOT be removed to avoid orphaned data. Please try again or contact support.");
+        fetchProperties();
+        return;
+      }
     }
     const { error } = await supabase.from("properties").delete().eq("id", id).eq("company_id", companyId);
     if (error) { alert("Error deleting property: " + error.message); return; }
@@ -986,7 +1017,8 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       if (apErr) { alert("Error adding property: " + apErr.message); return; }
       // Auto-create accounting class for this property
       const classId = generateId("PROP");
-      await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · ${formatCurrency(req.rent)}/mo`, color: pickColor(form?.address || req?.address || ""), is_active: true, company_id: companyId }], { onConflict: "id" });
+      const { error: classErr } = await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · ${formatCurrency(req.rent)}/mo`, color: pickColor(form?.address || req?.address || ""), is_active: true, company_id: companyId }], { onConflict: "id" });
+      if (classErr) console.warn("Accounting class creation failed:", classErr.message);
       addNotification("✅", `Property approved & added: ${req.address}`);
     } else if (req.request_type === "edit" && req.property_id) {
       // Check if address changed and cascade
@@ -995,7 +1027,12 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       if (editErr) { alert("Error updating property: " + editErr.message); return; }
       if (oldProp && oldProp.address !== req.address) {
         const cascadeTables = ["tenants", "payments", "ledger_entries", "work_orders", "utilities", "autopay_schedules", "documents", "hoa_payments"];
-        for (const table of cascadeTables) await supabase.from(table).update({ property: req.address }).eq("company_id", companyId).eq("property", oldProp.address);
+        let approvalCascadeFailed = false;
+        for (const table of cascadeTables) {
+          const { error: cErr } = await supabase.from(table).update({ property: req.address }).eq("company_id", companyId).eq("property", oldProp.address);
+          if (cErr) { console.warn("Approval cascade failed on " + table + ":", cErr.message); approvalCascadeFailed = true; }
+        }
+        if (approvalCascadeFailed) alert("Property updated but some related records may not have been renamed. Please verify.");
         const { error: _leaseRename } = await supabase.from("leases").update({ property: req.address }).eq("company_id", companyId).eq("property", oldProp.address);
         if (_leaseRename) console.warn("Lease cascade rename failed:", _leaseRename.message);
         const { error: _classRename } = await supabase.from("acct_classes").update({ name: req.address }).eq("company_id", companyId).eq("name", oldProp.address);
@@ -3997,7 +4034,7 @@ function Accounting({ companyId, activeCompany }) {
         p_reference: header.reference || "",
         p_property: header.property || "",
         p_status: header.status || "draft",
-        p_lines: JSON.stringify(lines || []),
+        p_lines: JSON.stringify(resolvedLines || []),
       });
       if (!rpcErr && jeId) { fetchAll(); return; }
       console.warn("addJE RPC fallback:", rpcErr?.message);
@@ -8726,11 +8763,8 @@ function PendingRequestsPanel({ companyId, addNotification }) {
     const { error: memErr } = await supabase.from("company_members").update({ status: newStatus }).eq("company_id", companyId).eq("id", member.id);
     if (memErr) { alert("Error updating member: " + memErr.message); return; }
     if (action === "approve") {
-      // Also add to app_users
-      // Insert only if no existing row — don't overwrite other company's data
-      await supabase.from("app_users").upsert([{
-        email: (member.user_email || "").toLowerCase(), name: member.user_name, role: member.role, company_id: companyId,
-      }], { onConflict: "email,company_id" });
+      // company_members is now "active" — that's the access grant
+      // app_users row is created at signup time, not at approval
       addNotification("✅", member.user_name + " approved to join");
     } else {
       addNotification("❌", member.user_name + "'s request rejected");
@@ -8895,6 +8929,10 @@ export default function App() {
     if (!user?.email || !companyId) return;
     try {
       const { data } = await supabase.from("company_members").select("*").eq("company_id", companyId).ilike("user_email", user.email).eq("status", "active").maybeSingle();
+      // Backfill auth_user_id for UID-based lookups (future-proofing)
+      if (data && !data.auth_user_id && user.id) {
+        supabase.from("company_members").update({ auth_user_id: user.id }).eq("id", data.id).then(() => {});
+      }
       if (data) {
         setUserRole(data.role);
         setCompanyRole(data.role);
