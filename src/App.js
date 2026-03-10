@@ -1037,15 +1037,26 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
 
   async function assignPM(property) {
     if (!pmCode.trim()) { alert("Please enter the PM company's 8-digit code."); return; }
-    const { data: pmCompany } = await supabase.from("companies").select("*").eq("company_code", pmCode.trim()).maybeSingle();
-    if (!pmCompany) { alert("No company found with code: " + pmCode); return; }
+    const { data: pmCompany } = await supabase.from("companies").select("id, name, company_role").eq("company_code", pmCode.trim()).maybeSingle();
+    if (!pmCompany) { alert("No company found with that code."); return; }
     if (pmCompany.company_role !== "management") { alert(pmCompany.name + " is not a management company. Only management companies can be assigned as PM."); return; }
-    if (!window.confirm("Assign " + pmCompany.name + " as property manager for " + property.address + "?\n\nThey will get operational control of this property. You can remove them later.")) return;
-    const { error: pmErr } = await supabase.from("properties").update({ pm_company_id: pmCompany.id, pm_company_name: pmCompany.name }).eq("id", property.id).eq("company_id", companyId);
-    if (pmErr) { alert("Error assigning PM: " + pmErr.message); return; }
-    // Also add this property to the PM's company scope by inserting a shadow record or just let them query cross-company
-    addNotification("🏢", pmCompany.name + " assigned as PM for " + property.address);
-    logAudit("update", "properties", "Assigned PM: " + pmCompany.name + " to " + property.address, property.id, userProfile?.email, userRole, companyId);
+    // Check for existing pending request
+    const { data: existingReq } = await supabase.from("pm_assignment_requests").select("id, status")
+      .eq("owner_company_id", companyId).eq("pm_company_id", pmCompany.id).eq("property_id", property.id).eq("status", "pending").maybeSingle();
+    if (existingReq) { alert("A request to assign " + pmCompany.name + " is already pending for this property."); return; }
+    if (!window.confirm("Request " + pmCompany.name + " to manage " + property.address + "?\n\nThey will need to accept before getting access to this property.")) return;
+    // Create assignment REQUEST (not direct assignment)
+    const { error: reqErr } = await supabase.from("pm_assignment_requests").insert([{
+      owner_company_id: companyId,
+      pm_company_id: pmCompany.id,
+      pm_company_name: pmCompany.name,
+      property_id: property.id,
+      property_address: property.address,
+      requested_by: normalizeEmail(userProfile?.email),
+    }]);
+    if (reqErr) { alert("Error creating PM request: " + reqErr.message); return; }
+    addNotification("📨", "PM assignment request sent to " + pmCompany.name + " for " + property.address);
+    logAudit("create", "pm_requests", "Requested PM: " + pmCompany.name + " for " + property.address, property.id, userProfile?.email, userRole, companyId);
     setShowPmAssign(null);
     setPmCode("");
     fetchProperties();
@@ -1476,15 +1487,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         alert("Failed to send invitation email to " + tenant.email + ": " + authErr.message + "\n\nPlease verify the email address and try again. No access records were created.");
         return;
       }
-      // Auth succeeded — now safe to create membership records
-      await supabase.from("app_users").upsert([{
-        email: (tenant.email || "").toLowerCase(),
-        name: tenant.name,
-        role: "tenant",
-        user_type: "tenant",
-        company_id: companyId,
-      }], { onConflict: "email,company_id" });
-      await supabase.from("company_members").upsert([{
+      // Create membership as "invited" — app_users row created when they actually sign up
+      // This avoids granting any access before the person completes onboarding
+      const { error: memErr } = await supabase.from("company_members").upsert([{
         company_id: companyId,
         user_email: (tenant.email || "").toLowerCase(),
         user_name: tenant.name,
@@ -1492,6 +1497,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         status: "invited",
         invited_by: userProfile?.email || "admin",
       }], { onConflict: "company_id,user_email" });
+      if (memErr) { alert("Error creating invite: " + memErr.message); return; }
       addNotification("✉️", "Invite code generated for " + tenant.email);
       logAudit("create", "tenants", "Invited tenant to portal: " + tenant.email, tenant.id, userProfile?.email, userRole, companyId);
       alert("Tenant invite created!\n\nInvite Code: " + code + "\n\nShare this code with " + tenant.name + ". They can sign up at your app URL by selecting 'I'm a Tenant' and entering this code.\n\nA magic link email was also sent to " + tenant.email);
@@ -5502,14 +5508,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
         alert("Failed to send invitation email to " + owner.email + ": " + authErr.message + "\n\nPlease verify the email address and try again. No access records were created.");
         return;
       }
-      // Auth succeeded — now safe to create membership records
-      await supabase.from("app_users").upsert([{
-        email: (owner.email || "").toLowerCase(),
-        name: owner.name,
-        role: "owner",
-        company_id: companyId,
-      }], { onConflict: "email,company_id" });
-      await supabase.from("company_members").upsert([{
+      // Create membership as "invited" — app_users row created when they actually sign up
+      const { error: memErr } = await supabase.from("company_members").upsert([{
         company_id: companyId,
         user_email: (owner.email || "").toLowerCase(),
         user_name: owner.name,
@@ -5517,6 +5517,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
         status: "invited",
         invited_by: userProfile?.email || "admin",
       }], { onConflict: "company_id,user_email" });
+      if (memErr) { alert("Error creating invite: " + memErr.message); return; }
       addNotification("✉️", "Portal invite sent to " + owner.name);
       logAudit("create", "owners", "Invited owner to portal: " + owner.email, owner.id, userProfile?.email, userRole, companyId);
       alert("Owner portal invite sent to " + owner.email + "!\n\nThey can log in and see their properties, statements, and distributions.");
@@ -8003,12 +8004,8 @@ function RoleManagement({ addNotification, companyId }) {
           });
           if (rpcErr) throw new Error(rpcErr.message);
         } catch (rpcE) {
-          // Fallback: sequential (can drift if step fails)
-          console.warn("Email change RPC fallback:", rpcE.message);
-          await supabase.from("company_members").delete().eq("company_id", companyId).ilike("user_email", editingUser.email);
-          const { error } = await supabase.from("app_users").update({ email: normalizeEmail(payload.email), role: payload.role, name: payload.name, custom_pages: payload.custom_pages, company_id: payload.company_id }).eq("company_id", companyId).eq("id", editingUser.id);
-          if (error) { alert("Error: " + error.message); return; }
-          await supabase.from("company_members").upsert([{ company_id: companyId, user_email: (form.email || "").toLowerCase(), user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
+          alert("Failed to update user email: " + rpcE.message + "\n\nNo changes were made. Please ensure the database is properly configured.");
+          return;
         }
       } else {
         // No email change — just update role/name/pages
@@ -8067,18 +8064,12 @@ function RoleManagement({ addNotification, companyId }) {
         alert("Failed to send invitation email to " + user.email + ": " + authErr.message + "\n\nPlease verify the email address and try again. No access records were created.");
         return;
       }
-      // Auth succeeded — now safe to create membership records
-      await supabase.from("app_users").upsert([{
-        email: (user.email || "").toLowerCase(),
-        name: user.name,
-        role: user.role,
-        company_id: companyId,
-        custom_pages: user.custom_pages || JSON.stringify(ROLES[user.role]?.pages || []),
-      }], { onConflict: "email,company_id" });
-      await supabase.from("company_members").upsert([{
+      // Auth succeeded — create membership as "invited" only (no app_users until they sign up)
+      const { error: memErr } = await supabase.from("company_members").upsert([{
         company_id: companyId, user_email: (user.email || "").toLowerCase(), user_name: user.name,
         role: user.role, status: "invited", invited_by: "admin",
       }], { onConflict: "company_id,user_email" });
+      if (memErr) { alert("Error creating invite: " + memErr.message); return; }
       addNotification("✉️", `Invite sent to ${user.name} (${roleName})`);
       logAudit("create", "team", "Invited " + user.name + " as " + roleName + ": " + user.email, user.id || "", "", "admin", companyId);
       alert(`Invite sent to ${user.email}!\n\nThey will receive a magic link to log in.\n\nIf they don't see it, they can use 'Forgot Password' on the login page to set their password.`);
@@ -8433,7 +8424,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
   const [showJoin, setShowJoin] = useState(false);
   const [createForm, setCreateForm] = useState({ name: "", type: "LLC", company_role: "management", address: "", phone: "", email: "" });
   const [joinCode, setJoinCode] = useState("");
-  const [joinSearch, setJoinSearch] = useState("");
+  const [joinSearch, setJoinSearch] = useState(""); // Deprecated — code-only joining
   const [searchResults, setSearchResults] = useState([]);
   const [joinMessage, setJoinMessage] = useState("");
 
@@ -8492,39 +8483,8 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
       });
       if (rpcErr) throw new Error(rpcErr.message);
     } catch (rpcE) {
-      // Fallback: client-side sequential creation
-      console.warn("Atomic create RPC not available, using client-side:", rpcE.message);
-      const { data, error } = await supabase.from("companies").insert([{
-        id: companyId, name: createForm.name, type: createForm.type, company_code: companyCode,
-        company_role: createForm.company_role || "management",
-        address: createForm.address, phone: createForm.phone, email: normalizeEmail(createForm.email),
-        created_by: normalizeEmail(currentUser?.email),
-      }]).select();
-      if (error) { alert("Error creating company: " + error.message); return; }
-      const { error: memErr } = await supabase.from("company_members").insert([{
-        company_id: companyId, user_email: normalizeEmail(currentUser?.email), user_name: currentUser?.email?.split("@")[0] || "",
-        role: "admin", status: "active", invited_by: "self",
-      }]);
-      if (memErr) { await supabase.from("companies").delete().eq("id", companyId); alert("Setup failed: " + memErr.message); return; }
-      await supabase.from("app_users").upsert([{
-        email: normalizeEmail(currentUser?.email), name: currentUser?.email?.split("@")[0] || "", role: "admin", company_id: companyId,
-      }], { onConflict: "email,company_id" });
-      const defaultAccounts = [
-        { id: "1000", name: "Checking Account", type: "Asset", subtype: "Bank", is_active: true, company_id: companyId },
-        { id: "1100", name: "Accounts Receivable", type: "Asset", subtype: "Accounts Receivable", is_active: true, company_id: companyId },
-        { id: "2100", name: "Security Deposits Held", type: "Liability", subtype: "Other Current Liability", is_active: true, company_id: companyId },
-        { id: "2200", name: "Owner Distributions Payable", type: "Liability", subtype: "Other Current Liability", is_active: true, company_id: companyId },
-        { id: "3000", name: "Owner Equity", type: "Equity", subtype: "Owner\'s Equity", is_active: true, company_id: companyId },
-        { id: "4000", name: "Rental Income", type: "Revenue", subtype: "Rental Income", is_active: true, company_id: companyId },
-        { id: "4010", name: "Late Fee Income", type: "Revenue", subtype: "Other Primary Income", is_active: true, company_id: companyId },
-        { id: "4100", name: "Other Income", type: "Revenue", subtype: "Other Primary Income", is_active: true, company_id: companyId },
-        { id: "4200", name: "Management Fee Income", type: "Revenue", subtype: "Service Income", is_active: true, company_id: companyId },
-        { id: "5300", name: "Repairs & Maintenance", type: "Expense", subtype: "Maintenance & Repairs", is_active: true, company_id: companyId },
-        { id: "5400", name: "Utilities", type: "Expense", subtype: "Utilities", is_active: true, company_id: companyId },
-        { id: "5500", name: "HOA Fees", type: "Expense", subtype: "HOA & Association Fees", is_active: true, company_id: companyId },
-        { id: "9999", name: "Suspense / Uncategorized", type: "Equity", subtype: "Suspense", is_active: true, company_id: companyId },
-      ];
-      await supabase.from("acct_accounts").upsert(defaultAccounts.map(a => ({ ...a, id: companyId.slice(0, 8) + "-" + a.id })), { onConflict: "id" });
+      alert("Failed to create company: " + rpcE.message + "\n\nPlease ensure the database is properly configured. Contact support if this persists.");
+      return;
     }
     alert("Company created!\n\nCompany Code: " + companyCode + "\n\nShare this code with people you want to invite.");
     setShowCreate(false);
@@ -8533,17 +8493,10 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
   }
 
   async function searchCompanies() {
-    if (!joinSearch.trim() && !joinCode.trim()) return;
-    // Require minimum input length to prevent enumeration
-    if (joinCode.trim() && joinCode.trim().length < 8) { alert("Please enter the full 8-digit company code."); return; }
-    if (!joinCode.trim() && joinSearch.trim().length < 3) { alert("Please enter at least 3 characters to search."); return; }
-    let query = supabase.from("companies").select("id, name, type");
-    if (joinCode.trim()) {
-      query = query.eq("company_code", joinCode.trim());
-    } else {
-      query = query.ilike("name", "%" + joinSearch.trim() + "%");
-    }
-    const { data } = await query.limit(5);
+    if (!joinCode.trim()) { alert("Please enter the 8-digit company code shared by your administrator."); return; }
+    if (joinCode.trim().length < 8) { alert("Please enter the full 8-digit company code."); return; }
+    // Only exact code match — no name search (prevents company enumeration)
+    const { data } = await supabase.from("companies").select("id, name, type").eq("company_code", joinCode.trim()).limit(1);
     setSearchResults(data || []);
   }
 
@@ -8556,10 +8509,11 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
       if (existing.status === "rejected") { alert("Your previous request to join " + company.name + " was rejected. Please contact the company admin directly."); return; }
       if (existing.status === "removed") { alert("You were previously removed from " + company.name + ". Please contact the company admin to be re-added."); return; }
     }
-    await supabase.from("company_members").upsert([{
+    const { error: joinErr } = await supabase.from("company_members").upsert([{
       company_id: company.id, user_email: normalizeEmail(currentUser?.email), user_name: currentUser?.email?.split("@")[0] || "",
       role: "office_assistant", status: "pending", invited_by: "self-request",
     }], { onConflict: "company_id,user_email" });
+    if (joinErr) { alert("Error requesting to join: " + joinErr.message); return; }
     setJoinMessage("Request sent to join " + company.name + "! An admin will review your request.");
     setSearchResults([]);
     setJoinCode("");
@@ -8749,6 +8703,70 @@ function PendingRequestsPanel({ companyId, addNotification }) {
             <div className="flex gap-2">
               <button onClick={() => handleRequest(r, "approve")} className="bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-green-700">Approve</button>
               <button onClick={() => handleRequest(r, "reject")} className="bg-red-100 text-red-600 text-xs px-3 py-1.5 rounded-lg hover:bg-red-200">Reject</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+// ============ PM ASSIGNMENT REQUESTS PANEL ============
+function PendingPMAssignments({ companyId, addNotification }) {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { fetchRequests(); }, [companyId]);
+
+  async function fetchRequests() {
+    const { data } = await supabase.from("pm_assignment_requests").select("*")
+      .eq("pm_company_id", companyId).eq("status", "pending").order("created_at", { ascending: false });
+    setRequests(data || []);
+    setLoading(false);
+  }
+
+  async function handleRequest(req, action) {
+    if (action === "accept") {
+      try {
+        const { data: result, error } = await supabase.rpc("accept_pm_assignment", {
+          p_request_id: req.id,
+          p_pm_company_id: companyId,
+          p_reviewer_email: "",
+        });
+        if (error) throw new Error(error.message);
+        addNotification("✅", "Accepted: now managing " + req.property_address);
+      } catch (e) {
+        alert("Error accepting assignment: " + e.message);
+        return;
+      }
+    } else {
+      const { error } = await supabase.from("pm_assignment_requests").update({
+        status: "declined", reviewed_at: new Date().toISOString(),
+      }).eq("id", req.id).eq("pm_company_id", companyId);
+      if (error) { alert("Error declining: " + error.message); return; }
+      addNotification("❌", "Declined PM request for " + req.property_address);
+    }
+    fetchRequests();
+  }
+
+  if (loading || requests.length === 0) return null;
+
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm font-bold text-blue-800">📨 PM Assignment Requests ({requests.length})</div>
+      </div>
+      <div className="space-y-2">
+        {requests.map(r => (
+          <div key={r.id} className="flex items-center justify-between bg-white rounded-lg p-3">
+            <div>
+              <div className="text-sm font-semibold text-gray-800">{r.property_address}</div>
+              <div className="text-xs text-gray-400">Owner requested: {new Date(r.requested_at).toLocaleDateString()} · {r.requested_by}</div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => handleRequest(r, "accept")} className="bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-green-700">Accept</button>
+              <button onClick={() => handleRequest(r, "decline")} className="bg-red-100 text-red-600 text-xs px-3 py-1.5 rounded-lg hover:bg-red-200">Decline</button>
             </div>
           </div>
         ))}
@@ -8993,6 +9011,7 @@ export default function App() {
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           {userRole === "admin" && activeCompany && <PendingRequestsPanel companyId={activeCompany.id} addNotification={addNotification} />}
+          {userRole === "admin" && activeCompany && <PendingPMAssignments companyId={activeCompany.id} addNotification={addNotification} />}
           <Page
             key={activeCompany.id}
             addNotification={addNotification}
