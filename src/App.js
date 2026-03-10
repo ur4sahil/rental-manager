@@ -1562,6 +1562,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
           ]
         });
         if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       } else if (newCharge.type === "payment" || newCharge.type === "credit") {
         const _jeOk = await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "Manual " + newCharge.type + " — " + selectedTenant.name + " — " + newCharge.description, reference: "MANUAL-" + shortId(), property: selectedTenant.property || "",
           lines: [
@@ -1569,6 +1570,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
             { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
           ]
         });
+        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       }
     }
@@ -2053,7 +2055,6 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
     if (hasAccrual) {
       // Settle AR: DR Bank, CR Accounts Receivable (revenue already recognized at accrual)
       const _jeOk = await autoPostJournalEntry({
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         companyId,
         date: form.date,
         description: `Payment received — ${form.tenant} — ${form.property} (settling AR)`,
@@ -2065,12 +2066,12 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
         ]
       });
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     } else {
       // No accrual: direct revenue (cash basis) DR Bank, CR Revenue
       const revenueAcct = isLateFee ? "4010" : "4000";
       const revenueAcctName = isLateFee ? "Late Fee Income" : "Rental Income";
       const _jeOk = await autoPostJournalEntry({
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         companyId,
         date: form.date,
         description: `${form.type === "rent" ? "Rent" : form.type} payment — ${form.tenant} — ${form.property}`,
@@ -2081,6 +2082,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
           { account_id: revenueAcct, account_name: revenueAcctName, debit: 0, credit: amt, class_id: classId, memo: `${form.tenant} — ${form.property}` },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     }
     addNotification("💳", `Payment recorded: ${formatCurrency(form.amount)} from ${form.tenant}`);
@@ -2232,7 +2234,6 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
       const classId = await getPropertyClassId(wo.property, companyId);
       const amt = safeNum(wo.cost);
       const _jeOk = await autoPostJournalEntry({
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         companyId,
         date: formatLocalDate(new Date()),
         description: `Maintenance: ${wo.issue} — ${wo.property}`,
@@ -2243,6 +2244,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid for: ${wo.issue}` },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     }
     addNotification("🔧", `Work order "${wo.issue}" marked as ${newStatus.replace("_", " ")}`);
@@ -2454,7 +2456,6 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
     const amt = safeNum(u.amount);
     if (amt > 0) {
       const _jeOk = await autoPostJournalEntry({
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         companyId,
         date: formatLocalDate(new Date()),
         description: `Utility: ${u.provider} — ${u.property}`,
@@ -2465,6 +2466,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid: ${u.provider}` },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     }
     fetchUtilities();
@@ -4096,7 +4098,6 @@ function Accounting({ companyId, activeCompany }) {
                 if (rent <= 0) continue;
                 const classId = await getPropertyClassId(lease.property, companyId);
                 const _jeOk = await autoPostJournalEntry({
-                if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
                   companyId,
                   date: today,
                   description: `Rent accrual ${month} — ${lease.tenant_name} — ${lease.property}`,
@@ -4107,6 +4108,7 @@ function Accounting({ companyId, activeCompany }) {
                     { account_id: "4000", account_name: "Rental Income", debit: 0, credit: rent, class_id: classId, memo: `${lease.tenant_name} — ${lease.property}` },
                   ]
                 });
+                if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
                 if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
                 // Update tenant balance (they now owe this amount)
                 if (lease.tenant_id) {
@@ -4627,6 +4629,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
           ]
         });
         if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         // Create ledger entry for deposit collection
         if (tenant?.id) {
           await safeLedgerInsert({ company_id: companyId,
@@ -4757,6 +4760,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
         ]
       });
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     }
     if (deducted > 0) {
       const _jeOk = await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Deposit deduction — " + lease.tenant_name + " — " + depositForm.deductions, reference: "DEPDED-" + shortId(), property: lease.property,
@@ -4765,6 +4769,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
           { account_id: "4100", account_name: "Other Income", debit: 0, credit: deducted, class_id: classId, memo: "Deposit forfeiture: " + lease.tenant_name },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     }
     // Create ledger entry and update balance for deposit return
@@ -5150,7 +5155,6 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
     // Post to accounting
     const classId = await getPropertyClassId(inv.property, companyId);
     const _jeOk = await autoPostJournalEntry({
-    if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       companyId,
       date: today,
       description: "Vendor payment — " + inv.vendor_name + " — " + (inv.description || inv.invoice_number),
@@ -5161,6 +5165,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
         { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(inv.amount), class_id: classId, memo: "Payment to " + inv.vendor_name },
       ]
     });
+    if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     logAudit("update", "vendor_invoices", "Paid invoice: $" + inv.amount + " to " + inv.vendor_name, inv.id, userProfile?.email, userRole, companyId);
     fetchData();
@@ -5579,7 +5584,6 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
     // Post management fee as revenue
     if (stmt.management_fee > 0) {
       const _jeOk = await autoPostJournalEntry({
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         companyId,
         date: today,
         description: "Management fee — " + stmt.owner_name + " — " + stmt.period,
@@ -5590,6 +5594,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
           { account_id: "4200", account_name: "Management Fee Income", debit: 0, credit: safeNum(stmt.management_fee), memo: stmt.owner_name },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     }
     // Mark statement as paid only AFTER distribution + JE posting succeed
@@ -6890,7 +6895,6 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
     const classId = await getPropertyClassId(h.property, companyId);
     if (safeNum(h.amount) > 0) {
       const _jeOk = await autoPostJournalEntry({
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         companyId,
         date: today,
         description: `HOA payment: ${h.hoa_name} — ${h.property}`,
@@ -6901,6 +6905,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(h.amount), class_id: classId, memo: `HOA: ${h.hoa_name}` },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     }
     fetchHOA();
@@ -7103,6 +7108,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
         ]
       });
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     } else {
       const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Autopay — " + s.tenant + " — " + s.property, reference: "APAY-" + shortId(), property: s.property,
         lines: [
@@ -7110,6 +7116,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: s.tenant + " — " + s.property },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     }
     logAudit("create", "payments", "Autopay: $" + s.amount + " from " + s.tenant + " at " + s.property, "", userProfile?.email, userRole, companyId);
@@ -7320,7 +7327,6 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
     const classId = await getPropertyClassId(payment.property, companyId);
     if (feeAmount > 0) {
       const _jeOk = await autoPostJournalEntry({
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         companyId,
         date: formatLocalDate(new Date()),
         description: "Late fee - " + payment.tenant + " - " + payment.property,
@@ -7331,6 +7337,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "4010", account_name: "Late Fee Income", debit: 0, credit: feeAmount, class_id: classId, memo: payment.daysLate + " days overdue" },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     }
     fetchData();
@@ -7540,6 +7547,7 @@ function TenantPortal({ currentUser, companyId }) {
           ]
         });
         if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       } else {
         const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Online rent payment — " + tenantData.name + " — " + tenantData.property, reference: "SPAY-" + shortId(), property: tenantData.property,
           lines: [
@@ -7547,6 +7555,7 @@ function TenantPortal({ currentUser, companyId }) {
             { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: tenantData.name + " — " + tenantData.property },
           ]
         });
+        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       }
       logAudit("create", "payments", "Online payment: $" + amt + " from " + tenantData.name, "", currentUser?.email, "tenant", companyId);
