@@ -1468,10 +1468,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         options: { data: { name: tenant.name, role: "tenant" } }
       });
       if (authErr) {
-        console.warn("Auth invite failed:", authErr.message);
+        // Auth failed — do NOT create membership records for a non-deliverable invite
+        alert("Failed to send invitation email to " + tenant.email + ": " + authErr.message + "\n\nPlease verify the email address and try again. No access records were created.");
+        return;
       }
-      // Create app_users entry with tenant role
-      // Insert only if no existing row — don't overwrite other company's data
+      // Auth succeeded — now safe to create membership records
       await supabase.from("app_users").upsert([{
         email: (tenant.email || "").toLowerCase(),
         name: tenant.name,
@@ -1479,7 +1480,6 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         user_type: "tenant",
         company_id: companyId,
       }], { onConflict: "email,company_id" });
-      // Create company_members entry so tenant is auto-routed to this company
       await supabase.from("company_members").upsert([{
         company_id: companyId,
         user_email: (tenant.email || "").toLowerCase(),
@@ -5487,15 +5487,17 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
         email: owner.email,
         options: { data: { name: owner.name, role: "owner" } }
       });
-      if (authErr) { alert("Failed to send invitation email: " + authErr.message + "\n\nYou can share the login URL manually with the owner."); }
-      // Insert only if no existing row — don't overwrite other company's data
+      if (authErr) {
+        alert("Failed to send invitation email to " + owner.email + ": " + authErr.message + "\n\nPlease verify the email address and try again. No access records were created.");
+        return;
+      }
+      // Auth succeeded — now safe to create membership records
       await supabase.from("app_users").upsert([{
         email: (owner.email || "").toLowerCase(),
         name: owner.name,
         role: "owner",
         company_id: companyId,
       }], { onConflict: "email,company_id" });
-      // Create company_members entry so owner is auto-routed to this company
       await supabase.from("company_members").upsert([{
         company_id: companyId,
         user_email: (owner.email || "").toLowerCase(),
@@ -8032,10 +8034,10 @@ function RoleManagement({ addNotification, companyId }) {
         options: { data: { name: user.name, role: user.role } }
       });
       if (authErr) {
-        console.warn("Auth invite failed:", authErr.message);
+        alert("Failed to send invitation email to " + user.email + ": " + authErr.message + "\n\nPlease verify the email address and try again. No access records were created.");
+        return;
       }
-      // Ensure app_users entry exists with correct role
-      // Insert only if no existing row — don't overwrite other company's data
+      // Auth succeeded — now safe to create membership records
       await supabase.from("app_users").upsert([{
         email: (user.email || "").toLowerCase(),
         name: user.name,
@@ -8043,7 +8045,6 @@ function RoleManagement({ addNotification, companyId }) {
         company_id: companyId,
         custom_pages: user.custom_pages || JSON.stringify(ROLES[user.role]?.pages || []),
       }], { onConflict: "email,company_id" });
-      // Ensure company_members entry
       await supabase.from("company_members").upsert([{
         company_id: companyId, user_email: (user.email || "").toLowerCase(), user_name: user.name,
         role: user.role, status: "invited", invited_by: "admin",
