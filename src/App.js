@@ -128,7 +128,8 @@ async function logAudit(action, module, details = "", recordId = "", userEmail =
     if (!companyId) { console.warn("logAudit: missing companyId — skipping"); return; }
     // Sanitize audit details: truncate and strip potential injection
     const safeDetails = String(details || "").replace(/<[^>]*>/g, "").slice(0, 500);
-    await supabase.from("audit_trail").insert([{ company_id: companyId, action, module, details: safeDetails, record_id: String(recordId), user_email: normalizeEmail(userEmail), user_role: userRoleVal }]);
+    const { error: _err130 } = await supabase.from("audit_trail").insert([{ company_id: companyId, action, module, details: safeDetails, record_id: String(recordId), user_email: normalizeEmail(userEmail), user_role: userRoleVal }]);
+    if (_err130) { alert("Error updating audit_trail: " + _err130.message); return; }
   } catch (e) { console.warn("Audit log failed:", e); }
 }
 
@@ -176,10 +177,11 @@ async function getPropertyClassId(propertyAddress, companyId) {
 // Resolve bare account codes (1000, 1100, etc.) to actual DB IDs for this company
 const _acctIdCache = {};
 async function resolveAccountId(bareCode, companyId) {
-  if (!companyId) return bareCode; // no company context — return bare code
+  if (!companyId) return bareCode;
   const cid = companyId;
-  const key = cid + ":" + bareCode;
-  if (_acctIdCache[key]) return _acctIdCache[key];
+  // Key cache by company to prevent cross-company stale hits
+  if (!_acctIdCache[cid]) _acctIdCache[cid] = {};
+  if (_acctIdCache[cid]?.[bareCode]) return _acctIdCache[cid][bareCode];
   // Try prefixed format first (co-abc12-1000), then bare code
   const prefix = cid.slice(0, 8) + "-" + bareCode;
   let resolved = bareCode;
@@ -189,7 +191,7 @@ async function resolveAccountId(bareCode, companyId) {
     const { data: d2 } = await supabase.from("acct_accounts").select("id").eq("company_id", cid).eq("id", bareCode).limit(1);
     if (d2?.length > 0) resolved = d2[0].id;
   }
-  _acctIdCache[key] = resolved;
+  _acctIdCache[cid][bareCode] = resolved;
   return resolved;
 }
 
@@ -485,7 +487,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
 
   const handleSignup = async (userType) => {
     if (!email || !password) { setError("Email and password are required."); return; }
-    if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
+    if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
     if (!name.trim()) { setError("Name is required."); return; }
     setLoading(true);
     setError("");
@@ -691,6 +693,7 @@ function Dashboard({ notifications, setPage, companyId }) {
         <h2 className="text-xl font-bold text-gray-800">Dashboard</h2>
         <button onClick={async () => {
           setRentPostLoading(true);
+          let rentPostSuccess = false;
           try {
             // Try server-side batch function first (atomic, no N+1)
             const { data: rpcResult, error: rpcErr } = await supabase.rpc("batch_post_rent_charges", { p_company_id: companyId });
@@ -698,15 +701,18 @@ function Dashboard({ notifications, setPage, companyId }) {
               // Fallback to client-side if RPC not yet deployed
               console.warn("Batch RPC not available, using client-side:", rpcErr.message);
               await autoPostRentCharges(companyId);
+              rentPostSuccess = true;
             } else {
               const count = rpcResult?.charges_posted || 0;
               if (count > 0) addNotification("⚡", `Posted ${count} rent charge(s) for this month`);
+              rentPostSuccess = true;
             }
           } catch (e) {
             console.warn("Rent posting error:", e);
-            await autoPostRentCharges(companyId);
+            try { await autoPostRentCharges(companyId); rentPostSuccess = true; } catch {}
           }
-          setLastRentPost(new Date().toLocaleTimeString());
+          if (rentPostSuccess) setLastRentPost(new Date().toLocaleTimeString());
+          else addNotification("⚠️", "Rent charge posting encountered errors — check console");
           setRentPostLoading(false);
           // Refresh data
           const { data: refreshPay } = await companyQuery("payments", companyId);
@@ -877,14 +883,16 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
           for (const table of tables) {
             await supabase.from(table).update({ property: form.address }).eq("company_id", companyId).eq("property", oldAddr);
           }
-          await supabase.from("leases").update({ property: form.address }).eq("company_id", companyId).eq("property", oldAddr);
-          await supabase.from("acct_classes").update({ name: form.address }).eq("company_id", companyId).eq("name", oldAddr);
+          const { error: _err881 } = await supabase.from("leases").update({ property: form.address }).eq("company_id", companyId).eq("property", oldAddr);
+          if (_err881) { alert("Error updating leases: " + _err881.message); return; }
+          const { error: _err882 } = await supabase.from("acct_classes").update({ name: form.address }).eq("company_id", companyId).eq("name", oldAddr);
+          if (_err882) { alert("Error updating acct_classes: " + _err882.message); return; }
         }
       }
       // Auto-create accounting class for new properties
       if (!editingProperty) {
         const classId = generateId("PROP");
-        await supabase.from("acct_classes").upsert([{ id: classId, name: form.address, description: `${form.type} · $${form.rent}/mo`, color: pickColor(form?.address || req?.address || ""), is_active: true, company_id: companyId }], { onConflict: "id" });
+        await supabase.from("acct_classes").upsert([{ id: classId, name: form.address, description: `${form.type} · ${formatCurrency(form.rent)}/mo`, color: pickColor(form?.address || req?.address || ""), is_active: true, company_id: companyId }], { onConflict: "id" });
       }
       addNotification("🏠", editingProperty ? `Property updated: ${form.address}` : `New property added: ${form.address}`);
       logAudit(editingProperty ? "update" : "create", "properties", `${editingProperty ? "Updated" : "Added"} property: ${form.address}`, editingProperty?.id || "", userProfile?.email, userRole, companyId);
@@ -935,10 +943,14 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       // Fallback to client-side if RPC not deployed
       await supabase.from("work_orders").delete().eq("company_id", companyId).eq("property", address);
       await supabase.from("autopay_schedules").delete().eq("company_id", companyId).eq("property", address);
-      await supabase.from("utilities").delete().eq("company_id", companyId).eq("property", address);
-      await supabase.from("hoa_payments").delete().eq("company_id", companyId).eq("property", address);
-      await supabase.from("ledger_entries").delete().eq("company_id", companyId).eq("property", address);
-      await supabase.from("documents").delete().eq("company_id", companyId).eq("property", address);
+      const { error: _err939 } = await supabase.from("utilities").delete().eq("company_id", companyId).eq("property", address);
+      if (_err939) console.warn("utilities write failed:", _err939.message);
+      const { error: _err940 } = await supabase.from("hoa_payments").delete().eq("company_id", companyId).eq("property", address);
+      if (_err940) console.warn("hoa_payments write failed:", _err940.message);
+      const { error: _err941 } = await supabase.from("ledger_entries").delete().eq("company_id", companyId).eq("property", address);
+      if (_err941) console.warn("ledger_entries write failed:", _err941.message);
+      const { error: _err942 } = await supabase.from("documents").delete().eq("company_id", companyId).eq("property", address);
+      if (_err942) console.warn("documents write failed:", _err942.message);
     }
     const { error } = await supabase.from("properties").delete().eq("id", id).eq("company_id", companyId);
     if (error) { alert("Error deleting property: " + error.message); return; }
@@ -956,7 +968,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       if (apErr) { alert("Error adding property: " + apErr.message); return; }
       // Auto-create accounting class for this property
       const classId = generateId("PROP");
-      await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · $${req.rent}/mo`, color: pickColor(form?.address || req?.address || ""), is_active: true, company_id: companyId }], { onConflict: "id" });
+      await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · ${formatCurrency(req.rent)}/mo`, color: pickColor(form?.address || req?.address || ""), is_active: true, company_id: companyId }], { onConflict: "id" });
       addNotification("✅", `Property approved & added: ${req.address}`);
     } else if (req.request_type === "edit" && req.property_id) {
       // Check if address changed and cascade
@@ -966,8 +978,10 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       if (oldProp && oldProp.address !== req.address) {
         const cascadeTables = ["tenants", "payments", "ledger_entries", "work_orders", "utilities", "autopay_schedules", "documents", "hoa_payments"];
         for (const table of cascadeTables) await supabase.from(table).update({ property: req.address }).eq("company_id", companyId).eq("property", oldProp.address);
-        await supabase.from("leases").update({ property: req.address }).eq("company_id", companyId).eq("property", oldProp.address);
-        await supabase.from("acct_classes").update({ name: req.address }).eq("company_id", companyId).eq("name", oldProp.address);
+        const { error: _leaseRename } = await supabase.from("leases").update({ property: req.address }).eq("company_id", companyId).eq("property", oldProp.address);
+        if (_leaseRename) console.warn("Lease cascade rename failed:", _leaseRename.message);
+        const { error: _classRename } = await supabase.from("acct_classes").update({ name: req.address }).eq("company_id", companyId).eq("name", oldProp.address);
+        if (_classRename) console.warn("Class cascade rename failed:", _classRename.message);
       }
       addNotification("✅", `Property edit approved: ${req.address}`);
     }
@@ -1294,7 +1308,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
               <div key={i} className="flex gap-3 items-start">
                 <span className="text-lg">{item._type === "payment" ? "💰" : item._type === "work_order" ? "🔧" : "📄"}</span>
                 <div>
-                  <p className="text-sm font-medium text-gray-800">{item._type === "payment" ? `$${item.amount} - ${item.type}` : item._type === "work_order" ? item.issue : item.name}</p>
+                  <p className="text-sm font-medium text-gray-800">{item._type === "payment" ? `${formatCurrency(item.amount)} - ${item.type}` : item._type === "work_order" ? item.issue : item.name}</p>
                   <p className="text-xs text-gray-400">{new Date(item._date).toLocaleDateString()}</p>
                 </div>
               </div>
@@ -1368,7 +1382,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
           for (const table of tables) {
             await supabase.from(table).update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName);
           }
-          await supabase.from("leases").update({ tenant_name: form.name }).eq("company_id", companyId).eq("tenant_name", oldName);
+          const { error: _err1372 } = await supabase.from("leases").update({ tenant_name: form.name }).eq("company_id", companyId).eq("tenant_name", oldName);
+          if (_err1372) { alert("Error updating leases: " + _err1372.message); return; }
         }
       }
       addNotification("👤", `Tenant updated: ${form.name}`);
@@ -1396,9 +1411,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
       // Fallback
       await supabase.from("ledger_entries").delete().eq("company_id", companyId).eq("tenant", name);
       await supabase.from("messages").delete().eq("company_id", companyId).eq("tenant", name);
-      await supabase.from("payments").delete().eq("company_id", companyId).eq("tenant", name);
-      await supabase.from("work_orders").delete().eq("company_id", companyId).eq("tenant", name);
-      await supabase.from("autopay_schedules").delete().eq("company_id", companyId).eq("tenant", name);
+      const { error: _err1400 } = await supabase.from("payments").delete().eq("company_id", companyId).eq("tenant", name);
+      if (_err1400) console.warn("payments write failed:", _err1400.message);
+      const { error: _err1401 } = await supabase.from("work_orders").delete().eq("company_id", companyId).eq("tenant", name);
+      if (_err1401) console.warn("work_orders write failed:", _err1401.message);
+      const { error: _err1402 } = await supabase.from("autopay_schedules").delete().eq("company_id", companyId).eq("tenant", name);
+      if (_err1402) console.warn("autopay_schedules write failed:", _err1402.message);
     }
     const { error } = await supabase.from("tenants").delete().eq("id", id).eq("company_id", companyId);
     if (error) { alert("Error deleting tenant: " + error.message); return; }
@@ -1435,7 +1453,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         used: false,
       }]);
 
-      // Also send magic link as before
+      // Also send magic link — but only if invite code was created successfully
+      if (codeInsertError) { alert("Failed to create invite code: " + codeInsertError.message); return; }
       const { error: authErr } = await supabase.auth.signInWithOtp({
         email: tenant.email,
         options: { data: { name: tenant.name, role: "tenant" } }
@@ -1458,7 +1477,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         user_email: (tenant.email || "").toLowerCase(),
         user_name: tenant.name,
         role: "tenant",
-        status: "active",
+        status: "invited",
         invited_by: userProfile?.email || "admin",
       }], { onConflict: "company_id,user_email" });
       addNotification("✉️", "Invite code generated for " + tenant.email);
@@ -1489,18 +1508,20 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
     setActivePanel("messages");
     const { data } = await supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tenant.name).order("created_at", { ascending: true });
     setMessages(data || []);
-    await supabase.from("messages").update({ read: true }).eq("company_id", companyId).eq("tenant", tenant.name);
+    const { error: _err1494 } = await supabase.from("messages").update({ read: true }).eq("company_id", companyId).eq("tenant", tenant.name);
+    if (_err1494) console.warn("messages write failed:", _err1494.message);
   }
 
   async function sendMessage() {
     if (!newMessage.trim()) return;
-    await supabase.from("messages").insert([{ company_id: companyId,
+    const { error: _err_messages_1499 } = await supabase.from("messages").insert([{ company_id: companyId,
       tenant: selectedTenant.name,
       property: selectedTenant.property,
       sender: "admin",
       message: newMessage,
       read: false,
     }]);
+    if (_err_messages_1499) console.warn("messages write failed:", _err_messages_1499.message);
     setNewMessage("");
     const { data } = await supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", selectedTenant.name).order("created_at", { ascending: true });
     setMessages(data || []);
@@ -1534,14 +1555,16 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
     if (Math.abs(amount) > 0) {
       const classId = await getPropertyClassId(selectedTenant.property, companyId);
       if (newCharge.type === "charge") {
-        await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "Manual charge — " + selectedTenant.name + " — " + newCharge.description, reference: "MANUAL-" + shortId(), property: selectedTenant.property || "",
+        const _jeOk = await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "Manual charge — " + selectedTenant.name + " — " + newCharge.description, reference: "MANUAL-" + shortId(), property: selectedTenant.property || "",
+        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
           lines: [
             { account_id: "1100", account_name: "Accounts Receivable", debit: Math.abs(amount), credit: 0, class_id: classId, memo: selectedTenant.name + ": " + newCharge.description },
             { account_id: "4100", account_name: "Other Income", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
           ]
         });
       } else if (newCharge.type === "payment" || newCharge.type === "credit") {
-        await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "Manual " + newCharge.type + " — " + selectedTenant.name + " — " + newCharge.description, reference: "MANUAL-" + shortId(), property: selectedTenant.property || "",
+        const _jeOk = await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "Manual " + newCharge.type + " — " + selectedTenant.name + " — " + newCharge.description, reference: "MANUAL-" + shortId(), property: selectedTenant.property || "",
+        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
           lines: [
             { account_id: "1000", account_name: "Checking Account", debit: Math.abs(amount), credit: 0, class_id: classId, memo: selectedTenant.name + ": " + newCharge.description },
             { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
@@ -1563,11 +1586,13 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
     // Also update active lease end_date if one exists
     const { data: activeLease } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("tenant_name", selectedTenant.name).eq("status", "active").limit(1);
     if (activeLease?.[0]) {
-      await supabase.from("leases").update({ end_date: newMoveOut }).eq("company_id", companyId).eq("id", activeLease[0].id);
+      const { error: _err1570 } = await supabase.from("leases").update({ end_date: newMoveOut }).eq("company_id", companyId).eq("id", activeLease[0].id);
+      if (_err1570) { alert("Error updating leases: " + _err1570.message); return; }
     }
     // Update property lease_end
     if (selectedTenant.property) {
-      await supabase.from("properties").update({ lease_end: newMoveOut }).eq("company_id", companyId).eq("address", selectedTenant.property);
+      const { error: _err1574 } = await supabase.from("properties").update({ lease_end: newMoveOut }).eq("company_id", companyId).eq("address", selectedTenant.property);
+      if (_err1574) { alert("Error updating properties: " + _err1574.message); return; }
     }
     addNotification("📄", `Lease extended for ${selectedTenant.name} until ${newMoveOut}`);
     setLeaseModal(null);
@@ -1596,7 +1621,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
 
   function openLeaseForSigning(tenant) {
     // Open in new tab with signing canvas
-    const win = window.open("", "_blank");
+    const win = window.open("", "_blank", "noopener,noreferrer");
     win.document.write(`
       <!DOCTYPE html>
       <html>
@@ -1714,7 +1739,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
                 <div className={`rounded-xl p-4 mb-4 text-center ${selectedTenant.balance > 0 ? "bg-red-50" : selectedTenant.balance < 0 ? "bg-green-50" : "bg-gray-50"}`}>
                   <div className="text-xs text-gray-400 mb-1">Current Balance</div>
                   <div className={`text-3xl font-bold ${selectedTenant.balance > 0 ? "text-red-500" : selectedTenant.balance < 0 ? "text-green-600" : "text-gray-700"}`}>
-                    {selectedTenant.balance > 0 ? `-$${selectedTenant.balance}` : selectedTenant.balance < 0 ? `Credit $${Math.abs(selectedTenant.balance)}` : "$0 Current"}
+                    {selectedTenant.balance > 0 ? `-${formatCurrency(selectedTenant.balance)}` : selectedTenant.balance < 0 ? `Credit ${formatCurrency(Math.abs(selectedTenant.balance))}` : "$0 Current"}
                   </div>
                 </div>
                 <div className="bg-gray-50 rounded-xl p-3 mb-4">
@@ -1741,7 +1766,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
                         </div>
                         <div className="text-right">
                           <div className={`text-sm font-bold ${e.amount > 0 ? "text-red-500" : "text-green-600"}`}>
-                            {e.amount > 0 ? `+$${e.amount}` : `-$${Math.abs(e.amount)}`}
+                            {e.amount > 0 ? `+${formatCurrency(e.amount)}` : `-${formatCurrency(Math.abs(e.amount))}`}
                           </div>
                           <div className="text-xs text-gray-400">Bal: ${e.balance}</div>
                         </div>
@@ -1785,7 +1810,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
                     {[
                       ["Tenant", selectedTenant.name],
                       ["Property", selectedTenant.property],
-                      ["Monthly Rent", selectedTenant.rent ? `$${selectedTenant.rent}/mo` : "—"],
+                      ["Monthly Rent", selectedTenant.rent ? `${formatCurrency(selectedTenant.rent)}/mo` : "—"],
                       ["Move-In Date", selectedTenant.move_in || "—"],
                       ["Move-Out Date", selectedTenant.move_out || "—"],
                       ["Lease Status", selectedTenant.lease_status],
@@ -1915,8 +1940,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-xs mt-2">
                     <div><span className="text-gray-400">Email</span><div className="font-semibold text-gray-700 truncate">{t.email}</div></div>
-                    <div><span className="text-gray-400">Balance</span><div className={`font-semibold ${t.balance > 0 ? "text-red-500" : "text-gray-700"}`}>{t.balance > 0 ? `-$${t.balance}` : "Current"}</div></div>
-                    <div><span className="text-gray-400">Rent</span><div className="font-semibold text-gray-700">{t.rent ? `$${t.rent}/mo` : "\u2014"}</div></div>
+                    <div><span className="text-gray-400">Balance</span><div className={`font-semibold ${t.balance > 0 ? "text-red-500" : "text-gray-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</div></div>
+                    <div><span className="text-gray-400">Rent</span><div className="font-semibold text-gray-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</div></div>
                   </div>
                   <div className="mt-3 pt-3 border-t border-gray-50"><TenantActions t={t} /></div>
                 </div>
@@ -1936,8 +1961,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
                       <td className="px-4 py-2.5 text-gray-600">{t.property}</td>
                       <td className="px-4 py-2.5 text-gray-500 text-xs">{t.email}</td>
                       <td className="px-4 py-2.5"><Badge status={t.lease_status} /></td>
-                      <td className="px-4 py-2.5 text-right font-semibold">{t.rent ? `$${t.rent}` : "\u2014"}</td>
-                      <td className={`px-4 py-2.5 text-right font-semibold ${t.balance > 0 ? "text-red-500" : "text-gray-700"}`}>{t.balance > 0 ? `-$${t.balance}` : "Current"}</td>
+                      <td className="px-4 py-2.5 text-right font-semibold">{t.rent ? `${formatCurrency(t.rent)}` : "\u2014"}</td>
+                      <td className={`px-4 py-2.5 text-right font-semibold ${t.balance > 0 ? "text-red-500" : "text-gray-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</td>
                       <td className="px-4 py-2.5 text-right"><TenantActions t={t} /></td>
                     </tr>
                   ))}
@@ -1951,8 +1976,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
                 <div key={t.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50/50">
                   <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">{t.name?.[0]}</div>
                   <div className="flex-1 min-w-0"><span className="text-sm font-medium text-gray-800">{t.name}</span><span className="text-xs text-gray-400 ml-2">{t.property}</span></div>
-                  <span className="text-sm font-semibold text-gray-700">{t.rent ? `$${t.rent}/mo` : "\u2014"}</span>
-                  <span className={`text-xs font-semibold ${t.balance > 0 ? "text-red-500" : "text-gray-500"}`}>{t.balance > 0 ? `-$${t.balance}` : "Current"}</span>
+                  <span className="text-sm font-semibold text-gray-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</span>
+                  <span className={`text-xs font-semibold ${t.balance > 0 ? "text-red-500" : "text-gray-500"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</span>
                   <Badge status={t.lease_status} />
                   <button onClick={() => openLedger(t)} className="text-xs text-indigo-600 hover:underline">Ledger</button>
                   <button onClick={() => startEdit(t)} className="text-xs text-blue-600 hover:underline">Edit</button>
@@ -1999,8 +2024,8 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
     if (error) { alert("Error recording payment: " + error.message); return; }
     // Only auto-post to accounting if payment is actually paid (not unpaid/partial)
     if (form.status !== "paid") {
-      addNotification("💳", `Payment recorded (${form.status}): $${form.amount} from ${form.tenant}`);
-      logAudit("create", "payments", `Payment (${form.status}): $${form.amount} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole, companyId);
+      addNotification("💳", `Payment recorded (${form.status}): ${formatCurrency(form.amount)} from ${form.tenant}`);
+      logAudit("create", "payments", `Payment (${form.status}): ${formatCurrency(form.amount)} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole, companyId);
       setShowForm(false);
       setForm({ tenant: "", property: "", amount: "", type: "rent", method: "ACH", status: "paid", date: formatLocalDate(new Date()) });
       fetchPayments();
@@ -2027,7 +2052,8 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
     }
     if (hasAccrual) {
       // Settle AR: DR Bank, CR Accounts Receivable (revenue already recognized at accrual)
-      await autoPostJournalEntry({
+      const _jeOk = await autoPostJournalEntry({
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         companyId,
         date: form.date,
         description: `Payment received — ${form.tenant} — ${form.property} (settling AR)`,
@@ -2042,7 +2068,8 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
       // No accrual: direct revenue (cash basis) DR Bank, CR Revenue
       const revenueAcct = isLateFee ? "4010" : "4000";
       const revenueAcctName = isLateFee ? "Late Fee Income" : "Rental Income";
-      await autoPostJournalEntry({
+      const _jeOk = await autoPostJournalEntry({
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         companyId,
         date: form.date,
         description: `${form.type === "rent" ? "Rent" : form.type} payment — ${form.tenant} — ${form.property}`,
@@ -2054,8 +2081,8 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
         ]
       });
     }
-    addNotification("💳", `Payment recorded: $${form.amount} from ${form.tenant}`);
-    logAudit("create", "payments", `Payment: $${form.amount} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole, companyId);
+    addNotification("💳", `Payment recorded: ${formatCurrency(form.amount)} from ${form.tenant}`);
+    logAudit("create", "payments", `Payment: ${formatCurrency(form.amount)} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole, companyId);
 
     // Update tenant balance and create ledger entry
     const { data: tenantRow } = await supabase.from("tenants").select("id, balance").eq("name", form.tenant).eq("company_id", companyId).maybeSingle();
@@ -2202,7 +2229,8 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
       if (existingWoJE && existingWoJE.length > 0) { addNotification("⚠️", "Accounting entry already exists for this work order"); fetchWorkOrders(); return; }
       const classId = await getPropertyClassId(wo.property, companyId);
       const amt = safeNum(wo.cost);
-      await autoPostJournalEntry({
+      const _jeOk = await autoPostJournalEntry({
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         companyId,
         date: formatLocalDate(new Date()),
         description: `Maintenance: ${wo.issue} — ${wo.property}`,
@@ -2252,7 +2280,8 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
       if (!guardSubmit("deletePhoto")) return;
       try {
     // Photos don't have company_id — scoped via work_order RLS join
-    await supabase.from("work_order_photos").delete().eq("id", id) // photos scoped via RLS join;
+    const { error: _photoDelErr } = await supabase.from("work_order_photos").delete().eq("company_id", companyId).eq("id", id);
+    if (_photoDelErr) { alert("Error deleting photo: " + _photoDelErr.message); return; }
     openPhotos(viewingPhotos);
       } finally { guardRelease("deletePhoto"); }
   }
@@ -2347,7 +2376,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
             <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
               <div><span className="text-gray-400">Assigned</span><div className="font-semibold text-gray-700">{w.assigned || "Unassigned"}</div></div>
               <div><span className="text-gray-400">Created</span><div className="font-semibold text-gray-700">{w.created}</div></div>
-              <div><span className="text-gray-400">Cost</span><div className="font-semibold text-gray-700">{w.cost ? `$${w.cost}` : "—"}</div></div>
+              <div><span className="text-gray-400">Cost</span><div className="font-semibold text-gray-700">{w.cost ? `${formatCurrency(w.cost)}` : "—"}</div></div>
             </div>
             {w.notes && <div className="mt-2 text-xs text-gray-400 italic">{w.notes}</div>}
             <div className="mt-3 flex gap-2 flex-wrap">
@@ -2416,12 +2445,13 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
       action: "Approved & Paid",
       paid_at: now,
     }]);
-    addNotification("✅", `Utility paid: ${u.provider} $${u.amount} for ${u.property}`);
+    addNotification("✅", `Utility paid: ${u.provider} ${formatCurrency(u.amount)} for ${u.property}`);
     // AUTO-POST TO ACCOUNTING: DR Utilities Expense, CR Bank
     const classId = await getPropertyClassId(u.property, companyId);
     const amt = safeNum(u.amount);
     if (amt > 0) {
-      await autoPostJournalEntry({
+      const _jeOk = await autoPostJournalEntry({
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         companyId,
         date: formatLocalDate(new Date()),
         description: `Utility: ${u.provider} — ${u.property}`,
@@ -3818,7 +3848,7 @@ function Accounting({ companyId, activeCompany }) {
         const newClasses = missing.map(p => ({
           id: `PROP-${p.id}`,
           name: p.address,
-          description: `${p.type || "Property"} · $${p.rent || 0}/mo`,
+          description: `${p.type || "Property"} · ${formatCurrency(p.rent || 0)}/mo`,
           color: pickColor(p.address),
           is_active: true,
           company_id: companyId,
@@ -3866,7 +3896,8 @@ function Accounting({ companyId, activeCompany }) {
       const { data: refs } = await supabase.from("acct_journal_lines").select("id").eq("account_id", id).limit(1);
       if (refs?.length > 0 && !window.confirm("This account has journal entries. Deactivating will hide it from reports but existing entries remain. Continue?")) return;
     }
-    await supabase.from("acct_accounts").update({ is_active: !currentActive }).eq("company_id", companyId).eq("id", id);
+    const { error: _err3877 } = await supabase.from("acct_accounts").update({ is_active: !currentActive }).eq("company_id", companyId).eq("id", id);
+    if (_err3877) { alert("Error updating acct_accounts: " + _err3877.message); return; }
     fetchAll();
   }
 
@@ -3898,7 +3929,8 @@ function Accounting({ companyId, activeCompany }) {
       const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: jeId, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "" })));
       if (linesErr) {
         console.warn("JE lines failed, cleaning up:", linesErr.message);
-        await supabase.from("acct_journal_entries").delete().eq("company_id", companyId).eq("id", jeId);
+        const { error: _err3909 } = await supabase.from("acct_journal_entries").delete().eq("company_id", companyId).eq("id", jeId);
+        if (_err3909) console.warn("acct_journal_entries write failed:", _err3909.message);
         alert("Error creating journal entry lines: " + linesErr.message);
         return;
       }
@@ -3919,7 +3951,8 @@ function Accounting({ companyId, activeCompany }) {
     const { data: oldLines } = await supabase.from("acct_journal_lines").select("*").eq("journal_entry_id", id);
     await supabase.from("acct_journal_entries").update({ date: header.date, description: header.description, reference: header.reference || "", property: header.property || "", status: header.status }).eq("company_id", companyId).eq("id", id);
     // Replace lines
-    await supabase.from("acct_journal_lines").delete().eq("journal_entry_id", id);
+    const { error: _err3930 } = await supabase.from("acct_journal_lines").delete().eq("journal_entry_id", id);
+    if (_err3930) console.warn("acct_journal_lines write failed:", _err3930.message);
     if (lines?.length > 0) {
       const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: id, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "" })));
       if (linesErr) {
@@ -3941,13 +3974,15 @@ function Accounting({ companyId, activeCompany }) {
     if (!je?.lines || je.lines.length === 0) { alert("Cannot post a journal entry with no lines."); return; }
     const v = validateJE(je.lines);
     if (!v.isValid) { alert("Cannot post: journal entry is out of balance by $" + v.difference.toFixed(2)); return; }
-    await supabase.from("acct_journal_entries").update({ status: "posted" }).eq("company_id", companyId).eq("id", id);
+    const { error: _err3952 } = await supabase.from("acct_journal_entries").update({ status: "posted" }).eq("company_id", companyId).eq("id", id);
+    if (_err3952) { alert("Error updating acct_journal_entries: " + _err3952.message); return; }
     fetchAll();
   }
   async function voidJournalEntry(id) {
     // Find the JE to check if it affected a tenant balance
     const je = journalEntries.find(j => j.id === id);
-    await supabase.from("acct_journal_entries").update({ status: "voided" }).eq("company_id", companyId).eq("id", id);
+    const { error: _err3958 } = await supabase.from("acct_journal_entries").update({ status: "voided" }).eq("company_id", companyId).eq("id", id);
+    if (_err3958) { alert("Error updating acct_journal_entries: " + _err3958.message); return; }
     // Reverse tenant balance based on JE type
     if (je) {
       const { data: jeLines } = await supabase.from("acct_journal_lines").select("*").eq("journal_entry_id", id);
@@ -4002,7 +4037,8 @@ function Accounting({ companyId, activeCompany }) {
     fetchAll();
   }
   async function toggleClass(id, currentActive) {
-    await supabase.from("acct_classes").update({ is_active: !currentActive }).eq("company_id", companyId).eq("id", id);
+    const { error: _err4013 } = await supabase.from("acct_classes").update({ is_active: !currentActive }).eq("company_id", companyId).eq("id", id);
+    if (_err4013) { alert("Error updating acct_classes: " + _err4013.message); return; }
     fetchAll();
   }
 
@@ -4055,7 +4091,8 @@ function Accounting({ companyId, activeCompany }) {
                 const rent = safeNum(lease.rent_amount);
                 if (rent <= 0) continue;
                 const classId = await getPropertyClassId(lease.property, companyId);
-                await autoPostJournalEntry({
+                const _jeOk = await autoPostJournalEntry({
+                if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
                   companyId,
                   date: today,
                   description: `Rent accrual ${month} — ${lease.tenant_name} — ${lease.property}`,
@@ -4213,7 +4250,8 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
       if (d.file_name && !d.url) {
         const { data } = supabase.storage.from("documents").getPublicUrl(d.file_name);
         if (data?.publicUrl) {
-          await supabase.from("documents").update({ url: data.publicUrl }).eq("company_id", companyId).eq("id", d.id);
+          const { error: _err4225 } = await supabase.from("documents").update({ url: data.publicUrl }).eq("company_id", companyId).eq("id", d.id);
+          if (_err4225) { alert("Error updating documents: " + _err4225.message); return; }
           repaired++;
         }
       }
@@ -4295,7 +4333,7 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
                       <>
                         <button onClick={() => {
                           const { data } = supabase.storage.from("documents").getPublicUrl(d.file_name);
-                          if (data?.publicUrl) window.open(data.publicUrl, "_blank");
+                          if (data?.publicUrl) window.open(data.publicUrl, "_blank", "noopener,noreferrer");
                           else alert("Could not generate URL for this file.");
                         }} className="text-xs text-indigo-600 hover:underline">View</button>
                       </>
@@ -4577,7 +4615,8 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
       if (!error && Number(form.security_deposit) > 0) {
         const classId = await getPropertyClassId(form.property, companyId);
         const dep = Number(form.security_deposit);
-        await autoPostJournalEntry({ companyId, date: form.start_date, description: "Security deposit received — " + form.tenant_name + " — " + form.property, reference: "DEP-" + shortId(), property: form.property,
+        const _jeOk = await autoPostJournalEntry({ companyId, date: form.start_date, description: "Security deposit received — " + form.tenant_name + " — " + form.property, reference: "DEP-" + shortId(), property: form.property,
+        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
           lines: [
             { account_id: "1000", account_name: "Checking Account", debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.tenant_name },
             { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant_name + " — " + form.property },
@@ -4595,7 +4634,8 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     if (error) { alert("Error saving lease: " + error.message); return; }
     // Update properties table to reflect lease assignment
     if (!editingLease && tenant) {
-      await supabase.from("properties").update({ tenant: form.tenant_name, lease_end: form.end_date, status: "occupied" }).eq("company_id", companyId).eq("address", form.property);
+      const { error: _err4608 } = await supabase.from("properties").update({ tenant: form.tenant_name, lease_end: form.end_date, status: "occupied" }).eq("company_id", companyId).eq("address", form.property);
+      if (_err4608) { alert("Error updating properties: " + _err4608.message); return; }
     }
     // Auto-post rent charges for this lease immediately
     if (!editingLease) await autoPostRentCharges(companyId);
@@ -4637,12 +4677,14 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     if (updateErr) { alert("Error updating old lease: " + updateErr.message); return; }
     const { error: insertErr } = await supabase.from("leases").insert([{ company_id: companyId, tenant_id: lease.tenant_id, tenant_name: lease.tenant_name, property: lease.property, start_date: newStart, end_date: formatLocalDate(newEnd), rent_amount: Math.round(escalated * 100) / 100, security_deposit: lease.security_deposit, rent_escalation_pct: lease.rent_escalation_pct, escalation_frequency: lease.escalation_frequency, payment_due_day: lease.payment_due_day, lease_type: "renewal", auto_renew: lease.auto_renew, renewal_notice_days: lease.renewal_notice_days, clauses: lease.clauses, special_terms: lease.special_terms, status: "active", renewed_from: lease.id, created_by: userProfile?.email || "", move_in_checklist: "[]", move_out_checklist: lease.move_out_checklist }]);
     if (insertErr) {
-      await supabase.from("leases").update({ status: "active" }).eq("company_id", companyId).eq("id", lease.id); // rollback
+      const { error: _err4650 } = await supabase.from("leases").update({ status: "active" }).eq("company_id", companyId).eq("id", lease.id); // rollback
+      if (_err4650) { alert("Error updating leases: " + _err4650.message); return; }
       alert("Error creating renewed lease: " + insertErr.message); return;
     }
     if (lease.tenant_id) await supabase.from("tenants").update({ rent: Math.round(escalated * 100) / 100, move_out: formatLocalDate(newEnd) }).eq("company_id", companyId).eq("id", lease.tenant_id);
     // Update property table to reflect new lease end date
-    await supabase.from("properties").update({ lease_end: formatLocalDate(newEnd) }).eq("company_id", companyId).eq("address", lease.property);
+    const { error: _err4655 } = await supabase.from("properties").update({ lease_end: formatLocalDate(newEnd) }).eq("company_id", companyId).eq("address", lease.property);
+    if (_err4655) { alert("Error updating properties: " + _err4655.message); return; }
     logAudit("create", "leases", "Renewed lease: " + lease.tenant_name + " new rent $" + Math.round(escalated * 100) / 100, lease.id, userProfile?.email, userRole, companyId);
     await autoPostRentCharges(companyId);
     fetchData();
@@ -4650,13 +4692,17 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
 
   async function terminateLease(lease) {
     if (!window.confirm("Terminate lease for " + lease.tenant_name + "? This cannot be undone.")) return;
-    await supabase.from("leases").update({ status: "terminated" }).eq("company_id", companyId).eq("id", lease.id);
+    const { error: termErr } = await supabase.from("leases").update({ status: "terminated" }).eq("company_id", companyId).eq("id", lease.id);
+    if (termErr) { alert("Error terminating lease: " + termErr.message); return; }
     if (lease.tenant_id) {
-      await supabase.from("tenants").update({ lease_status: "inactive" }).eq("company_id", companyId).eq("id", lease.tenant_id);
+      const { error: _err4666 } = await supabase.from("tenants").update({ lease_status: "inactive" }).eq("company_id", companyId).eq("id", lease.tenant_id);
+      if (_err4666) { alert("Error updating tenants: " + _err4666.message); return; }
       // Deactivate any autopay schedules for this tenant
-      await supabase.from("autopay_schedules").update({ active: false }).eq("company_id", companyId).eq("tenant", lease.tenant_name);
+      const { error: _err4668 } = await supabase.from("autopay_schedules").update({ active: false }).eq("company_id", companyId).eq("tenant", lease.tenant_name);
+      if (_err4668) { alert("Error updating autopay_schedules: " + _err4668.message); return; }
       // Update property status back to vacant
-      await supabase.from("properties").update({ status: "vacant", tenant: "", lease_end: "" }).eq("company_id", companyId).eq("address", lease.property);
+      const { error: _err4670 } = await supabase.from("properties").update({ status: "vacant", tenant: "", lease_end: "" }).eq("company_id", companyId).eq("address", lease.property);
+      if (_err4670) { alert("Error updating properties: " + _err4670.message); return; }
       // Create termination ledger entry
       await safeLedgerInsert({ company_id: companyId,
         tenant: lease.tenant_name, property: lease.property, date: formatLocalDate(new Date()),
@@ -4676,7 +4722,8 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     if (type === "in") update.move_in_completed = allDone;
     if (type === "out") update.move_out_completed = allDone;
     // update only contains checklist field + completion flag — safe
-    await supabase.from("leases").update(update).eq("id", lease.id).eq("company_id", companyId);
+    const { error: _err4690 } = await supabase.from("leases").update(update).eq("id", lease.id).eq("company_id", companyId);
+    if (_err4690) { alert("Error updating leases: " + _err4690.message); return; }
     fetchData();
   }
 
@@ -4693,10 +4740,12 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     }
     if (!depositForm.return_date) { alert("Return date is required."); return; }
     const status = returned >= deposit ? "returned" : returned > 0 ? "partial_return" : "forfeited";
-    await supabase.from("leases").update({ deposit_status: status, deposit_returned: returned, deposit_return_date: depositForm.return_date, deposit_deductions: depositForm.deductions }).eq("company_id", companyId).eq("id", lease.id);
+    const { error: depErr } = await supabase.from("leases").update({ deposit_status: status, deposit_returned: returned, deposit_return_date: depositForm.return_date, deposit_deductions: depositForm.deductions }).eq("company_id", companyId).eq("id", lease.id);
+    if (depErr) { alert("Error processing deposit return: " + depErr.message); return; }
     const classId = await getPropertyClassId(lease.property, companyId);
     if (returned > 0) {
-      await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Security deposit return — " + lease.tenant_name, reference: "DEPRET-" + shortId(), property: lease.property,
+      const _jeOk = await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Security deposit return — " + lease.tenant_name, reference: "DEPRET-" + shortId(), property: lease.property,
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         lines: [
           { account_id: "2100", account_name: "Security Deposits Held", debit: returned, credit: 0, class_id: classId, memo: "Return to " + lease.tenant_name },
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: returned, class_id: classId, memo: "Deposit refund" },
@@ -4704,7 +4753,8 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
       });
     }
     if (deducted > 0) {
-      await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Deposit deduction — " + lease.tenant_name + " — " + depositForm.deductions, reference: "DEPDED-" + shortId(), property: lease.property,
+      const _jeOk = await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Deposit deduction — " + lease.tenant_name + " — " + depositForm.deductions, reference: "DEPDED-" + shortId(), property: lease.property,
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         lines: [
           { account_id: "2100", account_name: "Security Deposits Held", debit: deducted, credit: 0, class_id: classId, memo: "Deduction: " + depositForm.deductions },
           { account_id: "4100", account_name: "Other Income", debit: 0, credit: deducted, class_id: classId, memo: "Deposit forfeiture: " + lease.tenant_name },
@@ -4943,10 +4993,11 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
             <button onClick={async () => {
               if (!rentIncreaseForm.new_amount || !rentIncreaseForm.effective_date) { alert("Amount and date required."); return; }
               const newAmt = Number(rentIncreaseForm.new_amount);
-              await supabase.from("leases").update({ rent_amount: newAmt, rent_increase_history: JSON.stringify([...(JSON.parse(showRentIncrease.rent_increase_history || "[]")), { from: showRentIncrease.rent_amount, to: newAmt, date: rentIncreaseForm.effective_date, reason: rentIncreaseForm.reason }]) }).eq("company_id", companyId).eq("id", showRentIncrease.id);
+              const { error: _err4960 } = await supabase.from("leases").update({ rent_amount: newAmt, rent_increase_history: JSON.stringify([...(JSON.parse(showRentIncrease.rent_increase_history || "[]")), { from: showRentIncrease.rent_amount, to: newAmt, date: rentIncreaseForm.effective_date, reason: rentIncreaseForm.reason }]) }).eq("company_id", companyId).eq("id", showRentIncrease.id);
+              if (_err4960) { alert("Error updating leases: " + _err4960.message); return; }
               if (showRentIncrease.tenant_id) await supabase.from("tenants").update({ rent: newAmt }).eq("company_id", companyId).eq("id", showRentIncrease.tenant_id);
-              addNotification("📈", `Rent increased to $${newAmt}/mo for ${showRentIncrease.tenant_name}`);
-              logAudit("update", "leases", `Rent increase: $${showRentIncrease.rent_amount} → $${newAmt} for ${showRentIncrease.tenant_name}`, showRentIncrease.id, userProfile?.email, userRole, companyId);
+              addNotification("📈", `Rent increased to ${formatCurrency(newAmt)}/mo for ${showRentIncrease.tenant_name}`);
+              logAudit("update", "leases", `Rent increase: ${formatCurrency(showRentIncrease.rent_amount)} → ${formatCurrency(newAmt)} for ${showRentIncrease.tenant_name}`, showRentIncrease.id, userProfile?.email, userRole, companyId);
               setShowRentIncrease(null);
               fetchData();
             }} className="w-full bg-indigo-600 text-white text-sm py-2.5 rounded-lg hover:bg-indigo-700">Apply Rent Increase</button>
@@ -5074,22 +5125,25 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
     if (inv.status === "paid") { alert("This invoice is already paid."); return; }
     if (!window.confirm("Mark invoice #" + (inv.invoice_number || inv.id.slice(0,8)) + " as paid ($" + inv.amount + ")?")) return;
     const today = formatLocalDate(new Date());
-    await supabase.from("vendor_invoices").update({ status: "paid", paid_date: today }).eq("company_id", companyId).eq("id", inv.id);
+    const { error: invErr } = await supabase.from("vendor_invoices").update({ status: "paid", paid_date: today }).eq("company_id", companyId).eq("id", inv.id);
+    if (invErr) { alert("Error marking invoice as paid: " + invErr.message); return; }
     // Update vendor total_paid
     const vendor = vendors.find(v => String(v.id) === String(inv.vendor_id));
     if (vendor) {
       // Atomic increment (fetch fresh, then update — still not perfect but reads fresh data)
       const { data: freshVendor } = await supabase.from("vendors").select("total_paid, total_jobs").eq("company_id", companyId).eq("id", vendor.id).maybeSingle();
       if (freshVendor) {
-        await supabase.from("vendors").update({
+        const { error: _err_vendors_5099 } = await supabase.from("vendors").update({
           total_paid: safeNum(freshVendor.total_paid) + safeNum(inv.amount),
           total_jobs: (freshVendor.total_jobs || 0) + 1,
         }).eq("company_id", companyId).eq("id", vendor.id);
+        if (_err_vendors_5099) { alert("Error updating vendors: " + _err_vendors_5099.message); return; }
       }
     }
     // Post to accounting
     const classId = await getPropertyClassId(inv.property, companyId);
-    await autoPostJournalEntry({
+    const _jeOk = await autoPostJournalEntry({
+    if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       companyId,
       date: today,
       description: "Vendor payment — " + inv.vendor_name + " — " + (inv.description || inv.invoice_number),
@@ -5106,7 +5160,8 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
   }
 
   async function rateVendor(vendor, rating) {
-    await supabase.from("vendors").update({ rating }).eq("company_id", companyId).eq("id", vendor.id);
+    const { error } = await supabase.from("vendors").update({ rating }).eq("company_id", companyId).eq("id", vendor.id);
+    if (error) { alert("Failed to update rating: " + error.message); return; }
     fetchData();
   }
 
@@ -5397,7 +5452,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
         email: owner.email,
         options: { data: { name: owner.name, role: "owner" } }
       });
-      if (authErr) console.warn("Auth invite failed:", authErr.message);
+      if (authErr) { alert("Failed to send invitation email: " + authErr.message + "\n\nYou can share the login URL manually with the owner."); }
       // Insert only if no existing row — don't overwrite other company's data
       await supabase.from("app_users").upsert([{
         email: (owner.email || "").toLowerCase(),
@@ -5411,7 +5466,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
         user_email: (owner.email || "").toLowerCase(),
         user_name: owner.name,
         role: "owner",
-        status: "active",
+        status: "invited",
         invited_by: userProfile?.email || "admin",
       }], { onConflict: "company_id,user_email" });
       addNotification("✉️", "Portal invite sent to " + owner.name);
@@ -5425,7 +5480,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
 
   async function assignPropertyToOwner(propertyId, ownerId) {
     const owner = owners.find(o => String(o.id) === String(ownerId));
-    await supabase.from("properties").update({ owner_id: ownerId || null, owner_name: owner?.name || "" }).eq("company_id", companyId).eq("id", propertyId);
+    const { error: _err5445 } = await supabase.from("properties").update({ owner_id: ownerId || null, owner_name: owner?.name || "" }).eq("company_id", companyId).eq("id", propertyId);
+    if (_err5445) { alert("Error updating properties: " + _err5445.message); return; }
     fetchData();
   }
 
@@ -5480,7 +5536,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
   }
 
   async function markStatementSent(stmt) {
-    await supabase.from("owner_statements").update({ status: "sent", sent_date: formatLocalDate(new Date()) }).eq("company_id", companyId).eq("id", stmt.id);
+    const { error } = await supabase.from("owner_statements").update({ status: "sent", sent_date: formatLocalDate(new Date()) }).eq("company_id", companyId).eq("id", stmt.id);
+    if (error) { alert("Failed to mark statement as sent: " + error.message); return; }
     fetchData();
   }
 
@@ -5500,7 +5557,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
     }]);
     if (distErr) { alert("Error recording distribution: " + distErr.message); return; }
     // Post to accounting BEFORE marking statement as paid
-    await autoPostJournalEntry({
+    const distJeOk = await autoPostJournalEntry({
       companyId,
       date: today,
       description: "Owner distribution — " + stmt.owner_name + " — " + stmt.period,
@@ -5513,7 +5570,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
     });
     // Post management fee as revenue
     if (stmt.management_fee > 0) {
-      await autoPostJournalEntry({
+      const _jeOk = await autoPostJournalEntry({
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         companyId,
         date: today,
         description: "Management fee — " + stmt.owner_name + " — " + stmt.period,
@@ -5526,7 +5584,9 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
       });
     }
     // Mark statement as paid only AFTER distribution + JE posting succeed
-    await supabase.from("owner_statements").update({ status: "paid", paid_date: today }).eq("company_id", companyId).eq("id", stmt.id);
+    if (!distJeOk) { alert("Distribution recorded but accounting entry failed. Statement NOT marked as paid."); fetchData(); return; }
+    const { error: _err5549 } = await supabase.from("owner_statements").update({ status: "paid", paid_date: today }).eq("company_id", companyId).eq("id", stmt.id);
+    if (_err5549) { alert("Error updating owner_statements: " + _err5549.message); return; }
     logAudit("create", "owner_distributions", "Distributed $" + stmt.net_to_owner + " to " + stmt.owner_name, stmt.id, userProfile?.email, userRole, companyId);
     fetchData();
     } finally { guardRelease("distributeToOwner"); }
@@ -5829,9 +5889,15 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
     // Calculate book balance from all checking account entries (scoped to this company)
     const cJeIds = journalEntries.filter(j => j.status === "posted").map(j => j.id);
     const { data: allLines } = cJeIds.length > 0
-      ? await supabase.from("acct_journal_lines").select("debit, credit").eq("account_name", "Checking Account").in("journal_entry_id", cJeIds)
+      ? await supabase.from("acct_journal_lines").select("debit, credit, account_id").eq("account_name", "Checking Account").in("journal_entry_id", cJeIds)
       : { data: [] };
-    const bookBal = (allLines || []).reduce((s, l) => s + safeNum(l.debit) - safeNum(l.credit), 0);
+    // Also include lines matched by account ID (handles renamed accounts)
+    const { data: idLines } = cJeIds.length > 0
+      ? await supabase.from("acct_journal_lines").select("debit, credit, account_id").like("account_id", "%-1000").in("journal_entry_id", cJeIds)
+      : { data: [] };
+    const allCheckingLines = [...(allLines || [])];
+    (idLines || []).forEach(l => { if (!allCheckingLines.find(x => x === l)) allCheckingLines.push(l); });
+    const bookBal = allCheckingLines.reduce((s, l) => s + safeNum(l.debit) - safeNum(l.credit), 0);
     const bankBal = Number(bankBalance);
     const diff = Math.round((bankBal - bookBal) * 100) / 100;
     const allItemsReconciled = reconItems.every(i => i.reconciled);
@@ -5858,7 +5924,15 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
       const validJeIds = new Set((journalEntries || []).map(j => j.id));
       const { data: checkLines } = await supabase.from("acct_journal_lines").select("id, journal_entry_id").in("id", reconIds);
       const safeIds = (checkLines || []).filter(l => validJeIds.has(l.journal_entry_id)).map(l => l.id);
-      if (safeIds.length > 0) await supabase.from("acct_journal_lines").update({ reconciled: true, reconciled_date: today }).in("id", safeIds);
+      // Double-scope: filter by safe IDs AND by this company's JE IDs
+      if (safeIds.length > 0) {
+        const validJeIdArr = Array.from(validJeIds);
+        const { error: reconErr } = await supabase.from("acct_journal_lines")
+          .update({ reconciled: true, reconciled_date: today })
+          .in("id", safeIds)
+          .in("journal_entry_id", validJeIdArr);
+        if (reconErr) { alert("Reconciliation update failed: " + reconErr.message); return; }
+      }
     }
 
     logAudit("create", "bank_reconciliation", "Bank reconciliation for " + reconPeriod + " — diff: $" + diff, "", "", "", companyId);
@@ -6018,23 +6092,26 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
   }
 
   async function toggleSetting(setting) {
-    await supabase.from("notification_settings").update({ enabled: !setting.enabled }).eq("company_id", companyId).eq("id", setting.id);
+    const { error: _err6051 } = await supabase.from("notification_settings").update({ enabled: !setting.enabled }).eq("company_id", companyId).eq("id", setting.id);
+    if (_err6051) console.warn("notification_settings write failed:", _err6051.message);
     fetchData();
   }
 
   async function updateDaysBefore(setting, days) {
-    await supabase.from("notification_settings").update({ days_before: Number(days) }).eq("company_id", companyId).eq("id", setting.id);
+    const { error: _err6056 } = await supabase.from("notification_settings").update({ days_before: Number(days) }).eq("company_id", companyId).eq("id", setting.id);
+    if (_err6056) console.warn("notification_settings write failed:", _err6056.message);
     fetchData();
   }
 
   async function updateTemplate(setting, template) {
-    await supabase.from("notification_settings").update({ template }).eq("company_id", companyId).eq("id", setting.id);
+    const { error: _err6061 } = await supabase.from("notification_settings").update({ template }).eq("company_id", companyId).eq("id", setting.id);
+    if (_err6061) console.warn("notification_settings write failed:", _err6061.message);
   }
 
   async function sendTestNotification(setting) {
     // Simulate sending by logging it
     const testRecipient = userProfile?.email || "test@example.com";
-    await supabase.from("notification_log").insert([{ company_id: companyId,
+    const { error: _err_notification_log_6067 } = await supabase.from("notification_log").insert([{ company_id: companyId,
       event_type: setting.event_type,
       recipient_email: normalizeEmail(testRecipient),
       subject: "[TEST] " + (eventLabels[setting.event_type]?.label || setting.event_type),
@@ -6042,6 +6119,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
       status: "sent",
       related_id: "test",
     }]);
+    if (_err_notification_log_6067) console.warn("notification_log write failed:", _err_notification_log_6067.message);
     addNotification("\u2709\ufe0f", "Test notification sent for " + (eventLabels[setting.event_type]?.label || setting.event_type));
     fetchData();
   }
@@ -6071,7 +6149,8 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
           const tenant = tenants.find(t => t.name === lease.tenant_name);
           if (tenant?.email) {
             const msg = (rentDueSetting.template || "").replace("${amount}", "$" + lease.rent_amount).replace("${due_date}", nextDue.toLocaleDateString()).replace("${property}", lease.property);
-            await supabase.from("notification_log").insert([{ company_id: companyId, event_type: "rent_due", recipient_email: normalizeEmail(tenant.email), subject: "Rent Due Reminder", message: msg, status: "sent", related_id: lease.id }]);
+            const { error: _err6104 } = await supabase.from("notification_log").insert([{ company_id: companyId, event_type: "rent_due", recipient_email: normalizeEmail(tenant.email), subject: "Rent Due Reminder", message: msg, status: "sent", related_id: lease.id }]);
+            if (_err6104) console.warn("notification_log write failed:", _err6104.message);
             count++;
           }
         }
@@ -6088,7 +6167,8 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
           const tenant = tenants.find(t => t.name === lease.tenant_name);
           if (tenant?.email) {
             const msg = (leaseExpSetting.template || "").replace("${property}", lease.property).replace("${end_date}", lease.end_date);
-            await supabase.from("notification_log").insert([{ company_id: companyId, event_type: "lease_expiring", recipient_email: normalizeEmail(tenant.email), subject: "Lease Expiration Notice", message: msg, status: "sent", related_id: lease.id }]);
+            const { error: _err6121 } = await supabase.from("notification_log").insert([{ company_id: companyId, event_type: "lease_expiring", recipient_email: normalizeEmail(tenant.email), subject: "Lease Expiration Notice", message: msg, status: "sent", related_id: lease.id }]);
+            if (_err6121) console.warn("notification_log write failed:", _err6121.message);
             count++;
           }
         }
@@ -6242,7 +6322,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   useEffect(() => { fetchSigners(); }, [lease]);
 
   async function fetchSigners() {
-    const { data } = await supabase.from("lease_signatures").select("*").eq("lease_id", lease.id).order("created_at");
+    const { data } = await supabase.from("lease_signatures").select("*").eq("company_id", companyId).eq("lease_id", lease.id).order("created_at");
     setSigners(data || []);
     setLoading(false);
   }
@@ -6260,8 +6340,10 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
       toCreate.push({ lease_id: lease.id, signer_name: userProfile?.name || "Property Manager", signer_email: userProfile?.email || "", signer_role: "landlord", status: "pending" });
     }
     if (toCreate.length > 0) {
-      await supabase.from("lease_signatures").insert(toCreate.map(s => ({ ...s, company_id: companyId })));
-      await supabase.from("leases").update({ signature_status: "pending" }).eq("company_id", companyId).eq("id", lease.id);
+      const { error: sigInitErr } = await supabase.from("lease_signatures").insert(toCreate.map(s => ({ ...s, company_id: companyId })));
+    if (sigInitErr) { alert("Error creating signature requests: " + sigInitErr.message); return; }
+      const { error: _err6295 } = await supabase.from("leases").update({ signature_status: "pending" }).eq("company_id", companyId).eq("id", lease.id);
+      if (_err6295) { alert("Error updating leases: " + _err6295.message); return; }
     }
     fetchSigners();
   }
@@ -6310,7 +6392,6 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
       const canvas = canvasRef.current;
       if (!canvas) return;
       sigData = canvas.toDataURL("image/png");
-      // Check if canvas is blank
       const ctx = canvas.getContext("2d");
       const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
       const hasContent = pixels.some((v, i) => i % 4 === 3 && v > 0);
@@ -6321,29 +6402,40 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
     }
 
     setSigning(true);
-    // Attempt to get real IP via edge function, fall back to hostname
-    let signerIp = window.location.hostname || "browser-client";
+    // Server-side signing: identity verified, IP captured, integrity hash generated
     try {
-      const { data: ipData } = await supabase.functions.invoke("get-signer-ip");
-      if (ipData?.ip) signerIp = ipData.ip;
-    } catch { /* Edge function not deployed — use fallback */ }
-    const { error: sigErr } = await supabase.from("lease_signatures").update({
-      status: "signed",
-      signed_at: new Date().toISOString(),
-      signature_data: sigData,
-      ip_address: signerIp,
-      user_agent: navigator.userAgent || "",
-    }).eq("lease_id", lease.id).eq("id", signer.id);
-    if (sigErr) { alert("Error recording signature: " + sigErr.message); setSigning(false); return; }
-
-    // Check if all signers have signed
-    const { data: allSigs } = await supabase.from("lease_signatures").select("status").eq("lease_id", lease.id);
-    const allSigned = allSigs && allSigs.every(s => s.status === "signed");
-    await supabase.from("leases").update({
-      signature_status: allSigned ? "fully_signed" : "partially_signed"
-    }).eq("company_id", companyId).eq("id", lease.id);
-
-    logAudit("update", "leases", "E-signature: " + signer.signer_name + " signed lease for " + lease.tenant_name, lease.id, userProfile?.email, "", companyId);
+      const { data: signResult, error: signErr } = await supabase.rpc("sign_lease", {
+        p_company_id: companyId,
+        p_lease_id: lease.id,
+        p_signer_id: signer.id,
+        p_signature_data: sigData,
+        p_signing_method: signMethod,
+        p_consent_text: "I agree that my electronic signature is the legal equivalent of my manual/handwritten signature and I consent to be legally bound by this lease agreement.",
+        p_user_agent: navigator.userAgent || "",
+      });
+      if (signErr) throw new Error(signErr.message);
+      if (signResult?.all_signed) {
+        addNotification("✅", "All parties have signed — lease is fully executed");
+      }
+      logAudit("update", "leases", "E-signature (server-verified): " + signer.signer_name + " signed lease for " + lease.tenant_name + " [hash:" + (signResult?.integrity_hash || "").slice(0, 12) + "]", lease.id, userProfile?.email, "", companyId);
+    } catch (rpcErr) {
+      // Fallback to client-side if RPC not deployed yet
+      console.warn("sign_lease RPC not available, using client-side fallback:", rpcErr.message);
+      let signerIp = window.location.hostname || "browser-client";
+      try {
+        const { data: ipData } = await supabase.functions.invoke("get-signer-ip");
+        if (ipData?.ip) signerIp = ipData.ip;
+      } catch { /* Edge function not deployed */ }
+      const { error: sigErr } = await supabase.from("lease_signatures").update({
+        status: "signed", signed_at: new Date().toISOString(), signature_data: sigData,
+        ip_address: signerIp, user_agent: navigator.userAgent || "",
+      }).eq("company_id", companyId).eq("lease_id", lease.id).eq("id", signer.id);
+      if (sigErr) { alert("Error recording signature: " + sigErr.message); setSigning(false); return; }
+      const { data: allSigs } = await supabase.from("lease_signatures").select("status").eq("company_id", companyId).eq("lease_id", lease.id);
+      const allSigned = allSigs && allSigs.every(s => s.status === "signed");
+      await supabase.from("leases").update({ signature_status: allSigned ? "fully_signed" : "partially_signed" }).eq("company_id", companyId).eq("id", lease.id);
+      logAudit("update", "leases", "E-signature (client-side): " + signer.signer_name + " signed lease for " + lease.tenant_name, lease.id, userProfile?.email, "", companyId);
+    }
     setSigning(false);
     fetchSigners();
     if (onSigned) onSigned();
@@ -6390,8 +6482,9 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
               <div className="flex items-center gap-2">
                 {s.status === "signed" ? (
                   <div className="text-right">
-                    <span className="text-xs font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">✓ Signed</span>
+                    <span className={"text-xs font-bold px-2 py-0.5 rounded-full " + (s.verified_server_side ? "text-green-700 bg-green-100" : "text-amber-700 bg-amber-100")}>{s.verified_server_side ? "🔒 Verified" : "✓ Signed"}</span>
                     <div className="text-xs text-gray-400 mt-0.5">{new Date(s.signed_at).toLocaleDateString()}</div>
+                    {s.integrity_hash && <div className="text-xs text-gray-300 font-mono mt-0.5">{s.integrity_hash.slice(0, 12)}...</div>}
                   </div>
                 ) : (
                   <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">Pending</span>
@@ -6435,7 +6528,17 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
               <label htmlFor="esign-agree" className="text-xs text-gray-600">I agree that my electronic signature is the legal equivalent of my manual/handwritten signature and I consent to be legally bound by this lease agreement.</label>
             </div>
 
-            <button onClick={() => submitSignature(pendingSigners[0])} disabled={signing}
+            <button onClick={() => {
+              const agreed = document.getElementById("esign-agree")?.checked;
+              if (!agreed) { alert("You must agree to the electronic signature consent before signing."); return; }
+              // Verify current user is authorized to sign as this signer
+              const signer = pendingSigners[0];
+              if (signer.signer_email && userProfile?.email && signer.signer_email.toLowerCase() !== userProfile.email.toLowerCase()) {
+                alert("You are signed in as " + userProfile.email + " but this signature is for " + signer.signer_email + ". Please sign in with the correct account.");
+                return;
+              }
+              submitSignature(signer);
+            }} disabled={signing}
               className={"w-full py-2.5 rounded-lg text-white font-semibold text-sm " + (signing ? "bg-gray-400" : "bg-indigo-600 hover:bg-indigo-700")}>
               {signing ? "Signing..." : "Apply Signature"}
             </button>
@@ -6488,7 +6591,7 @@ function generatePaymentReceipt(payment, companyName = "PropManager") {
 <body>
 <div class="receipt">
   <div class="header">
-    <h1>${companyName}</h1>
+    <h1>${escapeHtml(companyName)}</h1>
     <div class="subtitle">Payment Receipt</div>
     <div class="badge">Receipt #${receiptNum}</div>
   </div>
@@ -6503,7 +6606,7 @@ function generatePaymentReceipt(payment, companyName = "PropManager") {
   </div>
   <div class="footer">
     <div class="stamp">PAID</div>
-    <p>This is an electronic receipt generated by ${companyName}.</p>
+    <p>This is an electronic receipt generated by ${escapeHtml(companyName)}.</p>
     <p>For questions, contact your property manager.</p>
   </div>
 </div>
@@ -6511,7 +6614,7 @@ function generatePaymentReceipt(payment, companyName = "PropManager") {
 
   const blob = new Blob([html], { type: "text/html" });
   const url = URL.createObjectURL(blob);
-  const win = window.open(url, "_blank");
+  const win = window.open(url, "_blank", "noopener,noreferrer");
   if (win) {
     win.onload = () => { setTimeout(() => win.print(), 500); };
   }
@@ -6770,7 +6873,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
     } else {
       const { error: hoaErr } = await supabase.from("hoa_payments").insert([{ ...payload, company_id: companyId }]);
       if (hoaErr) { alert("Error saving HOA: " + hoaErr.message); return; }
-      addNotification("🏘️", `HOA payment added: ${form.hoa_name} — $${form.amount}`);
+      addNotification("🏘️", `HOA payment added: ${form.hoa_name} — ${formatCurrency(form.amount)}`);
     }
     setShowForm(false);
     setEditingHoa(null);
@@ -6785,11 +6888,12 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
     if (h.status === "paid") { alert("This HOA payment is already marked as paid."); return; }
     const today = formatLocalDate(new Date());
     await supabase.from("hoa_payments").update({ status: "paid", paid_date: today }).eq("company_id", companyId).eq("id", h.id);
-    addNotification("✅", `HOA paid: ${h.hoa_name} $${h.amount}`);
+    addNotification("✅", `HOA paid: ${h.hoa_name} ${formatCurrency(h.amount)}`);
     // Auto-post to accounting
     const classId = await getPropertyClassId(h.property, companyId);
     if (safeNum(h.amount) > 0) {
-      await autoPostJournalEntry({
+      const _jeOk = await autoPostJournalEntry({
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         companyId,
         date: today,
         description: `HOA payment: ${h.hoa_name} — ${h.property}`,
@@ -6994,14 +7098,16 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
       }
     }
     if (hasAccrual) {
-      await autoPostJournalEntry({ companyId, date: today, description: "Autopay received — " + s.tenant + " — " + s.property + " (settling AR)", reference: "APAY-" + shortId(), property: s.property,
+      const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Autopay received — " + s.tenant + " — " + s.property + " (settling AR)", reference: "APAY-" + shortId(), property: s.property,
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         lines: [
           { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay " + s.method + " from " + s.tenant },
           { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement — " + s.tenant },
         ]
       });
     } else {
-      await autoPostJournalEntry({ companyId, date: today, description: "Autopay — " + s.tenant + " — " + s.property, reference: "APAY-" + shortId(), property: s.property,
+      const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Autopay — " + s.tenant + " — " + s.property, reference: "APAY-" + shortId(), property: s.property,
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         lines: [
           { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay " + s.method + " from " + s.tenant },
           { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: s.tenant + " — " + s.property },
@@ -7211,11 +7317,12 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
         if (balErr) console.warn("Late fee balance update failed:", balErr.message);
       } catch (e) { console.warn("Late fee balance RPC error:", e.message); }
     }
-    addNotification("⚠️", `Late fee $${feeAmount} applied to ${payment.tenant}`);
+    addNotification("⚠️", `Late fee ${formatCurrency(feeAmount)} applied to ${payment.tenant}`);
     // AUTO-POST TO ACCOUNTING: DR Accounts Receivable, CR Late Fee Income
     const classId = await getPropertyClassId(payment.property, companyId);
     if (feeAmount > 0) {
-      await autoPostJournalEntry({
+      const _jeOk = await autoPostJournalEntry({
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         companyId,
         date: formatLocalDate(new Date()),
         description: "Late fee - " + payment.tenant + " - " + payment.property,
@@ -7259,7 +7366,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
             <div key={r.id} className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 flex justify-between items-center">
               <div>
                 <div className="font-semibold text-indigo-800 text-sm">{r.name}</div>
-                <div className="text-xs text-indigo-500">{r.grace_days} day grace · {r.fee_type === "flat" ? `$${r.fee_amount} flat` : `${r.fee_amount}% of rent`}</div>
+                <div className="text-xs text-indigo-500">{r.grace_days} day grace · {r.fee_type === "flat" ? `${formatCurrency(r.fee_amount)} flat` : `${r.fee_amount}% of rent`}</div>
               </div>
               <button onClick={async () => { if(!window.confirm("Delete this late fee rule?"))return; await supabase.from("late_fee_rules").delete().eq("id", r.id).eq("company_id", companyId); fetchData(); }} className="text-xs text-red-400 hover:text-red-600">Delete</button>
             </div>
@@ -7396,18 +7503,13 @@ function TenantPortal({ currentUser, companyId }) {
         });
         if (payErr) throw new Error(payErr.message);
       } catch (rpcE) {
-        // RPC not available — record payment and update balance via RPC retry
+        // RPC not available — create pending payment only (no balance/ledger update until approved)
         const { error: payErr } = await supabase.from("payments").insert([{ company_id: companyId,
           tenant: tenantData.name, property: tenantData.property, amount: amt,
           type: "rent", method: "stripe", status: "pending_approval", date: today,
         }]);
         if (payErr) throw new Error("Failed to record payment: " + payErr.message);
-        const { error: balErr2 } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantData.id, p_amount_change: -amt });
-        if (balErr2) console.warn("Tenant portal balance update failed:", balErr2.message);
-        await safeLedgerInsert({ company_id: companyId,
-          tenant: tenantData.name, property: tenantData.property, date: today,
-          description: "Rent payment (online)", amount: -amt, type: "payment", balance: 0,
-        });
+        // Balance and ledger updated only when admin approves this payment
       }
       // Payment recorded as pending — balance and accounting updated when admin approves
       // Show success to tenant
@@ -7432,14 +7534,16 @@ function TenantPortal({ currentUser, companyId }) {
         }
       }
       if (hasAccrual) {
-        await autoPostJournalEntry({ companyId, date: today, description: "Online payment — " + tenantData.name + " — " + tenantData.property + " (settling AR)", reference: "SPAY-" + shortId(), property: tenantData.property,
+        const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Online payment — " + tenantData.name + " — " + tenantData.property + " (settling AR)", reference: "SPAY-" + shortId(), property: tenantData.property,
+        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
           lines: [
             { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Stripe from " + tenantData.name },
             { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement — " + tenantData.name },
           ]
         });
       } else {
-        await autoPostJournalEntry({ companyId, date: today, description: "Online rent payment — " + tenantData.name + " — " + tenantData.property, reference: "SPAY-" + shortId(), property: tenantData.property,
+        const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Online rent payment — " + tenantData.name + " — " + tenantData.property, reference: "SPAY-" + shortId(), property: tenantData.property,
+        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
           lines: [
             { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Stripe from " + tenantData.name },
             { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: tenantData.name + " — " + tenantData.property },
@@ -7493,7 +7597,8 @@ function TenantPortal({ currentUser, companyId }) {
   // ---- MESSAGING ----
   async function sendMessage() {
     if (!newMessage.trim() || !tenantData) return;
-    await supabase.from("messages").insert([{ company_id: companyId, tenant: tenantData.name, property: tenantData.property, sender: tenantData.name, message: newMessage, read: false }]);
+    const { error: _err7538 } = await supabase.from("messages").insert([{ company_id: companyId, tenant: tenantData.name, property: tenantData.property, sender: tenantData.name, message: newMessage, read: false }]);
+    if (_err7538) console.warn("messages write failed:", _err7538.message);
     setNewMessage("");
     const { data } = await supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).order("created_at", { ascending: true });
     setMessages(data || []);
@@ -7839,6 +7944,11 @@ function RoleManagement({ addNotification, companyId }) {
     };
 
     if (editingUser) {
+      // If email changed, clean up old membership row
+      if (editingUser.email && normalizeEmail(editingUser.email) !== normalizeEmail(payload.email)) {
+        const { error: _err7886 } = await supabase.from("company_members").delete().eq("company_id", companyId).ilike("user_email", editingUser.email);
+        if (_err7886) console.warn("company_members write failed:", _err7886.message);
+      }
       const { error } = await supabase.from("app_users").update({ email: normalizeEmail(payload.email), role: payload.role, name: payload.name, custom_pages: payload.custom_pages, company_id: payload.company_id }).eq("company_id", companyId).eq("id", editingUser.id);
       if (error) { alert("Error: " + error.message); return; }
       // Also update company_members
@@ -7871,7 +7981,8 @@ function RoleManagement({ addNotification, companyId }) {
     await supabase.from("app_users").delete().eq("id", id).eq("company_id", companyId);
     // Also deactivate their company membership
     if (email) {
-      await supabase.from("company_members").update({ status: "removed" }).eq("company_id", companyId).eq("user_email", email.toLowerCase());
+      const { error: _err7920 } = await supabase.from("company_members").update({ status: "removed" }).eq("company_id", companyId).eq("user_email", email.toLowerCase());
+      if (_err7920) { alert("Error updating company_members: " + _err7920.message); return; }
     }
     addNotification("👥", `${name} removed`);
     fetchUsers();
@@ -8311,10 +8422,11 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
     }]).select();
     if (error) { alert("Error creating company: " + error.message); return; }
     // Add creator as admin
-    await supabase.from("company_members").insert([{
+    const { error: _err_company_members_8360 } = await supabase.from("company_members").insert([{
       company_id: companyId, user_email: normalizeEmail(currentUser?.email), user_name: currentUser?.email?.split("@")[0] || "",
       role: "admin", status: "active", invited_by: "self",
     }]);
+    if (_err_company_members_8360) { alert("Error updating company_members: " + _err_company_members_8360.message); return; }
     // Also add to app_users
     await supabase.from("app_users").upsert([{
       email: normalizeEmail(currentUser?.email), name: currentUser?.email?.split("@")[0] || "",
@@ -8669,6 +8781,9 @@ export default function App() {
   }
 
   function switchCompany() {
+    // Clear caches that are company-specific
+    for (const key in _acctIdCache) delete _acctIdCache[key];
+    if (typeof window !== "undefined") { delete window._propClassesSynced; }
     setActiveCompany(null);
     setCompanyRole("");
     setUserRole(null);
