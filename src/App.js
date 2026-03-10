@@ -19,7 +19,7 @@ const _submitGuards = {};
 function guardSubmit(key) {
   if (_submitGuards[key]) return false;
   _submitGuards[key] = true;
-  // Fallback: release after 10s
+  // Fallback: release after 5s if not manually released
   setTimeout(() => { _submitGuards[key] = false; }, 5000);
   return true;
 }
@@ -62,7 +62,7 @@ function shortId() {
   const arr = new Uint8Array(6);
   if (typeof crypto !== "undefined" && crypto.getRandomValues) crypto.getRandomValues(arr);
   else for (let i = 0; i < 6; i++) arr[i] = Math.floor(Math.random() * 256);
-  return Array.from(arr, b => b.toString(36).padStart(2, "0")).join("").slice(0, 10);
+  return Array.from(arr, b => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
 }
 
 // Generate secure random ID (better than Date.now + Math.random)
@@ -137,7 +137,7 @@ function requireCompanyId(companyId, context = "") {
 
 // ============ AUDIT TRAIL HELPER ============
 // Call this from any module to log an action
-const AUDIT_ACTIONS = new Set(["create","update","delete","approve","reject","login","logout","invite","void"]);
+const AUDIT_ACTIONS = new Set(["create","update","delete","approve","reject","login","logout","invite","void","request"]);
 const AUDIT_MODULES = new Set(["properties","tenants","payments","maintenance","leases","vendors","owners","accounting","documents","team","pm_requests","bank_reconciliation","owner_distributions","settings"]);
 async function logAudit(action, module, details = "", recordId = "", userEmail = "", userRoleVal = "unknown", companyId) {
   try {
@@ -402,7 +402,7 @@ function PropertyDropdown({ value, onChange, className = "", required = false, l
   return (
     <div>
       {label && <label className="text-xs font-medium text-gray-600 block mb-1">{label} {required && "*"}</label>}
-      <select value={value || ""} onChange={e => onChange(e.target.value)} className={`border border-gray-200 rounded-lg px-3 py-2 text-sm w-full ${className}`} required={required}>
+      <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel ? sel.id : null); }} className={`border border-gray-200 rounded-lg px-3 py-2 text-sm w-full ${className}`} required={required}>
         <option value="">Select property...</option>
         {properties.map(p => <option key={p.id} value={p.address}>{p.address} ({p.type})</option>)}
       </select>
@@ -416,7 +416,7 @@ function PropertySelect({ value, onChange, className = "", companyId }) {
     supabase.from("properties").select("id, address, type").eq("company_id", companyId).order("address").then(({ data }) => setProperties(data || []));
   }, [companyId]);
   return (
-    <select value={value || ""} onChange={e => onChange(e.target.value)} className={`border border-gray-200 rounded-lg px-3 py-2 text-sm ${className}`}>
+    <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel ? sel.id : null); }} className={`border border-gray-200 rounded-lg px-3 py-2 text-sm ${className}`}>
       <option value="">Select property...</option>
       {properties.map(p => <option key={p.id} value={p.address}>{p.address}</option>)}
     </select>
@@ -679,8 +679,8 @@ function Dashboard({ notifications, setPage, companyId }) {
       ]);
       // Also fetch PM-managed properties from other companies
       const { data: managedProps } = await supabase.from("properties").select("*").eq("pm_company_id", companyId);
-      const allProps = [...(p.data || [])];
-      (managedProps || []).forEach(mp => { if (!allProps.find(x => x.id === mp.id)) allProps.push(mp); });
+      const allProps = (p.data || []).map(x => ({ ...x, _ownership: "owned" }));
+      (managedProps || []).forEach(mp => { if (!allProps.find(x => x.id === mp.id)) allProps.push({ ...mp, _ownership: "managed" }); });
       setProperties(allProps);
       setTenants(t.data || []);
       setWorkOrders(w.data || []);
@@ -735,7 +735,7 @@ function Dashboard({ notifications, setPage, companyId }) {
               if (clientResult?.posted > 0) addNotification("⚡", "Posted " + clientResult.posted + " rent charge(s)" + (clientResult.failed > 0 ? " (" + clientResult.failed + " failed)" : ""));
               else if (clientResult?.failed > 0) addNotification("⚠️", clientResult.failed + " rent charge(s) failed to post");
               else addNotification("ℹ️", "No new rent charges needed for this period");
-              rentPostSuccess = clientResult?.failed === 0;
+              rentPostSuccess = (clientResult?.posted > 0 || clientResult?.failed === 0);
             } else {
               const count = rpcResult?.charges_posted || 0;
               if (count > 0) addNotification("⚡", `Posted ${count} rent charge(s) for this month`);
@@ -988,11 +988,11 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       const { error: _autoDelErr } = await supabase.from("autopay_schedules").delete().eq("company_id", companyId).eq("property", address);
       if (_autoDelErr) { console.warn("autopay delete failed:", _autoDelErr.message); deleteFailed = true; }
       const { error: _err939 } = await supabase.from("utilities").delete().eq("company_id", companyId).eq("property", address);
-      if (_err939) console.warn("utilities write failed:", _err939.message);
+      if (_err939) { console.warn("utilities delete failed:", _err939.message); deleteFailed = true; }
       const { error: _err940 } = await supabase.from("hoa_payments").delete().eq("company_id", companyId).eq("property", address);
-      if (_err940) console.warn("hoa_payments write failed:", _err940.message);
+      if (_err940) { console.warn("hoa_payments delete failed:", _err940.message); deleteFailed = true; }
       const { error: _err941 } = await supabase.from("ledger_entries").delete().eq("company_id", companyId).eq("property", address);
-      if (_err941) console.warn("ledger_entries write failed:", _err941.message);
+      if (_err941) { console.warn("ledger_entries delete failed:", _err941.message); deleteFailed = true; }
       const { error: _err942 } = await supabase.from("documents").delete().eq("company_id", companyId).eq("property", address);
       if (_err942) { console.warn("documents write failed:", _err942.message); deleteFailed = true; }
       if (deleteFailed) {
@@ -1041,7 +1041,8 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       addNotification("✅", `Property edit approved: ${req.address}`);
     }
     const { data: { user } } = await supabase.auth.getUser();
-    await supabase.from("property_change_requests").update({ status: "approved", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNotes[req.id] || "" }).eq("company_id", companyId).eq("id", req.id);
+    const { error: statusErr } = await supabase.from("property_change_requests").update({ status: "approved", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNotes[req.id] || "" }).eq("company_id", companyId).eq("id", req.id);
+    if (statusErr) alert("Warning: Property was updated but the request status could not be marked as approved: " + statusErr.message);
     logAudit("approve", "properties", `Approved ${req.request_type} request: ${req.address} (requested by ${req.requested_by})`, req.id, user?.email, "admin", companyId);
     setReviewNotes(prev => { const n = {...prev}; delete n[req.id]; return n; });
     fetchProperties();
@@ -1054,7 +1055,8 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       if (!guardSubmit("rejectRequest")) return;
       try {
     const { data: { user } } = await supabase.auth.getUser();
-    await supabase.from("property_change_requests").update({ status: "rejected", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNotes[req.id] || "" }).eq("company_id", companyId).eq("id", req.id);
+    const { error: rejStatusErr } = await supabase.from("property_change_requests").update({ status: "rejected", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNotes[req.id] || "" }).eq("company_id", companyId).eq("id", req.id);
+    if (rejStatusErr) alert("Warning: Could not mark request as rejected: " + rejStatusErr.message);
     addNotification("❌", `Property request rejected: ${req.address}`);
     logAudit("reject", "properties", `Rejected ${req.request_type} request: ${req.address} (requested by ${req.requested_by})`, req.id, user?.email, "admin", companyId);
     setReviewNotes(prev => { const n = {...prev}; delete n[req.id]; return n; });
@@ -1083,10 +1085,14 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     const { data: pmCompany } = await supabase.from("companies").select("id, name, company_role").eq("company_code", pmCode.trim()).maybeSingle();
     if (!pmCompany) { alert("No company found with that code."); return; }
     if (pmCompany.company_role !== "management") { alert(pmCompany.name + " is not a management company. Only management companies can be assigned as PM."); return; }
-    // Check for existing pending request
+    // Check for existing pending or accepted assignment
     const { data: existingReq } = await supabase.from("pm_assignment_requests").select("id, status")
-      .eq("owner_company_id", companyId).eq("pm_company_id", pmCompany.id).eq("property_id", property.id).eq("status", "pending").maybeSingle();
-    if (existingReq) { alert("A request to assign " + pmCompany.name + " is already pending for this property."); return; }
+      .eq("owner_company_id", companyId).eq("pm_company_id", pmCompany.id).eq("property_id", property.id)
+      .in("status", ["pending", "accepted"]).maybeSingle();
+    if (existingReq?.status === "pending") { alert("A request to assign " + pmCompany.name + " is already pending for this property."); return; }
+    if (existingReq?.status === "accepted") { alert(pmCompany.name + " is already assigned as PM for this property."); return; }
+    // Also check if property already has this PM directly assigned
+    if (property.pm_company_id === pmCompany.id) { alert(pmCompany.name + " is already the property manager for this property."); return; }
     if (!window.confirm("Request " + pmCompany.name + " to manage " + property.address + "?\n\nThey will need to accept before getting access to this property.")) return;
     // Create assignment REQUEST (not direct assignment)
     const { error: reqErr } = await supabase.from("pm_assignment_requests").insert([{
@@ -1119,7 +1125,8 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
 
   // Check if current company is an owner company viewing a PM-managed property
   function isReadOnly(property) {
-    // Property is read-only if it belongs to another company (PM viewing managed property)
+    // Property is read-only if its company_id differs from the active company
+    // This makes PM-managed properties read-only for the PM, and owned properties editable for the owner
     return property.company_id !== (companyId);
   }
 
