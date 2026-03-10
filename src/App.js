@@ -86,13 +86,19 @@ function generateId(prefix = "") {
 }
 
 // Safe write wrapper — logs errors instead of silently failing
-async function safeWrite(operation, context = "") {
+async function safeWrite(operation, context = "", alertOnError = false) {
   try {
     const result = await operation;
-    if (result?.error) console.warn("DB write error" + (context ? " in " + context : "") + ":", result.error.message);
+    if (result?.error) {
+      const msg = "DB write error" + (context ? " in " + context : "") + ": " + result.error.message;
+      console.warn(msg);
+      if (alertOnError) alert(msg);
+    }
     return result;
   } catch (e) {
-    console.warn("DB write failed" + (context ? " in " + context : "") + ":", e.message);
+    const msg = "DB write failed" + (context ? " in " + context : "") + ": " + e.message;
+    console.warn(msg);
+    if (alertOnError) alert(msg);
     return { error: e };
   }
 }
@@ -852,10 +858,10 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     const { data: ownedProps } = await supabase.from("properties").select("*").eq("company_id", companyId);
     // Also fetch properties where this company is assigned as PM (cross-company)
     const { data: managedProps } = await supabase.from("properties").select("*").eq("pm_company_id", companyId);
-    // Merge and deduplicate
-    const allProps = [...(ownedProps || [])];
+    // Merge, deduplicate, and tag ownership type
+    const allProps = (ownedProps || []).map(p => ({ ...p, _ownership: "owned" }));
     (managedProps || []).forEach(mp => {
-      if (!allProps.find(p => p.id === mp.id)) allProps.push(mp);
+      if (!allProps.find(p => p.id === mp.id)) allProps.push({ ...mp, _ownership: "managed" });
     });
     setProperties(allProps);
     setLoading(false);
@@ -880,11 +886,11 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       if (error) { alert("Error saving property: " + error.message); return; }
       // Cascade address change to all related tables
       if (editingProperty && editingProperty.address !== form.address) {
-        // Atomic cascade rename via server-side RPC
+        // Atomic cascade rename via server-side RPC (v2 uses property_id)
         try {
-          const { error: renameErr } = await supabase.rpc("rename_property_cascade", {
+          const { error: renameErr } = await supabase.rpc("rename_property_v2", {
             p_company_id: companyId, p_property_id: editingProperty.id,
-            p_old_address: editingProperty.address, p_new_address: form.address
+            p_new_address: form.address
           });
           if (renameErr) console.warn("Cascade rename RPC failed, using client-side:", renameErr.message);
           else { /* RPC succeeded */ }
@@ -1082,6 +1088,9 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
 
   const [viewMode, setViewMode] = useState("card");
   const [filterType, setFilterType] = useState("all");
+  const [filterOwnership, setFilterOwnership] = useState("all");
+  const [filterOwner, setFilterOwner] = useState("all");
+  const [filterCity, setFilterCity] = useState("all");
   const [visibleCols, setVisibleCols] = useState(["address","type","status","rent","tenant","lease_end"]);
   const [showColPicker, setShowColPicker] = useState(false);
   const [showPmAssign, setShowPmAssign] = useState(null);
@@ -1092,18 +1101,39 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     { id: "notes", label: "Notes" }, { id: "owner_name", label: "Owner" },
   ];
   const propertyTypes = [...new Set(properties.map(p => p.type).filter(Boolean))];
+  const propertyOwners = [...new Set(properties.map(p => p.owner_name).filter(Boolean))];
+  const propertyCities = [...new Set(properties.map(p => {
+    const parts = (p.address || "").split(",").map(s => s.trim());
+    return parts.length >= 2 ? parts[parts.length - 2] : "";
+  }).filter(Boolean))].sort();
+  const hasManagedProps = properties.some(p => p._ownership === "managed");
   const pendingRequests = changeRequests.filter(r => r.status === "pending");
 
   if (loading) return <Spinner />;
-  const filtered = properties.filter(p =>
-    (filter === "all" || p.status === filter) &&
-    (filterType === "all" || p.type === filterType) &&
-    (p.address?.toLowerCase().includes(search.toLowerCase()) || p.type?.toLowerCase().includes(search.toLowerCase()) || p.tenant?.toLowerCase()?.includes(search.toLowerCase()))
-  );
+  const filtered = properties.filter(p => {
+    if (filter !== "all" && p.status !== filter) return false;
+    if (filterType !== "all" && p.type !== filterType) return false;
+    if (filterOwnership !== "all" && p._ownership !== filterOwnership) return false;
+    if (filterOwner !== "all" && p.owner_name !== filterOwner) return false;
+    if (filterCity !== "all") {
+      const parts = (p.address || "").split(",").map(s => s.trim());
+      const city = parts.length >= 2 ? parts[parts.length - 2] : "";
+      if (city !== filterCity) return false;
+    }
+    const q = search.toLowerCase();
+    if (q && !p.address?.toLowerCase().includes(q) && !p.type?.toLowerCase().includes(q) && !p.tenant?.toLowerCase()?.includes(q) && !p.owner_name?.toLowerCase()?.includes(q)) return false;
+    return true;
+  });
 
   return (
     <div>
-      <h2 className="text-xl font-bold text-gray-800 mb-4">Properties</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-bold text-gray-800">Properties</h2>
+        <div className="text-xs text-gray-400">
+          {filtered.length} of {properties.length} properties
+          {hasManagedProps && <span> · {properties.filter(p => p._ownership === "managed").length} PM-managed</span>}
+        </div>
+      </div>
 
       {isAdmin && pendingRequests.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 flex items-center justify-between">
@@ -1153,6 +1183,25 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
           <option value="all">All Types</option>
           {propertyTypes.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
+        {hasManagedProps && (
+          <select value={filterOwnership} onChange={e => setFilterOwnership(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <option value="all">All Properties</option>
+            <option value="owned">Owned by Us</option>
+            <option value="managed">PM-Managed</option>
+          </select>
+        )}
+        {propertyOwners.length > 1 && (
+          <select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <option value="all">All Owners</option>
+            {propertyOwners.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        )}
+        {propertyCities.length > 1 && (
+          <select value={filterCity} onChange={e => setFilterCity(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <option value="all">All Cities</option>
+            {propertyCities.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
         <div className="flex bg-gray-100 rounded-lg p-0.5">
           {[["card","▦"],["table","☰"],["compact","≡"]].map(([m,icon]) => (
             <button key={m} onClick={() => setViewMode(m)} className={`px-3 py-1.5 text-sm rounded-md ${viewMode === m ? "bg-white shadow-sm text-indigo-700 font-semibold" : "text-gray-500"}`} title={m}>{icon}</button>
@@ -2299,7 +2348,8 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
     if (uploadError) { alert("Upload failed: " + uploadError.message); setUploadingPhoto(false); return; }
     // Store file path (not public URL) — signed URLs generated on display
     const storagePath = fileName;
-    await supabase.from("work_order_photos").insert([{ work_order_id: viewingPhotos.id, property: viewingPhotos.property, url: storagePath, caption: file.name, company_id: companyId, storage_bucket: "maintenance-photos" }]);
+    const { error: _photoErr } = await supabase.from("work_order_photos").insert([{ work_order_id: viewingPhotos.id, property: viewingPhotos.property, url: storagePath, caption: file.name, company_id: companyId, storage_bucket: "maintenance-photos" }]);
+    if (_photoErr) { alert("Error saving photo: " + _photoErr.message); setUploadingPhoto(false); return; }
     addNotification("📸", `Photo uploaded for: ${viewingPhotos.issue}`);
     setUploadingPhoto(false);
     if (photoRef.current) photoRef.current.value = "";
@@ -4678,6 +4728,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
       const { error: _err4608 } = await supabase.from("properties").update({ tenant: form.tenant_name, lease_end: form.end_date, status: "occupied" }).eq("company_id", companyId).eq("address", form.property);
       if (_err4608) { alert("Error updating properties: " + _err4608.message); return; }
     }
+    // (property_id auto-filled by DB trigger from property address)
     // Auto-post rent charges for this lease immediately
     if (!editingLease) await autoPostRentCharges(companyId);
     logAudit(editingLease ? "update" : "create", "leases", (editingLease ? "Updated" : "Created") + " lease: " + form.tenant_name + " at " + form.property, editingLease?.id || "", userProfile?.email, userRole, companyId);
@@ -5184,10 +5235,11 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
         console.warn("Vendor increment RPC fallback:", rpcE.message);
         const { data: freshVendor } = await supabase.from("vendors").select("total_paid, total_jobs").eq("company_id", companyId).eq("id", vendor.id).maybeSingle();
         if (freshVendor) {
-          await supabase.from("vendors").update({
+          const { error: _vendErr } = await supabase.from("vendors").update({
             total_paid: safeNum(freshVendor.total_paid) + safeNum(inv.amount),
             total_jobs: (freshVendor.total_jobs || 0) + 1,
           }).eq("company_id", companyId).eq("id", vendor.id);
+          if (_vendErr) console.warn("Vendor totals fallback update failed:", _vendErr.message);
         }
       }
     }
