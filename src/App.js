@@ -112,6 +112,10 @@ async function getSignedUrl(bucket, filePath, expiresIn = 3600) {
   return data?.signedUrl || "";
 }
 
+function sanitizeFileName(name) {
+  if (!name) return "file";
+  return String(name).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100);
+}
 function escapeHtml(str) {
   if (!str) return "";
   return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
@@ -137,7 +141,7 @@ async function logAudit(action, module, details = "", recordId = "", userEmail =
     // Sanitize audit details: truncate and strip potential injection
     const safeDetails = String(details || "").replace(/<[^>]*>/g, "").slice(0, 500);
     const { error: _err130 } = await supabase.from("audit_trail").insert([{ company_id: companyId, action, module, details: safeDetails, record_id: String(recordId), user_email: normalizeEmail(userEmail), user_role: userRoleVal }]);
-    if (_err130) { alert("Error updating audit_trail: " + _err130.message); return; }
+    if (_err130) console.warn("Audit log insert failed:", _err130.message);
   } catch (e) { console.warn("Audit log failed:", e); }
 }
 
@@ -1570,7 +1574,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
           ]
         });
         if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
-        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+        
       } else if (newCharge.type === "payment" || newCharge.type === "credit") {
         const _jeOk = await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "Manual " + newCharge.type + " — " + selectedTenant.name + " — " + newCharge.description, reference: "MANUAL-" + shortId(), property: selectedTenant.property || "",
           lines: [
@@ -1579,7 +1583,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
           ]
         });
         if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
-        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+        
       }
     }
     setSelectedTenant({ ...selectedTenant, balance: newBalance });
@@ -2074,7 +2078,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
         ]
       });
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      
     } else {
       // No accrual: direct revenue (cash basis) DR Bank, CR Revenue
       const revenueAcct = isLateFee ? "4010" : "4000";
@@ -2091,7 +2095,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
         ]
       });
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      
     }
     addNotification("💳", `Payment recorded: ${formatCurrency(form.amount)} from ${form.tenant}`);
     logAudit("create", "payments", `Payment: ${formatCurrency(form.amount)} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole, companyId);
@@ -2253,7 +2257,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
         ]
       });
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      
     }
     addNotification("🔧", `Work order "${wo.issue}" marked as ${newStatus.replace("_", " ")}`);
     fetchWorkOrders();
@@ -2284,7 +2288,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
     const file = photoRef.current?.files?.[0];
     if (!file || !viewingPhotos) return;
     setUploadingPhoto(true);
-    const fileName = `wo_${viewingPhotos.id}_${shortId()}_${file.name}`;
+    const fileName = `wo_${viewingPhotos.id}_${shortId()}_${sanitizeFileName(file.name)}`;
     const { error: uploadError } = await supabase.storage.from("maintenance-photos").upload(fileName, file);
     if (uploadError) { alert("Upload failed: " + uploadError.message); setUploadingPhoto(false); return; }
     // Store file path (not public URL) — signed URLs generated on display
@@ -2483,7 +2487,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
         ]
       });
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      
     }
     fetchUtilities();
       } finally { guardRelease("approvePay"); }
@@ -4125,7 +4129,7 @@ function Accounting({ companyId, activeCompany }) {
                   ]
                 });
                 if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
-                if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+                
                 // Update tenant balance (they now owe this amount)
                 if (lease.tenant_id) {
                   const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: rent });
@@ -4210,7 +4214,7 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
     const file = fileRef.current?.files?.[0];
     if (!file || !form.name) return;
     setUploading(true);
-    const fileName = `${companyId}/${shortId()}_${file.name}`;
+    const fileName = `${companyId}/${shortId()}_${sanitizeFileName(file.name)}`;
     const { error: uploadError } = await supabase.storage.from("documents").upload(fileName, file, {
       cacheControl: "3600",
       upsert: false,
@@ -4651,7 +4655,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
           ]
         });
         if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
-        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+        
         // Create ledger entry for deposit collection
         if (tenant?.id) {
           await safeLedgerInsert({ company_id: companyId,
@@ -4782,7 +4786,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
         ]
       });
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      
     }
     if (deducted > 0) {
       const _jeOk = await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Deposit deduction — " + lease.tenant_name + " — " + depositForm.deductions, reference: "DEPDED-" + shortId(), property: lease.property,
@@ -4792,7 +4796,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
         ]
       });
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      
     }
     // Create ledger entry and update balance for deposit return
     if (returned > 0 && lease.tenant_id) {
@@ -5164,14 +5168,21 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
     // Update vendor total_paid
     const vendor = vendors.find(v => String(v.id) === String(inv.vendor_id));
     if (vendor) {
-      // Atomic increment (fetch fresh, then update — still not perfect but reads fresh data)
-      const { data: freshVendor } = await supabase.from("vendors").select("total_paid, total_jobs").eq("company_id", companyId).eq("id", vendor.id).maybeSingle();
-      if (freshVendor) {
-        const { error: _err_vendors_5099 } = await supabase.from("vendors").update({
-          total_paid: safeNum(freshVendor.total_paid) + safeNum(inv.amount),
-          total_jobs: (freshVendor.total_jobs || 0) + 1,
-        }).eq("company_id", companyId).eq("id", vendor.id);
-        if (_err_vendors_5099) { alert("Error updating vendors: " + _err_vendors_5099.message); return; }
+      // Atomic increment via RPC (prevents concurrent update race)
+      try {
+        const { error: incErr } = await supabase.rpc("increment_vendor_totals", {
+          p_company_id: companyId, p_vendor_id: String(vendor.id), p_amount: safeNum(inv.amount)
+        });
+        if (incErr) throw new Error(incErr.message);
+      } catch (rpcE) {
+        console.warn("Vendor increment RPC fallback:", rpcE.message);
+        const { data: freshVendor } = await supabase.from("vendors").select("total_paid, total_jobs").eq("company_id", companyId).eq("id", vendor.id).maybeSingle();
+        if (freshVendor) {
+          await supabase.from("vendors").update({
+            total_paid: safeNum(freshVendor.total_paid) + safeNum(inv.amount),
+            total_jobs: (freshVendor.total_jobs || 0) + 1,
+          }).eq("company_id", companyId).eq("id", vendor.id);
+        }
       }
     }
     // Post to accounting
@@ -5188,7 +5199,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
       ]
     });
     if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
-    if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+    
     logAudit("update", "vendor_invoices", "Paid invoice: $" + inv.amount + " to " + inv.vendor_name, inv.id, userProfile?.email, userRole, companyId);
     fetchData();
     } finally { guardRelease("payInvoice"); }
@@ -5619,7 +5630,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
         ]
       });
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      
     }
     // Mark statement as paid only AFTER distribution + JE posting succeed
     if (!distJeOk) { alert("Distribution recorded but accounting entry failed. Statement NOT marked as paid."); fetchData(); return; }
@@ -6930,7 +6941,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
         ]
       });
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      
     }
     fetchHOA();
     } finally { guardRelease("payHOA"); }
@@ -7132,7 +7143,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
         ]
       });
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      
     } else {
       const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Autopay — " + s.tenant + " — " + s.property, reference: "APAY-" + shortId(), property: s.property,
         lines: [
@@ -7141,7 +7152,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
         ]
       });
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      
     }
     logAudit("create", "payments", "Autopay: $" + s.amount + " from " + s.tenant + " at " + s.property, "", userProfile?.email, userRole, companyId);
     addNotification("\ud83d\udcb3", "Autopay $" + s.amount + " processed for " + s.tenant);
@@ -7362,7 +7373,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
         ]
       });
       if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      
     }
     fetchData();
   }
@@ -7571,7 +7582,7 @@ function TenantPortal({ currentUser, companyId }) {
           ]
         });
         if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
-        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+        
       } else {
         const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Online rent payment — " + tenantData.name + " — " + tenantData.property, reference: "SPAY-" + shortId(), property: tenantData.property,
           lines: [
@@ -7580,7 +7591,7 @@ function TenantPortal({ currentUser, companyId }) {
           ]
         });
         if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
-        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+        
       }
       logAudit("create", "payments", "Online payment: $" + amt + " from " + tenantData.name, "", currentUser?.email, "tenant", companyId);
       setPaymentSuccess(true);
@@ -7600,7 +7611,7 @@ function TenantPortal({ currentUser, companyId }) {
     if (!maintForm.issue.trim()) { alert("Please describe the issue."); return; }
     let photoUrl = null;
     if (maintPhoto) {
-      const fileName = shortId() + "-" + maintPhoto.name;
+      const fileName = shortId() + "-" + sanitizeFileName(maintPhoto.name);
       const { error: uploadErr } = await supabase.storage.from("documents").upload("maintenance/" + fileName, maintPhoto);
       if (!uploadErr) {
         // Store file path — signed URLs generated on display
@@ -8458,12 +8469,18 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
       company_id: companyId, user_email: normalizeEmail(currentUser?.email), user_name: currentUser?.email?.split("@")[0] || "",
       role: "admin", status: "active", invited_by: "self",
     }]);
-    if (_err_company_members_8360) { alert("Error updating company_members: " + _err_company_members_8360.message); return; }
+    if (_err_company_members_8360) {
+      // Clean up the company row since setup failed
+      await supabase.from("companies").delete().eq("id", companyId);
+      alert("Error setting up company membership: " + _err_company_members_8360.message);
+      return;
+    }
     // Also add to app_users
-    await supabase.from("app_users").upsert([{
+    const { error: appErr } = await supabase.from("app_users").upsert([{
       email: normalizeEmail(currentUser?.email), name: currentUser?.email?.split("@")[0] || "",
       role: "admin", company_id: companyId,
     }], { onConflict: "email,company_id" });
+    if (appErr) console.warn("app_users upsert failed during company creation:", appErr.message);
     // Seed default chart of accounts for this company
     const defaultAccounts = [
       { id: "1000", name: "Checking Account", type: "Asset", subtype: "Bank", is_active: true, company_id: companyId },
@@ -8492,7 +8509,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
     // Require minimum input length to prevent enumeration
     if (joinCode.trim() && joinCode.trim().length < 8) { alert("Please enter the full 8-digit company code."); return; }
     if (!joinCode.trim() && joinSearch.trim().length < 3) { alert("Please enter at least 3 characters to search."); return; }
-    let query = supabase.from("companies").select("id, name, type, company_code");
+    let query = supabase.from("companies").select("id, name, type");
     if (joinCode.trim()) {
       query = query.eq("company_code", joinCode.trim());
     } else {
@@ -8546,7 +8563,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
                     </div>
                     <div>
                       <div className="font-semibold text-gray-800">{c.name}</div>
-                      <div className="text-xs text-gray-400">{c.type} · Code: {c.company_code} · {c.memberRole}</div>
+                      <div className="text-xs text-gray-400">{c.type} · {c.memberRole}</div>
                     </div>
                   </div>
                   <span className="text-indigo-600 text-sm font-medium">Open →</span>
@@ -8638,7 +8655,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
                 <div className="space-y-2 mt-3">
                   {searchResults.map(c => (
                     <div key={c.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
-                      <div><div className="text-sm font-semibold text-gray-800">{c.name}</div><div className="text-xs text-gray-400">{c.type} · {c.company_code}</div></div>
+                      <div><div className="text-sm font-semibold text-gray-800">{c.name}</div><div className="text-xs text-gray-400">{c.type}</div></div>
                       <button onClick={() => requestJoin(c)} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700">Request to Join</button>
                     </div>
                   ))}
