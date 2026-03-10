@@ -7988,15 +7988,34 @@ function RoleManagement({ addNotification, companyId }) {
     };
 
     if (editingUser) {
-      // If email changed, clean up old membership row
-      if (editingUser.email && normalizeEmail(editingUser.email) !== normalizeEmail(payload.email)) {
-        const { error: _err7886 } = await supabase.from("company_members").delete().eq("company_id", companyId).ilike("user_email", editingUser.email);
-        if (_err7886) console.warn("company_members write failed:", _err7886.message);
+      const emailChanged = editingUser.email && normalizeEmail(editingUser.email) !== normalizeEmail(payload.email);
+      if (emailChanged) {
+        // Atomic email change: delete old membership + update user + create new membership in one transaction
+        try {
+          const { error: rpcErr } = await supabase.rpc("change_user_email", {
+            p_company_id: companyId,
+            p_user_id: String(editingUser.id),
+            p_old_email: editingUser.email,
+            p_new_email: payload.email,
+            p_name: payload.name,
+            p_role: payload.role,
+            p_custom_pages: JSON.stringify(customPages),
+          });
+          if (rpcErr) throw new Error(rpcErr.message);
+        } catch (rpcE) {
+          // Fallback: sequential (can drift if step fails)
+          console.warn("Email change RPC fallback:", rpcE.message);
+          await supabase.from("company_members").delete().eq("company_id", companyId).ilike("user_email", editingUser.email);
+          const { error } = await supabase.from("app_users").update({ email: normalizeEmail(payload.email), role: payload.role, name: payload.name, custom_pages: payload.custom_pages, company_id: payload.company_id }).eq("company_id", companyId).eq("id", editingUser.id);
+          if (error) { alert("Error: " + error.message); return; }
+          await supabase.from("company_members").upsert([{ company_id: companyId, user_email: (form.email || "").toLowerCase(), user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
+        }
+      } else {
+        // No email change — just update role/name/pages
+        const { error } = await supabase.from("app_users").update({ email: normalizeEmail(payload.email), role: payload.role, name: payload.name, custom_pages: payload.custom_pages, company_id: payload.company_id }).eq("company_id", companyId).eq("id", editingUser.id);
+        if (error) { alert("Error: " + error.message); return; }
+        await supabase.from("company_members").upsert([{ company_id: companyId, user_email: (form.email || "").toLowerCase(), user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
       }
-      const { error } = await supabase.from("app_users").update({ email: normalizeEmail(payload.email), role: payload.role, name: payload.name, custom_pages: payload.custom_pages, company_id: payload.company_id }).eq("company_id", companyId).eq("id", editingUser.id);
-      if (error) { alert("Error: " + error.message); return; }
-      // Also update company_members
-      await supabase.from("company_members").upsert([{ company_id: companyId, user_email: (form.email || "").toLowerCase(), user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
       addNotification("👥", `${form.name}'s access updated`);
     } else {
       const { error, data: newUser } = await supabase.from("app_users").insert([{ ...payload, email: normalizeEmail(payload.email) }]).select();
@@ -8457,47 +8476,56 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
       if (!existing) break;
       if (attempt === 4) { alert("Could not generate unique company code. Please try again."); return; }
     }
-    const { data, error } = await supabase.from("companies").insert([{
-      id: companyId, name: createForm.name, type: createForm.type, company_code: companyCode,
-      company_role: createForm.company_role || "management",
-      address: createForm.address, phone: createForm.phone, email: normalizeEmail(createForm.email),
-      created_by: normalizeEmail(currentUser?.email),
-    }]).select();
-    if (error) { alert("Error creating company: " + error.message); return; }
-    // Add creator as admin
-    const { error: _err_company_members_8360 } = await supabase.from("company_members").insert([{
-      company_id: companyId, user_email: normalizeEmail(currentUser?.email), user_name: currentUser?.email?.split("@")[0] || "",
-      role: "admin", status: "active", invited_by: "self",
-    }]);
-    if (_err_company_members_8360) {
-      // Clean up the company row since setup failed
-      await supabase.from("companies").delete().eq("id", companyId);
-      alert("Error setting up company membership: " + _err_company_members_8360.message);
-      return;
+    // Atomic company creation: company + membership + app_users + chart of accounts in one transaction
+    try {
+      const { data: rpcResult, error: rpcErr } = await supabase.rpc("create_company_atomic", {
+        p_company_id: companyId,
+        p_name: createForm.name,
+        p_type: createForm.type,
+        p_company_code: companyCode,
+        p_company_role: createForm.company_role || "management",
+        p_address: createForm.address || "",
+        p_phone: createForm.phone || "",
+        p_email: normalizeEmail(createForm.email),
+        p_creator_email: normalizeEmail(currentUser?.email),
+        p_creator_name: currentUser?.email?.split("@")[0] || "",
+      });
+      if (rpcErr) throw new Error(rpcErr.message);
+    } catch (rpcE) {
+      // Fallback: client-side sequential creation
+      console.warn("Atomic create RPC not available, using client-side:", rpcE.message);
+      const { data, error } = await supabase.from("companies").insert([{
+        id: companyId, name: createForm.name, type: createForm.type, company_code: companyCode,
+        company_role: createForm.company_role || "management",
+        address: createForm.address, phone: createForm.phone, email: normalizeEmail(createForm.email),
+        created_by: normalizeEmail(currentUser?.email),
+      }]).select();
+      if (error) { alert("Error creating company: " + error.message); return; }
+      const { error: memErr } = await supabase.from("company_members").insert([{
+        company_id: companyId, user_email: normalizeEmail(currentUser?.email), user_name: currentUser?.email?.split("@")[0] || "",
+        role: "admin", status: "active", invited_by: "self",
+      }]);
+      if (memErr) { await supabase.from("companies").delete().eq("id", companyId); alert("Setup failed: " + memErr.message); return; }
+      await supabase.from("app_users").upsert([{
+        email: normalizeEmail(currentUser?.email), name: currentUser?.email?.split("@")[0] || "", role: "admin", company_id: companyId,
+      }], { onConflict: "email,company_id" });
+      const defaultAccounts = [
+        { id: "1000", name: "Checking Account", type: "Asset", subtype: "Bank", is_active: true, company_id: companyId },
+        { id: "1100", name: "Accounts Receivable", type: "Asset", subtype: "Accounts Receivable", is_active: true, company_id: companyId },
+        { id: "2100", name: "Security Deposits Held", type: "Liability", subtype: "Other Current Liability", is_active: true, company_id: companyId },
+        { id: "2200", name: "Owner Distributions Payable", type: "Liability", subtype: "Other Current Liability", is_active: true, company_id: companyId },
+        { id: "3000", name: "Owner Equity", type: "Equity", subtype: "Owner\'s Equity", is_active: true, company_id: companyId },
+        { id: "4000", name: "Rental Income", type: "Revenue", subtype: "Rental Income", is_active: true, company_id: companyId },
+        { id: "4010", name: "Late Fee Income", type: "Revenue", subtype: "Other Primary Income", is_active: true, company_id: companyId },
+        { id: "4100", name: "Other Income", type: "Revenue", subtype: "Other Primary Income", is_active: true, company_id: companyId },
+        { id: "4200", name: "Management Fee Income", type: "Revenue", subtype: "Service Income", is_active: true, company_id: companyId },
+        { id: "5300", name: "Repairs & Maintenance", type: "Expense", subtype: "Maintenance & Repairs", is_active: true, company_id: companyId },
+        { id: "5400", name: "Utilities", type: "Expense", subtype: "Utilities", is_active: true, company_id: companyId },
+        { id: "5500", name: "HOA Fees", type: "Expense", subtype: "HOA & Association Fees", is_active: true, company_id: companyId },
+        { id: "9999", name: "Suspense / Uncategorized", type: "Equity", subtype: "Suspense", is_active: true, company_id: companyId },
+      ];
+      await supabase.from("acct_accounts").upsert(defaultAccounts.map(a => ({ ...a, id: companyId.slice(0, 8) + "-" + a.id })), { onConflict: "id" });
     }
-    // Also add to app_users
-    const { error: appErr } = await supabase.from("app_users").upsert([{
-      email: normalizeEmail(currentUser?.email), name: currentUser?.email?.split("@")[0] || "",
-      role: "admin", company_id: companyId,
-    }], { onConflict: "email,company_id" });
-    if (appErr) console.warn("app_users upsert failed during company creation:", appErr.message);
-    // Seed default chart of accounts for this company
-    const defaultAccounts = [
-      { id: "1000", name: "Checking Account", type: "Asset", subtype: "Bank", is_active: true, company_id: companyId },
-      { id: "1100", name: "Accounts Receivable", type: "Asset", subtype: "Accounts Receivable", is_active: true, company_id: companyId },
-      { id: "2100", name: "Security Deposits Held", type: "Liability", subtype: "Other Current Liability", is_active: true, company_id: companyId },
-      { id: "2200", name: "Owner Distributions Payable", type: "Liability", subtype: "Other Current Liability", is_active: true, company_id: companyId },
-      { id: "3000", name: "Owner Equity", type: "Equity", subtype: "Owner's Equity", is_active: true, company_id: companyId },
-      { id: "4000", name: "Rental Income", type: "Revenue", subtype: "Rental Income", is_active: true, company_id: companyId },
-      { id: "4010", name: "Late Fee Income", type: "Revenue", subtype: "Other Primary Income", is_active: true, company_id: companyId },
-      { id: "4100", name: "Other Income", type: "Revenue", subtype: "Other Primary Income", is_active: true, company_id: companyId },
-      { id: "4200", name: "Management Fee Income", type: "Revenue", subtype: "Service Income", is_active: true, company_id: companyId },
-      { id: "5300", name: "Repairs & Maintenance", type: "Expense", subtype: "Maintenance & Repairs", is_active: true, company_id: companyId },
-      { id: "5400", name: "Utilities", type: "Expense", subtype: "Utilities", is_active: true, company_id: companyId },
-      { id: "5500", name: "HOA Fees", type: "Expense", subtype: "HOA & Association Fees", is_active: true, company_id: companyId },
-      { id: "9999", name: "Suspense / Uncategorized", type: "Equity", subtype: "Suspense", is_active: true, company_id: companyId },
-    ];
-    await supabase.from("acct_accounts").upsert(defaultAccounts.map(a => ({ ...a, id: companyId.slice(0, 8) + "-" + a.id })), { onConflict: "id" });
     alert("Company created!\n\nCompany Code: " + companyCode + "\n\nShare this code with people you want to invite.");
     setShowCreate(false);
     setCreateForm({ name: "", type: "LLC", company_role: "management", address: "", phone: "", email: "" });
