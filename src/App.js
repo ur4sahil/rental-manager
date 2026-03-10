@@ -1556,20 +1556,20 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
       const classId = await getPropertyClassId(selectedTenant.property, companyId);
       if (newCharge.type === "charge") {
         const _jeOk = await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "Manual charge — " + selectedTenant.name + " — " + newCharge.description, reference: "MANUAL-" + shortId(), property: selectedTenant.property || "",
-        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
           lines: [
             { account_id: "1100", account_name: "Accounts Receivable", debit: Math.abs(amount), credit: 0, class_id: classId, memo: selectedTenant.name + ": " + newCharge.description },
             { account_id: "4100", account_name: "Other Income", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
           ]
         });
+        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       } else if (newCharge.type === "payment" || newCharge.type === "credit") {
         const _jeOk = await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "Manual " + newCharge.type + " — " + selectedTenant.name + " — " + newCharge.description, reference: "MANUAL-" + shortId(), property: selectedTenant.property || "",
-        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
           lines: [
             { account_id: "1000", account_name: "Checking Account", debit: Math.abs(amount), credit: 0, class_id: classId, memo: selectedTenant.name + ": " + newCharge.description },
             { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
           ]
         });
+        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       }
     }
     setSelectedTenant({ ...selectedTenant, balance: newBalance });
@@ -2064,6 +2064,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: `AR settlement — ${form.tenant}` },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     } else {
       // No accrual: direct revenue (cash basis) DR Bank, CR Revenue
       const revenueAcct = isLateFee ? "4010" : "4000";
@@ -2080,6 +2081,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
           { account_id: revenueAcct, account_name: revenueAcctName, debit: 0, credit: amt, class_id: classId, memo: `${form.tenant} — ${form.property}` },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     }
     addNotification("💳", `Payment recorded: ${formatCurrency(form.amount)} from ${form.tenant}`);
     logAudit("create", "payments", `Payment: ${formatCurrency(form.amount)} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole, companyId);
@@ -2241,6 +2243,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid for: ${wo.issue}` },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     }
     addNotification("🔧", `Work order "${wo.issue}" marked as ${newStatus.replace("_", " ")}`);
     fetchWorkOrders();
@@ -2462,6 +2465,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid: ${u.provider}` },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     }
     fetchUtilities();
       } finally { guardRelease("approvePay"); }
@@ -4103,6 +4107,7 @@ function Accounting({ companyId, activeCompany }) {
                     { account_id: "4000", account_name: "Rental Income", debit: 0, credit: rent, class_id: classId, memo: `${lease.tenant_name} — ${lease.property}` },
                   ]
                 });
+                if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
                 // Update tenant balance (they now owe this amount)
                 if (lease.tenant_id) {
                   const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: rent });
@@ -4616,18 +4621,19 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
         const classId = await getPropertyClassId(form.property, companyId);
         const dep = Number(form.security_deposit);
         const _jeOk = await autoPostJournalEntry({ companyId, date: form.start_date, description: "Security deposit received — " + form.tenant_name + " — " + form.property, reference: "DEP-" + shortId(), property: form.property,
-        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
           lines: [
             { account_id: "1000", account_name: "Checking Account", debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.tenant_name },
             { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant_name + " — " + form.property },
           ]
         });
+        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         // Create ledger entry for deposit collection
         if (tenant?.id) {
           await safeLedgerInsert({ company_id: companyId,
             tenant: form.tenant_name, property: form.property, date: form.start_date,
             description: "Security deposit collected", amount: dep, type: "deposit", balance: 0,
           });
+          if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         }
       }
     }
@@ -4745,21 +4751,21 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     const classId = await getPropertyClassId(lease.property, companyId);
     if (returned > 0) {
       const _jeOk = await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Security deposit return — " + lease.tenant_name, reference: "DEPRET-" + shortId(), property: lease.property,
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         lines: [
           { account_id: "2100", account_name: "Security Deposits Held", debit: returned, credit: 0, class_id: classId, memo: "Return to " + lease.tenant_name },
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: returned, class_id: classId, memo: "Deposit refund" },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     }
     if (deducted > 0) {
       const _jeOk = await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Deposit deduction — " + lease.tenant_name + " — " + depositForm.deductions, reference: "DEPDED-" + shortId(), property: lease.property,
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         lines: [
           { account_id: "2100", account_name: "Security Deposits Held", debit: deducted, credit: 0, class_id: classId, memo: "Deduction: " + depositForm.deductions },
           { account_id: "4100", account_name: "Other Income", debit: 0, credit: deducted, class_id: classId, memo: "Deposit forfeiture: " + lease.tenant_name },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     }
     // Create ledger entry and update balance for deposit return
     if (returned > 0 && lease.tenant_id) {
@@ -4767,6 +4773,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
         tenant: lease.tenant_name, property: lease.property, date: depositForm.return_date,
         description: "Security deposit returned", amount: -returned, type: "deposit_return", balance: 0,
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       const { error: depBalErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: -returned });
       if (depBalErr) console.warn("Deposit return balance update failed:", depBalErr.message);
     }
@@ -5154,6 +5161,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
         { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(inv.amount), class_id: classId, memo: "Payment to " + inv.vendor_name },
       ]
     });
+    if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     logAudit("update", "vendor_invoices", "Paid invoice: $" + inv.amount + " to " + inv.vendor_name, inv.id, userProfile?.email, userRole, companyId);
     fetchData();
     } finally { guardRelease("payInvoice"); }
@@ -5582,6 +5590,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
           { account_id: "4200", account_name: "Management Fee Income", debit: 0, credit: safeNum(stmt.management_fee), memo: stmt.owner_name },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     }
     // Mark statement as paid only AFTER distribution + JE posting succeed
     if (!distJeOk) { alert("Distribution recorded but accounting entry failed. Statement NOT marked as paid."); fetchData(); return; }
@@ -6318,6 +6327,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   const [isDrawing, setIsDrawing] = useState(false);
   const [typedName, setTypedName] = useState("");
   const [signMethod, setSignMethod] = useState("draw");
+  const [consentAgreed, setConsentAgreed] = useState(false);
 
   useEffect(() => { fetchSigners(); }, [lease]);
 
@@ -6419,22 +6429,10 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
       }
       logAudit("update", "leases", "E-signature (server-verified): " + signer.signer_name + " signed lease for " + lease.tenant_name + " [hash:" + (signResult?.integrity_hash || "").slice(0, 12) + "]", lease.id, userProfile?.email, "", companyId);
     } catch (rpcErr) {
-      // Fallback to client-side if RPC not deployed yet
-      console.warn("sign_lease RPC not available, using client-side fallback:", rpcErr.message);
-      let signerIp = window.location.hostname || "browser-client";
-      try {
-        const { data: ipData } = await supabase.functions.invoke("get-signer-ip");
-        if (ipData?.ip) signerIp = ipData.ip;
-      } catch { /* Edge function not deployed */ }
-      const { error: sigErr } = await supabase.from("lease_signatures").update({
-        status: "signed", signed_at: new Date().toISOString(), signature_data: sigData,
-        ip_address: signerIp, user_agent: navigator.userAgent || "",
-      }).eq("company_id", companyId).eq("lease_id", lease.id).eq("id", signer.id);
-      if (sigErr) { alert("Error recording signature: " + sigErr.message); setSigning(false); return; }
-      const { data: allSigs } = await supabase.from("lease_signatures").select("status").eq("company_id", companyId).eq("lease_id", lease.id);
-      const allSigned = allSigs && allSigs.every(s => s.status === "signed");
-      await supabase.from("leases").update({ signature_status: allSigned ? "fully_signed" : "partially_signed" }).eq("company_id", companyId).eq("id", lease.id);
-      logAudit("update", "leases", "E-signature (client-side): " + signer.signer_name + " signed lease for " + lease.tenant_name, lease.id, userProfile?.email, "", companyId);
+      // No client-side fallback — server-side signing is required for legal compliance
+      alert("Signature failed: " + rpcErr.message + "\n\nPlease ensure the e-signature system is properly configured. Contact your administrator if this persists.");
+      setSigning(false);
+      return;
     }
     setSigning(false);
     fetchSigners();
@@ -6524,13 +6522,12 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
             )}
 
             <div className="flex items-start gap-2 mt-3 mb-3 bg-amber-50 rounded-lg p-2">
-              <input type="checkbox" id="esign-agree" className="mt-1" />
-              <label htmlFor="esign-agree" className="text-xs text-gray-600">I agree that my electronic signature is the legal equivalent of my manual/handwritten signature and I consent to be legally bound by this lease agreement.</label>
+              <input type="checkbox" checked={consentAgreed} onChange={(e) => setConsentAgreed(e.target.checked)} className="mt-1" />
+              <label className="text-xs text-gray-600">I agree that my electronic signature is the legal equivalent of my manual/handwritten signature and I consent to be legally bound by this lease agreement.</label>
             </div>
 
             <button onClick={() => {
-              const agreed = document.getElementById("esign-agree")?.checked;
-              if (!agreed) { alert("You must agree to the electronic signature consent before signing."); return; }
+              if (!consentAgreed) { alert("You must agree to the electronic signature consent before signing."); return; }
               // Verify current user is authorized to sign as this signer
               const signer = pendingSigners[0];
               if (signer.signer_email && userProfile?.email && signer.signer_email.toLowerCase() !== userProfile.email.toLowerCase()) {
@@ -6538,9 +6535,9 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
                 return;
               }
               submitSignature(signer);
-            }} disabled={signing}
-              className={"w-full py-2.5 rounded-lg text-white font-semibold text-sm " + (signing ? "bg-gray-400" : "bg-indigo-600 hover:bg-indigo-700")}>
-              {signing ? "Signing..." : "Apply Signature"}
+            }} disabled={signing || !consentAgreed}
+              className={"w-full py-2.5 rounded-lg text-white font-semibold text-sm " + (signing || !consentAgreed ? "bg-gray-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700")}>
+              {signing ? "Signing..." : !consentAgreed ? "Agree to terms above to sign" : "Apply Signature"}
             </button>
           </div>
         )}
@@ -6904,6 +6901,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(h.amount), class_id: classId, memo: `HOA: ${h.hoa_name}` },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     }
     fetchHOA();
     } finally { guardRelease("payHOA"); }
@@ -7099,20 +7097,20 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
     }
     if (hasAccrual) {
       const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Autopay received — " + s.tenant + " — " + s.property + " (settling AR)", reference: "APAY-" + shortId(), property: s.property,
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         lines: [
           { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay " + s.method + " from " + s.tenant },
           { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement — " + s.tenant },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     } else {
       const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Autopay — " + s.tenant + " — " + s.property, reference: "APAY-" + shortId(), property: s.property,
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
         lines: [
           { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay " + s.method + " from " + s.tenant },
           { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: s.tenant + " — " + s.property },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     }
     logAudit("create", "payments", "Autopay: $" + s.amount + " from " + s.tenant + " at " + s.property, "", userProfile?.email, userRole, companyId);
     addNotification("\ud83d\udcb3", "Autopay $" + s.amount + " processed for " + s.tenant);
@@ -7333,6 +7331,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "4010", account_name: "Late Fee Income", debit: 0, credit: feeAmount, class_id: classId, memo: payment.daysLate + " days overdue" },
         ]
       });
+      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
     }
     fetchData();
   }
@@ -7535,20 +7534,20 @@ function TenantPortal({ currentUser, companyId }) {
       }
       if (hasAccrual) {
         const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Online payment — " + tenantData.name + " — " + tenantData.property + " (settling AR)", reference: "SPAY-" + shortId(), property: tenantData.property,
-        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
           lines: [
             { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Stripe from " + tenantData.name },
             { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement — " + tenantData.name },
           ]
         });
+        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       } else {
         const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Online rent payment — " + tenantData.name + " — " + tenantData.property, reference: "SPAY-" + shortId(), property: tenantData.property,
-        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
           lines: [
             { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Stripe from " + tenantData.name },
             { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: tenantData.name + " — " + tenantData.property },
           ]
         });
+        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
       }
       logAudit("create", "payments", "Online payment: $" + amt + " from " + tenantData.name, "", currentUser?.email, "tenant", companyId);
       setPaymentSuccess(true);
