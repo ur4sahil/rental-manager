@@ -307,7 +307,7 @@ async function autoPostRentCharges(companyId) {
 
             // Update tenant balance atomically (prevents drift)
             const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: monthRent });
-            if (balErr) console.warn("Balance update failed for", lease.tenant_name, ":", balErr.message);
+            if (balErr) alert("Balance update failed: " + balErr.message + ". Please verify the tenant balance.");
           }
 
           posted++;
@@ -907,15 +907,24 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       // Cascade address change to all related tables
       if (editingProperty && editingProperty.address !== form.address) {
         // Atomic cascade rename via server-side RPC (v2 uses property_id)
+        let renameRpcOk = false;
         try {
           const { error: renameErr } = await supabase.rpc("rename_property_v2", {
             p_company_id: companyId, p_property_id: editingProperty.id,
             p_new_address: form.address
           });
-          if (renameErr) console.warn("Cascade rename RPC failed, using client-side:", renameErr.message);
-          else { /* RPC succeeded */ }
-        } catch {
-          // Fallback to client-side cascade — check each step
+          if (renameErr) {
+            console.warn("Cascade rename RPC failed:", renameErr.message);
+            renameRpcOk = false;
+          } else {
+            renameRpcOk = true;
+          }
+        } catch (e) {
+          console.warn("Cascade rename RPC threw:", e.message);
+          renameRpcOk = false;
+        }
+        if (!renameRpcOk) {
+          // Client-side fallback cascade — check each step
           const oldAddr = editingProperty.address;
           const tables = ["tenants", "payments", "ledger_entries", "work_orders", "utilities", "autopay_schedules", "documents", "hoa_payments"];
           let cascadeFailed = false;
@@ -933,7 +942,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       // Auto-create accounting class for new properties
       if (!editingProperty) {
         const classId = generateId("PROP");
-        await supabase.from("acct_classes").upsert([{ id: classId, name: form.address, description: `${form.type} · ${formatCurrency(form.rent)}/mo`, color: pickColor(form?.address || req?.address || ""), is_active: true, company_id: companyId }], { onConflict: "id" });
+        await supabase.from("acct_classes").upsert([{ id: classId, name: form.address, description: `${form.type} · ${formatCurrency(form.rent)}/mo`, color: pickColor(form.address || ""), is_active: true, company_id: companyId }], { onConflict: "id" });
       }
       addNotification("🏠", editingProperty ? `Property updated: ${form.address}` : `New property added: ${form.address}`);
       logAudit(editingProperty ? "update" : "create", "properties", `${editingProperty ? "Updated" : "Added"} property: ${form.address}`, editingProperty?.id || "", userProfile?.email, userRole, companyId);
@@ -1017,7 +1026,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       if (apErr) { alert("Error adding property: " + apErr.message); return; }
       // Auto-create accounting class for this property
       const classId = generateId("PROP");
-      const { error: classErr } = await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · ${formatCurrency(req.rent)}/mo`, color: pickColor(form?.address || req?.address || ""), is_active: true, company_id: companyId }], { onConflict: "id" });
+      const { error: classErr } = await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · ${formatCurrency(req.rent)}/mo`, color: pickColor(req?.address || ""), is_active: true, company_id: companyId }], { onConflict: "id" });
       if (classErr) console.warn("Accounting class creation failed:", classErr.message);
       addNotification("✅", `Property approved & added: ${req.address}`);
     } else if (req.request_type === "edit" && req.property_id) {
@@ -1032,11 +1041,11 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
           const { error: cErr } = await supabase.from(table).update({ property: req.address }).eq("company_id", companyId).eq("property", oldProp.address);
           if (cErr) { console.warn("Approval cascade failed on " + table + ":", cErr.message); approvalCascadeFailed = true; }
         }
-        if (approvalCascadeFailed) alert("Property updated but some related records may not have been renamed. Please verify.");
         const { error: _leaseRename } = await supabase.from("leases").update({ property: req.address }).eq("company_id", companyId).eq("property", oldProp.address);
-        if (_leaseRename) console.warn("Lease cascade rename failed:", _leaseRename.message);
+        if (_leaseRename) { console.warn("Lease cascade rename failed:", _leaseRename.message); approvalCascadeFailed = true; }
         const { error: _classRename } = await supabase.from("acct_classes").update({ name: req.address }).eq("company_id", companyId).eq("name", oldProp.address);
-        if (_classRename) console.warn("Class cascade rename failed:", _classRename.message);
+        if (_classRename) { console.warn("Class cascade rename failed:", _classRename.message); approvalCascadeFailed = true; }
+        if (approvalCascadeFailed) alert("Property updated but some related records may not have been renamed. Please verify tenants, payments, leases, and accounting classes.");
       }
       addNotification("✅", `Property edit approved: ${req.address}`);
     }
@@ -1486,18 +1495,26 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
       // Cascade name change to all related tables
       if (editingTenant.name !== form.name) {
         // Atomic cascade rename via server-side RPC
+        let tenantRenameOk = false;
         try {
           const { error: renameErr } = await supabase.rpc("rename_tenant_cascade", {
             p_company_id: companyId, p_old_name: editingTenant.name, p_new_name: form.name
           });
-          if (renameErr) console.warn("Tenant rename RPC failed, using client-side:", renameErr.message);
-        } catch {
-          // Fallback
+          tenantRenameOk = !renameErr;
+          if (renameErr) console.warn("Tenant rename RPC failed:", renameErr.message);
+        } catch (e) {
+          console.warn("Tenant rename RPC threw:", e.message);
+        }
+        if (!tenantRenameOk) {
+          // Client-side fallback
           const oldName = editingTenant.name;
           const tables = ["payments", "ledger_entries", "work_orders", "messages", "autopay_schedules"];
+          let tenantCascadeFailed = false;
           for (const table of tables) {
-            await supabase.from(table).update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName);
+            const { error: tcErr } = await supabase.from(table).update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName);
+            if (tcErr) { console.warn("Tenant rename cascade failed on " + table + ":", tcErr.message); tenantCascadeFailed = true; }
           }
+          if (tenantCascadeFailed) alert("Tenant renamed but some related records may not have updated. Please verify payments and work orders.");
           const { error: _err1372 } = await supabase.from("leases").update({ tenant_name: form.name }).eq("company_id", companyId).eq("tenant_name", oldName);
           if (_err1372) { alert("Error updating leases: " + _err1372.message); return; }
         }
@@ -1672,7 +1689,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
             { account_id: "4100", account_name: "Other Income", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
           ]
         });
-        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+        if (!_jeOk) { alert("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module."); }
         
       } else if (newCharge.type === "payment" || newCharge.type === "credit") {
         const _jeOk = await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "Manual " + newCharge.type + " — " + selectedTenant.name + " — " + newCharge.description, reference: "MANUAL-" + shortId(), property: selectedTenant.property || "",
@@ -1681,7 +1698,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
             { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
           ]
         });
-        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+        if (!_jeOk) { alert("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module."); }
         
       }
     }
@@ -2176,7 +2193,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: `AR settlement — ${form.tenant}` },
         ]
       });
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      if (!_jeOk) { alert("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module."); }
       
     } else {
       // No accrual: direct revenue (cash basis) DR Bank, CR Revenue
@@ -2193,7 +2210,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
           { account_id: revenueAcct, account_name: revenueAcctName, debit: 0, credit: amt, class_id: classId, memo: `${form.tenant} — ${form.property}` },
         ]
       });
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
       
     }
     addNotification("💳", `Payment recorded: ${formatCurrency(form.amount)} from ${form.tenant}`);
@@ -2206,7 +2223,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
       // Decrease balance (payment reduces what tenant owes)
       try {
         const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -payAmt });
-        if (balErr) console.warn("Balance update failed:", balErr.message);
+        if (balErr) alert("Balance update failed: " + balErr.message + ". Please verify the tenant balance.");
       } catch (e) { console.warn("Balance RPC error:", e.message); }
       // Create ledger entry
       await safeLedgerInsert({ company_id: companyId,
@@ -2355,7 +2372,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid for: ${wo.issue}` },
         ]
       });
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      if (!_jeOk) { alert("Accounting entry failed. The record was saved but the journal entry could not be posted. Please check the accounting module."); }
       
     }
     addNotification("🔧", `Work order "${wo.issue}" marked as ${newStatus.replace("_", " ")}`);
@@ -2586,7 +2603,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid: ${u.provider}` },
         ]
       });
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      if (!_jeOk) { alert("Accounting entry failed. The record was saved but the journal entry could not be posted. Please check the accounting module."); }
       
     }
     fetchUtilities();
@@ -4129,7 +4146,7 @@ function Accounting({ companyId, activeCompany }) {
             // Reverse: if charge increased AR (positive), decrease balance; if payment decreased AR (negative), increase balance
             try {
               const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -arImpact });
-              if (balErr) console.warn("Void balance reversal failed:", balErr.message);
+              if (balErr) alert("Balance update failed: " + balErr.message + ". Please verify the tenant balance.");
             } catch (e) { console.warn("Void balance RPC error:", e.message); }
             await safeLedgerInsert({ company_id: companyId,
               tenant: tenantName.trim(), property: je.property || "",
@@ -4228,12 +4245,12 @@ function Accounting({ companyId, activeCompany }) {
                     { account_id: "4000", account_name: "Rental Income", debit: 0, credit: rent, class_id: classId, memo: `${lease.tenant_name} — ${lease.property}` },
                   ]
                 });
-                if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+                if (!_jeOk) { alert("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module."); }
                 
                 // Update tenant balance (they now owe this amount)
                 if (lease.tenant_id) {
                   const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: rent });
-                  if (balErr) console.warn("Accrual balance update failed:", balErr.message);
+                  if (balErr) alert("Balance update failed: " + balErr.message + ". Please verify the tenant balance.");
                 }
                 // Create ledger entry
                 await safeLedgerInsert({ company_id: companyId,
@@ -4754,7 +4771,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
             { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant_name + " — " + form.property },
           ]
         });
-        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+        if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
         
         // Create ledger entry for deposit collection
         if (tenant?.id) {
@@ -4762,7 +4779,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
             tenant: form.tenant_name, property: form.property, date: form.start_date,
             description: "Security deposit collected", amount: dep, type: "deposit", balance: 0,
           });
-          if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+          if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
         }
       }
     }
@@ -4886,7 +4903,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: returned, class_id: classId, memo: "Deposit refund" },
         ]
       });
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
       
     }
     if (deducted > 0) {
@@ -4896,7 +4913,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
           { account_id: "4100", account_name: "Other Income", debit: 0, credit: deducted, class_id: classId, memo: "Deposit forfeiture: " + lease.tenant_name },
         ]
       });
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
       
     }
     // Create ledger entry and update balance for deposit return
@@ -4905,9 +4922,9 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
         tenant: lease.tenant_name, property: lease.property, date: depositForm.return_date,
         description: "Security deposit returned", amount: -returned, type: "deposit_return", balance: 0,
       });
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
       const { error: depBalErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: -returned });
-      if (depBalErr) console.warn("Deposit return balance update failed:", depBalErr.message);
+      if (depBalErr) alert("Deposit return balance update failed: " + depBalErr.message + ". Please verify the tenant balance.");
     }
     if (deducted > 0 && lease.tenant_id) {
       await safeLedgerInsert({ company_id: companyId,
@@ -5300,7 +5317,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
         { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(inv.amount), class_id: classId, memo: "Payment to " + inv.vendor_name },
       ]
     });
-    if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+    if (!_jeOk) { alert("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module."); }
     
     logAudit("update", "vendor_invoices", "Paid invoice: $" + inv.amount + " to " + inv.vendor_name, inv.id, userProfile?.email, userRole, companyId);
     fetchData();
@@ -5726,7 +5743,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
           { account_id: "4200", account_name: "Management Fee Income", debit: 0, credit: safeNum(stmt.management_fee), memo: stmt.owner_name },
         ]
       });
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      if (!_jeOk) { alert("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module."); }
       
     }
     // Mark statement as paid only AFTER distribution + JE posting succeed
@@ -7037,7 +7054,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(h.amount), class_id: classId, memo: `HOA: ${h.hoa_name}` },
         ]
       });
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      if (!_jeOk) { alert("Accounting entry failed. The record was saved but the journal entry could not be posted. Please check the accounting module."); }
       
     }
     fetchHOA();
@@ -7239,7 +7256,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement — " + s.tenant },
         ]
       });
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
       
     } else {
       const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Autopay — " + s.tenant + " — " + s.property, reference: "APAY-" + shortId(), property: s.property,
@@ -7248,7 +7265,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: s.tenant + " — " + s.property },
         ]
       });
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
       
     }
     logAudit("create", "payments", "Autopay: $" + s.amount + " from " + s.tenant + " at " + s.property, "", userProfile?.email, userRole, companyId);
@@ -7259,7 +7276,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
     if (tenantRow) {
       try {
         const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -amt });
-        if (balErr) console.warn("Autopay balance update failed:", balErr.message);
+        if (balErr) alert("Balance update failed: " + balErr.message + ". Please verify the tenant balance.");
       } catch (e) { console.warn("Autopay balance RPC error:", e.message); }
       await safeLedgerInsert({ company_id: companyId,
         tenant: s.tenant, property: s.property,
@@ -7451,7 +7468,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
       // Atomic balance update (prevents drift from concurrent writes)
       try {
         const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenant.id, p_amount_change: feeAmount });
-        if (balErr) console.warn("Late fee balance update failed:", balErr.message);
+        if (balErr) alert("Balance update failed: " + balErr.message + ". Please verify the tenant balance.");
       } catch (e) { console.warn("Late fee balance RPC error:", e.message); }
     }
     addNotification("⚠️", `Late fee ${formatCurrency(feeAmount)} applied to ${payment.tenant}`);
@@ -7469,7 +7486,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "4010", account_name: "Late Fee Income", debit: 0, credit: feeAmount, class_id: classId, memo: payment.daysLate + " days overdue" },
         ]
       });
-      if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+      if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
       
     }
     fetchData();
@@ -7678,7 +7695,7 @@ function TenantPortal({ currentUser, companyId }) {
             { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement — " + tenantData.name },
           ]
         });
-        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+        if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
         
       } else {
         const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Online rent payment — " + tenantData.name + " — " + tenantData.property, reference: "SPAY-" + shortId(), property: tenantData.property,
@@ -7687,7 +7704,7 @@ function TenantPortal({ currentUser, companyId }) {
             { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: tenantData.name + " — " + tenantData.property },
           ]
         });
-        if (!_jeOk) console.warn("Journal entry posting failed — accounting may be incomplete");
+        if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
         
       }
       logAudit("create", "payments", "Online payment: $" + amt + " from " + tenantData.name, "", currentUser?.email, "tenant", companyId);
