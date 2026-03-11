@@ -523,42 +523,41 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
     setLoading(true);
     setError("");
 
-    // For tenant signup, validate invite code first via RPC (SECURITY DEFINER bypasses RLS)
+    // For tenant signup: validate AND redeem invite code BEFORE creating auth account
+    // This prevents orphaned auth accounts if redemption fails
+    let tenantRedemption = null;
     if (userType === "tenant") {
       if (!inviteCode.trim()) { setError("Invite code is required."); setLoading(false); return; }
-      const { data: rpcResult, error: rpcErr } = await supabase.rpc("validate_invite_code", { p_code: inviteCode.trim().toUpperCase() });
-      if (rpcErr || !rpcResult?.valid) { setError("Invalid or expired invite code."); setLoading(false); return; }
+      // Validate first
+      const { data: valResult, error: valErr } = await supabase.rpc("validate_invite_code", { p_code: inviteCode.trim().toUpperCase() });
+      if (valErr || !valResult?.valid) { setError("Invalid or expired invite code."); setLoading(false); return; }
+      // Redeem immediately (before auth account creation)
+      const { data: redeemResult, error: redeemErr } = await supabase.rpc("redeem_invite_code", {
+        p_code: inviteCode.trim().toUpperCase(),
+        p_email: email.toLowerCase(),
+        p_name: name.trim(),
+      });
+      if (redeemErr || !redeemResult?.success) {
+        setError("Invite code could not be redeemed: " + (redeemErr?.message || "it may have already been used") + ". No account was created. Please contact your landlord for a new code.");
+        setLoading(false);
+        return;
+      }
+      tenantRedemption = redeemResult;
     }
 
+    // Now create auth account (for tenants, invite is already redeemed — no orphan risk)
     const { data: signupData, error: signupErr } = await supabase.auth.signUp({
       email, password,
       options: { data: { name: name.trim(), user_type: userType } }
     });
     if (signupErr) { setError(signupErr.message); setLoading(false); return; }
 
-    // Save user_type to app_users (no company_id yet — will be set when they create/join a company)
-    // Use insert with ignore to avoid overwriting existing rows for other companies
+    // Save user_type to app_users (no company_id yet — set when they create/join a company)
     const { error: appUserErr } = await supabase.from("app_users").insert([{
       email: email.toLowerCase(), name: name.trim(), role: userType === "tenant" ? "tenant" : userType === "owner" ? "owner" : "pm",
       user_type: userType,
     }]).select();
     if (appUserErr && !appUserErr.message.includes("duplicate")) { console.warn("app_users write failed:", appUserErr.message); }
-
-    // For tenant, redeem invite code atomically via RPC (SECURITY DEFINER, prevents race condition)
-    if (userType === "tenant") {
-      const { data: rpcResult, error: rpcErr } = await supabase.rpc("redeem_invite_code", {
-        p_code: inviteCode.trim().toUpperCase(),
-        p_email: email,
-        p_name: name.trim(),
-      });
-      if (rpcErr || !rpcResult?.success) {
-        // Redemption failed — likely race condition (code used between validate and redeem)
-        // Account was already created but has no company access
-        setError("Your account was created, but the invite code could not be redeemed (it may have already been used). Please contact your landlord or property manager for a new invite code. You can log in and enter a new code later.");
-        setLoading(false);
-        return;
-      }
-    }
 
     setSignupSuccess(true);
     setLoading(false);
@@ -899,6 +898,11 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     if (!form.rent || isNaN(Number(form.rent)) || Number(form.rent) <= 0) { alert("Please enter a valid positive rent amount."); return; }
 
     if (isAdmin) {
+      // Guard: block edits to managed (cross-company) properties
+      if (editingProperty && editingProperty.company_id !== companyId) {
+        alert("This property belongs to another company and cannot be edited here.");
+        return;
+      }
       // Admin: direct save
       const { error } = editingProperty
         ? await supabase.from("properties").update({ address: form.address, type: form.type, status: form.status, rent: form.rent, tenant: form.tenant, lease_end: form.lease_end, notes: form.notes }).eq("id", editingProperty.id).eq("company_id", companyId)
@@ -906,37 +910,13 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       if (error) { alert("Error saving property: " + error.message); return; }
       // Cascade address change to all related tables
       if (editingProperty && editingProperty.address !== form.address) {
-        // Atomic cascade rename via server-side RPC (v2 uses property_id)
-        let renameRpcOk = false;
-        try {
-          const { error: renameErr } = await supabase.rpc("rename_property_v2", {
-            p_company_id: companyId, p_property_id: editingProperty.id,
-            p_new_address: form.address
-          });
-          if (renameErr) {
-            console.warn("Cascade rename RPC failed:", renameErr.message);
-            renameRpcOk = false;
-          } else {
-            renameRpcOk = true;
-          }
-        } catch (e) {
-          console.warn("Cascade rename RPC threw:", e.message);
-          renameRpcOk = false;
-        }
-        if (!renameRpcOk) {
-          // Client-side fallback cascade — check each step
-          const oldAddr = editingProperty.address;
-          const tables = ["tenants", "payments", "ledger_entries", "work_orders", "utilities", "autopay_schedules", "documents", "hoa_payments"];
-          let cascadeFailed = false;
-          for (const table of tables) {
-            const { error: cascErr } = await supabase.from(table).update({ property: form.address }).eq("company_id", companyId).eq("property", oldAddr);
-            if (cascErr) { console.warn("Rename cascade failed on " + table + ":", cascErr.message); cascadeFailed = true; }
-          }
-          if (cascadeFailed) { alert("Property renamed but some related records may not have updated. Please check tenants, payments, and work orders for this property."); }
-          const { error: _err881 } = await supabase.from("leases").update({ property: form.address }).eq("company_id", companyId).eq("property", oldAddr);
-          if (_err881) { alert("Error updating leases: " + _err881.message); return; }
-          const { error: _err882 } = await supabase.from("acct_classes").update({ name: form.address }).eq("company_id", companyId).eq("name", oldAddr);
-          if (_err882) { alert("Error updating acct_classes: " + _err882.message); return; }
+        // Atomic cascade rename — server-side RPC required (no client fallback)
+        const { error: renameErr } = await supabase.rpc("rename_property_v2", {
+          p_company_id: companyId, p_property_id: editingProperty.id,
+          p_new_address: form.address
+        });
+        if (renameErr) {
+          alert("Failed to rename property across all records: " + renameErr.message + "\n\nThe property name was updated but related records (tenants, payments, leases) may not have been renamed. Please contact support.");
         }
       }
       // Auto-create accounting class for new properties
@@ -977,6 +957,12 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       if (!guardSubmit("deleteProperty")) return;
       try {
     if (!isAdmin) { alert("Only admins can delete properties."); return; }
+    // Guard: block deletion of managed (cross-company) properties
+    const targetProp = properties.find(p => p.id === id);
+    if (targetProp && targetProp.company_id !== companyId) {
+      alert("This property belongs to another company and cannot be deleted here.");
+      return;
+    }
     // Check for active tenants or leases
     const { data: activeTenants } = await supabase.from("tenants").select("id").eq("company_id", companyId).eq("property", address).limit(1);
     const { data: activeLeases } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("property", address).eq("status", "active").limit(1);
@@ -985,33 +971,9 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       return;
     }
     if (!window.confirm(`Delete property "${address}"? This will also remove associated work orders. This cannot be undone.`)) return;
-    // Atomic cascade delete via server-side RPC (single transaction)
-    try {
-      const { error: rpcErr } = await supabase.rpc("delete_property_cascade", { p_company_id: companyId, p_property_id: id, p_address: address });
-      if (rpcErr) throw new Error(rpcErr.message);
-    } catch (e) {
-      // Fallback to client-side if RPC not deployed
-      let deleteFailed = false;
-      const { error: _woDelErr } = await supabase.from("work_orders").delete().eq("company_id", companyId).eq("property", address);
-      if (_woDelErr) { console.warn("work_orders delete failed:", _woDelErr.message); deleteFailed = true; }
-      const { error: _autoDelErr } = await supabase.from("autopay_schedules").delete().eq("company_id", companyId).eq("property", address);
-      if (_autoDelErr) { console.warn("autopay delete failed:", _autoDelErr.message); deleteFailed = true; }
-      const { error: _err939 } = await supabase.from("utilities").delete().eq("company_id", companyId).eq("property", address);
-      if (_err939) { console.warn("utilities delete failed:", _err939.message); deleteFailed = true; }
-      const { error: _err940 } = await supabase.from("hoa_payments").delete().eq("company_id", companyId).eq("property", address);
-      if (_err940) { console.warn("hoa_payments delete failed:", _err940.message); deleteFailed = true; }
-      const { error: _err941 } = await supabase.from("ledger_entries").delete().eq("company_id", companyId).eq("property", address);
-      if (_err941) { console.warn("ledger_entries delete failed:", _err941.message); deleteFailed = true; }
-      const { error: _err942 } = await supabase.from("documents").delete().eq("company_id", companyId).eq("property", address);
-      if (_err942) { console.warn("documents write failed:", _err942.message); deleteFailed = true; }
-      if (deleteFailed) {
-        alert("Some related records could not be deleted. The property will NOT be removed to avoid orphaned data. Please try again or contact support.");
-        fetchProperties();
-        return;
-      }
-    }
-    const { error } = await supabase.from("properties").delete().eq("id", id).eq("company_id", companyId);
-    if (error) { alert("Error deleting property: " + error.message); return; }
+    // Atomic cascade delete — server-side RPC required (no client fallback)
+    const { error: deleteRpcErr } = await supabase.rpc("delete_property_cascade", { p_company_id: companyId, p_property_id: id, p_address: address });
+    if (deleteRpcErr) { alert("Failed to delete property: " + deleteRpcErr.message); return; }
     addNotification("🗑️", `Property deleted: ${address}`);
     logAudit("delete", "properties", `Deleted property: ${address}`, id, userProfile?.email, userRole, companyId);
       } finally { guardRelease("deleteProperty"); }
@@ -1035,17 +997,12 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       const { error: editErr } = await supabase.from("properties").update({ address: req.address, type: req.type, status: req.property_status, rent: req.rent, tenant: req.tenant, lease_end: req.lease_end, notes: req.notes }).eq("id", req.property_id).eq("company_id", companyId);
       if (editErr) { alert("Error updating property: " + editErr.message); return; }
       if (oldProp && oldProp.address !== req.address) {
-        const cascadeTables = ["tenants", "payments", "ledger_entries", "work_orders", "utilities", "autopay_schedules", "documents", "hoa_payments"];
-        let approvalCascadeFailed = false;
-        for (const table of cascadeTables) {
-          const { error: cErr } = await supabase.from(table).update({ property: req.address }).eq("company_id", companyId).eq("property", oldProp.address);
-          if (cErr) { console.warn("Approval cascade failed on " + table + ":", cErr.message); approvalCascadeFailed = true; }
-        }
-        const { error: _leaseRename } = await supabase.from("leases").update({ property: req.address }).eq("company_id", companyId).eq("property", oldProp.address);
-        if (_leaseRename) { console.warn("Lease cascade rename failed:", _leaseRename.message); approvalCascadeFailed = true; }
-        const { error: _classRename } = await supabase.from("acct_classes").update({ name: req.address }).eq("company_id", companyId).eq("name", oldProp.address);
-        if (_classRename) { console.warn("Class cascade rename failed:", _classRename.message); approvalCascadeFailed = true; }
-        if (approvalCascadeFailed) alert("Property updated but some related records may not have been renamed. Please verify tenants, payments, leases, and accounting classes.");
+        // Atomic cascade rename via RPC
+        const { error: cascErr } = await supabase.rpc("rename_property_v2", {
+          p_company_id: companyId, p_property_id: req.property_id,
+          p_new_address: req.address
+        });
+        if (cascErr) alert("Property updated but cascade rename failed: " + cascErr.message + ". Some related records may still show the old address.");
       }
       addNotification("✅", `Property edit approved: ${req.address}`);
     }
@@ -1495,28 +1452,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
       // Cascade name change to all related tables
       if (editingTenant.name !== form.name) {
         // Atomic cascade rename via server-side RPC
-        let tenantRenameOk = false;
-        try {
-          const { error: renameErr } = await supabase.rpc("rename_tenant_cascade", {
-            p_company_id: companyId, p_old_name: editingTenant.name, p_new_name: form.name
-          });
-          tenantRenameOk = !renameErr;
-          if (renameErr) console.warn("Tenant rename RPC failed:", renameErr.message);
-        } catch (e) {
-          console.warn("Tenant rename RPC threw:", e.message);
-        }
-        if (!tenantRenameOk) {
-          // Client-side fallback
-          const oldName = editingTenant.name;
-          const tables = ["payments", "ledger_entries", "work_orders", "messages", "autopay_schedules"];
-          let tenantCascadeFailed = false;
-          for (const table of tables) {
-            const { error: tcErr } = await supabase.from(table).update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName);
-            if (tcErr) { console.warn("Tenant rename cascade failed on " + table + ":", tcErr.message); tenantCascadeFailed = true; }
-          }
-          if (tenantCascadeFailed) alert("Tenant renamed but some related records may not have updated. Please verify payments and work orders.");
-          const { error: _err1372 } = await supabase.from("leases").update({ tenant_name: form.name }).eq("company_id", companyId).eq("tenant_name", oldName);
-          if (_err1372) { alert("Error updating leases: " + _err1372.message); return; }
+        // Atomic cascade rename — server-side RPC required
+        const { error: tenantRenameErr } = await supabase.rpc("rename_tenant_cascade", {
+          p_company_id: companyId, p_old_name: editingTenant.name, p_new_name: form.name
+        });
+        if (tenantRenameErr) {
+          alert("Failed to rename tenant across all records: " + tenantRenameErr.message + "\n\nThe tenant name was updated but related records may not have been renamed.");
         }
       }
       addNotification("👤", `Tenant updated: ${form.name}`);
@@ -1536,23 +1477,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
       if (!guardSubmit("deleteTenant")) return;
       try {
     if (!window.confirm(`Delete tenant "${name}"? This will also remove their ledger entries and messages. This cannot be undone.`)) return;
-    // Atomic cascade delete via server-side RPC
-    try {
-      const { error: rpcErr } = await supabase.rpc("delete_tenant_cascade", { p_company_id: companyId, p_tenant_id: id, p_tenant_name: name });
-      if (rpcErr) throw new Error(rpcErr.message);
-    } catch (e) {
-      // Fallback
-      await supabase.from("ledger_entries").delete().eq("company_id", companyId).eq("tenant", name);
-      await supabase.from("messages").delete().eq("company_id", companyId).eq("tenant", name);
-      const { error: _err1400 } = await supabase.from("payments").delete().eq("company_id", companyId).eq("tenant", name);
-      if (_err1400) console.warn("payments write failed:", _err1400.message);
-      const { error: _err1401 } = await supabase.from("work_orders").delete().eq("company_id", companyId).eq("tenant", name);
-      if (_err1401) console.warn("work_orders write failed:", _err1401.message);
-      const { error: _err1402 } = await supabase.from("autopay_schedules").delete().eq("company_id", companyId).eq("tenant", name);
-      if (_err1402) console.warn("autopay_schedules write failed:", _err1402.message);
-    }
-    const { error } = await supabase.from("tenants").delete().eq("id", id).eq("company_id", companyId);
-    if (error) { alert("Error deleting tenant: " + error.message); return; }
+    // Atomic cascade delete — server-side RPC required
+    const { error: delRpcErr } = await supabase.rpc("delete_tenant_cascade", { p_company_id: companyId, p_tenant_id: id, p_tenant_name: name });
+    if (delRpcErr) { alert("Failed to delete tenant: " + delRpcErr.message); return; }
     addNotification("🗑️", `Tenant deleted: ${name}`);
     logAudit("delete", "tenants", `Deleted tenant: ${name}`, id, userProfile?.email, userRole, companyId);
     fetchTenants();
@@ -1610,7 +1537,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
       if (memErr) { alert("Error creating invite: " + memErr.message); return; }
       addNotification("✉️", "Invite code generated for " + tenant.email);
       logAudit("create", "tenants", "Invited tenant to portal: " + tenant.email, tenant.id, userProfile?.email, userRole, companyId);
-      alert("Tenant invite created!\n\nInvite Code: " + code + "\n\nShare this code with " + tenant.name + ". They can sign up at your app URL by selecting 'I'm a Tenant' and entering this code.\n\nA magic link email was also sent to " + tenant.email);
+      // Show masked code — full code sent via email only
+      const maskedCode = code.slice(0, 2) + "****" + code.slice(-2);
+      alert("Tenant invite created!\n\nA magic link and invite code have been sent to " + tenant.email + ".\n\nCode hint: " + maskedCode + " (full code in their email)\n\n" + tenant.name + " can sign up by selecting 'I'm a Tenant' and entering the code from their email.");
     } catch (e) {
       alert("Error inviting tenant: " + e.message);
     }
@@ -8622,11 +8551,25 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
       if (existing.status === "rejected") { alert("Your previous request to join " + company.name + " was rejected. Please contact the company admin directly."); return; }
       if (existing.status === "removed") { alert("You were previously removed from " + company.name + ". Please contact the company admin to be re-added."); return; }
     }
-    const { error: joinErr } = await supabase.from("company_members").upsert([{
-      company_id: company.id, user_email: normalizeEmail(currentUser?.email), user_name: currentUser?.email?.split("@")[0] || "",
-      role: "office_assistant", status: "pending", invited_by: "self-request",
-    }], { onConflict: "company_id,user_email" });
-    if (joinErr) { alert("Error requesting to join: " + joinErr.message); return; }
+    // Server-side join request — verifies auth identity
+    try {
+      const { error: rpcErr } = await supabase.rpc("request_join_company", {
+        p_company_id: company.id,
+      });
+      if (rpcErr) throw new Error(rpcErr.message);
+    } catch (e) {
+      // Fallback for when RPC not yet deployed
+      if (e.message.includes("does not exist") || e.message.includes("could not find")) {
+        const { error: joinErr } = await supabase.from("company_members").upsert([{
+          company_id: company.id, user_email: normalizeEmail(currentUser?.email), user_name: currentUser?.email?.split("@")[0] || "",
+          role: "office_assistant", status: "pending", invited_by: "self-request",
+        }], { onConflict: "company_id,user_email" });
+        if (joinErr) { alert("Error requesting to join: " + joinErr.message); return; }
+      } else {
+        alert(e.message);
+        return;
+      }
+    }
     setJoinMessage("Request sent to join " + company.name + "! An admin will review your request.");
     setSearchResults([]);
     setJoinCode("");
@@ -8783,15 +8726,28 @@ function PendingRequestsPanel({ companyId, addNotification }) {
   }
 
   async function handleRequest(member, action) {
-    const newStatus = action === "approve" ? "active" : "rejected";
-    const { error: memErr } = await supabase.from("company_members").update({ status: newStatus }).eq("company_id", companyId).eq("id", member.id);
-    if (memErr) { alert("Error updating member: " + memErr.message); return; }
-    if (action === "approve") {
-      // company_members is now "active" — that's the access grant
-      // app_users row is created at signup time, not at approval
-      addNotification("✅", member.user_name + " approved to join");
-    } else {
-      addNotification("❌", member.user_name + "'s request rejected");
+    // Server-side membership approval — verifies caller is admin
+    try {
+      const { data: result, error: rpcErr } = await supabase.rpc("handle_membership_request", {
+        p_company_id: companyId,
+        p_member_id: String(member.id),
+        p_action: action,
+      });
+      if (rpcErr) throw new Error(rpcErr.message);
+      if (action === "approve") addNotification("\u2705", member.user_name + " approved to join");
+      else addNotification("\u274c", member.user_name + "'s request rejected");
+    } catch (e) {
+      // Fallback for when RPC not yet deployed
+      if (e.message.includes("does not exist") || e.message.includes("could not find")) {
+        const newStatus = action === "approve" ? "active" : "rejected";
+        const { error: memErr } = await supabase.from("company_members").update({ status: newStatus }).eq("company_id", companyId).eq("id", member.id);
+        if (memErr) { alert("Error updating member: " + memErr.message); return; }
+        if (action === "approve") addNotification("\u2705", member.user_name + " approved to join");
+        else addNotification("\u274c", member.user_name + "'s request rejected");
+      } else {
+        alert("Error: " + e.message);
+        return;
+      }
     }
     fetchRequests();
   }
@@ -8926,7 +8882,16 @@ export default function App() {
   // Auto-select company ONLY for tenant/owner roles — everyone else sees the company selector
   async function autoSelectCompany(user) {
     if (!user?.email) return;
-    const { data: memberships } = await supabase.from("company_members").select("company_id, role, status").ilike("user_email", user.email).eq("status", "active");
+    // Prefer UID-based lookup (faster, not email-dependent), fall back to email
+    let memberships;
+    if (user.id) {
+      const { data: uidResult } = await supabase.from("company_members").select("company_id, role, status").eq("auth_user_id", user.id).eq("status", "active");
+      if (uidResult && uidResult.length > 0) { memberships = uidResult; }
+    }
+    if (!memberships) {
+      const { data: emailResult } = await supabase.from("company_members").select("company_id, role, status").ilike("user_email", user.email).eq("status", "active");
+      memberships = emailResult;
+    }
     if (!memberships || memberships.length === 0) { setScreen("company_select"); return; }
     // Only tenants auto-select their company (skip selector)
     const tenantMembership = memberships.find(m => m.role === "tenant");
@@ -8953,9 +8918,10 @@ export default function App() {
     if (!user?.email || !companyId) return;
     try {
       const { data } = await supabase.from("company_members").select("*").eq("company_id", companyId).ilike("user_email", user.email).eq("status", "active").maybeSingle();
-      // Backfill auth_user_id for UID-based lookups (future-proofing)
+      // Backfill auth_user_id for UID-based lookups
       if (data && !data.auth_user_id && user.id) {
-        supabase.from("company_members").update({ auth_user_id: user.id }).eq("id", data.id).then(() => {});
+        const { error: uidErr } = await supabase.from("company_members").update({ auth_user_id: user.id }).eq("id", data.id);
+        if (uidErr) console.warn("auth_user_id backfill failed:", uidErr.message);
       }
       if (data) {
         setUserRole(data.role);
