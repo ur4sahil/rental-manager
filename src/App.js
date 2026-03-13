@@ -118,6 +118,36 @@ async function getSignedUrl(bucket, filePath, expiresIn = 3600) {
   return data?.signedUrl || "";
 }
 
+// Format phone: accepts digits, adds +1 prefix, formats as (XXX) XXX-XXXX
+function formatPhoneInput(value) {
+  // Strip everything except digits and +
+  let digits = value.replace(/[^\d+]/g, "");
+  // If they typed +, keep the country code portion
+  if (digits.startsWith("+")) {
+    // International format — limit to 15 digits total (E.164 max)
+    return digits.slice(0, 16);
+  }
+  // US format — strip to 10 digits
+  digits = digits.replace(/\D/g, "");
+  if (digits.length > 10) digits = digits.slice(0, 10);
+  // Format as (XXX) XXX-XXXX
+  if (digits.length >= 7) return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+  if (digits.length >= 4) return `(${digits.slice(0,3)}) ${digits.slice(3)}`;
+  if (digits.length > 0) return `(${digits}`;
+  return "";
+}
+
+// Validate phone — must be 10 digits (US) or start with + (international)
+function isValidPhone(value) {
+  if (!value) return true; // optional fields
+  const digits = value.replace(/\D/g, "");
+  if (value.startsWith("+")) return digits.length >= 10 && digits.length <= 15;
+  return digits.length === 10;
+}
+
+// Format phone: strips non-digits, limits to 10 digits, formats as (xxx) xxx-xxxx
+
+
 function sanitizeFileName(name) {
   if (!name) return "file";
   return String(name).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100);
@@ -1242,13 +1272,13 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
           <h3 className="text-sm font-semibold text-gray-700 mb-3">{editingProperty ? "Edit Property" : "Add Property"}</h3>
           {!isAdmin && <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 mb-3">Submitted for admin approval.</p>}
           <div className="grid grid-cols-2 gap-3">
-            <input placeholder="Address" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" />
-            <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm"><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></select>
-            <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option></select>
-            <input placeholder="Rent" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input placeholder="Tenant" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input type="date" value={form.lease_end} onChange={e => setForm({ ...form, lease_end: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <textarea placeholder="Notes" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" rows={2} />
+            <div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Address *</label><input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Type</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></select></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Status</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option></select></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Monthly Rent ($)</label><input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Current Tenant</label><input placeholder="John Smith" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Lease End Date</label><input type="date" value={form.lease_end} onChange={e => setForm({ ...form, lease_end: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Notes</label><textarea placeholder="Any additional notes" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" rows={2} /></div>
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={saveProperty} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">{isAdmin ? "Save" : "Submit"}</button>
@@ -1810,8 +1840,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
                       <option value="credit">Credit</option>
                       <option value="late_fee">Late Fee</option>
                     </select>
-                    <input placeholder="Description" value={newCharge.description} onChange={e => setNewCharge({ ...newCharge, description: e.target.value })} className="border border-gray-200 rounded-lg px-2 py-2 text-xs" />
-                    <input placeholder="Amount" value={newCharge.amount} onChange={e => setNewCharge({ ...newCharge, amount: e.target.value })} className="border border-gray-200 rounded-lg px-2 py-2 text-xs" />
+                    <input placeholder="e.g. Rent, Late fee, Repair" value={newCharge.description} title="Description" onChange={e => setNewCharge({ ...newCharge, description: e.target.value })} className="border border-gray-200 rounded-lg px-2 py-2 text-xs" />
+                    <input placeholder="0.00" value={newCharge.amount} title="Amount ($)" onChange={e => setNewCharge({ ...newCharge, amount: e.target.value })} className="border border-gray-200 rounded-lg px-2 py-2 text-xs" />
                   </div>
                   <button onClick={addLedgerEntry} className="mt-2 w-full bg-indigo-600 text-white text-xs py-2 rounded-lg hover:bg-indigo-700">Add Transaction</button>
                 </div>
@@ -1952,16 +1982,16 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
           <h3 className="font-semibold text-gray-700 mb-3">{editingTenant ? "Edit Tenant" : "New Tenant"}</h3>
           <div className="grid grid-cols-2 gap-3">
-            <input placeholder="Full name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input placeholder="Phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} />
-            <input placeholder="Monthly Rent ($)" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Full Name *</label><input placeholder="Jane Doe" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Email</label><input type="email" placeholder="tenant@email.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Phone</label><input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({ ...form, phone: formatPhoneInput(e.target.value) })} maxLength={14} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Monthly Rent ($)</label><input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Lease Status</label><select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
               {["active", "notice", "expired"].map(s => <option key={s}>{s}</option>)}
-            </select>
-            <input type="date" placeholder="Move-in" value={form.move_in} onChange={e => setForm({ ...form, move_in: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input type="date" placeholder="Move-out" value={form.move_out} onChange={e => setForm({ ...form, move_out: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            </select></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Move-in Date</label><input type="date" value={form.move_in} onChange={e => setForm({ ...form, move_in: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Move-out Date</label><input type="date" value={form.move_out} onChange={e => setForm({ ...form, move_out: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={saveTenant} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
@@ -2185,19 +2215,19 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
           <h3 className="font-semibold text-gray-700 mb-3">New Payment</h3>
           <div className="grid grid-cols-2 gap-3">
-            <input placeholder="Tenant name" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" companyId={companyId} />
-            <input placeholder="Amount" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tenant *</label><input placeholder="Jane Doe" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Amount ($) *</label><input placeholder="1500.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Date</label><input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Method</label><select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
               {["ACH", "card", "autopay", "cash", "check"].map(m => <option key={m}>{m}</option>)}
-            </select>
-            <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            </select></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Payment Type</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
               {["rent", "late_fee", "deposit", "other"].map(t => <option key={t}>{t}</option>)}
-            </select>
-            <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            </select></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Status</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
               {["paid", "unpaid", "partial"].map(s => <option key={s}>{s}</option>)}
-            </select>
+            </select></div>
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={addPayment} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">Save</button>
@@ -2406,18 +2436,18 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
           <h3 className="font-semibold text-gray-700 mb-3">{editingWO ? "Edit Work Order" : "New Work Order"}</h3>
           <div className="grid grid-cols-2 gap-3">
-            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" companyId={companyId} />
-            <input placeholder="Tenant" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input placeholder="Issue description" value={form.issue} onChange={e => setForm({ ...form, issue: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" />
-            <select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tenant</label><input placeholder="Tenant name" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Issue *</label><input placeholder="Describe the maintenance issue" value={form.issue} onChange={e => setForm({ ...form, issue: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Priority</label><select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
               {["normal", "emergency", "low"].map(p => <option key={p}>{p}</option>)}
-            </select>
-            <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            </select></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Status</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full">
               {["open", "in_progress", "completed"].map(s => <option key={s}>{s}</option>)}
-            </select>
-            <input placeholder="Assign to vendor/staff" value={form.assigned} onChange={e => setForm({ ...form, assigned: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input placeholder="Cost ($)" type="number" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <textarea placeholder="Notes / completion details" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" rows={2} />
+            </select></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Assigned To</label><input placeholder="Vendor or staff name" value={form.assigned} onChange={e => setForm({ ...form, assigned: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Cost ($)</label><input placeholder="0.00" type="number" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Notes</label><textarea placeholder="Completion details, parts used, etc." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" rows={2} /></div>
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={saveWorkOrder} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">Save</button>
@@ -2600,13 +2630,13 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
           <h3 className="font-semibold text-gray-700 mb-3">New Utility Bill</h3>
           <div className="grid grid-cols-2 gap-3">
-            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" companyId={companyId} />
-            <input placeholder="Provider (e.g. Gas Co)" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input placeholder="Amount" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input type="date" value={form.due} onChange={e => setForm({ ...form, due: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <select value={form.responsibility} onChange={e => setForm({ ...form, responsibility: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Provider</label><input placeholder="e.g. PEPCO, Washington Gas" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Amount ($)</label><input placeholder="150.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Due Date</label><input type="date" value={form.due} onChange={e => setForm({ ...form, due: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Responsibility</label><select value={form.responsibility} onChange={e => setForm({ ...form, responsibility: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full">
               {["owner", "tenant", "shared"].map(r => <option key={r}>{r}</option>)}
-            </select>
+            </select></div>
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={addUtility} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
@@ -3268,7 +3298,7 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
       </div>
       <AcctModal isOpen={!!modal} onClose={() => setModal(null)} title={modal === "add" ? "New Class" : "Edit Class"} size="sm">
         <div className="space-y-3">
-          <div><label className="text-xs font-medium text-gray-600">Name *</label><input value={form.name} onChange={e => setForm({...form,name:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" /></div>
+          <div><label className="text-xs font-medium text-gray-600">Name *</label><input placeholder="e.g. 123 Main St" value={form.name} onChange={e => setForm({...form,name:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" /></div>
           <div><label className="text-xs font-medium text-gray-600">Description</label><textarea value={form.description} onChange={e => setForm({...form,description:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" rows={2} /></div>
           <div><label className="text-xs font-medium text-gray-600 block mb-2">Color</label><div className="flex gap-2 flex-wrap">{COLORS.map(c => <button key={c} type="button" onClick={() => setForm({...form,color:c})} className={`w-7 h-7 rounded-full border-2 ${form.color===c?"border-gray-800 scale-110":"border-transparent"}`} style={{background:c}} />)}</div></div>
           <div className="flex justify-end gap-2 pt-2">
@@ -4346,12 +4376,12 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
           <h3 className="font-semibold text-gray-700 mb-3">Upload Document</h3>
           <div className="grid grid-cols-2 gap-3">
-            <input placeholder="Document name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" companyId={companyId} />
-            <input placeholder="Tenant name (optional)" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Document Name *</label><input placeholder="Lease Agreement 2026" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tenant</label><input placeholder="Optional — link to a tenant" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Document Type</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full">
               {["Lease", "Inspection", "Maintenance", "Financial", "Notice", "Other"].map(t => <option key={t}>{t}</option>)}
-            </select>
+            </select></div>
             <label className="flex items-center gap-2 text-sm text-gray-600 border border-gray-200 rounded-lg px-3 py-2 cursor-pointer">
               <input type="checkbox" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} />
               Visible to Tenant
@@ -4531,13 +4561,13 @@ function Inspections({ addNotification, userProfile, userRole, companyId }) {
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
           <h3 className="font-semibold text-gray-700 mb-3">New Inspection</h3>
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" companyId={companyId} />
-            <select value={form.type} onChange={e => { setForm({ ...form, type: e.target.value }); initChecklist(e.target.value); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Inspection Type</label><select value={form.type} onChange={e => { setForm({ ...form, type: e.target.value }); initChecklist(e.target.value); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full">
               {["Move-In", "Move-Out", "Periodic"].map(t => <option key={t}>{t}</option>)}
-            </select>
-            <input placeholder="Inspector name" value={form.inspector} onChange={e => setForm({ ...form, inspector: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <textarea placeholder="Notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" rows={2} />
+            </select></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Inspector</label><input placeholder="Inspector name" value={form.inspector} onChange={e => setForm({ ...form, inspector: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Date</label><input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Notes</label><textarea placeholder="General notes about the inspection" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" rows={2} /></div>
           </div>
 
           {/* Checklist */}
@@ -4924,11 +4954,11 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
       {showTemplateForm && (
         <Modal title="Lease Template" onClose={() => setShowTemplateForm(false)}>
           <div className="space-y-3">
-            <input placeholder="Template name *" value={templateForm.name} onChange={e => setTemplateForm({...templateForm, name: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input placeholder="Description" value={templateForm.description} onChange={e => setTemplateForm({...templateForm, description: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Template Name *</label><input placeholder="Standard 12-Month Lease" value={templateForm.name} onChange={e => setTemplateForm({...templateForm, name: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Description</label><input placeholder="Default template for residential leases" value={templateForm.description} onChange={e => setTemplateForm({...templateForm, description: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="text-xs text-gray-500">Lease Length (months)</label><input type="number" value={templateForm.default_lease_months} onChange={e => setTemplateForm({...templateForm, default_lease_months: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-              <div><label className="text-xs text-gray-500">Annual Escalation %</label><input type="number" step="0.1" value={templateForm.default_escalation_pct} onChange={e => setTemplateForm({...templateForm, default_escalation_pct: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs text-gray-500">Lease Length (months)</label><input type="number" min="1" max="120" placeholder="12" value={templateForm.default_lease_months} onChange={e => setTemplateForm({...templateForm, default_lease_months: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs text-gray-500">Annual Escalation %</label><input type="number" step="0.1" min="0" max="25" placeholder="3.0" value={templateForm.default_escalation_pct} onChange={e => setTemplateForm({...templateForm, default_escalation_pct: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             </div>
             <textarea placeholder="Standard clauses..." value={templateForm.clauses} onChange={e => setTemplateForm({...templateForm, clauses: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={4} />
             <textarea placeholder="Special terms..." value={templateForm.special_terms} onChange={e => setTemplateForm({...templateForm, special_terms: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={3} />
@@ -4988,21 +5018,21 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
             <div><label className="text-xs text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Lease Start *</label><input type="date" value={form.start_date} onChange={e => setForm({...form, start_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Lease End *</label><input type="date" value={form.end_date} onChange={e => setForm({...form, end_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Monthly Rent ($) *</label><input type="number" value={form.rent_amount} onChange={e => setForm({...form, rent_amount: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Security Deposit ($)</label><input type="number" value={form.security_deposit} onChange={e => setForm({...form, security_deposit: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Annual Escalation %</label><input type="number" step="0.1" value={form.rent_escalation_pct} onChange={e => setForm({...form, rent_escalation_pct: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Payment Due Day</label><input type="number" min="1" max="31" value={form.payment_due_day} onChange={e => setForm({...form, payment_due_day: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Monthly Rent ($) *</label><input type="number" min="0" step="0.01" placeholder="1500.00" value={form.rent_amount} onChange={e => setForm({...form, rent_amount: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Security Deposit ($)</label><input type="number" min="0" step="0.01" placeholder="1500.00" value={form.security_deposit} onChange={e => setForm({...form, security_deposit: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Annual Escalation %</label><input type="number" step="0.1" min="0" max="25" placeholder="3.0" value={form.rent_escalation_pct} onChange={e => setForm({...form, rent_escalation_pct: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Payment Due Day</label><input type="number" min="1" max="31" placeholder="1" value={form.payment_due_day} onChange={e => setForm({...form, payment_due_day: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Lease Type</label>
               <select value={form.lease_type} onChange={e => setForm({...form, lease_type: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="fixed">Fixed Term</option><option value="month_to_month">Month-to-Month</option><option value="renewal">Renewal</option></select></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Renewal Notice (days)</label><input type="number" value={form.renewal_notice_days} onChange={e => setForm({...form, renewal_notice_days: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Renewal Notice (days)</label><input type="number" min="0" max="180" placeholder="60" value={form.renewal_notice_days} onChange={e => setForm({...form, renewal_notice_days: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
           </div>
           {/* Late Fee Settings */}
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
             <div className="text-sm font-semibold text-amber-800 mb-2">⚠️ Late Fee Settings</div>
             <div className="grid grid-cols-3 gap-3">
-              <div><label className="text-xs text-gray-500 mb-1 block">Grace Period (days)</label><input type="number" min="0" max="30" value={form.late_fee_grace_days} onChange={e => setForm({...form, late_fee_grace_days: e.target.value})} className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white" /></div>
+              <div><label className="text-xs text-gray-500 mb-1 block">Grace Period (days)</label><input type="number" min="0" max="30" placeholder="5" value={form.late_fee_grace_days} onChange={e => setForm({...form, late_fee_grace_days: e.target.value})} className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white" /></div>
               <div><label className="text-xs text-gray-500 mb-1 block">Fee Type</label><select value={form.late_fee_type} onChange={e => setForm({...form, late_fee_type: e.target.value})} className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></select></div>
-              <div><label className="text-xs text-gray-500 mb-1 block">{form.late_fee_type === "flat" ? "Fee Amount ($)" : "Fee Percentage (%)"}</label><input type="number" step="0.01" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white" /></div>
+              <div><label className="text-xs text-gray-500 mb-1 block">{form.late_fee_type === "flat" ? "Fee Amount ($)" : "Fee Percentage (%)"}</label><input type="number" step="0.01" min="0" placeholder="50.00" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white" /></div>
             </div>
             <p className="text-xs text-amber-600 mt-2">Late fees auto-apply to tenant ledger after grace period. Admin can waive from ledger.</p>
           </div>
@@ -5067,7 +5097,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
               <div className="flex justify-between"><span className="text-gray-500">Current Rent:</span><span className="font-bold">${showRentIncrease.rent_amount}/mo</span></div>
               <div className="flex justify-between"><span className="text-gray-500">Property:</span><span>{showRentIncrease.property}</span></div>
             </div>
-            <div><label className="text-xs text-gray-500 mb-1 block">New Monthly Rent ($) *</label><input type="number" value={rentIncreaseForm.new_amount} onChange={e => setRentIncreaseForm({...rentIncreaseForm, new_amount: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">New Monthly Rent ($) *</label><input type="number" min="0" step="0.01" placeholder="1600.00" value={rentIncreaseForm.new_amount} onChange={e => setRentIncreaseForm({...rentIncreaseForm, new_amount: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Effective Date *</label><input type="date" value={rentIncreaseForm.effective_date} onChange={e => setRentIncreaseForm({...rentIncreaseForm, effective_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Reason</label><input value={rentIncreaseForm.reason} onChange={e => setRentIncreaseForm({...rentIncreaseForm, reason: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Market adjustment, annual increase..." /></div>
             {rentIncreaseForm.new_amount && Number(rentIncreaseForm.new_amount) !== showRentIncrease.rent_amount && (
@@ -5315,9 +5345,9 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
           <div className="grid grid-cols-2 gap-3 mb-4">
             <div><label className="text-xs text-gray-500 mb-1 block">Name *</label><input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="John Smith" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Company</label><input value={form.company} onChange={e => setForm({...form, company: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="ABC Plumbing LLC" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Email</label><input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Phone</label><input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div className="col-span-2"><label className="text-xs text-gray-500 mb-1 block">Address</label><input value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Email</label><input type="email" placeholder="vendor@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Phone</label><input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div className="col-span-2"><label className="text-xs text-gray-500 mb-1 block">Address</label><div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Address *</label><input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Specialty</label>
               <select value={form.specialty} onChange={e => setForm({...form, specialty: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
                 {specialties.map(s => <option key={s} value={s}>{s}</option>)}
@@ -5328,10 +5358,10 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
                 <option value="active">Active</option><option value="preferred">Preferred</option><option value="inactive">Inactive</option><option value="blocked">Blocked</option>
               </select>
             </div>
-            <div><label className="text-xs text-gray-500 mb-1 block">License #</label><input value={form.license_number} onChange={e => setForm({...form, license_number: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">License #</label><input placeholder="e.g. VA-12345" value={form.license_number} onChange={e => setForm({...form, license_number: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Insurance Expiry</label><input type="date" value={form.insurance_expiry} onChange={e => setForm({...form, insurance_expiry: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Hourly Rate ($)</label><input type="number" value={form.hourly_rate} onChange={e => setForm({...form, hourly_rate: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Flat Rate ($)</label><input type="number" value={form.flat_rate} onChange={e => setForm({...form, flat_rate: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Hourly Rate ($)</label><input placeholder="0.00" type="number" value={form.hourly_rate} onChange={e => setForm({...form, hourly_rate: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Flat Rate ($)</label><input placeholder="0.00" type="number" value={form.flat_rate} onChange={e => setForm({...form, flat_rate: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
           </div>
           <div className="mb-4"><label className="text-xs text-gray-500 mb-1 block">Notes</label><textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={2} /></div>
           <div className="flex gap-2">
@@ -5353,8 +5383,8 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
               </select>
             </div>
             <div><label className="text-xs text-gray-500 mb-1 block">Property</label><PropertySelect value={invoiceForm.property} onChange={v => setInvoiceForm({...invoiceForm, property: v})} companyId={companyId} /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Amount ($) *</label><input type="number" value={invoiceForm.amount} onChange={e => setInvoiceForm({...invoiceForm, amount: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Invoice #</label><input value={invoiceForm.invoice_number} onChange={e => setInvoiceForm({...invoiceForm, invoice_number: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Amount ($) *</label><input type="number" min="0" step="0.01" placeholder="500.00" value={invoiceForm.amount} onChange={e => setInvoiceForm({...invoiceForm, amount: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Invoice #</label><input placeholder="INV-001" value={invoiceForm.invoice_number} onChange={e => setInvoiceForm({...invoiceForm, invoice_number: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Invoice Date</label><input type="date" value={invoiceForm.invoice_date} onChange={e => setInvoiceForm({...invoiceForm, invoice_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Due Date</label><input type="date" value={invoiceForm.due_date} onChange={e => setInvoiceForm({...invoiceForm, due_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div className="col-span-2"><label className="text-xs text-gray-500 mb-1 block">Description</label><input value={invoiceForm.description} onChange={e => setInvoiceForm({...invoiceForm, description: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Plumbing repair at 123 Main St" /></div>
@@ -5725,7 +5755,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
                 {activeOwners.map(o => <option key={o.id} value={o.id}>{o.name} ({properties.filter(p => String(p.owner_id) === String(o.id)).length} properties)</option>)}
               </select>
             </div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Month</label><input type="month" value={genMonth} onChange={e => setGenMonth(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Month</label><input placeholder="Enter name" type="month" value={genMonth} onChange={e => setGenMonth(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
           </div>
           {genOwner && (
             <div className="bg-gray-50 rounded-lg p-3 mb-4 text-xs text-gray-600">
@@ -5746,13 +5776,13 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
           <h3 className="font-semibold text-gray-800 mb-4">{editingOwner ? "Edit Owner" : "Add New Owner"}</h3>
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <div><label className="text-xs text-gray-500 mb-1 block">Name *</label><input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Company</label><input value={form.company} onChange={e => setForm({...form, company: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Email</label><input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Phone</label><input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div className="col-span-2"><label className="text-xs text-gray-500 mb-1 block">Address</label><input value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Tax ID / EIN</label><input value={form.tax_id} onChange={e => setForm({...form, tax_id: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Management Fee %</label><input type="number" step="0.5" value={form.management_fee_pct} onChange={e => setForm({...form, management_fee_pct: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Name *</label><input placeholder="John Smith" value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Company</label><input placeholder="Smith Properties LLC" value={form.company} onChange={e => setForm({...form, company: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Email</label><input type="email" placeholder="vendor@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Phone</label><input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div className="col-span-2"><label className="text-xs text-gray-500 mb-1 block">Address</label><div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Address *</label><input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Tax ID / EIN</label><input placeholder="XX-XXXXXXX" value={form.tax_id} onChange={e => setForm({...form, tax_id: e.target.value})} maxLength={10} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Management Fee %</label><input type="number" step="0.5" min="0" max="50" placeholder="10.0" value={form.management_fee_pct} onChange={e => setForm({...form, management_fee_pct: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Payment Method</label>
               <select value={form.payment_method} onChange={e => setForm({...form, payment_method: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
                 <option value="check">Check</option><option value="ach">ACH</option><option value="wire">Wire</option>
@@ -6048,7 +6078,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
           <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-5">
             <h3 className="font-semibold text-gray-800 mb-3">Start Bank Reconciliation</h3>
             <div className="grid grid-cols-3 gap-3">
-              <div><label className="text-xs text-gray-500 mb-1 block">Month</label><input type="month" value={reconPeriod} onChange={e => setReconPeriod(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs text-gray-500 mb-1 block">Month</label><input placeholder="Enter name" type="month" value={reconPeriod} onChange={e => setReconPeriod(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
               <div><label className="text-xs text-gray-500 mb-1 block">Bank Ending Balance ($)</label><input type="number" step="0.01" value={bankBalance} onChange={e => setBankBalance(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Enter from bank statement" /></div>
               <div className="flex items-end"><button onClick={startReconciliation} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-indigo-700 w-full">Begin Reconciliation</button></div>
             </div>
@@ -7025,14 +7055,14 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
           <h3 className="font-semibold text-gray-700 mb-3">{editingHoa ? "Edit HOA Payment" : "New HOA Payment"}</h3>
           <div className="grid grid-cols-2 gap-3">
-            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} />
-            <input placeholder="HOA Company Name" value={form.hoa_name} onChange={e => setForm({ ...form, hoa_name: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input placeholder="Amount ($)" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">HOA Company</label><input placeholder="e.g. Riverside HOA" value={form.hoa_name} onChange={e => setForm({ ...form, hoa_name: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Amount ($)</label><input placeholder="250.00" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Due Date</label><input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Frequency</label><select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full">
               <option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="annual">Annual</option>
-            </select>
-            <input placeholder="Notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            </select></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Notes</label><input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={saveHOA} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
@@ -7249,22 +7279,22 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-5">
           <h3 className="font-semibold text-gray-700 mb-3">New Autopay Schedule</h3>
           <div className="grid grid-cols-2 gap-3">
-            <select value={form.tenant} onChange={e => { const t = tenants.find(t => t.name === e.target.value); setForm({ ...form, tenant: e.target.value, property: t?.property || "", amount: t?.rent || "" }); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tenant *</label><select value={form.tenant} onChange={e => { const t = tenants.find(t => t.name === e.target.value); setForm({ ...form, tenant: e.target.value, property: t?.property || "", amount: t?.rent || "" }); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full">
               <option value="">Select tenant...</option>
               {tenants.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
-            </select>
-            <PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} className="flex-1" companyId={companyId} />
-            <input placeholder="Amount ($)" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            </select></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Amount ($)</label><input placeholder="1500.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Payment Method</label><select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full">
               {["ACH", "card", "cash", "check"].map(m => <option key={m}>{m}</option>)}
-            </select>
+            </select></div>
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Day of Month</label>
               <select value={form.day_of_month} onChange={e => setForm({ ...form, day_of_month: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
                 {Array.from({ length: 28 }, (_, i) => i + 1).map(d => <option key={d} value={String(d)}>{d}{d === 1 ? "st" : d === 2 ? "nd" : d === 3 ? "rd" : "th"}</option>)}
               </select>
             </div>
-            <select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Frequency</label><select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full">
               <option value="monthly">Monthly</option>
               <option value="weekly">Weekly</option>
               <option value="biweekly">Bi-Weekly</option>
@@ -7461,10 +7491,10 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-5">
           <h3 className="font-semibold text-gray-700 mb-3">New Late Fee Rule</h3>
           <div className="grid grid-cols-2 gap-3">
-            <input placeholder="Rule name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" />
-            <div><label className="text-xs text-gray-500 mb-1 block">Grace Period (days)</label><input type="number" value={form.grace_days} onChange={e => setForm({ ...form, grace_days: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Rule Name *</label><input placeholder="Standard Late Fee" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Grace Period (days)</label><input type="number" min="0" max="30" placeholder="5" value={form.grace_days} onChange={e => setForm({ ...form, grace_days: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Fee Type</label><select value={form.fee_type} onChange={e => setForm({ ...form, fee_type: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></select></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">{form.fee_type === "flat" ? "Fee Amount ($)" : "Percentage (%)"}</label><input type="number" value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">{form.fee_type === "flat" ? "Fee Amount ($)" : "Percentage (%)"}</label><input type="number" min="0" step="0.01" placeholder={form.fee_type === "flat" ? "50.00" : "5.0"} value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={saveRule} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">Save Rule</button>
@@ -7881,7 +7911,8 @@ function TenantPortal({ currentUser, companyId }) {
           {showMaintForm && (
             <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
               <h4 className="font-medium text-gray-700 mb-3">Submit a Maintenance Request</h4>
-              <input placeholder="Describe the issue *" value={maintForm.issue} onChange={e => setMaintForm({...maintForm, issue: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3" />
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Issue *</label>
+              <input placeholder="e.g. Leaking faucet in kitchen" value={maintForm.issue} onChange={e => setMaintForm({...maintForm, issue: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3" />
               <select value={maintForm.priority} onChange={e => setMaintForm({...maintForm, priority: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3">
                 <option value="normal">Normal Priority</option>
                 <option value="urgent">Urgent</option>
@@ -8663,11 +8694,11 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
               <div><label className="text-xs font-medium text-gray-600">Company Name *</label><input value={createForm.name} onChange={e => setCreateForm({...createForm, name: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder={createForm.company_role === "management" ? "e.g. Sigma Property Management" : "e.g. Smith Properties LLC"} /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-xs font-medium text-gray-600">Entity Type</label><select value={createForm.type} onChange={e => setCreateForm({...createForm, type: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"><option>LLC</option><option>Corporation</option><option>Partnership</option><option>Sole Proprietorship</option><option>Trust</option><option>Other</option></select></div>
-                <div><label className="text-xs font-medium text-gray-600">Email</label><input value={createForm.email} onChange={e => setCreateForm({...createForm, email: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="company@email.com" /></div>
+                <div><label className="text-xs font-medium text-gray-600">Email</label><input type="email" value={createForm.email} onChange={e => setCreateForm({...createForm, email: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="company@email.com" /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-xs font-medium text-gray-600">Address</label><input value={createForm.address} onChange={e => setCreateForm({...createForm, address: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" /></div>
-                <div><label className="text-xs font-medium text-gray-600">Phone</label><input value={createForm.phone} onChange={e => setCreateForm({...createForm, phone: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" /></div>
+                <div><label className="text-xs font-medium text-gray-600">Address</label><input placeholder="123 Business Ave, City, State ZIP" value={createForm.address} onChange={e => setCreateForm({...createForm, address: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" /></div>
+                <div><label className="text-xs font-medium text-gray-600">Phone</label><input type="tel" placeholder="(555) 123-4567" value={createForm.phone} onChange={e => setCreateForm({...createForm, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" /></div>
               </div>
               <div className="flex gap-2 pt-2">
                 <button onClick={createCompany} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-lg hover:bg-indigo-700">Create Company</button>
