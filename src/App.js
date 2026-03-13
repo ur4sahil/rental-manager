@@ -2476,7 +2476,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
               <div><span className="text-gray-400">Assigned</span><div className="font-semibold text-gray-700">{w.assigned || "Unassigned"}</div></div>
-              <div><span className="text-gray-400">Created</span><div className="font-semibold text-gray-700">{w.created}</div></div>
+              <div><span className="text-gray-400">Created</span><div className="font-semibold text-gray-700">{w.created_at ? new Date(w.created_at).toLocaleDateString() : w.created || "—"}</div></div>
               <div><span className="text-gray-400">Cost</span><div className="font-semibold text-gray-700">{w.cost ? `${formatCurrency(w.cost)}` : "—"}</div></div>
             </div>
             {w.notes && <div className="mt-2 text-xs text-gray-400 italic">{w.notes}</div>}
@@ -4303,13 +4303,13 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
     // Store file path — signed URLs generated on display for security
     const storagePath = fileName;
     const { error: insertError } = await supabase.from("documents").insert([{ company_id: companyId,
-      name: form.name, file_name: storagePath,
+      name: form.name,
+      file_name: storagePath,
       property: form.property,
       tenant: form.tenant || "",
       type: form.type,
       tenant_visible: form.tenant_visible,
-      url: publicUrl,
-      file_name: fileName,
+      url: storagePath,
       uploaded_at: new Date().toISOString(),
     }]);
     if (insertError) {
@@ -4749,8 +4749,21 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
       if (_err4608) { alert("Error updating properties: " + _err4608.message); return; }
     }
     // (property_id auto-filled by DB trigger from property address)
-    // Auto-post rent charges for this lease immediately
-    if (!editingLease) await autoPostRentCharges(companyId);
+    // Auto-post rent charges — prompt if backdated
+    if (!editingLease) {
+      const leaseStartDate = parseLocalDate(form.start_date);
+      const today = new Date();
+      const monthsBack = Math.max(0, (today.getFullYear() - leaseStartDate.getFullYear()) * 12 + (today.getMonth() - leaseStartDate.getMonth()));
+      if (monthsBack > 0) {
+        if (window.confirm("This lease starts " + monthsBack + " month(s) in the past.\n\nWould you like to post " + monthsBack + " backdated rent accrual entries now?\n\n• Each month will create an Accounts Receivable charge\n• Tenant balance will be updated\n• You can also do this later from the Dashboard")) {
+          const result = await autoPostRentCharges(companyId);
+          if (result?.posted > 0) addNotification("⚡", "Posted " + result.posted + " backdated rent charge(s)");
+          if (result?.failed > 0) addNotification("⚠️", result.failed + " charge(s) failed");
+        }
+      } else {
+        await autoPostRentCharges(companyId);
+      }
+    }
     logAudit(editingLease ? "update" : "create", "leases", (editingLease ? "Updated" : "Created") + " lease: " + form.tenant_name + " at " + form.property, editingLease?.id || "", userProfile?.email, userRole, companyId);
     resetForm(); fetchData();
     } finally { guardRelease("saveLease"); }
@@ -6974,7 +6987,8 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
   async function saveHOA() {
       if (!guardSubmit("saveHOA")) return;
     try {
-    if (!form.property || !form.hoa_name || !form.amount || !form.due_date) { alert("All fields required."); return; }
+    if (!form.property || !form.hoa_name || !form.amount) { alert("Property, HOA name, and amount are required."); return; }
+    if (!form.due_date) { setForm({...form, due_date: formatLocalDate(new Date())}); alert("Due date was not set — defaulting to today. Please verify and save again."); return; }
     const payload = { ...form, amount: Number(form.amount) };
     if (editingHoa) {
       const { error: hoaErr } = await supabase.from("hoa_payments").update({ property: payload.property, hoa_name: payload.hoa_name, amount: payload.amount, due_date: payload.due_date, frequency: payload.frequency, status: payload.status, notes: payload.notes }).eq("id", editingHoa.id).eq("company_id", companyId);
