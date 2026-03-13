@@ -5347,7 +5347,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
             <div><label className="text-xs text-gray-500 mb-1 block">Company</label><input value={form.company} onChange={e => setForm({...form, company: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="ABC Plumbing LLC" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Email</label><input type="email" placeholder="vendor@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Phone</label><input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div className="col-span-2"><label className="text-xs text-gray-500 mb-1 block">Address</label><div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Address *</label><input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Address</label><input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Specialty</label>
               <select value={form.specialty} onChange={e => setForm({...form, specialty: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
                 {specialties.map(s => <option key={s} value={s}>{s}</option>)}
@@ -5780,7 +5780,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
             <div><label className="text-xs text-gray-500 mb-1 block">Company</label><input placeholder="Smith Properties LLC" value={form.company} onChange={e => setForm({...form, company: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Email</label><input type="email" placeholder="vendor@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Phone</label><input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div className="col-span-2"><label className="text-xs text-gray-500 mb-1 block">Address</label><div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Address *</label><input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Address</label><input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Tax ID / EIN</label><input placeholder="XX-XXXXXXX" value={form.tax_id} onChange={e => setForm({...form, tax_id: e.target.value})} maxLength={10} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Management Fee %</label><input type="number" step="0.5" min="0" max="50" placeholder="10.0" value={form.management_fee_pct} onChange={e => setForm({...form, management_fee_pct: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Payment Method</label>
@@ -7298,7 +7298,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
               <option value="monthly">Monthly</option>
               <option value="weekly">Weekly</option>
               <option value="biweekly">Bi-Weekly</option>
-            </select>
+            </select></div>
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Start Date</label>
               <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
