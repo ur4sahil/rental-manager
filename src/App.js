@@ -1535,7 +1535,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
   const [tenantView, setTenantView] = useState("card");
   const [tenantSearch, setTenantSearch] = useState("");
   const [tenantFilter, setTenantFilter] = useState("all");
-  const [leaseModal, setLeaseModal] = useState(null); // 'renew' | 'notice'
+  const [leaseModal, setLeaseModal] = useState(null);
+  const [tenantDocs, setTenantDocs] = useState([]);
+  const [showTenantDocPrompt, setShowTenantDocPrompt] = useState(null); // 'renew' | 'notice'
   const [leaseInput, setLeaseInput] = useState("");
   // eslint-disable-next-line no-unused-vars
   const [error, setError] = useState("");
@@ -1578,6 +1580,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
       logAudit("update", "tenants", `Updated tenant: ${form.name}`, editingTenant?.id, userProfile?.email, userRole, companyId);
     } else {
       addNotification("👤", `New tenant added: ${form.name}`);
+      // Prompt for required documents
+      // Show document requirements panel
+      setShowTenantDocPrompt(form.name);
       logAudit("create", "tenants", `Added tenant: ${form.name} at ${form.property}`, "", userProfile?.email, userRole, companyId);
     }
     setShowForm(false);
@@ -1667,9 +1672,15 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
     setShowForm(true);
   }
 
+  async function fetchTenantDocs(tenant) {
+    const { data } = await supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", tenant.name).order("created_at", { ascending: false });
+    setTenantDocs(data || []);
+  }
+
   async function openLedger(tenant) {
     setSelectedTenant(tenant);
-    setActivePanel("ledger");
+    setActivePanel("detail");
+    fetchTenantDocs(tenant);
     const { data } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId).eq("tenant", tenant.name).eq("property", tenant.property || "").order("date", { ascending: false });
     setLedger(data || []);
   }
@@ -1886,7 +1897,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
 
   return (
     <div>
-      {activePanel && selectedTenant && (
+      {activePanel && selectedTenant && activePanel === "lease" && (
         <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-end">
           <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-2xl">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-indigo-600 text-white">
@@ -2045,6 +2056,178 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         </div>
       )}
 
+
+      {/* ===== TENANT DETAIL VIEW ===== */}
+      {selectedTenant && ["detail","ledger","documents","messages","actions"].includes(activePanel) && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 z-50 flex items-start justify-center pt-8 px-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mb-8">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-t-2xl p-6 text-white">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold">{selectedTenant.name?.[0]}</div>
+                  <div>
+                    <h2 className="text-xl font-bold">{selectedTenant.name}</h2>
+                    <div className="text-indigo-200 text-sm">{selectedTenant.property}</div>
+                  </div>
+                </div>
+                <button onClick={() => { setSelectedTenant(null); setActivePanel(null); }} className="text-white/70 hover:text-white text-2xl">✕</button>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+                <div className="bg-white/10 rounded-xl px-3 py-2 text-center"><div className="text-xs text-indigo-200">Rent</div><div className="text-lg font-bold">{selectedTenant.rent ? formatCurrency(selectedTenant.rent) : "—"}</div></div>
+                <div className="bg-white/10 rounded-xl px-3 py-2 text-center"><div className="text-xs text-indigo-200">Balance</div><div className={"text-lg font-bold " + (selectedTenant.balance > 0 ? "text-red-300" : "text-green-300")}>{selectedTenant.balance > 0 ? formatCurrency(selectedTenant.balance) : "Current"}</div></div>
+                <div className="bg-white/10 rounded-xl px-3 py-2 text-center"><div className="text-xs text-indigo-200">Status</div><div className="text-lg font-bold capitalize">{selectedTenant.lease_status}</div></div>
+                <div className="bg-white/10 rounded-xl px-3 py-2 text-center"><div className="text-xs text-indigo-200">Lease End</div><div className="text-lg font-bold">{selectedTenant.lease_end_date || selectedTenant.move_out || "—"}</div></div>
+              </div>
+            </div>
+
+            {/* Contact Info */}
+            <div className="px-6 py-4 border-b border-gray-100">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                <div><span className="text-xs text-gray-400 block">Email</span><a href={"mailto:" + selectedTenant.email} className="text-indigo-600 hover:underline">{selectedTenant.email || "—"}</a></div>
+                <div><span className="text-xs text-gray-400 block">Phone</span><a href={"tel:" + selectedTenant.phone} className="text-indigo-600 hover:underline">{selectedTenant.phone || "—"}</a></div>
+                <div><span className="text-xs text-gray-400 block">Lease Start</span><span className="text-gray-700">{selectedTenant.lease_start || selectedTenant.move_in || "—"}</span></div>
+              </div>
+            </div>
+
+            {/* Tab navigation */}
+            <div className="flex border-b border-gray-100 px-6 overflow-x-auto">
+              {[["ledger","Ledger"],["documents","Documents"],["messages","Messages"],["actions","Actions"]].map(([id, label]) => (
+                <button key={id} onClick={() => setActivePanel(id)} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + ((activePanel === id || (id === "ledger" && activePanel === "detail")) ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-400 hover:text-gray-600")}>{label}</button>
+              ))}
+            </div>
+
+            {/* Tab content */}
+            <div className="px-6 py-4 max-h-96 overflow-y-auto">
+
+              {/* Ledger tab (default) */}
+              {(activePanel === "detail" || activePanel === "ledger") && (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-700">Transaction History</h3>
+                    <div className="flex items-center gap-2">
+                      <select value={newCharge.type} onChange={e => setNewCharge({...newCharge, type: e.target.value})} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs">
+                        <option value="charge">Charge</option><option value="payment">Payment</option><option value="credit">Credit</option><option value="late_fee">Late Fee</option>
+                      </select>
+                      <input placeholder="Description" value={newCharge.description} onChange={e => setNewCharge({...newCharge, description: e.target.value})} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs w-32" />
+                      <input placeholder="$0.00" value={newCharge.amount} onChange={e => setNewCharge({...newCharge, amount: e.target.value})} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs w-20" />
+                      <button onClick={addLedgerEntry} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg">Add</button>
+                    </div>
+                  </div>
+                  {ledger.length === 0 ? <div className="text-center py-6 text-gray-400 text-sm">No transactions yet</div> : (
+                    <div className="space-y-1">
+                      {ledger.slice(0, 20).map((e, i) => (
+                        <div key={i} className="flex items-center justify-between py-2 border-b border-gray-50 text-sm">
+                          <div><div className="font-medium text-gray-700">{e.description}</div><div className="text-xs text-gray-400">{e.date}</div></div>
+                          <div className={"font-semibold " + (e.type === "charge" || e.type === "late_fee" ? "text-red-500" : "text-green-600")}>{e.type === "charge" || e.type === "late_fee" ? "+" : "-"}{formatCurrency(Math.abs(e.amount))}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Documents tab */}
+              {activePanel === "documents" && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Tenant Documents</h3>
+                  {/* Required docs checklist */}
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
+                    <div className="text-xs font-bold text-amber-800 mb-2">Required Documents</div>
+                    {["Signed Lease Agreement", "Government-Issued ID", "Renters Insurance", "Proof of Utility Transfer"].map(doc => {
+                      const uploaded = tenantDocs.some(d => d.name?.toLowerCase().includes(doc.toLowerCase().split(" ")[0]));
+                      return (
+                        <div key={doc} className="flex items-center gap-2 py-1 text-sm">
+                          <span className={uploaded ? "text-green-500" : "text-amber-400"}>{uploaded ? "✅" : "☐"}</span>
+                          <span className={uploaded ? "text-gray-700" : "text-amber-700"}>{doc}</span>
+                          {uploaded && <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">Uploaded</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Uploaded docs list */}
+                  {tenantDocs.length === 0 ? <div className="text-center py-4 text-gray-400 text-sm">No documents uploaded for this tenant</div> : (
+                    <div className="space-y-2">
+                      {tenantDocs.map(d => (
+                        <div key={d.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                          <div><div className="text-sm font-medium text-gray-700">{d.name}</div><div className="text-xs text-gray-400">{d.type} · {d.uploaded_at?.slice(0, 10)}</div></div>
+                          <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-indigo-600 hover:underline">View</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button onClick={() => { setPage("documents"); setSelectedTenant(null); setActivePanel(null); }} className="mt-3 bg-indigo-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-indigo-700">Upload Documents</button>
+                </div>
+              )}
+
+              {/* Messages tab */}
+              {activePanel === "messages" && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Messages</h3>
+                  <div className="space-y-2 max-h-48 overflow-y-auto mb-3">
+                    {messages.length === 0 ? <div className="text-center py-4 text-gray-400 text-sm">No messages</div> : messages.map((m, i) => (
+                      <div key={i} className={"rounded-xl px-3 py-2 text-sm max-w-xs " + (m.sender === selectedTenant.name ? "bg-gray-100 text-gray-700 mr-auto" : "bg-indigo-600 text-white ml-auto")}>
+                        <div className="text-xs opacity-60 mb-0.5">{m.sender}</div>
+                        {m.message}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type a message..." className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm" onKeyDown={e => e.key === "Enter" && sendMessage()} />
+                    <button onClick={sendMessage} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Send</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Actions tab */}
+              {activePanel === "actions" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={() => startEdit(selectedTenant)} className="bg-gray-50 rounded-xl p-4 text-center hover:bg-gray-100 transition-all">
+                    <div className="text-2xl mb-1">✏️</div><div className="text-sm font-semibold text-gray-700">Edit Tenant</div>
+                  </button>
+                  <button onClick={() => inviteTenant(selectedTenant)} className="bg-purple-50 rounded-xl p-4 text-center hover:bg-purple-100 transition-all">
+                    <div className="text-2xl mb-1">✉️</div><div className="text-sm font-semibold text-purple-700">Send Invite</div>
+                  </button>
+                  <button onClick={() => { setLeaseModal("renew"); setLeaseInput(""); }} className="bg-green-50 rounded-xl p-4 text-center hover:bg-green-100 transition-all">
+                    <div className="text-2xl mb-1">🔄</div><div className="text-sm font-semibold text-green-700">Renew Lease</div>
+                  </button>
+                  <button onClick={() => deleteTenant(selectedTenant.id, selectedTenant.name)} className="bg-red-50 rounded-xl p-4 text-center hover:bg-red-100 transition-all">
+                    <div className="text-2xl mb-1">🗑️</div><div className="text-sm font-semibold text-red-700">Delete Tenant</div>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Required Documents Prompt */}
+      {showTenantDocPrompt && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-bold text-amber-800">📋 Required Documents for {showTenantDocPrompt}</div>
+            <button onClick={() => setShowTenantDocPrompt(null)} className="text-amber-400 hover:text-amber-600">✕</button>
+          </div>
+          <p className="text-xs text-amber-600 mb-3">Before this tenant can move in, the following documents must be uploaded. These are required for lease compliance.</p>
+          <div className="space-y-2">
+            {["Signed Lease Agreement", "Government-Issued ID", "Renters Insurance Certificate", "Proof of Utility Transfer"].map(doc => (
+              <div key={doc} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-amber-100">
+                <span className="text-amber-400">☐</span>
+                <span className="text-sm text-gray-700">{doc}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button onClick={() => { setPage("documents"); setShowTenantDocPrompt(null); }} className="bg-amber-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-amber-700">Upload Documents Now</button>
+            {isAdmin ? (
+              <button onClick={() => setShowTenantDocPrompt(null)} className="bg-gray-100 text-gray-600 text-xs px-4 py-2 rounded-lg">Admin: Skip for Now</button>
+            ) : (
+              <button onClick={() => { if (window.confirm("Skipping requires admin approval. An approval request will be sent. Continue?")) { setShowTenantDocPrompt(null); addNotification("📋", "Document skip request sent for " + showTenantDocPrompt); } }} className="bg-gray-100 text-gray-600 text-xs px-4 py-2 rounded-lg">Request Exception</button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold text-gray-800">Tenants</h2>
@@ -2103,20 +2286,20 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
           {tenantView === "card" && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {ft.map(t => (
-                <div key={t.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 cursor-pointer hover:border-indigo-200 hover:shadow-md transition-all">
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">{t.name?.[0]}</div>
+                      <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg">{t.name?.[0]}</div>
                       <div><div className="font-semibold text-gray-800">{t.name}</div><div className="text-xs text-gray-400">{t.property}</div></div>
                     </div>
                     <Badge status={t.lease_status} />
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-xs mt-2">
-                    <div><span className="text-gray-400">Email</span><div className="font-semibold text-gray-700 truncate">{t.email}</div></div>
+                    <div><span className="text-gray-400">Email</span><div className="font-semibold text-gray-700 truncate">{t.email || "—"}</div></div>
                     <div><span className="text-gray-400">Balance</span><div className={`font-semibold ${t.balance > 0 ? "text-red-500" : "text-gray-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</div></div>
                     <div><span className="text-gray-400">Rent</span><div className="font-semibold text-gray-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</div></div>
                   </div>
-                  <div className="mt-3 pt-3 border-t border-gray-50"><TenantActions t={t} /></div>
+                  <div className="mt-2 text-xs text-indigo-400 text-center">Click to view details →</div>
                 </div>
               ))}
             </div>
