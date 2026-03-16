@@ -935,6 +935,14 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     setLoading(false);
   }
 
+  async function openPropertyDetail(p) {
+    setSelectedProperty(p);
+    const { data: docs } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).order("created_at", { ascending: false });
+    setPropertyDocs(docs || []);
+    const { data: wos } = await supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address).order("created_at", { ascending: false });
+    setPropertyWorkOrders(wos || []);
+  }
+
   async function fetchChangeRequests() {
     const { data } = await supabase.from("property_change_requests").select("*").eq("company_id", companyId).order("requested_at", { ascending: false });
     setChangeRequests(data || []);
@@ -1181,7 +1189,10 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   const [visibleCols, setVisibleCols] = useState(["address","type","status","rent","tenant","lease_end"]);
   const [showColPicker, setShowColPicker] = useState(false);
   const [showPmAssign, setShowPmAssign] = useState(null);
-  const [showDocChecklist, setShowDocChecklist] = useState(null); // property/tenant that needs docs
+  const [showDocChecklist, setShowDocChecklist] = useState(null);
+  const [selectedProperty, setSelectedProperty] = useState(null);
+  const [propertyDocs, setPropertyDocs] = useState([]);
+  const [propertyWorkOrders, setPropertyWorkOrders] = useState([]); // property/tenant that needs docs
   const [pmCode, setPmCode] = useState("");
   const allCols = [
     { id: "address", label: "Address" }, { id: "type", label: "Type" }, { id: "status", label: "Status" },
@@ -1315,6 +1326,101 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
         </button>
       </div>
 
+
+      {/* ===== PROPERTY DETAIL PANEL ===== */}
+      {selectedProperty && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-end">
+          <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-2xl overflow-y-auto">
+            {/* Header */}
+            <div className={"p-6 text-white " + (selectedProperty.status === "occupied" ? "bg-gradient-to-r from-emerald-600 to-emerald-800" : selectedProperty.status === "vacant" ? "bg-gradient-to-r from-amber-500 to-amber-700" : "bg-gradient-to-r from-gray-600 to-gray-800")}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-bold">{selectedProperty.address_line_1 || selectedProperty.address}</h2>
+                  <div className="text-sm opacity-80">{[selectedProperty.city, selectedProperty.state, selectedProperty.zip].filter(Boolean).join(", ")}</div>
+                  {selectedProperty.address_line_2 && <div className="text-xs opacity-60">{selectedProperty.address_line_2}</div>}
+                </div>
+                <button onClick={() => setSelectedProperty(null)} className="text-white/70 hover:text-white text-2xl">✕</button>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+                <div className="bg-white/10 rounded-xl px-3 py-2 text-center"><div className="text-xs opacity-70">Status</div><div className="text-sm font-bold capitalize">{selectedProperty.status}</div></div>
+                <div className="bg-white/10 rounded-xl px-3 py-2 text-center"><div className="text-xs opacity-70">Type</div><div className="text-sm font-bold">{selectedProperty.type}</div></div>
+                <div className="bg-white/10 rounded-xl px-3 py-2 text-center"><div className="text-xs opacity-70">Rent</div><div className="text-sm font-bold">{selectedProperty.rent ? "$" + safeNum(selectedProperty.rent).toLocaleString() : "—"}</div></div>
+                <div className="bg-white/10 rounded-xl px-3 py-2 text-center"><div className="text-xs opacity-70">Lease End</div><div className="text-sm font-bold">{selectedProperty.lease_end || "—"}</div></div>
+              </div>
+            </div>
+
+            {/* Tenant Info */}
+            {selectedProperty.tenant && (
+              <div className="px-6 py-4 border-b border-gray-100">
+                <div className="text-xs font-semibold text-gray-400 uppercase mb-2">Current Tenant</div>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">{selectedProperty.tenant?.[0]}</div>
+                  <div>
+                    <div className="font-semibold text-gray-800">{selectedProperty.tenant}</div>
+                    <div className="text-xs text-gray-400">{selectedProperty._tenantEmail || ""} · {selectedProperty._tenantPhone || ""}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Property Details */}
+            <div className="px-6 py-4 border-b border-gray-100">
+              <div className="text-xs font-semibold text-gray-400 uppercase mb-2">Details</div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><span className="text-gray-400 text-xs block">Security Deposit</span><span className="font-semibold text-gray-700">{selectedProperty.security_deposit ? "$" + safeNum(selectedProperty.security_deposit).toLocaleString() : "—"}</span></div>
+                <div><span className="text-gray-400 text-xs block">Lease Start</span><span className="font-semibold text-gray-700">{selectedProperty.lease_start || "—"}</span></div>
+                {selectedProperty.pm_company_name && <div><span className="text-gray-400 text-xs block">Property Manager</span><span className="font-semibold text-purple-700">{selectedProperty.pm_company_name}</span></div>}
+                {selectedProperty.notes && <div className="col-span-2"><span className="text-gray-400 text-xs block">Notes</span><span className="text-gray-600">{selectedProperty.notes}</span></div>}
+              </div>
+            </div>
+
+            {/* Documents */}
+            <div className="px-6 py-4 border-b border-gray-100">
+              <div className="text-xs font-semibold text-gray-400 uppercase mb-2">Documents ({propertyDocs.length})</div>
+              {propertyDocs.length === 0 ? (
+                <div className="text-sm text-gray-400">No documents uploaded</div>
+              ) : (
+                <div className="space-y-1">
+                  {propertyDocs.slice(0, 5).map(d => (
+                    <div key={d.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                      <div className="text-sm text-gray-700">{d.name}</div>
+                      <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-indigo-600 hover:underline">View</button>
+                    </div>
+                  ))}
+                  {propertyDocs.length > 5 && <div className="text-xs text-gray-400">+ {propertyDocs.length - 5} more</div>}
+                </div>
+              )}
+            </div>
+
+            {/* Work Orders */}
+            <div className="px-6 py-4 border-b border-gray-100">
+              <div className="text-xs font-semibold text-gray-400 uppercase mb-2">Work Orders ({propertyWorkOrders.length})</div>
+              {propertyWorkOrders.length === 0 ? (
+                <div className="text-sm text-gray-400">No work orders</div>
+              ) : (
+                <div className="space-y-1">
+                  {propertyWorkOrders.slice(0, 5).map(w => (
+                    <div key={w.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                      <div><div className="text-sm text-gray-700">{w.issue}</div><div className="text-xs text-gray-400">{w.status} · {w.priority}</div></div>
+                      <Badge status={w.status} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="px-6 py-4">
+              <div className="flex gap-2 flex-wrap">
+                {!isReadOnly(selectedProperty) && <button onClick={() => { setEditingProperty(selectedProperty); setForm({ address_line_1: selectedProperty.address_line_1 || selectedProperty.address || "", address_line_2: selectedProperty.address_line_2 || "", city: selectedProperty.city || "", state: selectedProperty.state || "", zip: selectedProperty.zip || "", type: selectedProperty.type, status: selectedProperty.status, rent: selectedProperty.rent || "", security_deposit: selectedProperty.security_deposit || "", tenant: selectedProperty.tenant || "", tenant_email: selectedProperty._tenantEmail || "", tenant_phone: selectedProperty._tenantPhone || "", lease_start: selectedProperty.lease_start || "", lease_end: selectedProperty.lease_end || "", notes: selectedProperty.notes || "" }); setShowForm(true); setSelectedProperty(null); }} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-indigo-700">Edit Property</button>}
+                <button onClick={() => { setPage("documents"); setSelectedProperty(null); }} className="bg-gray-100 text-gray-600 text-xs px-4 py-2 rounded-lg hover:bg-gray-200">Upload Document</button>
+                <button onClick={() => { setPage("maintenance"); setSelectedProperty(null); }} className="bg-gray-100 text-gray-600 text-xs px-4 py-2 rounded-lg hover:bg-gray-200">New Work Order</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showForm && (
         <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm mb-4">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">{editingProperty ? "Edit Property" : "Add Property"}</h3>
@@ -1381,7 +1487,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       {viewMode === "card" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {filtered.map(p => (
-            <div key={p.id} className={`bg-white rounded-xl border shadow-sm p-4 ${isReadOnly(p) ? "border-purple-200 bg-purple-50/30" : "border-gray-100"}`}>
+            <div key={p.id} onClick={() => openPropertyDetail(p)} className={`bg-white rounded-xl border shadow-sm p-4 cursor-pointer hover:shadow-md hover:border-indigo-200 transition-all ${isReadOnly(p) ? "border-purple-200 bg-purple-50/30" : "border-gray-100"}`}>
               <div className="flex items-start justify-between mb-2">
                 <div>
                   <h3 className="font-semibold text-gray-800 text-sm">{p.address_line_1 || p.address}</h3>{(p.city || p.state) && <div className="text-xs text-gray-400">{[p.city, p.state, p.zip].filter(Boolean).join(", ")}</div>}
@@ -1398,7 +1504,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
                 {p.lease_end && <div className="flex justify-between"><span>Lease End:</span><span>{p.lease_end}</span></div>}
               </div>
               {isReadOnly(p) && <div className="mt-2 text-xs text-purple-600 bg-purple-50 rounded-lg px-2 py-1">🔒 Managed property — view only</div>}
-              <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50 flex-wrap">
+              <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50 flex-wrap" onClick={e => e.stopPropagation()}>
                 {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
                 {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline">Delete</button>}
                 {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline">Assign PM</button>}
@@ -2059,10 +2165,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
 
       {/* ===== TENANT DETAIL VIEW ===== */}
       {selectedTenant && ["detail","ledger","documents","messages","actions"].includes(activePanel) && (
-        <div className="fixed inset-0 bg-black bg-opacity-30 z-50 flex items-start justify-center pt-8 px-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mb-8">
+        <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-end">
+          <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-2xl overflow-y-auto">
             {/* Header */}
-            <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-t-2xl p-6 text-white">
+            <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 p-6 text-white">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold">{selectedTenant.name?.[0]}</div>
@@ -2098,7 +2204,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
             </div>
 
             {/* Tab content */}
-            <div className="px-6 py-4 max-h-96 overflow-y-auto">
+            <div className="px-6 py-4 flex-1 overflow-y-auto">
 
               {/* Ledger tab (default) */}
               {(activePanel === "detail" || activePanel === "ledger") && (
@@ -2312,8 +2418,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
                 </thead>
                 <tbody>
                   {ft.map(t => (
-                    <tr key={t.id} className="border-t border-gray-50 hover:bg-gray-50/50">
-                      <td className="px-4 py-2.5 font-medium text-gray-800">{t.name}</td>
+                    <tr key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className="border-t border-gray-50 hover:bg-indigo-50/50 cursor-pointer">
+                      <td className="px-4 py-2.5 font-medium text-gray-800 text-indigo-600">{t.name}</td>
                       <td className="px-4 py-2.5 text-gray-600">{t.property}</td>
                       <td className="px-4 py-2.5 text-gray-500 text-xs">{t.email}</td>
                       <td className="px-4 py-2.5"><Badge status={t.lease_status} /></td>
@@ -2329,7 +2435,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
           {tenantView === "compact" && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm divide-y divide-gray-50">
               {ft.map(t => (
-                <div key={t.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50/50">
+                <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className="flex items-center gap-3 px-4 py-2.5 hover:bg-indigo-50/50 cursor-pointer">
                   <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">{t.name?.[0]}</div>
                   <div className="flex-1 min-w-0"><span className="text-sm font-medium text-gray-800">{t.name}</span><span className="text-xs text-gray-400 ml-2">{t.property}</span></div>
                   <span className="text-sm font-semibold text-gray-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</span>
