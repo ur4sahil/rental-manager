@@ -152,6 +152,11 @@ function sanitizeFileName(name) {
   if (!name) return "file";
   return String(name).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100);
 }
+function buildAddress(p) {
+  const parts = [p.address_line_1, p.address_line_2, p.city, (p.state && p.zip) ? p.state + " " + p.zip : p.state || p.zip].filter(Boolean);
+  return parts.join(", ") || p.address || "";
+}
+
 function escapeHtml(str) {
   if (!str) return "";
   return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
@@ -362,6 +367,9 @@ async function autoPostRentCharges(companyId) {
 }
 
 // ============ STYLES ============
+const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
+const STATE_NAMES = {AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",CO:"Colorado",CT:"Connecticut",DE:"Delaware",DC:"District of Columbia",FL:"Florida",GA:"Georgia",HI:"Hawaii",ID:"Idaho",IL:"Illinois",IN:"Indiana",IA:"Iowa",KS:"Kansas",KY:"Kentucky",LA:"Louisiana",ME:"Maine",MD:"Maryland",MA:"Massachusetts",MI:"Michigan",MN:"Minnesota",MS:"Mississippi",MO:"Missouri",MT:"Montana",NE:"Nebraska",NV:"Nevada",NH:"New Hampshire",NJ:"New Jersey",NM:"New Mexico",NY:"New York",NC:"North Carolina",ND:"North Dakota",OH:"Ohio",OK:"Oklahoma",OR:"Oregon",PA:"Pennsylvania",RI:"Rhode Island",SC:"South Carolina",SD:"South Dakota",TN:"Tennessee",TX:"Texas",UT:"Utah",VT:"Vermont",VA:"Virginia",WA:"Washington",WV:"West Virginia",WI:"Wisconsin",WY:"Wyoming"};
+
 const statusColors = {
   occupied: "bg-green-100 text-green-700",
   vacant: "bg-yellow-100 text-yellow-700",
@@ -391,9 +399,9 @@ function Badge({ status, label }) {
   return <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${color}`}>{label || status}</span>;
 }
 
-function StatCard({ label, value, sub, color = "text-gray-800" }) {
+function StatCard({ label, value, sub, color = "text-gray-800", onClick }) {
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+    <div onClick={onClick} className={"bg-white rounded-xl shadow-sm border border-gray-100 p-4" + (onClick ? " cursor-pointer hover:border-indigo-200 hover:shadow-md transition-all" : "")}>
       <div className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">{label}</div>
       <div className={`text-2xl font-bold ${color}`}>{value}</div>
       {sub && <div className="text-xs text-gray-400 mt-1">{sub}</div>}
@@ -751,7 +759,8 @@ function Dashboard({ notifications, setPage, companyId }) {
     <div>
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-xl font-bold text-gray-800">Dashboard</h2>
-        <button onClick={async () => {
+        {/* Monthly charges are posted automatically on the 1st of each month */}
+        <button style={{display:"none"}} onClick={async () => {
           setRentPostLoading(true);
           let rentPostSuccess = false;
           try {
@@ -808,21 +817,21 @@ function Dashboard({ notifications, setPage, companyId }) {
       )}
 
       <div className="grid grid-cols-2 gap-3 mb-4 md:grid-cols-4">
-        <StatCard label="Occupancy" value={`${occupied}/${properties.length}`} sub={`${properties.length ? Math.round(occupied / properties.length * 100) : 0}% occupied`} color="text-green-600" />
-        <StatCard label="Revenue (Acctg)" value={`${formatCurrency(acctRevenue)}`} sub="from journal entries" color="text-blue-600" />
-        <StatCard label="Expenses (Acctg)" value={`${formatCurrency(acctExpenses)}`} sub="from journal entries" color="text-red-500" />
-        <StatCard label="Net Income" value={`$${(acctRevenue - acctExpenses).toLocaleString()}`} sub="revenue - expenses" color={acctRevenue - acctExpenses >= 0 ? "text-emerald-600" : "text-red-600"} />
+        <StatCard onClick={() => setPage("properties")} label="Occupancy" value={`${occupied}/${properties.length}`} sub={`${properties.length ? Math.round(occupied / properties.length * 100) : 0}% occupied`} color="text-green-600" />
+        <StatCard onClick={() => setPage("accounting")} label="Revenue (Acctg)" value={`${formatCurrency(acctRevenue)}`} sub="from journal entries" color="text-blue-600" />
+        <StatCard onClick={() => setPage("accounting")} label="Expenses (Acctg)" value={`${formatCurrency(acctExpenses)}`} sub="from journal entries" color="text-red-500" />
+        <StatCard onClick={() => setPage("accounting")} label="Net Income" value={`$${(acctRevenue - acctExpenses).toLocaleString()}`} sub="revenue - expenses" color={acctRevenue - acctExpenses >= 0 ? "text-emerald-600" : "text-red-600"} />
       </div>
       <div className="grid grid-cols-2 gap-3 mb-6 md:grid-cols-4">
-        <StatCard label="Rent Collected" value={`${formatCurrency(totalRent)}`} sub="payments table" color="text-indigo-600" />
-        <StatCard label="Delinquent" value={delinquent} sub="tenants with balance" color="text-orange-500" />
-        <StatCard label="Open Work Orders" value={openWO} sub={`${workOrders.filter(w => w.priority === "emergency").length} emergency`} color="text-orange-500" />
-        <StatCard label="Pending Utilities" value={utilities.filter(u => u.status === "pending").length} sub="awaiting payment" color="text-yellow-600" />
+        <StatCard onClick={() => setPage("payments")} label="Rent Collected" value={`${formatCurrency(totalRent)}`} sub="payments table" color="text-indigo-600" />
+        <StatCard onClick={() => setPage("tenants")} label="Delinquent" value={delinquent} sub="tenants with balance" color="text-orange-500" />
+        <StatCard onClick={() => setPage("maintenance")} label="Open Work Orders" value={openWO} sub={`${workOrders.filter(w => w.priority === "emergency").length} emergency`} color="text-orange-500" />
+        <StatCard onClick={() => setPage("utilities")} label="Pending Utilities" value={utilities.filter(u => u.status === "pending").length} sub="awaiting payment" color="text-yellow-600" />
       </div>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
           <h3 className="font-semibold text-gray-700 mb-3">Lease Expirations</h3>
-          {tenants.filter(t => t.move_out && parseLocalDate(t.move_out) >= new Date() && Math.ceil((parseLocalDate(t.move_out) - new Date()) / 86400000) <= 90).map(t => (
+          {tenants.filter(t => (t.lease_end_date || t.move_out) && parseLocalDate(t.lease_end_date || t.move_out) >= new Date() && Math.ceil((parseLocalDate(t.lease_end_date || t.move_out) - new Date()) / 86400000) <= 90).map(t => (
             <div key={t.id} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
               <div>
                 <div className="text-sm font-medium text-gray-800">{t.name}</div>
@@ -892,7 +901,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   const [editingProperty, setEditingProperty] = useState(null);
   const [timelineProperty, setTimelineProperty] = useState(null);
   const [timelineData, setTimelineData] = useState([]);
-  const [form, setForm] = useState({ address: "", type: "Single Family", status: "vacant", rent: "", tenant: "", lease_end: "", notes: "" });
+  const [form, setForm] = useState({ address_line_1: "", address_line_2: "", city: "", state: "", zip: "", type: "Single Family", status: "vacant", rent: "", security_deposit: "", tenant: "", lease_start: "", lease_end: "", notes: "" });
   // Approval workflow
   const [changeRequests, setChangeRequests] = useState([]);
   const [showRequests, setShowRequests] = useState(false);
@@ -924,8 +933,19 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   async function saveProperty() {
       if (!guardSubmit("saveProperty")) return;
       try {
-    if (!form.address.trim()) { alert("Property address is required."); return; }
-    if (!form.rent || isNaN(Number(form.rent)) || Number(form.rent) <= 0) { alert("Please enter a valid positive rent amount."); return; }
+    if (!form.address_line_1.trim()) { alert("Address Line 1 is required."); return; }
+    if (!form.city.trim()) { alert("City is required."); return; }
+    if (!form.state) { alert("State is required."); return; }
+    if (!form.zip.trim()) { alert("ZIP code is required."); return; }
+    if (form.status === "occupied") {
+      if (!form.tenant.trim()) { alert("Tenant name is required for occupied properties."); return; }
+      if (!form.rent || isNaN(Number(form.rent)) || Number(form.rent) <= 0) { alert("Monthly rent is required for occupied properties."); return; }
+      if (!form.lease_start) { alert("Lease start date is required for occupied properties."); return; }
+      if (!form.lease_end) { alert("Lease end date is required for occupied properties."); return; }
+      if (form.lease_start >= form.lease_end) { alert("Lease end date must be after lease start date."); return; }
+    }
+    // Build composite address for backward compatibility
+    const compositeAddress = [form.address_line_1, form.address_line_2, form.city, form.state + " " + form.zip].filter(Boolean).join(", ");
 
     if (isAdmin) {
       // Guard: block edits to managed (cross-company) properties
@@ -935,15 +955,26 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       }
       // Admin: direct save
       const { error } = editingProperty
-        ? await supabase.from("properties").update({ address: form.address, type: form.type, status: form.status, rent: form.rent, tenant: form.tenant, lease_end: form.lease_end, notes: form.notes }).eq("id", editingProperty.id).eq("company_id", companyId)
-        : await supabase.from("properties").insert([{ ...form, company_id: companyId }]);
+        ? await supabase.from("properties").update({ address: compositeAddress, address_line_1: form.address_line_1, address_line_2: form.address_line_2, city: form.city, state: form.state, zip: form.zip, type: form.type, status: form.status, rent: form.status === "occupied" ? form.rent : null, security_deposit: form.status === "occupied" ? form.security_deposit : null, tenant: form.status === "occupied" ? form.tenant : "", lease_start: form.status === "occupied" ? form.lease_start : "", lease_end: form.status === "occupied" ? form.lease_end : "", notes: form.notes }).eq("id", editingProperty.id).eq("company_id", companyId)
+        : await supabase.from("properties").insert([{ address: compositeAddress, address_line_1: form.address_line_1, address_line_2: form.address_line_2, city: form.city, state: form.state, zip: form.zip, type: form.type, status: form.status, rent: form.status === "occupied" ? form.rent : null, security_deposit: form.status === "occupied" ? form.security_deposit : null, tenant: form.status === "occupied" ? form.tenant : "", lease_start: form.status === "occupied" ? form.lease_start : "", lease_end: form.status === "occupied" ? form.lease_end : "", notes: form.notes, company_id: companyId }]);
       if (error) { alert("Error saving property: " + error.message); return; }
+      // Show document checklist for occupied properties
+      if (form.status === "occupied") {
+        setShowDocChecklist({ name: form.tenant, property: compositeAddress, isNew: !editingProperty });
+      }
+      // Auto-create tenant on tenant page when property becomes occupied
+      if (form.status === "occupied" && form.tenant.trim()) {
+        const { data: existingTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.tenant.trim()).eq("property", compositeAddress).maybeSingle();
+        if (!existingTenant) {
+          await supabase.from("tenants").insert([{ company_id: companyId, name: form.tenant.trim(), property: compositeAddress, rent: Number(form.rent) || 0, lease_status: "active", lease_start: form.lease_start || "", lease_end_date: form.lease_end || "", email: "", phone: "", balance: 0 }]);
+        }
+      }
       // Cascade address change to all related tables
-      if (editingProperty && editingProperty.address !== form.address) {
+      if (editingProperty && editingProperty.address !== compositeAddress) {
         // Atomic cascade rename — server-side RPC required (no client fallback)
         const { error: renameErr } = await supabase.rpc("rename_property_v2", {
           p_company_id: companyId, p_property_id: editingProperty.id,
-          p_new_address: form.address
+          p_new_address: compositeAddress
         });
         if (renameErr) {
           alert("Failed to rename property across all records: " + renameErr.message + "\n\nThe property name was updated but related records (tenants, payments, leases) may not have been renamed. Please contact support.");
@@ -1134,6 +1165,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   const [visibleCols, setVisibleCols] = useState(["address","type","status","rent","tenant","lease_end"]);
   const [showColPicker, setShowColPicker] = useState(false);
   const [showPmAssign, setShowPmAssign] = useState(null);
+  const [showDocChecklist, setShowDocChecklist] = useState(null); // property/tenant that needs docs
   const [pmCode, setPmCode] = useState("");
   const allCols = [
     { id: "address", label: "Address" }, { id: "type", label: "Type" }, { id: "status", label: "Status" },
@@ -1271,14 +1303,24 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
         <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm mb-4">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">{editingProperty ? "Edit Property" : "Add Property"}</h3>
           {!isAdmin && <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 mb-3">Submitted for admin approval.</p>}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Address *</label><input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Type</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></select></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Status</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option></select></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Monthly Rent ($)</label><input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Current Tenant</label><input placeholder="John Smith" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Lease End Date</label><input type="date" value={form.lease_end} onChange={e => setForm({ ...form, lease_end: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Notes</label><textarea placeholder="Any additional notes" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" rows={2} /></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Address Line 1 *</label><input placeholder="123 Main St" value={form.address_line_1} onChange={e => setForm({ ...form, address_line_1: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
+            <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Address Line 2</label><input placeholder="Apt 4B, Suite 200, etc." value={form.address_line_2} onChange={e => setForm({ ...form, address_line_2: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">City *</label><input placeholder="Greenbelt" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><label className="text-xs font-medium text-gray-500 mb-1 block">State *</label><select value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required><option value="">--</option>{US_STATES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+              <div><label className="text-xs font-medium text-gray-500 mb-1 block">ZIP *</label><input placeholder="20770" value={form.zip} onChange={e => setForm({ ...form, zip: e.target.value.replace(/[^\d-]/g, "").slice(0, 10) })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
+            </div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Type *</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></select></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Status *</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option></select></div>
+            {form.status === "occupied" && (<>
+              <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tenant Name *</label><input placeholder="Jane Doe" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
+              <div><label className="text-xs font-medium text-gray-500 mb-1 block">Monthly Rent ($) *</label><input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
+              <div><label className="text-xs font-medium text-gray-500 mb-1 block">Security Deposit ($)</label><input placeholder="1500" value={form.security_deposit} onChange={e => setForm({ ...form, security_deposit: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+              <div><label className="text-xs font-medium text-gray-500 mb-1 block">Lease Start Date *</label><input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
+              <div><label className="text-xs font-medium text-gray-500 mb-1 block">Lease End Date *</label><input type="date" value={form.lease_end} onChange={e => { if (form.lease_start && e.target.value && e.target.value <= form.lease_start) { alert("Lease end date must be after lease start date."); return; } setForm({ ...form, lease_end: e.target.value }); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
+            </>)}
+            <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Notes</label><textarea placeholder="Any additional notes" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" rows={2} /></div>
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={saveProperty} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">{isAdmin ? "Save" : "Submit"}</button>
@@ -1287,20 +1329,42 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
         </div>
       )}
 
-      <div className="flex gap-3 mb-4">
-        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-gray-800">{properties.length}</div><div className="text-xs text-gray-400">Total</div></div>
-        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">{properties.filter(p => p.status === "occupied").length}</div><div className="text-xs text-gray-400">Occupied</div></div>
-        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{properties.filter(p => p.status === "vacant").length}</div><div className="text-xs text-gray-400">Vacant</div></div>
-        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-indigo-600">${properties.reduce((s, p) => s + safeNum(p.rent), 0).toLocaleString()}</div><div className="text-xs text-gray-400">Total Rent</div></div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center"><div className="text-lg font-bold text-gray-800">{properties.length}</div><div className="text-xs text-gray-400">Total</div></div>
+        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center"><div className="text-lg font-bold text-emerald-600">{properties.filter(p => p.status === "occupied").length}</div><div className="text-xs text-gray-400">Occupied</div></div>
+        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center"><div className="text-lg font-bold text-amber-600">{properties.filter(p => p.status === "vacant").length}</div><div className="text-xs text-gray-400">Vacant</div></div>
+        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center"><div className="text-lg font-bold text-indigo-600">${properties.reduce((s, p) => s + safeNum(p.rent), 0).toLocaleString()}</div><div className="text-xs text-gray-400">Total Rent</div></div>
       </div>
 
+      {showDocChecklist && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm font-bold text-amber-800">📋 Required Documents for {showDocChecklist.name}</div>
+            <button onClick={() => setShowDocChecklist(null)} className="text-amber-400 hover:text-amber-600">✕</button>
+          </div>
+          <p className="text-xs text-amber-600 mb-3">The following documents are required for lease compliance. Please upload them in the Documents section.</p>
+          <div className="space-y-2">
+            {["Signed Lease Agreement", "Government-Issued ID", "Renters Insurance Certificate", "Proof of Utility Transfer"].map(doc => (
+              <div key={doc} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-amber-100">
+                <span className="text-amber-400">☐</span>
+                <span className="text-sm text-gray-700">{doc}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button onClick={() => { setPage("documents"); setShowDocChecklist(null); }} className="bg-amber-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-amber-700">Upload Documents Now</button>
+            <button onClick={() => { if (isAdmin || window.confirm("Skip document upload? This will require admin approval later.")) setShowDocChecklist(null); }} className="bg-gray-100 text-gray-600 text-xs px-4 py-2 rounded-lg">Skip for Now</button>
+          </div>
+        </div>
+      )}
+
       {viewMode === "card" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {filtered.map(p => (
             <div key={p.id} className={`bg-white rounded-xl border shadow-sm p-4 ${isReadOnly(p) ? "border-purple-200 bg-purple-50/30" : "border-gray-100"}`}>
               <div className="flex items-start justify-between mb-2">
                 <div>
-                  <h3 className="font-semibold text-gray-800 text-sm">{p.address}</h3>
+                  <h3 className="font-semibold text-gray-800 text-sm">{p.address_line_1 || p.address}</h3>{(p.city || p.state) && <div className="text-xs text-gray-400">{[p.city, p.state, p.zip].filter(Boolean).join(", ")}</div>}
                   <p className="text-xs text-gray-400">{p.type}</p>
                 </div>
                 <div className="flex flex-col items-end gap-1">
@@ -1315,7 +1379,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
               </div>
               {isReadOnly(p) && <div className="mt-2 text-xs text-purple-600 bg-purple-50 rounded-lg px-2 py-1">🔒 Managed property — view only</div>}
               <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50 flex-wrap">
-                {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address: p.address, type: p.type, status: p.status, rent: p.rent || "", tenant: p.tenant || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
+                {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
                 {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline">Delete</button>}
                 {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline">Assign PM</button>}
                 {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline">Remove PM</button>}
@@ -1356,7 +1420,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     {p.pm_company_name && <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded mr-2">PM</span>}
                     {isReadOnly(p) && <span className="text-xs text-purple-500 mr-2">🔒 view only</span>}
-                    {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address: p.address, type: p.type, status: p.status, rent: p.rent || "", tenant: p.tenant || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>}
+                    {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>}
                     {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline mr-2">Del</button>}
                     {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline mr-2">PM</button>}
                     {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline mr-2">-PM</button>}
@@ -1383,7 +1447,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
               <span className="text-sm font-semibold text-gray-700">${safeNum(p.rent).toLocaleString()}</span>
               <span className="text-xs text-gray-500 w-28 truncate">{p.tenant || "—"}</span>
               <Badge status={p.status} label={p.status} />
-              {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address: p.address, type: p.type, status: p.status, rent: p.rent || "", tenant: p.tenant || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
+              {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
               {isReadOnly(p) && <span className="text-xs text-purple-400">🔒</span>}
             </div>
           ))}
@@ -1447,7 +1511,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [newCharge, setNewCharge] = useState({ description: "", amount: "", type: "charge" });
-  const [form, setForm] = useState({ name: "", email: "", phone: "", property: "", lease_status: "active", move_in: "", move_out: "", rent: "" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "" });
   const [tenantView, setTenantView] = useState("card");
   const [tenantSearch, setTenantSearch] = useState("");
   const [tenantFilter, setTenantFilter] = useState("all");
@@ -1475,7 +1539,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
     if (!form.property) { alert("Please select a property."); return; }
     if (form.rent && (isNaN(Number(form.rent)) || Number(form.rent) < 0)) { alert("Rent must be a valid positive number."); return; }
     const { error } = editingTenant
-      ? await supabase.from("tenants").update({ name: form.name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, move_in: form.move_in, move_out: form.move_out, rent: form.rent }).eq("id", editingTenant.id).eq("company_id", companyId)
+      ? await supabase.from("tenants").update({ name: form.name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, move_in: form.lease_start, move_out: form.lease_end, rent: form.rent }).eq("id", editingTenant.id).eq("company_id", companyId)
       : await supabase.from("tenants").insert([{ ...form, email: normalizeEmail(form.email), balance: 0, company_id: companyId }]);
     if (error) { alert("Error saving tenant: " + error.message); return; }
     if (editingTenant) {
@@ -1498,7 +1562,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
     }
     setShowForm(false);
     setEditingTenant(null);
-    setForm({ name: "", email: "", phone: "", property: "", lease_status: "active", move_in: "", move_out: "", rent: "" });
+    setForm({ name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "" });
     fetchTenants();
       } finally { guardRelease("saveTenant"); }
   }
@@ -1579,7 +1643,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
 
   function startEdit(t) {
     setEditingTenant(t);
-    setForm({ name: t.name, email: t.email, phone: t.phone, property: t.property, lease_status: t.lease_status, move_in: t.move_in || "", move_out: t.move_out || "", rent: t.rent || "" });
+    setForm({ name: t.name, email: t.email, phone: t.phone, property: t.property, lease_status: t.lease_status, lease_start: t.lease_start || t.move_in || "", lease_end: t.lease_end_date || t.move_out || "", rent: t.rent || "" });
     setShowForm(true);
   }
 
@@ -1974,7 +2038,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
               <button key={m} onClick={() => setTenantView(m)} className={`px-3 py-1.5 text-sm rounded-md ${tenantView === m ? "bg-white shadow-sm text-indigo-700 font-semibold" : "text-gray-500"}`}>{icon}</button>
             ))}
           </div>
-          <button onClick={() => { setEditingTenant(null); setForm({ name: "", email: "", phone: "", property: "", lease_status: "active", move_in: "", move_out: "", rent: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 whitespace-nowrap">+ Add</button>
+          <button onClick={() => { setEditingTenant(null); setForm({ name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 whitespace-nowrap">+ Add</button>
         </div>
       </div>
 
@@ -1990,8 +2054,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
             <div><label className="text-xs font-medium text-gray-500 mb-1 block">Lease Status</label><select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
               {["active", "notice", "expired"].map(s => <option key={s}>{s}</option>)}
             </select></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Move-in Date</label><input type="date" value={form.move_in} onChange={e => setForm({ ...form, move_in: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Move-out Date</label><input type="date" value={form.move_out} onChange={e => setForm({ ...form, move_out: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Move-in Date</label><input type="date" value={form.lease_start} onChange={e => setForm({ ...form, move_in: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Move-out Date</label><input type="date" value={form.lease_end} onChange={e => setForm({ ...form, move_out: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={saveTenant} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
@@ -2017,7 +2081,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         );
         return <>
           {tenantView === "card" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {ft.map(t => (
                 <div key={t.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
                   <div className="flex justify-between items-start mb-2">
@@ -2436,8 +2500,12 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
           <h3 className="font-semibold text-gray-700 mb-3">{editingWO ? "Edit Work Order" : "New Work Order"}</h3>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tenant</label><input placeholder="Tenant name" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={(v) => {
+              const prop = properties.find(p => p.address === v || buildAddress(p) === v);
+              const tenant = prop?.tenant || "";
+              setForm({ ...form, property: v, tenant: tenant });
+            }} companyId={companyId} /></div>
+            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tenant</label><input placeholder={form.property && !form.tenant ? "Vacant — no tenant" : "Tenant name"} value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className={"border rounded-lg px-3 py-2 text-sm w-full " + (!form.tenant && form.property ? "border-gray-100 bg-gray-50 text-gray-400" : "border-gray-200")} readOnly={!!(form.property && !form.tenant)} /></div>
             <div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Issue *</label><input placeholder="Describe the maintenance issue" value={form.issue} onChange={e => setForm({ ...form, issue: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
             <div><label className="text-xs font-medium text-gray-500 mb-1 block">Priority</label><select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
               {["normal", "emergency", "low"].map(p => <option key={p}>{p}</option>)}
@@ -2470,7 +2538,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
                   <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${priorityColors[w.priority]}`}>{w.priority}</span>
                   <span className="font-semibold text-gray-800">{w.issue}</span>
                 </div>
-                <div className="text-xs text-gray-400 mt-1">{w.property} · {w.tenant}</div>
+                <div className="text-xs text-gray-400 mt-1">{w.property} · {w.tenant}{!w.assigned && w.tenant && <span className="ml-1 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Tenant Request</span>}</div>
               </div>
               <Badge status={w.status} label={w.status?.replace("_", " ")} />
             </div>
@@ -4169,7 +4237,7 @@ function Accounting({ companyId, activeCompany }) {
           <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
             <StatCard label="Total Revenue" value={acctFmt(plData.totalRevenue)} color="text-green-600" sub="Year to date" />
             <StatCard label="Total Expenses" value={acctFmt(plData.totalExpenses)} color="text-red-500" sub="Year to date" />
-            <StatCard label="Net Income" value={acctFmt(plData.netIncome)} color={plData.netIncome >= 0 ? "text-blue-700" : "text-red-600"} sub="Year to date" />
+            <StatCard onClick={() => setPage("accounting")} label="Net Income" value={acctFmt(plData.netIncome)} color={plData.netIncome >= 0 ? "text-blue-700" : "text-red-600"} sub="Year to date" />
             <StatCard label="Total Assets" value={acctFmt(bsData.totalAssets)} color="text-purple-700" sub="Balance sheet" />
           </div>
           {/* Monthly Rent Accrual */}
@@ -7560,7 +7628,7 @@ function TenantPortal({ currentUser, companyId }) {
   // Maintenance request form
   const [showMaintForm, setShowMaintForm] = useState(false);
   const [maintForm, setMaintForm] = useState({ issue: "", priority: "normal", notes: "" });
-  const [maintPhoto, setMaintPhoto] = useState(null);
+  const [maintPhotos, setMaintPhotos] = useState([]);
 
   useEffect(() => {
     async function fetchData() {
@@ -7696,30 +7764,34 @@ function TenantPortal({ currentUser, companyId }) {
       if (!guardSubmit("submitMaintenanceRequest")) return;
       try {
     if (!maintForm.issue.trim()) { alert("Please describe the issue."); return; }
-    let photoUrl = null;
-    if (maintPhoto) {
-      const fileName = shortId() + "-" + sanitizeFileName(maintPhoto.name);
-      const { error: uploadErr } = await supabase.storage.from("documents").upload("maintenance/" + fileName, maintPhoto);
-      if (!uploadErr) {
-        // Store file path — signed URLs generated on display
-        const urlData = { publicUrl: "maintenance/" + fileName };
-        photoUrl = urlData?.publicUrl;
-      }
-    }
-    if (!maintForm.issue.trim()) { alert("Please describe the issue."); return; }
-    const { error } = await supabase.from("work_orders").insert([{ company_id: companyId,
+    // Create the work order first
+    const { data: newWO, error } = await supabase.from("work_orders").insert([{ company_id: companyId,
       property: tenantData.property,
       tenant: tenantData.name,
       issue: maintForm.issue,
       priority: maintForm.priority,
       status: "open",
-      notes: maintForm.notes + (photoUrl ? "\n[Photo: " + photoUrl + "]" : ""),
+      notes: maintForm.notes,
       cost: 0,
-    }]);
+    }]).select();
+    // Upload photos and link to the work order
+    if (newWO?.[0] && maintPhotos.length > 0) {
+      for (const photo of maintPhotos) {
+        const fileName = shortId() + "-" + sanitizeFileName(photo.name);
+        const { error: uploadErr } = await supabase.storage.from("maintenance-photos").upload(fileName, photo);
+        if (!uploadErr) {
+          await supabase.from("work_order_photos").insert([{
+            work_order_id: newWO[0].id, property: tenantData.property,
+            url: fileName, caption: photo.name,
+            company_id: companyId, storage_bucket: "maintenance-photos"
+          }]);
+        }
+      }
+    }
     if (error) { alert("Error submitting request: " + error.message); return; }
     logAudit("create", "maintenance", "Tenant submitted: " + maintForm.issue, "", currentUser?.email, "tenant", companyId);
     setMaintForm({ issue: "", priority: "normal", notes: "" });
-    setMaintPhoto(null);
+    setMaintPhotos([]);
     setShowMaintForm(false);
     await refreshData();
       } finally { guardRelease("submitMaintenanceRequest"); }
@@ -7925,7 +7997,7 @@ function TenantPortal({ currentUser, companyId }) {
           {showMaintForm && (
             <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
               <h4 className="font-medium text-gray-700 mb-3">Submit a Maintenance Request</h4>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">Issue *</label>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">What's the issue? *</label>
               <input placeholder="e.g. Leaking faucet in kitchen" value={maintForm.issue} onChange={e => setMaintForm({...maintForm, issue: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3" />
               <select value={maintForm.priority} onChange={e => setMaintForm({...maintForm, priority: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3">
                 <option value="normal">Normal Priority</option>
