@@ -901,7 +901,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   const [editingProperty, setEditingProperty] = useState(null);
   const [timelineProperty, setTimelineProperty] = useState(null);
   const [timelineData, setTimelineData] = useState([]);
-  const [form, setForm] = useState({ address_line_1: "", address_line_2: "", city: "", state: "", zip: "", type: "Single Family", status: "vacant", rent: "", security_deposit: "", tenant: "", lease_start: "", lease_end: "", notes: "" });
+  const [form, setForm] = useState({ address_line_1: "", address_line_2: "", city: "", state: "", zip: "", type: "Single Family", status: "vacant", rent: "", security_deposit: "", tenant: "", tenant_email: "", tenant_phone: "", lease_start: "", lease_end: "", notes: "" });
   // Approval workflow
   const [changeRequests, setChangeRequests] = useState([]);
   const [showRequests, setShowRequests] = useState(false);
@@ -921,6 +921,16 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     (managedProps || []).forEach(mp => {
       if (!allProps.find(p => p.id === mp.id)) allProps.push({ ...mp, _ownership: "managed" });
     });
+    // Enrich with tenant email/phone for edit forms
+    if (allProps.length > 0) {
+      const { data: tenantData } = await supabase.from("tenants").select("name, email, phone, property").eq("company_id", companyId);
+      if (tenantData) {
+        for (const p of allProps) {
+          const t = tenantData.find(t => t.property === p.address && t.name === p.tenant);
+          if (t) { p._tenantEmail = t.email || ""; p._tenantPhone = t.phone || ""; }
+        }
+      }
+    }
     setProperties(allProps);
     setLoading(false);
   }
@@ -939,7 +949,10 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     if (!form.zip.trim()) { alert("ZIP code is required."); return; }
     if (form.status === "occupied") {
       if (!form.tenant.trim()) { alert("Tenant name is required for occupied properties."); return; }
+      if (!form.tenant_email.trim() || !form.tenant_email.includes("@")) { alert("A valid tenant email is required for occupied properties."); return; }
+      if (!form.tenant_phone.trim()) { alert("Tenant phone number is required for occupied properties."); return; }
       if (!form.rent || isNaN(Number(form.rent)) || Number(form.rent) <= 0) { alert("Monthly rent is required for occupied properties."); return; }
+      if (!form.security_deposit || isNaN(Number(form.security_deposit))) { alert("Security deposit amount is required for occupied properties."); return; }
       if (!form.lease_start) { alert("Lease start date is required for occupied properties."); return; }
       if (!form.lease_end) { alert("Lease end date is required for occupied properties."); return; }
       if (form.lease_start >= form.lease_end) { alert("Lease end date must be after lease start date."); return; }
@@ -966,7 +979,10 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       if (form.status === "occupied" && form.tenant.trim()) {
         const { data: existingTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.tenant.trim()).eq("property", compositeAddress).maybeSingle();
         if (!existingTenant) {
-          await supabase.from("tenants").insert([{ company_id: companyId, name: form.tenant.trim(), property: compositeAddress, rent: Number(form.rent) || 0, lease_status: "active", lease_start: form.lease_start || "", lease_end_date: form.lease_end || "", email: "", phone: "", balance: 0 }]);
+          await supabase.from("tenants").insert([{ company_id: companyId, name: form.tenant.trim(), email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", property: compositeAddress, rent: Number(form.rent) || 0, lease_status: "active", lease_start: form.lease_start || "", lease_end_date: form.lease_end || "", move_in: form.lease_start || "", move_out: form.lease_end || "", balance: 0 }]);
+        } else {
+          // Update existing tenant with latest info
+          await supabase.from("tenants").update({ email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", rent: Number(form.rent) || 0, lease_status: "active", lease_start: form.lease_start || "", lease_end_date: form.lease_end || "", move_in: form.lease_start || "", move_out: form.lease_end || "" }).eq("id", existingTenant.id).eq("company_id", companyId);
         }
       }
       // Cascade address change to all related tables
@@ -1009,7 +1025,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     }
     setShowForm(false);
     setEditingProperty(null);
-    setForm({ address: "", type: "Single Family", status: "vacant", rent: "", tenant: "", lease_end: "", notes: "" });
+    setForm({ address_line_1: "", address_line_2: "", city: "", state: "", zip: "", type: "Single Family", status: "vacant", rent: "", security_deposit: "", tenant: "", tenant_email: "", tenant_phone: "", lease_start: "", lease_end: "", notes: "" });
     fetchProperties();
       } finally { guardRelease("saveProperty"); }
   }
@@ -1294,7 +1310,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
             )}
           </div>
         )}
-        <button onClick={() => { setEditingProperty(null); setForm({ address: "", type: "Single Family", status: "vacant", rent: "", tenant: "", lease_end: "", notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 whitespace-nowrap">
+        <button onClick={() => { setEditingProperty(null); setForm({ address_line_1: "", address_line_2: "", city: "", state: "", zip: "", type: "Single Family", status: "vacant", rent: "", security_deposit: "", tenant: "", tenant_email: "", tenant_phone: "", lease_start: "", lease_end: "", notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 whitespace-nowrap">
           {isAdmin ? "+ Add" : "+ Request"}
         </button>
       </div>
@@ -1314,9 +1330,13 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
             <div><label className="text-xs font-medium text-gray-500 mb-1 block">Type *</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></select></div>
             <div><label className="text-xs font-medium text-gray-500 mb-1 block">Status *</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option></select></div>
             {form.status === "occupied" && (<>
+              <div className="col-span-1 sm:col-span-2 bg-indigo-50 rounded-lg px-3 py-2"><div className="text-xs font-semibold text-indigo-700">Tenant Information</div></div>
               <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tenant Name *</label><input placeholder="Jane Doe" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
+              <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tenant Email *</label><input type="email" placeholder="tenant@email.com" value={form.tenant_email} onChange={e => setForm({ ...form, tenant_email: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
+              <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tenant Phone *</label><input type="tel" placeholder="(555) 123-4567" value={form.tenant_phone} onChange={e => setForm({ ...form, tenant_phone: formatPhoneInput(e.target.value) })} maxLength={14} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
+              <div className="col-span-1 sm:col-span-2 bg-indigo-50 rounded-lg px-3 py-2 mt-1"><div className="text-xs font-semibold text-indigo-700">Lease Details</div></div>
               <div><label className="text-xs font-medium text-gray-500 mb-1 block">Monthly Rent ($) *</label><input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
-              <div><label className="text-xs font-medium text-gray-500 mb-1 block">Security Deposit ($)</label><input placeholder="1500" value={form.security_deposit} onChange={e => setForm({ ...form, security_deposit: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+              <div><label className="text-xs font-medium text-gray-500 mb-1 block">Security Deposit ($) *</label><input placeholder="1500" value={form.security_deposit} onChange={e => setForm({ ...form, security_deposit: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
               <div><label className="text-xs font-medium text-gray-500 mb-1 block">Lease Start Date *</label><input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
               <div><label className="text-xs font-medium text-gray-500 mb-1 block">Lease End Date *</label><input type="date" value={form.lease_end} onChange={e => { if (form.lease_start && e.target.value && e.target.value <= form.lease_start) { alert("Lease end date must be after lease start date."); return; } setForm({ ...form, lease_end: e.target.value }); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
             </>)}
@@ -1379,7 +1399,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
               </div>
               {isReadOnly(p) && <div className="mt-2 text-xs text-purple-600 bg-purple-50 rounded-lg px-2 py-1">🔒 Managed property — view only</div>}
               <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50 flex-wrap">
-                {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
+                {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
                 {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline">Delete</button>}
                 {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline">Assign PM</button>}
                 {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline">Remove PM</button>}
@@ -1420,7 +1440,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     {p.pm_company_name && <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded mr-2">PM</span>}
                     {isReadOnly(p) && <span className="text-xs text-purple-500 mr-2">🔒 view only</span>}
-                    {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>}
+                    {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>}
                     {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline mr-2">Del</button>}
                     {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline mr-2">PM</button>}
                     {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline mr-2">-PM</button>}
@@ -1447,7 +1467,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
               <span className="text-sm font-semibold text-gray-700">${safeNum(p.rent).toLocaleString()}</span>
               <span className="text-xs text-gray-500 w-28 truncate">{p.tenant || "—"}</span>
               <Badge status={p.status} label={p.status} />
-              {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
+              {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
               {isReadOnly(p) && <span className="text-xs text-purple-400">🔒</span>}
             </div>
           ))}
