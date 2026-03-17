@@ -1043,7 +1043,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       try {
     if (!isAdmin) { alert("Only admins can delete properties."); return; }
     // Guard: block deletion of managed (cross-company) properties
-    const targetProp = properties.find(p => p.id === id);
+    const targetProp = properties.find(p => String(p.id) === String(id));
     if (targetProp && targetProp.company_id !== companyId) {
       alert("This property belongs to another company and cannot be deleted here.");
       return;
@@ -1057,7 +1057,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     }
     if (!window.confirm(`Delete property "${address}"? This will also remove associated work orders. This cannot be undone.`)) return;
     // Atomic cascade delete — server-side RPC required (no client fallback)
-    const { error: deleteRpcErr } = await supabase.rpc("delete_property_cascade", { p_company_id: companyId, p_property_id: id, p_address: address });
+    const { error: deleteRpcErr } = await supabase.rpc("delete_property_cascade", { p_company_id: companyId, p_property_id: typeof id === "string" ? parseInt(id, 10) : id, p_address: address });
     if (deleteRpcErr) { alert("Failed to delete property: " + deleteRpcErr.message); return; }
     addNotification("🗑️", `Property deleted: ${address}`);
     logAudit("delete", "properties", `Deleted property: ${address}`, id, userProfile?.email, userRole, companyId);
