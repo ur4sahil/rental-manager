@@ -913,7 +913,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
 
   async function fetchProperties() {
     // Fetch properties owned by this company
-    const { data: ownedProps } = await supabase.from("properties").select("*").eq("company_id", companyId);
+    const { data: ownedProps } = await supabase.from("properties").select("*").eq("company_id", companyId).is("archived_at", null);
     // Also fetch properties where this company is assigned as PM (cross-company)
     const { data: managedProps } = await supabase.from("properties").select("*").eq("pm_company_id", companyId);
     // Merge, deduplicate, and tag ownership type
@@ -1041,26 +1041,40 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   async function deleteProperty(id, address) {
       if (!guardSubmit("deleteProperty")) return;
       try {
-    if (!isAdmin) { alert("Only admins can delete properties."); return; }
-    // Guard: block deletion of managed (cross-company) properties
+    if (!isAdmin) { alert("Only admins can archive properties."); return; }
     const targetProp = properties.find(p => String(p.id) === String(id));
     if (targetProp && targetProp.company_id !== companyId) {
-      alert("This property belongs to another company and cannot be deleted here.");
+      alert("This property belongs to another company and cannot be archived here.");
       return;
     }
-    // Check for active tenants or leases
-    const { data: activeTenants } = await supabase.from("tenants").select("id").eq("company_id", companyId).eq("property", address).limit(1);
-    const { data: activeLeases } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("property", address).eq("status", "active").limit(1);
-    if (activeTenants?.length > 0 || activeLeases?.length > 0) {
-      alert("Cannot delete property with active tenants or leases. Please terminate leases and remove tenants first.");
-      return;
+    if (!window.confirm(`Archive property "${address}"?\n\nThis will hide it from the active list. You can restore it from the Archive page within 180 days.`)) return;
+    // Check if tenant should also be archived
+    const { data: propertyTenants } = await supabase.from("tenants").select("id, name").eq("company_id", companyId).eq("property", address).is("archived_at", null);
+    let archiveTenant = false;
+    if (propertyTenants?.length > 0) {
+      archiveTenant = window.confirm(`This property has ${propertyTenants.length} tenant(s): ${propertyTenants.map(t => t.name).join(", ")}\n\nWould you also like to archive the tenant(s)?\n\nClick OK to archive tenant(s) too, or Cancel to keep them.`);
     }
-    if (!window.confirm(`Delete property "${address}"? This will also remove associated work orders. This cannot be undone.`)) return;
-    // Atomic cascade delete — server-side RPC required (no client fallback)
-    const { error: deleteRpcErr } = await supabase.rpc("delete_property_cascade", { p_company_id: companyId, p_property_id: typeof id === "string" ? parseInt(id, 10) : id, p_address: address });
-    if (deleteRpcErr) { alert("Failed to delete property: " + deleteRpcErr.message); return; }
-    addNotification("🗑️", `Property deleted: ${address}`);
-    logAudit("delete", "properties", `Deleted property: ${address}`, id, userProfile?.email, userRole, companyId);
+    // Use archive RPC (soft delete)
+    const { error: archiveErr } = await supabase.rpc("archive_property", {
+      p_company_id: companyId,
+      p_property_id: String(id),
+      p_address: address,
+      p_archive_tenant: archiveTenant,
+      p_user_email: userProfile?.email || "admin"
+    });
+    if (archiveErr) {
+      // Fallback: direct soft delete if RPC not deployed yet
+      const { error: fallbackErr } = await supabase.from("properties").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", id).eq("company_id", companyId);
+      if (fallbackErr) { alert("Failed to archive property: " + fallbackErr.message); return; }
+      if (archiveTenant && propertyTenants) {
+        for (const t of propertyTenants) {
+          await supabase.from("tenants").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", t.id).eq("company_id", companyId);
+        }
+      }
+    }
+    addNotification("📦", `Property archived: ${address}`);
+    logAudit("archive", "properties", `Archived property: ${address}` + (archiveTenant ? " (with tenant)" : ""), id, userProfile?.email, userRole, companyId);
+    fetchProperties();
       } finally { guardRelease("deleteProperty"); }
   }
 
@@ -1506,7 +1520,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
               {isReadOnly(p) && <div className="mt-2 text-xs text-purple-600 bg-purple-50 rounded-lg px-2 py-1">🔒 Managed property — view only</div>}
               <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50 flex-wrap" onClick={e => e.stopPropagation()}>
                 {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
-                {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline">Delete</button>}
+                {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline">Archive</button>}
                 {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline">Assign PM</button>}
                 {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline">Remove PM</button>}
                 <button onClick={() => loadTimeline(p)} className="text-xs text-gray-400 hover:underline ml-auto">Timeline</button>
@@ -1547,7 +1561,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
                     {p.pm_company_name && <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded mr-2">PM</span>}
                     {isReadOnly(p) && <span className="text-xs text-purple-500 mr-2">🔒 view only</span>}
                     {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>}
-                    {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline mr-2">Del</button>}
+                    {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline mr-2">Archive</button>}
                     {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline mr-2">PM</button>}
                     {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline mr-2">-PM</button>}
                     <button onClick={() => loadTimeline(p)} className="text-xs text-gray-400 hover:underline">TL</button>
@@ -1654,7 +1668,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
   }, []);
 
   async function fetchTenants() {
-    const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId);
+    const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null);
     setTenants(data || []);
     setLoading(false);
   }
@@ -1699,6 +1713,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
   }
 
   async function deleteTenant(id, name) {
+    // Soft delete — archive instead of permanent deletion
       if (!guardSubmit("deleteTenant")) return;
       try {
     if (!window.confirm(`Delete tenant "${name}"? This will also remove their ledger entries and messages. This cannot be undone.`)) return;
@@ -2189,10 +2204,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
 
             {/* Contact Info */}
             <div className="px-6 py-4 border-b border-gray-100">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-                <div><span className="text-xs text-gray-400 block">Email</span><a href={"mailto:" + selectedTenant.email} className="text-indigo-600 hover:underline">{selectedTenant.email || "—"}</a></div>
-                <div><span className="text-xs text-gray-400 block">Phone</span><a href={"tel:" + selectedTenant.phone} className="text-indigo-600 hover:underline">{selectedTenant.phone || "—"}</a></div>
-                <div><span className="text-xs text-gray-400 block">Lease Start</span><span className="text-gray-700">{selectedTenant.lease_start || selectedTenant.move_in || "—"}</span></div>
+              <div className="space-y-2 text-sm">
+                <div><span className="text-xs text-gray-400 block">Email</span><a href={"mailto:" + selectedTenant.email} className="text-indigo-600 hover:underline break-all">{selectedTenant.email || "—"}</a></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><span className="text-xs text-gray-400 block">Phone</span><a href={"tel:" + selectedTenant.phone} className="text-indigo-600 hover:underline">{selectedTenant.phone || "—"}</a></div>
+                  <div><span className="text-xs text-gray-400 block">Lease Start</span><span className="text-gray-700">{selectedTenant.lease_start || selectedTenant.move_in || "—"}</span></div>
+                </div>
               </div>
             </div>
 
@@ -2298,7 +2315,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
                     <div className="text-2xl mb-1">🔄</div><div className="text-sm font-semibold text-green-700">Renew Lease</div>
                   </button>
                   <button onClick={() => deleteTenant(selectedTenant.id, selectedTenant.name)} className="bg-red-50 rounded-xl p-4 text-center hover:bg-red-100 transition-all">
-                    <div className="text-2xl mb-1">🗑️</div><div className="text-sm font-semibold text-red-700">Delete Tenant</div>
+                    <div className="text-2xl mb-1">📦</div><div className="text-sm font-semibold text-red-700">Archive Tenant</div>
                   </button>
                 </div>
               )}
@@ -2384,7 +2401,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
             <button onClick={() => openMessages(t)} className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded-lg hover:bg-gray-50">Msg</button>
             <button onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded-lg hover:bg-gray-50">Lease</button>
             <button onClick={() => startEdit(t)} className="text-xs text-blue-600 hover:underline">Edit</button>
-            <button onClick={() => deleteTenant(t.id, t.name)} className="text-xs text-red-500 hover:underline">Del</button>
+            <button onClick={() => deleteTenant(t.id, t.name)} className="text-xs text-red-500 hover:underline">Archive</button>
             <button onClick={() => inviteTenant(t)} className="text-xs text-purple-600 hover:underline">Invite</button>
           </div>
         );
@@ -2655,7 +2672,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
   useEffect(() => { fetchWorkOrders(); }, []);
 
   async function fetchWorkOrders() {
-    const { data } = await supabase.from("work_orders").select("*").eq("company_id", companyId).order("created_at", { ascending: false });
+    const { data } = await supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false });
     setWorkOrders(data || []);
     setLoading(false);
   }
@@ -7479,7 +7496,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
                   {h.status === "pending" && <button onClick={() => payHOA(h)} className="text-xs text-green-600 hover:underline mr-2">Pay</button>}
                   <button onClick={() => { setEditingHoa(h); setForm({ property: h.property, hoa_name: h.hoa_name, amount: String(h.amount), due_date: h.due_date, frequency: h.frequency || "monthly", status: h.status, notes: h.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>
-                  <button onClick={() => deleteHOA(h.id)} className="text-xs text-red-500 hover:underline">Del</button>
+                  <button onClick={() => deleteHOA(h.id)} className="text-xs text-red-500 hover:underline">Archive</button>
                 </td>
               </tr>
             ))}
@@ -7492,9 +7509,120 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
 }
 
 
+
+// ============ ARCHIVE (SOFT-DELETED ITEMS) ============
+function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("all");
+
+  useEffect(() => { fetchArchived(); }, []);
+
+  async function fetchArchived() {
+    setLoading(true);
+    const tables = [
+      { name: "properties", label: "Property", fields: "id, address, type, status, archived_at, archived_by" },
+      { name: "tenants", label: "Tenant", fields: "id, name, email, property, archived_at, archived_by" },
+      { name: "work_orders", label: "Work Order", fields: "id, issue, property, status, archived_at" },
+      { name: "documents", label: "Document", fields: "id, name, property, type, archived_at" },
+      { name: "leases", label: "Lease", fields: "id, tenant_name, property, status, archived_at" },
+      { name: "payments", label: "Payment", fields: "id, tenant, property, amount, archived_at" },
+    ];
+    let all = [];
+    for (const t of tables) {
+      const { data } = await supabase.from(t.name).select(t.fields).eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false });
+      if (data) {
+        all = all.concat(data.map(d => ({ ...d, _table: t.name, _label: t.label })));
+      }
+    }
+    all.sort((a, b) => new Date(b.archived_at) - new Date(a.archived_at));
+    setItems(all);
+    setLoading(false);
+  }
+
+  async function restoreItem(item) {
+    if (!window.confirm(`Restore this ${item._label.toLowerCase()}?`)) return;
+    const { error } = await supabase.from(item._table).update({ archived_at: null, archived_by: null }).eq("id", item.id).eq("company_id", companyId);
+    if (error) {
+      alert("Failed to restore: " + error.message);
+      return;
+    }
+    addNotification("♻️", `Restored ${item._label}: ${item.address || item.name || item.issue || item.tenant_name || item.tenant || "item"}`);
+    fetchArchived();
+  }
+
+  async function permanentDelete(item) {
+    if (!window.confirm(`PERMANENTLY delete this ${item._label.toLowerCase()}? This cannot be undone.`)) return;
+    const { error } = await supabase.from(item._table).delete().eq("id", item.id).eq("company_id", companyId);
+    if (error) { alert("Failed to delete: " + error.message); return; }
+    addNotification("🗑️", `Permanently deleted ${item._label}`);
+    fetchArchived();
+  }
+
+  const filtered = filter === "all" ? items : items.filter(i => i._table === filter);
+  const tables = [...new Set(items.map(i => i._table))];
+  const daysUntilPurge = (item) => Math.max(0, 180 - Math.floor((new Date() - new Date(item.archived_at)) / 86400000));
+
+  function getItemTitle(item) {
+    return item.address || item.name || item.issue || item.tenant_name || item.tenant || "Unnamed";
+  }
+
+  function getItemSubtitle(item) {
+    return item.property || item.email || item.type || item.status || "";
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h2 className="text-xl font-bold text-gray-800">Archive</h2>
+          <p className="text-xs text-gray-400 mt-1">Archived items are auto-purged after 180 days</p>
+        </div>
+        <div className="text-sm text-gray-500">{items.length} archived item{items.length !== 1 ? "s" : ""}</div>
+      </div>
+
+      <div className="flex gap-2 mb-4 flex-wrap">
+        <button onClick={() => setFilter("all")} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === "all" ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600"}`}>All ({items.length})</button>
+        {tables.map(t => {
+          const count = items.filter(i => i._table === t).length;
+          const label = t.replace("_", " ").replace(/\b\w/g, c => c.toUpperCase());
+          return <button key={t} onClick={() => setFilter(t)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === t ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600"}`}>{label} ({count})</button>;
+        })}
+      </div>
+
+      {loading ? <div className="text-center py-8 text-gray-400">Loading...</div> : filtered.length === 0 ? (
+        <div className="text-center py-16">
+          <div className="text-4xl mb-3">📦</div>
+          <div className="text-gray-400">No archived items</div>
+          <div className="text-xs text-gray-300 mt-1">Deleted items will appear here for 180 days</div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map(item => (
+            <div key={item._table + item.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-lg">
+                {item._table === "properties" ? "🏠" : item._table === "tenants" ? "👤" : item._table === "work_orders" ? "🔧" : item._table === "documents" ? "📄" : item._table === "leases" ? "📋" : "💰"}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-gray-800 text-sm">{getItemTitle(item)}</div>
+                <div className="text-xs text-gray-400">{item._label} · {getItemSubtitle(item)}</div>
+                <div className="text-xs text-gray-300 mt-0.5">Archived {new Date(item.archived_at).toLocaleDateString()} {item.archived_by ? "by " + item.archived_by : ""} · <span className={daysUntilPurge(item) < 30 ? "text-red-400 font-semibold" : "text-gray-400"}>{daysUntilPurge(item)} days until auto-purge</span></div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button onClick={() => restoreItem(item)} className="text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 font-medium">♻️ Restore</button>
+                <button onClick={() => permanentDelete(item)} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100 font-medium">🗑️ Delete</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
-  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","accounting","documents","inspections","autopay","hoa","audittrail","leases","vendors","owners","notifications"] },
+  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","accounting","documents","inspections","autopay","hoa","audittrail","leases","vendors","owners","notifications","archive"] },
   office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","documents","inspections","leases","vendors","owners","notifications"] },
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
