@@ -8264,7 +8264,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ tenant: "", property: "", amount: "", frequency: "monthly", day_of_month: "1", start_date: "", end_date: "", method: "ACH", active: true });
+  const [form, setForm] = useState({ tenant: "", property: "", amount: "", frequency: "monthly", day_of_month: "1", start_date: "", end_date: "", method: "ACH", enabled: true });
 
   useEffect(() => { fetchData(); }, [companyId]);
 
@@ -8295,7 +8295,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
     addNotification("🔄", `Autopay schedule created for ${form.tenant}`);
     logAudit("create", "autopay", `Autopay created: ${form.tenant} $${form.amount}/mo at ${form.property}`, "", userProfile?.email, userRole, companyId);
     setShowForm(false);
-    setForm({ tenant: "", property: "", amount: "", frequency: "monthly", day_of_month: "1", start_date: "", end_date: "", method: "ACH", active: true });
+    setForm({ tenant: "", property: "", amount: "", frequency: "monthly", day_of_month: "1", start_date: "", end_date: "", method: "ACH", enabled: true });
     fetchData();
       } finally { guardRelease("saveSchedule"); }
   }
@@ -8450,14 +8450,14 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
       )}
       <div className="space-y-3">
         {schedules.map(s => (
-          <div key={s.id} className={`bg-white rounded-xl border shadow-sm p-4 ${s.active ? "border-indigo-50" : "border-indigo-100 opacity-60"}`}>
+          <div key={s.id} className={`bg-white rounded-xl border shadow-sm p-4 ${s.enabled ? "border-indigo-50" : "border-indigo-100 opacity-60"}`}>
             <div className="flex justify-between items-start">
               <div>
                 <div className="font-semibold text-slate-800">{s.tenant}</div>
                 <div className="text-xs text-slate-400">{s.property}</div>
               </div>
               <div className="flex items-center gap-2">
-                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${s.active ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-400"}`}>{s.active ? "Active" : "Paused"}</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${s.enabled ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-400"}`}>{s.enabled ? "Active" : "Paused"}</span>
                 <span className="text-lg font-manrope font-bold text-slate-800">${s.amount}</span>
               </div>
             </div>
@@ -8471,7 +8471,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
               <div className="text-xs text-indigo-600 font-medium">Next due: {nextDue(s)}</div>
               <div className="flex gap-2">
                 <button onClick={() => runNow(s)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">▶ Run Now</button>
-                <button onClick={() => toggleActive(s)} className={`text-xs border px-3 py-1 rounded-lg ${s.active ? "text-orange-500 border-orange-200 hover:bg-orange-50" : "text-green-600 border-green-200 hover:bg-green-50"}`}>{s.active ? "⏸ Pause" : "▶ Resume"}</button>
+                <button onClick={() => toggleActive(s)} className={`text-xs border px-3 py-1 rounded-lg ${s.enabled ? "text-orange-500 border-orange-200 hover:bg-orange-50" : "text-green-600 border-green-200 hover:bg-green-50"}`}>{s.enabled ? "⏸ Pause" : "▶ Resume"}</button>
                 <button onClick={() => deleteSchedule(s.id, s.tenant)} className="text-xs text-red-500 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">🗑️</button>
               </div>
             </div>
