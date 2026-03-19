@@ -478,6 +478,7 @@ const statusColors = {
   unpaid: "bg-red-100 text-red-700",
   pending: "bg-yellow-100 text-yellow-700",
   approved: "bg-green-100 text-green-700",
+  eviction: "bg-red-100 text-red-700",
 };
 
 const priorityColors = {
@@ -1770,6 +1771,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage })
   const [tenantView, setTenantView] = useState("card");
   const [tenantSearch, setTenantSearch] = useState("");
   const [tenantFilter, setTenantFilter] = useState("all");
+  const [tenantFilterProp, setTenantFilterProp] = useState("all");
+  const [tenantFilterBalance, setTenantFilterBalance] = useState("all");
+  const [tenantFilterLeaseExpiry, setTenantFilterLeaseExpiry] = useState("all");
+  // Bulk selection
+  const [selectedTenants, setSelectedTenants] = useState(new Set());
+  const [bulkAction, setBulkAction] = useState(null);
   const [leaseModal, setLeaseModal] = useState(null);
   const [tenantDocs, setTenantDocs] = useState([]);
   const [showTenantDocPrompt, setShowTenantDocPrompt] = useState(null); // 'renew' | 'notice'
@@ -2481,13 +2488,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage })
       )}
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <h2 className="text-2xl font-manrope font-bold text-slate-800">Tenants</h2>
         <div className="flex gap-2 items-center">
-          <input placeholder="Search..." value={tenantSearch || ""} onChange={e => setTenantSearch(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-40" />
-          <select value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
-            <option value="all">All Status</option><option value="active">Active</option><option value="notice">Notice</option><option value="expired">Expired</option>
-          </select>
           <div className="flex bg-indigo-50 rounded-2xl p-0.5">
             {[["card","\u25a6"],["table","\u2630"],["compact","\u2261"]].map(([m,icon]) => (
               <button key={m} onClick={() => setTenantView(m)} className={`px-3 py-1.5 text-sm rounded-md ${tenantView === m ? "bg-white shadow-sm text-indigo-700 font-semibold" : "text-slate-400"}`}>{icon}</button>
@@ -2496,6 +2499,135 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage })
           <button onClick={() => { setEditingTenant(null); setForm({ name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700 whitespace-nowrap">+ Add</button>
         </div>
       </div>
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <input placeholder="Search name, email, phone, property..." value={tenantSearch || ""} onChange={e => setTenantSearch(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm flex-1 min-w-48" />
+        <select value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
+          <option value="all">All Status</option><option value="active">Active</option><option value="notice">Notice</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
+        </select>
+        <select value={tenantFilterProp} onChange={e => setTenantFilterProp(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
+          <option value="all">All Properties</option>
+          {[...new Set(tenants.map(t => t.property).filter(Boolean))].sort().map(p => <option key={p} value={p}>{p.length > 30 ? p.slice(0, 30) + "..." : p}</option>)}
+        </select>
+        <select value={tenantFilterBalance} onChange={e => setTenantFilterBalance(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
+          <option value="all">All Balances</option><option value="delinquent">Delinquent (owes)</option><option value="current">Current ($0)</option><option value="credit">Credit (overpaid)</option>
+        </select>
+        <select value={tenantFilterLeaseExpiry} onChange={e => setTenantFilterLeaseExpiry(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
+          <option value="all">All Leases</option><option value="30">Expires in 30 days</option><option value="60">Expires in 60 days</option><option value="90">Expires in 90 days</option><option value="expired">Expired</option><option value="no_lease">No lease date</option>
+        </select>
+        {(tenantFilter !== "all" || tenantFilterProp !== "all" || tenantFilterBalance !== "all" || tenantFilterLeaseExpiry !== "all" || tenantSearch) && (
+          <button onClick={() => { setTenantFilter("all"); setTenantFilterProp("all"); setTenantFilterBalance("all"); setTenantFilterLeaseExpiry("all"); setTenantSearch(""); }} className="text-xs text-red-500 border border-red-200 px-3 py-2 rounded-2xl hover:bg-red-50">Clear Filters</button>
+        )}
+      </div>
+      {/* Bulk action bar */}
+      {selectedTenants.size > 0 && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3 mb-4 flex items-center justify-between">
+          <span className="text-sm font-medium text-indigo-800">{selectedTenants.size} tenant{selectedTenants.size > 1 ? "s" : ""} selected</span>
+          <div className="flex gap-2">
+            <button onClick={() => setBulkAction("notice")} className="text-xs bg-orange-100 text-orange-700 px-3 py-1.5 rounded-lg hover:bg-orange-200 font-medium">Send Notice</button>
+            <button onClick={() => setBulkAction("charge")} className="text-xs bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-200 font-medium">Add Charge</button>
+            <button onClick={() => setBulkAction("status")} className="text-xs bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-200 font-medium">Change Status</button>
+            <button onClick={() => setBulkAction("archive")} className="text-xs bg-red-100 text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-200 font-medium">Archive</button>
+            <button onClick={() => setSelectedTenants(new Set())} className="text-xs text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-100">Deselect All</button>
+          </div>
+        </div>
+      )}
+      {/* Bulk action modals */}
+      {bulkAction === "notice" && (
+        <Modal title={`Send Notice to ${selectedTenants.size} Tenant(s)`} onClose={() => setBulkAction(null)}>
+          <div className="space-y-3">
+            <p className="text-sm text-slate-500">This will set the selected tenants' status to "notice" and generate a move-out date.</p>
+            <div><label className="text-xs font-medium text-slate-400 block mb-1">Notice Period (days)</label>
+              <select id="bulk-notice-days" className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
+                <option value="30">30 days</option><option value="60">60 days</option><option value="90">90 days</option>
+              </select>
+            </div>
+            <button onClick={async () => {
+              const days = parseInt(document.getElementById("bulk-notice-days").value);
+              const noticeDate = new Date(); noticeDate.setDate(noticeDate.getDate() + days);
+              const moveOutDate = formatLocalDate(noticeDate);
+              let count = 0;
+              for (const tid of selectedTenants) {
+                const { error } = await supabase.from("tenants").update({ lease_status: "notice", move_out: moveOutDate }).eq("company_id", companyId).eq("id", tid);
+                if (!error) count++;
+              }
+              addNotification("📋", `${days}-day notice sent to ${count} tenant(s)`);
+              logAudit("update", "tenants", `Bulk ${days}-day notice to ${count} tenants`, "", userProfile?.email, userRole, companyId);
+              setBulkAction(null); setSelectedTenants(new Set()); fetchTenants();
+            }} className="w-full bg-orange-600 text-white text-sm py-2.5 rounded-lg hover:bg-orange-700 font-semibold">Send Notices</button>
+          </div>
+        </Modal>
+      )}
+      {bulkAction === "charge" && (
+        <Modal title={`Add Charge to ${selectedTenants.size} Tenant(s)`} onClose={() => setBulkAction(null)}>
+          <div className="space-y-3">
+            <div><label className="text-xs font-medium text-slate-400 block mb-1">Description</label><input id="bulk-charge-desc" placeholder="Late fee, utility charge, etc." className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 block mb-1">Amount ($)</label><input id="bulk-charge-amt" type="number" placeholder="50.00" className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <button onClick={async () => {
+              const desc = document.getElementById("bulk-charge-desc").value;
+              const amt = Math.abs(Number(document.getElementById("bulk-charge-amt").value));
+              if (!desc || !amt) { alert("Description and amount required."); return; }
+              let count = 0;
+              for (const tid of selectedTenants) {
+                const t = tenants.find(x => x.id === tid);
+                if (!t) continue;
+                const ledgerOk = await safeLedgerInsert({ company_id: companyId, tenant: t.name, property: t.property, date: formatLocalDate(new Date()), description: desc, amount: amt, type: "charge", balance: 0 });
+                if (ledgerOk) {
+                  await supabase.rpc("update_tenant_balance", { p_tenant_id: tid, p_amount_change: amt }).catch(() => {});
+                  count++;
+                }
+              }
+              addNotification("💰", `Charge of ${formatCurrency(amt)} added to ${count} tenant(s)`);
+              logAudit("create", "tenants", `Bulk charge $${amt} "${desc}" to ${count} tenants`, "", userProfile?.email, userRole, companyId);
+              setBulkAction(null); setSelectedTenants(new Set()); fetchTenants();
+            }} className="w-full bg-blue-600 text-white text-sm py-2.5 rounded-lg hover:bg-blue-700 font-semibold">Add Charges</button>
+          </div>
+        </Modal>
+      )}
+      {bulkAction === "status" && (
+        <Modal title={`Change Status — ${selectedTenants.size} Tenant(s)`} onClose={() => setBulkAction(null)}>
+          <div className="space-y-3">
+            <div><label className="text-xs font-medium text-slate-400 block mb-1">New Status</label>
+              <select id="bulk-status-val" className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
+                <option value="active">Active</option><option value="notice">Notice</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
+              </select>
+            </div>
+            <button onClick={async () => {
+              const newStatus = document.getElementById("bulk-status-val").value;
+              let count = 0;
+              for (const tid of selectedTenants) {
+                const { error } = await supabase.from("tenants").update({ lease_status: newStatus }).eq("company_id", companyId).eq("id", tid);
+                if (!error) count++;
+              }
+              addNotification("👤", `Status changed to "${newStatus}" for ${count} tenant(s)`);
+              logAudit("update", "tenants", `Bulk status change to ${newStatus} for ${count} tenants`, "", userProfile?.email, userRole, companyId);
+              setBulkAction(null); setSelectedTenants(new Set()); fetchTenants();
+            }} className="w-full bg-purple-600 text-white text-sm py-2.5 rounded-lg hover:bg-purple-700 font-semibold">Update Status</button>
+          </div>
+        </Modal>
+      )}
+      {bulkAction === "archive" && (
+        <Modal title={`Archive ${selectedTenants.size} Tenant(s)?`} onClose={() => setBulkAction(null)}>
+          <div className="space-y-3">
+            <p className="text-sm text-red-600">This will archive the selected tenants. They can be restored from the Archive page within 180 days.</p>
+            <div className="bg-red-50 rounded-lg p-3 text-xs text-red-700 space-y-1">
+              {[...selectedTenants].map(tid => { const t = tenants.find(x => x.id === tid); return t ? <div key={tid}>{t.name} — {t.property}{safeNum(t.balance) > 0 ? ` (owes ${formatCurrency(t.balance)})` : ""}</div> : null; })}
+            </div>
+            <button onClick={async () => {
+              let count = 0;
+              for (const tid of selectedTenants) {
+                const t = tenants.find(x => x.id === tid);
+                if (safeNum(t?.balance) > 0) continue;
+                const { error } = await supabase.from("tenants").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email, lease_status: "inactive" }).eq("id", tid).eq("company_id", companyId);
+                if (!error) count++;
+              }
+              addNotification("📦", `${count} tenant(s) archived`);
+              logAudit("archive", "tenants", `Bulk archived ${count} tenants`, "", userProfile?.email, userRole, companyId);
+              setBulkAction(null); setSelectedTenants(new Set()); fetchTenants();
+            }} className="w-full bg-red-600 text-white text-sm py-2.5 rounded-lg hover:bg-red-700 font-semibold">Confirm Archive</button>
+          </div>
+        </Modal>
+      )}
 
       {showForm && (
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
@@ -2520,10 +2652,28 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage })
       )}
 
       {(() => {
-        const ft = tenants.filter(t =>
-          (tenantFilter === "all" || !tenantFilter || t.lease_status === tenantFilter) &&
-          (!tenantSearch || t.name?.toLowerCase().includes(tenantSearch.toLowerCase()) || t.email?.toLowerCase().includes(tenantSearch.toLowerCase()) || t.property?.toLowerCase().includes(tenantSearch.toLowerCase()))
-        );
+        const ft = tenants.filter(t => {
+          if (tenantFilter !== "all" && tenantFilter && t.lease_status !== tenantFilter) return false;
+          if (tenantFilterProp !== "all" && t.property !== tenantFilterProp) return false;
+          if (tenantFilterBalance === "delinquent" && !(safeNum(t.balance) > 0)) return false;
+          if (tenantFilterBalance === "current" && safeNum(t.balance) > 0) return false;
+          if (tenantFilterBalance === "credit" && !(safeNum(t.balance) < 0)) return false;
+          if (tenantFilterLeaseExpiry !== "all") {
+            const endDate = t.lease_end_date || t.move_out;
+            if (!endDate) return tenantFilterLeaseExpiry === "no_lease" ? true : false;
+            if (tenantFilterLeaseExpiry === "no_lease") return false;
+            const daysLeft = Math.ceil((parseLocalDate(endDate) - new Date()) / 86400000);
+            if (tenantFilterLeaseExpiry === "30" && daysLeft > 30) return false;
+            if (tenantFilterLeaseExpiry === "60" && daysLeft > 60) return false;
+            if (tenantFilterLeaseExpiry === "90" && daysLeft > 90) return false;
+            if (tenantFilterLeaseExpiry === "expired" && daysLeft > 0) return false;
+          }
+          if (tenantSearch) {
+            const q = tenantSearch.toLowerCase();
+            if (!t.name?.toLowerCase().includes(q) && !t.email?.toLowerCase().includes(q) && !t.property?.toLowerCase().includes(q) && !t.phone?.toLowerCase().includes(q)) return false;
+          }
+          return true;
+        });
         const TenantActions = ({t}) => (
           <div className="flex gap-1.5 flex-wrap">
             <button onClick={() => openLedger(t)} className="text-xs text-indigo-600 border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50">Ledger</button>
@@ -2560,12 +2710,16 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage })
             <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
-                  <tr><th className="px-4 py-3 text-left">Name</th><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Email</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-right">Rent</th><th className="px-4 py-3 text-right">Balance</th><th className="px-4 py-3 text-right">Actions</th></tr>
+                  <tr>
+                    <th className="px-3 py-3 text-left w-8"><input type="checkbox" checked={ft.length > 0 && ft.every(t => selectedTenants.has(t.id))} onChange={e => { if (e.target.checked) setSelectedTenants(new Set(ft.map(t => t.id))); else setSelectedTenants(new Set()); }} className="rounded" /></th>
+                    <th className="px-4 py-3 text-left">Name</th><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Email</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-right">Rent</th><th className="px-4 py-3 text-right">Balance</th><th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {ft.map(t => (
-                    <tr key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className="border-t border-indigo-50/50 hover:bg-indigo-50/50 cursor-pointer">
-                      <td className="px-4 py-2.5 font-medium text-slate-800 text-indigo-600">{t.name}</td>
+                    <tr key={t.id} className={`border-t border-indigo-50/50 hover:bg-indigo-50/50 cursor-pointer ${selectedTenants.has(t.id) ? "bg-indigo-50/60" : ""}`}>
+                      <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><input type="checkbox" checked={selectedTenants.has(t.id)} onChange={e => { const next = new Set(selectedTenants); if (e.target.checked) next.add(t.id); else next.delete(t.id); setSelectedTenants(next); }} className="rounded" /></td>
+                      <td className="px-4 py-2.5 font-medium text-indigo-600" onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }}>{t.name}</td>
                       <td className="px-4 py-2.5 text-slate-500">{t.property}</td>
                       <td className="px-4 py-2.5 text-slate-400 text-xs">{t.email}</td>
                       <td className="px-4 py-2.5"><Badge status={t.lease_status} /></td>
@@ -2606,6 +2760,13 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ tenant: "", property: "", amount: "", type: "rent", method: "ACH", status: "paid", date: formatLocalDate(new Date()) });
+  const [paySearch, setPaySearch] = useState("");
+  const [payFilterStatus, setPayFilterStatus] = useState("all");
+  const [payFilterType, setPayFilterType] = useState("all");
+  const [payFilterMethod, setPayFilterMethod] = useState("all");
+  const [payDateFrom, setPayDateFrom] = useState("");
+  const [payDateTo, setPayDateTo] = useState("");
+  const [selectedPayments, setSelectedPayments] = useState(new Set());
 
   useEffect(() => { fetchPayments(); }, [companyId]);
 
@@ -2768,14 +2929,71 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
         <StatCard label="Collected" value={`${formatCurrency(totalCollected)}`} color="text-green-600" />
         <StatCard label="Outstanding" value={`$${(totalExpected - totalCollected).toLocaleString()}`} color="text-red-500" />
       </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <input placeholder="Search tenant or property..." value={paySearch} onChange={e => setPaySearch(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm flex-1 min-w-40" />
+        <select value={payFilterStatus} onChange={e => setPayFilterStatus(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
+          <option value="all">All Status</option><option value="paid">Paid</option><option value="unpaid">Unpaid</option><option value="partial">Partial</option>
+        </select>
+        <select value={payFilterType} onChange={e => setPayFilterType(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
+          <option value="all">All Types</option><option value="rent">Rent</option><option value="late_fee">Late Fee</option><option value="deposit">Deposit</option><option value="other">Other</option>
+        </select>
+        <select value={payFilterMethod} onChange={e => setPayFilterMethod(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
+          <option value="all">All Methods</option><option value="ACH">ACH</option><option value="card">Card</option><option value="autopay">Autopay</option><option value="cash">Cash</option><option value="check">Check</option>
+        </select>
+        <input type="date" value={payDateFrom} onChange={e => setPayDateFrom(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm" title="From date" />
+        <input type="date" value={payDateTo} onChange={e => setPayDateTo(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm" title="To date" />
+        {(paySearch || payFilterStatus !== "all" || payFilterType !== "all" || payFilterMethod !== "all" || payDateFrom || payDateTo) && (
+          <button onClick={() => { setPaySearch(""); setPayFilterStatus("all"); setPayFilterType("all"); setPayFilterMethod("all"); setPayDateFrom(""); setPayDateTo(""); }} className="text-xs text-red-500 border border-red-200 px-3 py-2 rounded-2xl hover:bg-red-50">Clear</button>
+        )}
+      </div>
+
+      {/* Bulk bar */}
+      {selectedPayments.size > 0 && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3 mb-4 flex items-center justify-between">
+          <span className="text-sm font-medium text-indigo-800">{selectedPayments.size} payment{selectedPayments.size > 1 ? "s" : ""} selected</span>
+          <div className="flex gap-2">
+            <button onClick={() => {
+              const selected = payments.filter(p => selectedPayments.has(p.id));
+              exportToCSV(selected, [
+                { label: "Date", key: "date" }, { label: "Tenant", key: "tenant" }, { label: "Property", key: "property" },
+                { label: "Amount", key: "amount" }, { label: "Type", key: "type" }, { label: "Method", key: "method" }, { label: "Status", key: "status" },
+              ], "selected-payments-export");
+              setSelectedPayments(new Set());
+            }} className="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-200 font-medium">Export Selected</button>
+            <button onClick={() => setSelectedPayments(new Set())} className="text-xs text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-100">Deselect</button>
+          </div>
+        </div>
+      )}
+
+      {(() => {
+        const fp = payments.filter(p => {
+          if (payFilterStatus !== "all" && p.status !== payFilterStatus) return false;
+          if (payFilterType !== "all" && p.type !== payFilterType) return false;
+          if (payFilterMethod !== "all" && p.method !== payFilterMethod) return false;
+          if (payDateFrom && p.date < payDateFrom) return false;
+          if (payDateTo && p.date > payDateTo) return false;
+          if (paySearch) {
+            const q = paySearch.toLowerCase();
+            if (!p.tenant?.toLowerCase().includes(q) && !p.property?.toLowerCase().includes(q)) return false;
+          }
+          return true;
+        });
+        return (
       <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden">
+        <div className="px-4 py-2 text-xs text-slate-400 border-b border-indigo-50">{fp.length} of {payments.length} payments</div>
         <table className="w-full text-sm">
           <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
-            <tr>{["Tenant", "Property", "Amount", "Date", "Type", "Method", "Status", ""].map(h => <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>)}</tr>
+            <tr>
+              <th className="px-3 py-2 text-left w-8"><input type="checkbox" checked={fp.length > 0 && fp.every(p => selectedPayments.has(p.id))} onChange={e => { if (e.target.checked) setSelectedPayments(new Set(fp.map(p => p.id))); else setSelectedPayments(new Set()); }} className="rounded" /></th>
+              {["Tenant", "Property", "Amount", "Date", "Type", "Method", "Status", ""].map(h => <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>)}
+            </tr>
           </thead>
           <tbody>
-            {payments.map(p => (
-              <tr key={p.id} className="border-t border-indigo-50/50 hover:bg-indigo-50/30">
+            {fp.map(p => (
+              <tr key={p.id} className={`border-t border-indigo-50/50 hover:bg-indigo-50/30 ${selectedPayments.has(p.id) ? "bg-indigo-50/60" : ""}`}>
+                <td className="px-3 py-2.5"><input type="checkbox" checked={selectedPayments.has(p.id)} onChange={e => { const next = new Set(selectedPayments); if (e.target.checked) next.add(p.id); else next.delete(p.id); setSelectedPayments(next); }} className="rounded" /></td>
                 <td className="px-3 py-2.5 font-medium text-slate-800">{p.tenant}</td>
                 <td className="px-3 py-2.5 text-slate-400">{p.property}</td>
                 <td className="px-3 py-2.5 font-semibold">${p.amount}</td>
@@ -2788,7 +3006,10 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
             ))}
           </tbody>
         </table>
+        {fp.length === 0 && <div className="text-center py-8 text-slate-400 text-sm">No payments match filters</div>}
       </div>
+        );
+      })()}
     </div>
   );
 }
@@ -2805,6 +3026,9 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoRef = useRef();
   const [form, setForm] = useState({ property: "", tenant: "", issue: "", priority: "normal", status: "open", assigned: "", cost: 0, notes: "" });
+  const [woSearch, setWoSearch] = useState("");
+  const [woFilterProp, setWoFilterProp] = useState("all");
+  const [woFilterAssigned, setWoFilterAssigned] = useState("all");
 
   useEffect(() => { fetchWorkOrders(); }, [companyId]);
 
@@ -2916,7 +3140,19 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
 
   if (loading) return <Spinner />;
 
-  const filtered = filter === "all" ? workOrders : workOrders.filter(w => w.status === filter || w.priority === filter);
+  const filtered = workOrders.filter(w => {
+    if (filter !== "all" && w.status !== filter && w.priority !== filter) return false;
+    if (woFilterProp !== "all" && w.property !== woFilterProp) return false;
+    if (woFilterAssigned !== "all") {
+      if (woFilterAssigned === "_unassigned" && w.assigned) return false;
+      if (woFilterAssigned !== "_unassigned" && w.assigned !== woFilterAssigned) return false;
+    }
+    if (woSearch) {
+      const q = woSearch.toLowerCase();
+      if (!w.issue?.toLowerCase().includes(q) && !w.property?.toLowerCase().includes(q) && !w.tenant?.toLowerCase().includes(q) && !w.assigned?.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
 
   return (
     <div>
@@ -2987,11 +3223,22 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
         </div>
       )}
 
-      <div className="flex gap-2 mb-4 flex-wrap">
+      <div className="flex flex-wrap gap-2 mb-4">
         {["all", "open", "in_progress", "completed", "emergency"].map(s => (
           <button key={s} onClick={() => setFilter(s)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === s ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{s.replace("_", " ")}</button>
         ))}
+        <div className="flex-1" />
+        <input placeholder="Search issue, property, tenant..." value={woSearch} onChange={e => setWoSearch(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm min-w-40" />
+        <select value={woFilterProp} onChange={e => setWoFilterProp(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm">
+          <option value="all">All Properties</option>
+          {[...new Set(workOrders.map(w => w.property).filter(Boolean))].sort().map(p => <option key={p} value={p}>{p.length > 30 ? p.slice(0, 30) + "..." : p}</option>)}
+        </select>
+        <select value={woFilterAssigned} onChange={e => setWoFilterAssigned(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm">
+          <option value="all">All Assigned</option><option value="_unassigned">Unassigned</option>
+          {[...new Set(workOrders.map(w => w.assigned).filter(Boolean))].sort().map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
       </div>
+      <div className="text-xs text-slate-400 mb-3">{filtered.length} of {workOrders.length} work orders</div>
       <div className="space-y-3">
         {filtered.map(w => (
           <div key={w.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
@@ -7875,8 +8122,8 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
 
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
-  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","accounting","documents","inspections","autopay","hoa","audittrail","leases","vendors","owners","notifications","archive","moveout"] },
-  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","documents","inspections","leases","vendors","owners","notifications","moveout"] },
+  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","accounting","documents","inspections","autopay","hoa","audittrail","leases","vendors","owners","notifications","archive","moveout","evictions"] },
+  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","documents","inspections","leases","vendors","owners","notifications","moveout","evictions"] },
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
   tenant: { label: "Tenant", color: "bg-indigo-50/300", pages: ["tenant_portal"] },
@@ -7901,6 +8148,7 @@ const ALL_NAV = [
   { id: "owners", label: "Owners", icon: "person" },
   { id: "notifications", label: "Notifications", icon: "mail" },
   { id: "moveout", label: "Move-Out", icon: "exit_to_app" },
+  { id: "evictions", label: "Evictions", icon: "gavel" },
 ];
 
 // ============ AUTOPAY / RECURRING RENT ============
@@ -9436,6 +9684,401 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   );
 }
 
+// ============ EVICTION WORKFLOW ============
+const EVICTION_STAGES = [
+  { id: "notice", label: "Notice to Cure/Quit", icon: "mail", color: "bg-amber-500" },
+  { id: "cure_period", label: "Cure Period", icon: "schedule", color: "bg-orange-500" },
+  { id: "filing", label: "Court Filing", icon: "gavel", color: "bg-red-400" },
+  { id: "hearing", label: "Hearing", icon: "event", color: "bg-red-500" },
+  { id: "judgment", label: "Judgment", icon: "description", color: "bg-red-600" },
+  { id: "writ", label: "Writ of Restitution", icon: "assignment", color: "bg-red-700" },
+  { id: "lockout", label: "Lockout", icon: "lock", color: "bg-red-800" },
+  { id: "closed", label: "Closed", icon: "check_circle", color: "bg-slate-500" },
+];
+
+function EvictionWorkflow({ addNotification, userProfile, userRole, companyId }) {
+  const [cases, setCases] = useState([]);
+  const [tenants, setTenants] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [selectedCase, setSelectedCase] = useState(null);
+  const [filterStage, setFilterStage] = useState("all");
+  const [evSearch, setEvSearch] = useState("");
+  const [form, setForm] = useState({ tenant_id: "", tenant_name: "", property: "", reason: "non_payment", notice_type: "pay_or_quit", notice_days: "30", notes: "" });
+  const [stageNote, setStageNote] = useState("");
+  const [stageCost, setStageCost] = useState("");
+  const [stageDate, setStageDate] = useState(formatLocalDate(new Date()));
+
+  useEffect(() => { fetchCases(); fetchTenants(); }, [companyId]);
+
+  async function fetchTenants() {
+    const { data } = await supabase.from("tenants").select("id, name, property, lease_status, balance").eq("company_id", companyId).is("archived_at", null);
+    setTenants(data || []);
+  }
+
+  async function fetchCases() {
+    const { data } = await companyQuery("eviction_cases", companyId).order("created_at", { ascending: false });
+    setCases(data || []);
+    setLoading(false);
+  }
+
+  async function createCase() {
+    if (!guardSubmit("createEviction")) return;
+    try {
+      if (!form.tenant_name || !form.property) { alert("Select a tenant."); return; }
+      const noticeDate = new Date();
+      noticeDate.setDate(noticeDate.getDate() + parseInt(form.notice_days));
+      const caseData = {
+        tenant_id: form.tenant_id,
+        tenant_name: form.tenant_name,
+        property: form.property,
+        reason: form.reason,
+        notice_type: form.notice_type,
+        notice_days: parseInt(form.notice_days),
+        notice_date: formatLocalDate(new Date()),
+        cure_deadline: formatLocalDate(noticeDate),
+        current_stage: "notice",
+        status: "active",
+        notes: form.notes,
+        stage_history: JSON.stringify([{
+          stage: "notice",
+          date: formatLocalDate(new Date()),
+          note: `${form.notice_type.replace(/_/g, " ")} notice issued — ${form.notice_days} day cure period`,
+          cost: 0,
+          by: userProfile?.email,
+        }]),
+        total_costs: 0,
+      };
+      const { error } = await companyInsert("eviction_cases", caseData, companyId);
+      if (error) { alert("Error creating eviction case: " + error.message); return; }
+      // Update tenant status to notice
+      if (form.tenant_id) {
+        await supabase.from("tenants").update({ lease_status: "notice", move_out: formatLocalDate(noticeDate) }).eq("id", form.tenant_id).eq("company_id", companyId);
+      }
+      addNotification("⚖️", `Eviction case started for ${form.tenant_name}`);
+      logAudit("create", "evictions", `Eviction case: ${form.tenant_name} at ${form.property} — ${form.reason}`, "", userProfile?.email, userRole, companyId);
+      setShowForm(false);
+      setForm({ tenant_id: "", tenant_name: "", property: "", reason: "non_payment", notice_type: "pay_or_quit", notice_days: "30", notes: "" });
+      fetchCases();
+      fetchTenants();
+    } finally { guardRelease("createEviction"); }
+  }
+
+  async function advanceStage(evCase, nextStage) {
+    if (!guardSubmit("advanceEviction")) return;
+    try {
+      const history = JSON.parse(evCase.stage_history || "[]");
+      history.push({
+        stage: nextStage,
+        date: stageDate || formatLocalDate(new Date()),
+        note: stageNote,
+        cost: safeNum(stageCost),
+        by: userProfile?.email,
+      });
+      const newCosts = safeNum(evCase.total_costs) + safeNum(stageCost);
+      const updates = {
+        current_stage: nextStage,
+        stage_history: JSON.stringify(history),
+        total_costs: newCosts,
+      };
+      if (nextStage === "closed") updates.status = "closed";
+      if (nextStage === "filing") updates.filing_date = stageDate || formatLocalDate(new Date());
+      if (nextStage === "hearing") updates.hearing_date = stageDate || formatLocalDate(new Date());
+      if (nextStage === "judgment") updates.judgment_date = stageDate || formatLocalDate(new Date());
+      if (nextStage === "lockout") updates.lockout_date = stageDate || formatLocalDate(new Date());
+
+      const { error } = await supabase.from("eviction_cases").update(updates).eq("id", evCase.id).eq("company_id", companyId);
+      if (error) { alert("Error updating case: " + error.message); return; }
+
+      // Post legal costs to accounting if any
+      if (safeNum(stageCost) > 0) {
+        const classId = await getPropertyClassId(evCase.property, companyId);
+        await autoPostJournalEntry({
+          companyId, date: stageDate || formatLocalDate(new Date()),
+          description: `Eviction cost — ${evCase.tenant_name} — ${nextStage.replace(/_/g, " ")}`,
+          reference: `EVICT-${shortId()}`, property: evCase.property,
+          lines: [
+            { account_id: "5300", account_name: "Legal & Eviction Costs", debit: safeNum(stageCost), credit: 0, class_id: classId, memo: `${nextStage}: ${stageNote || "Eviction expense"}` },
+            { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(stageCost), class_id: classId, memo: `Eviction: ${evCase.tenant_name}` },
+          ]
+        });
+      }
+
+      addNotification("⚖️", `Eviction: ${evCase.tenant_name} → ${nextStage.replace(/_/g, " ")}`);
+      logAudit("update", "evictions", `Eviction stage: ${nextStage} for ${evCase.tenant_name}`, evCase.id, userProfile?.email, userRole, companyId);
+      setStageNote(""); setStageCost(""); setStageDate(formatLocalDate(new Date()));
+      fetchCases();
+      // Refresh selected case
+      const { data: refreshed } = await supabase.from("eviction_cases").select("*").eq("id", evCase.id).maybeSingle();
+      if (refreshed) setSelectedCase(refreshed);
+    } finally { guardRelease("advanceEviction"); }
+  }
+
+  async function closeCase(evCase, outcome) {
+    if (!window.confirm(`Close this eviction case as "${outcome}"?`)) return;
+    const history = JSON.parse(evCase.stage_history || "[]");
+    history.push({ stage: "closed", date: formatLocalDate(new Date()), note: `Case closed — ${outcome}`, cost: 0, by: userProfile?.email });
+    await supabase.from("eviction_cases").update({ status: "closed", current_stage: "closed", outcome, stage_history: JSON.stringify(history) }).eq("id", evCase.id).eq("company_id", companyId);
+    addNotification("⚖️", `Eviction closed: ${evCase.tenant_name} — ${outcome}`);
+    logAudit("update", "evictions", `Eviction closed (${outcome}): ${evCase.tenant_name}`, evCase.id, userProfile?.email, userRole, companyId);
+    setSelectedCase(null);
+    fetchCases();
+  }
+
+  if (loading) return <Spinner />;
+
+  const stageIdx = (stage) => EVICTION_STAGES.findIndex(s => s.id === stage);
+  const filtered = cases.filter(c => {
+    if (filterStage !== "all" && c.current_stage !== filterStage && (filterStage !== "active" || c.status !== "active") && (filterStage !== "closed" || c.status !== "closed")) return false;
+    if (evSearch) {
+      const q = evSearch.toLowerCase();
+      if (!c.tenant_name?.toLowerCase().includes(q) && !c.property?.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+
+  const activeCases = cases.filter(c => c.status === "active");
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h2 className="text-2xl font-manrope font-bold text-slate-800">Eviction Tracker</h2>
+          <p className="text-sm text-slate-400">Manage eviction cases from notice to resolution</p>
+        </div>
+        <button onClick={() => setShowForm(!showForm)} className="bg-red-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-red-700">+ New Case</button>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+        <StatCard label="Active Cases" value={activeCases.length} color="text-red-600" />
+        <StatCard label="In Court" value={activeCases.filter(c => ["filing","hearing","judgment","writ"].includes(c.current_stage)).length} color="text-orange-600" />
+        <StatCard label="Total Costs" value={formatCurrency(cases.reduce((s, c) => s + safeNum(c.total_costs), 0))} color="text-slate-700" />
+        <StatCard label="Closed" value={cases.filter(c => c.status === "closed").length} color="text-slate-500" />
+      </div>
+
+      {showForm && (
+        <div className="bg-white rounded-xl border border-red-100 shadow-sm p-4 mb-4">
+          <h3 className="font-semibold text-slate-700 mb-3">Start Eviction Case</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className="text-xs font-medium text-slate-400 mb-1 block">Tenant *</label>
+              <select value={form.tenant_id} onChange={e => { const t = tenants.find(x => x.id === e.target.value); if (t) setForm({ ...form, tenant_id: t.id, tenant_name: t.name, property: t.property || "" }); }} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
+                <option value="">Select tenant...</option>
+                {tenants.filter(t => t.lease_status === "active" || t.lease_status === "notice").map(t => <option key={t.id} value={t.id}>{t.name} — {t.property}{safeNum(t.balance) > 0 ? ` (owes ${formatCurrency(t.balance)})` : ""}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-400 mb-1 block">Reason</label>
+              <select value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
+                <option value="non_payment">Non-Payment of Rent</option>
+                <option value="lease_violation">Lease Violation</option>
+                <option value="holdover">Holdover (Expired Lease)</option>
+                <option value="nuisance">Nuisance / Disturbance</option>
+                <option value="property_damage">Property Damage</option>
+                <option value="unauthorized_occupant">Unauthorized Occupant</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-400 mb-1 block">Notice Type</label>
+              <select value={form.notice_type} onChange={e => setForm({ ...form, notice_type: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
+                <option value="pay_or_quit">Pay or Quit</option>
+                <option value="cure_or_quit">Cure or Quit</option>
+                <option value="unconditional_quit">Unconditional Quit</option>
+                <option value="notice_to_vacate">Notice to Vacate</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-400 mb-1 block">Cure Period (days)</label>
+              <select value={form.notice_days} onChange={e => setForm({ ...form, notice_days: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
+                <option value="3">3 days</option><option value="5">5 days</option><option value="7">7 days</option><option value="10">10 days</option><option value="14">14 days</option><option value="30">30 days</option><option value="60">60 days</option>
+              </select>
+            </div>
+            <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><textarea placeholder="Additional context or details..." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button onClick={createCase} className="bg-red-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-red-700">Start Case</button>
+            <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-2xl">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <input placeholder="Search tenant or property..." value={evSearch} onChange={e => setEvSearch(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm flex-1 min-w-40" />
+        <select value={filterStage} onChange={e => setFilterStage(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
+          <option value="all">All Cases</option>
+          <option value="active">Active Only</option>
+          <option value="closed">Closed Only</option>
+          {EVICTION_STAGES.filter(s => s.id !== "closed").map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+      </div>
+
+      {/* Case Detail Panel */}
+      {selectedCase && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-end">
+          <div className="bg-white w-full max-w-xl h-full flex flex-col shadow-2xl overflow-y-auto">
+            <div className="bg-gradient-to-r from-red-600 to-red-800 p-6 text-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-bold">{selectedCase.tenant_name}</h2>
+                  <div className="text-sm opacity-80">{selectedCase.property}</div>
+                  <div className="text-xs opacity-60 mt-1">{selectedCase.reason?.replace(/_/g, " ")} · {selectedCase.notice_type?.replace(/_/g, " ")}</div>
+                </div>
+                <button onClick={() => setSelectedCase(null)} className="text-white/70 hover:text-white text-2xl">✕</button>
+              </div>
+              <div className="grid grid-cols-3 gap-2 mt-4">
+                <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs opacity-70">Stage</div><div className="text-sm font-bold capitalize">{selectedCase.current_stage?.replace(/_/g, " ")}</div></div>
+                <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs opacity-70">Costs</div><div className="text-sm font-bold">{formatCurrency(selectedCase.total_costs)}</div></div>
+                <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs opacity-70">Status</div><div className="text-sm font-bold capitalize">{selectedCase.status}</div></div>
+              </div>
+            </div>
+
+            {/* Stage Progress */}
+            <div className="px-6 py-4 border-b border-indigo-50">
+              <div className="text-xs font-semibold text-slate-400 uppercase mb-3">Progress</div>
+              <div className="flex items-center gap-1">
+                {EVICTION_STAGES.map((s, i) => {
+                  const currentIdx = stageIdx(selectedCase.current_stage);
+                  const isComplete = i < currentIdx;
+                  const isCurrent = i === currentIdx;
+                  return (
+                    <div key={s.id} className="flex-1">
+                      <div className={`h-2 rounded-full ${isComplete ? "bg-red-500" : isCurrent ? "bg-red-300" : "bg-slate-100"}`} />
+                      <div className={`text-center mt-1 text-[10px] ${isCurrent ? "text-red-600 font-bold" : isComplete ? "text-red-400" : "text-slate-300"}`}>{s.label.split(" ")[0]}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Key Dates */}
+            <div className="px-6 py-4 border-b border-indigo-50">
+              <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Key Dates</div>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div><span className="text-slate-400 text-xs block">Notice Sent</span><span className="font-semibold text-slate-700">{selectedCase.notice_date || "—"}</span></div>
+                <div><span className="text-slate-400 text-xs block">Cure Deadline</span><span className="font-semibold text-red-600">{selectedCase.cure_deadline || "—"}</span></div>
+                {selectedCase.filing_date && <div><span className="text-slate-400 text-xs block">Filed</span><span className="font-semibold text-slate-700">{selectedCase.filing_date}</span></div>}
+                {selectedCase.hearing_date && <div><span className="text-slate-400 text-xs block">Hearing</span><span className="font-semibold text-slate-700">{selectedCase.hearing_date}</span></div>}
+                {selectedCase.judgment_date && <div><span className="text-slate-400 text-xs block">Judgment</span><span className="font-semibold text-slate-700">{selectedCase.judgment_date}</span></div>}
+                {selectedCase.lockout_date && <div><span className="text-slate-400 text-xs block">Lockout</span><span className="font-semibold text-slate-700">{selectedCase.lockout_date}</span></div>}
+              </div>
+            </div>
+
+            {/* Stage History */}
+            <div className="px-6 py-4 border-b border-indigo-50">
+              <div className="text-xs font-semibold text-slate-400 uppercase mb-3">Timeline</div>
+              <div className="space-y-3">
+                {JSON.parse(selectedCase.stage_history || "[]").slice().reverse().map((h, i) => {
+                  const stg = EVICTION_STAGES.find(s => s.id === h.stage);
+                  return (
+                    <div key={i} className="flex gap-3">
+                      <div className={`w-8 h-8 rounded-full ${stg?.color || "bg-slate-400"} flex items-center justify-center shrink-0`}>
+                        <span className="material-icons-outlined text-white text-sm">{stg?.icon || "info"}</span>
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-sm font-semibold text-slate-800 capitalize">{h.stage?.replace(/_/g, " ")}</div>
+                        <div className="text-xs text-slate-400">{h.date} · {h.by}</div>
+                        {h.note && <div className="text-xs text-slate-500 mt-0.5">{h.note}</div>}
+                        {safeNum(h.cost) > 0 && <div className="text-xs text-red-500 font-semibold mt-0.5">Cost: {formatCurrency(h.cost)}</div>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Advance Stage */}
+            {selectedCase.status === "active" && (
+              <div className="px-6 py-4 border-b border-indigo-50">
+                <div className="text-xs font-semibold text-slate-400 uppercase mb-3">Advance to Next Stage</div>
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><label className="text-xs text-slate-400 block mb-1">Date</label><input type="date" value={stageDate} onChange={e => setStageDate(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+                    <div><label className="text-xs text-slate-400 block mb-1">Cost ($)</label><input type="number" value={stageCost} onChange={e => setStageCost(e.target.value)} placeholder="0.00" className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+                  </div>
+                  <div><label className="text-xs text-slate-400 block mb-1">Notes</label><input value={stageNote} onChange={e => setStageNote(e.target.value)} placeholder="Court case #, attorney notes, details..." className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+                  <div className="flex gap-2 flex-wrap">
+                    {EVICTION_STAGES.filter(s => stageIdx(s.id) === stageIdx(selectedCase.current_stage) + 1).map(nextS => (
+                      <button key={nextS.id} onClick={() => advanceStage(selectedCase, nextS.id)} className={`text-xs text-white px-4 py-2 rounded-lg font-medium ${nextS.color} hover:opacity-90`}>
+                        <span className="material-icons-outlined text-sm align-middle mr-1">{nextS.icon}</span>{nextS.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="px-6 py-4">
+              <div className="text-xs font-semibold text-slate-400 uppercase mb-3">Case Actions</div>
+              <div className="flex gap-2 flex-wrap">
+                {selectedCase.status === "active" && (
+                  <>
+                    <button onClick={() => closeCase(selectedCase, "tenant_cured")} className="text-xs bg-green-100 text-green-700 px-3 py-2 rounded-lg hover:bg-green-200 font-medium">Tenant Cured</button>
+                    <button onClick={() => closeCase(selectedCase, "settled")} className="text-xs bg-blue-100 text-blue-700 px-3 py-2 rounded-lg hover:bg-blue-200 font-medium">Settled / Agreement</button>
+                    <button onClick={() => closeCase(selectedCase, "dismissed")} className="text-xs bg-slate-100 text-slate-700 px-3 py-2 rounded-lg hover:bg-slate-200 font-medium">Dismissed</button>
+                    <button onClick={() => closeCase(selectedCase, "completed")} className="text-xs bg-red-100 text-red-700 px-3 py-2 rounded-lg hover:bg-red-200 font-medium">Eviction Complete</button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {selectedCase.notes && (
+              <div className="px-6 py-4 border-t border-indigo-50">
+                <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Case Notes</div>
+                <p className="text-sm text-slate-600">{selectedCase.notes}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Cases List */}
+      <div className="space-y-3">
+        {filtered.map(c => {
+          const currentStage = EVICTION_STAGES.find(s => s.id === c.current_stage);
+          const curIdx = stageIdx(c.current_stage);
+          const daysActive = Math.ceil((new Date() - new Date(c.created_at)) / 86400000);
+          return (
+            <div key={c.id} onClick={() => setSelectedCase(c)} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4 cursor-pointer hover:border-red-200 hover:shadow-md transition-all">
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`w-6 h-6 rounded-full ${currentStage?.color || "bg-slate-400"} flex items-center justify-center`}>
+                      <span className="material-icons-outlined text-white text-xs">{currentStage?.icon || "info"}</span>
+                    </span>
+                    <span className="font-semibold text-slate-800">{c.tenant_name}</span>
+                    {c.status === "closed" && <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">Closed{c.outcome ? ` — ${c.outcome.replace(/_/g, " ")}` : ""}</span>}
+                  </div>
+                  <div className="text-xs text-slate-400">{c.property} · {c.reason?.replace(/_/g, " ")}</div>
+                </div>
+                <div className="text-right">
+                  <div className={`text-xs font-semibold capitalize px-2.5 py-1 rounded-full ${c.status === "active" ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-500"}`}>{currentStage?.label || c.current_stage}</div>
+                  <div className="text-xs text-slate-400 mt-1">{daysActive}d active</div>
+                </div>
+              </div>
+              {/* Mini progress bar */}
+              <div className="flex gap-0.5 mt-3">
+                {EVICTION_STAGES.map((s, i) => (
+                  <div key={s.id} className={`h-1.5 flex-1 rounded-full ${i < curIdx ? "bg-red-400" : i === curIdx ? "bg-red-200" : "bg-slate-100"}`} />
+                ))}
+              </div>
+              <div className="flex gap-4 mt-2 text-xs text-slate-400">
+                <span>Notice: {c.notice_date}</span>
+                <span>Cure by: {c.cure_deadline}</span>
+                {safeNum(c.total_costs) > 0 && <span className="text-red-500">Costs: {formatCurrency(c.total_costs)}</span>}
+              </div>
+            </div>
+          );
+        })}
+        {filtered.length === 0 && <div className="text-center py-12 text-slate-400">No eviction cases{filterStage !== "all" ? " matching filter" : ""}. Click + New Case to start one.</div>}
+      </div>
+    </div>
+  );
+}
+
 const pageComponents = {
   dashboard: Dashboard,
   properties: Properties,
@@ -9455,6 +10098,7 @@ const pageComponents = {
   notifications: EmailNotifications,
   roles: RoleManagement,
   moveout: MoveOutWizard,
+  evictions: EvictionWorkflow,
   tenant_portal: TenantPortal,
   owner_portal: OwnerPortal,
 };
