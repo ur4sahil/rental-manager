@@ -225,6 +225,19 @@ async function autoPostJournalEntry({ date, description, reference, property, li
   // Note: callers should check return value if JE posting is critical
 }
 
+// Batch check if AR accrual exists for a tenant in a given month — avoids N+1 queries
+async function checkAccrualExists(companyId, month, tenantName) {
+  const { data: accrualJEs } = await supabase.from("acct_journal_entries")
+    .select("id, reference").eq("company_id", companyId)
+    .like("reference", `ACCR-${month}%`).neq("status", "voided");
+  if (!accrualJEs || accrualJEs.length === 0) return false;
+  const jeIds = accrualJEs.map(je => je.id);
+  const { data: allLines } = await supabase.from("acct_journal_lines")
+    .select("journal_entry_id, memo").in("journal_entry_id", jeIds);
+  if (!allLines) return false;
+  return allLines.some(l => l.memo && l.memo.includes(tenantName));
+}
+
 async function getPropertyClassId(propertyAddress, companyId) {
   if (!propertyAddress) return null;
   const { data } = await supabase.from("acct_classes").select("id").eq("name", propertyAddress).eq("company_id", companyId).limit(1);
@@ -263,9 +276,20 @@ async function autoPostRentCharges(companyId) {
     const today = new Date();
     const currentMonth = formatLocalDate(today).slice(0, 7); // "2026-03"
 
-    // 1. Fetch all active leases for this company
+    // 1. Fetch all active leases and auto-expire any past end_date
     const { data: leases } = await supabase.from("leases").select("*").eq("company_id", cid).eq("status", "active");
     if (!leases || leases.length === 0) return;
+
+    const todayStr = formatLocalDate(today);
+    const expiredLeases = leases.filter(l => l.end_date && l.end_date < todayStr);
+    if (expiredLeases.length > 0) {
+      for (const el of expiredLeases) {
+        await supabase.from("leases").update({ status: "expired" }).eq("id", el.id).eq("company_id", cid);
+      }
+      logAudit("update", "leases", `Auto-expired ${expiredLeases.length} lease(s) past end date`, "", "system", "system", cid);
+    }
+    const activeLeases = leases.filter(l => !expiredLeases.find(e => e.id === l.id));
+    if (activeLeases.length === 0) return;
 
     // 2. Fetch existing rent charge JEs to avoid duplicates
     const { data: existingJEs } = await supabase.from("acct_journal_entries").select("reference").eq("company_id", cid)
@@ -276,7 +300,7 @@ async function autoPostRentCharges(companyId) {
     let failed = 0;
     const MAX_CHARGES_PER_RUN = 50; // Safety cap — prevents runaway posting
 
-    for (const lease of leases) {
+    for (const lease of activeLeases) {
       if (posted >= MAX_CHARGES_PER_RUN) {
         console.warn("Rent charge cap reached (" + MAX_CHARGES_PER_RUN + "). Remaining charges will post on next run.");
         break;
@@ -909,7 +933,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
 
   const isAdmin = userRole === "admin";
 
-  useEffect(() => { fetchProperties(); fetchChangeRequests(); }, []);
+  useEffect(() => { fetchProperties(); fetchChangeRequests(); }, [companyId]);
 
   async function fetchProperties() {
     // Fetch properties owned by this company
@@ -1664,8 +1688,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
 
   useEffect(() => {
     fetchTenants();
-    supabase.from("properties").select("*").eq("company_id", companyId).then(({ data }) => setProperties(data || []));
-  }, []);
+    supabase.from("properties").select("*").eq("company_id", companyId)
+      .then(({ data, error }) => { if (error) console.warn("Tenants property fetch:", error.message); setProperties(data || []); });
+  }, [companyId]);
 
   async function fetchTenants() {
     const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null);
@@ -1713,9 +1738,17 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
   }
 
   async function deleteTenant(id, name) {
-    // Soft delete — archive instead of permanent deletion
       if (!guardSubmit("deleteTenant")) return;
       try {
+    // Check for outstanding balance before allowing deletion
+    const { data: tenantRow } = await supabase.from("tenants").select("balance").eq("id", id).eq("company_id", companyId).maybeSingle();
+    if (tenantRow && safeNum(tenantRow.balance) > 0) {
+      alert(`Cannot delete tenant "${name}" with an outstanding balance of $${safeNum(tenantRow.balance).toFixed(2)}. Please settle the balance first.`);
+      return;
+    }
+    if (tenantRow && safeNum(tenantRow.balance) < 0) {
+      if (!window.confirm(`Tenant "${name}" has a credit balance of $${Math.abs(safeNum(tenantRow.balance)).toFixed(2)}. Deleting will forfeit this credit. Continue?`)) return;
+    }
     if (!window.confirm(`Delete tenant "${name}"? This will also remove their ledger entries and messages. This cannot be undone.`)) return;
     // Atomic cascade delete — server-side RPC required
     const { error: delRpcErr } = await supabase.rpc("delete_tenant_cascade", { p_company_id: companyId, p_tenant_id: id, p_tenant_name: name });
@@ -1926,8 +1959,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
 
   function openLeaseForSigning(tenant) {
     // Open in new tab with signing canvas
-    const win = window.open("", "_blank", "noopener,noreferrer");
-    win.document.write(`
+    const html = `
       <!DOCTYPE html>
       <html>
       <head>
@@ -2010,8 +2042,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         </script>
       </body>
       </html>
-    `);
-    win.document.close();
+    `;
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const safeWin = window.open(url, "_blank");
+    if (safeWin) safeWin.onload = () => URL.revokeObjectURL(url);
   }
 
   if (loading) return <Spinner />;
@@ -2478,10 +2513,10 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ tenant: "", property: "", amount: "", type: "rent", method: "ACH", status: "paid", date: formatLocalDate(new Date()) });
 
-  useEffect(() => { fetchPayments(); }, []);
+  useEffect(() => { fetchPayments(); }, [companyId]);
 
   async function fetchPayments() {
-    const { data } = await supabase.from("payments").select("*").eq("company_id", companyId).order("date", { ascending: false });
+    const { data } = await supabase.from("payments").select("*").eq("company_id", companyId).order("date", { ascending: false }).limit(500);
     setPayments(data || []);
     setLoading(false);
   }
@@ -2518,20 +2553,15 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
     const month = form.date.slice(0, 7);
     let hasAccrual = false;
     if (!isLateFee) {
-      const { data: accrualJEs } = await supabase.from("acct_journal_entries").select("id, reference").eq("company_id", companyId).like("reference", `ACCR-${month}%`).neq("status", "voided");
-      if (accrualJEs && accrualJEs.length > 0) {
-        for (const je of accrualJEs) {
-          const { data: jLines } = await supabase.from("acct_journal_lines").select("memo").eq("journal_entry_id", je.id);
-          if (jLines && jLines.some(l => l.memo && l.memo.includes(form.tenant))) { hasAccrual = true; break; }
-        }
-      }
+      hasAccrual = await checkAccrualExists(companyId, month, form.tenant);
     } else {
       const { data: lateJEs } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).ilike("description", `%Late fee%${form.tenant}%`);
       if (lateJEs && lateJEs.length > 0) hasAccrual = true;
     }
+    // Post GL entry FIRST — only update tenant balance if GL succeeds
+    let jeId = null;
     if (hasAccrual) {
-      // Settle AR: DR Bank, CR Accounts Receivable (revenue already recognized at accrual)
-      const _jeOk = await autoPostJournalEntry({
+      jeId = await autoPostJournalEntry({
         companyId,
         date: form.date,
         description: `Payment received — ${form.tenant} — ${form.property} (settling AR)`,
@@ -2542,13 +2572,10 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: `AR settlement — ${form.tenant}` },
         ]
       });
-      if (!_jeOk) { alert("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module."); }
-      
     } else {
-      // No accrual: direct revenue (cash basis) DR Bank, CR Revenue
       const revenueAcct = isLateFee ? "4010" : "4000";
       const revenueAcctName = isLateFee ? "Late Fee Income" : "Rental Income";
-      const _jeOk = await autoPostJournalEntry({
+      jeId = await autoPostJournalEntry({
         companyId,
         date: form.date,
         description: `${form.type === "rent" ? "Rent" : form.type} payment — ${form.tenant} — ${form.property}`,
@@ -2559,27 +2586,29 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
           { account_id: revenueAcct, account_name: revenueAcctName, debit: 0, credit: amt, class_id: classId, memo: `${form.tenant} — ${form.property}` },
         ]
       });
-      if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
-      
+    }
+    if (!jeId) {
+      console.error("GL posting failed for payment — tenant balance NOT updated to prevent drift");
+      alert("Payment was saved but the accounting entry failed to post. Tenant balance was NOT updated. Please check the Accounting module and post manually if needed.");
     }
     addNotification("💳", `Payment recorded: ${formatCurrency(form.amount)} from ${form.tenant}`);
     logAudit("create", "payments", `Payment: ${formatCurrency(form.amount)} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole, companyId);
 
-    // Update tenant balance and create ledger entry
-    const { data: tenantRow } = await supabase.from("tenants").select("id, balance").eq("name", form.tenant).eq("company_id", companyId).maybeSingle();
-    if (tenantRow) {
-      const payAmt = Number(form.amount);
-      // Decrease balance (payment reduces what tenant owes)
-      try {
-        const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -payAmt });
-        if (balErr) alert("Balance update failed: " + balErr.message + ". Please verify the tenant balance.");
-      } catch (e) { console.warn("Balance RPC error:", e.message); }
-      // Create ledger entry
-      await safeLedgerInsert({ company_id: companyId,
-        tenant: form.tenant, property: form.property,
-        date: form.date, description: `${form.type} payment (${form.method})`,
-        amount: -payAmt, type: "payment", balance: safeNum(tenantRow.balance) - payAmt,
-      });
+    // Update tenant balance and create ledger entry ONLY if GL posted successfully
+    if (jeId) {
+      const { data: tenantRow } = await supabase.from("tenants").select("id, balance").eq("name", form.tenant).eq("company_id", companyId).maybeSingle();
+      if (tenantRow) {
+        const payAmt = Number(form.amount);
+        try {
+          const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -payAmt });
+          if (balErr) alert("Balance update failed: " + balErr.message + ". Please verify the tenant balance.");
+        } catch (e) { console.warn("Balance RPC error:", e.message); }
+        await safeLedgerInsert({ company_id: companyId,
+          tenant: form.tenant, property: form.property,
+          date: form.date, description: `${form.type} payment (${form.method})`,
+          amount: -payAmt, type: "payment", balance: safeNum(tenantRow.balance) - payAmt,
+        });
+      }
     }
 
     setShowForm(false);
@@ -2669,10 +2698,10 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
   const photoRef = useRef();
   const [form, setForm] = useState({ property: "", tenant: "", issue: "", priority: "normal", status: "open", assigned: "", cost: 0, notes: "" });
 
-  useEffect(() => { fetchWorkOrders(); }, []);
+  useEffect(() => { fetchWorkOrders(); }, [companyId]);
 
   async function fetchWorkOrders() {
-    const { data } = await supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false });
+    const { data } = await supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }).limit(500);
     setWorkOrders(data || []);
     setLoading(false);
   }
@@ -2901,10 +2930,10 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
   const [utilFilterStatus, setUtilFilterStatus] = useState("all");
   const [utilFilterProp, setUtilFilterProp] = useState("all");
 
-  useEffect(() => { fetchUtilities(); }, []);
+  useEffect(() => { fetchUtilities(); }, [companyId]);
 
   async function fetchUtilities() {
-    const { data } = await supabase.from("utilities").select("*").eq("company_id", companyId).order("due", { ascending: true });
+    const { data } = await supabase.from("utilities").select("*").eq("company_id", companyId).order("due", { ascending: true }).limit(500);
     setUtilities(data || []);
     setLoading(false);
   }
@@ -3140,31 +3169,61 @@ const acctFmtDate = (d) => { if (!d) return ""; const [y,m,dd] = d.split("-"); r
 const acctToday = () => formatLocalDate(new Date());
 const getNormalBalance = (type) => DEBIT_NORMAL.includes(type) ? "debit" : "credit";
 
-const calcAccountBalance = (accountId, journalEntries, account) => {
-  let balance = 0;
-  const nb = getNormalBalance(account.type);
-  journalEntries.filter(je => je.status === "posted").forEach(je => {
-    (je.lines || []).filter(l => l.account_id === accountId).forEach(l => {
-      balance += nb === "debit" ? (safeNum(l.debit) - safeNum(l.credit)) : (safeNum(l.credit) - safeNum(l.debit));
-    });
-  });
-  return balance;
+// Build a single-pass index of account balances from journal lines — O(n) instead of O(accounts × lines)
+const buildBalanceIndex = (journalEntries, filterFn = null) => {
+  const index = {};
+  const classIndex = {};
+  for (const je of journalEntries) {
+    if (je.status !== "posted") continue;
+    if (filterFn && !filterFn(je)) continue;
+    for (const l of (je.lines || [])) {
+      const aid = l.account_id;
+      if (!index[aid]) index[aid] = { debit: 0, credit: 0 };
+      index[aid].debit += safeNum(l.debit);
+      index[aid].credit += safeNum(l.credit);
+      if (l.class_id) {
+        const ck = aid + "_" + l.class_id;
+        if (!classIndex[ck]) classIndex[ck] = { debit: 0, credit: 0 };
+        classIndex[ck].debit += safeNum(l.debit);
+        classIndex[ck].credit += safeNum(l.credit);
+      }
+    }
+  }
+  return { index, classIndex };
 };
 
-const calcAllBalances = (accounts, journalEntries) => accounts.map(a => ({ ...a, computedBalance: calcAccountBalance(a.id, journalEntries, a) }));
+const balanceFromIndex = (idx, accountId, accountType) => {
+  const entry = idx[accountId];
+  if (!entry) return 0;
+  const nb = getNormalBalance(accountType);
+  return nb === "debit" ? entry.debit - entry.credit : entry.credit - entry.debit;
+};
+
+const calcAccountBalance = (accountId, journalEntries, account) => {
+  const { index } = buildBalanceIndex(journalEntries);
+  return balanceFromIndex(index, accountId, account.type);
+};
+
+const calcAllBalances = (accounts, journalEntries) => {
+  const { index } = buildBalanceIndex(journalEntries);
+  return accounts.map(a => ({ ...a, computedBalance: balanceFromIndex(index, a.id, a.type) }));
+};
 
 const getPLData = (accounts, journalEntries, startDate, endDate, classId = null) => {
   const revTypes = ["Revenue","Other Income"];
   const expTypes = ["Expense","Cost of Goods Sold","Other Expense"];
-  const filtered = journalEntries.filter(je => je.status === "posted" && je.date >= startDate && je.date <= endDate);
-  const calc = (aid, atype) => {
-    const nb = getNormalBalance(atype);
-    let bal = 0;
-    filtered.forEach(je => { (je.lines || []).filter(l => l.account_id === aid && (!classId || l.class_id === classId)).forEach(l => { bal += nb === "debit" ? safeNum(l.debit) - safeNum(l.credit) : safeNum(l.credit) - safeNum(l.debit); }); });
-    return bal;
+  const { index, classIndex } = buildBalanceIndex(journalEntries, je => je.date >= startDate && je.date <= endDate);
+  const getBalance = (aid, atype) => {
+    if (classId) {
+      const entry = classIndex[aid + "_" + classId];
+      if (!entry) return 0;
+      const nb = getNormalBalance(atype);
+      return nb === "debit" ? entry.debit - entry.credit : entry.credit - entry.debit;
+    }
+    return balanceFromIndex(index, aid, atype);
   };
-  const revenue = accounts.filter(a => revTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: calc(a.id, a.type) })).filter(a => a.amount !== 0);
-  const expenses = accounts.filter(a => expTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: calc(a.id, a.type) })).filter(a => a.amount !== 0);
+  const revenue = accounts.filter(a => revTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: getBalance(a.id, a.type) })).filter(a => a.amount !== 0);
+  const expenses = accounts.filter(a => expTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: getBalance(a.id, a.type) })).filter(a => a.amount !== 0);
   const totalRevenue = revenue.reduce((s, a) => s + a.amount, 0);
   const totalExpenses = expenses.reduce((s, a) => s + a.amount, 0);
   return { revenue, expenses, totalRevenue, totalExpenses, netIncome: totalRevenue - totalExpenses };
@@ -3172,12 +3231,17 @@ const getPLData = (accounts, journalEntries, startDate, endDate, classId = null)
 
 const getBalanceSheetData = (accounts, journalEntries, asOfDate) => {
   const filtered = journalEntries.filter(je => je.status === "posted" && je.date <= asOfDate);
-  const calc = (aid, atype) => { const nb = getNormalBalance(atype); let b = 0; filtered.forEach(je => { (je.lines || []).filter(l => l.account_id === aid).forEach(l => { b += nb === "debit" ? safeNum(l.debit) - safeNum(l.credit) : safeNum(l.credit) - safeNum(l.debit); }); }); return b; };
-  const assets = accounts.filter(a => a.type === "Asset" && a.is_active).map(a => ({ ...a, amount: calc(a.id, a.type) }));
-  const liabilities = accounts.filter(a => a.type === "Liability" && a.is_active).map(a => ({ ...a, amount: calc(a.id, a.type) }));
-  const equity = accounts.filter(a => a.type === "Equity" && a.is_active).map(a => ({ ...a, amount: calc(a.id, a.type) }));
+  const { index } = buildBalanceIndex(filtered);
+  const acctMap = {}; accounts.forEach(a => { acctMap[a.id] = a; });
+  const assets = accounts.filter(a => a.type === "Asset" && a.is_active).map(a => ({ ...a, amount: balanceFromIndex(index, a.id, a.type) }));
+  const liabilities = accounts.filter(a => a.type === "Liability" && a.is_active).map(a => ({ ...a, amount: balanceFromIndex(index, a.id, a.type) }));
+  const equity = accounts.filter(a => a.type === "Equity" && a.is_active).map(a => ({ ...a, amount: balanceFromIndex(index, a.id, a.type) }));
   let netIncome = 0;
-  filtered.forEach(je => { (je.lines || []).forEach(l => { const acct = accounts.find(a => a.id === l.account_id); if (!acct) return; const nb = getNormalBalance(acct.type); if (["Revenue","Other Income"].includes(acct.type)) netIncome += nb === "credit" ? safeNum(l.credit) - safeNum(l.debit) : safeNum(l.debit) - safeNum(l.credit); if (["Expense","Cost of Goods Sold","Other Expense"].includes(acct.type)) netIncome -= nb === "debit" ? safeNum(l.debit) - safeNum(l.credit) : safeNum(l.credit) - safeNum(l.debit); }); });
+  for (const [aid, entry] of Object.entries(index)) {
+    const acct = acctMap[aid]; if (!acct) continue;
+    if (["Revenue","Other Income"].includes(acct.type)) netIncome += entry.credit - entry.debit;
+    if (["Expense","Cost of Goods Sold","Other Expense"].includes(acct.type)) netIncome -= entry.debit - entry.credit;
+  }
 
   // Build AR sub-ledger and aging using dynamic AR account IDs
   const arAccountIds = new Set(accounts.filter(a => a.name === "Accounts Receivable").map(a => a.id));
@@ -3232,11 +3296,10 @@ const getBalanceSheetData = (accounts, journalEntries, asOfDate) => {
 };
 
 const getTrialBalance = (accounts, journalEntries, endDate) => {
-  const filtered = journalEntries.filter(je => je.status === "posted" && je.date <= endDate);
+  const { index } = buildBalanceIndex(journalEntries, je => je.date <= endDate);
   return accounts.filter(a => a.is_active).map(a => {
-    let td = 0, tc = 0;
-    filtered.forEach(je => { (je.lines || []).filter(l => l.account_id === a.id).forEach(l => { td += safeNum(l.debit); tc += safeNum(l.credit); }); });
-    const net = td - tc;
+    const entry = index[a.id];
+    const net = entry ? entry.debit - entry.credit : 0;
     return { ...a, debitBalance: net > 0 ? net : 0, creditBalance: net < 0 ? Math.abs(net) : 0 };
   }).filter(a => a.debitBalance !== 0 || a.creditBalance !== 0);
 };
@@ -3257,17 +3320,27 @@ const getGeneralLedger = (accountId, accounts, journalEntries) => {
 };
 
 const getClassReport = (accounts, journalEntries, classes, startDate, endDate) => {
-  const filtered = journalEntries.filter(je => je.status === "posted" && je.date >= startDate && je.date <= endDate);
+  const acctMap = {}; accounts.forEach(a => { acctMap[a.id] = a; });
+  const classData = {};
+  for (const je of journalEntries) {
+    if (je.status !== "posted" || je.date < startDate || je.date > endDate) continue;
+    for (const l of (je.lines || [])) {
+      if (!l.class_id) continue;
+      if (!classData[l.class_id]) classData[l.class_id] = { revenue: 0, expenses: 0 };
+      const acct = acctMap[l.account_id]; if (!acct) continue;
+      if (["Revenue","Other Income"].includes(acct.type)) classData[l.class_id].revenue += safeNum(l.credit) - safeNum(l.debit);
+      if (["Expense","Cost of Goods Sold","Other Expense"].includes(acct.type)) classData[l.class_id].expenses += safeNum(l.debit) - safeNum(l.credit);
+    }
+  }
   return classes.map(cls => {
-    let revenue = 0, expenses = 0;
-    filtered.forEach(je => { (je.lines || []).filter(l => l.class_id === cls.id).forEach(l => { const acct = accounts.find(a => a.id === l.account_id); if (!acct) return; if (["Revenue","Other Income"].includes(acct.type)) revenue += safeNum(l.credit) - safeNum(l.debit); if (["Expense","Cost of Goods Sold","Other Expense"].includes(acct.type)) expenses += safeNum(l.debit) - safeNum(l.credit); }); });
-    return { ...cls, revenue, expenses, netIncome: revenue - expenses };
+    const d = classData[cls.id] || { revenue: 0, expenses: 0 };
+    return { ...cls, revenue: d.revenue, expenses: d.expenses, netIncome: d.revenue - d.expenses };
   });
 };
 
 const validateJE = (lines) => {
-  const td = lines.reduce((s,l) => s + (parseFloat(l.debit) || 0), 0);
-  const tc = lines.reduce((s,l) => s + (parseFloat(l.credit) || 0), 0);
+  const td = lines.reduce((s,l) => s + safeNum(l.debit), 0);
+  const tc = lines.reduce((s,l) => s + safeNum(l.credit), 0);
   return { isValid: Math.abs(td - tc) < 0.005, totalDebit: td, totalCredit: tc, difference: Math.abs(td - tc) };
 };
 
@@ -4310,7 +4383,7 @@ function Accounting({ companyId, activeCompany }) {
   const [activeTab, setActiveTab] = useState("overview");
   const companyName = activeCompany?.name || "My Company";
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => { fetchAll(); }, [companyId]);
 
   async function fetchAll() {
     setLoading(true);
@@ -4417,6 +4490,11 @@ function Accounting({ companyId, activeCompany }) {
       console.warn("addJE RPC fallback:", rpcErr?.message);
     } catch (e) { console.warn("addJE RPC not available:", e.message); }
     // Fallback: client-side with cleanup
+    // Validate DR/CR balance before inserting
+    if (lines?.length > 0) {
+      const v = validateJE(lines);
+      if (!v.isValid) { alert("Journal entry is out of balance by $" + v.difference.toFixed(2) + ". Debits must equal credits."); return; }
+    }
     const number = nextJENumber(journalEntries);
     const jeId = generateId("je");
     const { error: headerErr } = await supabase.from("acct_journal_entries").insert([{ company_id: companyId, id: jeId, number, date: header.date, description: header.description, reference: header.reference || "", property: header.property || "", status: header.status || "draft" }]);
@@ -4670,10 +4748,10 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
   const fileRef = useRef();
   const [uploading, setUploading] = useState(false);
 
-  useEffect(() => { fetchDocs(); }, []);
+  useEffect(() => { fetchDocs(); }, [companyId]);
 
   async function fetchDocs() {
-    const { data } = await supabase.from("documents").select("*").eq("company_id", companyId).order("uploaded_at", { ascending: false });
+    const { data } = await supabase.from("documents").select("*").eq("company_id", companyId).order("uploaded_at", { ascending: false }).limit(500);
     setDocs(data || []);
     setLoading(false);
   }
@@ -4874,7 +4952,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId }) {
 
   const [checklist, setChecklist] = useState({});
 
-  useEffect(() => { fetchInspections(); }, []);
+  useEffect(() => { fetchInspections(); }, [companyId]);
 
   async function fetchInspections() {
     const { data } = await supabase.from("inspections").select("*").eq("company_id", companyId).order("date", { ascending: false });
@@ -5041,7 +5119,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
   const [templateForm, setTemplateForm] = useState({ name: "", description: "", clauses: "", special_terms: "", default_deposit_months: "1", default_lease_months: "12", default_escalation_pct: "3", payment_due_day: "1" });
   const [depositForm, setDepositForm] = useState({ amount_returned: "", deductions: "", return_date: formatLocalDate(new Date()) });
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [companyId]);
 
   async function fetchData() {
     setLoading(true);
@@ -5558,7 +5636,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
     due_date: "", payment_method: "", notes: "",
   });
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [companyId]);
 
   async function fetchData() {
     setLoading(true);
@@ -5921,7 +5999,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
     bank_account: "", management_fee_pct: "10", notes: "", status: "active",
   });
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [companyId]);
 
   async function fetchData() {
     setLoading(true);
@@ -6356,7 +6434,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
   const [showReconcile, setShowReconcile] = useState(false);
   const [viewRecon, setViewRecon] = useState(null);
 
-  useEffect(() => { fetchRecons(); }, []);
+  useEffect(() => { fetchRecons(); }, [companyId]);
 
   async function fetchRecons() {
     const { data } = await supabase.from("bank_reconciliations").select("*").eq("company_id", companyId).order("created_at", { ascending: false });
@@ -6603,7 +6681,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
     inspection_due: { label: "Inspection Reminder", icon: "\ud83d\udd0d", desc: "Sent before scheduled inspection" },
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [companyId]);
 
   async function fetchData() {
     setLoading(true);
@@ -7370,7 +7448,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
   const [form, setForm] = useState({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "" });
   const [hoaFilter, setHoaFilter] = useState("all");
 
-  useEffect(() => { fetchHOA(); }, []);
+  useEffect(() => { fetchHOA(); }, [companyId]);
 
   async function fetchHOA() {
     const { data } = await supabase.from("hoa_payments").select("*").eq("company_id", companyId).order("due_date", { ascending: false });
@@ -7516,7 +7594,7 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
 
-  useEffect(() => { fetchArchived(); }, []);
+  useEffect(() => { fetchArchived(); }, [companyId]);
 
   async function fetchArchived() {
     setLoading(true);
@@ -7657,7 +7735,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ tenant: "", property: "", amount: "", frequency: "monthly", day_of_month: "1", start_date: "", end_date: "", method: "ACH", active: true });
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [companyId]);
 
   async function fetchData() {
     try {
@@ -7720,13 +7798,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
     const amt = safeNum(s.amount);
     const month = today.slice(0, 7);
     let hasAccrual = false;
-    const { data: accrualJEs } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).like("reference", `ACCR-${month}%`).neq("status", "voided");
-    if (accrualJEs && accrualJEs.length > 0) {
-      for (const je of accrualJEs) {
-        const { data: jLines } = await supabase.from("acct_journal_lines").select("memo").eq("journal_entry_id", je.id);
-        if (jLines && jLines.some(l => l.memo && l.memo.includes(s.tenant))) { hasAccrual = true; break; }
-      }
-    }
+    hasAccrual = await checkAccrualExists(companyId, month, s.tenant);
     if (hasAccrual) {
       const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Autopay received — " + s.tenant + " — " + s.property + " (settling AR)", reference: "APAY-" + shortId(), property: s.property,
         lines: [
@@ -7877,7 +7949,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: "Standard Late Fee", grace_days: "5", fee_amount: "50", fee_type: "flat" });
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [companyId]);
 
   async function fetchData() {
     try {
@@ -8159,13 +8231,7 @@ function TenantPortal({ currentUser, companyId }) {
       const classId = await getPropertyClassId(tenantData.property, companyId);
       const month = today.slice(0, 7);
       let hasAccrual = false;
-      const { data: accrualJEs } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).like("reference", "ACCR-" + month + "%").neq("status", "voided");
-      if (accrualJEs && accrualJEs.length > 0) {
-        for (const je of accrualJEs) {
-          const { data: jLines } = await supabase.from("acct_journal_lines").select("memo").eq("journal_entry_id", je.id);
-          if (jLines && jLines.some(l => l.memo && l.memo.includes(tenantData.name))) { hasAccrual = true; break; }
-        }
-      }
+      hasAccrual = await checkAccrualExists(companyId, month, tenantData.name);
       if (hasAccrual) {
         const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Online payment — " + tenantData.name + " — " + tenantData.property + " (settling AR)", reference: "SPAY-" + shortId(), property: tenantData.property,
           lines: [
@@ -8532,7 +8598,7 @@ function RoleManagement({ addNotification, companyId }) {
   // All modules that can be assigned (admin and tenant are fixed, not customizable)
   const CUSTOMIZABLE_ROLES = ["office_assistant", "accountant", "maintenance"];
 
-  useEffect(() => { fetchUsers(); }, []);
+  useEffect(() => { fetchUsers(); }, [companyId]);
 
   async function fetchUsers() {
     const { data } = await supabase.from("app_users").select("*").eq("company_id", companyId).order("created_at", { ascending: false });
@@ -8890,7 +8956,7 @@ function AuditTrail({ companyId }) {
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
 
-  useEffect(() => { fetchLogs(); }, []);
+  useEffect(() => { fetchLogs(); }, [companyId]);
 
   async function fetchLogs() {
     setLoading(true);
