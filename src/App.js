@@ -403,7 +403,7 @@ const statusColors = {
   notice: "bg-orange-100 text-orange-700",
   open: "bg-blue-100 text-blue-700",
   in_progress: "bg-purple-100 text-purple-700",
-  completed: "bg-gray-100 text-gray-600",
+  completed: "bg-slate-100 text-slate-500",
   paid: "bg-green-100 text-green-700",
   partial: "bg-yellow-100 text-yellow-700",
   unpaid: "bg-red-100 text-red-700",
@@ -414,7 +414,7 @@ const statusColors = {
 const priorityColors = {
   emergency: "bg-red-500 text-white",
   normal: "bg-blue-100 text-blue-700",
-  low: "bg-gray-100 text-gray-600",
+  low: "bg-slate-100 text-slate-500",
 };
 
 // ============ SHARED COMPONENTS ============
@@ -478,7 +478,7 @@ function PropertySelect({ value, onChange, className = "", companyId }) {
     supabase.from("properties").select("id, address, type").eq("company_id", companyId).order("address").then(({ data }) => setProperties(data || []));
   }, [companyId]);
   return (
-    <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel ? sel.id : null); }} className={`border border-gray-200 rounded-lg px-3 py-2 text-sm ${className}`}>
+    <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel ? sel.id : null); }} className={`border border-indigo-100 rounded-2xl px-3 py-2 text-sm ${className}`}>
       <option value="">Select property...</option>
       {properties.map(p => <option key={p.id} value={p.address}>{p.address}</option>)}
     </select>
@@ -503,7 +503,7 @@ function LandingPage({ onGetStarted }) {
         <h1 className="text-4xl md:text-5xl font-manrope font-extrabold text-slate-900 mb-4 leading-tight">Property Management<br />Made Simple</h1>
         <p className="text-lg text-slate-400 mb-12 max-w-xl mx-auto">Manage properties, tenants, rent, maintenance, and accounting — all in one place.</p>
 
-        <h2 className="text-lg font-manrope font-bold text-slate-700 mb-6">I am a...</h2>
+        <h2 className="text-lg font-manrope font-manrope font-bold text-slate-700 mb-6">I am a...</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
           <button onClick={() => onGetStarted("signup_pm")} className="bg-white rounded-3xl border border-indigo-100 p-8 text-center hover:border-indigo-300 hover:shadow-card transition-all group">
             <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
@@ -649,10 +649,10 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
           <button onClick={onBack} className="text-xl font-bold text-indigo-700">🏡 PropManager</button>
         </nav>
         <div className="flex-1 flex items-center justify-center px-4">
-          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 w-full max-w-sm text-center">
+          <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-8 w-full max-w-sm text-center">
             <div className="text-4xl mb-3">✅</div>
-            <h2 className="text-xl font-bold text-gray-800 mb-2">Account Created!</h2>
-            <p className="text-sm text-gray-500 mb-4">Check your email for a confirmation link. Once confirmed, you can sign in.</p>
+            <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-2">Account Created!</h2>
+            <p className="text-sm text-slate-400 mb-4">Check your email for a confirmation link. Once confirmed, you can sign in.</p>
             <button onClick={() => { setSignupSuccess(false); setMode("login"); setError(""); }} className="bg-indigo-600 text-white py-2.5 px-6 rounded-lg font-semibold text-sm hover:bg-indigo-700">Back to Sign In</button>
           </div>
         </div>
@@ -669,42 +669,42 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
         <button onClick={onBack} className="text-xl font-bold text-indigo-700">🏡 PropManager</button>
       </nav>
       <div className="flex-1 flex items-center justify-center px-4">
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 w-full max-w-sm">
+        <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-8 w-full max-w-sm">
           {isSignup && (
             <div className="text-center mb-4">
               <span className="text-3xl">{typeInfo.icon}</span>
-              <h2 className="text-xl font-bold text-gray-800 mt-2">{typeInfo.title}</h2>
-              <p className="text-sm text-gray-400">{typeInfo.subtitle}</p>
+              <h2 className="text-2xl font-manrope font-bold text-slate-800 mt-2">{typeInfo.title}</h2>
+              <p className="text-sm text-slate-400">{typeInfo.subtitle}</p>
             </div>
           )}
           {!isSignup && (
             <>
-              <h2 className="text-2xl font-bold text-gray-800 mb-1">Welcome back</h2>
-              <p className="text-sm text-gray-400 mb-6">Sign in to your account</p>
+              <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-1">Welcome back</h2>
+              <p className="text-sm text-slate-400 mb-6">Sign in to your account</p>
             </>
           )}
           {error && <div className="bg-red-50 text-red-600 text-xs rounded-lg px-3 py-2 mb-4">{error}</div>}
 
           {isSignup && (
             <div className="mb-4">
-              <label className="text-xs font-medium text-gray-600 block mb-1">Full Name</label>
-              <input value={name} onChange={e => setName(e.target.value)} placeholder="John Smith" className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
+              <label className="text-xs font-medium text-slate-500 block mb-1">Full Name</label>
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="John Smith" className="w-full border border-indigo-100 rounded-2xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
             </div>
           )}
           <div className="mb-4">
-            <label className="text-xs font-medium text-gray-600 block mb-1">Email</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
+            <label className="text-xs font-medium text-slate-500 block mb-1">Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" className="w-full border border-indigo-100 rounded-2xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
           </div>
           <div className="mb-4">
-            <label className="text-xs font-medium text-gray-600 block mb-1">Password</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" onKeyDown={e => e.key === "Enter" && (isSignup ? handleSignup(mode.replace("signup_", "")) : handleLogin())} />
+            <label className="text-xs font-medium text-slate-500 block mb-1">Password</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full border border-indigo-100 rounded-2xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" onKeyDown={e => e.key === "Enter" && (isSignup ? handleSignup(mode.replace("signup_", "")) : handleLogin())} />
           </div>
 
           {mode === "signup_tenant" && (
             <div className="mb-4">
-              <label className="text-xs font-medium text-gray-600 block mb-1">Invite Code *</label>
+              <label className="text-xs font-medium text-slate-500 block mb-1">Invite Code *</label>
               <input value={inviteCode} onChange={e => setInviteCode(e.target.value.toUpperCase())} placeholder="e.g. TNT-38472916" className="w-full border border-amber-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500 bg-amber-50 font-mono tracking-wider" />
-              <p className="text-xs text-gray-400 mt-1">Check your invite email from your landlord or property manager</p>
+              <p className="text-xs text-slate-400 mt-1">Check your invite email from your landlord or property manager</p>
             </div>
           )}
 
@@ -793,7 +793,7 @@ function Dashboard({ notifications, setPage, companyId }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <h2 className="text-xl font-bold text-gray-800">Dashboard</h2>
+        <h2 className="text-2xl font-manrope font-bold text-slate-800">Dashboard</h2>
         {/* Monthly charges are posted automatically on the 1st of each month */}
         <button style={{display:"none"}} onClick={async () => {
           setRentPostLoading(true);
@@ -830,7 +830,7 @@ function Dashboard({ notifications, setPage, companyId }) {
           setPayments(refreshPay || []);
           const { data: refreshT } = await companyQuery("tenants", companyId);
           setTenants(refreshT || []);
-        }} disabled={rentPostLoading} className="flex items-center gap-2 bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+        }} disabled={rentPostLoading} className="flex items-center gap-2 bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700 disabled:opacity-50">
           {rentPostLoading ? "Processing..." : "⚡ Run Monthly Charges"}
           {lastRentPost && <span className="text-xs text-indigo-200">Last: {lastRentPost}</span>}
         </button>
@@ -840,7 +840,7 @@ function Dashboard({ notifications, setPage, companyId }) {
       {notifications.length > 0 && (
         <div className="mb-5 space-y-2">
           {notifications.slice(0, 3).map(n => (
-            <div key={n.id} className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 flex items-center justify-between">
+            <div key={n.id} className="bg-indigo-50 border border-indigo-100 rounded-2xl px-4 py-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span>{n.icon}</span>
                 <span className="text-sm text-indigo-800">{n.message}</span>
@@ -864,49 +864,49 @@ function Dashboard({ notifications, setPage, companyId }) {
         <StatCard onClick={() => setPage("utilities")} label="Pending Utilities" value={utilities.filter(u => u.status === "pending").length} sub="awaiting payment" color="text-yellow-600" />
       </div>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <h3 className="font-semibold text-gray-700 mb-3">Lease Expirations</h3>
+        <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
+          <h3 className="font-semibold text-slate-700 mb-3">Lease Expirations</h3>
           {tenants.filter(t => (t.lease_end_date || t.move_out) && parseLocalDate(t.lease_end_date || t.move_out) >= new Date() && Math.ceil((parseLocalDate(t.lease_end_date || t.move_out) - new Date()) / 86400000) <= 90).map(t => (
-            <div key={t.id} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
+            <div key={t.id} className="flex justify-between items-center py-2 border-b border-indigo-50/50 last:border-0">
               <div>
-                <div className="text-sm font-medium text-gray-800">{t.name}</div>
-                <div className="text-xs text-gray-400">{t.property}</div>
+                <div className="text-sm font-medium text-slate-800">{t.name}</div>
+                <div className="text-xs text-slate-400">{t.property}</div>
               </div>
               <div className="text-sm text-orange-500 font-semibold">{t.move_out}</div>
             </div>
           ))}
-          {tenants.filter(t => t.move_out).length === 0 && <div className="text-sm text-gray-400 text-center py-4">No upcoming expirations</div>}
+          {tenants.filter(t => t.move_out).length === 0 && <div className="text-sm text-slate-400 text-center py-4">No upcoming expirations</div>}
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <h3 className="font-semibold text-gray-700 mb-3">Recent Maintenance</h3>
+        <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
+          <h3 className="font-semibold text-slate-700 mb-3">Recent Maintenance</h3>
           {workOrders.slice(0, 3).map(w => (
-            <div key={w.id} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
+            <div key={w.id} className="flex justify-between items-center py-2 border-b border-indigo-50/50 last:border-0">
               <div>
-                <div className="text-sm font-medium text-gray-800">{w.issue}</div>
-                <div className="text-xs text-gray-400">{w.property}</div>
+                <div className="text-sm font-medium text-slate-800">{w.issue}</div>
+                <div className="text-xs text-slate-400">{w.property}</div>
               </div>
               <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${priorityColors[w.priority]}`}>{w.priority}</span>
             </div>
           ))}
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <h3 className="font-semibold text-gray-700 mb-3">Utilities Due</h3>
+        <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
+          <h3 className="font-semibold text-slate-700 mb-3">Utilities Due</h3>
           {utilities.filter(u => u.status === "pending").map(u => (
-            <div key={u.id} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
+            <div key={u.id} className="flex justify-between items-center py-2 border-b border-indigo-50/50 last:border-0">
               <div>
-                <div className="text-sm font-medium text-gray-800">{u.provider}</div>
-                <div className="text-xs text-gray-400">{u.property} · {u.responsibility}</div>
+                <div className="text-sm font-medium text-slate-800">{u.provider}</div>
+                <div className="text-xs text-slate-400">{u.property} · {u.responsibility}</div>
               </div>
               <div className="text-right">
-                <div className="text-sm font-semibold text-gray-800">${u.amount}</div>
+                <div className="text-sm font-semibold text-slate-800">${u.amount}</div>
                 <Badge status={u.status} />
               </div>
             </div>
           ))}
-          {utilities.filter(u => u.status === "pending").length === 0 && <div className="text-sm text-gray-400 text-center py-4">No pending utilities</div>}
+          {utilities.filter(u => u.status === "pending").length === 0 && <div className="text-sm text-slate-400 text-center py-4">No pending utilities</div>}
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <h3 className="font-semibold text-gray-700 mb-3">Net Operating Income</h3>
+        <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
+          <h3 className="font-semibold text-slate-700 mb-3">Net Operating Income</h3>
           <div className="space-y-2">
             {[
               ["Gross Rent Collected", `${formatCurrency(totalRent)}`, "text-green-600"],
@@ -915,7 +915,7 @@ function Dashboard({ notifications, setPage, companyId }) {
               ["NOI", `$${(totalRent - workOrders.reduce((s, w) => s + safeNum(w.cost), 0) - utilities.reduce((s, u) => s + safeNum(u.amount), 0)).toLocaleString()}`, "text-blue-700 font-bold"],
             ].map(([l, v, c]) => (
               <div key={l} className="flex justify-between">
-                <span className="text-sm text-gray-600">{l}</span>
+                <span className="text-sm text-slate-500">{l}</span>
                 <span className={`text-sm ${c}`}>{v}</span>
               </div>
             ))}
@@ -1276,8 +1276,8 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold text-gray-800">Properties</h2>
-        <div className="text-xs text-gray-400">
+        <h2 className="text-2xl font-manrope font-bold text-slate-800">Properties</h2>
+        <div className="text-xs text-slate-400">
           {filtered.length} of {properties.length} properties
           {hasManagedProps && <span> · {properties.filter(p => p._ownership === "managed").length} PM-managed</span>}
         </div>
@@ -1296,21 +1296,21 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       )}
 
       {isAdmin && showRequests && pendingRequests.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mb-4 space-y-3">
-          <h3 className="font-semibold text-gray-800">Pending Approval</h3>
+        <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4 mb-4 space-y-3">
+          <h3 className="font-semibold text-slate-800">Pending Approval</h3>
           {pendingRequests.map(req => (
-            <div key={req.id} className="border border-amber-100 rounded-xl p-4 bg-amber-50/30">
+            <div key={req.id} className="border border-amber-100 rounded-3xl p-4 bg-amber-50/30">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${req.request_type === "add" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>{req.request_type === "add" ? "New" : "Edit"}</span>
-                    <span className="text-xs text-gray-400">by {req.requested_by}</span>
+                    <span className="text-xs text-slate-400">by {req.requested_by}</span>
                   </div>
-                  <p className="font-semibold text-gray-800">{req.address}</p>
-                  <p className="text-xs text-gray-500 mt-1">{req.type} · ${req.rent}/mo</p>
+                  <p className="font-semibold text-slate-800">{req.address}</p>
+                  <p className="text-xs text-slate-400 mt-1">{req.type} · ${req.rent}/mo</p>
                 </div>
                 <div className="flex flex-col gap-2 shrink-0">
-                  <input value={reviewNotes[req.id] || ""} onChange={e => setReviewNotes(prev => ({...prev, [req.id]: e.target.value}))} placeholder="Note" className="border border-gray-200 rounded-lg px-2 py-1 text-xs w-32" />
+                  <input value={reviewNotes[req.id] || ""} onChange={e => setReviewNotes(prev => ({...prev, [req.id]: e.target.value}))} placeholder="Note" className="border border-indigo-100 rounded-2xl px-2 py-1 text-xs w-32" />
                   <div className="flex gap-1">
                     <button onClick={() => approveRequest(req)} className="bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-lg">✓ Approve</button>
                     <button onClick={() => rejectRequest(req)} className="bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg">✕ Reject</button>
@@ -1323,45 +1323,45 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       )}
 
       <div className="flex flex-col md:flex-row gap-3 mb-4">
-        <input placeholder="Search properties..." value={search} onChange={e => setSearch(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1" />
-        <select value={filter} onChange={e => setFilter(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+        <input placeholder="Search properties..." value={search} onChange={e => setSearch(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm flex-1" />
+        <select value={filter} onChange={e => setFilter(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
           <option value="all">All Status</option><option value="occupied">Occupied</option><option value="vacant">Vacant</option><option value="maintenance">Maintenance</option>
         </select>
-        <select value={filterType} onChange={e => setFilterType(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+        <select value={filterType} onChange={e => setFilterType(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
           <option value="all">All Types</option>
           {propertyTypes.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
         {hasManagedProps && (
-          <select value={filterOwnership} onChange={e => setFilterOwnership(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+          <select value={filterOwnership} onChange={e => setFilterOwnership(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
             <option value="all">All Properties</option>
             <option value="owned">Owned by Us</option>
             <option value="managed">PM-Managed</option>
           </select>
         )}
         {propertyOwners.length > 1 && (
-          <select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+          <select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
             <option value="all">All Owners</option>
             {propertyOwners.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         )}
         {propertyCities.length > 1 && (
-          <select value={filterCity} onChange={e => setFilterCity(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+          <select value={filterCity} onChange={e => setFilterCity(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
             <option value="all">All Cities</option>
             {propertyCities.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         )}
-        <div className="flex bg-gray-100 rounded-lg p-0.5">
+        <div className="flex bg-indigo-50 rounded-2xl p-0.5">
           {[["card","▦"],["table","☰"],["compact","≡"]].map(([m,icon]) => (
-            <button key={m} onClick={() => setViewMode(m)} className={`px-3 py-1.5 text-sm rounded-md ${viewMode === m ? "bg-white shadow-sm text-indigo-700 font-semibold" : "text-gray-500"}`} title={m}>{icon}</button>
+            <button key={m} onClick={() => setViewMode(m)} className={`px-3 py-1.5 text-sm rounded-md ${viewMode === m ? "bg-white shadow-sm text-indigo-700 font-semibold" : "text-slate-400"}`} title={m}>{icon}</button>
           ))}
         </div>
         {viewMode === "table" && (
           <div className="relative">
-            <button onClick={() => setShowColPicker(!showColPicker)} className="border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-500 hover:bg-gray-50">⚙️ Columns</button>
+            <button onClick={() => setShowColPicker(!showColPicker)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-xs text-slate-400 hover:bg-indigo-50/30">⚙️ Columns</button>
             {showColPicker && (
-              <div className="absolute right-0 top-10 bg-white border border-gray-200 rounded-xl shadow-lg p-3 z-50 w-48">
+              <div className="absolute right-0 top-10 bg-white border border-indigo-100 rounded-3xl shadow-lg p-3 z-50 w-48">
                 {allCols.map(c => (
-                  <label key={c.id} className="flex items-center gap-2 py-1 text-xs text-gray-700 cursor-pointer">
+                  <label key={c.id} className="flex items-center gap-2 py-1 text-xs text-slate-700 cursor-pointer">
                     <input type="checkbox" checked={visibleCols.includes(c.id)} onChange={() => setVisibleCols(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id])} className="rounded" />
                     {c.label}
                   </label>
@@ -1370,7 +1370,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
             )}
           </div>
         )}
-        <button onClick={() => { setEditingProperty(null); setForm({ address_line_1: "", address_line_2: "", city: "", state: "", zip: "", type: "Single Family", status: "vacant", rent: "", security_deposit: "", tenant: "", tenant_email: "", tenant_phone: "", lease_start: "", lease_end: "", notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 whitespace-nowrap">
+        <button onClick={() => { setEditingProperty(null); setForm({ address_line_1: "", address_line_2: "", city: "", state: "", zip: "", type: "Single Family", status: "vacant", rent: "", security_deposit: "", tenant: "", tenant_email: "", tenant_phone: "", lease_start: "", lease_end: "", notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700 whitespace-nowrap">
           {isAdmin ? "+ Add" : "+ Request"}
         </button>
       </div>
@@ -1391,66 +1391,66 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
                 <button onClick={() => setSelectedProperty(null)} className="text-white/70 hover:text-white text-2xl">✕</button>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
-                <div className="bg-white/10 rounded-xl px-3 py-2 text-center"><div className="text-xs opacity-70">Status</div><div className="text-sm font-bold capitalize">{selectedProperty.status}</div></div>
-                <div className="bg-white/10 rounded-xl px-3 py-2 text-center"><div className="text-xs opacity-70">Type</div><div className="text-sm font-bold">{selectedProperty.type}</div></div>
-                <div className="bg-white/10 rounded-xl px-3 py-2 text-center"><div className="text-xs opacity-70">Rent</div><div className="text-sm font-bold">{selectedProperty.rent ? "$" + safeNum(selectedProperty.rent).toLocaleString() : "—"}</div></div>
-                <div className="bg-white/10 rounded-xl px-3 py-2 text-center"><div className="text-xs opacity-70">Lease End</div><div className="text-sm font-bold">{selectedProperty.lease_end || "—"}</div></div>
+                <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs opacity-70">Status</div><div className="text-sm font-bold capitalize">{selectedProperty.status}</div></div>
+                <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs opacity-70">Type</div><div className="text-sm font-bold">{selectedProperty.type}</div></div>
+                <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs opacity-70">Rent</div><div className="text-sm font-bold">{selectedProperty.rent ? "$" + safeNum(selectedProperty.rent).toLocaleString() : "—"}</div></div>
+                <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs opacity-70">Lease End</div><div className="text-sm font-bold">{selectedProperty.lease_end || "—"}</div></div>
               </div>
             </div>
 
             {/* Tenant Info */}
             {selectedProperty.tenant && (
-              <div className="px-6 py-4 border-b border-gray-100">
-                <div className="text-xs font-semibold text-gray-400 uppercase mb-2">Current Tenant</div>
+              <div className="px-6 py-4 border-b border-indigo-50">
+                <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Current Tenant</div>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">{selectedProperty.tenant?.[0]}</div>
                   <div>
-                    <div className="font-semibold text-gray-800">{selectedProperty.tenant}</div>
-                    <div className="text-xs text-gray-400">{selectedProperty._tenantEmail || ""} · {selectedProperty._tenantPhone || ""}</div>
+                    <div className="font-semibold text-slate-800">{selectedProperty.tenant}</div>
+                    <div className="text-xs text-slate-400">{selectedProperty._tenantEmail || ""} · {selectedProperty._tenantPhone || ""}</div>
                   </div>
                 </div>
               </div>
             )}
 
             {/* Property Details */}
-            <div className="px-6 py-4 border-b border-gray-100">
-              <div className="text-xs font-semibold text-gray-400 uppercase mb-2">Details</div>
+            <div className="px-6 py-4 border-b border-indigo-50">
+              <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Details</div>
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><span className="text-gray-400 text-xs block">Security Deposit</span><span className="font-semibold text-gray-700">{selectedProperty.security_deposit ? "$" + safeNum(selectedProperty.security_deposit).toLocaleString() : "—"}</span></div>
-                <div><span className="text-gray-400 text-xs block">Lease Start</span><span className="font-semibold text-gray-700">{selectedProperty.lease_start || "—"}</span></div>
-                {selectedProperty.pm_company_name && <div><span className="text-gray-400 text-xs block">Property Manager</span><span className="font-semibold text-purple-700">{selectedProperty.pm_company_name}</span></div>}
-                {selectedProperty.notes && <div className="col-span-2"><span className="text-gray-400 text-xs block">Notes</span><span className="text-gray-600">{selectedProperty.notes}</span></div>}
+                <div><span className="text-slate-400 text-xs block">Security Deposit</span><span className="font-semibold text-slate-700">{selectedProperty.security_deposit ? "$" + safeNum(selectedProperty.security_deposit).toLocaleString() : "—"}</span></div>
+                <div><span className="text-slate-400 text-xs block">Lease Start</span><span className="font-semibold text-slate-700">{selectedProperty.lease_start || "—"}</span></div>
+                {selectedProperty.pm_company_name && <div><span className="text-slate-400 text-xs block">Property Manager</span><span className="font-semibold text-purple-700">{selectedProperty.pm_company_name}</span></div>}
+                {selectedProperty.notes && <div className="col-span-2"><span className="text-slate-400 text-xs block">Notes</span><span className="text-slate-500">{selectedProperty.notes}</span></div>}
               </div>
             </div>
 
             {/* Documents */}
-            <div className="px-6 py-4 border-b border-gray-100">
-              <div className="text-xs font-semibold text-gray-400 uppercase mb-2">Documents ({propertyDocs.length})</div>
+            <div className="px-6 py-4 border-b border-indigo-50">
+              <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Documents ({propertyDocs.length})</div>
               {propertyDocs.length === 0 ? (
-                <div className="text-sm text-gray-400">No documents uploaded</div>
+                <div className="text-sm text-slate-400">No documents uploaded</div>
               ) : (
                 <div className="space-y-1">
                   {propertyDocs.slice(0, 5).map(d => (
-                    <div key={d.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
-                      <div className="text-sm text-gray-700">{d.name}</div>
+                    <div key={d.id} className="flex items-center justify-between bg-indigo-50/30 rounded-lg px-3 py-2">
+                      <div className="text-sm text-slate-700">{d.name}</div>
                       <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-indigo-600 hover:underline">View</button>
                     </div>
                   ))}
-                  {propertyDocs.length > 5 && <div className="text-xs text-gray-400">+ {propertyDocs.length - 5} more</div>}
+                  {propertyDocs.length > 5 && <div className="text-xs text-slate-400">+ {propertyDocs.length - 5} more</div>}
                 </div>
               )}
             </div>
 
             {/* Work Orders */}
-            <div className="px-6 py-4 border-b border-gray-100">
-              <div className="text-xs font-semibold text-gray-400 uppercase mb-2">Work Orders ({propertyWorkOrders.length})</div>
+            <div className="px-6 py-4 border-b border-indigo-50">
+              <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Work Orders ({propertyWorkOrders.length})</div>
               {propertyWorkOrders.length === 0 ? (
-                <div className="text-sm text-gray-400">No work orders</div>
+                <div className="text-sm text-slate-400">No work orders</div>
               ) : (
                 <div className="space-y-1">
                   {propertyWorkOrders.slice(0, 5).map(w => (
-                    <div key={w.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
-                      <div><div className="text-sm text-gray-700">{w.issue}</div><div className="text-xs text-gray-400">{w.status} · {w.priority}</div></div>
+                    <div key={w.id} className="flex items-center justify-between bg-indigo-50/30 rounded-lg px-3 py-2">
+                      <div><div className="text-sm text-slate-700">{w.issue}</div><div className="text-xs text-slate-400">{w.status} · {w.priority}</div></div>
                       <Badge status={w.status} />
                     </div>
                   ))}
@@ -1461,9 +1461,9 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
             {/* Actions */}
             <div className="px-6 py-4">
               <div className="flex gap-2 flex-wrap">
-                {!isReadOnly(selectedProperty) && <button onClick={() => { setEditingProperty(selectedProperty); setForm({ address_line_1: selectedProperty.address_line_1 || selectedProperty.address || "", address_line_2: selectedProperty.address_line_2 || "", city: selectedProperty.city || "", state: selectedProperty.state || "", zip: selectedProperty.zip || "", type: selectedProperty.type, status: selectedProperty.status, rent: selectedProperty.rent || "", security_deposit: selectedProperty.security_deposit || "", tenant: selectedProperty.tenant || "", tenant_email: selectedProperty._tenantEmail || "", tenant_phone: selectedProperty._tenantPhone || "", lease_start: selectedProperty.lease_start || "", lease_end: selectedProperty.lease_end || "", notes: selectedProperty.notes || "" }); setShowForm(true); setSelectedProperty(null); }} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-indigo-700">Edit Property</button>}
-                <button onClick={() => { setPage("documents"); setSelectedProperty(null); }} className="bg-gray-100 text-gray-600 text-xs px-4 py-2 rounded-lg hover:bg-gray-200">Upload Document</button>
-                <button onClick={() => { setPage("maintenance"); setSelectedProperty(null); }} className="bg-gray-100 text-gray-600 text-xs px-4 py-2 rounded-lg hover:bg-gray-200">New Work Order</button>
+                {!isReadOnly(selectedProperty) && <button onClick={() => { setEditingProperty(selectedProperty); setForm({ address_line_1: selectedProperty.address_line_1 || selectedProperty.address || "", address_line_2: selectedProperty.address_line_2 || "", city: selectedProperty.city || "", state: selectedProperty.state || "", zip: selectedProperty.zip || "", type: selectedProperty.type, status: selectedProperty.status, rent: selectedProperty.rent || "", security_deposit: selectedProperty.security_deposit || "", tenant: selectedProperty.tenant || "", tenant_email: selectedProperty._tenantEmail || "", tenant_phone: selectedProperty._tenantPhone || "", lease_start: selectedProperty.lease_start || "", lease_end: selectedProperty.lease_end || "", notes: selectedProperty.notes || "" }); setShowForm(true); setSelectedProperty(null); }} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">Edit Property</button>}
+                <button onClick={() => { setPage("documents"); setSelectedProperty(null); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-2xl hover:bg-slate-100">Upload Document</button>
+                <button onClick={() => { setPage("maintenance"); setSelectedProperty(null); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-2xl hover:bg-slate-100">New Work Order</button>
               </div>
             </div>
           </div>
@@ -1471,48 +1471,48 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       )}
 
       {showForm && (
-        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm mb-4">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">{editingProperty ? "Edit Property" : "Add Property"}</h3>
+        <div className="bg-white p-4 rounded-xl border border-indigo-50 shadow-sm mb-4">
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">{editingProperty ? "Edit Property" : "Add Property"}</h3>
           {!isAdmin && <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 mb-3">Submitted for admin approval.</p>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Address Line 1 *</label><input placeholder="123 Main St" value={form.address_line_1} onChange={e => setForm({ ...form, address_line_1: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
-            <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Address Line 2</label><input placeholder="Apt 4B, Suite 200, etc." value={form.address_line_2} onChange={e => setForm({ ...form, address_line_2: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">City *</label><input placeholder="Greenbelt" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
+            <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address Line 1 *</label><input placeholder="123 Main St" value={form.address_line_1} onChange={e => setForm({ ...form, address_line_1: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
+            <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address Line 2</label><input placeholder="Apt 4B, Suite 200, etc." value={form.address_line_2} onChange={e => setForm({ ...form, address_line_2: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">City *</label><input placeholder="Greenbelt" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
             <div className="grid grid-cols-2 gap-2">
-              <div><label className="text-xs font-medium text-gray-500 mb-1 block">State *</label><select value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required><option value="">--</option>{US_STATES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-              <div><label className="text-xs font-medium text-gray-500 mb-1 block">ZIP *</label><input placeholder="20770" value={form.zip} onChange={e => setForm({ ...form, zip: e.target.value.replace(/[^\d-]/g, "").slice(0, 10) })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
+              <div><label className="text-xs font-medium text-slate-400 mb-1 block">State *</label><select value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required><option value="">--</option>{US_STATES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+              <div><label className="text-xs font-medium text-slate-400 mb-1 block">ZIP *</label><input placeholder="20770" value={form.zip} onChange={e => setForm({ ...form, zip: e.target.value.replace(/[^\d-]/g, "").slice(0, 10) })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
             </div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Type *</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></select></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Status *</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option></select></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Type *</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full"><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></select></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status *</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full"><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option></select></div>
             {form.status === "occupied" && (<>
               <div className="col-span-1 sm:col-span-2 bg-indigo-50 rounded-lg px-3 py-2"><div className="text-xs font-semibold text-indigo-700">Tenant Information</div></div>
-              <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tenant Name *</label><input placeholder="Jane Doe" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
-              <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tenant Email *</label><input type="email" placeholder="tenant@email.com" value={form.tenant_email} onChange={e => setForm({ ...form, tenant_email: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
-              <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tenant Phone *</label><input type="tel" placeholder="(555) 123-4567" value={form.tenant_phone} onChange={e => setForm({ ...form, tenant_phone: formatPhoneInput(e.target.value) })} maxLength={14} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
+              <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant Name *</label><input placeholder="Jane Doe" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
+              <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant Email *</label><input type="email" placeholder="tenant@email.com" value={form.tenant_email} onChange={e => setForm({ ...form, tenant_email: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
+              <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant Phone *</label><input type="tel" placeholder="(555) 123-4567" value={form.tenant_phone} onChange={e => setForm({ ...form, tenant_phone: formatPhoneInput(e.target.value) })} maxLength={14} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
               <div className="col-span-1 sm:col-span-2 bg-indigo-50 rounded-lg px-3 py-2 mt-1"><div className="text-xs font-semibold text-indigo-700">Lease Details</div></div>
-              <div><label className="text-xs font-medium text-gray-500 mb-1 block">Monthly Rent ($) *</label><input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
-              <div><label className="text-xs font-medium text-gray-500 mb-1 block">Security Deposit ($) *</label><input placeholder="1500" value={form.security_deposit} onChange={e => setForm({ ...form, security_deposit: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
-              <div><label className="text-xs font-medium text-gray-500 mb-1 block">Lease Start Date *</label><input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
-              <div><label className="text-xs font-medium text-gray-500 mb-1 block">Lease End Date *</label><input type="date" value={form.lease_end} onChange={e => { if (form.lease_start && e.target.value && e.target.value <= form.lease_start) { alert("Lease end date must be after lease start date."); return; } setForm({ ...form, lease_end: e.target.value }); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" required /></div>
+              <div><label className="text-xs font-medium text-slate-400 mb-1 block">Monthly Rent ($) *</label><input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
+              <div><label className="text-xs font-medium text-slate-400 mb-1 block">Security Deposit ($) *</label><input placeholder="1500" value={form.security_deposit} onChange={e => setForm({ ...form, security_deposit: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
+              <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Start Date *</label><input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
+              <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease End Date *</label><input type="date" value={form.lease_end} onChange={e => { if (form.lease_start && e.target.value && e.target.value <= form.lease_start) { alert("Lease end date must be after lease start date."); return; } setForm({ ...form, lease_end: e.target.value }); }} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
             </>)}
-            <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Notes</label><textarea placeholder="Any additional notes" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" rows={2} /></div>
+            <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><textarea placeholder="Any additional notes" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={saveProperty} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">{isAdmin ? "Save" : "Submit"}</button>
-            <button onClick={() => { setShowForm(false); setEditingProperty(null); }} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button onClick={() => { setShowForm(false); setEditingProperty(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
           </div>
         </div>
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center"><div className="text-lg font-bold text-gray-800">{properties.length}</div><div className="text-xs text-gray-400">Total</div></div>
-        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center"><div className="text-lg font-bold text-emerald-600">{properties.filter(p => p.status === "occupied").length}</div><div className="text-xs text-gray-400">Occupied</div></div>
-        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center"><div className="text-lg font-bold text-amber-600">{properties.filter(p => p.status === "vacant").length}</div><div className="text-xs text-gray-400">Vacant</div></div>
-        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center"><div className="text-lg font-bold text-indigo-600">${properties.reduce((s, p) => s + safeNum(p.rent), 0).toLocaleString()}</div><div className="text-xs text-gray-400">Total Rent</div></div>
+        <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center"><div className="text-lg font-manrope font-bold text-slate-800">{properties.length}</div><div className="text-xs text-slate-400">Total</div></div>
+        <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center"><div className="text-lg font-bold text-emerald-600">{properties.filter(p => p.status === "occupied").length}</div><div className="text-xs text-slate-400">Occupied</div></div>
+        <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center"><div className="text-lg font-bold text-amber-600">{properties.filter(p => p.status === "vacant").length}</div><div className="text-xs text-slate-400">Vacant</div></div>
+        <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center"><div className="text-lg font-bold text-indigo-600">${properties.reduce((s, p) => s + safeNum(p.rent), 0).toLocaleString()}</div><div className="text-xs text-slate-400">Total Rent</div></div>
       </div>
 
       {showDocChecklist && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+        <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 mb-4">
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-bold text-amber-800">📋 Required Documents for {showDocChecklist.name}</div>
             <button onClick={() => setShowDocChecklist(null)} className="text-amber-400 hover:text-amber-600">✕</button>
@@ -1522,13 +1522,13 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
             {["Signed Lease Agreement", "Government-Issued ID", "Renters Insurance Certificate", "Proof of Utility Transfer"].map(doc => (
               <div key={doc} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-amber-100">
                 <span className="text-amber-400">☐</span>
-                <span className="text-sm text-gray-700">{doc}</span>
+                <span className="text-sm text-slate-700">{doc}</span>
               </div>
             ))}
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={() => { setPage("documents"); setShowDocChecklist(null); }} className="bg-amber-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-amber-700">Upload Documents Now</button>
-            <button onClick={() => { if (isAdmin || window.confirm("Skip document upload? This will require admin approval later.")) setShowDocChecklist(null); }} className="bg-gray-100 text-gray-600 text-xs px-4 py-2 rounded-lg">Skip for Now</button>
+            <button onClick={() => { if (isAdmin || window.confirm("Skip document upload? This will require admin approval later.")) setShowDocChecklist(null); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Skip for Now</button>
           </div>
         </div>
       )}
@@ -1536,29 +1536,29 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       {viewMode === "card" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {filtered.map(p => (
-            <div key={p.id} onClick={() => openPropertyDetail(p)} className={`bg-white rounded-xl border shadow-sm p-4 cursor-pointer hover:shadow-md hover:border-indigo-200 transition-all ${isReadOnly(p) ? "border-purple-200 bg-purple-50/30" : "border-gray-100"}`}>
+            <div key={p.id} onClick={() => openPropertyDetail(p)} className={`bg-white rounded-xl border shadow-sm p-4 cursor-pointer hover:shadow-md hover:border-indigo-200 transition-all ${isReadOnly(p) ? "border-purple-200 bg-purple-50/30" : "border-indigo-50"}`}>
               <div className="flex items-start justify-between mb-2">
                 <div>
-                  <h3 className="font-semibold text-gray-800 text-sm">{p.address_line_1 || p.address}</h3>{(p.city || p.state) && <div className="text-xs text-gray-400">{[p.city, p.state, p.zip].filter(Boolean).join(", ")}</div>}
-                  <p className="text-xs text-gray-400">{p.type}</p>
+                  <h3 className="font-semibold text-slate-800 text-sm">{p.address_line_1 || p.address}</h3>{(p.city || p.state) && <div className="text-xs text-slate-400">{[p.city, p.state, p.zip].filter(Boolean).join(", ")}</div>}
+                  <p className="text-xs text-slate-400">{p.type}</p>
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <Badge status={p.status} label={p.status} />
                   {p.pm_company_name && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">PM: {p.pm_company_name}</span>}
                 </div>
               </div>
-              <div className="text-sm text-gray-600 space-y-1">
+              <div className="text-sm text-slate-500 space-y-1">
                 <div className="flex justify-between"><span>Rent:</span><span className="font-semibold">${safeNum(p.rent).toLocaleString()}</span></div>
                 {p.tenant && <div className="flex justify-between"><span>Tenant:</span><span>{p.tenant}</span></div>}
                 {p.lease_end && <div className="flex justify-between"><span>Lease End:</span><span>{p.lease_end}</span></div>}
               </div>
               {isReadOnly(p) && <div className="mt-2 text-xs text-purple-600 bg-purple-50 rounded-lg px-2 py-1">🔒 Managed property — view only</div>}
-              <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50 flex-wrap" onClick={e => e.stopPropagation()}>
+              <div className="flex gap-2 mt-3 pt-3 border-t border-indigo-50/50 flex-wrap" onClick={e => e.stopPropagation()}>
                 {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
                 {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline">Archive</button>}
                 {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline">Assign PM</button>}
                 {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline">Remove PM</button>}
-                <button onClick={() => loadTimeline(p)} className="text-xs text-gray-400 hover:underline ml-auto">Timeline</button>
+                <button onClick={() => loadTimeline(p)} className="text-xs text-slate-400 hover:underline ml-auto">Timeline</button>
               </div>
             </div>
           ))}
@@ -1566,9 +1566,9 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       )}
 
       {viewMode === "table" && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
+        <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-xs text-gray-400 uppercase">
+            <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
               <tr>
                 {visibleCols.includes("address") && <th className="px-4 py-3 text-left">Address</th>}
                 {visibleCols.includes("type") && <th className="px-4 py-3 text-left">Type</th>}
@@ -1583,15 +1583,15 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
             </thead>
             <tbody>
               {filtered.map(p => (
-                <tr key={p.id} className="border-t border-gray-50 hover:bg-gray-50/50">
-                  {visibleCols.includes("address") && <td className="px-4 py-2.5 font-medium text-gray-800">{p.address}</td>}
-                  {visibleCols.includes("type") && <td className="px-4 py-2.5 text-gray-600">{p.type}</td>}
+                <tr key={p.id} className="border-t border-indigo-50/50 hover:bg-indigo-50/30/50">
+                  {visibleCols.includes("address") && <td className="px-4 py-2.5 font-medium text-slate-800">{p.address}</td>}
+                  {visibleCols.includes("type") && <td className="px-4 py-2.5 text-slate-500">{p.type}</td>}
                   {visibleCols.includes("status") && <td className="px-4 py-2.5"><Badge status={p.status} label={p.status} /></td>}
                   {visibleCols.includes("rent") && <td className="px-4 py-2.5 text-right font-semibold">${safeNum(p.rent).toLocaleString()}</td>}
-                  {visibleCols.includes("tenant") && <td className="px-4 py-2.5 text-gray-600">{p.tenant || "—"}</td>}
-                  {visibleCols.includes("lease_end") && <td className="px-4 py-2.5 text-gray-500">{p.lease_end || "—"}</td>}
-                  {visibleCols.includes("owner_name") && <td className="px-4 py-2.5 text-gray-600">{p.owner_name || "—"}</td>}
-                  {visibleCols.includes("notes") && <td className="px-4 py-2.5 text-xs text-gray-400 max-w-32 truncate">{p.notes || "—"}</td>}
+                  {visibleCols.includes("tenant") && <td className="px-4 py-2.5 text-slate-500">{p.tenant || "—"}</td>}
+                  {visibleCols.includes("lease_end") && <td className="px-4 py-2.5 text-slate-400">{p.lease_end || "—"}</td>}
+                  {visibleCols.includes("owner_name") && <td className="px-4 py-2.5 text-slate-500">{p.owner_name || "—"}</td>}
+                  {visibleCols.includes("notes") && <td className="px-4 py-2.5 text-xs text-slate-400 max-w-32 truncate">{p.notes || "—"}</td>}
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     {p.pm_company_name && <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded mr-2">PM</span>}
                     {isReadOnly(p) && <span className="text-xs text-purple-500 mr-2">🔒 view only</span>}
@@ -1599,34 +1599,34 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
                     {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline mr-2">Archive</button>}
                     {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline mr-2">PM</button>}
                     {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline mr-2">-PM</button>}
-                    <button onClick={() => loadTimeline(p)} className="text-xs text-gray-400 hover:underline">TL</button>
+                    <button onClick={() => loadTimeline(p)} className="text-xs text-slate-400 hover:underline">TL</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {filtered.length === 0 && <div className="text-center py-8 text-gray-400 text-sm">No properties found</div>}
+          {filtered.length === 0 && <div className="text-center py-8 text-slate-400 text-sm">No properties found</div>}
         </div>
       )}
 
       {viewMode === "compact" && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm divide-y divide-gray-50">
+        <div className="bg-white rounded-3xl shadow-card border border-indigo-50 divide-y divide-indigo-50/50">
           {filtered.map(p => (
-            <div key={p.id} className={`flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50/50 ${isReadOnly(p) ? "bg-purple-50/30" : ""}`}>
+            <div key={p.id} className={`flex items-center gap-3 px-4 py-2.5 hover:bg-indigo-50/30/50 ${isReadOnly(p) ? "bg-purple-50/30" : ""}`}>
               <div className={`w-2 h-2 rounded-full ${p.status === "occupied" ? "bg-emerald-500" : p.status === "vacant" ? "bg-amber-500" : "bg-red-500"}`} />
               <div className="flex-1 min-w-0">
-                <span className="text-sm font-medium text-gray-800">{p.address}</span>
-                <span className="text-xs text-gray-400 ml-2">{p.type}</span>
+                <span className="text-sm font-medium text-slate-800">{p.address}</span>
+                <span className="text-xs text-slate-400 ml-2">{p.type}</span>
                 {p.pm_company_name && <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded ml-2">PM: {p.pm_company_name}</span>}
               </div>
-              <span className="text-sm font-semibold text-gray-700">${safeNum(p.rent).toLocaleString()}</span>
-              <span className="text-xs text-gray-500 w-28 truncate">{p.tenant || "—"}</span>
+              <span className="text-sm font-semibold text-slate-700">${safeNum(p.rent).toLocaleString()}</span>
+              <span className="text-xs text-slate-400 w-28 truncate">{p.tenant || "—"}</span>
               <Badge status={p.status} label={p.status} />
               {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
               {isReadOnly(p) && <span className="text-xs text-purple-400">🔒</span>}
             </div>
           ))}
-          {filtered.length === 0 && <div className="text-center py-8 text-gray-400 text-sm">No properties found</div>}
+          {filtered.length === 0 && <div className="text-center py-8 text-slate-400 text-sm">No properties found</div>}
         </div>
       )}
 
@@ -1643,9 +1643,9 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
               </div>
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-600 block mb-1">PM Company's 8-Digit Code</label>
-              <input value={pmCode} onChange={e => setPmCode(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="e.g. 12345678" maxLength={8} className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm font-mono tracking-wider" />
-              <p className="text-xs text-gray-400 mt-1">Ask the property manager for their company code</p>
+              <label className="text-xs font-medium text-slate-500 block mb-1">PM Company's 8-Digit Code</label>
+              <input value={pmCode} onChange={e => setPmCode(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="e.g. 12345678" maxLength={8} className="w-full border border-indigo-100 rounded-2xl px-3 py-2.5 text-sm font-mono tracking-wider" />
+              <p className="text-xs text-slate-400 mt-1">Ask the property manager for their company code</p>
             </div>
             <button onClick={() => assignPM(showPmAssign)} className="w-full bg-purple-600 text-white text-sm py-2.5 rounded-lg hover:bg-purple-700 font-semibold">Assign Property Manager</button>
           </div>
@@ -1659,12 +1659,12 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
               <div key={i} className="flex gap-3 items-start">
                 <span className="text-lg">{item._type === "payment" ? "💰" : item._type === "work_order" ? "🔧" : "📄"}</span>
                 <div>
-                  <p className="text-sm font-medium text-gray-800">{item._type === "payment" ? `${formatCurrency(item.amount)} - ${item.type}` : item._type === "work_order" ? item.issue : item.name}</p>
-                  <p className="text-xs text-gray-400">{new Date(item._date).toLocaleDateString()}</p>
+                  <p className="text-sm font-medium text-slate-800">{item._type === "payment" ? `${formatCurrency(item.amount)} - ${item.type}` : item._type === "work_order" ? item.issue : item.name}</p>
+                  <p className="text-xs text-slate-400">{new Date(item._date).toLocaleDateString()}</p>
                 </div>
               </div>
             ))}
-            {timelineData.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No activity found.</p>}
+            {timelineData.length === 0 && <p className="text-sm text-slate-400 text-center py-4">No activity found.</p>}
           </div>
         </Modal>
       )}
@@ -2067,64 +2067,64 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
       {activePanel && selectedTenant && activePanel === "lease" && (
         <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-end">
           <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-2xl">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-indigo-600 text-white">
+            <div className="px-5 py-4 border-b border-indigo-50 flex items-center justify-between bg-indigo-600 text-white">
               <div>
                 <div className="font-bold">{selectedTenant.name}</div>
                 <div className="text-xs text-indigo-200">{selectedTenant.property}</div>
               </div>
               <button onClick={closePanel} className="text-indigo-200 hover:text-white text-xl">✕</button>
             </div>
-            <div className="flex border-b border-gray-100">
+            <div className="flex border-b border-indigo-50">
               {[["ledger", "📒 Ledger"], ["messages", "💬 Messages"], ["lease", "📄 Lease"]].map(([id, label]) => (
                 <button key={id} onClick={() => {
                   setActivePanel(id);
                   if (id === "ledger") openLedger(selectedTenant);
                   if (id === "messages") openMessages(selectedTenant);
-                }} className={`flex-1 py-2.5 text-xs font-medium ${activePanel === id ? "border-b-2 border-indigo-600 text-indigo-700" : "text-gray-500 hover:text-gray-700"}`}>{label}</button>
+                }} className={`flex-1 py-2.5 text-xs font-medium ${activePanel === id ? "border-b-2 border-indigo-600 text-indigo-700" : "text-slate-400 hover:text-slate-700"}`}>{label}</button>
               ))}
             </div>
 
             {/* LEDGER */}
             {activePanel === "ledger" && (
               <div className="flex-1 overflow-y-auto p-4">
-                <div className={`rounded-xl p-4 mb-4 text-center ${selectedTenant.balance > 0 ? "bg-red-50" : selectedTenant.balance < 0 ? "bg-green-50" : "bg-gray-50"}`}>
-                  <div className="text-xs text-gray-400 mb-1">Current Balance</div>
-                  <div className={`text-3xl font-bold ${selectedTenant.balance > 0 ? "text-red-500" : selectedTenant.balance < 0 ? "text-green-600" : "text-gray-700"}`}>
+                <div className={`rounded-3xl p-4 mb-4 text-center ${selectedTenant.balance > 0 ? "bg-red-50" : selectedTenant.balance < 0 ? "bg-green-50" : "bg-indigo-50/30"}`}>
+                  <div className="text-xs text-slate-400 mb-1">Current Balance</div>
+                  <div className={`text-3xl font-bold ${selectedTenant.balance > 0 ? "text-red-500" : selectedTenant.balance < 0 ? "text-green-600" : "text-slate-700"}`}>
                     {selectedTenant.balance > 0 ? `-${formatCurrency(selectedTenant.balance)}` : selectedTenant.balance < 0 ? `Credit ${formatCurrency(Math.abs(selectedTenant.balance))}` : "$0 Current"}
                   </div>
                 </div>
-                <div className="bg-gray-50 rounded-xl p-3 mb-4">
-                  <div className="text-xs font-semibold text-gray-600 mb-2">Add Transaction</div>
+                <div className="bg-indigo-50/30 rounded-xl p-3 mb-4">
+                  <div className="text-xs font-semibold text-slate-500 mb-2">Add Transaction</div>
                   <div className="grid grid-cols-3 gap-2">
-                    <select value={newCharge.type} onChange={e => setNewCharge({ ...newCharge, type: e.target.value })} className="border border-gray-200 rounded-lg px-2 py-2 text-xs">
+                    <select value={newCharge.type} onChange={e => setNewCharge({ ...newCharge, type: e.target.value })} className="border border-indigo-100 rounded-2xl px-2 py-2 text-xs">
                       <option value="charge">Charge</option>
                       <option value="payment">Payment</option>
                       <option value="credit">Credit</option>
                       <option value="late_fee">Late Fee</option>
                     </select>
-                    <input placeholder="e.g. Rent, Late fee, Repair" value={newCharge.description} title="Description" onChange={e => setNewCharge({ ...newCharge, description: e.target.value })} className="border border-gray-200 rounded-lg px-2 py-2 text-xs" />
-                    <input placeholder="0.00" value={newCharge.amount} title="Amount ($)" onChange={e => setNewCharge({ ...newCharge, amount: e.target.value })} className="border border-gray-200 rounded-lg px-2 py-2 text-xs" />
+                    <input placeholder="e.g. Rent, Late fee, Repair" value={newCharge.description} title="Description" onChange={e => setNewCharge({ ...newCharge, description: e.target.value })} className="border border-indigo-100 rounded-2xl px-2 py-2 text-xs" />
+                    <input placeholder="0.00" value={newCharge.amount} title="Amount ($)" onChange={e => setNewCharge({ ...newCharge, amount: e.target.value })} className="border border-indigo-100 rounded-2xl px-2 py-2 text-xs" />
                   </div>
-                  <button onClick={addLedgerEntry} className="mt-2 w-full bg-indigo-600 text-white text-xs py-2 rounded-lg hover:bg-indigo-700">Add Transaction</button>
+                  <button onClick={addLedgerEntry} className="mt-2 w-full bg-indigo-600 text-white text-xs py-2 rounded-2xl hover:bg-indigo-700">Add Transaction</button>
                 </div>
                 <div className="space-y-2">
                   {ledger.map(e => (
-                    <div key={e.id} className="bg-white border border-gray-100 rounded-lg px-3 py-2.5">
+                    <div key={e.id} className="bg-white border border-indigo-50 rounded-lg px-3 py-2.5">
                       <div className="flex justify-between items-start">
                         <div>
-                          <div className="text-sm font-medium text-gray-800">{e.description}</div>
-                          <div className="text-xs text-gray-400">{e.date}</div>
+                          <div className="text-sm font-medium text-slate-800">{e.description}</div>
+                          <div className="text-xs text-slate-400">{e.date}</div>
                         </div>
                         <div className="text-right">
                           <div className={`text-sm font-bold ${e.amount > 0 ? "text-red-500" : "text-green-600"}`}>
                             {e.amount > 0 ? `+${formatCurrency(e.amount)}` : `-${formatCurrency(Math.abs(e.amount))}`}
                           </div>
-                          <div className="text-xs text-gray-400">Bal: ${e.balance}</div>
+                          <div className="text-xs text-slate-400">Bal: ${e.balance}</div>
                         </div>
                       </div>
                     </div>
                   ))}
-                  {ledger.length === 0 && <div className="text-center py-6 text-gray-400 text-sm">No ledger entries yet</div>}
+                  {ledger.length === 0 && <div className="text-center py-6 text-slate-400 text-sm">No ledger entries yet</div>}
                 </div>
               </div>
             )}
@@ -2135,19 +2135,19 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
                   {messages.map(m => (
                     <div key={m.id} className={`flex ${m.sender === "admin" ? "justify-end" : "justify-start"}`}>
-                      <div className={`max-w-xs rounded-2xl px-4 py-2.5 ${m.sender === "admin" ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-800"}`}>
+                      <div className={`max-w-xs rounded-2xl px-4 py-2.5 ${m.sender === "admin" ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-800"}`}>
                         <div className="text-sm">{m.message}</div>
-                        <div className={`text-xs mt-1 ${m.sender === "admin" ? "text-indigo-200" : "text-gray-400"}`}>
+                        <div className={`text-xs mt-1 ${m.sender === "admin" ? "text-indigo-200" : "text-slate-400"}`}>
                           {m.sender === "admin" ? "You" : selectedTenant.name} · {new Date(m.created_at).toLocaleDateString()}
                         </div>
                       </div>
                     </div>
                   ))}
-                  {messages.length === 0 && <div className="text-center py-6 text-gray-400 text-sm">No messages yet</div>}
+                  {messages.length === 0 && <div className="text-center py-6 text-slate-400 text-sm">No messages yet</div>}
                 </div>
-                <div className="p-4 border-t border-gray-100 flex gap-2">
-                  <input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} placeholder="Type a message..." className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
-                  <button onClick={sendMessage} className="bg-indigo-600 text-white px-4 py-2.5 rounded-xl hover:bg-indigo-700 text-sm font-medium">Send</button>
+                <div className="p-4 border-t border-indigo-50 flex gap-2">
+                  <input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} placeholder="Type a message..." className="flex-1 border border-indigo-100 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
+                  <button onClick={sendMessage} className="bg-indigo-600 text-white px-4 py-2.5 rounded-2xl hover:bg-indigo-700 text-sm font-medium">Send</button>
                 </div>
               </div>
             )}
@@ -2155,8 +2155,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
             {/* LEASE */}
             {activePanel === "lease" && (
               <div className="flex-1 overflow-y-auto p-4">
-                <div className="bg-white border border-gray-100 rounded-xl p-4 mb-4">
-                  <h4 className="font-semibold text-gray-700 mb-3">Lease Details</h4>
+                <div className="bg-white border border-indigo-50 rounded-3xl p-4 mb-4">
+                  <h4 className="font-semibold text-slate-700 mb-3">Lease Details</h4>
                   <div className="space-y-2 text-sm">
                     {[
                       ["Tenant", selectedTenant.name],
@@ -2166,25 +2166,25 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
                       ["Move-Out Date", selectedTenant.move_out || "—"],
                       ["Lease Status", selectedTenant.lease_status],
                     ].map(([l, v]) => (
-                      <div key={l} className="flex justify-between py-1.5 border-b border-gray-50">
-                        <span className="text-gray-400">{l}</span>
-                        <span className="font-medium text-gray-800 capitalize">{v}</span>
+                      <div key={l} className="flex justify-between py-1.5 border-b border-indigo-50/50">
+                        <span className="text-slate-400">{l}</span>
+                        <span className="font-medium text-slate-800 capitalize">{v}</span>
                       </div>
                     ))}
                   </div>
                 </div>
                 {leaseModal === "renew" && (
-                  <div className="bg-indigo-50 rounded-xl p-4 mb-3 border border-indigo-100">
+                  <div className="bg-indigo-50 rounded-3xl p-4 mb-3 border border-indigo-100">
                     <div className="text-sm font-semibold text-indigo-700 mb-2">Enter New Lease End Date</div>
-                    <input type="date" value={leaseInput} onChange={e => setLeaseInput(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2" />
+                    <input type="date" value={leaseInput} onChange={e => setLeaseInput(e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mb-2" />
                     <div className="flex gap-2">
-                      <button onClick={() => renewLease(leaseInput)} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-indigo-700">Confirm Renewal</button>
-                      <button onClick={() => setLeaseModal(null)} className="bg-gray-200 text-gray-600 text-xs px-4 py-2 rounded-lg">Cancel</button>
+                      <button onClick={() => renewLease(leaseInput)} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">Confirm Renewal</button>
+                      <button onClick={() => setLeaseModal(null)} className="bg-slate-200 text-slate-500 text-xs px-4 py-2 rounded-lg">Cancel</button>
                     </div>
                   </div>
                 )}
                 {leaseModal === "notice" && (
-                  <div className="bg-orange-50 rounded-xl p-4 mb-3 border border-orange-100">
+                  <div className="bg-orange-50 rounded-3xl p-4 mb-3 border border-orange-100">
                     <div className="text-sm font-semibold text-orange-700 mb-2">Select Notice Period</div>
                     <div className="flex gap-2 mb-2">
                       <button onClick={() => setLeaseInput("30")} className={`flex-1 py-2 rounded-lg text-sm font-medium ${leaseInput === "30" ? "bg-orange-500 text-white" : "bg-white border border-orange-200 text-orange-700"}`}>30 Days</button>
@@ -2192,12 +2192,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
                     </div>
                     <div className="flex gap-2">
                       <button onClick={() => generateMoveOutNotice(leaseInput)} className="bg-orange-500 text-white text-xs px-4 py-2 rounded-lg hover:bg-orange-600">Generate Notice</button>
-                      <button onClick={() => setLeaseModal(null)} className="bg-gray-200 text-gray-600 text-xs px-4 py-2 rounded-lg">Cancel</button>
+                      <button onClick={() => setLeaseModal(null)} className="bg-slate-200 text-slate-500 text-xs px-4 py-2 rounded-lg">Cancel</button>
                     </div>
                   </div>
                 )}
                 <div className="space-y-2">
-                  <button onClick={() => openLeaseForSigning(selectedTenant)} className="w-full flex items-center justify-between bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl px-4 py-3 text-left">
+                  <button onClick={() => openLeaseForSigning(selectedTenant)} className="w-full flex items-center justify-between bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-2xl px-4 py-3 text-left">
                     <div>
                       <div className="text-sm font-medium text-indigo-800">✍️ Generate & E-Sign Lease</div>
                       <div className="text-xs text-indigo-400">Opens PDF with signature canvas</div>
@@ -2208,12 +2208,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
                     { label: "🔄 Renew Lease", desc: "Extend lease term", modal: "renew" },
                     { label: "📋 Generate Move-Out Notice", desc: "30/60 day notice", modal: "notice" },
                   ].map(item => (
-                    <button key={item.label} onClick={() => { setLeaseModal(item.modal); setLeaseInput(""); }} className="w-full flex items-center justify-between bg-gray-50 hover:bg-indigo-50 border border-gray-100 hover:border-indigo-200 rounded-xl px-4 py-3 text-left">
+                    <button key={item.label} onClick={() => { setLeaseModal(item.modal); setLeaseInput(""); }} className="w-full flex items-center justify-between bg-indigo-50/30 hover:bg-indigo-50 border border-indigo-50 hover:border-indigo-200 rounded-2xl px-4 py-3 text-left">
                       <div>
-                        <div className="text-sm font-medium text-gray-800">{item.label}</div>
-                        <div className="text-xs text-gray-400">{item.desc}</div>
+                        <div className="text-sm font-medium text-slate-800">{item.label}</div>
+                        <div className="text-xs text-slate-400">{item.desc}</div>
                       </div>
-                      <span className="text-gray-300">→</span>
+                      <span className="text-slate-300">→</span>
                     </button>
                   ))}
                 </div>
@@ -2241,28 +2241,28 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
                 <button onClick={() => { setSelectedTenant(null); setActivePanel(null); }} className="text-white/70 hover:text-white text-2xl">✕</button>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
-                <div className="bg-white/10 rounded-xl px-3 py-2 text-center"><div className="text-xs text-indigo-200">Rent</div><div className="text-lg font-bold">{selectedTenant.rent ? formatCurrency(selectedTenant.rent) : "—"}</div></div>
-                <div className="bg-white/10 rounded-xl px-3 py-2 text-center"><div className="text-xs text-indigo-200">Balance</div><div className={"text-lg font-bold " + (selectedTenant.balance > 0 ? "text-red-300" : "text-green-300")}>{selectedTenant.balance > 0 ? formatCurrency(selectedTenant.balance) : "Current"}</div></div>
-                <div className="bg-white/10 rounded-xl px-3 py-2 text-center"><div className="text-xs text-indigo-200">Status</div><div className="text-lg font-bold capitalize">{selectedTenant.lease_status}</div></div>
-                <div className="bg-white/10 rounded-xl px-3 py-2 text-center"><div className="text-xs text-indigo-200">Lease End</div><div className="text-lg font-bold">{selectedTenant.lease_end_date || selectedTenant.move_out || "—"}</div></div>
+                <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-indigo-200">Rent</div><div className="text-lg font-bold">{selectedTenant.rent ? formatCurrency(selectedTenant.rent) : "—"}</div></div>
+                <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-indigo-200">Balance</div><div className={"text-lg font-bold " + (selectedTenant.balance > 0 ? "text-red-300" : "text-green-300")}>{selectedTenant.balance > 0 ? formatCurrency(selectedTenant.balance) : "Current"}</div></div>
+                <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-indigo-200">Status</div><div className="text-lg font-bold capitalize">{selectedTenant.lease_status}</div></div>
+                <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-indigo-200">Lease End</div><div className="text-lg font-bold">{selectedTenant.lease_end_date || selectedTenant.move_out || "—"}</div></div>
               </div>
             </div>
 
             {/* Contact Info */}
-            <div className="px-6 py-4 border-b border-gray-100">
+            <div className="px-6 py-4 border-b border-indigo-50">
               <div className="space-y-2 text-sm">
-                <div><span className="text-xs text-gray-400 block">Email</span><a href={"mailto:" + selectedTenant.email} className="text-indigo-600 hover:underline break-all">{selectedTenant.email || "—"}</a></div>
+                <div><span className="text-xs text-slate-400 block">Email</span><a href={"mailto:" + selectedTenant.email} className="text-indigo-600 hover:underline break-all">{selectedTenant.email || "—"}</a></div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><span className="text-xs text-gray-400 block">Phone</span><a href={"tel:" + selectedTenant.phone} className="text-indigo-600 hover:underline">{selectedTenant.phone || "—"}</a></div>
-                  <div><span className="text-xs text-gray-400 block">Lease Start</span><span className="text-gray-700">{selectedTenant.lease_start || selectedTenant.move_in || "—"}</span></div>
+                  <div><span className="text-xs text-slate-400 block">Phone</span><a href={"tel:" + selectedTenant.phone} className="text-indigo-600 hover:underline">{selectedTenant.phone || "—"}</a></div>
+                  <div><span className="text-xs text-slate-400 block">Lease Start</span><span className="text-slate-700">{selectedTenant.lease_start || selectedTenant.move_in || "—"}</span></div>
                 </div>
               </div>
             </div>
 
             {/* Tab navigation */}
-            <div className="flex border-b border-gray-100 px-6 overflow-x-auto">
+            <div className="flex border-b border-indigo-50 px-6 overflow-x-auto">
               {[["ledger","Ledger"],["documents","Documents"],["messages","Messages"],["actions","Actions"]].map(([id, label]) => (
-                <button key={id} onClick={() => setActivePanel(id)} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + ((activePanel === id || (id === "ledger" && activePanel === "detail")) ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-400 hover:text-gray-600")}>{label}</button>
+                <button key={id} onClick={() => setActivePanel(id)} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + ((activePanel === id || (id === "ledger" && activePanel === "detail")) ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}</button>
               ))}
             </div>
 
@@ -2273,21 +2273,21 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
               {(activePanel === "detail" || activePanel === "ledger") && (
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-gray-700">Transaction History</h3>
+                    <h3 className="text-sm font-semibold text-slate-700">Transaction History</h3>
                     <div className="flex items-center gap-2">
-                      <select value={newCharge.type} onChange={e => setNewCharge({...newCharge, type: e.target.value})} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs">
+                      <select value={newCharge.type} onChange={e => setNewCharge({...newCharge, type: e.target.value})} className="border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs">
                         <option value="charge">Charge</option><option value="payment">Payment</option><option value="credit">Credit</option><option value="late_fee">Late Fee</option>
                       </select>
-                      <input placeholder="Description" value={newCharge.description} onChange={e => setNewCharge({...newCharge, description: e.target.value})} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs w-32" />
-                      <input placeholder="$0.00" value={newCharge.amount} onChange={e => setNewCharge({...newCharge, amount: e.target.value})} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs w-20" />
+                      <input placeholder="Description" value={newCharge.description} onChange={e => setNewCharge({...newCharge, description: e.target.value})} className="border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs w-32" />
+                      <input placeholder="$0.00" value={newCharge.amount} onChange={e => setNewCharge({...newCharge, amount: e.target.value})} className="border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs w-20" />
                       <button onClick={addLedgerEntry} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg">Add</button>
                     </div>
                   </div>
-                  {ledger.length === 0 ? <div className="text-center py-6 text-gray-400 text-sm">No transactions yet</div> : (
+                  {ledger.length === 0 ? <div className="text-center py-6 text-slate-400 text-sm">No transactions yet</div> : (
                     <div className="space-y-1">
                       {ledger.slice(0, 20).map((e, i) => (
-                        <div key={i} className="flex items-center justify-between py-2 border-b border-gray-50 text-sm">
-                          <div><div className="font-medium text-gray-700">{e.description}</div><div className="text-xs text-gray-400">{e.date}</div></div>
+                        <div key={i} className="flex items-center justify-between py-2 border-b border-indigo-50/50 text-sm">
+                          <div><div className="font-medium text-slate-700">{e.description}</div><div className="text-xs text-slate-400">{e.date}</div></div>
                           <div className={"font-semibold " + (e.type === "charge" || e.type === "late_fee" ? "text-red-500" : "text-green-600")}>{e.type === "charge" || e.type === "late_fee" ? "+" : "-"}{formatCurrency(Math.abs(e.amount))}</div>
                         </div>
                       ))}
@@ -2299,7 +2299,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
               {/* Documents tab */}
               {activePanel === "documents" && (
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Tenant Documents</h3>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-3">Tenant Documents</h3>
                   {/* Required docs checklist */}
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
                     <div className="text-xs font-bold text-amber-800 mb-2">Required Documents</div>
@@ -2308,41 +2308,41 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
                       return (
                         <div key={doc} className="flex items-center gap-2 py-1 text-sm">
                           <span className={uploaded ? "text-green-500" : "text-amber-400"}>{uploaded ? "✅" : "☐"}</span>
-                          <span className={uploaded ? "text-gray-700" : "text-amber-700"}>{doc}</span>
+                          <span className={uploaded ? "text-slate-700" : "text-amber-700"}>{doc}</span>
                           {uploaded && <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">Uploaded</span>}
                         </div>
                       );
                     })}
                   </div>
                   {/* Uploaded docs list */}
-                  {tenantDocs.length === 0 ? <div className="text-center py-4 text-gray-400 text-sm">No documents uploaded for this tenant</div> : (
+                  {tenantDocs.length === 0 ? <div className="text-center py-4 text-slate-400 text-sm">No documents uploaded for this tenant</div> : (
                     <div className="space-y-2">
                       {tenantDocs.map(d => (
-                        <div key={d.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
-                          <div><div className="text-sm font-medium text-gray-700">{d.name}</div><div className="text-xs text-gray-400">{d.type} · {d.uploaded_at?.slice(0, 10)}</div></div>
+                        <div key={d.id} className="flex items-center justify-between bg-indigo-50/30 rounded-lg px-3 py-2">
+                          <div><div className="text-sm font-medium text-slate-700">{d.name}</div><div className="text-xs text-slate-400">{d.type} · {d.uploaded_at?.slice(0, 10)}</div></div>
                           <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-indigo-600 hover:underline">View</button>
                         </div>
                       ))}
                     </div>
                   )}
-                  <button onClick={() => { setPage("documents"); setSelectedTenant(null); setActivePanel(null); }} className="mt-3 bg-indigo-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-indigo-700">Upload Documents</button>
+                  <button onClick={() => { setPage("documents"); setSelectedTenant(null); setActivePanel(null); }} className="mt-3 bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">Upload Documents</button>
                 </div>
               )}
 
               {/* Messages tab */}
               {activePanel === "messages" && (
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Messages</h3>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-3">Messages</h3>
                   <div className="space-y-2 max-h-48 overflow-y-auto mb-3">
-                    {messages.length === 0 ? <div className="text-center py-4 text-gray-400 text-sm">No messages</div> : messages.map((m, i) => (
-                      <div key={i} className={"rounded-xl px-3 py-2 text-sm max-w-xs " + (m.sender === selectedTenant.name ? "bg-gray-100 text-gray-700 mr-auto" : "bg-indigo-600 text-white ml-auto")}>
+                    {messages.length === 0 ? <div className="text-center py-4 text-slate-400 text-sm">No messages</div> : messages.map((m, i) => (
+                      <div key={i} className={"rounded-2xl px-3 py-2 text-sm max-w-xs " + (m.sender === selectedTenant.name ? "bg-slate-100 text-slate-700 mr-auto" : "bg-indigo-600 text-white ml-auto")}>
                         <div className="text-xs opacity-60 mb-0.5">{m.sender}</div>
                         {m.message}
                       </div>
                     ))}
                   </div>
                   <div className="flex gap-2">
-                    <input value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type a message..." className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm" onKeyDown={e => e.key === "Enter" && sendMessage()} />
+                    <input value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type a message..." className="flex-1 border border-indigo-100 rounded-2xl px-3 py-2 text-sm" onKeyDown={e => e.key === "Enter" && sendMessage()} />
                     <button onClick={sendMessage} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Send</button>
                   </div>
                 </div>
@@ -2351,16 +2351,16 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
               {/* Actions tab */}
               {activePanel === "actions" && (
                 <div className="grid grid-cols-2 gap-3">
-                  <button onClick={() => startEdit(selectedTenant)} className="bg-gray-50 rounded-xl p-4 text-center hover:bg-gray-100 transition-all">
-                    <div className="text-2xl mb-1">✏️</div><div className="text-sm font-semibold text-gray-700">Edit Tenant</div>
+                  <button onClick={() => startEdit(selectedTenant)} className="bg-indigo-50/30 rounded-3xl p-4 text-center hover:bg-indigo-50/50 transition-all">
+                    <div className="text-2xl mb-1">✏️</div><div className="text-sm font-semibold text-slate-700">Edit Tenant</div>
                   </button>
-                  <button onClick={() => inviteTenant(selectedTenant)} className="bg-purple-50 rounded-xl p-4 text-center hover:bg-purple-100 transition-all">
+                  <button onClick={() => inviteTenant(selectedTenant)} className="bg-purple-50 rounded-3xl p-4 text-center hover:bg-purple-100 transition-all">
                     <div className="text-2xl mb-1">✉️</div><div className="text-sm font-semibold text-purple-700">Send Invite</div>
                   </button>
-                  <button onClick={() => { setLeaseModal("renew"); setLeaseInput(""); }} className="bg-green-50 rounded-xl p-4 text-center hover:bg-green-100 transition-all">
+                  <button onClick={() => { setLeaseModal("renew"); setLeaseInput(""); }} className="bg-green-50 rounded-3xl p-4 text-center hover:bg-green-100 transition-all">
                     <div className="text-2xl mb-1">🔄</div><div className="text-sm font-semibold text-green-700">Renew Lease</div>
                   </button>
-                  <button onClick={() => deleteTenant(selectedTenant.id, selectedTenant.name)} className="bg-red-50 rounded-xl p-4 text-center hover:bg-red-100 transition-all">
+                  <button onClick={() => deleteTenant(selectedTenant.id, selectedTenant.name)} className="bg-red-50 rounded-3xl p-4 text-center hover:bg-red-100 transition-all">
                     <div className="text-2xl mb-1">📦</div><div className="text-sm font-semibold text-red-700">Archive Tenant</div>
                   </button>
                 </div>
@@ -2372,7 +2372,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
 
       {/* Required Documents Prompt */}
       {showTenantDocPrompt && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+        <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 mb-4">
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-bold text-amber-800">📋 Required Documents for {showTenantDocPrompt}</div>
             <button onClick={() => setShowTenantDocPrompt(null)} className="text-amber-400 hover:text-amber-600">✕</button>
@@ -2382,16 +2382,16 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
             {["Signed Lease Agreement", "Government-Issued ID", "Renters Insurance Certificate", "Proof of Utility Transfer"].map(doc => (
               <div key={doc} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-amber-100">
                 <span className="text-amber-400">☐</span>
-                <span className="text-sm text-gray-700">{doc}</span>
+                <span className="text-sm text-slate-700">{doc}</span>
               </div>
             ))}
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={() => { setPage("documents"); setShowTenantDocPrompt(null); }} className="bg-amber-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-amber-700">Upload Documents Now</button>
             {isAdmin ? (
-              <button onClick={() => setShowTenantDocPrompt(null)} className="bg-gray-100 text-gray-600 text-xs px-4 py-2 rounded-lg">Admin: Skip for Now</button>
+              <button onClick={() => setShowTenantDocPrompt(null)} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Admin: Skip for Now</button>
             ) : (
-              <button onClick={() => { if (window.confirm("Skipping requires admin approval. An approval request will be sent. Continue?")) { setShowTenantDocPrompt(null); addNotification("📋", "Document skip request sent for " + showTenantDocPrompt); } }} className="bg-gray-100 text-gray-600 text-xs px-4 py-2 rounded-lg">Request Exception</button>
+              <button onClick={() => { if (window.confirm("Skipping requires admin approval. An approval request will be sent. Continue?")) { setShowTenantDocPrompt(null); addNotification("📋", "Document skip request sent for " + showTenantDocPrompt); } }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Request Exception</button>
             )}
           </div>
         </div>
@@ -2399,39 +2399,39 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
 
       {/* Toolbar */}
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold text-gray-800">Tenants</h2>
+        <h2 className="text-2xl font-manrope font-bold text-slate-800">Tenants</h2>
         <div className="flex gap-2 items-center">
-          <input placeholder="Search..." value={tenantSearch || ""} onChange={e => setTenantSearch(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-40" />
-          <select value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+          <input placeholder="Search..." value={tenantSearch || ""} onChange={e => setTenantSearch(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-40" />
+          <select value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
             <option value="all">All Status</option><option value="active">Active</option><option value="notice">Notice</option><option value="expired">Expired</option>
           </select>
-          <div className="flex bg-gray-100 rounded-lg p-0.5">
+          <div className="flex bg-indigo-50 rounded-2xl p-0.5">
             {[["card","\u25a6"],["table","\u2630"],["compact","\u2261"]].map(([m,icon]) => (
-              <button key={m} onClick={() => setTenantView(m)} className={`px-3 py-1.5 text-sm rounded-md ${tenantView === m ? "bg-white shadow-sm text-indigo-700 font-semibold" : "text-gray-500"}`}>{icon}</button>
+              <button key={m} onClick={() => setTenantView(m)} className={`px-3 py-1.5 text-sm rounded-md ${tenantView === m ? "bg-white shadow-sm text-indigo-700 font-semibold" : "text-slate-400"}`}>{icon}</button>
             ))}
           </div>
-          <button onClick={() => { setEditingTenant(null); setForm({ name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 whitespace-nowrap">+ Add</button>
+          <button onClick={() => { setEditingTenant(null); setForm({ name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700 whitespace-nowrap">+ Add</button>
         </div>
       </div>
 
       {showForm && (
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
-          <h3 className="font-semibold text-gray-700 mb-3">{editingTenant ? "Edit Tenant" : "New Tenant"}</h3>
+          <h3 className="font-semibold text-slate-700 mb-3">{editingTenant ? "Edit Tenant" : "New Tenant"}</h3>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Full Name *</label><input placeholder="Jane Doe" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Email</label><input type="email" placeholder="tenant@email.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Phone</label><input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({ ...form, phone: formatPhoneInput(e.target.value) })} maxLength={14} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Monthly Rent ($)</label><input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Lease Status</label><select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Full Name *</label><input placeholder="Jane Doe" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Email</label><input type="email" placeholder="tenant@email.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Phone</label><input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({ ...form, phone: formatPhoneInput(e.target.value) })} maxLength={14} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Monthly Rent ($)</label><input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Status</label><select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
               {["active", "notice", "expired"].map(s => <option key={s}>{s}</option>)}
             </select></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Move-in Date</label><input type="date" value={form.lease_start} onChange={e => setForm({ ...form, move_in: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Move-out Date</label><input type="date" value={form.lease_end} onChange={e => setForm({ ...form, move_out: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Move-in Date</label><input type="date" value={form.lease_start} onChange={e => setForm({ ...form, move_in: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Move-out Date</label><input type="date" value={form.lease_end} onChange={e => setForm({ ...form, move_out: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={saveTenant} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
-            <button onClick={() => { setShowForm(false); setEditingTenant(null); }} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button onClick={() => { setShowForm(false); setEditingTenant(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
           </div>
         </div>
       )}
@@ -2444,8 +2444,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
         const TenantActions = ({t}) => (
           <div className="flex gap-1.5 flex-wrap">
             <button onClick={() => openLedger(t)} className="text-xs text-indigo-600 border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50">Ledger</button>
-            <button onClick={() => openMessages(t)} className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded-lg hover:bg-gray-50">Msg</button>
-            <button onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="text-xs text-gray-600 border border-gray-200 px-2 py-1 rounded-lg hover:bg-gray-50">Lease</button>
+            <button onClick={() => openMessages(t)} className="text-xs text-slate-500 border border-indigo-100 px-2 py-1 rounded-lg hover:bg-indigo-50/30">Msg</button>
+            <button onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="text-xs text-slate-500 border border-indigo-100 px-2 py-1 rounded-lg hover:bg-indigo-50/30">Lease</button>
             <button onClick={() => startEdit(t)} className="text-xs text-blue-600 hover:underline">Edit</button>
             <button onClick={() => deleteTenant(t.id, t.name)} className="text-xs text-red-500 hover:underline">Archive</button>
             <button onClick={() => inviteTenant(t)} className="text-xs text-purple-600 hover:underline">Invite</button>
@@ -2455,18 +2455,18 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
           {tenantView === "card" && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {ft.map(t => (
-                <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 cursor-pointer hover:border-indigo-200 hover:shadow-md transition-all">
+                <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4 cursor-pointer hover:border-indigo-200 hover:shadow-md transition-all">
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg">{t.name?.[0]}</div>
-                      <div><div className="font-semibold text-gray-800">{t.name}</div><div className="text-xs text-gray-400">{t.property}</div></div>
+                      <div><div className="font-semibold text-slate-800">{t.name}</div><div className="text-xs text-slate-400">{t.property}</div></div>
                     </div>
                     <Badge status={t.lease_status} />
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-xs mt-2">
-                    <div><span className="text-gray-400">Email</span><div className="font-semibold text-gray-700 truncate">{t.email || "—"}</div></div>
-                    <div><span className="text-gray-400">Balance</span><div className={`font-semibold ${t.balance > 0 ? "text-red-500" : "text-gray-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</div></div>
-                    <div><span className="text-gray-400">Rent</span><div className="font-semibold text-gray-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</div></div>
+                    <div><span className="text-slate-400">Email</span><div className="font-semibold text-slate-700 truncate">{t.email || "—"}</div></div>
+                    <div><span className="text-slate-400">Balance</span><div className={`font-semibold ${t.balance > 0 ? "text-red-500" : "text-slate-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</div></div>
+                    <div><span className="text-slate-400">Rent</span><div className="font-semibold text-slate-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</div></div>
                   </div>
                   <div className="mt-2 text-xs text-indigo-400 text-center">Click to view details →</div>
                 </div>
@@ -2474,20 +2474,20 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
             </div>
           )}
           {tenantView === "table" && (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
+            <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-xs text-gray-400 uppercase">
+                <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
                   <tr><th className="px-4 py-3 text-left">Name</th><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Email</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-right">Rent</th><th className="px-4 py-3 text-right">Balance</th><th className="px-4 py-3 text-right">Actions</th></tr>
                 </thead>
                 <tbody>
                   {ft.map(t => (
-                    <tr key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className="border-t border-gray-50 hover:bg-indigo-50/50 cursor-pointer">
-                      <td className="px-4 py-2.5 font-medium text-gray-800 text-indigo-600">{t.name}</td>
-                      <td className="px-4 py-2.5 text-gray-600">{t.property}</td>
-                      <td className="px-4 py-2.5 text-gray-500 text-xs">{t.email}</td>
+                    <tr key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className="border-t border-indigo-50/50 hover:bg-indigo-50/50 cursor-pointer">
+                      <td className="px-4 py-2.5 font-medium text-slate-800 text-indigo-600">{t.name}</td>
+                      <td className="px-4 py-2.5 text-slate-500">{t.property}</td>
+                      <td className="px-4 py-2.5 text-slate-400 text-xs">{t.email}</td>
                       <td className="px-4 py-2.5"><Badge status={t.lease_status} /></td>
                       <td className="px-4 py-2.5 text-right font-semibold">{t.rent ? `${formatCurrency(t.rent)}` : "\u2014"}</td>
-                      <td className={`px-4 py-2.5 text-right font-semibold ${t.balance > 0 ? "text-red-500" : "text-gray-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</td>
+                      <td className={`px-4 py-2.5 text-right font-semibold ${t.balance > 0 ? "text-red-500" : "text-slate-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</td>
                       <td className="px-4 py-2.5 text-right"><TenantActions t={t} /></td>
                     </tr>
                   ))}
@@ -2496,13 +2496,13 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
             </div>
           )}
           {tenantView === "compact" && (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm divide-y divide-gray-50">
+            <div className="bg-white rounded-3xl shadow-card border border-indigo-50 divide-y divide-indigo-50/50">
               {ft.map(t => (
                 <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className="flex items-center gap-3 px-4 py-2.5 hover:bg-indigo-50/50 cursor-pointer">
                   <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">{t.name?.[0]}</div>
-                  <div className="flex-1 min-w-0"><span className="text-sm font-medium text-gray-800">{t.name}</span><span className="text-xs text-gray-400 ml-2">{t.property}</span></div>
-                  <span className="text-sm font-semibold text-gray-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</span>
-                  <span className={`text-xs font-semibold ${t.balance > 0 ? "text-red-500" : "text-gray-500"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</span>
+                  <div className="flex-1 min-w-0"><span className="text-sm font-medium text-slate-800">{t.name}</span><span className="text-xs text-slate-400 ml-2">{t.property}</span></div>
+                  <span className="text-sm font-semibold text-slate-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</span>
+                  <span className={`text-xs font-semibold ${t.balance > 0 ? "text-red-500" : "text-slate-400"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</span>
                   <Badge status={t.lease_status} />
                   <button onClick={() => openLedger(t)} className="text-xs text-indigo-600 hover:underline">Ledger</button>
                   <button onClick={() => startEdit(t)} className="text-xs text-blue-600 hover:underline">Edit</button>
@@ -2510,7 +2510,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
               ))}
             </div>
           )}
-          {ft.length === 0 && <div className="text-center py-8 text-gray-400">No tenants found</div>}
+          {ft.length === 0 && <div className="text-center py-8 text-slate-400">No tenants found</div>}
         </>;
       })()}
     </div>
@@ -2637,54 +2637,54 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <h2 className="text-xl font-bold text-gray-800">Payments & Rent</h2>
-        <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">+ Record Payment</button>
+        <h2 className="text-2xl font-manrope font-bold text-slate-800">Payments & Rent</h2>
+        <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ Record Payment</button>
       </div>
 
       {showForm && (
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
-          <h3 className="font-semibold text-gray-700 mb-3">New Payment</h3>
+          <h3 className="font-semibold text-slate-700 mb-3">New Payment</h3>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tenant *</label><input placeholder="Jane Doe" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Amount ($) *</label><input placeholder="1500.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Date</label><input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Method</label><select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant *</label><input placeholder="Jane Doe" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($) *</label><input placeholder="1500.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Date</label><input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Method</label><select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
               {["ACH", "card", "autopay", "cash", "check"].map(m => <option key={m}>{m}</option>)}
             </select></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Payment Type</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Payment Type</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
               {["rent", "late_fee", "deposit", "other"].map(t => <option key={t}>{t}</option>)}
             </select></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Status</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
               {["paid", "unpaid", "partial"].map(s => <option key={s}>{s}</option>)}
             </select></div>
           </div>
           <div className="flex gap-2 mt-3">
-            <button onClick={addPayment} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">Save</button>
-            <button onClick={() => setShowForm(false)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg hover:bg-gray-200">Cancel</button>
+            <button onClick={addPayment} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">Save</button>
+            <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-2xl hover:bg-slate-100">Cancel</button>
           </div>
         </div>
       )}
 
       <div className="grid grid-cols-3 gap-3 mb-5">
-        <StatCard label="Expected" value={`${formatCurrency(totalExpected)}`} color="text-gray-700" />
+        <StatCard label="Expected" value={`${formatCurrency(totalExpected)}`} color="text-slate-700" />
         <StatCard label="Collected" value={`${formatCurrency(totalCollected)}`} color="text-green-600" />
         <StatCard label="Outstanding" value={`$${(totalExpected - totalCollected).toLocaleString()}`} color="text-red-500" />
       </div>
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+          <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
             <tr>{["Tenant", "Property", "Amount", "Date", "Type", "Method", "Status", ""].map(h => <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>)}</tr>
           </thead>
           <tbody>
             {payments.map(p => (
-              <tr key={p.id} className="border-t border-gray-50 hover:bg-gray-50">
-                <td className="px-3 py-2.5 font-medium text-gray-800">{p.tenant}</td>
-                <td className="px-3 py-2.5 text-gray-500">{p.property}</td>
+              <tr key={p.id} className="border-t border-indigo-50/50 hover:bg-indigo-50/30">
+                <td className="px-3 py-2.5 font-medium text-slate-800">{p.tenant}</td>
+                <td className="px-3 py-2.5 text-slate-400">{p.property}</td>
                 <td className="px-3 py-2.5 font-semibold">${p.amount}</td>
-                <td className="px-3 py-2.5 text-gray-500">{p.date}</td>
-                <td className="px-3 py-2.5 capitalize text-gray-600">{p.type?.replace("_", " ")}</td>
-                <td className="px-3 py-2.5 text-gray-500">{p.method}</td>
+                <td className="px-3 py-2.5 text-slate-400">{p.date}</td>
+                <td className="px-3 py-2.5 capitalize text-slate-500">{p.type?.replace("_", " ")}</td>
+                <td className="px-3 py-2.5 text-slate-400">{p.method}</td>
                 <td className="px-3 py-2.5"><Badge status={p.status} /></td>
                 <td className="px-3 py-2.5">{p.status === "paid" && <button onClick={() => generatePaymentReceipt(p)} className="text-xs text-green-600 border border-green-200 px-2 py-0.5 rounded hover:bg-green-50">Receipt</button>}</td>
               </tr>
@@ -2826,29 +2826,29 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
       {viewingPhotos && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white">
-              <div><h3 className="font-bold text-gray-800">📸 Photos — {viewingPhotos.issue}</h3><p className="text-xs text-gray-400">{viewingPhotos.property}</p></div>
-              <button onClick={() => setViewingPhotos(null)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-indigo-50 sticky top-0 bg-white">
+              <div><h3 className="font-bold text-slate-800">📸 Photos — {viewingPhotos.issue}</h3><p className="text-xs text-slate-400">{viewingPhotos.property}</p></div>
+              <button onClick={() => setViewingPhotos(null)} className="text-slate-400 hover:text-slate-500 text-xl">✕</button>
             </div>
             <div className="p-6">
-              <div className="bg-gray-50 rounded-xl p-4 mb-4">
-                <div className="text-xs font-semibold text-gray-600 mb-2">Upload New Photo</div>
+              <div className="bg-indigo-50/30 rounded-3xl p-4 mb-4">
+                <div className="text-xs font-semibold text-slate-500 mb-2">Upload New Photo</div>
                 <div className="flex gap-2">
-                  <input type="file" accept="image/*" ref={photoRef} className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-                  <button onClick={uploadPhoto} disabled={uploadingPhoto} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50">{uploadingPhoto ? "Uploading..." : "Upload"}</button>
+                  <input type="file" accept="image/*" ref={photoRef} className="flex-1 border border-indigo-100 rounded-2xl px-3 py-2 text-sm" />
+                  <button onClick={uploadPhoto} disabled={uploadingPhoto} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700 disabled:opacity-50">{uploadingPhoto ? "Uploading..." : "Upload"}</button>
                 </div>
               </div>
               {woPhotos.length === 0 ? (
-                <div className="text-center py-8 text-gray-400">No photos yet.</div>
+                <div className="text-center py-8 text-slate-400">No photos yet.</div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
                   {woPhotos.map(p => (
-                    <div key={p.id} className="relative group rounded-xl overflow-hidden border border-gray-100">
+                    <div key={p.id} className="relative group rounded-3xl overflow-hidden border border-indigo-50">
                       <img src={p.url} alt={p.caption} className="w-full h-40 object-cover" />
                       <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
                         <button onClick={() => deletePhoto(p.id)} className="opacity-0 group-hover:opacity-100 bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg">Delete</button>
                       </div>
-                      <div className="p-2 text-xs text-gray-500 truncate">{p.caption}</div>
+                      <div className="p-2 text-xs text-slate-400 truncate">{p.caption}</div>
                     </div>
                   ))}
                 </div>
@@ -2858,66 +2858,66 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
         </div>
       )}
       <div className="flex items-center justify-between mb-5">
-        <h2 className="text-xl font-bold text-gray-800">Maintenance & Work Orders</h2>
-        <button onClick={() => { setEditingWO(null); setForm({ property: "", tenant: "", issue: "", priority: "normal", status: "open", assigned: "", cost: 0, notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">+ New Work Order</button>
+        <h2 className="text-2xl font-manrope font-bold text-slate-800">Maintenance & Work Orders</h2>
+        <button onClick={() => { setEditingWO(null); setForm({ property: "", tenant: "", issue: "", priority: "normal", status: "open", assigned: "", cost: 0, notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Work Order</button>
       </div>
 
       {showForm && (
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
-          <h3 className="font-semibold text-gray-700 mb-3">{editingWO ? "Edit Work Order" : "New Work Order"}</h3>
+          <h3 className="font-semibold text-slate-700 mb-3">{editingWO ? "Edit Work Order" : "New Work Order"}</h3>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={(v) => {
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={(v) => {
               const prop = properties.find(p => p.address === v || buildAddress(p) === v);
               const tenant = prop?.tenant || "";
               setForm({ ...form, property: v, tenant: tenant });
             }} companyId={companyId} /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tenant</label><input placeholder={form.property && !form.tenant ? "Vacant — no tenant" : "Tenant name"} value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className={"border rounded-lg px-3 py-2 text-sm w-full " + (!form.tenant && form.property ? "border-gray-100 bg-gray-50 text-gray-400" : "border-gray-200")} readOnly={!!(form.property && !form.tenant)} /></div>
-            <div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Issue *</label><input placeholder="Describe the maintenance issue" value={form.issue} onChange={e => setForm({ ...form, issue: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Priority</label><select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant</label><input placeholder={form.property && !form.tenant ? "Vacant — no tenant" : "Tenant name"} value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className={"border rounded-lg px-3 py-2 text-sm w-full " + (!form.tenant && form.property ? "border-gray-100 bg-indigo-50/30 text-slate-400" : "border-indigo-100")} readOnly={!!(form.property && !form.tenant)} /></div>
+            <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Issue *</label><input placeholder="Describe the maintenance issue" value={form.issue} onChange={e => setForm({ ...form, issue: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Priority</label><select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
               {["normal", "emergency", "low"].map(p => <option key={p}>{p}</option>)}
             </select></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Status</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full">
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
               {["open", "in_progress", "completed"].map(s => <option key={s}>{s}</option>)}
             </select></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Assigned To</label><input placeholder="Vendor or staff name" value={form.assigned} onChange={e => setForm({ ...form, assigned: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Cost ($)</label><input placeholder="0.00" type="number" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Notes</label><textarea placeholder="Completion details, parts used, etc." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" rows={2} /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Assigned To</label><input placeholder="Vendor or staff name" value={form.assigned} onChange={e => setForm({ ...form, assigned: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Cost ($)</label><input placeholder="0.00" type="number" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><textarea placeholder="Completion details, parts used, etc." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
           </div>
           <div className="flex gap-2 mt-3">
-            <button onClick={saveWorkOrder} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">Save</button>
-            <button onClick={() => { setShowForm(false); setEditingWO(null); }} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg hover:bg-gray-200">Cancel</button>
+            <button onClick={saveWorkOrder} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">Save</button>
+            <button onClick={() => { setShowForm(false); setEditingWO(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-2xl hover:bg-slate-100">Cancel</button>
           </div>
         </div>
       )}
 
       <div className="flex gap-2 mb-4 flex-wrap">
         {["all", "open", "in_progress", "completed", "emergency"].map(s => (
-          <button key={s} onClick={() => setFilter(s)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === s ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>{s.replace("_", " ")}</button>
+          <button key={s} onClick={() => setFilter(s)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === s ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{s.replace("_", " ")}</button>
         ))}
       </div>
       <div className="space-y-3">
         {filtered.map(w => (
-          <div key={w.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <div key={w.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
             <div className="flex justify-between items-start">
               <div>
                 <div className="flex items-center gap-2">
                   <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${priorityColors[w.priority]}`}>{w.priority}</span>
-                  <span className="font-semibold text-gray-800">{w.issue}</span>
+                  <span className="font-semibold text-slate-800">{w.issue}</span>
                 </div>
-                <div className="text-xs text-gray-400 mt-1">{w.property} · {w.tenant}{!w.assigned && w.tenant && <span className="ml-1 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Tenant Request</span>}</div>
+                <div className="text-xs text-slate-400 mt-1">{w.property} · {w.tenant}{!w.assigned && w.tenant && <span className="ml-1 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Tenant Request</span>}</div>
               </div>
               <Badge status={w.status} label={w.status?.replace("_", " ")} />
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-              <div><span className="text-gray-400">Assigned</span><div className="font-semibold text-gray-700">{w.assigned || "Unassigned"}</div></div>
-              <div><span className="text-gray-400">Created</span><div className="font-semibold text-gray-700">{w.created_at ? new Date(w.created_at).toLocaleDateString() : w.created || "—"}</div></div>
-              <div><span className="text-gray-400">Cost</span><div className="font-semibold text-gray-700">{w.cost ? `${formatCurrency(w.cost)}` : "—"}</div></div>
+              <div><span className="text-slate-400">Assigned</span><div className="font-semibold text-slate-700">{w.assigned || "Unassigned"}</div></div>
+              <div><span className="text-slate-400">Created</span><div className="font-semibold text-slate-700">{w.created_at ? new Date(w.created_at).toLocaleDateString() : w.created || "—"}</div></div>
+              <div><span className="text-slate-400">Cost</span><div className="font-semibold text-slate-700">{w.cost ? `${formatCurrency(w.cost)}` : "—"}</div></div>
             </div>
-            {w.notes && <div className="mt-2 text-xs text-gray-400 italic">{w.notes}</div>}
+            {w.notes && <div className="mt-2 text-xs text-slate-400 italic">{w.notes}</div>}
             <div className="mt-3 flex gap-2 flex-wrap">
               {w.status === "open" && <button onClick={() => updateStatus(w, "in_progress")} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">▶ In Progress</button>}
               {w.status === "in_progress" && <button onClick={() => updateStatus(w, "completed")} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">✓ Complete</button>}
-              {w.status === "completed" && <button onClick={() => updateStatus(w, "open")} className="text-xs text-gray-500 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50">↩ Reopen</button>}
+              {w.status === "completed" && <button onClick={() => updateStatus(w, "open")} className="text-xs text-slate-400 border border-indigo-100 px-3 py-1 rounded-lg hover:bg-indigo-50/30">↩ Reopen</button>}
               <button onClick={() => openPhotos(w)} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">📸 Photos</button>
               <button onClick={() => startEdit(w)} className="text-xs text-blue-600 border border-blue-200 px-3 py-1 rounded-lg hover:bg-blue-50">✏️ Edit</button>
             </div>
@@ -3016,16 +3016,16 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
       {showAudit && (
         <Modal title={`Audit Log — ${showAudit.provider}`} onClose={() => setShowAudit(null)}>
           {auditLog.length === 0 ? (
-            <div className="text-center text-gray-400 py-6">No audit entries yet</div>
+            <div className="text-center text-slate-400 py-6">No audit entries yet</div>
           ) : (
             <div className="space-y-3">
               {auditLog.map((a, i) => (
-                <div key={i} className="bg-gray-50 rounded-lg px-4 py-3">
+                <div key={i} className="bg-indigo-50/30 rounded-lg px-4 py-3">
                   <div className="flex justify-between">
                     <span className="text-sm font-semibold text-green-600">{a.action}</span>
-                    <span className="text-xs text-gray-400">{new Date(a.paid_at).toLocaleString()}</span>
+                    <span className="text-xs text-slate-400">{new Date(a.paid_at).toLocaleString()}</span>
                   </div>
-                  <div className="text-sm text-gray-600 mt-1">${a.amount} — {a.property}</div>
+                  <div className="text-sm text-slate-500 mt-1">${a.amount} — {a.property}</div>
                 </div>
               ))}
             </div>
@@ -3035,46 +3035,46 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
 
       {/* Toolbar */}
       <div className="flex flex-col md:flex-row gap-3 mb-4">
-        <h2 className="text-xl font-bold text-gray-800 mr-auto">Utility Management</h2>
-        <input placeholder="Search..." value={utilSearch} onChange={e => setUtilSearch(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-40" />
-        <select value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+        <h2 className="text-2xl font-manrope font-bold text-slate-800 mr-auto">Utility Management</h2>
+        <input placeholder="Search..." value={utilSearch} onChange={e => setUtilSearch(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-40" />
+        <select value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
           <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
         </select>
-        <select value={utilFilterProp} onChange={e => setUtilFilterProp(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+        <select value={utilFilterProp} onChange={e => setUtilFilterProp(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
           <option value="all">All Properties</option>
           {[...new Set(utilities.map(u => u.property).filter(Boolean))].map(p => <option key={p} value={p}>{p}</option>)}
         </select>
-        <div className="flex bg-gray-100 rounded-lg p-0.5">
+        <div className="flex bg-indigo-50 rounded-2xl p-0.5">
           {[["card","▦"],["table","☰"]].map(([m,icon]) => (
-            <button key={m} onClick={() => setUtilView(m)} className={`px-3 py-1.5 text-sm rounded-md ${utilView === m ? "bg-white shadow-sm text-indigo-700 font-semibold" : "text-gray-500"}`}>{icon}</button>
+            <button key={m} onClick={() => setUtilView(m)} className={`px-3 py-1.5 text-sm rounded-md ${utilView === m ? "bg-white shadow-sm text-indigo-700 font-semibold" : "text-slate-400"}`}>{icon}</button>
           ))}
         </div>
-        <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 whitespace-nowrap">+ Add Bill</button>
+        <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700 whitespace-nowrap">+ Add Bill</button>
       </div>
 
       {/* Stats */}
       <div className="flex gap-3 mb-4">
-        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-gray-800">{utilities.length}</div><div className="text-xs text-gray-400">Total</div></div>
-        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{utilities.filter(u => u.status === "pending").length}</div><div className="text-xs text-gray-400">Pending</div></div>
-        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">${utilities.filter(u => u.status === "paid").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-gray-400">Paid</div></div>
-        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-red-500">${utilities.filter(u => u.status === "pending").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-gray-400">Outstanding</div></div>
+        <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-slate-800">{utilities.length}</div><div className="text-xs text-slate-400">Total</div></div>
+        <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{utilities.filter(u => u.status === "pending").length}</div><div className="text-xs text-slate-400">Pending</div></div>
+        <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">${utilities.filter(u => u.status === "paid").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-slate-400">Paid</div></div>
+        <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-red-500">${utilities.filter(u => u.status === "pending").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-slate-400">Outstanding</div></div>
       </div>
 
       {showForm && (
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
-          <h3 className="font-semibold text-gray-700 mb-3">New Utility Bill</h3>
+          <h3 className="font-semibold text-slate-700 mb-3">New Utility Bill</h3>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Provider</label><input placeholder="e.g. PEPCO, Washington Gas" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Amount ($)</label><input placeholder="150.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Due Date</label><input type="date" value={form.due} onChange={e => setForm({ ...form, due: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Responsibility</label><select value={form.responsibility} onChange={e => setForm({ ...form, responsibility: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full">
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Provider</label><input placeholder="e.g. PEPCO, Washington Gas" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($)</label><input placeholder="150.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Due Date</label><input type="date" value={form.due} onChange={e => setForm({ ...form, due: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Responsibility</label><select value={form.responsibility} onChange={e => setForm({ ...form, responsibility: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
               {["owner", "tenant", "shared"].map(r => <option key={r}>{r}</option>)}
             </select></div>
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={addUtility} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
-            <button onClick={() => setShowForm(false)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
           </div>
         </div>
       )}
@@ -3089,42 +3089,42 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
           {utilView === "card" && (
             <div className="space-y-3">
               {fu.map(u => (
-                <div key={u.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                <div key={u.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
                   <div className="flex justify-between items-start">
-                    <div><div className="font-semibold text-gray-800">{u.provider}</div><div className="text-xs text-gray-400 mt-0.5">{u.property}</div></div>
-                    <div className="text-right"><div className="text-lg font-bold text-gray-800">${u.amount}</div><Badge status={u.status} /></div>
+                    <div><div className="font-semibold text-slate-800">{u.provider}</div><div className="text-xs text-slate-400 mt-0.5">{u.property}</div></div>
+                    <div className="text-right"><div className="text-lg font-manrope font-bold text-slate-800">${u.amount}</div><Badge status={u.status} /></div>
                   </div>
                   <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                    <div><span className="text-gray-400">Due</span><div className="font-semibold text-gray-700">{u.due}</div></div>
-                    <div><span className="text-gray-400">Responsibility</span><div className="font-semibold capitalize text-gray-700">{u.responsibility}</div></div>
-                    <div><span className="text-gray-400">Paid</span><div className="font-semibold text-gray-700">{u.paid_at ? new Date(u.paid_at).toLocaleDateString() : "—"}</div></div>
+                    <div><span className="text-slate-400">Due</span><div className="font-semibold text-slate-700">{u.due}</div></div>
+                    <div><span className="text-slate-400">Responsibility</span><div className="font-semibold capitalize text-slate-700">{u.responsibility}</div></div>
+                    <div><span className="text-slate-400">Paid</span><div className="font-semibold text-slate-700">{u.paid_at ? new Date(u.paid_at).toLocaleDateString() : "—"}</div></div>
                   </div>
                   <div className="mt-3 flex gap-2">
                     {u.status === "pending" && <button onClick={() => approvePay(u)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">✓ Pay</button>}
-                    <button onClick={() => openAuditLog(u)} className="text-xs text-gray-600 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50">Audit</button>
+                    <button onClick={() => openAuditLog(u)} className="text-xs text-slate-500 border border-indigo-100 px-3 py-1 rounded-lg hover:bg-indigo-50/30">Audit</button>
                   </div>
                 </div>
               ))}
             </div>
           )}
           {utilView === "table" && (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
+            <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-xs text-gray-400 uppercase">
+                <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
                   <tr><th className="px-4 py-3 text-left">Provider</th><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-left">Due</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Resp.</th><th className="px-4 py-3 text-right">Actions</th></tr>
                 </thead>
                 <tbody>
                   {fu.map(u => (
-                    <tr key={u.id} className="border-t border-gray-50 hover:bg-gray-50/50">
-                      <td className="px-4 py-2.5 font-medium text-gray-800">{u.provider}</td>
-                      <td className="px-4 py-2.5 text-gray-600">{u.property}</td>
+                    <tr key={u.id} className="border-t border-indigo-50/50 hover:bg-indigo-50/30/50">
+                      <td className="px-4 py-2.5 font-medium text-slate-800">{u.provider}</td>
+                      <td className="px-4 py-2.5 text-slate-500">{u.property}</td>
                       <td className="px-4 py-2.5 text-right font-semibold">${u.amount}</td>
-                      <td className="px-4 py-2.5 text-gray-500">{u.due}</td>
+                      <td className="px-4 py-2.5 text-slate-400">{u.due}</td>
                       <td className="px-4 py-2.5"><Badge status={u.status} /></td>
-                      <td className="px-4 py-2.5 text-gray-600 capitalize">{u.responsibility}</td>
+                      <td className="px-4 py-2.5 text-slate-500 capitalize">{u.responsibility}</td>
                       <td className="px-4 py-2.5 text-right whitespace-nowrap">
                         {u.status === "pending" && <button onClick={() => approvePay(u)} className="text-xs text-green-600 hover:underline mr-2">Pay</button>}
-                        <button onClick={() => openAuditLog(u)} className="text-xs text-gray-400 hover:underline">Audit</button>
+                        <button onClick={() => openAuditLog(u)} className="text-xs text-slate-400 hover:underline">Audit</button>
                       </td>
                     </tr>
                   ))}
@@ -3132,7 +3132,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
               </table>
             </div>
           )}
-          {fu.length === 0 && <div className="text-center py-8 text-gray-400">No utility bills found</div>}
+          {fu.length === 0 && <div className="text-center py-8 text-slate-400">No utility bills found</div>}
         </>;
       })()}
     </div>
@@ -3391,10 +3391,10 @@ function AcctModal({ isOpen, onClose, title, children, size = "md" }) {
   const sizes = { sm:"max-w-md", md:"max-w-xl", lg:"max-w-3xl", xl:"max-w-5xl" };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:"rgba(0,0,0,0.5)" }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className={`bg-white rounded-2xl shadow-2xl w-full ${sizes[size]} flex flex-col`} style={{ maxHeight:"90vh" }}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
-          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100">✕</button>
+      <div className={`bg-white rounded-3xl shadow-card border border-indigo-50 w-full ${sizes[size]} flex flex-col`} style={{ maxHeight:"90vh" }}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-indigo-50 shrink-0">
+          <h2 className="text-lg font-manrope font-bold text-slate-900">{title}</h2>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:bg-indigo-50/50 transition-colors"><span className="material-icons-outlined text-lg">close</span></button>
         </div>
         <div className="overflow-y-auto flex-1 px-6 py-4">{children}</div>
       </div>
@@ -3404,12 +3404,12 @@ function AcctModal({ isOpen, onClose, title, children, size = "md" }) {
 
 function AcctTypeBadge({ type }) {
   const map = { Asset:"bg-blue-50 text-blue-700", Liability:"bg-red-50 text-red-700", Equity:"bg-violet-50 text-violet-700", Revenue:"bg-emerald-50 text-emerald-700", Expense:"bg-orange-50 text-orange-700", "Cost of Goods Sold":"bg-orange-50 text-orange-700", "Other Income":"bg-emerald-50 text-emerald-700", "Other Expense":"bg-orange-50 text-orange-700" };
-  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[type] || "bg-gray-100 text-gray-700"}`}>{type}</span>;
+  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[type] || "bg-slate-100 text-slate-700"}`}>{type}</span>;
 }
 
 function AcctStatusBadge({ status }) {
   const map = { posted: "bg-emerald-50 text-emerald-700", draft: "bg-amber-50 text-amber-700", voided: "bg-red-50 text-red-700" };
-  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[status] || "bg-gray-100 text-gray-700"}`}>{status}</span>;
+  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[status] || "bg-slate-100 text-slate-700"}`}>{status}</span>;
 }
 
 // --- Chart of Accounts Sub-Page ---
@@ -3456,39 +3456,39 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Chart of Accounts</h3>
-          <p className="text-sm text-gray-500">Manage your account structure</p>
+          <h3 className="text-lg font-semibold text-slate-900">Chart of Accounts</h3>
+          <p className="text-sm text-slate-400">Manage your account structure</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setShowInactive(!showInactive)} className={`text-xs px-3 py-1.5 rounded-lg border ${showInactive ? "bg-gray-100 border-gray-300" : "border-gray-200 text-gray-400"}`}>{showInactive ? "Hide Inactive" : "Show Inactive"}</button>
+          <button onClick={() => setShowInactive(!showInactive)} className={`text-xs px-3 py-1.5 rounded-lg border ${showInactive ? "bg-indigo-50 border-indigo-200" : "border-indigo-100 text-slate-400"}`}>{showInactive ? "Hide Inactive" : "Show Inactive"}</button>
           <button onClick={openAdd} className="bg-slate-800 text-white text-xs px-4 py-2 rounded-lg hover:bg-slate-700">+ New Account</button>
         </div>
       </div>
       <div className="flex flex-wrap gap-2 mb-4">
         {["All", ...typeOrder.filter((t, i, a) => a.indexOf(t) === i)].map(t => (
-          <button key={t} onClick={() => setFilter(t)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${filter === t ? "bg-slate-800 text-white border-slate-800" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"}`}>{t}</button>
+          <button key={t} onClick={() => setFilter(t)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${filter === t ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-400 border-indigo-100 hover:border-indigo-300"}`}>{t}</button>
         ))}
       </div>
       {typeOrder.filter((t, i, a) => a.indexOf(t) === i).map(type => {
         const accts = grouped[type];
         if (!accts?.length) return null;
         return (
-          <div key={type} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-3">
-            <div className="px-4 py-2 bg-gray-50 flex items-center justify-between">
-              <div className="flex items-center gap-2"><AcctTypeBadge type={type} /><span className="text-xs text-gray-500">{accts.length} accounts</span></div>
-              <span className="font-mono text-xs font-semibold text-gray-600">{acctFmt(accts.filter(a=>a.is_active).reduce((s,a)=>s+a.computedBalance,0))}</span>
+          <div key={type} className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden mb-3">
+            <div className="px-4 py-2 bg-indigo-50/30 flex items-center justify-between">
+              <div className="flex items-center gap-2"><AcctTypeBadge type={type} /><span className="text-xs text-slate-400">{accts.length} accounts</span></div>
+              <span className="font-mono text-xs font-semibold text-slate-500">{acctFmt(accts.filter(a=>a.is_active).reduce((s,a)=>s+a.computedBalance,0))}</span>
             </div>
             <table className="w-full text-sm">
-              <thead className="text-xs text-gray-400 uppercase bg-gray-50/50"><tr><th className="px-4 py-2 text-left">Number</th><th className="px-4 py-2 text-left">Name</th><th className="px-4 py-2 text-left">Subtype</th><th className="px-4 py-2 text-right">Balance</th><th className="px-4 py-2 w-20">Actions</th></tr></thead>
+              <thead className="text-xs text-slate-400 uppercase bg-indigo-50/30"><tr><th className="px-4 py-2 text-left">Number</th><th className="px-4 py-2 text-left">Name</th><th className="px-4 py-2 text-left">Subtype</th><th className="px-4 py-2 text-right">Balance</th><th className="px-4 py-2 w-20">Actions</th></tr></thead>
               <tbody>
                 {accts.map(a => (
-                  <tr key={a.id} className="border-t border-gray-50 hover:bg-blue-50/30 cursor-pointer" onClick={() => openEdit(a)}>
-                    <td className="px-4 py-2 font-mono text-xs text-gray-400">{a.id}</td>
-                    <td className={`px-4 py-2 font-medium ${!a.is_active ? "text-gray-400 line-through" : "text-gray-800"}`}>{a.name}</td>
-                    <td className="px-4 py-2 text-xs text-gray-500">{a.subtype}</td>
-                    <td className={`px-4 py-2 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-red-600" : "text-gray-800"}`}>{acctFmt(a.computedBalance, true)}</td>
+                  <tr key={a.id} className="border-t border-indigo-50/50 hover:bg-blue-50/30 cursor-pointer" onClick={() => openEdit(a)}>
+                    <td className="px-4 py-2 font-mono text-xs text-slate-400">{a.id}</td>
+                    <td className={`px-4 py-2 font-medium ${!a.is_active ? "text-slate-400 line-through" : "text-slate-800"}`}>{a.name}</td>
+                    <td className="px-4 py-2 text-xs text-slate-400">{a.subtype}</td>
+                    <td className={`px-4 py-2 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(a.computedBalance, true)}</td>
                     <td className="px-4 py-2 text-center">
-                      <button onClick={e => { e.stopPropagation(); onToggle(a.id, a.is_active); }} className="text-gray-400 hover:text-gray-700 text-xs">{a.is_active ? "🟢" : "⚪"}</button>
+                      <button onClick={e => { e.stopPropagation(); onToggle(a.id, a.is_active); }} className="text-slate-400 hover:text-slate-700 text-xs">{a.is_active ? "🟢" : "⚪"}</button>
                     </td>
                   </tr>
                 ))}
@@ -3499,19 +3499,19 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
       })}
       <AcctModal isOpen={!!modal} onClose={() => setModal(null)} title={modal === "add" ? "New Account" : "Edit Account"} size="md">
         <div className="space-y-3">
-          <div><label className="text-xs font-medium text-gray-600">Account Name *</label><input value={form.name} onChange={e => setForm({...form, name:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="e.g. Operating Checking" /></div>
+          <div><label className="text-xs font-medium text-slate-500">Account Name *</label><input value={form.name} onChange={e => setForm({...form, name:e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" placeholder="e.g. Operating Checking" /></div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-gray-600">Type *</label>
-              <select value={form.type} onChange={e => { const v = e.target.value; setForm({...form, type: v, subtype: v === "__custom__" ? "" : (getAccountSubtypes(accounts, v)[0] || ""), customType: v === "__custom__" ? form.customType : "" }); }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1">
+              <label className="text-xs font-medium text-slate-500">Type *</label>
+              <select value={form.type} onChange={e => { const v = e.target.value; setForm({...form, type: v, subtype: v === "__custom__" ? "" : (getAccountSubtypes(accounts, v)[0] || ""), customType: v === "__custom__" ? form.customType : "" }); }} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1">
                 {dynamicTypes.map(t => <option key={t} value={t}>{t}</option>)}
                 <option value="__custom__">+ Add Custom Type...</option>
               </select>
               {form.type === "__custom__" && <input value={form.customType} onChange={e => setForm({...form, customType: e.target.value})} className="w-full border border-indigo-300 rounded-lg px-3 py-2 text-sm mt-1 bg-indigo-50" placeholder="Enter new account type" autoFocus />}
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-600">Subtype</label>
-              <select value={form.subtype} onChange={e => setForm({...form, subtype: e.target.value, customSubtype: e.target.value === "__custom__" ? form.customSubtype : ""})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1">
+              <label className="text-xs font-medium text-slate-500">Subtype</label>
+              <select value={form.subtype} onChange={e => setForm({...form, subtype: e.target.value, customSubtype: e.target.value === "__custom__" ? form.customSubtype : ""})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1">
                 {(form.type === "__custom__" ? [] : dynamicSubtypes).map(s => <option key={s} value={s}>{s}</option>)}
                 <option value="__custom__">+ Add Custom Subtype...</option>
                 <option value="">None</option>
@@ -3519,9 +3519,9 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
               {form.subtype === "__custom__" && <input value={form.customSubtype} onChange={e => setForm({...form, customSubtype: e.target.value})} className="w-full border border-indigo-300 rounded-lg px-3 py-2 text-sm mt-1 bg-indigo-50" placeholder="Enter new subtype" />}
             </div>
           </div>
-          <div><label className="text-xs font-medium text-gray-600">Description</label><textarea value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" rows={2} /></div>
+          <div><label className="text-xs font-medium text-slate-500">Description</label><textarea value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
           <div className="flex justify-end gap-2 pt-2">
-            <button onClick={() => setModal(null)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button onClick={() => setModal(null)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
             <button onClick={saveAccount} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-slate-700">{modal === "add" ? "Create" : "Save"}</button>
           </div>
         </div>
@@ -3589,39 +3589,39 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   const JEFormUI = () => (
     <div className="space-y-4">
       <div className="grid grid-cols-3 gap-3">
-        <div><label className="text-xs font-medium text-gray-600">Date *</label><input type="date" value={form.date} onChange={e => setForm({...form, date:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" /></div>
-        <div><label className="text-xs font-medium text-gray-600">Reference</label><input value={form.reference} onChange={e => setForm({...form, reference:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="Invoice #, Check #..." /></div>
-        <div><label className="text-xs font-medium text-gray-600">Property *</label><select value={form.property} onChange={e => setForm({...form, property:e.target.value})} className={`w-full border rounded-lg px-3 py-2 text-sm mt-1 ${!form.property ? "border-red-300 bg-red-50" : "border-gray-200"}`}><option value="">-- Select Property --</option>{properties.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-        <div className="col-span-3"><label className="text-xs font-medium text-gray-600">Description *</label><input value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="What is this entry for?" /></div>
+        <div><label className="text-xs font-medium text-slate-500">Date *</label><input type="date" value={form.date} onChange={e => setForm({...form, date:e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" /></div>
+        <div><label className="text-xs font-medium text-slate-500">Reference</label><input value={form.reference} onChange={e => setForm({...form, reference:e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" placeholder="Invoice #, Check #..." /></div>
+        <div><label className="text-xs font-medium text-slate-500">Property *</label><select value={form.property} onChange={e => setForm({...form, property:e.target.value})} className={`w-full border rounded-lg px-3 py-2 text-sm mt-1 ${!form.property ? "border-red-300 bg-red-50" : "border-indigo-100"}`}><option value="">-- Select Property --</option>{properties.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+        <div className="col-span-3"><label className="text-xs font-medium text-slate-500">Description *</label><input value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" placeholder="What is this entry for?" /></div>
       </div>
       <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-semibold text-gray-600 uppercase">Journal Entry Lines</p>
+        <p className="text-xs font-semibold text-slate-500 uppercase">Journal Entry Lines</p>
         <button onClick={addLine} className="text-xs text-slate-600 hover:text-slate-800">+ Add Line</button>
       </div>
-      <div className="rounded-xl border border-gray-200 overflow-x-auto">
+      <div className="rounded-xl border border-indigo-100 overflow-x-auto">
         <table className="w-full text-sm">
-          <thead><tr className="bg-gray-50 border-b border-gray-200"><th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 w-48">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 w-32">Class</th><th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Memo</th><th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 w-28">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-gray-500 w-28">Credit</th><th className="px-3 py-2 w-8" /></tr></thead>
+          <thead><tr className="bg-indigo-50/30 border-b border-indigo-100"><th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 w-48">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 w-32">Class</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-400">Memo</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-400 w-28">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-400 w-28">Credit</th><th className="px-3 py-2 w-8" /></tr></thead>
           <tbody>
             {form.lines.map((line, i) => (
-              <tr key={i} className="border-b border-gray-50">
-                <td className="px-2 py-1.5"><select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.id} - {a.name}</option>)}</optgroup>)}</select></td>
-                <td className="px-2 py-1.5"><select value={line.class_id || ""} onChange={e => setLine(i,"class_id",e.target.value||null)} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></td>
-                <td className="px-2 py-1.5"><input value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-white" /></td>
-                <td className="px-2 py-1.5"><input type="number" step="0.01" min="0" value={line.debit} onChange={e => { setLine(i,"debit",e.target.value); if(e.target.value) setLine(i,"credit",""); }} placeholder="0.00" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-right bg-white font-mono" /></td>
-                <td className="px-2 py-1.5"><input type="number" step="0.01" min="0" value={line.credit} onChange={e => { setLine(i,"credit",e.target.value); if(e.target.value) setLine(i,"debit",""); }} placeholder="0.00" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-right bg-white font-mono" /></td>
-                <td className="px-2 py-1.5"><button onClick={() => removeLine(i)} disabled={form.lines.length<=2} className="text-gray-300 hover:text-red-500 disabled:opacity-20">✕</button></td>
+              <tr key={i} className="border-b border-indigo-50/50">
+                <td className="px-2 py-1.5"><select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.id} - {a.name}</option>)}</optgroup>)}</select></td>
+                <td className="px-2 py-1.5"><select value={line.class_id || ""} onChange={e => setLine(i,"class_id",e.target.value||null)} className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></td>
+                <td className="px-2 py-1.5"><input value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white" /></td>
+                <td className="px-2 py-1.5"><input type="number" step="0.01" min="0" value={line.debit} onChange={e => { setLine(i,"debit",e.target.value); if(e.target.value) setLine(i,"credit",""); }} placeholder="0.00" className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono" /></td>
+                <td className="px-2 py-1.5"><input type="number" step="0.01" min="0" value={line.credit} onChange={e => { setLine(i,"credit",e.target.value); if(e.target.value) setLine(i,"debit",""); }} placeholder="0.00" className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono" /></td>
+                <td className="px-2 py-1.5"><button onClick={() => removeLine(i)} disabled={form.lines.length<=2} className="text-slate-300 hover:text-red-500 disabled:opacity-20">✕</button></td>
               </tr>
             ))}
           </tbody>
-          <tfoot><tr className="bg-gray-50 border-t border-gray-200"><td colSpan={3} className="px-3 py-2 text-xs font-semibold text-gray-600 text-right">Totals</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-emerald-700":"text-red-600"}`}>{acctFmt(totalDebit)}</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-emerald-700":"text-red-600"}`}>{acctFmt(totalCredit)}</td><td /></tr></tfoot>
+          <tfoot><tr className="bg-indigo-50/30 border-t border-indigo-100"><td colSpan={3} className="px-3 py-2 text-xs font-semibold text-slate-500 text-right">Totals</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-emerald-700":"text-red-600"}`}>{acctFmt(totalDebit)}</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-emerald-700":"text-red-600"}`}>{acctFmt(totalCredit)}</td><td /></tr></tfoot>
         </table>
       </div>
-      {!validation.isValid && totalDebit > 0 && totalCredit > 0 && <div className="text-xs text-red-600 bg-red-50 rounded-xl px-3 py-2">⚠ Out of balance by {acctFmt(validation.difference)}</div>}
-      {validation.isValid && totalDebit > 0 && <div className="text-xs text-emerald-600 bg-emerald-50 rounded-xl px-3 py-2">✓ Balanced — {acctFmt(totalDebit)}</div>}
+      {!validation.isValid && totalDebit > 0 && totalCredit > 0 && <div className="text-xs text-red-600 bg-red-50 rounded-2xl px-3 py-2">⚠ Out of balance by {acctFmt(validation.difference)}</div>}
+      {validation.isValid && totalDebit > 0 && <div className="text-xs text-emerald-600 bg-emerald-50 rounded-2xl px-3 py-2">✓ Balanced — {acctFmt(totalDebit)}</div>}
       <div className="flex justify-between pt-2">
-        <button onClick={() => setModal(null)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+        <button onClick={() => setModal(null)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
         <div className="flex gap-2">
-          <button onClick={() => saveEntry("draft")} disabled={!form.description || !form.property || !validation.isValid} className="bg-gray-200 text-gray-700 text-sm px-4 py-2 rounded-lg disabled:opacity-50">Save Draft</button>
+          <button onClick={() => saveEntry("draft")} disabled={!form.description || !form.property || !validation.isValid} className="bg-slate-200 text-slate-700 text-sm px-4 py-2 rounded-lg disabled:opacity-50">Save Draft</button>
           <button onClick={() => saveEntry("posted")} disabled={!form.description || !form.property || !validation.isValid} className="bg-emerald-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50 hover:bg-emerald-700">Post Entry</button>
         </div>
       </div>
@@ -3631,31 +3631,31 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4">
-        <div><h3 className="text-lg font-semibold text-gray-900">Journal Entries</h3><p className="text-sm text-gray-500">Record and manage financial transactions</p></div>
+        <div><h3 className="text-lg font-semibold text-slate-900">Journal Entries</h3><p className="text-sm text-slate-400">Record and manage financial transactions</p></div>
         <button onClick={openAdd} className="bg-slate-800 text-white text-xs px-4 py-2 rounded-lg hover:bg-slate-700">+ New Entry</button>
       </div>
       <div className="flex gap-2 mb-4">
         {[{k:"all",l:`All (${counts.all})`},{k:"posted",l:`Posted (${counts.posted})`},{k:"draft",l:`Drafts (${counts.draft})`},{k:"voided",l:`Voided (${counts.voided})`}].map(f => (
-          <button key={f.k} onClick={() => setFilterStatus(f.k)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${filterStatus === f.k ? "bg-slate-800 text-white border-slate-800" : "bg-white text-gray-500 border-gray-200"}`}>{f.l}</button>
+          <button key={f.k} onClick={() => setFilterStatus(f.k)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${filterStatus === f.k ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-400 border-indigo-100"}`}>{f.l}</button>
         ))}
-        <select value={searchProperty} onChange={e => setSearchProperty(e.target.value)} className="text-xs px-3 py-1.5 rounded-xl border border-gray-200 bg-white text-gray-600 ml-auto">
+        <select value={searchProperty} onChange={e => setSearchProperty(e.target.value)} className="text-xs px-3 py-1.5 rounded-xl border border-indigo-100 bg-white text-slate-500 ml-auto">
           <option value="">All Properties</option>
           {jeProperties.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
       </div>
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="text-xs text-gray-400 uppercase bg-gray-50"><tr><th className="px-4 py-2 text-left">Entry #</th><th className="px-4 py-2 text-left">Date</th><th className="px-4 py-2 text-left">Property</th><th className="px-4 py-2 text-left">Description</th><th className="px-4 py-2 text-left">Ref</th><th className="px-4 py-2 text-left">Status</th><th className="px-4 py-2 text-right">Amount</th><th className="px-4 py-2">Actions</th></tr></thead>
+          <thead className="text-xs text-slate-400 uppercase bg-indigo-50/30"><tr><th className="px-4 py-2 text-left">Entry #</th><th className="px-4 py-2 text-left">Date</th><th className="px-4 py-2 text-left">Property</th><th className="px-4 py-2 text-left">Description</th><th className="px-4 py-2 text-left">Ref</th><th className="px-4 py-2 text-left">Status</th><th className="px-4 py-2 text-right">Amount</th><th className="px-4 py-2">Actions</th></tr></thead>
           <tbody>
             {filtered.map(je => {
               const total = (je.lines || []).reduce((s,l) => s + safeNum(l.debit), 0);
               return (
-                <tr key={je.id} className="border-t border-gray-50 hover:bg-blue-50/30 cursor-pointer" onClick={() => openView(je)}>
-                  <td className="px-4 py-2 font-mono text-xs font-semibold text-gray-700">{je.number}</td>
-                  <td className="px-4 py-2 text-gray-600">{acctFmtDate(je.date)}</td>
-                  <td className="px-4 py-2 text-xs text-gray-600">{je.property || "—"}</td>
-                  <td className="px-4 py-2 font-medium text-gray-800">{je.description}</td>
-                  <td className="px-4 py-2 text-xs text-gray-400">{je.reference || "—"}</td>
+                <tr key={je.id} className="border-t border-indigo-50/50 hover:bg-blue-50/30 cursor-pointer" onClick={() => openView(je)}>
+                  <td className="px-4 py-2 font-mono text-xs font-semibold text-slate-700">{je.number}</td>
+                  <td className="px-4 py-2 text-slate-500">{acctFmtDate(je.date)}</td>
+                  <td className="px-4 py-2 text-xs text-slate-500">{je.property || "—"}</td>
+                  <td className="px-4 py-2 font-medium text-slate-800">{je.description}</td>
+                  <td className="px-4 py-2 text-xs text-slate-400">{je.reference || "—"}</td>
                   <td className="px-4 py-2"><AcctStatusBadge status={je.status} /></td>
                   <td className="px-4 py-2 text-right font-mono text-sm font-semibold">{acctFmt(total)}</td>
                   <td className="px-4 py-2 text-center">
@@ -3668,7 +3668,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
                 </tr>
               );
             })}
-            {filtered.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">No journal entries found</td></tr>}
+            {filtered.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">No journal entries found</td></tr>}
           </tbody>
         </table>
       </div>
@@ -3680,23 +3680,23 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
       {modal?.mode === "view" && (
         <AcctModal isOpen={true} onClose={() => setModal(null)} title={`Journal Entry: ${modal.je.number}`} size="xl">
           <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-3 bg-gray-50 rounded-xl p-4">
-              <div><p className="text-xs text-gray-500">Entry #</p><p className="font-mono font-semibold">{modal.je.number}</p></div>
-              <div><p className="text-xs text-gray-500">Date</p><p className="font-semibold">{acctFmtDate(modal.je.date)}</p></div>
-              <div><p className="text-xs text-gray-500">Property</p><p className="font-semibold">{modal.je.property || "—"}</p></div>
-              <div className="col-span-2"><p className="text-xs text-gray-500">Description</p><p className="font-semibold">{modal.je.description}</p></div>
-              <div><p className="text-xs text-gray-500">Status</p><AcctStatusBadge status={modal.je.status} /></div>
+            <div className="grid grid-cols-3 gap-3 bg-indigo-50/30 rounded-3xl p-4">
+              <div><p className="text-xs text-slate-400">Entry #</p><p className="font-mono font-semibold">{modal.je.number}</p></div>
+              <div><p className="text-xs text-slate-400">Date</p><p className="font-semibold">{acctFmtDate(modal.je.date)}</p></div>
+              <div><p className="text-xs text-slate-400">Property</p><p className="font-semibold">{modal.je.property || "—"}</p></div>
+              <div className="col-span-2"><p className="text-xs text-slate-400">Description</p><p className="font-semibold">{modal.je.description}</p></div>
+              <div><p className="text-xs text-slate-400">Status</p><AcctStatusBadge status={modal.je.status} /></div>
             </div>
-            <table className="w-full text-sm rounded-xl border border-gray-200 overflow-hidden">
-              <thead><tr className="bg-gray-50"><th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Account</th><th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Class</th><th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Memo</th><th className="px-4 py-2 text-right text-xs font-semibold text-gray-500">Debit</th><th className="px-4 py-2 text-right text-xs font-semibold text-gray-500">Credit</th></tr></thead>
+            <table className="w-full text-sm rounded-xl border border-indigo-100 overflow-hidden">
+              <thead><tr className="bg-indigo-50/30"><th className="px-4 py-2 text-left text-xs font-semibold text-slate-400">Account</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-400">Class</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-400">Memo</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-400">Debit</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-400">Credit</th></tr></thead>
               <tbody>
                 {(modal.je.lines || []).map((l,i) => {
                   const cls = classes.find(c => c.id === l.class_id);
                   return (
-                    <tr key={i} className="border-t border-gray-50">
-                      <td className="px-4 py-2"><span className="font-mono text-xs text-gray-400 mr-1">{l.account_id}</span> {l.account_name}</td>
+                    <tr key={i} className="border-t border-indigo-50/50">
+                      <td className="px-4 py-2"><span className="font-mono text-xs text-slate-400 mr-1">{l.account_id}</span> {l.account_name}</td>
                       <td className="px-4 py-2 text-xs">{cls ? <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background:cls.color}} />{cls.name}</span> : "—"}</td>
-                      <td className="px-4 py-2 text-xs text-gray-400">{l.memo || "—"}</td>
+                      <td className="px-4 py-2 text-xs text-slate-400">{l.memo || "—"}</td>
                       <td className="px-4 py-2 text-right font-mono">{safeNum(l.debit) > 0 ? acctFmt(l.debit) : ""}</td>
                       <td className="px-4 py-2 text-right font-mono">{safeNum(l.credit) > 0 ? acctFmt(l.credit) : ""}</td>
                     </tr>
@@ -3707,7 +3707,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
             <div className="flex gap-2">
               {modal.je.status === "draft" && <button onClick={() => { onPost(modal.je.id); setModal(null); }} className="bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-lg">Post</button>}
               {modal.je.status === "posted" && <button onClick={() => { onVoid(modal.je.id); setModal(null); }} className="bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg">Void</button>}
-              {modal.je.status !== "voided" && <button onClick={() => openEdit(modal.je)} className="bg-gray-200 text-gray-700 text-xs px-3 py-1.5 rounded-lg">Edit</button>}
+              {modal.je.status !== "voided" && <button onClick={() => openEdit(modal.je)} className="bg-slate-200 text-slate-700 text-xs px-3 py-1.5 rounded-lg">Edit</button>}
             </div>
           </div>
         </AcctModal>
@@ -3746,25 +3746,25 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4">
-        <div><h3 className="text-lg font-semibold text-gray-900">Class Tracking</h3><p className="text-sm text-gray-500">Track by unit, property, or department</p></div>
+        <div><h3 className="text-lg font-semibold text-slate-900">Class Tracking</h3><p className="text-sm text-slate-400">Track by unit, property, or department</p></div>
         <button onClick={openAdd} className="bg-slate-800 text-white text-xs px-4 py-2 rounded-lg hover:bg-slate-700">+ New Class</button>
       </div>
       <div className="flex flex-wrap gap-2 mb-4">
-        {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${period === p ? "bg-slate-800 text-white border-slate-800" : "bg-white text-gray-500 border-gray-200"}`}>{p}</button>)}
+        {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${period === p ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-400 border-indigo-100"}`}>{p}</button>)}
       </div>
       <div className="grid grid-cols-3 gap-3 mb-4">
-        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4"><p className="text-xs text-emerald-600 font-medium">Revenue</p><p className="text-xl font-bold text-emerald-800 font-mono mt-1">{acctFmt(totalRev)}</p></div>
-        <div className="bg-red-50 border border-red-100 rounded-xl p-4"><p className="text-xs text-red-600 font-medium">Expenses</p><p className="text-xl font-bold text-red-800 font-mono mt-1">{acctFmt(totalExp)}</p></div>
-        <div className={`border rounded-xl p-4 ${totalNet >= 0 ? "bg-blue-50 border-blue-100" : "bg-orange-50 border-orange-100"}`}><p className={`text-xs font-medium ${totalNet >= 0 ? "text-blue-600" : "text-orange-600"}`}>Net Income</p><p className={`text-xl font-bold font-mono mt-1 ${totalNet >= 0 ? "text-blue-800" : "text-orange-800"}`}>{acctFmt(totalNet, true)}</p></div>
+        <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-4"><p className="text-xs text-emerald-600 font-medium">Revenue</p><p className="text-xl font-bold text-emerald-800 font-mono mt-1">{acctFmt(totalRev)}</p></div>
+        <div className="bg-red-50 border border-red-100 rounded-3xl p-4"><p className="text-xs text-red-600 font-medium">Expenses</p><p className="text-xl font-bold text-red-800 font-mono mt-1">{acctFmt(totalExp)}</p></div>
+        <div className={`border rounded-3xl p-4 ${totalNet >= 0 ? "bg-blue-50 border-blue-100" : "bg-orange-50 border-orange-100"}`}><p className={`text-xs font-medium ${totalNet >= 0 ? "text-blue-600" : "text-orange-600"}`}>Net Income</p><p className={`text-xl font-bold font-mono mt-1 ${totalNet >= 0 ? "text-blue-800" : "text-orange-800"}`}>{acctFmt(totalNet, true)}</p></div>
       </div>
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="text-xs text-gray-400 uppercase bg-gray-50"><tr><th className="px-4 py-2 text-left">Class</th><th className="px-4 py-2 text-left">Description</th><th className="px-4 py-2 text-right">Revenue</th><th className="px-4 py-2 text-right">Expenses</th><th className="px-4 py-2 text-right">Net Income</th><th className="px-4 py-2 w-16" /></tr></thead>
+          <thead className="text-xs text-slate-400 uppercase bg-indigo-50/30"><tr><th className="px-4 py-2 text-left">Class</th><th className="px-4 py-2 text-left">Description</th><th className="px-4 py-2 text-right">Revenue</th><th className="px-4 py-2 text-right">Expenses</th><th className="px-4 py-2 text-right">Net Income</th><th className="px-4 py-2 w-16" /></tr></thead>
           <tbody>
             {classReport.map(c => (
-              <tr key={c.id} className="border-t border-gray-50 hover:bg-blue-50/30">
-                <td className="px-4 py-2"><div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{background:c.color}} /><span className={`font-medium ${!c.is_active?"text-gray-400 line-through":"text-gray-800"}`}>{c.name}</span></div></td>
-                <td className="px-4 py-2 text-xs text-gray-500">{c.description}</td>
+              <tr key={c.id} className="border-t border-indigo-50/50 hover:bg-blue-50/30">
+                <td className="px-4 py-2"><div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{background:c.color}} /><span className={`font-medium ${!c.is_active?"text-slate-400 line-through":"text-slate-800"}`}>{c.name}</span></div></td>
+                <td className="px-4 py-2 text-xs text-slate-400">{c.description}</td>
                 <td className="px-4 py-2 text-right font-mono text-sm text-emerald-700">{c.revenue > 0 ? acctFmt(c.revenue) : "—"}</td>
                 <td className="px-4 py-2 text-right font-mono text-sm text-red-600">{c.expenses > 0 ? acctFmt(c.expenses) : "—"}</td>
                 <td className={`px-4 py-2 text-right font-mono text-sm font-bold ${c.netIncome >= 0 ? "text-blue-700" : "text-red-700"}`}>{acctFmt(c.netIncome, true)}</td>
@@ -3776,11 +3776,11 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
       </div>
       <AcctModal isOpen={!!modal} onClose={() => setModal(null)} title={modal === "add" ? "New Class" : "Edit Class"} size="sm">
         <div className="space-y-3">
-          <div><label className="text-xs font-medium text-gray-600">Name *</label><input placeholder="e.g. 123 Main St" value={form.name} onChange={e => setForm({...form,name:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" /></div>
-          <div><label className="text-xs font-medium text-gray-600">Description</label><textarea value={form.description} onChange={e => setForm({...form,description:e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" rows={2} /></div>
-          <div><label className="text-xs font-medium text-gray-600 block mb-2">Color</label><div className="flex gap-2 flex-wrap">{COLORS.map(c => <button key={c} type="button" onClick={() => setForm({...form,color:c})} className={`w-7 h-7 rounded-full border-2 ${form.color===c?"border-gray-800 scale-110":"border-transparent"}`} style={{background:c}} />)}</div></div>
+          <div><label className="text-xs font-medium text-slate-500">Name *</label><input placeholder="e.g. 123 Main St" value={form.name} onChange={e => setForm({...form,name:e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" /></div>
+          <div><label className="text-xs font-medium text-slate-500">Description</label><textarea value={form.description} onChange={e => setForm({...form,description:e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
+          <div><label className="text-xs font-medium text-slate-500 block mb-2">Color</label><div className="flex gap-2 flex-wrap">{COLORS.map(c => <button key={c} type="button" onClick={() => setForm({...form,color:c})} className={`w-7 h-7 rounded-full border-2 ${form.color===c?"border-gray-800 scale-110":"border-transparent"}`} style={{background:c}} />)}</div></div>
           <div className="flex justify-end gap-2 pt-2">
-            <button onClick={() => setModal(null)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button onClick={() => setModal(null)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
             <button onClick={saveClass} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg">{modal === "add" ? "Create" : "Save"}</button>
           </div>
         </div>
@@ -3803,8 +3803,8 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
 
   const PeriodPicker = () => (
     <div className="flex flex-wrap items-center gap-2 mb-4">
-      {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${period === p ? "bg-slate-800 text-white border-slate-800" : "bg-white text-gray-500 border-gray-200"}`}>{p}</button>)}
-      {period === "Custom" && <><input type="date" value={customDates.start} onChange={e => setCustomDates(d=>({...d,start:e.target.value}))} className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs" /><span className="text-gray-400 text-xs">to</span><input type="date" value={customDates.end} onChange={e => setCustomDates(d=>({...d,end:e.target.value}))} className="border border-gray-200 rounded-xl px-3 py-1.5 text-xs" /></>}
+      {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${period === p ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-400 border-indigo-100"}`}>{p}</button>)}
+      {period === "Custom" && <><input type="date" value={customDates.start} onChange={e => setCustomDates(d=>({...d,start:e.target.value}))} className="border border-indigo-100 rounded-xl px-3 py-1.5 text-xs" /><span className="text-slate-400 text-xs">to</span><input type="date" value={customDates.end} onChange={e => setCustomDates(d=>({...d,end:e.target.value}))} className="border border-indigo-100 rounded-xl px-3 py-1.5 text-xs" /></>}
     </div>
   );
 
@@ -3825,12 +3825,12 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4">
-        <div><h3 className="text-lg font-semibold text-gray-900">Financial Reports</h3><p className="text-sm text-gray-500">P&L, Balance Sheet, Trial Balance, General Ledger</p></div>
-        <button onClick={() => window.print()} className="bg-gray-100 text-gray-600 text-xs px-3 py-1.5 rounded-lg hover:bg-gray-200">🖨️ Print</button>
+        <div><h3 className="text-lg font-semibold text-slate-900">Financial Reports</h3><p className="text-sm text-slate-400">P&L, Balance Sheet, Trial Balance, General Ledger</p></div>
+        <button onClick={() => window.print()} className="bg-slate-100 text-slate-500 text-xs px-3 py-1.5 rounded-2xl hover:bg-slate-100">🖨️ Print</button>
       </div>
-      <div className="flex gap-1 border-b border-gray-100 mb-4 flex-wrap">
+      <div className="flex gap-1 border-b border-indigo-50 mb-4 flex-wrap">
         {[{id:"pl",l:"Profit & Loss"},{id:"bs",l:"Balance Sheet"},{id:"ar",l:"AR Aging"},{id:"tb",l:"Trial Balance"},{id:"gl",l:"General Ledger"}].map(t => (
-          <button key={t.id} onClick={() => setActiveReport(t.id)} className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px ${activeReport===t.id ? "border-slate-800 text-slate-800" : "border-transparent text-gray-400 hover:text-gray-600"}`}>{t.l}</button>
+          <button key={t.id} onClick={() => setActiveReport(t.id)} className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px ${activeReport===t.id ? "border-slate-800 text-slate-800" : "border-transparent text-slate-400 hover:text-slate-500"}`}>{t.l}</button>
         ))}
       </div>
 
@@ -3838,16 +3838,16 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
       {activeReport === "pl" && (
         <div>
           <PeriodPicker />
-          <div className="flex gap-2 mb-4"><select value={classFilter} onChange={e => setClassFilter(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm bg-white"><option value="">All Classes</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+          <div className="flex gap-2 mb-4"><select value={classFilter} onChange={e => setClassFilter(e.target.value)} className="border border-indigo-100 rounded-xl px-3 py-1.5 text-sm bg-white"><option value="">All Classes</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
           <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4"><p className="text-xs text-emerald-600">Total Revenue</p><p className="text-xl font-bold text-emerald-800 font-mono mt-1">{acctFmt(plData.totalRevenue)}</p></div>
-            <div className="bg-red-50 border border-red-100 rounded-xl p-4"><p className="text-xs text-red-600">Total Expenses</p><p className="text-xl font-bold text-red-800 font-mono mt-1">{acctFmt(plData.totalExpenses)}</p></div>
-            <div className={`border rounded-xl p-4 ${plData.netIncome>=0?"bg-blue-50 border-blue-100":"bg-orange-50 border-orange-100"}`}><p className={`text-xs ${plData.netIncome>=0?"text-blue-600":"text-orange-600"}`}>Net Income</p><p className={`text-xl font-bold font-mono mt-1 ${plData.netIncome>=0?"text-blue-800":"text-orange-800"}`}>{acctFmt(plData.netIncome, true)}</p></div>
+            <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-4"><p className="text-xs text-emerald-600">Total Revenue</p><p className="text-xl font-bold text-emerald-800 font-mono mt-1">{acctFmt(plData.totalRevenue)}</p></div>
+            <div className="bg-red-50 border border-red-100 rounded-3xl p-4"><p className="text-xs text-red-600">Total Expenses</p><p className="text-xl font-bold text-red-800 font-mono mt-1">{acctFmt(plData.totalExpenses)}</p></div>
+            <div className={`border rounded-3xl p-4 ${plData.netIncome>=0?"bg-blue-50 border-blue-100":"bg-orange-50 border-orange-100"}`}><p className={`text-xs ${plData.netIncome>=0?"text-blue-600":"text-orange-600"}`}>Net Income</p><p className={`text-xl font-bold font-mono mt-1 ${plData.netIncome>=0?"text-blue-800":"text-orange-800"}`}>{acctFmt(plData.netIncome, true)}</p></div>
           </div>
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-            <div className="text-center mb-4"><p className="text-xs text-gray-400 uppercase tracking-widest">Profit & Loss Statement</p><h4 className="text-base font-bold text-gray-900">{companyName}</h4><p className="text-sm text-gray-500">{acctFmtDate(start)} — {acctFmtDate(end)}</p></div>
-            <div className="border-t pt-3"><p className="text-sm font-bold text-gray-800 uppercase mb-2">Income</p>{plData.revenue.map(a => <div key={a.id} className="flex justify-between py-1 px-2 hover:bg-gray-50 rounded"><span className="text-sm text-gray-700">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount)}</span></div>)}<div className="flex justify-between py-2 border-t-2 border-gray-300 mt-2 font-bold"><span>Total Income</span><span className="font-mono text-emerald-700">{acctFmt(plData.totalRevenue)}</span></div></div>
-            <div className="border-t pt-3 mt-3"><p className="text-sm font-bold text-gray-800 uppercase mb-2">Expenses</p>{plData.expenses.map(a => <div key={a.id} className="flex justify-between py-1 px-2 hover:bg-gray-50 rounded"><span className="text-sm text-gray-700">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount)}</span></div>)}<div className="flex justify-between py-2 border-t-2 border-gray-300 mt-2 font-bold"><span>Total Expenses</span><span className="font-mono text-red-600">{acctFmt(plData.totalExpenses)}</span></div></div>
+          <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+            <div className="text-center mb-4"><p className="text-xs text-slate-400 uppercase tracking-widest">Profit & Loss Statement</p><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-sm text-slate-400">{acctFmtDate(start)} — {acctFmtDate(end)}</p></div>
+            <div className="border-t pt-3"><p className="text-sm font-bold text-slate-800 uppercase mb-2">Income</p>{plData.revenue.map(a => <div key={a.id} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded"><span className="text-sm text-slate-700">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount)}</span></div>)}<div className="flex justify-between py-2 border-t-2 border-indigo-200 mt-2 font-bold"><span>Total Income</span><span className="font-mono text-emerald-700">{acctFmt(plData.totalRevenue)}</span></div></div>
+            <div className="border-t pt-3 mt-3"><p className="text-sm font-bold text-slate-800 uppercase mb-2">Expenses</p>{plData.expenses.map(a => <div key={a.id} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded"><span className="text-sm text-slate-700">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount)}</span></div>)}<div className="flex justify-between py-2 border-t-2 border-indigo-200 mt-2 font-bold"><span>Total Expenses</span><span className="font-mono text-red-600">{acctFmt(plData.totalExpenses)}</span></div></div>
             <div className={`flex justify-between py-3 mt-3 border-t-4 border-gray-800 px-2 rounded-b-xl font-black ${plData.netIncome>=0?"bg-emerald-50":"bg-red-50"}`}><span>Net Income</span><span className={`font-mono ${plData.netIncome>=0?"text-emerald-700":"text-red-700"}`}>{acctFmt(plData.netIncome, true)}</span></div>
           </div>
         </div>
@@ -3856,23 +3856,23 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
       {/* Balance Sheet */}
       {activeReport === "bs" && (
         <div>
-          <div className="flex items-center gap-3 mb-4"><span className="text-sm text-gray-600">As of:</span><input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm" />{bsBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl">✓ Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-xl">⚠ Out of Balance</span>}</div>
+          <div className="flex items-center gap-3 mb-4"><span className="text-sm text-slate-500">As of:</span><input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="border border-indigo-100 rounded-xl px-3 py-1.5 text-sm" />{bsBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl">✓ Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-xl">⚠ Out of Balance</span>}</div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-              <p className="text-base font-black text-gray-900 mb-3">ASSETS</p>
+            <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+              <p className="text-base font-black text-slate-900 mb-3">ASSETS</p>
               {bsData.assets.filter(a=>a.amount!==0).map(a => (
                 <div key={a.id}>
-                  <div className="flex justify-between py-1 px-2 hover:bg-gray-50 rounded cursor-pointer" onClick={() => a.id === "1100" && setShowARSub(!showARSub)}>
-                    <span className="text-sm text-gray-700">{a.name}{a.id === "1100" && bsData.arByTenant?.length > 0 && <span className="text-xs text-indigo-500 ml-1">{showARSub ? "▾" : "▸"} {bsData.arByTenant.length} tenants</span>}</span>
-                    <span className={`font-mono text-sm ${a.amount<0?"text-red-600":"text-gray-800"}`}>{acctFmt(a.amount, true)}</span>
+                  <div className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded cursor-pointer" onClick={() => a.id === "1100" && setShowARSub(!showARSub)}>
+                    <span className="text-sm text-slate-700">{a.name}{a.id === "1100" && bsData.arByTenant?.length > 0 && <span className="text-xs text-indigo-500 ml-1">{showARSub ? "▾" : "▸"} {bsData.arByTenant.length} tenants</span>}</span>
+                    <span className={`font-mono text-sm ${a.amount<0?"text-red-600":"text-slate-800"}`}>{acctFmt(a.amount, true)}</span>
                   </div>
                   {a.id === "1100" && showARSub && bsData.arByTenant?.length > 0 && (
                     <div className="ml-4 mb-2 border-l-2 border-indigo-200 pl-3">
                       <div className="text-xs font-bold text-indigo-600 uppercase tracking-wide py-1">Tenant Sub-Ledger</div>
                       {bsData.arByTenant.map((t, i) => (
                         <div key={i} className="flex justify-between py-0.5 px-1">
-                          <span className="text-xs text-gray-600">{t.tenant}</span>
-                          <span className={`font-mono text-xs ${t.balance < 0 ? "text-green-600" : "text-gray-700"}`}>{acctFmt(t.balance, true)}</span>
+                          <span className="text-xs text-slate-500">{t.tenant}</span>
+                          <span className={`font-mono text-xs ${t.balance < 0 ? "text-green-600" : "text-slate-700"}`}>{acctFmt(t.balance, true)}</span>
                         </div>
                       ))}
                       <div className="flex justify-between py-1 px-1 border-t border-indigo-200 mt-1">
@@ -3885,13 +3885,13 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
               ))}
               <div className="flex justify-between py-3 border-t-4 border-gray-800 bg-blue-50 px-2 rounded-xl mt-3 font-black"><span>TOTAL ASSETS</span><span className="font-mono text-blue-700">{acctFmt(bsData.totalAssets)}</span></div>
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-              <p className="text-base font-black text-gray-900 mb-3">LIABILITIES & EQUITY</p>
-              <p className="text-xs font-bold text-gray-500 uppercase mt-2 mb-1">Liabilities</p>
-              {bsData.liabilities.filter(a=>a.amount!==0).map(a => <div key={a.id} className="flex justify-between py-1 px-2 hover:bg-gray-50 rounded"><span className="text-sm text-gray-700">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount, true)}</span></div>)}
-              <p className="text-xs font-bold text-gray-500 uppercase mt-3 mb-1">Equity</p>
-              {bsData.equity.filter(a=>a.amount!==0).map(a => <div key={a.id} className="flex justify-between py-1 px-2 hover:bg-gray-50 rounded"><span className="text-sm text-gray-700">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount, true)}</span></div>)}
-              {bsData.netIncome !== 0 && <div className="flex justify-between py-1 px-2 hover:bg-gray-50 rounded"><span className="text-sm text-gray-700 italic">Net Income (Current)</span><span className="font-mono text-sm">{acctFmt(bsData.netIncome, true)}</span></div>}
+            <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+              <p className="text-base font-black text-slate-900 mb-3">LIABILITIES & EQUITY</p>
+              <p className="text-xs font-bold text-slate-400 uppercase mt-2 mb-1">Liabilities</p>
+              {bsData.liabilities.filter(a=>a.amount!==0).map(a => <div key={a.id} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded"><span className="text-sm text-slate-700">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount, true)}</span></div>)}
+              <p className="text-xs font-bold text-slate-400 uppercase mt-3 mb-1">Equity</p>
+              {bsData.equity.filter(a=>a.amount!==0).map(a => <div key={a.id} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded"><span className="text-sm text-slate-700">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount, true)}</span></div>)}
+              {bsData.netIncome !== 0 && <div className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded"><span className="text-sm text-slate-700 italic">Net Income (Current)</span><span className="font-mono text-sm">{acctFmt(bsData.netIncome, true)}</span></div>}
               <div className="flex justify-between py-3 border-t-4 border-gray-800 bg-violet-50 px-2 rounded-xl mt-3 font-black"><span>TOTAL L + E</span><span className="font-mono text-violet-700">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</span></div>
             </div>
           </div>
@@ -3901,7 +3901,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
       {/* AR Aging Report */}
       {activeReport === "ar" && (
         <div>
-          <div className="flex items-center gap-3 mb-4"><span className="text-sm text-gray-600">As of:</span><input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm" /></div>
+          <div className="flex items-center gap-3 mb-4"><span className="text-sm text-slate-500">As of:</span><input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="border border-indigo-100 rounded-xl px-3 py-1.5 text-sm" /></div>
 
           {/* Aging Summary Buckets */}
           <div className="grid grid-cols-5 gap-3 mb-5">
@@ -3920,19 +3920,19 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
           </div>
 
           {/* Total AR */}
-          <div className="bg-indigo-50 rounded-xl p-4 mb-5 flex justify-between items-center">
+          <div className="bg-indigo-50 rounded-3xl p-4 mb-5 flex justify-between items-center">
             <div><span className="text-sm font-bold text-indigo-800">Total Accounts Receivable</span><span className="text-xs text-indigo-500 ml-2">(Account 1100)</span></div>
             <span className="text-xl font-black font-mono text-indigo-800">{acctFmt((bsData.arAging?.current || 0) + (bsData.arAging?.days30 || 0) + (bsData.arAging?.days60 || 0) + (bsData.arAging?.days90 || 0) + (bsData.arAging?.over90 || 0))}</span>
           </div>
 
           {/* Per-Tenant Aging Table */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
-              <h4 className="text-sm font-bold text-gray-800">AR Aging by Tenant</h4>
+          <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden">
+            <div className="px-5 py-3 bg-indigo-50/30 border-b border-indigo-50">
+              <h4 className="text-sm font-bold text-slate-800">AR Aging by Tenant</h4>
             </div>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase">
+                <tr className="border-b border-indigo-50 text-xs text-slate-400 uppercase">
                   <th className="px-4 py-2 text-left">Tenant</th>
                   <th className="px-3 py-2 text-right">Current</th>
                   <th className="px-3 py-2 text-right">31-60</th>
@@ -3944,8 +3944,8 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
               </thead>
               <tbody>
                 {Object.entries(bsData.arAgingByTenant || {}).filter(([,v]) => v.total > 0.01).sort((a, b) => b[1].total - a[1].total).map(([tenant, aging], i) => (
-                  <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                    <td className="px-4 py-2 font-medium text-gray-800">{tenant}</td>
+                  <tr key={i} className="border-b border-indigo-50/50 hover:bg-indigo-50/30">
+                    <td className="px-4 py-2 font-medium text-slate-800">{tenant}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs">{aging.current > 0 ? acctFmt(aging.current) : "—"}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs text-yellow-700">{aging.days30 > 0 ? acctFmt(aging.days30) : "—"}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs text-orange-700">{aging.days60 > 0 ? acctFmt(aging.days60) : "—"}</td>
@@ -3955,7 +3955,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
                   </tr>
                 ))}
                 {Object.keys(bsData.arAgingByTenant || {}).length === 0 && (
-                  <tr><td colSpan="7" className="px-4 py-6 text-center text-gray-400">No outstanding receivables</td></tr>
+                  <tr><td colSpan="7" className="px-4 py-6 text-center text-slate-400">No outstanding receivables</td></tr>
                 )}
               </tbody>
             </table>
@@ -3963,20 +3963,20 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
 
           {/* Tenant Sub-Ledger (Net Balances) */}
           {bsData.arByTenant?.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mt-4">
-              <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
-                <h4 className="text-sm font-bold text-gray-800">Tenant Sub-Ledger (Net AR Balance)</h4>
-                <p className="text-xs text-gray-500">Charges minus payments per tenant — rolls up to master AR on Balance Sheet</p>
+            <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden mt-4">
+              <div className="px-5 py-3 bg-indigo-50/30 border-b border-indigo-50">
+                <h4 className="text-sm font-bold text-slate-800">Tenant Sub-Ledger (Net AR Balance)</h4>
+                <p className="text-xs text-slate-400">Charges minus payments per tenant — rolls up to master AR on Balance Sheet</p>
               </div>
               <div className="p-4 space-y-1">
                 {bsData.arByTenant.map((t, i) => (
-                  <div key={i} className="flex justify-between py-1.5 px-3 rounded hover:bg-gray-50">
-                    <span className="text-sm text-gray-700">{t.tenant}</span>
+                  <div key={i} className="flex justify-between py-1.5 px-3 rounded hover:bg-indigo-50/30">
+                    <span className="text-sm text-slate-700">{t.tenant}</span>
                     <span className={`font-mono text-sm font-medium ${t.balance > 0 ? "text-red-600" : "text-green-600"}`}>{t.balance > 0 ? acctFmt(t.balance) + " owed" : acctFmt(Math.abs(t.balance)) + " credit"}</span>
                   </div>
                 ))}
-                <div className="flex justify-between py-2 px-3 border-t-2 border-gray-200 mt-2 font-bold">
-                  <span className="text-sm text-gray-900">Total AR (must match Balance Sheet 1100)</span>
+                <div className="flex justify-between py-2 px-3 border-t-2 border-indigo-100 mt-2 font-bold">
+                  <span className="text-sm text-slate-900">Total AR (must match Balance Sheet 1100)</span>
                   <span className="font-mono text-sm text-indigo-700">{acctFmt(bsData.arByTenant.reduce((s, t) => s + t.balance, 0))}</span>
                 </div>
               </div>
@@ -3988,12 +3988,12 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
       {/* Trial Balance */}
       {activeReport === "tb" && (
         <div>
-          <div className="flex items-center gap-3 mb-4"><span className="text-sm text-gray-600">As of:</span><input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm" />{tbBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl">✓ Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-xl">⚠ Out of Balance by {acctFmt(Math.abs(tbTotalDebit - tbTotalCredit))}</span>}</div>
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="flex items-center gap-3 mb-4"><span className="text-sm text-slate-500">As of:</span><input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="border border-indigo-100 rounded-xl px-3 py-1.5 text-sm" />{tbBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl">✓ Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-xl">⚠ Out of Balance by {acctFmt(Math.abs(tbTotalDebit - tbTotalCredit))}</span>}</div>
+          <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">#</th><th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Account</th><th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Type</th><th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Debit</th><th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Credit</th></tr></thead>
-              <tbody>{tbData.map(a => <tr key={a.id} className="border-t border-gray-50"><td className="px-4 py-2 font-mono text-xs text-gray-400">{a.id}</td><td className="px-4 py-2 text-gray-700 font-medium">{a.name}</td><td className="px-4 py-2 text-xs text-gray-500">{a.type}</td><td className="px-4 py-2 text-right font-mono">{a.debitBalance > 0 ? acctFmt(a.debitBalance) : ""}</td><td className="px-4 py-2 text-right font-mono">{a.creditBalance > 0 ? acctFmt(a.creditBalance) : ""}</td></tr>)}</tbody>
-              <tfoot><tr className="border-t-2 border-gray-800 bg-gray-50"><td colSpan={3} className="px-4 py-3 text-right font-bold">TOTALS</td><td className={`px-4 py-3 text-right font-mono font-black ${tbBalanced?"text-emerald-700":"text-red-600"}`}>{acctFmt(tbTotalDebit)}</td><td className={`px-4 py-3 text-right font-mono font-black ${tbBalanced?"text-emerald-700":"text-red-600"}`}>{acctFmt(tbTotalCredit)}</td></tr></tfoot>
+              <thead className="bg-indigo-50/30"><tr><th className="px-4 py-3 text-left text-xs font-semibold text-slate-400">#</th><th className="px-4 py-3 text-left text-xs font-semibold text-slate-400">Account</th><th className="px-4 py-3 text-left text-xs font-semibold text-slate-400">Type</th><th className="px-4 py-3 text-right text-xs font-semibold text-slate-400">Debit</th><th className="px-4 py-3 text-right text-xs font-semibold text-slate-400">Credit</th></tr></thead>
+              <tbody>{tbData.map(a => <tr key={a.id} className="border-t border-indigo-50/50"><td className="px-4 py-2 font-mono text-xs text-slate-400">{a.id}</td><td className="px-4 py-2 text-slate-700 font-medium">{a.name}</td><td className="px-4 py-2 text-xs text-slate-400">{a.type}</td><td className="px-4 py-2 text-right font-mono">{a.debitBalance > 0 ? acctFmt(a.debitBalance) : ""}</td><td className="px-4 py-2 text-right font-mono">{a.creditBalance > 0 ? acctFmt(a.creditBalance) : ""}</td></tr>)}</tbody>
+              <tfoot><tr className="border-t-2 border-gray-800 bg-indigo-50/30"><td colSpan={3} className="px-4 py-3 text-right font-bold">TOTALS</td><td className={`px-4 py-3 text-right font-mono font-black ${tbBalanced?"text-emerald-700":"text-red-600"}`}>{acctFmt(tbTotalDebit)}</td><td className={`px-4 py-3 text-right font-mono font-black ${tbBalanced?"text-emerald-700":"text-red-600"}`}>{acctFmt(tbTotalCredit)}</td></tr></tfoot>
             </table>
           </div>
         </div>
@@ -4003,18 +4003,18 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
       {activeReport === "gl" && (
         <div>
           <div className="flex items-center gap-3 mb-4">
-            <span className="text-sm text-gray-600">Account:</span>
-            <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white min-w-56">
+            <span className="text-sm text-slate-500">Account:</span>
+            <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm bg-white min-w-56">
               {ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.id} - {a.name}</option>)}</optgroup>)}
             </select>
           </div>
           {glAccount && (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-              <div className="flex justify-between mb-4"><div><h4 className="font-semibold text-gray-800">{glAccount.name}</h4><p className="text-xs text-gray-400">#{glAccount.id} · {glAccount.type} — {glAccount.subtype}</p></div>{glLines.length > 0 && <div className="text-right"><p className="text-xs text-gray-400">Ending Balance</p><p className="font-mono font-bold">{acctFmt(glLines[glLines.length-1].balance, true)}</p></div>}</div>
-              <table className="w-full text-sm rounded-xl border border-gray-100 overflow-hidden">
-                <thead className="bg-gray-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Date</th><th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Entry</th><th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Description</th><th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Memo</th><th className="px-4 py-2 text-right text-xs font-semibold text-gray-500">Debit</th><th className="px-4 py-2 text-right text-xs font-semibold text-gray-500">Credit</th><th className="px-4 py-2 text-right text-xs font-semibold text-gray-500">Balance</th></tr></thead>
+            <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+              <div className="flex justify-between mb-4"><div><h4 className="font-semibold text-slate-800">{glAccount.name}</h4><p className="text-xs text-slate-400">#{glAccount.id} · {glAccount.type} — {glAccount.subtype}</p></div>{glLines.length > 0 && <div className="text-right"><p className="text-xs text-slate-400">Ending Balance</p><p className="font-mono font-bold">{acctFmt(glLines[glLines.length-1].balance, true)}</p></div>}</div>
+              <table className="w-full text-sm rounded-xl border border-indigo-50 overflow-hidden">
+                <thead className="bg-indigo-50/30"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-400">Date</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-400">Entry</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-400">Description</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-400">Memo</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-400">Debit</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-400">Credit</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-400">Balance</th></tr></thead>
                 <tbody>
-                  {glLines.length === 0 ? <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No transactions</td></tr> : glLines.map((l,i) => <tr key={i} className="border-t border-gray-50"><td className="px-4 py-2 text-xs text-gray-500">{acctFmtDate(l.date)}</td><td className="px-4 py-2 font-mono text-xs text-gray-400">{l.jeId}</td><td className="px-4 py-2 text-gray-700">{l.description}</td><td className="px-4 py-2 text-xs text-gray-400">{l.memo || "—"}</td><td className="px-4 py-2 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td><td className="px-4 py-2 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td><td className={`px-4 py-2 text-right font-mono font-semibold ${l.balance<0?"text-red-600":"text-gray-800"}`}>{acctFmt(l.balance, true)}</td></tr>)}
+                  {glLines.length === 0 ? <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">No transactions</td></tr> : glLines.map((l,i) => <tr key={i} className="border-t border-indigo-50/50"><td className="px-4 py-2 text-xs text-slate-400">{acctFmtDate(l.date)}</td><td className="px-4 py-2 font-mono text-xs text-slate-400">{l.jeId}</td><td className="px-4 py-2 text-slate-700">{l.description}</td><td className="px-4 py-2 text-xs text-slate-400">{l.memo || "—"}</td><td className="px-4 py-2 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td><td className="px-4 py-2 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td><td className={`px-4 py-2 text-right font-mono font-semibold ${l.balance<0?"text-red-600":"text-slate-800"}`}>{acctFmt(l.balance, true)}</td></tr>)}
                 </tbody>
               </table>
             </div>
@@ -4207,8 +4207,8 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4">
-        <div><h3 className="text-lg font-semibold text-gray-900">Bank Statement Import</h3><p className="text-sm text-gray-500">Import CSV from your bank and post to journal entries</p></div>
-        {step > 1 && !done && <button onClick={reset} className="text-xs text-gray-500 hover:text-gray-700 bg-gray-100 px-3 py-1.5 rounded-lg">🔄 Start Over</button>}
+        <div><h3 className="text-lg font-semibold text-slate-900">Bank Statement Import</h3><p className="text-sm text-slate-400">Import CSV from your bank and post to journal entries</p></div>
+        {step > 1 && !done && <button onClick={reset} className="text-xs text-slate-400 hover:text-slate-700 bg-slate-100 px-3 py-1.5 rounded-lg">🔄 Start Over</button>}
       </div>
 
       {/* Step Bar */}
@@ -4216,10 +4216,10 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
         {[{n:1,l:"Upload"},{n:2,l:"Map Columns"},{n:3,l:"Review"},{n:4,l:"Post"}].map((s,i)=>(
           <div key={s.n} className="flex items-center flex-1">
             <div className="flex flex-col items-center gap-1">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 ${step>s.n?"bg-emerald-500 border-emerald-500 text-white":step===s.n?"bg-slate-800 border-slate-800 text-white":"bg-white border-gray-200 text-gray-400"}`}>{step>s.n?"✓":s.n}</div>
-              <span className={`text-xs font-medium ${step===s.n?"text-slate-800":"text-gray-400"}`}>{s.l}</span>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 ${step>s.n?"bg-emerald-500 border-emerald-500 text-white":step===s.n?"bg-slate-800 border-slate-800 text-white":"bg-white border-indigo-100 text-slate-400"}`}>{step>s.n?"✓":s.n}</div>
+              <span className={`text-xs font-medium ${step===s.n?"text-slate-800":"text-slate-400"}`}>{s.l}</span>
             </div>
-            {i<3&&<div className={`flex-1 h-0.5 mb-4 mx-2 ${step>s.n?"bg-emerald-400":"bg-gray-200"}`}/>}
+            {i<3&&<div className={`flex-1 h-0.5 mb-4 mx-2 ${step>s.n?"bg-emerald-400":"bg-slate-200"}`}/>}
           </div>
         ))}
       </div>
@@ -4227,23 +4227,23 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
       {/* Step 1: Upload */}
       {step === 1 && (
         <div className="space-y-4 max-w-xl mx-auto">
-          <div onClick={()=>fileRef.current?.click()} className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer ${file?"border-emerald-300 bg-emerald-50/50":"border-gray-200 hover:border-gray-400"}`}>
+          <div onClick={()=>fileRef.current?.click()} className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer ${file?"border-emerald-300 bg-emerald-50/50":"border-indigo-100 hover:border-indigo-300"}`}>
             <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={e=>{ const f=e.target.files[0]; if(f){setError("");setFile(f);} }} />
-            {file ? <><p className="text-2xl">📄</p><p className="font-semibold text-emerald-800">{file.name}</p><p className="text-xs text-emerald-600">{(file.size/1024).toFixed(1)} KB · Click to change</p></> : <><p className="text-2xl">📤</p><p className="font-semibold text-gray-700">Drop CSV here or click to browse</p></>}
+            {file ? <><p className="text-2xl">📄</p><p className="font-semibold text-emerald-800">{file.name}</p><p className="text-xs text-emerald-600">{(file.size/1024).toFixed(1)} KB · Click to change</p></> : <><p className="text-2xl">📤</p><p className="font-semibold text-slate-700">Drop CSV here or click to browse</p></>}
           </div>
           <div>
-            <label className="text-xs font-semibold text-gray-600 block mb-2">Import into Account *</label>
+            <label className="text-xs font-semibold text-slate-500 block mb-2">Import into Account *</label>
             {bankAccounts.map(a=>(
-              <button key={a.id} onClick={()=>setBankAccountId(a.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left mb-2 ${bankAccountId===a.id?"border-slate-800 bg-slate-50":"border-gray-200 hover:border-gray-400"}`}>
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${bankAccountId===a.id?"bg-slate-800 text-white":"bg-gray-100 text-gray-400"}`}>🏦</div>
-                <div className="flex-1"><p className="text-sm font-semibold text-gray-800">{a.name}</p><p className="text-xs text-gray-400">#{a.id} · {a.subtype}</p></div>
+              <button key={a.id} onClick={()=>setBankAccountId(a.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left mb-2 ${bankAccountId===a.id?"border-slate-800 bg-slate-50":"border-indigo-100 hover:border-indigo-300"}`}>
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${bankAccountId===a.id?"bg-slate-800 text-white":"bg-slate-100 text-slate-400"}`}>🏦</div>
+                <div className="flex-1"><p className="text-sm font-semibold text-slate-800">{a.name}</p><p className="text-xs text-slate-400">#{a.id} · {a.subtype}</p></div>
                 {bankAccountId===a.id&&<span className="text-slate-800">✓</span>}
               </button>
             ))}
-            {bankAccounts.length===0&&<p className="text-sm text-amber-600 bg-amber-50 rounded-xl px-4 py-3">No bank accounts found. Add one in Chart of Accounts first.</p>}
+            {bankAccounts.length===0&&<p className="text-sm text-amber-600 bg-amber-50 rounded-2xl px-4 py-3">No bank accounts found. Add one in Chart of Accounts first.</p>}
           </div>
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700"><strong>Supported:</strong> Chase, Bank of America, Wells Fargo, Citibank, Capital One, US Bank, and generic CSV</div>
-          {error&&<p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3">⚠ {error}</p>}
+          {error&&<p className="text-sm text-red-600 bg-red-50 rounded-2xl px-4 py-3">⚠ {error}</p>}
           <div className="flex justify-end"><button onClick={handleUpload} disabled={!file||!bankAccountId} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50 hover:bg-slate-700">Continue →</button></div>
         </div>
       )}
@@ -4252,57 +4252,57 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
       {step === 2 && wizardData.parsed && (
         <div className="space-y-4 max-w-2xl mx-auto">
           <div className="flex items-center gap-2 mb-2">
-            <h4 className="font-semibold text-gray-900">Map CSV Columns</h4>
+            <h4 className="font-semibold text-slate-900">Map CSV Columns</h4>
             {wizardData.detected?.id!=="generic"&&<span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">⚡ Auto-detected: {wizardData.detected.name}</span>}
           </div>
-          <div className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-2">Headers found:</p><div className="flex flex-wrap gap-1.5">{wizardData.parsed.headers.map(h=><span key={h} className="text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded-lg font-mono">{h}</span>)}</div></div>
+          <div className="bg-indigo-50/30 rounded-xl p-3"><p className="text-xs text-slate-400 mb-2">Headers found:</p><div className="flex flex-wrap gap-1.5">{wizardData.parsed.headers.map(h=><span key={h} className="text-xs bg-slate-200 text-slate-700 px-2 py-0.5 rounded-lg font-mono">{h}</span>)}</div></div>
           <div className="grid grid-cols-2 gap-3">
             {[{f:"date",l:"Date *"},{f:"description",l:"Description *"},{f:"amount",l:"Amount"},{f:"debit",l:"Debit"},{f:"credit",l:"Credit"},{f:"memo",l:"Memo"}].map(({f,l})=>(
-              <div key={f}><label className="text-xs font-medium text-gray-600">{l}</label><select value={mapping[f]} onChange={e=>setMapping(m=>({...m,[f]:e.target.value}))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"><option value="">— Not mapped —</option>{wizardData.parsed.headers.map(h=><option key={h} value={h}>{h}</option>)}</select></div>
+              <div key={f}><label className="text-xs font-medium text-slate-500">{l}</label><select value={mapping[f]} onChange={e=>setMapping(m=>({...m,[f]:e.target.value}))} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1"><option value="">— Not mapped —</option>{wizardData.parsed.headers.map(h=><option key={h} value={h}>{h}</option>)}</select></div>
             ))}
           </div>
-          {!mappingValid&&<p className="text-xs text-amber-600 bg-amber-50 rounded-xl px-3 py-2">⚠ Date, Description, and at least one amount column required</p>}
+          {!mappingValid&&<p className="text-xs text-amber-600 bg-amber-50 rounded-2xl px-3 py-2">⚠ Date, Description, and at least one amount column required</p>}
           {/* Preview */}
           {mappingValid && (
-            <div className="bg-white rounded-xl border border-gray-100 p-3 overflow-x-auto">
-              <p className="text-xs font-semibold text-gray-500 mb-2">Preview (first 5 rows)</p>
-              <table className="w-full text-xs"><thead><tr className="bg-gray-50"><th className="px-3 py-1 text-left">Date</th><th className="px-3 py-1 text-left">Description</th><th className="px-3 py-1 text-right">Amount</th></tr></thead>
-              <tbody>{wizardData.parsed.rows.slice(0,5).map((row,i)=><tr key={i} className="border-t border-gray-50"><td className="px-3 py-1">{mapping.date?row[mapping.date]:""}</td><td className="px-3 py-1">{mapping.description?row[mapping.description]:""}</td><td className="px-3 py-1 text-right font-mono">{mapping.amount?row[mapping.amount]:mapping.debit?row[mapping.debit]:mapping.credit?row[mapping.credit]:""}</td></tr>)}</tbody></table>
+            <div className="bg-white rounded-3xl border border-indigo-50 p-3 overflow-x-auto">
+              <p className="text-xs font-semibold text-slate-400 mb-2">Preview (first 5 rows)</p>
+              <table className="w-full text-xs"><thead><tr className="bg-indigo-50/30"><th className="px-3 py-1 text-left">Date</th><th className="px-3 py-1 text-left">Description</th><th className="px-3 py-1 text-right">Amount</th></tr></thead>
+              <tbody>{wizardData.parsed.rows.slice(0,5).map((row,i)=><tr key={i} className="border-t border-indigo-50/50"><td className="px-3 py-1">{mapping.date?row[mapping.date]:""}</td><td className="px-3 py-1">{mapping.description?row[mapping.description]:""}</td><td className="px-3 py-1 text-right font-mono">{mapping.amount?row[mapping.amount]:mapping.debit?row[mapping.debit]:mapping.credit?row[mapping.credit]:""}</td></tr>)}</tbody></table>
             </div>
           )}
-          <div className="flex justify-between"><button onClick={()=>setStep(1)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">← Back</button><button onClick={handleMapping} disabled={!mappingValid} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Continue →</button></div>
+          <div className="flex justify-between"><button onClick={()=>setStep(1)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">← Back</button><button onClick={handleMapping} disabled={!mappingValid} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Continue →</button></div>
         </div>
       )}
 
       {/* Step 3: Review */}
       {step === 3 && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between"><p className="text-sm text-gray-500">Importing into <strong>{bankAcct?.name}</strong> · {counts.total} transactions</p>
-            <div className="flex gap-2"><button onClick={reapplyRules} className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg">⚡ Re-apply Rules</button><button onClick={()=>setShowRules(!showRules)} className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg">🏷️ Rules</button></div>
+          <div className="flex items-center justify-between"><p className="text-sm text-slate-400">Importing into <strong>{bankAcct?.name}</strong> · {counts.total} transactions</p>
+            <div className="flex gap-2"><button onClick={reapplyRules} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg">⚡ Re-apply Rules</button><button onClick={()=>setShowRules(!showRules)} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg">🏷️ Rules</button></div>
           </div>
           <div className="grid grid-cols-5 gap-2">
             {[{k:"all",l:"All",c:counts.total},{k:"pending",l:"Pending",c:counts.pending},{k:"approved",l:"Approved",c:counts.approved},{k:"skipped",l:"Skipped",c:counts.skipped},{k:"duplicate",l:"Duplicate",c:counts.duplicate}].map(s=>(
-              <button key={s.k} onClick={()=>setFilterStatus(s.k)} className={`rounded-xl p-2 text-center border-2 ${filterStatus===s.k?"border-slate-800 bg-slate-50":"border-transparent bg-white"}`}><p className="text-lg font-bold">{s.c}</p><p className="text-xs text-gray-500">{s.l}</p></button>
+              <button key={s.k} onClick={()=>setFilterStatus(s.k)} className={`rounded-xl p-2 text-center border-2 ${filterStatus===s.k?"border-slate-800 bg-slate-50":"border-transparent bg-white"}`}><p className="text-lg font-bold">{s.c}</p><p className="text-xs text-slate-400">{s.l}</p></button>
             ))}
           </div>
-          <div className="flex gap-2"><button onClick={approveAll} className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg">✓ Approve All</button><button onClick={skipAll} className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg">⏭ Skip All</button>
+          <div className="flex gap-2"><button onClick={approveAll} className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg">✓ Approve All</button><button onClick={skipAll} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg">⏭ Skip All</button>
             {counts.noAccount>0&&<span className="text-xs text-amber-600 bg-amber-50 px-3 py-1.5 rounded-lg ml-auto">⚠ {counts.noAccount} approved rows missing account</span>}
           </div>
 
           {/* Rules Panel */}
           {showRules && (
-            <div className="bg-violet-50 border border-violet-100 rounded-xl p-4 space-y-3">
+            <div className="bg-violet-50 border border-violet-100 rounded-3xl p-4 space-y-3">
               <p className="text-xs font-semibold text-violet-700 uppercase">Auto-Categorization Rules</p>
               {rules.map(r=>(
                 <div key={r.id} className="flex items-center gap-2 text-xs bg-white rounded-lg p-2 border border-violet-100">
-                  <span className="text-gray-500">If</span><span className="bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded">{r.matchType}</span><span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded">"{r.matchValue}"</span><span className="text-gray-500">→</span><span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">{r.accountName||r.accountId}</span>
-                  <button onClick={()=>removeRule(r.id)} className="ml-auto text-gray-300 hover:text-red-500">✕</button>
+                  <span className="text-slate-400">If</span><span className="bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded">{r.matchType}</span><span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">"{r.matchValue}"</span><span className="text-slate-400">→</span><span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">{r.accountName||r.accountId}</span>
+                  <button onClick={()=>removeRule(r.id)} className="ml-auto text-slate-300 hover:text-red-500">✕</button>
                 </div>
               ))}
               <div className="grid grid-cols-4 gap-2">
-                <select value={newRule.matchType} onChange={e=>setNewRule(r=>({...r,matchType:e.target.value}))} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs"><option value="contains">Contains</option><option value="startsWith">Starts With</option><option value="equals">Equals</option><option value="regex">Regex</option></select>
-                <input value={newRule.matchValue} onChange={e=>setNewRule(r=>({...r,matchValue:e.target.value}))} placeholder="Match text..." className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs" />
-                <select value={newRule.accountId} onChange={e=>setNewRule(r=>({...r,accountId:e.target.value}))} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs"><option value="">Account...</option>{accounts.filter(a=>a.is_active&&!["Bank"].includes(a.subtype)).map(a=><option key={a.id} value={a.id}>{a.id}-{a.name}</option>)}</select>
+                <select value={newRule.matchType} onChange={e=>setNewRule(r=>({...r,matchType:e.target.value}))} className="border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs"><option value="contains">Contains</option><option value="startsWith">Starts With</option><option value="equals">Equals</option><option value="regex">Regex</option></select>
+                <input value={newRule.matchValue} onChange={e=>setNewRule(r=>({...r,matchValue:e.target.value}))} placeholder="Match text..." className="border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs" />
+                <select value={newRule.accountId} onChange={e=>setNewRule(r=>({...r,accountId:e.target.value}))} className="border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs"><option value="">Account...</option>{accounts.filter(a=>a.is_active&&!["Bank"].includes(a.subtype)).map(a=><option key={a.id} value={a.id}>{a.id}-{a.name}</option>)}</select>
                 <button onClick={addRule} className="bg-violet-600 text-white text-xs px-3 py-1.5 rounded-lg">+ Add</button>
               </div>
             </div>
@@ -4312,50 +4312,50 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
           <div className="space-y-2">
             {filtered.map((tx,di)=>{
               const ri=transactions.findIndex(t=>t.id===tx.id);
-              const colors={pending:"border-amber-200 bg-amber-50/30",approved:"border-emerald-200 bg-emerald-50/30",skipped:"border-gray-100 bg-gray-50/50 opacity-60",duplicate:"border-red-200 bg-red-50/30"};
+              const colors={pending:"border-amber-200 bg-amber-50/30",approved:"border-emerald-200 bg-emerald-50/30",skipped:"border-gray-100 bg-indigo-50/30 opacity-60",duplicate:"border-red-200 bg-red-50/30"};
               return (
                 <div key={tx.id} className={`rounded-xl border-2 p-3 ${colors[tx.status]}`}>
                   <div className="flex items-start gap-3">
                     <span className="mt-1">{tx.amount>=0?"🟢":"🔴"}</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
-                        <div><p className="text-sm font-semibold text-gray-800">{tx.description}</p><p className="text-xs text-gray-400">{tx.date}{tx.matchedRule&&<span className="ml-1.5 text-violet-500">⚡ rule matched</span>}{tx.status==="duplicate"&&<span className="ml-1.5 text-red-500">⚠ Duplicate</span>}</p></div>
+                        <div><p className="text-sm font-semibold text-slate-800">{tx.description}</p><p className="text-xs text-slate-400">{tx.date}{tx.matchedRule&&<span className="ml-1.5 text-violet-500">⚡ rule matched</span>}{tx.status==="duplicate"&&<span className="ml-1.5 text-red-500">⚠ Duplicate</span>}</p></div>
                         <span className={`font-mono font-bold text-sm ${tx.amount>=0?"text-emerald-700":"text-red-700"}`}>{tx.amount>=0?"+":""}{acctFmt(tx.amount)}</span>
                       </div>
                       {tx.status!=="skipped"&&tx.status!=="duplicate"&&(
                         <div className="flex gap-2 mt-2">
-                          <select value={tx.accountId||""} onChange={e=>{const a=accounts.find(a=>a.id===e.target.value);setTx(ri,{accountId:e.target.value,accountName:a?.name||""});}} className={`border rounded-lg px-2 py-1 text-xs ${tx.status==="approved"&&!tx.accountId?"border-amber-300":"border-gray-200"}`}>
+                          <select value={tx.accountId||""} onChange={e=>{const a=accounts.find(a=>a.id===e.target.value);setTx(ri,{accountId:e.target.value,accountName:a?.name||""});}} className={`border rounded-lg px-2 py-1 text-xs ${tx.status==="approved"&&!tx.accountId?"border-amber-300":"border-indigo-100"}`}>
                             <option value="">— Assign account —</option>{ACCOUNT_TYPES.map(type=><optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active&&a.id!==wizardData.bankAccountId).map(a=><option key={a.id} value={a.id}>{a.id}–{a.name}</option>)}</optgroup>)}
                           </select>
-                          <select value={tx.classId||""} onChange={e=>setTx(ri,{classId:e.target.value})} className="border border-gray-200 rounded-lg px-2 py-1 text-xs"><option value="">No class</option>{classes.filter(c=>c.is_active).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
+                          <select value={tx.classId||""} onChange={e=>setTx(ri,{classId:e.target.value})} className="border border-indigo-100 rounded-2xl px-2 py-1 text-xs"><option value="">No class</option>{classes.filter(c=>c.is_active).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
                         </div>
                       )}
                     </div>
                     <div className="flex gap-1">
-                      {tx.status!=="duplicate"&&<><button onClick={()=>setTx(ri,{status:"approved"})} className={`p-1.5 rounded-lg ${tx.status==="approved"?"bg-emerald-500 text-white":"text-gray-300 hover:text-emerald-600"}`}>✓</button><button onClick={()=>setTx(ri,{status:"skipped"})} className={`p-1.5 rounded-lg ${tx.status==="skipped"?"bg-gray-400 text-white":"text-gray-300 hover:text-gray-500"}`}>⏭</button></>}
-                      {tx.status==="duplicate"&&<button onClick={()=>setTx(ri,{status:"pending",matchedJEId:null})} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600" title="Import anyway">🔄</button>}
+                      {tx.status!=="duplicate"&&<><button onClick={()=>setTx(ri,{status:"approved"})} className={`p-1.5 rounded-lg ${tx.status==="approved"?"bg-emerald-500 text-white":"text-slate-300 hover:text-emerald-600"}`}>✓</button><button onClick={()=>setTx(ri,{status:"skipped"})} className={`p-1.5 rounded-lg ${tx.status==="skipped"?"bg-slate-400 text-white":"text-slate-300 hover:text-slate-400"}`}>⏭</button></>}
+                      {tx.status==="duplicate"&&<button onClick={()=>setTx(ri,{status:"pending",matchedJEId:null})} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600" title="Import anyway">🔄</button>}
                     </div>
                   </div>
                 </div>
               );
             })}
-            {filtered.length===0&&<p className="text-center py-8 text-gray-400 text-sm">No transactions in this filter</p>}
+            {filtered.length===0&&<p className="text-center py-8 text-slate-400 text-sm">No transactions in this filter</p>}
           </div>
-          <div className="flex justify-between"><button onClick={()=>setStep(2)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">← Back</button><button onClick={()=>setStep(4)} disabled={counts.approved===0||counts.noAccount>0} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Post {counts.approved} Transactions →</button></div>
+          <div className="flex justify-between"><button onClick={()=>setStep(2)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">← Back</button><button onClick={()=>setStep(4)} disabled={counts.approved===0||counts.noAccount>0} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Post {counts.approved} Transactions →</button></div>
         </div>
       )}
 
       {/* Step 4: Confirm & Post */}
       {step === 4 && !done && (
         <div className="space-y-4 max-w-xl mx-auto">
-          <h4 className="font-semibold text-gray-900">Confirm & Post</h4>
-          <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-2">
-            <div className="flex justify-between text-sm"><span className="text-gray-500">Bank Account</span><span className="font-bold">{bankAcct?.name}</span></div>
-            <div className="flex justify-between text-sm"><span className="text-gray-500">Deposits</span><span className="font-mono text-emerald-700">+{acctFmt(transactions.filter(t=>t.status==="approved"&&t.amount>=0).reduce((s,t)=>s+t.amount,0))} ({transactions.filter(t=>t.status==="approved"&&t.amount>=0).length})</span></div>
-            <div className="flex justify-between text-sm"><span className="text-gray-500">Payments</span><span className="font-mono text-red-700">{acctFmt(transactions.filter(t=>t.status==="approved"&&t.amount<0).reduce((s,t)=>s+t.amount,0))} ({transactions.filter(t=>t.status==="approved"&&t.amount<0).length})</span></div>
+          <h4 className="font-semibold text-slate-900">Confirm & Post</h4>
+          <div className="bg-white rounded-3xl border border-indigo-50 p-4 space-y-2">
+            <div className="flex justify-between text-sm"><span className="text-slate-400">Bank Account</span><span className="font-bold">{bankAcct?.name}</span></div>
+            <div className="flex justify-between text-sm"><span className="text-slate-400">Deposits</span><span className="font-mono text-emerald-700">+{acctFmt(transactions.filter(t=>t.status==="approved"&&t.amount>=0).reduce((s,t)=>s+t.amount,0))} ({transactions.filter(t=>t.status==="approved"&&t.amount>=0).length})</span></div>
+            <div className="flex justify-between text-sm"><span className="text-slate-400">Payments</span><span className="font-mono text-red-700">{acctFmt(transactions.filter(t=>t.status==="approved"&&t.amount<0).reduce((s,t)=>s+t.amount,0))} ({transactions.filter(t=>t.status==="approved"&&t.amount<0).length})</span></div>
             <div className="flex justify-between text-sm border-t pt-2"><span className="font-bold">Entries to create</span><span className="font-bold">{transactions.filter(t=>t.status==="approved").length}</span></div>
           </div>
-          <div className="flex justify-between"><button onClick={()=>setStep(3)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">← Back</button><button onClick={handlePost} disabled={posting} className="bg-emerald-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">{posting?"Posting...":"✓ Post All Entries"}</button></div>
+          <div className="flex justify-between"><button onClick={()=>setStep(3)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">← Back</button><button onClick={handlePost} disabled={posting} className="bg-emerald-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">{posting?"Posting...":"✓ Post All Entries"}</button></div>
         </div>
       )}
 
@@ -4363,20 +4363,20 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
       {done && (
         <div className="flex flex-col items-center py-12 gap-4">
           <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center text-3xl">✓</div>
-          <h4 className="text-xl font-bold text-gray-900">Import Complete!</h4>
-          <p className="text-sm text-gray-500">{postedCount} journal entries posted to <strong>{bankAcct?.name}</strong></p>
+          <h4 className="text-xl font-bold text-slate-900">Import Complete!</h4>
+          <p className="text-sm text-slate-400">{postedCount} journal entries posted to <strong>{bankAcct?.name}</strong></p>
           <button onClick={reset} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg mt-2">Import Another File</button>
         </div>
       )}
 
       {/* Import History */}
       {importHistory.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mt-4">
-          <h4 className="font-semibold text-gray-700 mb-3">Import History</h4>
+        <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4 mt-4">
+          <h4 className="font-semibold text-slate-700 mb-3">Import History</h4>
           {importHistory.map((h,i)=>(
-            <div key={i} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-              <div><p className="text-sm font-medium text-gray-700">{h.fileName}</p><p className="text-xs text-gray-400">{h.date} · {h.bankAccount}</p></div>
-              <div className="text-right"><p className={`font-mono text-sm font-semibold ${h.net>=0?"text-emerald-700":"text-red-700"}`}>{acctFmt(h.net,true)}</p><p className="text-xs text-gray-400">{h.count} entries</p></div>
+            <div key={i} className="flex items-center justify-between py-2 border-b border-indigo-50/50 last:border-0">
+              <div><p className="text-sm font-medium text-slate-700">{h.fileName}</p><p className="text-xs text-slate-400">{h.date} · {h.bankAccount}</p></div>
+              <div className="text-right"><p className={`font-mono text-sm font-semibold ${h.net>=0?"text-emerald-700":"text-red-700"}`}>{acctFmt(h.net,true)}</p><p className="text-xs text-slate-400">{h.count} entries</p></div>
             </div>
           ))}
         </div>
@@ -4637,10 +4637,10 @@ function Accounting({ companyId, activeCompany }) {
 
   return (
     <div>
-      <h2 className="text-xl font-bold text-gray-800 mb-5">Accounting & Financials</h2>
-      <div className="flex gap-2 mb-5 border-b border-gray-100 overflow-x-auto">
+      <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-5">Accounting & Financials</h2>
+      <div className="flex gap-2 mb-5 border-b border-indigo-50 overflow-x-auto">
         {[["overview","Overview"],["coa","Chart of Accounts"],["journal","Journal Entries"],["bankimport","Bank Import"],["reconcile","Reconcile"],["classes","Class Tracking"],["reports","Reports"]].map(([id,label]) => (
-          <button key={id} onClick={() => setActiveTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
+          <button key={id} onClick={() => setActiveTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-700"}`}>
             {label}
             {id === "journal" && pendingCount > 0 && <span className="ml-1.5 bg-amber-100 text-amber-700 text-xs px-1.5 py-0.5 rounded-full">{pendingCount}</span>}
           </button>
@@ -4656,7 +4656,7 @@ function Accounting({ companyId, activeCompany }) {
             <StatCard label="Total Assets" value={acctFmt(bsData.totalAssets)} color="text-purple-700" sub="Balance sheet" />
           </div>
           {/* Monthly Rent Accrual */}
-          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4 flex items-center justify-between">
+          <div className="bg-blue-50 border border-blue-100 rounded-3xl p-4 mb-4 flex items-center justify-between">
             <div>
               <p className="text-sm font-semibold text-blue-800">Monthly Rent Accrual</p>
               <p className="text-xs text-blue-600">Generate AR entries for all active leases this month (DR Accounts Receivable, CR Rental Income)</p>
@@ -4706,31 +4706,31 @@ function Accounting({ companyId, activeCompany }) {
             }} className="bg-blue-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-blue-700 shrink-0">Generate Accruals</button>
           </div>
           {pendingCount > 0 && <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 mb-4 text-sm text-amber-700">⏳ {pendingCount} draft journal {pendingCount === 1 ? "entry" : "entries"} awaiting review</div>}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 mb-4">
-            <h3 className="font-semibold text-gray-700 mb-3">Recent Journal Entries</h3>
+          <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4 mb-4">
+            <h3 className="font-semibold text-slate-700 mb-3">Recent Journal Entries</h3>
             {journalEntries.slice(0, 5).map(je => {
               const total = (je.lines || []).reduce((s,l) => s + safeNum(l.debit), 0);
               return (
-                <div key={je.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                <div key={je.id} className="flex items-center justify-between py-2 border-b border-indigo-50/50 last:border-0">
                   <div className="flex items-center gap-3">
-                    <span className={`w-2 h-2 rounded-full ${je.status==="posted"?"bg-emerald-400":je.status==="draft"?"bg-amber-400":"bg-gray-300"}`} />
-                    <div><p className="text-sm font-medium text-gray-700">{je.description}</p><p className="text-xs text-gray-400">{je.number} · {je.date}</p></div>
+                    <span className={`w-2 h-2 rounded-full ${je.status==="posted"?"bg-emerald-400":je.status==="draft"?"bg-amber-400":"bg-slate-300"}`} />
+                    <div><p className="text-sm font-medium text-slate-700">{je.description}</p><p className="text-xs text-slate-400">{je.number} · {je.date}</p></div>
                   </div>
-                  <span className="font-mono text-sm font-semibold text-gray-700">{acctFmt(total)}</span>
+                  <span className="font-mono text-sm font-semibold text-slate-700">{acctFmt(total)}</span>
                 </div>
               );
             })}
-            {journalEntries.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No journal entries yet. Start by creating one in the Journal Entries tab.</p>}
+            {journalEntries.length === 0 && <p className="text-sm text-slate-400 text-center py-4">No journal entries yet. Start by creating one in the Journal Entries tab.</p>}
           </div>
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-            <h3 className="font-semibold text-gray-700 mb-3">Account Summary</h3>
+          <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
+            <h3 className="font-semibold text-slate-700 mb-3">Account Summary</h3>
             <div className="grid grid-cols-2 gap-3">
               {["Asset","Liability","Equity","Revenue","Expense"].map(type => {
                 const total = calcAllBalances(acctAccounts, journalEntries).filter(a => a.type === type && a.is_active).reduce((s,a) => s + a.computedBalance, 0);
                 return (
-                  <div key={type} className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-lg">
-                    <span className="text-sm text-gray-600">{type}</span>
-                    <span className={`font-mono text-sm font-semibold ${total < 0 ? "text-red-600" : "text-gray-800"}`}>{acctFmt(total, true)}</span>
+                  <div key={type} className="flex justify-between items-center py-2 px-3 bg-indigo-50/30 rounded-lg">
+                    <span className="text-sm text-slate-500">{type}</span>
+                    <span className={`font-mono text-sm font-semibold ${total < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(total, true)}</span>
                   </div>
                 );
               })}
@@ -4848,56 +4848,56 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <h2 className="text-xl font-bold text-gray-800">Document Management</h2>
+        <h2 className="text-2xl font-manrope font-bold text-slate-800">Document Management</h2>
         <div className="flex gap-2">
           <button onClick={repairUrls} className="bg-amber-500 text-white text-sm px-4 py-2 rounded-lg hover:bg-amber-600" title="Fix broken View links for existing documents">🔧 Repair URLs</button>
-          <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">+ Upload Document</button>
+          <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ Upload Document</button>
         </div>
       </div>
 
       {showForm && (
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
-          <h3 className="font-semibold text-gray-700 mb-3">Upload Document</h3>
+          <h3 className="font-semibold text-slate-700 mb-3">Upload Document</h3>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Document Name *</label><input placeholder="Lease Agreement 2026" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tenant</label><input placeholder="Optional — link to a tenant" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Document Type</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full">
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Document Name *</label><input placeholder="Lease Agreement 2026" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant</label><input placeholder="Optional — link to a tenant" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Document Type</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
               {["Lease", "Inspection", "Maintenance", "Financial", "Notice", "Other"].map(t => <option key={t}>{t}</option>)}
             </select></div>
-            <label className="flex items-center gap-2 text-sm text-gray-600 border border-gray-200 rounded-lg px-3 py-2 cursor-pointer">
+            <label className="flex items-center gap-2 text-sm text-slate-500 border border-indigo-100 rounded-2xl px-3 py-2 cursor-pointer">
               <input type="checkbox" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} />
               Visible to Tenant
             </label>
-            <input type="file" ref={fileRef} className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2" />
+            <input type="file" ref={fileRef} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm col-span-2" />
           </div>
           <div className="flex gap-2 mt-3">
-            <button onClick={uploadDocument} disabled={uploading} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+            <button onClick={uploadDocument} disabled={uploading} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700 disabled:opacity-50">
               {uploading ? "Uploading..." : "Upload"}
             </button>
-            <button onClick={() => setShowForm(false)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg hover:bg-gray-200">Cancel</button>
+            <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-2xl hover:bg-slate-100">Cancel</button>
           </div>
         </div>
       )}
 
       <div className="flex gap-2 mb-4 flex-wrap">
         {["all", "Lease", "Inspection", "Maintenance", "Financial", "Notice", "Other"].map(t => (
-          <button key={t} onClick={() => setFilter(t)} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === t ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>{t}</button>
+          <button key={t} onClick={() => setFilter(t)} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === t ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{t}</button>
         ))}
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+          <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
             <tr>{["Document", "Property", "Type", "Date", "Tenant Visible", "Actions"].map(h => <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>)}</tr>
           </thead>
           <tbody>
             {filtered.map(d => (
-              <tr key={d.id} className="border-t border-gray-50 hover:bg-gray-50">
-                <td className="px-3 py-2.5 font-medium text-gray-800">📄 {d.name}</td>
-                <td className="px-3 py-2.5 text-gray-500">{d.property}</td>
+              <tr key={d.id} className="border-t border-indigo-50/50 hover:bg-indigo-50/30">
+                <td className="px-3 py-2.5 font-medium text-slate-800">📄 {d.name}</td>
+                <td className="px-3 py-2.5 text-slate-400">{d.property}</td>
                 <td className="px-3 py-2.5"><span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full text-xs">{d.type}</span></td>
-                <td className="px-3 py-2.5 text-gray-500">{d.uploaded_at?.slice(0, 10)}</td>
+                <td className="px-3 py-2.5 text-slate-400">{d.uploaded_at?.slice(0, 10)}</td>
                 <td className="px-3 py-2.5">{d.tenant_visible ? "✅" : "🔒"}</td>
                 <td className="px-3 py-2.5">
                   <div className="flex gap-2">
@@ -4930,7 +4930,7 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
                         }} className="text-xs text-indigo-600 hover:underline">View</button>
                       </>
                     ) : (
-                      <span className="text-xs text-gray-400">No file</span>
+                      <span className="text-xs text-slate-400">No file</span>
                     )}
                     <button onClick={() => deleteDoc(d.id, d.name, d.file_name)} className="text-xs text-red-400 hover:underline">Delete</button>
                   </div>
@@ -4938,7 +4938,7 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-400">No documents yet. Upload one above.</td></tr>
+              <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">No documents yet. Upload one above.</td></tr>
             )}
           </tbody>
         </table>
@@ -5006,23 +5006,23 @@ function Inspections({ addNotification, userProfile, userRole, companyId }) {
       {selectedInspection && (
         <Modal title={`Inspection — ${selectedInspection.property}`} onClose={() => setSelectedInspection(null)}>
           <div className="space-y-2 mb-4">
-            <div className="flex justify-between text-sm"><span className="text-gray-400">Type</span><span className="font-medium">{selectedInspection.type}</span></div>
-            <div className="flex justify-between text-sm"><span className="text-gray-400">Date</span><span className="font-medium">{selectedInspection.date}</span></div>
-            <div className="flex justify-between text-sm"><span className="text-gray-400">Inspector</span><span className="font-medium">{selectedInspection.inspector || "—"}</span></div>
-            <div className="flex justify-between text-sm"><span className="text-gray-400">Status</span><Badge status={selectedInspection.status} /></div>
+            <div className="flex justify-between text-sm"><span className="text-slate-400">Type</span><span className="font-medium">{selectedInspection.type}</span></div>
+            <div className="flex justify-between text-sm"><span className="text-slate-400">Date</span><span className="font-medium">{selectedInspection.date}</span></div>
+            <div className="flex justify-between text-sm"><span className="text-slate-400">Inspector</span><span className="font-medium">{selectedInspection.inspector || "—"}</span></div>
+            <div className="flex justify-between text-sm"><span className="text-slate-400">Status</span><Badge status={selectedInspection.status} /></div>
           </div>
-          {selectedInspection.notes && <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600 mb-4">{selectedInspection.notes}</div>}
+          {selectedInspection.notes && <div className="bg-indigo-50/30 rounded-lg p-3 text-sm text-slate-500 mb-4">{selectedInspection.notes}</div>}
           {selectedInspection.checklist && (() => {
             try {
               const cl = JSON.parse(selectedInspection.checklist);
               return (
                 <div>
-                  <h4 className="font-semibold text-gray-700 mb-2 text-sm">Checklist</h4>
+                  <h4 className="font-semibold text-slate-700 mb-2 text-sm">Checklist</h4>
                   <div className="space-y-1">
                     {Object.entries(cl).map(([item, val]) => (
-                      <div key={item} className="flex items-center justify-between text-sm py-1 border-b border-gray-50">
-                        <span className="text-gray-700">{item}</span>
-                        <span className={val.pass === true ? "text-green-600 font-semibold" : val.pass === false ? "text-red-500 font-semibold" : "text-gray-400"}>
+                      <div key={item} className="flex items-center justify-between text-sm py-1 border-b border-indigo-50/50">
+                        <span className="text-slate-700">{item}</span>
+                        <span className={val.pass === true ? "text-green-600 font-semibold" : val.pass === false ? "text-red-500 font-semibold" : "text-slate-400"}>
                           {val.pass === true ? "✓ Pass" : val.pass === false ? "✗ Fail" : "—"}
                         </span>
                       </div>
@@ -5036,56 +5036,56 @@ function Inspections({ addNotification, userProfile, userRole, companyId }) {
       )}
 
       <div className="flex items-center justify-between mb-5">
-        <h2 className="text-xl font-bold text-gray-800">Inspections</h2>
-        <button onClick={() => { setShowForm(!showForm); initChecklist("Move-In"); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">+ New Inspection</button>
+        <h2 className="text-2xl font-manrope font-bold text-slate-800">Inspections</h2>
+        <button onClick={() => { setShowForm(!showForm); initChecklist("Move-In"); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Inspection</button>
       </div>
 
       {showForm && (
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
-          <h3 className="font-semibold text-gray-700 mb-3">New Inspection</h3>
+          <h3 className="font-semibold text-slate-700 mb-3">New Inspection</h3>
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Inspection Type</label><select value={form.type} onChange={e => { setForm({ ...form, type: e.target.value }); initChecklist(e.target.value); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full">
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Inspection Type</label><select value={form.type} onChange={e => { setForm({ ...form, type: e.target.value }); initChecklist(e.target.value); }} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
               {["Move-In", "Move-Out", "Periodic"].map(t => <option key={t}>{t}</option>)}
             </select></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Inspector</label><input placeholder="Inspector name" value={form.inspector} onChange={e => setForm({ ...form, inspector: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Date</label><input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Notes</label><textarea placeholder="General notes about the inspection" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" rows={2} /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Inspector</label><input placeholder="Inspector name" value={form.inspector} onChange={e => setForm({ ...form, inspector: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Date</label><input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><textarea placeholder="General notes about the inspection" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
           </div>
 
           {/* Checklist */}
-          <h4 className="font-semibold text-gray-700 mb-2 text-sm">Checklist Items</h4>
+          <h4 className="font-semibold text-slate-700 mb-2 text-sm">Checklist Items</h4>
           <div className="space-y-2 mb-4">
             {Object.entries(checklist).map(([item, val]) => (
-              <div key={item} className="flex items-center gap-3 bg-gray-50 rounded-lg px-3 py-2">
-                <span className="text-sm text-gray-700 flex-1">{item}</span>
-                <button onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: true } })} className={`text-xs px-2 py-1 rounded ${val.pass === true ? "bg-green-500 text-white" : "bg-gray-200 text-gray-600"}`}>Pass</button>
-                <button onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: false } })} className={`text-xs px-2 py-1 rounded ${val.pass === false ? "bg-red-500 text-white" : "bg-gray-200 text-gray-600"}`}>Fail</button>
-                <input placeholder="Note" value={val.notes} onChange={e => setChecklist({ ...checklist, [item]: { ...val, notes: e.target.value } })} className="border border-gray-200 rounded px-2 py-1 text-xs w-32" />
+              <div key={item} className="flex items-center gap-3 bg-indigo-50/30 rounded-lg px-3 py-2">
+                <span className="text-sm text-slate-700 flex-1">{item}</span>
+                <button onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: true } })} className={`text-xs px-2 py-1 rounded ${val.pass === true ? "bg-green-500 text-white" : "bg-slate-200 text-slate-500"}`}>Pass</button>
+                <button onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: false } })} className={`text-xs px-2 py-1 rounded ${val.pass === false ? "bg-red-500 text-white" : "bg-slate-200 text-slate-500"}`}>Fail</button>
+                <input placeholder="Note" value={val.notes} onChange={e => setChecklist({ ...checklist, [item]: { ...val, notes: e.target.value } })} className="border border-indigo-100 rounded px-2 py-1 text-xs w-32" />
               </div>
             ))}
           </div>
 
           <div className="flex gap-2">
-            <button onClick={saveInspection} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">Save Inspection</button>
-            <button onClick={() => setShowForm(false)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg hover:bg-gray-200">Cancel</button>
+            <button onClick={saveInspection} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">Save Inspection</button>
+            <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-2xl hover:bg-slate-100">Cancel</button>
           </div>
         </div>
       )}
 
       <div className="space-y-3">
         {inspections.map(insp => (
-          <div key={insp.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <div key={insp.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
             <div className="flex justify-between items-start">
               <div>
-                <div className="font-semibold text-gray-800">{insp.property}</div>
-                <div className="text-xs text-gray-400 mt-0.5">{insp.type} Inspection · {insp.inspector}</div>
+                <div className="font-semibold text-slate-800">{insp.property}</div>
+                <div className="text-xs text-slate-400 mt-0.5">{insp.type} Inspection · {insp.inspector}</div>
               </div>
               <Badge status={insp.status} label={insp.status} />
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-              <div><span className="text-gray-400">Date</span><div className="font-semibold text-gray-700">{insp.date}</div></div>
-              <div><span className="text-gray-400">Type</span><div className="font-semibold text-gray-700">{insp.type}</div></div>
+              <div><span className="text-slate-400">Date</span><div className="font-semibold text-slate-700">{insp.date}</div></div>
+              <div><span className="text-slate-400">Type</span><div className="font-semibold text-slate-700">{insp.type}</div></div>
             </div>
             <div className="mt-3 flex gap-2 flex-wrap">
               <button onClick={() => setSelectedInspection(insp)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">📋 View Report</button>
@@ -5093,7 +5093,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId }) {
             </div>
           </div>
         ))}
-        {inspections.length === 0 && <div className="text-center py-12 text-gray-400">No inspections yet. Create one above.</div>}
+        {inspections.length === 0 && <div className="text-center py-12 text-slate-400">No inspections yet. Create one above.</div>}
       </div>
     </div>
   );
@@ -5415,22 +5415,22 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
   return (
     <div>
       <div className="flex justify-between items-center mb-5">
-        <h2 className="text-xl font-bold text-gray-800">Lease Management</h2>
+        <h2 className="text-2xl font-manrope font-bold text-slate-800">Lease Management</h2>
         <div className="flex gap-2">
-          <button onClick={() => setShowTemplateForm(true)} className="text-xs border border-gray-200 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-50">Manage Templates</button>
-          <button onClick={() => { resetForm(); setShowForm(true); }} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-indigo-700">+ New Lease</button>
+          <button onClick={() => setShowTemplateForm(true)} className="text-xs border border-indigo-100 text-slate-500 px-3 py-2 rounded-lg hover:bg-indigo-50/30">Manage Templates</button>
+          <button onClick={() => { resetForm(); setShowForm(true); }} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Lease</button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
         <StatCard label="Active Leases" value={active.length} color="text-green-600" sub="current" />
-        <StatCard label="Expiring (90d)" value={expiringSoon.length} color={expiringSoon.length > 0 ? "text-amber-600" : "text-gray-400"} sub="need attention" />
+        <StatCard label="Expiring (90d)" value={expiringSoon.length} color={expiringSoon.length > 0 ? "text-amber-600" : "text-slate-400"} sub="need attention" />
         <StatCard label="Total Deposits" value={"$" + totalDeposits.toLocaleString()} color="text-purple-600" sub="held" />
         <StatCard label="Avg Rent" value={"$" + (active.length > 0 ? Math.round(active.reduce((s, l) => s + safeNum(l.rent_amount), 0) / active.length) : 0)} color="text-blue-600" sub="per lease" />
       </div>
 
       {expiringSoon.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+        <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 mb-4">
           <div className="font-semibold text-amber-800 text-sm mb-2">Leases Expiring Soon</div>
           {expiringSoon.map(l => { const d = Math.ceil((parseLocalDate(l.end_date) - new Date()) / 86400000); return (
             <div key={l.id} className="flex justify-between items-center py-1 text-sm">
@@ -5441,24 +5441,24 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
         </div>
       )}
 
-      <div className="flex gap-1 mb-4 border-b border-gray-100 overflow-x-auto">
+      <div className="flex gap-1 mb-4 border-b border-indigo-50 overflow-x-auto">
         {[["active","Active"],["expiring","Expiring"],["expired","Expired"],["renewed","Renewed"],["terminated","Terminated"],["all","All"]].map(([id,label]) => (
-          <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500")}>{label}{id === "expiring" && expiringSoon.length > 0 ? " (" + expiringSoon.length + ")" : ""}</button>
+          <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400")}>{label}{id === "expiring" && expiringSoon.length > 0 ? " (" + expiringSoon.length + ")" : ""}</button>
         ))}
       </div>
 
       {showTemplateForm && (
         <Modal title="Lease Template" onClose={() => setShowTemplateForm(false)}>
           <div className="space-y-3">
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Template Name *</label><input placeholder="Standard 12-Month Lease" value={templateForm.name} onChange={e => setTemplateForm({...templateForm, name: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Description</label><input placeholder="Default template for residential leases" value={templateForm.description} onChange={e => setTemplateForm({...templateForm, description: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Template Name *</label><input placeholder="Standard 12-Month Lease" value={templateForm.name} onChange={e => setTemplateForm({...templateForm, name: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Description</label><input placeholder="Default template for residential leases" value={templateForm.description} onChange={e => setTemplateForm({...templateForm, description: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="text-xs text-gray-500">Lease Length (months)</label><input type="number" min="1" max="120" placeholder="12" value={templateForm.default_lease_months} onChange={e => setTemplateForm({...templateForm, default_lease_months: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-              <div><label className="text-xs text-gray-500">Annual Escalation %</label><input type="number" step="0.1" min="0" max="25" placeholder="3.0" value={templateForm.default_escalation_pct} onChange={e => setTemplateForm({...templateForm, default_escalation_pct: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs text-slate-400">Lease Length (months)</label><input type="number" min="1" max="120" placeholder="12" value={templateForm.default_lease_months} onChange={e => setTemplateForm({...templateForm, default_lease_months: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs text-slate-400">Annual Escalation %</label><input type="number" step="0.1" min="0" max="25" placeholder="3.0" value={templateForm.default_escalation_pct} onChange={e => setTemplateForm({...templateForm, default_escalation_pct: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
             </div>
-            <textarea placeholder="Standard clauses..." value={templateForm.clauses} onChange={e => setTemplateForm({...templateForm, clauses: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={4} />
-            <textarea placeholder="Special terms..." value={templateForm.special_terms} onChange={e => setTemplateForm({...templateForm, special_terms: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={3} />
-            <button onClick={saveTemplate} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-indigo-700">Save Template</button>
+            <textarea placeholder="Standard clauses..." value={templateForm.clauses} onChange={e => setTemplateForm({...templateForm, clauses: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" rows={4} />
+            <textarea placeholder="Special terms..." value={templateForm.special_terms} onChange={e => setTemplateForm({...templateForm, special_terms: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" rows={3} />
+            <button onClick={saveTemplate} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700">Save Template</button>
           </div>
         </Modal>
       )}
@@ -5468,10 +5468,10 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
       {showDepositModal && (
         <Modal title={"Return Deposit — " + showDepositModal.tenant_name} onClose={() => setShowDepositModal(null)}>
           <div className="space-y-3">
-            <div className="bg-purple-50 rounded-lg p-3 text-sm"><div className="flex justify-between"><span className="text-gray-500">Original Deposit:</span><span className="font-bold">${safeNum(showDepositModal.security_deposit).toLocaleString()}</span></div></div>
-            <div><label className="text-xs text-gray-500">Amount to Return ($)</label><input type="number" value={depositForm.amount_returned} onChange={e => setDepositForm({...depositForm, amount_returned: e.target.value})} placeholder={String(showDepositModal.security_deposit)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500">Deduction Reasons</label><textarea value={depositForm.deductions} onChange={e => setDepositForm({...depositForm, deductions: e.target.value})} placeholder="Cleaning, damages, unpaid rent..." className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={3} /></div>
-            <div><label className="text-xs text-gray-500">Return Date</label><input type="date" value={depositForm.return_date} onChange={e => setDepositForm({...depositForm, return_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div className="bg-purple-50 rounded-lg p-3 text-sm"><div className="flex justify-between"><span className="text-slate-400">Original Deposit:</span><span className="font-bold">${safeNum(showDepositModal.security_deposit).toLocaleString()}</span></div></div>
+            <div><label className="text-xs text-slate-400">Amount to Return ($)</label><input type="number" value={depositForm.amount_returned} onChange={e => setDepositForm({...depositForm, amount_returned: e.target.value})} placeholder={String(showDepositModal.security_deposit)} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400">Deduction Reasons</label><textarea value={depositForm.deductions} onChange={e => setDepositForm({...depositForm, deductions: e.target.value})} placeholder="Cleaning, damages, unpaid rent..." className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" rows={3} /></div>
+            <div><label className="text-xs text-slate-400">Return Date</label><input type="date" value={depositForm.return_date} onChange={e => setDepositForm({...depositForm, return_date: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
             {Number(depositForm.amount_returned || 0) < safeNum(showDepositModal.security_deposit) && depositForm.amount_returned && (
               <div className="bg-red-50 rounded-lg p-2 text-xs text-red-700">Deducting ${(safeNum(showDepositModal.security_deposit) - Number(depositForm.amount_returned)).toLocaleString()} from deposit</div>
             )}
@@ -5484,9 +5484,9 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
         <Modal title={(showChecklist.type === "in" ? "Move-In" : "Move-Out") + " Checklist — " + showChecklist.lease.tenant_name} onClose={() => setShowChecklist(null)}>
           <div className="space-y-2">
             {(() => { let items = []; try { items = JSON.parse(showChecklist.lease[showChecklist.type === "in" ? "move_in_checklist" : "move_out_checklist"] || "[]"); } catch {} return items.map((item, i) => (
-              <div key={i} onClick={() => toggleChecklistItem(showChecklist.lease, showChecklist.type, i)} className={"flex items-center gap-3 p-2 rounded-lg cursor-pointer border " + (item.checked ? "bg-green-50 border-green-200" : "bg-white border-gray-100 hover:bg-gray-50")}>
-                <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs " + (item.checked ? "bg-green-500 border-green-500 text-white" : "border-gray-300")}>{item.checked ? "✓" : ""}</span>
-                <span className={"text-sm " + (item.checked ? "line-through text-gray-400" : "text-gray-700")}>{item.item}</span>
+              <div key={i} onClick={() => toggleChecklistItem(showChecklist.lease, showChecklist.type, i)} className={"flex items-center gap-3 p-2 rounded-lg cursor-pointer border " + (item.checked ? "bg-green-50 border-green-200" : "bg-white border-gray-100 hover:bg-indigo-50/30")}>
+                <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs " + (item.checked ? "bg-green-500 border-green-500 text-white" : "border-indigo-200")}>{item.checked ? "✓" : ""}</span>
+                <span className={"text-sm " + (item.checked ? "line-through text-slate-400" : "text-slate-700")}>{item.item}</span>
               </div>
             )); })()}
           </div>
@@ -5495,49 +5495,49 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
 
       {showForm && (
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
-          <h3 className="font-semibold text-gray-800 mb-4">{editingLease ? "Edit Lease" : "Create New Lease"}</h3>
+          <h3 className="font-manrope font-semibold text-slate-800 mb-4">{editingLease ? "Edit Lease" : "Create New Lease"}</h3>
           {!editingLease && templates.length > 0 && (
-            <div className="mb-4"><label className="text-xs text-gray-500 mb-1 block">Apply Template</label>
-              <select value={form.template_id} onChange={e => { setForm({...form, template_id: e.target.value}); applyTemplate(e.target.value); }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Apply Template</label>
+              <select value={form.template_id} onChange={e => { setForm({...form, template_id: e.target.value}); applyTemplate(e.target.value); }} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
                 <option value="">Select template...</option>
                 {templates.map(t => <option key={t.id} value={t.id}>{t.name} — {t.description}</option>)}
               </select>
             </div>
           )}
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <div><label className="text-xs text-gray-500 mb-1 block">Tenant *</label>
-              <select value={form.tenant_name} onChange={e => { setForm({...form, tenant_name: e.target.value}); prefillFromTenant(e.target.value); }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs text-slate-400 mb-1 block">Tenant *</label>
+              <select value={form.tenant_name} onChange={e => { setForm({...form, tenant_name: e.target.value}); prefillFromTenant(e.target.value); }} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
                 <option value="">Select tenant...</option>
                 {tenants.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
               </select>
             </div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Lease Start *</label><input type="date" value={form.start_date} onChange={e => setForm({...form, start_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Lease End *</label><input type="date" value={form.end_date} onChange={e => setForm({...form, end_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Monthly Rent ($) *</label><input type="number" min="0" step="0.01" placeholder="1500.00" value={form.rent_amount} onChange={e => setForm({...form, rent_amount: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Security Deposit ($)</label><input type="number" min="0" step="0.01" placeholder="1500.00" value={form.security_deposit} onChange={e => setForm({...form, security_deposit: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Annual Escalation %</label><input type="number" step="0.1" min="0" max="25" placeholder="3.0" value={form.rent_escalation_pct} onChange={e => setForm({...form, rent_escalation_pct: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Payment Due Day</label><input type="number" min="1" max="31" placeholder="1" value={form.payment_due_day} onChange={e => setForm({...form, payment_due_day: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Lease Type</label>
-              <select value={form.lease_type} onChange={e => setForm({...form, lease_type: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="fixed">Fixed Term</option><option value="month_to_month">Month-to-Month</option><option value="renewal">Renewal</option></select></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Renewal Notice (days)</label><input type="number" min="0" max="180" placeholder="60" value={form.renewal_notice_days} onChange={e => setForm({...form, renewal_notice_days: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Lease Start *</label><input type="date" value={form.start_date} onChange={e => setForm({...form, start_date: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Lease End *</label><input type="date" value={form.end_date} onChange={e => setForm({...form, end_date: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Monthly Rent ($) *</label><input type="number" min="0" step="0.01" placeholder="1500.00" value={form.rent_amount} onChange={e => setForm({...form, rent_amount: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Security Deposit ($)</label><input type="number" min="0" step="0.01" placeholder="1500.00" value={form.security_deposit} onChange={e => setForm({...form, security_deposit: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Annual Escalation %</label><input type="number" step="0.1" min="0" max="25" placeholder="3.0" value={form.rent_escalation_pct} onChange={e => setForm({...form, rent_escalation_pct: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Payment Due Day</label><input type="number" min="1" max="31" placeholder="1" value={form.payment_due_day} onChange={e => setForm({...form, payment_due_day: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Lease Type</label>
+              <select value={form.lease_type} onChange={e => setForm({...form, lease_type: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm"><option value="fixed">Fixed Term</option><option value="month_to_month">Month-to-Month</option><option value="renewal">Renewal</option></select></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Renewal Notice (days)</label><input type="number" min="0" max="180" placeholder="60" value={form.renewal_notice_days} onChange={e => setForm({...form, renewal_notice_days: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
           </div>
           {/* Late Fee Settings */}
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 mb-4">
             <div className="text-sm font-semibold text-amber-800 mb-2">⚠️ Late Fee Settings</div>
             <div className="grid grid-cols-3 gap-3">
-              <div><label className="text-xs text-gray-500 mb-1 block">Grace Period (days)</label><input type="number" min="0" max="30" placeholder="5" value={form.late_fee_grace_days} onChange={e => setForm({...form, late_fee_grace_days: e.target.value})} className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white" /></div>
-              <div><label className="text-xs text-gray-500 mb-1 block">Fee Type</label><select value={form.late_fee_type} onChange={e => setForm({...form, late_fee_type: e.target.value})} className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></select></div>
-              <div><label className="text-xs text-gray-500 mb-1 block">{form.late_fee_type === "flat" ? "Fee Amount ($)" : "Fee Percentage (%)"}</label><input type="number" step="0.01" min="0" placeholder="50.00" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white" /></div>
+              <div><label className="text-xs text-slate-400 mb-1 block">Grace Period (days)</label><input type="number" min="0" max="30" placeholder="5" value={form.late_fee_grace_days} onChange={e => setForm({...form, late_fee_grace_days: e.target.value})} className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white" /></div>
+              <div><label className="text-xs text-slate-400 mb-1 block">Fee Type</label><select value={form.late_fee_type} onChange={e => setForm({...form, late_fee_type: e.target.value})} className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></select></div>
+              <div><label className="text-xs text-slate-400 mb-1 block">{form.late_fee_type === "flat" ? "Fee Amount ($)" : "Fee Percentage (%)"}</label><input type="number" step="0.01" min="0" placeholder="50.00" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white" /></div>
             </div>
             <p className="text-xs text-amber-600 mt-2">Late fees auto-apply to tenant ledger after grace period. Admin can waive from ledger.</p>
           </div>
-          <div className="flex items-center gap-2 mb-4"><input type="checkbox" checked={form.auto_renew} onChange={e => setForm({...form, auto_renew: e.target.checked})} className="rounded" /><label className="text-sm text-gray-600">Auto-renew at end of term</label></div>
-          <div className="mb-3"><label className="text-xs text-gray-500 mb-1 block">Lease Clauses</label><textarea value={form.clauses} onChange={e => setForm({...form, clauses: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={3} placeholder="Standard clauses..." /></div>
-          <div className="mb-4"><label className="text-xs text-gray-500 mb-1 block">Special Terms</label><textarea value={form.special_terms} onChange={e => setForm({...form, special_terms: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={2} placeholder="Pet deposit, parking, storage..." /></div>
+          <div className="flex items-center gap-2 mb-4"><input type="checkbox" checked={form.auto_renew} onChange={e => setForm({...form, auto_renew: e.target.checked})} className="rounded" /><label className="text-sm text-slate-500">Auto-renew at end of term</label></div>
+          <div className="mb-3"><label className="text-xs text-slate-400 mb-1 block">Lease Clauses</label><textarea value={form.clauses} onChange={e => setForm({...form, clauses: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" rows={3} placeholder="Standard clauses..." /></div>
+          <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Special Terms</label><textarea value={form.special_terms} onChange={e => setForm({...form, special_terms: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" rows={2} placeholder="Pet deposit, parking, storage..." /></div>
           <div className="flex gap-2">
-            <button onClick={saveLease} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-indigo-700">{editingLease ? "Update Lease" : "Create Lease"}</button>
-            <button onClick={resetForm} className="text-sm text-gray-500 px-4 py-2 hover:text-gray-700">Cancel</button>
+            <button onClick={saveLease} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700">{editingLease ? "Update Lease" : "Create Lease"}</button>
+            <button onClick={resetForm} className="text-sm text-slate-400 px-4 py-2 hover:text-slate-700">Cancel</button>
           </div>
         </div>
       )}
@@ -5546,35 +5546,35 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
         {filteredLeases.map(l => {
           const daysLeft = Math.ceil((parseLocalDate(l.end_date) - new Date()) / 86400000);
           const isExpired = daysLeft <= 0 && l.status === "active";
-          const sc = { active: "bg-green-100 text-green-700", expired: "bg-red-100 text-red-700", renewed: "bg-blue-100 text-blue-700", terminated: "bg-gray-100 text-gray-600", draft: "bg-amber-100 text-amber-700" };
+          const sc = { active: "bg-green-100 text-green-700", expired: "bg-red-100 text-red-700", renewed: "bg-blue-100 text-blue-700", terminated: "bg-slate-100 text-slate-500", draft: "bg-amber-100 text-amber-700" };
           const dc = { held: "bg-purple-100 text-purple-700", partial_return: "bg-amber-100 text-amber-700", returned: "bg-green-100 text-green-700", forfeited: "bg-red-100 text-red-700" };
           return (
-            <div key={l.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (isExpired ? "border-red-200" : "border-gray-100")}>
+            <div key={l.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (isExpired ? "border-red-200" : "border-indigo-50")}>
               <div className="flex justify-between items-start mb-3">
-                <div><div className="text-sm font-bold text-gray-800">{l.tenant_name}</div><div className="text-xs text-gray-400">{l.property}</div></div>
+                <div><div className="text-sm font-bold text-slate-800">{l.tenant_name}</div><div className="text-xs text-slate-400">{l.property}</div></div>
                 <div className="flex items-center gap-2">
-                  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[isExpired ? "expired" : l.status] || "bg-gray-100")}>{isExpired ? "EXPIRED" : l.status}</span>
+                  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[isExpired ? "expired" : l.status] || "bg-slate-100")}>{isExpired ? "EXPIRED" : l.status}</span>
                   {l.lease_type === "renewal" && <span className="px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-600">Renewal</span>}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-3 md:grid-cols-4">
-                <div><span className="text-gray-400">Term:</span> <span className="font-medium">{l.start_date} to {l.end_date}</span></div>
-                <div><span className="text-gray-400">Rent:</span> <span className="font-bold text-gray-800">${safeNum(l.rent_amount).toLocaleString()}/mo</span></div>
-                <div><span className="text-gray-400">Deposit:</span> <span className="font-medium">${safeNum(l.security_deposit).toLocaleString()}</span>{l.security_deposit > 0 && <span className={"ml-1 px-1 py-0.5 rounded text-xs " + (dc[l.deposit_status] || "")}>{l.deposit_status}</span>}</div>
-                <div><span className="text-gray-400">Escalation:</span> <span className="font-medium">{l.rent_escalation_pct || 0}%/yr</span></div>
-                {l.status === "active" && <div><span className="text-gray-400">Days Left:</span> <span className={"font-bold " + (daysLeft <= 30 ? "text-red-600" : daysLeft <= 90 ? "text-amber-600" : "text-green-600")}>{daysLeft}</span></div>}
-                <div><span className="text-gray-400">Due Day:</span> <span className="font-medium">{l.payment_due_day || 1}th</span></div>
-                <div><span className="text-gray-400">Type:</span> <span className="font-medium capitalize">{(l.lease_type || "fixed").replace("_"," ")}</span></div>
-                <div><span className="text-gray-400">Auto-Renew:</span> <span className="font-medium">{l.auto_renew ? "Yes" : "No"}</span></div>
+                <div><span className="text-slate-400">Term:</span> <span className="font-medium">{l.start_date} to {l.end_date}</span></div>
+                <div><span className="text-slate-400">Rent:</span> <span className="font-bold text-slate-800">${safeNum(l.rent_amount).toLocaleString()}/mo</span></div>
+                <div><span className="text-slate-400">Deposit:</span> <span className="font-medium">${safeNum(l.security_deposit).toLocaleString()}</span>{l.security_deposit > 0 && <span className={"ml-1 px-1 py-0.5 rounded text-xs " + (dc[l.deposit_status] || "")}>{l.deposit_status}</span>}</div>
+                <div><span className="text-slate-400">Escalation:</span> <span className="font-medium">{l.rent_escalation_pct || 0}%/yr</span></div>
+                {l.status === "active" && <div><span className="text-slate-400">Days Left:</span> <span className={"font-bold " + (daysLeft <= 30 ? "text-red-600" : daysLeft <= 90 ? "text-amber-600" : "text-green-600")}>{daysLeft}</span></div>}
+                <div><span className="text-slate-400">Due Day:</span> <span className="font-medium">{l.payment_due_day || 1}th</span></div>
+                <div><span className="text-slate-400">Type:</span> <span className="font-medium capitalize">{(l.lease_type || "fixed").replace("_"," ")}</span></div>
+                <div><span className="text-slate-400">Auto-Renew:</span> <span className="font-medium">{l.auto_renew ? "Yes" : "No"}</span></div>
               </div>
-              <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-50">
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-indigo-50/50">
                 <button onClick={() => startEdit(l)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
                 <button onClick={() => setShowESign(l)} className={"text-xs border px-3 py-1 rounded-lg " + (l.signature_status === "fully_signed" ? "text-green-600 border-green-200 bg-green-50" : "text-purple-600 border-purple-200 hover:bg-purple-50")}>{l.signature_status === "fully_signed" ? "✓ Signed" : "\u270d\ufe0f E-Sign"}</button>
                 {l.status === "active" && <button onClick={() => renewLease(l)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">Renew</button>}
                 {l.status === "active" && <button onClick={() => { setShowRentIncrease(l); setRentIncreaseForm({ new_amount: String(l.rent_amount), effective_date: formatLocalDate(new Date()), reason: "" }); }} className="text-xs text-blue-600 border border-blue-200 px-3 py-1 rounded-lg hover:bg-blue-50">📈 Rent Increase</button>}
                 {l.status === "active" && <button onClick={() => terminateLease(l)} className="text-xs text-red-600 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">Terminate</button>}
-                <button onClick={() => setShowChecklist({ lease: l, type: "in" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_in_completed ? "text-green-600 border-green-200 bg-green-50" : "text-gray-500 border-gray-200 hover:bg-gray-50")}>Move-In {l.move_in_completed ? "✓" : ""}</button>
-                <button onClick={() => setShowChecklist({ lease: l, type: "out" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_out_completed ? "text-green-600 border-green-200 bg-green-50" : "text-gray-500 border-gray-200 hover:bg-gray-50")}>Move-Out {l.move_out_completed ? "✓" : ""}</button>
+                <button onClick={() => setShowChecklist({ lease: l, type: "in" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_in_completed ? "text-green-600 border-green-200 bg-green-50" : "text-slate-400 border-indigo-100 hover:bg-indigo-50/30")}>Move-In {l.move_in_completed ? "✓" : ""}</button>
+                <button onClick={() => setShowChecklist({ lease: l, type: "out" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_out_completed ? "text-green-600 border-green-200 bg-green-50" : "text-slate-400 border-indigo-100 hover:bg-indigo-50/30")}>Move-Out {l.move_out_completed ? "✓" : ""}</button>
                 {safeNum(l.security_deposit) > 0 && l.deposit_status === "held" && (l.status === "terminated" || l.status === "expired" || isExpired) && (
                   <button onClick={() => { setShowDepositModal(l); setDepositForm({ amount_returned: String(l.security_deposit), deductions: "", return_date: formatLocalDate(new Date()) }); }} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">Return Deposit</button>
                 )}
@@ -5582,20 +5582,20 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
             </div>
           );
         })}
-        {filteredLeases.length === 0 && <div className="text-center py-10 text-gray-400">No leases found</div>}
+        {filteredLeases.length === 0 && <div className="text-center py-10 text-slate-400">No leases found</div>}
       </div>
 
       {/* Rent Increase Modal */}
       {showRentIncrease && (
         <Modal title={`Rent Increase — ${showRentIncrease.tenant_name}`} onClose={() => setShowRentIncrease(null)}>
           <div className="space-y-3">
-            <div className="bg-gray-50 rounded-xl p-3 text-sm">
-              <div className="flex justify-between"><span className="text-gray-500">Current Rent:</span><span className="font-bold">${showRentIncrease.rent_amount}/mo</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Property:</span><span>{showRentIncrease.property}</span></div>
+            <div className="bg-indigo-50/30 rounded-xl p-3 text-sm">
+              <div className="flex justify-between"><span className="text-slate-400">Current Rent:</span><span className="font-bold">${showRentIncrease.rent_amount}/mo</span></div>
+              <div className="flex justify-between"><span className="text-slate-400">Property:</span><span>{showRentIncrease.property}</span></div>
             </div>
-            <div><label className="text-xs text-gray-500 mb-1 block">New Monthly Rent ($) *</label><input type="number" min="0" step="0.01" placeholder="1600.00" value={rentIncreaseForm.new_amount} onChange={e => setRentIncreaseForm({...rentIncreaseForm, new_amount: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Effective Date *</label><input type="date" value={rentIncreaseForm.effective_date} onChange={e => setRentIncreaseForm({...rentIncreaseForm, effective_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Reason</label><input value={rentIncreaseForm.reason} onChange={e => setRentIncreaseForm({...rentIncreaseForm, reason: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Market adjustment, annual increase..." /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">New Monthly Rent ($) *</label><input type="number" min="0" step="0.01" placeholder="1600.00" value={rentIncreaseForm.new_amount} onChange={e => setRentIncreaseForm({...rentIncreaseForm, new_amount: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Effective Date *</label><input type="date" value={rentIncreaseForm.effective_date} onChange={e => setRentIncreaseForm({...rentIncreaseForm, effective_date: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Reason</label><input value={rentIncreaseForm.reason} onChange={e => setRentIncreaseForm({...rentIncreaseForm, reason: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" placeholder="Market adjustment, annual increase..." /></div>
             {rentIncreaseForm.new_amount && Number(rentIncreaseForm.new_amount) !== showRentIncrease.rent_amount && (
               <div className={`text-sm font-semibold rounded-lg p-2 text-center ${Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
                 {Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "+" : ""}{Math.round((Number(rentIncreaseForm.new_amount) - showRentIncrease.rent_amount) / showRentIncrease.rent_amount * 100)}% ({Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "+" : ""}${Number(rentIncreaseForm.new_amount) - showRentIncrease.rent_amount}/mo)
@@ -5611,7 +5611,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
               logAudit("update", "leases", `Rent increase: ${formatCurrency(showRentIncrease.rent_amount)} → ${formatCurrency(newAmt)} for ${showRentIncrease.tenant_name}`, showRentIncrease.id, userProfile?.email, userRole, companyId);
               setShowRentIncrease(null);
               fetchData();
-            }} className="w-full bg-indigo-600 text-white text-sm py-2.5 rounded-lg hover:bg-indigo-700">Apply Rent Increase</button>
+            }} className="w-full bg-indigo-600 text-white text-sm py-2.5 rounded-2xl hover:bg-indigo-700">Apply Rent Increase</button>
           </div>
         </Modal>
       )}
@@ -5805,18 +5805,18 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
   return (
     <div>
       <div className="flex justify-between items-center mb-5">
-        <h2 className="text-xl font-bold text-gray-800">Vendor Management</h2>
+        <h2 className="text-2xl font-manrope font-bold text-slate-800">Vendor Management</h2>
         <div className="flex gap-2">
-          <button onClick={() => setShowInvoiceForm(true)} className="text-xs border border-gray-200 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-50">+ Invoice</button>
-          <button onClick={() => { resetVendorForm(); setShowForm(true); }} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-indigo-700">+ New Vendor</button>
+          <button onClick={() => setShowInvoiceForm(true)} className="text-xs border border-indigo-100 text-slate-500 px-3 py-2 rounded-lg hover:bg-indigo-50/30">+ Invoice</button>
+          <button onClick={() => { resetVendorForm(); setShowForm(true); }} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Vendor</button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
         <StatCard label="Active Vendors" value={activeVendors.length} color="text-green-600" sub="available" />
-        <StatCard label="Pending Invoices" value={pendingInvoices.length} color={pendingInvoices.length > 0 ? "text-amber-600" : "text-gray-400"} sub={"$" + totalOwed.toLocaleString() + " owed"} />
+        <StatCard label="Pending Invoices" value={pendingInvoices.length} color={pendingInvoices.length > 0 ? "text-amber-600" : "text-slate-400"} sub={"$" + totalOwed.toLocaleString() + " owed"} />
         <StatCard label="Total Paid (YTD)" value={"$" + totalPaidAll.toLocaleString()} color="text-blue-600" sub="all vendors" />
-        <StatCard label="Insurance Alerts" value={insuranceExpiring.length} color={insuranceExpiring.length > 0 ? "text-red-500" : "text-gray-400"} sub="expiring < 30d" />
+        <StatCard label="Insurance Alerts" value={insuranceExpiring.length} color={insuranceExpiring.length > 0 ? "text-red-500" : "text-slate-400"} sub="expiring < 30d" />
       </div>
 
       {insuranceExpiring.length > 0 && (
@@ -5828,41 +5828,41 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
         </div>
       )}
 
-      <div className="flex gap-1 mb-4 border-b border-gray-100">
+      <div className="flex gap-1 mb-4 border-b border-indigo-50">
         {[["vendors","Vendors"],["invoices","Invoices"]].map(([id,label]) => (
-          <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500")}>{label}</button>
+          <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400")}>{label}</button>
         ))}
       </div>
 
       {/* New Vendor Form */}
       {showForm && (
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
-          <h3 className="font-semibold text-gray-800 mb-4">{editingVendor ? "Edit Vendor" : "Add New Vendor"}</h3>
+          <h3 className="font-manrope font-semibold text-slate-800 mb-4">{editingVendor ? "Edit Vendor" : "Add New Vendor"}</h3>
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <div><label className="text-xs text-gray-500 mb-1 block">Name *</label><input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="John Smith" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Company</label><input value={form.company} onChange={e => setForm({...form, company: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="ABC Plumbing LLC" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Email</label><input type="email" placeholder="vendor@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Phone</label><input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Address</label><input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Specialty</label>
-              <select value={form.specialty} onChange={e => setForm({...form, specialty: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs text-slate-400 mb-1 block">Name *</label><input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" placeholder="John Smith" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Company</label><input value={form.company} onChange={e => setForm({...form, company: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" placeholder="ABC Plumbing LLC" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Email</label><input type="email" placeholder="vendor@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Phone</label><input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address</label><input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Specialty</label>
+              <select value={form.specialty} onChange={e => setForm({...form, specialty: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
                 {specialties.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Status</label>
-              <select value={form.status} onChange={e => setForm({...form, status: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs text-slate-400 mb-1 block">Status</label>
+              <select value={form.status} onChange={e => setForm({...form, status: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
                 <option value="active">Active</option><option value="preferred">Preferred</option><option value="inactive">Inactive</option><option value="blocked">Blocked</option>
               </select>
             </div>
-            <div><label className="text-xs text-gray-500 mb-1 block">License #</label><input placeholder="e.g. VA-12345" value={form.license_number} onChange={e => setForm({...form, license_number: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Insurance Expiry</label><input type="date" value={form.insurance_expiry} onChange={e => setForm({...form, insurance_expiry: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Hourly Rate ($)</label><input placeholder="0.00" type="number" value={form.hourly_rate} onChange={e => setForm({...form, hourly_rate: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Flat Rate ($)</label><input placeholder="0.00" type="number" value={form.flat_rate} onChange={e => setForm({...form, flat_rate: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">License #</label><input placeholder="e.g. VA-12345" value={form.license_number} onChange={e => setForm({...form, license_number: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Insurance Expiry</label><input type="date" value={form.insurance_expiry} onChange={e => setForm({...form, insurance_expiry: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Hourly Rate ($)</label><input placeholder="0.00" type="number" value={form.hourly_rate} onChange={e => setForm({...form, hourly_rate: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Flat Rate ($)</label><input placeholder="0.00" type="number" value={form.flat_rate} onChange={e => setForm({...form, flat_rate: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
           </div>
-          <div className="mb-4"><label className="text-xs text-gray-500 mb-1 block">Notes</label><textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={2} /></div>
+          <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Notes</label><textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" rows={2} /></div>
           <div className="flex gap-2">
-            <button onClick={saveVendor} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-indigo-700">{editingVendor ? "Update" : "Add Vendor"}</button>
-            <button onClick={resetVendorForm} className="text-sm text-gray-500 px-4 py-2">Cancel</button>
+            <button onClick={saveVendor} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700">{editingVendor ? "Update" : "Add Vendor"}</button>
+            <button onClick={resetVendorForm} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
           </div>
         </div>
       )}
@@ -5870,24 +5870,24 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
       {/* Invoice Form */}
       {showInvoiceForm && (
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
-          <h3 className="font-semibold text-gray-800 mb-4">New Vendor Invoice</h3>
+          <h3 className="font-manrope font-semibold text-slate-800 mb-4">New Vendor Invoice</h3>
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <div><label className="text-xs text-gray-500 mb-1 block">Vendor *</label>
-              <select value={invoiceForm.vendor_id} onChange={e => { const v = vendors.find(v => String(v.id) === String(e.target.value)); setInvoiceForm({...invoiceForm, vendor_id: e.target.value, vendor_name: v?.name || ""}); }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs text-slate-400 mb-1 block">Vendor *</label>
+              <select value={invoiceForm.vendor_id} onChange={e => { const v = vendors.find(v => String(v.id) === String(e.target.value)); setInvoiceForm({...invoiceForm, vendor_id: e.target.value, vendor_name: v?.name || ""}); }} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
                 <option value="">Select vendor...</option>
                 {vendors.filter(v => v.status !== "blocked").map(v => <option key={v.id} value={v.id}>{v.name} ({v.specialty})</option>)}
               </select>
             </div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Property</label><PropertySelect value={invoiceForm.property} onChange={v => setInvoiceForm({...invoiceForm, property: v})} companyId={companyId} /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Amount ($) *</label><input type="number" min="0" step="0.01" placeholder="500.00" value={invoiceForm.amount} onChange={e => setInvoiceForm({...invoiceForm, amount: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Invoice #</label><input placeholder="INV-001" value={invoiceForm.invoice_number} onChange={e => setInvoiceForm({...invoiceForm, invoice_number: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Invoice Date</label><input type="date" value={invoiceForm.invoice_date} onChange={e => setInvoiceForm({...invoiceForm, invoice_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Due Date</label><input type="date" value={invoiceForm.due_date} onChange={e => setInvoiceForm({...invoiceForm, due_date: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div className="col-span-2"><label className="text-xs text-gray-500 mb-1 block">Description</label><input value={invoiceForm.description} onChange={e => setInvoiceForm({...invoiceForm, description: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Plumbing repair at 123 Main St" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Property</label><PropertySelect value={invoiceForm.property} onChange={v => setInvoiceForm({...invoiceForm, property: v})} companyId={companyId} /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Amount ($) *</label><input type="number" min="0" step="0.01" placeholder="500.00" value={invoiceForm.amount} onChange={e => setInvoiceForm({...invoiceForm, amount: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Invoice #</label><input placeholder="INV-001" value={invoiceForm.invoice_number} onChange={e => setInvoiceForm({...invoiceForm, invoice_number: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Invoice Date</label><input type="date" value={invoiceForm.invoice_date} onChange={e => setInvoiceForm({...invoiceForm, invoice_date: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Due Date</label><input type="date" value={invoiceForm.due_date} onChange={e => setInvoiceForm({...invoiceForm, due_date: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div className="col-span-2"><label className="text-xs text-slate-400 mb-1 block">Description</label><input value={invoiceForm.description} onChange={e => setInvoiceForm({...invoiceForm, description: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" placeholder="Plumbing repair at 123 Main St" /></div>
           </div>
           <div className="flex gap-2">
-            <button onClick={saveInvoice} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-indigo-700">Save Invoice</button>
-            <button onClick={() => setShowInvoiceForm(false)} className="text-sm text-gray-500 px-4 py-2">Cancel</button>
+            <button onClick={saveInvoice} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700">Save Invoice</button>
+            <button onClick={() => setShowInvoiceForm(false)} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
           </div>
         </div>
       )}
@@ -5896,8 +5896,8 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
       {activeTab === "vendors" && (
         <div>
           <div className="flex gap-2 mb-4">
-            <input placeholder="Search vendors..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-            <select value={filterSpecialty} onChange={e => setFilterSpecialty(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <input placeholder="Search vendors..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="flex-1 border border-indigo-100 rounded-2xl px-3 py-2 text-sm" />
+            <select value={filterSpecialty} onChange={e => setFilterSpecialty(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
               <option value="all">All Specialties</option>
               {specialties.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
@@ -5906,42 +5906,42 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
             {filteredVendors.map(v => {
               const insExpired = v.insurance_expiry && parseLocalDate(v.insurance_expiry) < new Date();
               const insExpiring = v.insurance_expiry && !insExpired && Math.ceil((parseLocalDate(v.insurance_expiry) - new Date()) / 86400000) <= 30;
-              const sc = { active: "bg-green-100 text-green-700", preferred: "bg-indigo-100 text-indigo-700", inactive: "bg-gray-100 text-gray-500", blocked: "bg-red-100 text-red-700" };
+              const sc = { active: "bg-green-100 text-green-700", preferred: "bg-indigo-100 text-indigo-700", inactive: "bg-slate-100 text-slate-400", blocked: "bg-red-100 text-red-700" };
               return (
-                <div key={v.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                <div key={v.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <div className="text-sm font-bold text-gray-800">{v.name}{v.company ? " — " + v.company : ""}</div>
-                      <div className="text-xs text-gray-400">{v.specialty}{v.license_number ? " · Lic: " + v.license_number : ""}</div>
+                      <div className="text-sm font-bold text-slate-800">{v.name}{v.company ? " — " + v.company : ""}</div>
+                      <div className="text-xs text-slate-400">{v.specialty}{v.license_number ? " · Lic: " + v.license_number : ""}</div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[v.status] || "bg-gray-100")}>{v.status}</span>
+                      <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[v.status] || "bg-slate-100")}>{v.status}</span>
                       {v.rating > 0 && <span className="text-xs text-amber-500">{"\u2605".repeat(v.rating)}{"\u2606".repeat(5 - v.rating)}</span>}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-2 md:grid-cols-4">
-                    {v.phone && <div><span className="text-gray-400">Phone:</span> <span className="font-medium">{v.phone}</span></div>}
-                    {v.email && <div><span className="text-gray-400">Email:</span> <span className="font-medium">{v.email}</span></div>}
-                    {v.hourly_rate > 0 && <div><span className="text-gray-400">Rate:</span> <span className="font-medium">${v.hourly_rate}/hr</span></div>}
-                    {v.flat_rate > 0 && <div><span className="text-gray-400">Flat:</span> <span className="font-medium">${v.flat_rate}</span></div>}
-                    <div><span className="text-gray-400">Jobs:</span> <span className="font-medium">{v.total_jobs || 0}</span></div>
-                    <div><span className="text-gray-400">Total Paid:</span> <span className="font-medium">${safeNum(v.total_paid).toLocaleString()}</span></div>
-                    {v.insurance_expiry && <div><span className="text-gray-400">Insurance:</span> <span className={"font-medium " + (insExpired ? "text-red-600" : insExpiring ? "text-amber-600" : "text-green-600")}>{v.insurance_expiry}{insExpired ? " (EXPIRED)" : ""}</span></div>}
+                    {v.phone && <div><span className="text-slate-400">Phone:</span> <span className="font-medium">{v.phone}</span></div>}
+                    {v.email && <div><span className="text-slate-400">Email:</span> <span className="font-medium">{v.email}</span></div>}
+                    {v.hourly_rate > 0 && <div><span className="text-slate-400">Rate:</span> <span className="font-medium">${v.hourly_rate}/hr</span></div>}
+                    {v.flat_rate > 0 && <div><span className="text-slate-400">Flat:</span> <span className="font-medium">${v.flat_rate}</span></div>}
+                    <div><span className="text-slate-400">Jobs:</span> <span className="font-medium">{v.total_jobs || 0}</span></div>
+                    <div><span className="text-slate-400">Total Paid:</span> <span className="font-medium">${safeNum(v.total_paid).toLocaleString()}</span></div>
+                    {v.insurance_expiry && <div><span className="text-slate-400">Insurance:</span> <span className={"font-medium " + (insExpired ? "text-red-600" : insExpiring ? "text-amber-600" : "text-green-600")}>{v.insurance_expiry}{insExpired ? " (EXPIRED)" : ""}</span></div>}
                   </div>
-                  {v.notes && <div className="text-xs text-gray-500 mb-2">{v.notes}</div>}
-                  <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-50">
+                  {v.notes && <div className="text-xs text-slate-400 mb-2">{v.notes}</div>}
+                  <div className="flex flex-wrap gap-2 pt-2 border-t border-indigo-50/50">
                     <button onClick={() => startEditVendor(v)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
                     <button onClick={() => deleteVendor(v.id, v.name)} className="text-xs text-red-500 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">Delete</button>
                     <div className="flex items-center gap-0.5 ml-2">
                       {[1,2,3,4,5].map(star => (
-                        <button key={star} onClick={() => rateVendor(v, star)} className={"text-sm " + (star <= (v.rating || 0) ? "text-amber-400" : "text-gray-300")}>{star <= (v.rating || 0) ? "\u2605" : "\u2606"}</button>
+                        <button key={star} onClick={() => rateVendor(v, star)} className={"text-sm " + (star <= (v.rating || 0) ? "text-amber-400" : "text-slate-300")}>{star <= (v.rating || 0) ? "\u2605" : "\u2606"}</button>
                       ))}
                     </div>
                   </div>
                 </div>
               );
             })}
-            {filteredVendors.length === 0 && <div className="text-center py-10 text-gray-400">No vendors found</div>}
+            {filteredVendors.length === 0 && <div className="text-center py-10 text-slate-400">No vendors found</div>}
           </div>
         </div>
       )}
@@ -5953,32 +5953,32 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
             const isOverdue = inv.status === "pending" && inv.due_date && parseLocalDate(inv.due_date) < new Date();
             const sc = { pending: "bg-amber-100 text-amber-700", approved: "bg-blue-100 text-blue-700", paid: "bg-green-100 text-green-700", disputed: "bg-red-100 text-red-700" };
             return (
-              <div key={inv.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (isOverdue ? "border-red-200" : "border-gray-100")}>
+              <div key={inv.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (isOverdue ? "border-red-200" : "border-indigo-50")}>
                 <div className="flex justify-between items-start mb-2">
                   <div>
-                    <div className="text-sm font-bold text-gray-800">{inv.vendor_name}</div>
-                    <div className="text-xs text-gray-400">{inv.description || "Invoice"}{inv.invoice_number ? " #" + inv.invoice_number : ""}</div>
+                    <div className="text-sm font-bold text-slate-800">{inv.vendor_name}</div>
+                    <div className="text-xs text-slate-400">{inv.description || "Invoice"}{inv.invoice_number ? " #" + inv.invoice_number : ""}</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm font-bold text-gray-800">${safeNum(inv.amount).toLocaleString()}</div>
-                    <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[inv.status] || "bg-gray-100")}>{isOverdue ? "OVERDUE" : inv.status}</span>
+                    <div className="text-sm font-bold text-slate-800">${safeNum(inv.amount).toLocaleString()}</div>
+                    <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[inv.status] || "bg-slate-100")}>{isOverdue ? "OVERDUE" : inv.status}</span>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 text-xs md:grid-cols-4">
-                  {inv.property && <div><span className="text-gray-400">Property:</span> <span className="font-medium">{inv.property}</span></div>}
-                  <div><span className="text-gray-400">Date:</span> <span className="font-medium">{inv.invoice_date}</span></div>
-                  {inv.due_date && <div><span className="text-gray-400">Due:</span> <span className={"font-medium " + (isOverdue ? "text-red-600" : "")}>{inv.due_date}</span></div>}
-                  {inv.paid_date && <div><span className="text-gray-400">Paid:</span> <span className="font-medium text-green-600">{inv.paid_date}</span></div>}
+                  {inv.property && <div><span className="text-slate-400">Property:</span> <span className="font-medium">{inv.property}</span></div>}
+                  <div><span className="text-slate-400">Date:</span> <span className="font-medium">{inv.invoice_date}</span></div>
+                  {inv.due_date && <div><span className="text-slate-400">Due:</span> <span className={"font-medium " + (isOverdue ? "text-red-600" : "")}>{inv.due_date}</span></div>}
+                  {inv.paid_date && <div><span className="text-slate-400">Paid:</span> <span className="font-medium text-green-600">{inv.paid_date}</span></div>}
                 </div>
                 {(inv.status === "pending" || inv.status === "approved") && (
-                  <div className="flex gap-2 pt-2 mt-2 border-t border-gray-50">
+                  <div className="flex gap-2 pt-2 mt-2 border-t border-indigo-50/50">
                     <button onClick={() => payInvoice(inv)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">Mark Paid</button>
                   </div>
                 )}
               </div>
             );
           })}
-          {invoices.length === 0 && <div className="text-center py-10 text-gray-400">No invoices yet</div>}
+          {invoices.length === 0 && <div className="text-center py-10 text-slate-400">No invoices yet</div>}
         </div>
       )}
     </div>
@@ -6220,49 +6220,49 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
   return (
     <div>
       <div className="flex justify-between items-center mb-5">
-        <h2 className="text-xl font-bold text-gray-800">Owner Management</h2>
+        <h2 className="text-2xl font-manrope font-bold text-slate-800">Owner Management</h2>
         <div className="flex gap-2">
-          <button onClick={() => setShowGenerate(true)} className="text-xs border border-gray-200 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-50">Generate Statement</button>
-          <button onClick={() => { resetForm(); setShowForm(true); }} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-indigo-700">+ New Owner</button>
+          <button onClick={() => setShowGenerate(true)} className="text-xs border border-indigo-100 text-slate-500 px-3 py-2 rounded-lg hover:bg-indigo-50/30">Generate Statement</button>
+          <button onClick={() => { resetForm(); setShowForm(true); }} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Owner</button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
         <StatCard label="Active Owners" value={activeOwners.length} color="text-green-600" sub={properties.filter(p => p.owner_id).length + " properties assigned"} />
-        <StatCard label="Pending Statements" value={pendingStatements.length} color={pendingStatements.length > 0 ? "text-amber-600" : "text-gray-400"} sub={"$" + pendingAmount.toLocaleString() + " owed"} />
+        <StatCard label="Pending Statements" value={pendingStatements.length} color={pendingStatements.length > 0 ? "text-amber-600" : "text-slate-400"} sub={"$" + pendingAmount.toLocaleString() + " owed"} />
         <StatCard label="Total Distributed" value={"$" + totalDistributed.toLocaleString()} color="text-blue-600" sub="all time" />
-        <StatCard label="Unassigned Props" value={properties.filter(p => !p.owner_id).length} color={properties.filter(p => !p.owner_id).length > 0 ? "text-orange-500" : "text-gray-400"} sub="no owner" />
+        <StatCard label="Unassigned Props" value={properties.filter(p => !p.owner_id).length} color={properties.filter(p => !p.owner_id).length > 0 ? "text-orange-500" : "text-slate-400"} sub="no owner" />
       </div>
 
-      <div className="flex gap-1 mb-4 border-b border-gray-100">
+      <div className="flex gap-1 mb-4 border-b border-indigo-50">
         {[["owners","Owners"],["properties","Properties"],["statements","Statements"],["distributions","Distributions"]].map(([id,label]) => (
-          <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500")}>{label}</button>
+          <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400")}>{label}</button>
         ))}
       </div>
 
       {/* Generate Statement Modal */}
       {showGenerate && (
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
-          <h3 className="font-semibold text-gray-800 mb-4">Generate Owner Statement</h3>
+          <h3 className="font-manrope font-semibold text-slate-800 mb-4">Generate Owner Statement</h3>
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <div><label className="text-xs text-gray-500 mb-1 block">Owner *</label>
-              <select value={genOwner} onChange={e => setGenOwner(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs text-slate-400 mb-1 block">Owner *</label>
+              <select value={genOwner} onChange={e => setGenOwner(e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
                 <option value="">Select owner...</option>
                 {activeOwners.map(o => <option key={o.id} value={o.id}>{o.name} ({properties.filter(p => String(p.owner_id) === String(o.id)).length} properties)</option>)}
               </select>
             </div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Month</label><input placeholder="Enter name" type="month" value={genMonth} onChange={e => setGenMonth(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Month</label><input placeholder="Enter name" type="month" value={genMonth} onChange={e => setGenMonth(e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
           </div>
           {genOwner && (
-            <div className="bg-gray-50 rounded-lg p-3 mb-4 text-xs text-gray-600">
+            <div className="bg-indigo-50/30 rounded-lg p-3 mb-4 text-xs text-slate-500">
               <div className="font-semibold mb-1">Properties included:</div>
               {properties.filter(p => String(p.owner_id) === String(genOwner)).map(p => <div key={p.id}>{p.address}</div>)}
               {properties.filter(p => String(p.owner_id) === String(genOwner)).length === 0 && <div className="text-amber-600">No properties assigned to this owner</div>}
             </div>
           )}
           <div className="flex gap-2">
-            <button onClick={generateStatement} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-indigo-700">Generate</button>
-            <button onClick={() => setShowGenerate(false)} className="text-sm text-gray-500 px-4 py-2">Cancel</button>
+            <button onClick={generateStatement} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700">Generate</button>
+            <button onClick={() => setShowGenerate(false)} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
           </div>
         </div>
       )}
@@ -6270,30 +6270,30 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
       {/* Owner Form */}
       {showForm && (
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
-          <h3 className="font-semibold text-gray-800 mb-4">{editingOwner ? "Edit Owner" : "Add New Owner"}</h3>
+          <h3 className="font-manrope font-semibold text-slate-800 mb-4">{editingOwner ? "Edit Owner" : "Add New Owner"}</h3>
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <div><label className="text-xs text-gray-500 mb-1 block">Name *</label><input placeholder="John Smith" value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Company</label><input placeholder="Smith Properties LLC" value={form.company} onChange={e => setForm({...form, company: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Email</label><input type="email" placeholder="vendor@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Phone</label><input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Address</label><input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Tax ID / EIN</label><input placeholder="XX-XXXXXXX" value={form.tax_id} onChange={e => setForm({...form, tax_id: e.target.value})} maxLength={10} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Management Fee %</label><input type="number" step="0.5" min="0" max="50" placeholder="10.0" value={form.management_fee_pct} onChange={e => setForm({...form, management_fee_pct: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Payment Method</label>
-              <select value={form.payment_method} onChange={e => setForm({...form, payment_method: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs text-slate-400 mb-1 block">Name *</label><input placeholder="John Smith" value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Company</label><input placeholder="Smith Properties LLC" value={form.company} onChange={e => setForm({...form, company: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Email</label><input type="email" placeholder="vendor@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Phone</label><input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address</label><input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Tax ID / EIN</label><input placeholder="XX-XXXXXXX" value={form.tax_id} onChange={e => setForm({...form, tax_id: e.target.value})} maxLength={10} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Management Fee %</label><input type="number" step="0.5" min="0" max="50" placeholder="10.0" value={form.management_fee_pct} onChange={e => setForm({...form, management_fee_pct: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Payment Method</label>
+              <select value={form.payment_method} onChange={e => setForm({...form, payment_method: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
                 <option value="check">Check</option><option value="ach">ACH</option><option value="wire">Wire</option>
               </select>
             </div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Status</label>
-              <select value={form.status} onChange={e => setForm({...form, status: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <div><label className="text-xs text-slate-400 mb-1 block">Status</label>
+              <select value={form.status} onChange={e => setForm({...form, status: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
                 <option value="active">Active</option><option value="inactive">Inactive</option>
               </select>
             </div>
           </div>
-          <div className="mb-4"><label className="text-xs text-gray-500 mb-1 block">Notes</label><textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" rows={2} /></div>
+          <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Notes</label><textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" rows={2} /></div>
           <div className="flex gap-2">
-            <button onClick={saveOwner} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-indigo-700">{editingOwner ? "Update" : "Add Owner"}</button>
-            <button onClick={resetForm} className="text-sm text-gray-500 px-4 py-2">Cancel</button>
+            <button onClick={saveOwner} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700">{editingOwner ? "Update" : "Add Owner"}</button>
+            <button onClick={resetForm} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
           </div>
         </div>
       )}
@@ -6303,27 +6303,27 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
         <Modal title={"Statement — " + viewStatement.owner_name + " — " + viewStatement.period} onClose={() => setViewStatement(null)}>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Income</div><div className="text-lg font-bold text-green-700">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
-              <div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Expenses</div><div className="text-lg font-bold text-red-600">${safeNum(viewStatement.total_expenses).toLocaleString()}</div></div>
-              <div className="bg-purple-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Mgmt Fee</div><div className="text-lg font-bold text-purple-700">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
-              <div className="bg-indigo-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Net to Owner</div><div className={"text-lg font-bold " + (viewStatement.net_to_owner >= 0 ? "text-indigo-700" : "text-red-600")}>${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
+              <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Income</div><div className="text-lg font-bold text-green-700">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
+              <div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Expenses</div><div className="text-lg font-bold text-red-600">${safeNum(viewStatement.total_expenses).toLocaleString()}</div></div>
+              <div className="bg-purple-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Mgmt Fee</div><div className="text-lg font-bold text-purple-700">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
+              <div className="bg-indigo-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Net to Owner</div><div className={"text-lg font-bold " + (viewStatement.net_to_owner >= 0 ? "text-indigo-700" : "text-red-600")}>${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
             </div>
             {(() => {
               let items = []; try { items = JSON.parse(viewStatement.line_items || "[]"); } catch {}
               return items.map((cat, ci) => (
                 <div key={ci}>
-                  <div className="font-semibold text-gray-700 text-sm mt-2 mb-1">{cat.category}</div>
+                  <div className="font-semibold text-slate-700 text-sm mt-2 mb-1">{cat.category}</div>
                   {(cat.items || []).map((item, ii) => (
-                    <div key={ii} className="flex justify-between text-xs py-1 border-b border-gray-50">
-                      <div className="text-gray-600">{item.description}<span className="text-gray-400 ml-2">{item.date}</span></div>
+                    <div key={ii} className="flex justify-between text-xs py-1 border-b border-indigo-50/50">
+                      <div className="text-slate-500">{item.description}<span className="text-slate-400 ml-2">{item.date}</span></div>
                       <div className={"font-bold " + (item.amount >= 0 ? "text-green-600" : "text-red-600")}>{item.amount >= 0 ? "+" : ""}${Math.abs(item.amount).toLocaleString()}</div>
                     </div>
                   ))}
-                  {(cat.items || []).length === 0 && <div className="text-xs text-gray-400 py-1">None</div>}
+                  {(cat.items || []).length === 0 && <div className="text-xs text-slate-400 py-1">None</div>}
                 </div>
               ));
             })()}
-            <div className="flex gap-2 pt-3 border-t border-gray-100">
+            <div className="flex gap-2 pt-3 border-t border-indigo-50">
               {viewStatement.status === "draft" && <button onClick={() => { markStatementSent(viewStatement); setViewStatement(null); }} className="text-xs bg-blue-600 text-white px-4 py-2 rounded-lg">Mark Sent</button>}
               {(viewStatement.status === "draft" || viewStatement.status === "sent") && <button onClick={() => { distributeToOwner(viewStatement); setViewStatement(null); }} className="text-xs bg-green-600 text-white px-4 py-2 rounded-lg">Distribute ${safeNum(viewStatement.net_to_owner).toLocaleString()}</button>}
             </div>
@@ -6338,24 +6338,24 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
             const ownerProps = properties.filter(p => String(p.owner_id) === String(o.id));
             const ownerDist = distributions.filter(d => String(d.owner_id) === String(o.id)).reduce((s, d) => s + safeNum(d.amount), 0);
             return (
-              <div key={o.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+              <div key={o.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
                 <div className="flex justify-between items-start mb-2">
                   <div>
-                    <div className="text-sm font-bold text-gray-800">{o.name}{o.company ? " — " + o.company : ""}</div>
-                    <div className="text-xs text-gray-400">{o.email}{o.phone ? " · " + o.phone : ""}</div>
+                    <div className="text-sm font-bold text-slate-800">{o.name}{o.company ? " — " + o.company : ""}</div>
+                    <div className="text-xs text-slate-400">{o.email}{o.phone ? " · " + o.phone : ""}</div>
                   </div>
-                  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (o.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500")}>{o.status}</span>
+                  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (o.status === "active" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-400")}>{o.status}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-2 md:grid-cols-4">
-                  <div><span className="text-gray-400">Properties:</span> <span className="font-bold">{ownerProps.length}</span></div>
-                  <div><span className="text-gray-400">Mgmt Fee:</span> <span className="font-medium">{o.management_fee_pct}%</span></div>
-                  <div><span className="text-gray-400">Total Distributed:</span> <span className="font-medium">${ownerDist.toLocaleString()}</span></div>
-                  <div><span className="text-gray-400">Payment:</span> <span className="font-medium capitalize">{o.payment_method}</span></div>
+                  <div><span className="text-slate-400">Properties:</span> <span className="font-bold">{ownerProps.length}</span></div>
+                  <div><span className="text-slate-400">Mgmt Fee:</span> <span className="font-medium">{o.management_fee_pct}%</span></div>
+                  <div><span className="text-slate-400">Total Distributed:</span> <span className="font-medium">${ownerDist.toLocaleString()}</span></div>
+                  <div><span className="text-slate-400">Payment:</span> <span className="font-medium capitalize">{o.payment_method}</span></div>
                 </div>
                 {ownerProps.length > 0 && (
-                  <div className="text-xs text-gray-500 mb-2">{ownerProps.map(p => p.address).join(" · ")}</div>
+                  <div className="text-xs text-slate-400 mb-2">{ownerProps.map(p => p.address).join(" · ")}</div>
                 )}
-                <div className="flex gap-2 pt-2 border-t border-gray-50">
+                <div className="flex gap-2 pt-2 border-t border-indigo-50/50">
                   <button onClick={() => inviteOwner(o)} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">✉️ Invite</button>
                   <button onClick={() => startEdit(o)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
                   <button onClick={() => { setGenOwner(o.id); setShowGenerate(true); }} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">Generate Statement</button>
@@ -6363,21 +6363,21 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
               </div>
             );
           })}
-          {owners.length === 0 && <div className="text-center py-10 text-gray-400">No owners added yet</div>}
+          {owners.length === 0 && <div className="text-center py-10 text-slate-400">No owners added yet</div>}
         </div>
       )}
 
       {/* PROPERTIES TAB - assign owners */}
       {activeTab === "properties" && (
         <div className="space-y-2">
-          <div className="text-sm text-gray-500 mb-3">Assign owners to properties. This determines which income and expenses appear on each owner's statement.</div>
+          <div className="text-sm text-slate-400 mb-3">Assign owners to properties. This determines which income and expenses appear on each owner's statement.</div>
           {properties.map(p => (
-            <div key={p.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex justify-between items-center">
+            <div key={p.id} className="bg-white rounded-3xl border border-indigo-50 px-4 py-3 flex justify-between items-center">
               <div>
-                <div className="text-sm font-medium text-gray-800">{p.address}</div>
-                <div className="text-xs text-gray-400">{p.type} · {p.status}</div>
+                <div className="text-sm font-medium text-slate-800">{p.address}</div>
+                <div className="text-xs text-slate-400">{p.type} · {p.status}</div>
               </div>
-              <select value={p.owner_id || ""} onChange={e => assignPropertyToOwner(p.id, e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm min-w-40">
+              <select value={p.owner_id || ""} onChange={e => assignPropertyToOwner(p.id, e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm min-w-40">
                 <option value="">No owner</option>
                 {owners.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
@@ -6392,26 +6392,26 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
           {statements.map(s => {
             const sc = { draft: "bg-amber-100 text-amber-700", sent: "bg-blue-100 text-blue-700", paid: "bg-green-100 text-green-700" };
             return (
-              <div key={s.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 cursor-pointer hover:border-indigo-200" onClick={() => setViewStatement(s)}>
+              <div key={s.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4 cursor-pointer hover:border-indigo-200" onClick={() => setViewStatement(s)}>
                 <div className="flex justify-between items-start mb-2">
                   <div>
-                    <div className="text-sm font-bold text-gray-800">{s.owner_name}</div>
-                    <div className="text-xs text-gray-400">Period: {s.period}</div>
+                    <div className="text-sm font-bold text-slate-800">{s.owner_name}</div>
+                    <div className="text-xs text-slate-400">Period: {s.period}</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm font-bold text-gray-800">${safeNum(s.net_to_owner).toLocaleString()}</div>
-                    <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[s.status] || "bg-gray-100")}>{s.status}</span>
+                    <div className="text-sm font-bold text-slate-800">${safeNum(s.net_to_owner).toLocaleString()}</div>
+                    <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[s.status] || "bg-slate-100")}>{s.status}</span>
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div><span className="text-gray-400">Income:</span> <span className="text-green-600 font-medium">${safeNum(s.total_income).toLocaleString()}</span></div>
-                  <div><span className="text-gray-400">Expenses:</span> <span className="text-red-600 font-medium">${safeNum(s.total_expenses).toLocaleString()}</span></div>
-                  <div><span className="text-gray-400">Mgmt Fee:</span> <span className="text-purple-600 font-medium">${safeNum(s.management_fee).toLocaleString()}</span></div>
+                  <div><span className="text-slate-400">Income:</span> <span className="text-green-600 font-medium">${safeNum(s.total_income).toLocaleString()}</span></div>
+                  <div><span className="text-slate-400">Expenses:</span> <span className="text-red-600 font-medium">${safeNum(s.total_expenses).toLocaleString()}</span></div>
+                  <div><span className="text-slate-400">Mgmt Fee:</span> <span className="text-purple-600 font-medium">${safeNum(s.management_fee).toLocaleString()}</span></div>
                 </div>
               </div>
             );
           })}
-          {statements.length === 0 && <div className="text-center py-10 text-gray-400">No statements generated yet. Click "Generate Statement" to create one.</div>}
+          {statements.length === 0 && <div className="text-center py-10 text-slate-400">No statements generated yet. Click "Generate Statement" to create one.</div>}
         </div>
       )}
 
@@ -6419,15 +6419,15 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
       {activeTab === "distributions" && (
         <div className="space-y-2">
           {distributions.map(d => (
-            <div key={d.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex justify-between items-center">
+            <div key={d.id} className="bg-white rounded-3xl border border-indigo-50 px-4 py-3 flex justify-between items-center">
               <div>
-                <div className="text-sm font-medium text-gray-800">{owners.find(o => String(o.id) === String(d.owner_id))?.name || "Unknown"}</div>
-                <div className="text-xs text-gray-400">{d.date} · {d.method} · {d.reference}</div>
+                <div className="text-sm font-medium text-slate-800">{owners.find(o => String(o.id) === String(d.owner_id))?.name || "Unknown"}</div>
+                <div className="text-xs text-slate-400">{d.date} · {d.method} · {d.reference}</div>
               </div>
               <div className="text-sm font-bold text-green-600">${safeNum(d.amount).toLocaleString()}</div>
             </div>
           ))}
-          {distributions.length === 0 && <div className="text-center py-10 text-gray-400">No distributions yet</div>}
+          {distributions.length === 0 && <div className="text-center py-10 text-slate-400">No distributions yet</div>}
         </div>
       )}
     </div>
@@ -6572,23 +6572,23 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
       {!showReconcile && !viewRecon && (
         <div>
           <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-5">
-            <h3 className="font-semibold text-gray-800 mb-3">Start Bank Reconciliation</h3>
+            <h3 className="font-manrope font-semibold text-slate-800 mb-3">Start Bank Reconciliation</h3>
             <div className="grid grid-cols-3 gap-3">
-              <div><label className="text-xs text-gray-500 mb-1 block">Month</label><input placeholder="Enter name" type="month" value={reconPeriod} onChange={e => setReconPeriod(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-              <div><label className="text-xs text-gray-500 mb-1 block">Bank Ending Balance ($)</label><input type="number" step="0.01" value={bankBalance} onChange={e => setBankBalance(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Enter from bank statement" /></div>
-              <div className="flex items-end"><button onClick={startReconciliation} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-indigo-700 w-full">Begin Reconciliation</button></div>
+              <div><label className="text-xs text-slate-400 mb-1 block">Month</label><input placeholder="Enter name" type="month" value={reconPeriod} onChange={e => setReconPeriod(e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+              <div><label className="text-xs text-slate-400 mb-1 block">Bank Ending Balance ($)</label><input type="number" step="0.01" value={bankBalance} onChange={e => setBankBalance(e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" placeholder="Enter from bank statement" /></div>
+              <div className="flex items-end"><button onClick={startReconciliation} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700 w-full">Begin Reconciliation</button></div>
             </div>
           </div>
 
-          <h3 className="font-semibold text-gray-700 mb-3">Previous Reconciliations</h3>
+          <h3 className="font-semibold text-slate-700 mb-3">Previous Reconciliations</h3>
           <div className="space-y-2">
             {reconciliations.map(r => {
               const sc = { reconciled: "bg-green-100 text-green-700", in_progress: "bg-amber-100 text-amber-700", discrepancy: "bg-red-100 text-red-700" };
               return (
-                <div key={r.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-indigo-200" onClick={() => setViewRecon(r)}>
+                <div key={r.id} className="bg-white rounded-3xl border border-indigo-50 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-indigo-200" onClick={() => setViewRecon(r)}>
                   <div>
-                    <div className="text-sm font-medium text-gray-800">{r.period}</div>
-                    <div className="text-xs text-gray-400">{new Date(r.created_at).toLocaleDateString()}</div>
+                    <div className="text-sm font-medium text-slate-800">{r.period}</div>
+                    <div className="text-xs text-slate-400">{new Date(r.created_at).toLocaleDateString()}</div>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="text-right text-xs">
@@ -6603,7 +6603,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
                 </div>
               );
             })}
-            {reconciliations.length === 0 && <div className="text-center py-8 text-gray-400">No reconciliations yet</div>}
+            {reconciliations.length === 0 && <div className="text-center py-8 text-slate-400">No reconciliations yet</div>}
           </div>
         </div>
       )}
@@ -6611,19 +6611,19 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
       {viewRecon && (
         <div>
           <button onClick={() => setViewRecon(null)} className="text-sm text-indigo-600 mb-3 hover:underline">← Back</button>
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
+          <div className="bg-white rounded-3xl border border-indigo-50 p-5">
             <div className="flex justify-between items-start mb-4">
-              <div><h3 className="font-semibold text-gray-800">Reconciliation — {viewRecon.period}</h3><div className="text-xs text-gray-400">{new Date(viewRecon.created_at).toLocaleDateString()}</div></div>
+              <div><h3 className="font-semibold text-slate-800">Reconciliation — {viewRecon.period}</h3><div className="text-xs text-slate-400">{new Date(viewRecon.created_at).toLocaleDateString()}</div></div>
               <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewRecon.status === "reconciled" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")}>{viewRecon.status}</span>
             </div>
             <div className="grid grid-cols-3 gap-3 mb-4">
-              <div className="bg-blue-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Bank Balance</div><div className="text-lg font-bold text-blue-700">${safeNum(viewRecon.bank_ending_balance).toLocaleString()}</div></div>
-              <div className="bg-indigo-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Book Balance</div><div className="text-lg font-bold text-indigo-700">${safeNum(viewRecon.book_balance).toLocaleString()}</div></div>
-              <div className={"rounded-lg p-3 text-center " + (Math.abs(viewRecon.difference) < 0.01 ? "bg-green-50" : "bg-red-50")}><div className="text-xs text-gray-500">Difference</div><div className={"text-lg font-bold " + (Math.abs(viewRecon.difference) < 0.01 ? "text-green-700" : "text-red-600")}>${safeNum(viewRecon.difference).toLocaleString()}</div></div>
+              <div className="bg-blue-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Bank Balance</div><div className="text-lg font-bold text-blue-700">${safeNum(viewRecon.bank_ending_balance).toLocaleString()}</div></div>
+              <div className="bg-indigo-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Book Balance</div><div className="text-lg font-bold text-indigo-700">${safeNum(viewRecon.book_balance).toLocaleString()}</div></div>
+              <div className={"rounded-lg p-3 text-center " + (Math.abs(viewRecon.difference) < 0.01 ? "bg-green-50" : "bg-red-50")}><div className="text-xs text-slate-400">Difference</div><div className={"text-lg font-bold " + (Math.abs(viewRecon.difference) < 0.01 ? "text-green-700" : "text-red-600")}>${safeNum(viewRecon.difference).toLocaleString()}</div></div>
             </div>
             {(() => { let items = []; try { items = JSON.parse(viewRecon.unreconciled_items || "[]"); } catch {} return items.length > 0 ? (
               <div><div className="font-semibold text-red-700 text-sm mb-2">Unreconciled Items ({items.length})</div>
-                {items.map((it, i) => (<div key={i} className="flex justify-between text-xs py-1 border-b border-gray-50"><span className="text-gray-600">{it.date} — {it.description}</span><span className="font-bold">${it.amount.toLocaleString()}</span></div>))}
+                {items.map((it, i) => (<div key={i} className="flex justify-between text-xs py-1 border-b border-indigo-50/50"><span className="text-slate-500">{it.date} — {it.description}</span><span className="font-bold">${it.amount.toLocaleString()}</span></div>))}
               </div>) : null; })()}
           </div>
         </div>
@@ -6633,37 +6633,37 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
         <div>
           <div className="flex justify-between items-center mb-4">
             <div>
-              <h3 className="font-semibold text-gray-800">Reconcile — {reconPeriod}</h3>
-              <div className="text-xs text-gray-400">Bank balance: ${Number(bankBalance).toLocaleString()} · Check items that match your bank statement</div>
+              <h3 className="font-semibold text-slate-800">Reconcile — {reconPeriod}</h3>
+              <div className="text-xs text-slate-400">Bank balance: ${Number(bankBalance).toLocaleString()} · Check items that match your bank statement</div>
             </div>
-            <button onClick={() => { setShowReconcile(false); setReconItems([]); }} className="text-sm text-gray-500 hover:text-gray-700">Cancel</button>
+            <button onClick={() => { setShowReconcile(false); setReconItems([]); }} className="text-sm text-slate-400 hover:text-slate-700">Cancel</button>
           </div>
 
           <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Reconciled ({reconciledCount})</div><div className="text-lg font-bold text-green-700">${reconciledTotal.toLocaleString()}</div></div>
-            <div className="bg-amber-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Unreconciled ({reconItems.length - reconciledCount})</div><div className="text-lg font-bold text-amber-700">${unreconciledTotal.toLocaleString()}</div></div>
-            <div className={"rounded-lg p-3 text-center " + (Math.abs(Number(bankBalance) - reconciledTotal) < 0.01 ? "bg-green-50" : "bg-red-50")}><div className="text-xs text-gray-500">Remaining Diff</div><div className={"text-lg font-bold " + (Math.abs(Number(bankBalance) - reconciledTotal) < 0.01 ? "text-green-700" : "text-red-600")}>${(Number(bankBalance) - reconciledTotal).toLocaleString()}</div></div>
+            <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Reconciled ({reconciledCount})</div><div className="text-lg font-bold text-green-700">${reconciledTotal.toLocaleString()}</div></div>
+            <div className="bg-amber-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Unreconciled ({reconItems.length - reconciledCount})</div><div className="text-lg font-bold text-amber-700">${unreconciledTotal.toLocaleString()}</div></div>
+            <div className={"rounded-lg p-3 text-center " + (Math.abs(Number(bankBalance) - reconciledTotal) < 0.01 ? "bg-green-50" : "bg-red-50")}><div className="text-xs text-slate-400">Remaining Diff</div><div className={"text-lg font-bold " + (Math.abs(Number(bankBalance) - reconciledTotal) < 0.01 ? "text-green-700" : "text-red-600")}>${(Number(bankBalance) - reconciledTotal).toLocaleString()}</div></div>
           </div>
 
           <div className="mb-3 flex items-center gap-2">
             <button onClick={toggleAllRecon} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">{reconItems.every(i => i.reconciled) ? "Uncheck All" : "Check All"}</button>
-            <span className="text-xs text-gray-400">{reconItems.length} transactions</span>
+            <span className="text-xs text-slate-400">{reconItems.length} transactions</span>
           </div>
 
           <div className="space-y-1 mb-4">
             {reconItems.map((item, i) => (
-              <div key={i} onClick={() => toggleReconItem(i)} className={"flex items-center gap-3 px-4 py-2.5 rounded-lg cursor-pointer border " + (item.reconciled ? "bg-green-50 border-green-200" : "bg-white border-gray-100 hover:bg-gray-50")}>
-                <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs flex-shrink-0 " + (item.reconciled ? "bg-green-500 border-green-500 text-white" : "border-gray-300")}>{item.reconciled ? "✓" : ""}</span>
+              <div key={i} onClick={() => toggleReconItem(i)} className={"flex items-center gap-3 px-4 py-2.5 rounded-lg cursor-pointer border " + (item.reconciled ? "bg-green-50 border-green-200" : "bg-white border-gray-100 hover:bg-indigo-50/30")}>
+                <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs flex-shrink-0 " + (item.reconciled ? "bg-green-500 border-green-500 text-white" : "border-indigo-200")}>{item.reconciled ? "✓" : ""}</span>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm text-gray-800 truncate">{item.description}</div>
-                  <div className="text-xs text-gray-400">{item.date} · {item.reference} · {item.memo}</div>
+                  <div className="text-sm text-slate-800 truncate">{item.description}</div>
+                  <div className="text-xs text-slate-400">{item.date} · {item.reference} · {item.memo}</div>
                 </div>
                 <div className={"text-sm font-bold flex-shrink-0 " + (item.amount >= 0 ? "text-green-600" : "text-red-600")}>{item.amount >= 0 ? "+" : ""}${item.amount.toLocaleString()}</div>
               </div>
             ))}
           </div>
 
-          <button onClick={saveReconciliation} className="bg-indigo-600 text-white text-sm px-8 py-2.5 rounded-lg hover:bg-indigo-700">Save Reconciliation</button>
+          <button onClick={saveReconciliation} className="bg-indigo-600 text-white text-sm px-8 py-2.5 rounded-2xl hover:bg-indigo-700">Save Reconciliation</button>
         </div>
       )}
     </div>
@@ -6806,24 +6806,24 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
   return (
     <div>
       <div className="flex justify-between items-center mb-5">
-        <h2 className="text-xl font-bold text-gray-800">Email Notifications</h2>
-        <button onClick={runNotificationCheck} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-indigo-700">Run Notification Check</button>
+        <h2 className="text-2xl font-manrope font-bold text-slate-800">Email Notifications</h2>
+        <button onClick={runNotificationCheck} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">Run Notification Check</button>
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
         <StatCard label="Active Rules" value={enabledCount + "/" + settings.length} color="text-green-600" sub="notification types" />
         <StatCard label="Sent Today" value={sentToday} color="text-blue-600" sub="notifications" />
         <StatCard label="Total Sent" value={logs.length} color="text-indigo-600" sub="all time" />
-        <StatCard label="Failed" value={logs.filter(l => l.status === "failed").length} color={logs.filter(l => l.status === "failed").length > 0 ? "text-red-500" : "text-gray-400"} sub="delivery errors" />
+        <StatCard label="Failed" value={logs.filter(l => l.status === "failed").length} color={logs.filter(l => l.status === "failed").length > 0 ? "text-red-500" : "text-slate-400"} sub="delivery errors" />
       </div>
 
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5 text-sm text-amber-800">
         <span className="font-semibold">Note:</span> Notifications are currently logged to the database. To send actual emails, connect a Supabase Edge Function with SendGrid, Resend, or Postmark. The templates and triggers are ready to wire up.
       </div>
 
-      <div className="flex gap-1 mb-4 border-b border-gray-100">
+      <div className="flex gap-1 mb-4 border-b border-indigo-50">
         {[["settings","Settings"],["log","Send Log"],["rentroll","Rent Roll"]].map(([id,label]) => (
-          <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500")}>{label}</button>
+          <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400")}>{label}</button>
         ))}
       </div>
 
@@ -6833,31 +6833,31 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
           {settings.map(s => {
             const info = eventLabels[s.event_type] || { label: s.event_type, icon: "\ud83d\udce7", desc: "" };
             return (
-              <div key={s.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (s.enabled ? "border-gray-100" : "border-gray-50 opacity-60")}>
+              <div key={s.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (s.enabled ? "border-indigo-50" : "border-indigo-50/50 opacity-60")}>
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2">
                     <span className="text-lg">{info.icon}</span>
                     <div>
-                      <div className="text-sm font-bold text-gray-800">{info.label}</div>
-                      <div className="text-xs text-gray-400">{info.desc}</div>
+                      <div className="text-sm font-bold text-slate-800">{info.label}</div>
+                      <div className="text-xs text-slate-400">{info.desc}</div>
                     </div>
                   </div>
-                  <button onClick={() => toggleSetting(s)} className={"relative w-10 h-5 rounded-full transition-colors " + (s.enabled ? "bg-green-500" : "bg-gray-300")}>
+                  <button onClick={() => toggleSetting(s)} className={"relative w-10 h-5 rounded-full transition-colors " + (s.enabled ? "bg-green-500" : "bg-slate-300")}>
                     <span className={"absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow " + (s.enabled ? "left-5" : "left-0.5")} />
                   </button>
                 </div>
                 <div className="flex items-center gap-3 text-xs mb-2">
-                  <span className="text-gray-400">Recipients:</span>
-                  <span className="font-medium text-gray-600">{s.recipients}</span>
+                  <span className="text-slate-400">Recipients:</span>
+                  <span className="font-medium text-slate-500">{s.recipients}</span>
                   {s.days_before > 0 && (
                     <div className="flex items-center gap-1">
-                      <span className="text-gray-400">Days before:</span>
-                      <input type="number" value={s.days_before} onChange={e => updateDaysBefore(s, e.target.value)} className="w-12 border border-gray-200 rounded px-1 py-0.5 text-xs text-center" min="0" />
+                      <span className="text-slate-400">Days before:</span>
+                      <input type="number" value={s.days_before} onChange={e => updateDaysBefore(s, e.target.value)} className="w-12 border border-indigo-100 rounded px-1 py-0.5 text-xs text-center" min="0" />
                     </div>
                   )}
                 </div>
                 <div className="mb-2">
-                  <textarea value={s.template} onChange={e => updateTemplate(s, e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-600" rows={2} />
+                  <textarea value={s.template} onChange={e => updateTemplate(s, e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-xs text-slate-500" rows={2} />
                 </div>
                 <button onClick={() => sendTestNotification(s)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Send Test</button>
               </div>
@@ -6870,25 +6870,25 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
       {activeTab === "log" && (
         <div className="space-y-2">
           {logs.map(l => (
-            <div key={l.id} className="bg-white rounded-xl border border-gray-100 px-4 py-2.5 flex justify-between items-center">
+            <div key={l.id} className="bg-white rounded-3xl border border-indigo-50 px-4 py-2.5 flex justify-between items-center">
               <div>
-                <div className="text-sm text-gray-800">{l.subject}</div>
-                <div className="text-xs text-gray-400">{l.recipient_email} · {new Date(l.created_at).toLocaleString()}</div>
+                <div className="text-sm text-slate-800">{l.subject}</div>
+                <div className="text-xs text-slate-400">{l.recipient_email} · {new Date(l.created_at).toLocaleString()}</div>
               </div>
               <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (l.status === "sent" ? "bg-green-100 text-green-700" : l.status === "failed" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700")}>{l.status}</span>
             </div>
           ))}
-          {logs.length === 0 && <div className="text-center py-8 text-gray-400">No notifications sent yet</div>}
+          {logs.length === 0 && <div className="text-center py-8 text-slate-400">No notifications sent yet</div>}
         </div>
       )}
 
       {/* RENT ROLL TAB */}
       {activeTab === "rentroll" && (
         <div>
-          <h3 className="font-semibold text-gray-700 mb-3">Rent Roll</h3>
-          <div className="bg-white rounded-xl border border-gray-100 overflow-x-auto">
+          <h3 className="font-semibold text-slate-700 mb-3">Rent Roll</h3>
+          <div className="bg-white rounded-3xl border border-indigo-50 overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-xs text-gray-500">
+              <thead className="bg-indigo-50/30 text-xs text-slate-400">
                 <tr>
                   <th className="text-left px-4 py-2">Tenant</th>
                   <th className="text-left px-4 py-2">Property</th>
@@ -6900,17 +6900,17 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
               </thead>
               <tbody>
                 {tenants.filter(t => t.lease_status === "active" || !t.lease_status).map(t => (
-                  <tr key={t.id} className="border-t border-gray-50">
-                    <td className="px-4 py-2 font-medium text-gray-800">{t.name}</td>
-                    <td className="px-4 py-2 text-gray-600">{t.property}</td>
+                  <tr key={t.id} className="border-t border-indigo-50/50">
+                    <td className="px-4 py-2 font-medium text-slate-800">{t.name}</td>
+                    <td className="px-4 py-2 text-slate-500">{t.property}</td>
                     <td className="px-4 py-2 text-right font-bold">${safeNum(t.rent).toLocaleString()}</td>
                     <td className={"px-4 py-2 text-right font-bold " + (safeNum(t.balance) > 0 ? "text-red-600" : "text-green-600")}>${safeNum(t.balance).toLocaleString()}</td>
-                    <td className="px-4 py-2 text-gray-600">{t.move_out || "—"}</td>
-                    <td className="px-4 py-2"><span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (t.lease_status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500")}>{t.lease_status || "active"}</span></td>
+                    <td className="px-4 py-2 text-slate-500">{t.move_out || "—"}</td>
+                    <td className="px-4 py-2"><span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (t.lease_status === "active" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-400")}>{t.lease_status || "active"}</span></td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-gray-50 font-bold text-sm">
+              <tfoot className="bg-indigo-50/30 font-bold text-sm">
                 <tr>
                   <td className="px-4 py-2" colSpan="2">Total ({tenants.filter(t => t.lease_status === "active" || !t.lease_status).length} tenants)</td>
                   <td className="px-4 py-2 text-right">${tenants.filter(t => t.lease_status === "active" || !t.lease_status).reduce((s, t) => s + safeNum(t.rent), 0).toLocaleString()}</td>
@@ -7065,33 +7065,33 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
         </div>
 
         {/* Lease Terms Preview */}
-        <div className="bg-gray-50 rounded-lg p-3 max-h-32 overflow-y-auto">
-          <div className="text-xs font-semibold text-gray-600 mb-1">Lease Terms</div>
-          <div className="text-xs text-gray-500 whitespace-pre-wrap">{lease.clauses || "Standard residential lease terms apply."}</div>
-          {lease.special_terms && <div className="text-xs text-gray-500 mt-1"><span className="font-semibold">Special Terms:</span> {lease.special_terms}</div>}
+        <div className="bg-indigo-50/30 rounded-lg p-3 max-h-32 overflow-y-auto">
+          <div className="text-xs font-semibold text-slate-500 mb-1">Lease Terms</div>
+          <div className="text-xs text-slate-400 whitespace-pre-wrap">{lease.clauses || "Standard residential lease terms apply."}</div>
+          {lease.special_terms && <div className="text-xs text-slate-400 mt-1"><span className="font-semibold">Special Terms:</span> {lease.special_terms}</div>}
         </div>
 
         {/* Signer Status */}
         <div>
-          <div className="text-sm font-semibold text-gray-700 mb-2">Signatures</div>
+          <div className="text-sm font-semibold text-slate-700 mb-2">Signatures</div>
           {signers.length === 0 && (
             <div className="text-center py-4">
-              <div className="text-sm text-gray-500 mb-3">No signature requests yet</div>
-              <button onClick={initSignatureRequest} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-indigo-700">Send for Signature</button>
+              <div className="text-sm text-slate-400 mb-3">No signature requests yet</div>
+              <button onClick={initSignatureRequest} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700">Send for Signature</button>
             </div>
           )}
           {signers.map(s => (
             <div key={s.id} className={"flex items-center justify-between px-3 py-2 rounded-lg mb-2 " + (s.status === "signed" ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200")}>
               <div>
-                <div className="text-sm font-medium text-gray-800">{s.signer_name}</div>
-                <div className="text-xs text-gray-400 capitalize">{s.signer_role}</div>
+                <div className="text-sm font-medium text-slate-800">{s.signer_name}</div>
+                <div className="text-xs text-slate-400 capitalize">{s.signer_role}</div>
               </div>
               <div className="flex items-center gap-2">
                 {s.status === "signed" ? (
                   <div className="text-right">
                     <span className={"text-xs font-bold px-2 py-0.5 rounded-full " + (s.verified_server_side ? "text-green-700 bg-green-100" : "text-amber-700 bg-amber-100")}>{s.verified_server_side ? "🔒 Verified" : "✓ Signed"}</span>
-                    <div className="text-xs text-gray-400 mt-0.5">{new Date(s.signed_at).toLocaleDateString()}</div>
-                    {s.integrity_hash && <div className="text-xs text-gray-300 font-mono mt-0.5">{s.integrity_hash.slice(0, 12)}...</div>}
+                    <div className="text-xs text-slate-400 mt-0.5">{new Date(s.signed_at).toLocaleDateString()}</div>
+                    {s.integrity_hash && <div className="text-xs text-slate-300 font-mono mt-0.5">{s.integrity_hash.slice(0, 12)}...</div>}
                   </div>
                 ) : (
                   <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">Pending</span>
@@ -7103,36 +7103,36 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
 
         {/* Signing Pad - show for pending signers */}
         {pendingSigners.length > 0 && !allSigned && (
-          <div className="border border-gray-200 rounded-xl p-4">
-            <div className="text-sm font-semibold text-gray-700 mb-2">Sign as: {pendingSigners[0].signer_name} ({pendingSigners[0].signer_role})</div>
+          <div className="border border-indigo-100 rounded-3xl p-4">
+            <div className="text-sm font-semibold text-slate-700 mb-2">Sign as: {pendingSigners[0].signer_name} ({pendingSigners[0].signer_role})</div>
 
             <div className="flex gap-2 mb-3">
-              <button onClick={() => setSignMethod("draw")} className={"text-xs px-3 py-1.5 rounded-lg font-medium " + (signMethod === "draw" ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600")}>Draw Signature</button>
-              <button onClick={() => setSignMethod("type")} className={"text-xs px-3 py-1.5 rounded-lg font-medium " + (signMethod === "type" ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600")}>Type Name</button>
+              <button onClick={() => setSignMethod("draw")} className={"text-xs px-3 py-1.5 rounded-lg font-medium " + (signMethod === "draw" ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500")}>Draw Signature</button>
+              <button onClick={() => setSignMethod("type")} className={"text-xs px-3 py-1.5 rounded-lg font-medium " + (signMethod === "type" ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500")}>Type Name</button>
             </div>
 
             {signMethod === "draw" ? (
               <div>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg bg-white relative mb-2">
+                <div className="border-2 border-dashed border-indigo-200 rounded-lg bg-white relative mb-2">
                   <canvas ref={canvasRef} width={400} height={120}
                     onMouseDown={startDraw} onMouseMove={draw} onMouseUp={endDraw} onMouseLeave={endDraw}
                     onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={endDraw}
                     className="w-full cursor-crosshair" style={{ touchAction: "none" }} />
-                  <div className="absolute bottom-1 left-3 text-xs text-gray-300">Sign above this line</div>
+                  <div className="absolute bottom-1 left-3 text-xs text-slate-300">Sign above this line</div>
                 </div>
-                <button onClick={clearCanvas} className="text-xs text-gray-500 hover:text-gray-700">Clear</button>
+                <button onClick={clearCanvas} className="text-xs text-slate-400 hover:text-slate-700">Clear</button>
               </div>
             ) : (
               <div>
                 <input value={typedName} onChange={e => setTypedName(e.target.value)} placeholder="Type your full legal name"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-1" />
-                {typedName && <div className="text-2xl text-indigo-800 italic font-serif py-2 px-3 bg-gray-50 rounded-lg">{typedName}</div>}
+                  className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mb-1" />
+                {typedName && <div className="text-2xl text-indigo-800 italic font-serif py-2 px-3 bg-indigo-50/30 rounded-lg">{typedName}</div>}
               </div>
             )}
 
             <div className="flex items-start gap-2 mt-3 mb-3 bg-amber-50 rounded-lg p-2">
               <input type="checkbox" checked={consentAgreed} onChange={(e) => setConsentAgreed(e.target.checked)} className="mt-1" />
-              <label className="text-xs text-gray-600">I agree that my electronic signature is the legal equivalent of my manual/handwritten signature and I consent to be legally bound by this lease agreement.</label>
+              <label className="text-xs text-slate-500">I agree that my electronic signature is the legal equivalent of my manual/handwritten signature and I consent to be legally bound by this lease agreement.</label>
             </div>
 
             <button onClick={() => {
@@ -7145,14 +7145,14 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
               }
               submitSignature(signer);
             }} disabled={signing || !consentAgreed}
-              className={"w-full py-2.5 rounded-lg text-white font-semibold text-sm " + (signing || !consentAgreed ? "bg-gray-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700")}>
+              className={"w-full py-2.5 rounded-lg text-white font-semibold text-sm " + (signing || !consentAgreed ? "bg-slate-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700")}>
               {signing ? "Signing..." : !consentAgreed ? "Agree to terms above to sign" : "Apply Signature"}
             </button>
           </div>
         )}
 
         {allSigned && (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+          <div className="bg-green-50 border border-green-200 rounded-3xl p-4 text-center">
             <div className="text-2xl mb-1">\u2705</div>
             <div className="text-sm font-bold text-green-700">Lease Fully Signed</div>
             <div className="text-xs text-green-600">All parties have signed this lease agreement.</div>
@@ -7261,9 +7261,9 @@ function OwnerPortal({ currentUser, companyId }) {
   if (error) return (
     <div className="max-w-lg mx-auto mt-16 text-center">
       <div className="text-5xl mb-4">\ud83c\udfe0</div>
-      <h2 className="text-xl font-bold text-gray-800 mb-2">Owner Portal</h2>
-      <p className="text-gray-500 mb-4">{error}</p>
-      <p className="text-sm text-gray-400">Please contact your property manager to set up your owner portal access.</p>
+      <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-2">Owner Portal</h2>
+      <p className="text-slate-400 mb-4">{error}</p>
+      <p className="text-sm text-slate-400">Please contact your property manager to set up your owner portal access.</p>
     </div>
   );
 
@@ -7290,60 +7290,60 @@ function OwnerPortal({ currentUser, companyId }) {
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 mb-6 md:grid-cols-4">
-        <div className="bg-white rounded-xl border border-gray-100 p-4 text-center">
-          <div className="text-xs text-gray-500 mb-1">Total Income</div>
+        <div className="bg-white rounded-3xl border border-indigo-50 p-4 text-center">
+          <div className="text-xs text-slate-400 mb-1">Total Income</div>
           <div className="text-lg font-bold text-green-600">${totalIncome.toLocaleString()}</div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 text-center">
-          <div className="text-xs text-gray-500 mb-1">Total Expenses</div>
+        <div className="bg-white rounded-3xl border border-indigo-50 p-4 text-center">
+          <div className="text-xs text-slate-400 mb-1">Total Expenses</div>
           <div className="text-lg font-bold text-red-500">${totalExpenses.toLocaleString()}</div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 text-center">
-          <div className="text-xs text-gray-500 mb-1">Distributions</div>
+        <div className="bg-white rounded-3xl border border-indigo-50 p-4 text-center">
+          <div className="text-xs text-slate-400 mb-1">Distributions</div>
           <div className="text-lg font-bold text-indigo-600">${totalDistributed.toLocaleString()}</div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 text-center">
-          <div className="text-xs text-gray-500 mb-1">Pending</div>
+        <div className="bg-white rounded-3xl border border-indigo-50 p-4 text-center">
+          <div className="text-xs text-slate-400 mb-1">Pending</div>
           <div className="text-lg font-bold text-amber-600">{pendingStatements.length}</div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-5 border-b border-gray-100">
+      <div className="flex gap-1 mb-5 border-b border-indigo-50">
         {[["overview","\ud83c\udfe0 Overview"],["statements","\ud83d\udcca Statements"],["distributions","💰 Distributions"],["properties","\ud83c\udfe2 Properties"]].map(([id, label]) => (
-          <button key={id} onClick={() => { setActiveTab(id); setViewStatement(null); }} className={"px-4 py-2.5 text-sm font-medium border-b-2 transition-colors " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:text-gray-700")}>{label}</button>
+          <button key={id} onClick={() => { setActiveTab(id); setViewStatement(null); }} className={"px-4 py-2.5 text-sm font-medium border-b-2 transition-colors " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-700")}>{label}</button>
         ))}
       </div>
 
       {/* OVERVIEW TAB */}
       {activeTab === "overview" && (
         <div className="space-y-4">
-          <h3 className="font-semibold text-gray-700">Your Properties</h3>
+          <h3 className="font-semibold text-slate-700">Your Properties</h3>
           <div className="grid gap-3 md:grid-cols-2">
             {properties.map(p => (
-              <div key={p.id} className="bg-white rounded-xl border border-gray-100 p-4">
+              <div key={p.id} className="bg-white rounded-3xl border border-indigo-50 p-4">
                 <div className="flex justify-between items-start">
                   <div>
-                    <div className="font-semibold text-gray-800 text-sm">{p.address}</div>
-                    <div className="text-xs text-gray-400">{p.type || "Residential"}</div>
+                    <div className="font-semibold text-slate-800 text-sm">{p.address}</div>
+                    <div className="text-xs text-slate-400">{p.type || "Residential"}</div>
                   </div>
-                  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (p.status === "occupied" ? "bg-green-100 text-green-700" : p.status === "vacant" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500")}>{p.status || "active"}</span>
+                  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (p.status === "occupied" ? "bg-green-100 text-green-700" : p.status === "vacant" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-400")}>{p.status || "active"}</span>
                 </div>
                 {p.rent && <div className="text-sm font-bold text-green-600 mt-2">${safeNum(p.rent).toLocaleString()}/mo</div>}
               </div>
             ))}
-            {properties.length === 0 && <div className="text-center py-8 text-gray-400">No properties assigned yet</div>}
+            {properties.length === 0 && <div className="text-center py-8 text-slate-400">No properties assigned yet</div>}
           </div>
 
           {/* Recent statements */}
           {statements.length > 0 && (
             <div>
-              <h3 className="font-semibold text-gray-700 mt-4 mb-2">Recent Statements</h3>
+              <h3 className="font-semibold text-slate-700 mt-4 mb-2">Recent Statements</h3>
               {statements.slice(0, 3).map(s => (
-                <div key={s.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex justify-between items-center mb-2 cursor-pointer hover:border-indigo-200" onClick={() => { setActiveTab("statements"); setViewStatement(s); }}>
+                <div key={s.id} className="bg-white rounded-3xl border border-indigo-50 px-4 py-3 flex justify-between items-center mb-2 cursor-pointer hover:border-indigo-200" onClick={() => { setActiveTab("statements"); setViewStatement(s); }}>
                   <div>
-                    <div className="text-sm font-medium text-gray-800">{s.period}</div>
-                    <div className="text-xs text-gray-400">Net: ${safeNum(s.net_to_owner).toLocaleString()}</div>
+                    <div className="text-sm font-medium text-slate-800">{s.period}</div>
+                    <div className="text-xs text-slate-400">Net: ${safeNum(s.net_to_owner).toLocaleString()}</div>
                   </div>
                   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (s.status === "paid" ? "bg-green-100 text-green-700" : s.status === "sent" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{s.status}</span>
                 </div>
@@ -7357,21 +7357,21 @@ function OwnerPortal({ currentUser, companyId }) {
       {activeTab === "statements" && !viewStatement && (
         <div className="space-y-2">
           {statements.map(s => (
-            <div key={s.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-indigo-200" onClick={() => setViewStatement(s)}>
+            <div key={s.id} className="bg-white rounded-3xl border border-indigo-50 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-indigo-200" onClick={() => setViewStatement(s)}>
               <div>
-                <div className="text-sm font-semibold text-gray-800">{s.period}</div>
-                <div className="text-xs text-gray-400">{new Date(s.created_at).toLocaleDateString()}</div>
+                <div className="text-sm font-semibold text-slate-800">{s.period}</div>
+                <div className="text-xs text-slate-400">{new Date(s.created_at).toLocaleDateString()}</div>
               </div>
               <div className="flex items-center gap-4">
                 <div className="text-right">
-                  <div className="text-xs text-gray-400">Income: <span className="text-green-600 font-bold">${safeNum(s.total_income).toLocaleString()}</span></div>
-                  <div className="text-xs text-gray-400">Net: <span className="text-indigo-600 font-bold">${safeNum(s.net_to_owner).toLocaleString()}</span></div>
+                  <div className="text-xs text-slate-400">Income: <span className="text-green-600 font-bold">${safeNum(s.total_income).toLocaleString()}</span></div>
+                  <div className="text-xs text-slate-400">Net: <span className="text-indigo-600 font-bold">${safeNum(s.net_to_owner).toLocaleString()}</span></div>
                 </div>
                 <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (s.status === "paid" ? "bg-green-100 text-green-700" : s.status === "sent" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{s.status}</span>
               </div>
             </div>
           ))}
-          {statements.length === 0 && <div className="text-center py-8 text-gray-400">No statements yet</div>}
+          {statements.length === 0 && <div className="text-center py-8 text-slate-400">No statements yet</div>}
         </div>
       )}
 
@@ -7379,27 +7379,27 @@ function OwnerPortal({ currentUser, companyId }) {
       {activeTab === "statements" && viewStatement && (
         <div>
           <button onClick={() => setViewStatement(null)} className="text-sm text-indigo-600 mb-3 hover:underline">\u2190 Back to Statements</button>
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
+          <div className="bg-white rounded-3xl border border-indigo-50 p-5">
             <div className="flex justify-between items-start mb-4">
               <div>
-                <h3 className="font-bold text-gray-800">Owner Statement — {viewStatement.period}</h3>
-                <div className="text-xs text-gray-400">{viewStatement.owner_name} · Generated {new Date(viewStatement.created_at).toLocaleDateString()}</div>
+                <h3 className="font-bold text-slate-800">Owner Statement — {viewStatement.period}</h3>
+                <div className="text-xs text-slate-400">{viewStatement.owner_name} · Generated {new Date(viewStatement.created_at).toLocaleDateString()}</div>
               </div>
               <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewStatement.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{viewStatement.status}</span>
             </div>
             <div className="grid grid-cols-4 gap-3 mb-4">
-              <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Income</div><div className="text-lg font-bold text-green-600">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
-              <div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Expenses</div><div className="text-lg font-bold text-red-500">${safeNum(viewStatement.total_expenses).toLocaleString()}</div></div>
-              <div className="bg-purple-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Mgmt Fee</div><div className="text-lg font-bold text-purple-600">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
-              <div className="bg-indigo-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">Net to You</div><div className="text-lg font-bold text-indigo-700">${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
+              <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Income</div><div className="text-lg font-bold text-green-600">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
+              <div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Expenses</div><div className="text-lg font-bold text-red-500">${safeNum(viewStatement.total_expenses).toLocaleString()}</div></div>
+              <div className="bg-purple-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Mgmt Fee</div><div className="text-lg font-bold text-purple-600">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
+              <div className="bg-indigo-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Net to You</div><div className="text-lg font-bold text-indigo-700">${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
             </div>
             {/* Line items */}
             {(() => { let items = []; try { items = JSON.parse(viewStatement.line_items || "[]"); } catch {} return items.map((cat, ci) => (
               <div key={ci} className="mb-3">
-                <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">{cat.category}</div>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{cat.category}</div>
                 {(cat.items || []).map((item, ii) => (
-                  <div key={ii} className="flex justify-between text-xs py-1 border-b border-gray-50">
-                    <span className="text-gray-600">{item.date} — {item.description}</span>
+                  <div key={ii} className="flex justify-between text-xs py-1 border-b border-indigo-50/50">
+                    <span className="text-slate-500">{item.date} — {item.description}</span>
                     <span className={"font-bold " + (item.amount >= 0 ? "text-green-600" : "text-red-500")}>${Math.abs(item.amount).toLocaleString()}</span>
                   </div>
                 ))}
@@ -7413,17 +7413,17 @@ function OwnerPortal({ currentUser, companyId }) {
       {activeTab === "distributions" && (
         <div className="space-y-2">
           {distributions.map(d => (
-            <div key={d.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex justify-between items-center">
+            <div key={d.id} className="bg-white rounded-3xl border border-indigo-50 px-4 py-3 flex justify-between items-center">
               <div>
-                <div className="text-sm font-medium text-gray-800">${safeNum(d.amount).toLocaleString()}</div>
-                <div className="text-xs text-gray-400">{d.reference} · {new Date(d.date).toLocaleDateString()}</div>
+                <div className="text-sm font-medium text-slate-800">${safeNum(d.amount).toLocaleString()}</div>
+                <div className="text-xs text-slate-400">{d.reference} · {new Date(d.date).toLocaleDateString()}</div>
               </div>
               <div className="text-right">
                 <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700">{d.method?.toUpperCase()}</span>
               </div>
             </div>
           ))}
-          {distributions.length === 0 && <div className="text-center py-8 text-gray-400">No distributions yet</div>}
+          {distributions.length === 0 && <div className="text-center py-8 text-slate-400">No distributions yet</div>}
         </div>
       )}
 
@@ -7431,18 +7431,18 @@ function OwnerPortal({ currentUser, companyId }) {
       {activeTab === "properties" && (
         <div className="space-y-3">
           {properties.map(p => (
-            <div key={p.id} className="bg-white rounded-xl border border-gray-100 p-4">
+            <div key={p.id} className="bg-white rounded-3xl border border-indigo-50 p-4">
               <div className="flex justify-between items-start mb-2">
                 <div>
-                  <div className="font-semibold text-gray-800">{p.address}</div>
-                  <div className="text-xs text-gray-400">{p.type || "Residential"} · {p.bedrooms || "?"} bd / {p.bathrooms || "?"} ba · {p.sqft || "?"} sqft</div>
+                  <div className="font-semibold text-slate-800">{p.address}</div>
+                  <div className="text-xs text-slate-400">{p.type || "Residential"} · {p.bedrooms || "?"} bd / {p.bathrooms || "?"} ba · {p.sqft || "?"} sqft</div>
                 </div>
                 <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (p.status === "occupied" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{p.status}</span>
               </div>
               {p.rent && <div className="text-sm">Rent: <span className="font-bold text-green-600">${safeNum(p.rent).toLocaleString()}/mo</span></div>}
             </div>
           ))}
-          {properties.length === 0 && <div className="text-center py-8 text-gray-400">No properties assigned</div>}
+          {properties.length === 0 && <div className="text-center py-8 text-slate-400">No properties assigned</div>}
         </div>
       )}
     </div>
@@ -7534,53 +7534,53 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
   return (
     <div>
       <div className="flex flex-col md:flex-row gap-3 mb-4">
-        <h2 className="text-xl font-bold text-gray-800 mr-auto">HOA Payments</h2>
-        <select value={hoaFilter} onChange={e => setHoaFilter(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+        <h2 className="text-2xl font-manrope font-bold text-slate-800 mr-auto">HOA Payments</h2>
+        <select value={hoaFilter} onChange={e => setHoaFilter(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
           <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
         </select>
-        <button onClick={() => { setEditingHoa(null); setForm({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">+ Add HOA</button>
+        <button onClick={() => { setEditingHoa(null); setForm({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ Add HOA</button>
       </div>
 
       {/* Stats */}
       <div className="flex gap-3 mb-4">
-        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-gray-800">{hoaPayments.length}</div><div className="text-xs text-gray-400">Total</div></div>
-        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{hoaPayments.filter(h => h.status === "pending").length}</div><div className="text-xs text-gray-400">Pending</div></div>
-        <div className="bg-white rounded-xl border border-gray-100 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">${hoaPayments.filter(h => h.status === "paid").reduce((s, h) => s + safeNum(h.amount), 0).toLocaleString()}</div><div className="text-xs text-gray-400">Paid</div></div>
+        <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-slate-800">{hoaPayments.length}</div><div className="text-xs text-slate-400">Total</div></div>
+        <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{hoaPayments.filter(h => h.status === "pending").length}</div><div className="text-xs text-slate-400">Pending</div></div>
+        <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">${hoaPayments.filter(h => h.status === "paid").reduce((s, h) => s + safeNum(h.amount), 0).toLocaleString()}</div><div className="text-xs text-slate-400">Paid</div></div>
       </div>
 
       {showForm && (
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
-          <h3 className="font-semibold text-gray-700 mb-3">{editingHoa ? "Edit HOA Payment" : "New HOA Payment"}</h3>
+          <h3 className="font-semibold text-slate-700 mb-3">{editingHoa ? "Edit HOA Payment" : "New HOA Payment"}</h3>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">HOA Company</label><input placeholder="e.g. Riverside HOA" value={form.hoa_name} onChange={e => setForm({ ...form, hoa_name: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Amount ($)</label><input placeholder="250.00" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Due Date</label><input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Frequency</label><select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full">
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">HOA Company</label><input placeholder="e.g. Riverside HOA" value={form.hoa_name} onChange={e => setForm({ ...form, hoa_name: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($)</label><input placeholder="250.00" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Due Date</label><input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Frequency</label><select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
               <option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="annual">Annual</option>
             </select></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Notes</label><input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={saveHOA} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
-            <button onClick={() => { setShowForm(false); setEditingHoa(null); }} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button onClick={() => { setShowForm(false); setEditingHoa(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
           </div>
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
+      <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-xs text-gray-400 uppercase">
+          <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
             <tr><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">HOA Company</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-left">Due Date</th><th className="px-4 py-3 text-left">Frequency</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-right">Actions</th></tr>
           </thead>
           <tbody>
             {filtered.map(h => (
-              <tr key={h.id} className="border-t border-gray-50 hover:bg-gray-50/50">
-                <td className="px-4 py-2.5 text-gray-800">{h.property}</td>
-                <td className="px-4 py-2.5 font-medium text-gray-800">{h.hoa_name}</td>
+              <tr key={h.id} className="border-t border-indigo-50/50 hover:bg-indigo-50/30/50">
+                <td className="px-4 py-2.5 text-slate-800">{h.property}</td>
+                <td className="px-4 py-2.5 font-medium text-slate-800">{h.hoa_name}</td>
                 <td className="px-4 py-2.5 text-right font-semibold">${safeNum(h.amount).toLocaleString()}</td>
-                <td className="px-4 py-2.5 text-gray-500">{h.due_date}</td>
-                <td className="px-4 py-2.5 text-gray-600 capitalize">{h.frequency}</td>
+                <td className="px-4 py-2.5 text-slate-400">{h.due_date}</td>
+                <td className="px-4 py-2.5 text-slate-500 capitalize">{h.frequency}</td>
                 <td className="px-4 py-2.5"><Badge status={h.status} /></td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
                   {h.status === "pending" && <button onClick={() => payHOA(h)} className="text-xs text-green-600 hover:underline mr-2">Pay</button>}
@@ -7591,7 +7591,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
             ))}
           </tbody>
         </table>
-        {filtered.length === 0 && <div className="text-center py-8 text-gray-400">No HOA payments found</div>}
+        {filtered.length === 0 && <div className="text-center py-8 text-slate-400">No HOA payments found</div>}
       </div>
     </div>
   );
@@ -7664,38 +7664,38 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
     <div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">Archive</h2>
-          <p className="text-xs text-gray-400 mt-1">Archived items are auto-purged after 180 days</p>
+          <h2 className="text-2xl font-manrope font-bold text-slate-800">Archive</h2>
+          <p className="text-xs text-slate-400 mt-1">Archived items are auto-purged after 180 days</p>
         </div>
-        <div className="text-sm text-gray-500">{items.length} archived item{items.length !== 1 ? "s" : ""}</div>
+        <div className="text-sm text-slate-400">{items.length} archived item{items.length !== 1 ? "s" : ""}</div>
       </div>
 
       <div className="flex gap-2 mb-4 flex-wrap">
-        <button onClick={() => setFilter("all")} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === "all" ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600"}`}>All ({items.length})</button>
+        <button onClick={() => setFilter("all")} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === "all" ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"}`}>All ({items.length})</button>
         {tables.map(t => {
           const count = items.filter(i => i._table === t).length;
           const label = t.replace("_", " ").replace(/\b\w/g, c => c.toUpperCase());
-          return <button key={t} onClick={() => setFilter(t)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === t ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600"}`}>{label} ({count})</button>;
+          return <button key={t} onClick={() => setFilter(t)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === t ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"}`}>{label} ({count})</button>;
         })}
       </div>
 
-      {loading ? <div className="text-center py-8 text-gray-400">Loading...</div> : filtered.length === 0 ? (
+      {loading ? <div className="text-center py-8 text-slate-400">Loading...</div> : filtered.length === 0 ? (
         <div className="text-center py-16">
           <div className="text-4xl mb-3">📦</div>
-          <div className="text-gray-400">No archived items</div>
-          <div className="text-xs text-gray-300 mt-1">Deleted items will appear here for 180 days</div>
+          <div className="text-slate-400">No archived items</div>
+          <div className="text-xs text-slate-300 mt-1">Deleted items will appear here for 180 days</div>
         </div>
       ) : (
         <div className="space-y-2">
           {filtered.map(item => (
-            <div key={item._table + item.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4">
-              <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-lg">
+            <div key={item._table + item.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-lg">
                 {item._table === "properties" ? "🏠" : item._table === "tenants" ? "👤" : item._table === "work_orders" ? "🔧" : item._table === "documents" ? "📄" : item._table === "leases" ? "📋" : "💰"}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="font-semibold text-gray-800 text-sm">{getItemTitle(item)}</div>
-                <div className="text-xs text-gray-400">{item._label} · {getItemSubtitle(item)}</div>
-                <div className="text-xs text-gray-300 mt-0.5">Archived {new Date(item.archived_at).toLocaleDateString()} {item.archived_by ? "by " + item.archived_by : ""} · <span className={daysUntilPurge(item) < 30 ? "text-red-400 font-semibold" : "text-gray-400"}>{daysUntilPurge(item)} days until auto-purge</span></div>
+                <div className="font-semibold text-slate-800 text-sm">{getItemTitle(item)}</div>
+                <div className="text-xs text-slate-400">{item._label} · {getItemSubtitle(item)}</div>
+                <div className="text-xs text-slate-300 mt-0.5">Archived {new Date(item.archived_at).toLocaleDateString()} {item.archived_by ? "by " + item.archived_by : ""} · <span className={daysUntilPurge(item) < 30 ? "text-red-400 font-semibold" : "text-slate-400"}>{daysUntilPurge(item)} days until auto-purge</span></div>
               </div>
               <div className="flex gap-2 shrink-0">
                 <button onClick={() => restoreItem(item)} className="text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 font-medium">♻️ Restore</button>
@@ -7715,7 +7715,7 @@ const ROLES = {
   office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","documents","inspections","leases","vendors","owners","notifications"] },
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
-  tenant: { label: "Tenant", color: "bg-gray-500", pages: ["tenant_portal"] },
+  tenant: { label: "Tenant", color: "bg-indigo-50/300", pages: ["tenant_portal"] },
   owner: { label: "Owner", color: "bg-purple-600", pages: ["owner_portal"] },
 };
 
@@ -7872,68 +7872,68 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
     <div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">Autopay & Recurring Rent</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Set recurring schedules per tenant with custom start and end dates</p>
+          <h2 className="text-2xl font-manrope font-bold text-slate-800">Autopay & Recurring Rent</h2>
+          <p className="text-xs text-slate-400 mt-0.5">Set recurring schedules per tenant with custom start and end dates</p>
         </div>
-        <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">+ New Schedule</button>
+        <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Schedule</button>
       </div>
       {showForm && (
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-5">
-          <h3 className="font-semibold text-gray-700 mb-3">New Autopay Schedule</h3>
+          <h3 className="font-semibold text-slate-700 mb-3">New Autopay Schedule</h3>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Tenant *</label><select value={form.tenant} onChange={e => { const t = tenants.find(t => t.name === e.target.value); setForm({ ...form, tenant: e.target.value, property: t?.property || "", amount: t?.rent || "" }); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full">
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant *</label><select value={form.tenant} onChange={e => { const t = tenants.find(t => t.name === e.target.value); setForm({ ...form, tenant: e.target.value, property: t?.property || "", amount: t?.rent || "" }); }} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
               <option value="">Select tenant...</option>
               {tenants.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
             </select></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Amount ($)</label><input placeholder="1500.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Payment Method</label><select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full">
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($)</label><input placeholder="1500.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Payment Method</label><select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
               {["ACH", "card", "cash", "check"].map(m => <option key={m}>{m}</option>)}
             </select></div>
             <div>
-              <label className="text-xs text-gray-500 mb-1 block">Day of Month</label>
-              <select value={form.day_of_month} onChange={e => setForm({ ...form, day_of_month: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+              <label className="text-xs text-slate-400 mb-1 block">Day of Month</label>
+              <select value={form.day_of_month} onChange={e => setForm({ ...form, day_of_month: e.target.value })} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
                 {Array.from({ length: 28 }, (_, i) => i + 1).map(d => <option key={d} value={String(d)}>{d}{d === 1 ? "st" : d === 2 ? "nd" : d === 3 ? "rd" : "th"}</option>)}
               </select>
             </div>
-            <div><label className="text-xs font-medium text-gray-500 mb-1 block">Frequency</label><select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full">
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Frequency</label><select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
               <option value="monthly">Monthly</option>
               <option value="weekly">Weekly</option>
               <option value="biweekly">Bi-Weekly</option>
             </select></div>
             <div>
-              <label className="text-xs text-gray-500 mb-1 block">Start Date</label>
-              <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+              <label className="text-xs text-slate-400 mb-1 block">Start Date</label>
+              <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="text-xs text-gray-500 mb-1 block">End Date (optional)</label>
-              <input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+              <label className="text-xs text-slate-400 mb-1 block">End Date (optional)</label>
+              <input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" />
             </div>
           </div>
           <div className="flex gap-2 mt-3">
-            <button onClick={saveSchedule} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">Save Schedule</button>
-            <button onClick={() => setShowForm(false)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button onClick={saveSchedule} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">Save Schedule</button>
+            <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
           </div>
         </div>
       )}
       <div className="space-y-3">
         {schedules.map(s => (
-          <div key={s.id} className={`bg-white rounded-xl border shadow-sm p-4 ${s.active ? "border-gray-100" : "border-gray-200 opacity-60"}`}>
+          <div key={s.id} className={`bg-white rounded-xl border shadow-sm p-4 ${s.active ? "border-indigo-50" : "border-indigo-100 opacity-60"}`}>
             <div className="flex justify-between items-start">
               <div>
-                <div className="font-semibold text-gray-800">{s.tenant}</div>
-                <div className="text-xs text-gray-400">{s.property}</div>
+                <div className="font-semibold text-slate-800">{s.tenant}</div>
+                <div className="text-xs text-slate-400">{s.property}</div>
               </div>
               <div className="flex items-center gap-2">
-                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${s.active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>{s.active ? "Active" : "Paused"}</span>
-                <span className="text-lg font-bold text-gray-800">${s.amount}</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${s.active ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-400"}`}>{s.active ? "Active" : "Paused"}</span>
+                <span className="text-lg font-manrope font-bold text-slate-800">${s.amount}</span>
               </div>
             </div>
             <div className="mt-3 grid grid-cols-4 gap-2 text-xs">
-              <div><span className="text-gray-400">Frequency</span><div className="font-semibold text-gray-700 capitalize">{s.frequency}</div></div>
-              <div><span className="text-gray-400">Day</span><div className="font-semibold text-gray-700">{s.day_of_month}{s.day_of_month === "1" ? "st" : s.day_of_month === "2" ? "nd" : s.day_of_month === "3" ? "rd" : "th"} of month</div></div>
-              <div><span className="text-gray-400">Start</span><div className="font-semibold text-gray-700">{s.start_date}</div></div>
-              <div><span className="text-gray-400">End</span><div className="font-semibold text-gray-700">{s.end_date || "Ongoing"}</div></div>
+              <div><span className="text-slate-400">Frequency</span><div className="font-semibold text-slate-700 capitalize">{s.frequency}</div></div>
+              <div><span className="text-slate-400">Day</span><div className="font-semibold text-slate-700">{s.day_of_month}{s.day_of_month === "1" ? "st" : s.day_of_month === "2" ? "nd" : s.day_of_month === "3" ? "rd" : "th"} of month</div></div>
+              <div><span className="text-slate-400">Start</span><div className="font-semibold text-slate-700">{s.start_date}</div></div>
+              <div><span className="text-slate-400">End</span><div className="font-semibold text-slate-700">{s.end_date || "Ongoing"}</div></div>
             </div>
             <div className="mt-2 flex items-center justify-between">
               <div className="text-xs text-indigo-600 font-medium">Next due: {nextDue(s)}</div>
@@ -7945,7 +7945,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
             </div>
           </div>
         ))}
-        {schedules.length === 0 && <div className="text-center py-12 text-gray-400">No autopay schedules yet. Create one above.</div>}
+        {schedules.length === 0 && <div className="text-center py-12 text-slate-400">No autopay schedules yet. Create one above.</div>}
       </div>
     </div>
   );
@@ -8067,19 +8067,19 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
     <div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">Late Fee Automation</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Auto-flag overdue payments and apply fees after grace period</p>
+          <h2 className="text-2xl font-manrope font-bold text-slate-800">Late Fee Automation</h2>
+          <p className="text-xs text-slate-400 mt-0.5">Auto-flag overdue payments and apply fees after grace period</p>
         </div>
         <div className="flex gap-2">
           {afterGrace.length > 0 && <button onClick={applyAllFees} className="bg-red-500 text-white text-sm px-4 py-2 rounded-lg hover:bg-red-600">⚡ Apply All ({afterGrace.length})</button>}
-          <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">+ New Rule</button>
+          <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Rule</button>
         </div>
       </div>
       {rules.length > 0 && (
         <div className="mb-5 space-y-2">
-          <h3 className="font-semibold text-gray-700 text-sm">Active Rules</h3>
+          <h3 className="font-semibold text-slate-700 text-sm">Active Rules</h3>
           {rules.map(r => (
-            <div key={r.id} className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 flex justify-between items-center">
+            <div key={r.id} className="bg-indigo-50 border border-indigo-100 rounded-2xl px-4 py-3 flex justify-between items-center">
               <div>
                 <div className="font-semibold text-indigo-800 text-sm">{r.name}</div>
                 <div className="text-xs text-indigo-500">{r.grace_days} day grace · {r.fee_type === "flat" ? `${formatCurrency(r.fee_amount)} flat` : `${r.fee_amount}% of rent`}</div>
@@ -8091,23 +8091,23 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
       )}
       {showForm && (
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-5">
-          <h3 className="font-semibold text-gray-700 mb-3">New Late Fee Rule</h3>
+          <h3 className="font-semibold text-slate-700 mb-3">New Late Fee Rule</h3>
           <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2"><label className="text-xs font-medium text-gray-500 mb-1 block">Rule Name *</label><input placeholder="Standard Late Fee" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Grace Period (days)</label><input type="number" min="0" max="30" placeholder="5" value={form.grace_days} onChange={e => setForm({ ...form, grace_days: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Fee Type</label><select value={form.fee_type} onChange={e => setForm({ ...form, fee_type: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></select></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">{form.fee_type === "flat" ? "Fee Amount ($)" : "Percentage (%)"}</label><input type="number" min="0" step="0.01" placeholder={form.fee_type === "flat" ? "50.00" : "5.0"} value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Rule Name *</label><input placeholder="Standard Late Fee" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Grace Period (days)</label><input type="number" min="0" max="30" placeholder="5" value={form.grace_days} onChange={e => setForm({ ...form, grace_days: e.target.value })} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">Fee Type</label><select value={form.fee_type} onChange={e => setForm({ ...form, fee_type: e.target.value })} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></select></div>
+            <div><label className="text-xs text-slate-400 mb-1 block">{form.fee_type === "flat" ? "Fee Amount ($)" : "Percentage (%)"}</label><input type="number" min="0" step="0.01" placeholder={form.fee_type === "flat" ? "50.00" : "5.0"} value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
           </div>
           <div className="flex gap-2 mt-3">
-            <button onClick={saveRule} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">Save Rule</button>
-            <button onClick={() => setShowForm(false)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button onClick={saveRule} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">Save Rule</button>
+            <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
           </div>
         </div>
       )}
       <div className="grid grid-cols-3 gap-3 mb-5">
-        <div className="bg-white rounded-xl border border-gray-100 p-4 text-center"><div className="text-2xl font-bold text-orange-500">{flagged.length}</div><div className="text-xs text-gray-400 mt-1">Overdue</div></div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 text-center"><div className="text-2xl font-bold text-red-500">{afterGrace.length}</div><div className="text-xs text-gray-400 mt-1">Past Grace Period</div></div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4 text-center"><div className="text-2xl font-bold text-gray-700">${flagged.reduce((s, p) => s + safeNum(p.amount), 0).toLocaleString()}</div><div className="text-xs text-gray-400 mt-1">Total Overdue</div></div>
+        <div className="bg-white rounded-3xl border border-indigo-50 p-4 text-center"><div className="text-2xl font-bold text-orange-500">{flagged.length}</div><div className="text-xs text-slate-400 mt-1">Overdue</div></div>
+        <div className="bg-white rounded-3xl border border-indigo-50 p-4 text-center"><div className="text-2xl font-bold text-red-500">{afterGrace.length}</div><div className="text-xs text-slate-400 mt-1">Past Grace Period</div></div>
+        <div className="bg-white rounded-3xl border border-indigo-50 p-4 text-center"><div className="text-2xl font-bold text-slate-700">${flagged.reduce((s, p) => s + safeNum(p.amount), 0).toLocaleString()}</div><div className="text-xs text-slate-400 mt-1">Total Overdue</div></div>
       </div>
       <div className="space-y-3">
         {flagged.map(p => {
@@ -8115,7 +8115,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
           return (
             <div key={p.id} className={`bg-white rounded-xl border shadow-sm p-4 ${pastGrace ? "border-red-200" : "border-orange-100"}`}>
               <div className="flex justify-between items-start">
-                <div><div className="font-semibold text-gray-800">{p.tenant}</div><div className="text-xs text-gray-400">{p.property}</div></div>
+                <div><div className="font-semibold text-slate-800">{p.tenant}</div><div className="text-xs text-slate-400">{p.property}</div></div>
                 <div className="text-right"><div className="font-bold text-red-500">${p.amount}</div><div className={`text-xs font-semibold ${pastGrace ? "text-red-500" : "text-orange-500"}`}>{p.daysLate} days late</div></div>
               </div>
               <div className="mt-3 flex gap-2">
@@ -8125,7 +8125,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
             </div>
           );
         })}
-        {flagged.length === 0 && <div className="text-center py-10 text-gray-400">🎉 No overdue payments!</div>}
+        {flagged.length === 0 && <div className="text-center py-10 text-slate-400">🎉 No overdue payments!</div>}
       </div>
     </div>
   );
@@ -8325,9 +8325,9 @@ function TenantPortal({ currentUser, companyId }) {
   if (!tenantData) return (
     <div className="text-center py-20">
       <div className="text-5xl mb-4">🏠</div>
-      <div className="text-gray-600 font-semibold text-lg">No tenant account linked to this email.</div>
-      <div className="text-gray-400 text-sm mt-2">Contact your property manager to get access.</div>
-      <div className="text-xs text-gray-300 mt-4">{currentUser?.email}</div>
+      <div className="text-slate-500 font-semibold text-lg">No tenant account linked to this email.</div>
+      <div className="text-slate-400 text-sm mt-2">Contact your property manager to get access.</div>
+      <div className="text-xs text-slate-300 mt-4">{currentUser?.email}</div>
     </div>
   );
 
@@ -8343,7 +8343,7 @@ function TenantPortal({ currentUser, companyId }) {
   return (
     <div>
       {/* Tenant Header */}
-      <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-xl p-5 mb-5 text-white">
+      <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-3xl p-5 mb-5 text-white">
         <div className="flex justify-between items-start">
           <div>
             <div className="text-lg font-bold">{tenantData.name}</div>
@@ -8370,23 +8370,23 @@ function TenantPortal({ currentUser, companyId }) {
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex gap-1 mb-5 overflow-x-auto pb-1 border-b border-gray-100">
+      <div className="flex gap-1 mb-5 overflow-x-auto pb-1 border-b border-indigo-50">
         {tabs.map(([id, label]) => (
-          <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap transition-colors " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:text-gray-700")}>{label}</button>
+          <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap transition-colors " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-700")}>{label}</button>
         ))}
       </div>
 
       {/* ---- OVERVIEW TAB ---- */}
       {activeTab === "overview" && (
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-gray-100 p-4">
-            <h3 className="font-semibold text-gray-700 mb-3">Lease Details</h3>
+          <div className="bg-white rounded-3xl border border-indigo-50 p-4">
+            <h3 className="font-semibold text-slate-700 mb-3">Lease Details</h3>
             {[["Status", (tenantData.lease_status || "active")], ["Property", tenantData.property], ["Move-in", tenantData.move_in || "—"], ["Lease End", tenantData.move_out || "—"], ["Monthly Rent", "$" + safeNum(tenantData.rent).toLocaleString()], ["Email", tenantData.email || "—"], ["Phone", tenantData.phone || "—"]].map(([l, v]) => (
-              <div key={l} className="flex justify-between py-2 border-b border-gray-50 text-sm last:border-0"><span className="text-gray-400">{l}</span><span className="font-medium text-gray-800 capitalize">{v}</span></div>
+              <div key={l} className="flex justify-between py-2 border-b border-indigo-50/50 text-sm last:border-0"><span className="text-slate-400">{l}</span><span className="font-medium text-slate-800 capitalize">{v}</span></div>
             ))}
           </div>
           {safeNum(tenantData.balance) > 0 && (
-            <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex items-center justify-between">
+            <div className="bg-red-50 border border-red-100 rounded-3xl p-4 flex items-center justify-between">
               <div>
                 <div className="text-sm font-semibold text-red-800">Balance Due: ${safeNum(tenantData.balance).toLocaleString()}</div>
                 <div className="text-xs text-red-600">Please make a payment to avoid late fees.</div>
@@ -8394,21 +8394,21 @@ function TenantPortal({ currentUser, companyId }) {
               <button onClick={() => setActiveTab("pay")} className="bg-red-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-red-700">Pay Now</button>
             </div>
           )}
-          <div className="bg-white rounded-xl border border-gray-100 p-4">
-            <h3 className="font-semibold text-gray-700 mb-3">Recent Activity</h3>
+          <div className="bg-white rounded-3xl border border-indigo-50 p-4">
+            <h3 className="font-semibold text-slate-700 mb-3">Recent Activity</h3>
             {payments.slice(0, 3).map(p => (
-              <div key={p.id} className="flex justify-between py-2 border-b border-gray-50 last:border-0 text-sm">
-                <div><span className="text-green-600 font-medium">Payment</span> <span className="text-gray-400">— {p.date}</span></div>
-                <span className="font-semibold text-gray-800">${safeNum(p.amount).toLocaleString()}</span>
+              <div key={p.id} className="flex justify-between py-2 border-b border-indigo-50/50 last:border-0 text-sm">
+                <div><span className="text-green-600 font-medium">Payment</span> <span className="text-slate-400">— {p.date}</span></div>
+                <span className="font-semibold text-slate-800">${safeNum(p.amount).toLocaleString()}</span>
               </div>
             ))}
             {workOrders.slice(0, 2).map(w => (
-              <div key={w.id} className="flex justify-between py-2 border-b border-gray-50 last:border-0 text-sm">
-                <div><span className="text-orange-600 font-medium">Maintenance</span> <span className="text-gray-400">— {w.issue}</span></div>
+              <div key={w.id} className="flex justify-between py-2 border-b border-indigo-50/50 last:border-0 text-sm">
+                <div><span className="text-orange-600 font-medium">Maintenance</span> <span className="text-slate-400">— {w.issue}</span></div>
                 <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (w.status === "completed" ? "bg-green-100 text-green-700" : w.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{w.status}</span>
               </div>
             ))}
-            {payments.length === 0 && workOrders.length === 0 && <div className="text-center py-4 text-gray-400 text-sm">No recent activity</div>}
+            {payments.length === 0 && workOrders.length === 0 && <div className="text-center py-4 text-slate-400 text-sm">No recent activity</div>}
           </div>
         </div>
       )}
@@ -8417,43 +8417,43 @@ function TenantPortal({ currentUser, companyId }) {
       {activeTab === "pay" && (
         <div className="max-w-md mx-auto">
           {paymentSuccess && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 text-center">
+            <div className="bg-green-50 border border-green-200 rounded-3xl p-4 mb-4 text-center">
               <div className="text-2xl mb-1">✅</div>
               <div className="text-green-800 font-semibold">Payment Successful!</div>
               <div className="text-green-600 text-sm">Your payment has been recorded and your balance updated.</div>
             </div>
           )}
-          <div className="bg-white rounded-xl border border-gray-100 p-6">
-            <h3 className="font-semibold text-gray-800 text-lg mb-1">Make a Payment</h3>
-            <p className="text-sm text-gray-400 mb-5">Pay securely with Stripe</p>
+          <div className="bg-white rounded-3xl border border-indigo-50 p-6">
+            <h3 className="font-semibold text-slate-800 text-lg mb-1">Make a Payment</h3>
+            <p className="text-sm text-slate-400 mb-5">Pay securely with Stripe</p>
             <div className="mb-4">
-              <label className="text-xs text-gray-500 mb-1 block">Current Balance</label>
+              <label className="text-xs text-slate-400 mb-1 block">Current Balance</label>
               <div className={"text-2xl font-bold " + (safeNum(tenantData.balance) > 0 ? "text-red-600" : "text-green-600")}>
                 ${safeNum(tenantData.balance).toLocaleString()}
               </div>
             </div>
             <div className="mb-4">
-              <label className="text-xs text-gray-500 mb-1 block">Payment Amount</label>
+              <label className="text-xs text-slate-400 mb-1 block">Payment Amount</label>
               <div className="relative">
-                <span className="absolute left-3 top-2.5 text-gray-400">$</span>
-                <input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2.5 text-lg font-mono" placeholder="0.00" />
+                <span className="absolute left-3 top-2.5 text-slate-400">$</span>
+                <input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full border border-indigo-100 rounded-2xl pl-7 pr-3 py-2.5 text-lg font-mono" placeholder="0.00" />
               </div>
               <div className="flex gap-2 mt-2">
-                <button onClick={() => setPaymentAmount(String(tenantData.rent || 0))} className="text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded-lg hover:bg-gray-200">Full Rent (${safeNum(tenantData.rent)})</button>
+                <button onClick={() => setPaymentAmount(String(tenantData.rent || 0))} className="text-xs bg-slate-100 text-slate-500 px-3 py-1 rounded-2xl hover:bg-slate-100">Full Rent (${safeNum(tenantData.rent)})</button>
                 {safeNum(tenantData.balance) > 0 && <button onClick={() => setPaymentAmount(String(tenantData.balance))} className="text-xs bg-red-50 text-red-600 px-3 py-1 rounded-lg hover:bg-red-100">Full Balance (${safeNum(tenantData.balance)})</button>}
               </div>
             </div>
-            <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+            <div className="mb-4 p-3 bg-indigo-50/30 rounded-lg">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-8 h-5 bg-gradient-to-r from-indigo-600 to-purple-600 rounded text-white text-xs flex items-center justify-center font-bold">S</div>
-                <span className="text-sm text-gray-600">Powered by Stripe</span>
+                <span className="text-sm text-slate-500">Powered by Stripe</span>
               </div>
-              <div className="text-xs text-gray-400">Secure payment processing. Your card information is encrypted and never stored on our servers.</div>
+              <div className="text-xs text-slate-400">Secure payment processing. Your card information is encrypted and never stored on our servers.</div>
             </div>
-            <button onClick={handleStripePayment} disabled={paymentProcessing} className={"w-full py-3 rounded-xl text-white font-semibold text-sm transition-all " + (paymentProcessing ? "bg-gray-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 active:scale-98")}>
+            <button onClick={handleStripePayment} disabled={paymentProcessing} className={"w-full py-3 rounded-xl text-white font-semibold text-sm transition-all " + (paymentProcessing ? "bg-slate-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 active:scale-98")}>
               {paymentProcessing ? "Processing..." : "Pay $" + (paymentAmount || "0")}
             </button>
-            <div className="text-xs text-gray-400 text-center mt-3">A receipt will be generated automatically.</div>
+            <div className="text-xs text-slate-400 text-center mt-3">A receipt will be generated automatically.</div>
           </div>
         </div>
       )}
@@ -8461,13 +8461,13 @@ function TenantPortal({ currentUser, companyId }) {
       {/* ---- PAYMENT HISTORY TAB ---- */}
       {activeTab === "history" && (
         <div>
-          <h3 className="font-semibold text-gray-700 mb-3">Payment History</h3>
+          <h3 className="font-semibold text-slate-700 mb-3">Payment History</h3>
           <div className="space-y-2">
             {payments.map(p => (
-              <div key={p.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex justify-between items-center">
+              <div key={p.id} className="bg-white border border-indigo-50 rounded-2xl px-4 py-3 flex justify-between items-center">
                 <div>
-                  <div className="text-sm font-medium text-gray-800">{p.type === "rent" ? "Rent Payment" : p.type}</div>
-                  <div className="text-xs text-gray-400">{p.date} · {p.method}</div>
+                  <div className="text-sm font-medium text-slate-800">{p.type === "rent" ? "Rent Payment" : p.type}</div>
+                  <div className="text-xs text-slate-400">{p.date} · {p.method}</div>
                 </div>
                 <div className="flex items-center gap-3">
                   {p.status === "paid" && <button onClick={() => generatePaymentReceipt(p)} className="text-xs text-indigo-600 border border-indigo-200 px-2 py-0.5 rounded hover:bg-indigo-50">Receipt</button>}
@@ -8478,23 +8478,23 @@ function TenantPortal({ currentUser, companyId }) {
                 </div>
               </div>
             ))}
-            {payments.length === 0 && <div className="text-center py-8 text-gray-400">No payments recorded yet</div>}
+            {payments.length === 0 && <div className="text-center py-8 text-slate-400">No payments recorded yet</div>}
           </div>
           {/* Ledger / Account Balance */}
-          <h3 className="font-semibold text-gray-700 mt-6 mb-3">Account Ledger</h3>
+          <h3 className="font-semibold text-slate-700 mt-6 mb-3">Account Ledger</h3>
           <div className="space-y-2">
             {ledger.map(e => (
-              <div key={e.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3">
+              <div key={e.id} className="bg-white border border-indigo-50 rounded-2xl px-4 py-3">
                 <div className="flex justify-between">
-                  <div><div className="text-sm font-medium text-gray-800">{e.description}</div><div className="text-xs text-gray-400">{e.date}</div></div>
+                  <div><div className="text-sm font-medium text-slate-800">{e.description}</div><div className="text-xs text-slate-400">{e.date}</div></div>
                   <div className="text-right">
                     <div className={"text-sm font-bold " + (e.amount > 0 ? "text-red-500" : "text-green-600")}>{e.amount > 0 ? "+$" + e.amount : "-$" + Math.abs(e.amount)}</div>
-                    <div className="text-xs text-gray-400">Bal: ${e.balance}</div>
+                    <div className="text-xs text-slate-400">Bal: ${e.balance}</div>
                   </div>
                 </div>
               </div>
             ))}
-            {ledger.length === 0 && <div className="text-center py-8 text-gray-400">No ledger entries yet</div>}
+            {ledger.length === 0 && <div className="text-center py-8 text-slate-400">No ledger entries yet</div>}
           </div>
         </div>
       )}
@@ -8503,46 +8503,46 @@ function TenantPortal({ currentUser, companyId }) {
       {activeTab === "maintenance" && (
         <div>
           <div className="flex justify-between items-center mb-4">
-            <h3 className="font-semibold text-gray-700">Maintenance Requests</h3>
-            <button onClick={() => setShowMaintForm(!showMaintForm)} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-indigo-700">
+            <h3 className="font-semibold text-slate-700">Maintenance Requests</h3>
+            <button onClick={() => setShowMaintForm(!showMaintForm)} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">
               {showMaintForm ? "Cancel" : "+ New Request"}
             </button>
           </div>
           {showMaintForm && (
             <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
-              <h4 className="font-medium text-gray-700 mb-3">Submit a Maintenance Request</h4>
-              <label className="text-xs font-medium text-gray-500 mb-1 block">What's the issue? *</label>
-              <input placeholder="e.g. Leaking faucet in kitchen" value={maintForm.issue} onChange={e => setMaintForm({...maintForm, issue: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3" />
-              <select value={maintForm.priority} onChange={e => setMaintForm({...maintForm, priority: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3">
+              <h4 className="font-medium text-slate-700 mb-3">Submit a Maintenance Request</h4>
+              <label className="text-xs font-medium text-slate-400 mb-1 block">What's the issue? *</label>
+              <input placeholder="e.g. Leaking faucet in kitchen" value={maintForm.issue} onChange={e => setMaintForm({...maintForm, issue: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mb-3" />
+              <select value={maintForm.priority} onChange={e => setMaintForm({...maintForm, priority: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mb-3">
                 <option value="normal">Normal Priority</option>
                 <option value="urgent">Urgent</option>
                 <option value="emergency">Emergency</option>
               </select>
-              <textarea placeholder="Additional details..." value={maintForm.notes} onChange={e => setMaintForm({...maintForm, notes: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3" rows={3} />
+              <textarea placeholder="Additional details..." value={maintForm.notes} onChange={e => setMaintForm({...maintForm, notes: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mb-3" rows={3} />
               <div className="mb-3">
-                <label className="text-xs text-gray-500 mb-1 block">Attach Photo (optional)</label>
+                <label className="text-xs text-slate-400 mb-1 block">Attach Photo (optional)</label>
                 <input type="file" accept="image/*" onChange={e => setMaintPhoto(e.target.files[0])} className="text-sm" />
               </div>
-              <button onClick={submitMaintenanceRequest} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-indigo-700">Submit Request</button>
+              <button onClick={submitMaintenanceRequest} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700">Submit Request</button>
             </div>
           )}
           <div className="space-y-2">
             {workOrders.map(w => (
-              <div key={w.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3">
+              <div key={w.id} className="bg-white border border-indigo-50 rounded-2xl px-4 py-3">
                 <div className="flex justify-between items-start">
                   <div>
-                    <div className="text-sm font-medium text-gray-800">{w.issue}</div>
-                    <div className="text-xs text-gray-400">{w.property} · {new Date(w.created_at).toLocaleDateString()}</div>
-                    {w.notes && <div className="text-xs text-gray-500 mt-1">{w.notes}</div>}
+                    <div className="text-sm font-medium text-slate-800">{w.issue}</div>
+                    <div className="text-xs text-slate-400">{w.property} · {new Date(w.created_at).toLocaleDateString()}</div>
+                    {w.notes && <div className="text-xs text-slate-400 mt-1">{w.notes}</div>}
                   </div>
                   <div className="text-right">
                     <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (w.status === "completed" ? "bg-green-100 text-green-700" : w.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{w.status.replace("_", " ")}</span>
-                    <div className={"text-xs mt-1 " + (w.priority === "emergency" ? "text-red-500 font-bold" : w.priority === "urgent" ? "text-orange-500" : "text-gray-400")}>{w.priority}</div>
+                    <div className={"text-xs mt-1 " + (w.priority === "emergency" ? "text-red-500 font-bold" : w.priority === "urgent" ? "text-orange-500" : "text-slate-400")}>{w.priority}</div>
                   </div>
                 </div>
               </div>
             ))}
-            {workOrders.length === 0 && <div className="text-center py-8 text-gray-400">No maintenance requests</div>}
+            {workOrders.length === 0 && <div className="text-center py-8 text-slate-400">No maintenance requests</div>}
           </div>
         </div>
       )}
@@ -8550,43 +8550,43 @@ function TenantPortal({ currentUser, companyId }) {
       {/* ---- DOCUMENTS TAB ---- */}
       {activeTab === "documents" && (
         <div>
-          <h3 className="font-semibold text-gray-700 mb-3">My Documents</h3>
+          <h3 className="font-semibold text-slate-700 mb-3">My Documents</h3>
           <div className="space-y-2">
             {documents.map(d => (
-              <div key={d.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex justify-between items-center">
+              <div key={d.id} className="bg-white border border-indigo-50 rounded-2xl px-4 py-3 flex justify-between items-center">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600 text-lg">
                     {d.type === "lease" ? "\ud83d\udcdc" : d.type === "notice" ? "\ud83d\udce8" : "📄"}
                   </div>
                   <div>
-                    <div className="text-sm font-medium text-gray-800">{d.name || d.file_name}</div>
-                    <div className="text-xs text-gray-400">{d.type || "Document"} · {new Date(d.uploaded_at).toLocaleDateString()}</div>
+                    <div className="text-sm font-medium text-slate-800">{d.name || d.file_name}</div>
+                    <div className="text-xs text-slate-400">{d.type || "Document"} · {new Date(d.uploaded_at).toLocaleDateString()}</div>
                   </div>
                 </div>
                 {d.url && <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">View</a>}
               </div>
             ))}
-            {documents.length === 0 && <div className="text-center py-8 text-gray-400">No documents uploaded yet</div>}
+            {documents.length === 0 && <div className="text-center py-8 text-slate-400">No documents uploaded yet</div>}
           </div>
         </div>
       )}
 
       {/* ---- MESSAGES TAB ---- */}
       {activeTab === "messages" && (
-        <div className="bg-white rounded-xl border border-gray-100">
+        <div className="bg-white rounded-3xl border border-indigo-50">
           <div className="p-4 space-y-3 max-h-96 overflow-y-auto">
             {messages.map(m => (
               <div key={m.id} className={"flex " + (m.sender !== tenantData.name ? "justify-start" : "justify-end")}>
-                <div className={"max-w-xs rounded-2xl px-4 py-2.5 " + (m.sender !== tenantData.name ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-800")}>
+                <div className={"max-w-xs rounded-2xl px-4 py-2.5 " + (m.sender !== tenantData.name ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-800")}>
                   <div className="text-sm">{m.message}</div>
-                  <div className={"text-xs mt-1 " + (m.sender !== tenantData.name ? "text-indigo-200" : "text-gray-400")}>{m.sender} · {new Date(m.created_at).toLocaleDateString()}</div>
+                  <div className={"text-xs mt-1 " + (m.sender !== tenantData.name ? "text-indigo-200" : "text-slate-400")}>{m.sender} · {new Date(m.created_at).toLocaleDateString()}</div>
                 </div>
               </div>
             ))}
-            {messages.length === 0 && <div className="text-center py-6 text-gray-400 text-sm">No messages yet. Send a message to your property manager below.</div>}
+            {messages.length === 0 && <div className="text-center py-6 text-slate-400 text-sm">No messages yet. Send a message to your property manager below.</div>}
           </div>
-          <div className="p-3 border-t border-gray-100 flex gap-2">
-            <input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} placeholder="Message your property manager..." className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+          <div className="p-3 border-t border-indigo-50 flex gap-2">
+            <input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} placeholder="Message your property manager..." className="flex-1 border border-indigo-100 rounded-2xl px-3 py-2 text-sm" />
             <button onClick={sendMessage} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-indigo-700">Send</button>
           </div>
         </div>
@@ -8768,18 +8768,18 @@ function RoleManagement({ addNotification, companyId }) {
     <div>
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">Team & Role Management</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Add team members and choose exactly which modules they can access</p>
+          <h2 className="text-2xl font-manrope font-bold text-slate-800">Team & Role Management</h2>
+          <p className="text-xs text-slate-400 mt-0.5">Add team members and choose exactly which modules they can access</p>
         </div>
-        <button onClick={startAdd} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">+ Add User</button>
+        <button onClick={startAdd} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ Add User</button>
       </div>
 
       {/* Role legend */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-5">
         {Object.entries(ROLES).map(([key, r]) => (
-          <div key={key} className="bg-white rounded-xl border border-gray-100 p-3 text-center">
+          <div key={key} className="bg-white rounded-3xl border border-indigo-50 p-3 text-center">
             <div className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold text-white mb-1 ${r.color}`}>{r.label}</div>
-            <div className="text-xs text-gray-400">{key === "admin" ? "Full access" : key === "tenant" ? "Portal only" : "Customizable"}</div>
+            <div className="text-xs text-slate-400">{key === "admin" ? "Full access" : key === "tenant" ? "Portal only" : "Customizable"}</div>
           </div>
         ))}
       </div>
@@ -8787,7 +8787,7 @@ function RoleManagement({ addNotification, companyId }) {
       {/* Add / Edit form */}
       {showForm && (
         <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
-          <h3 className="font-semibold text-gray-700 mb-4">{editingUser ? `Edit — ${editingUser.name}` : "Add Team Member"}</h3>
+          <h3 className="font-semibold text-slate-700 mb-4">{editingUser ? `Edit — ${editingUser.name}` : "Add Team Member"}</h3>
 
           {/* Basic info */}
           <div className="grid grid-cols-2 gap-3 mb-4">
@@ -8795,19 +8795,19 @@ function RoleManagement({ addNotification, companyId }) {
               placeholder="Full name"
               value={form.name}
               onChange={e => setForm({ ...form, name: e.target.value })}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm"
             />
             <input
               placeholder="Email address"
               value={form.email}
               onChange={e => setForm({ ...form, email: e.target.value })}
               disabled={!!editingUser}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-400"
+              className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm disabled:bg-indigo-50/30 disabled:text-slate-400"
             />
             <select
               value={form.role}
               onChange={e => handleRoleChange(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm col-span-2"
+              className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm col-span-2"
             >
               {Object.entries(ROLES).filter(([k]) => k !== "tenant").map(([key, r]) => (
                 <option key={key} value={key}>{r.label}</option>
@@ -8817,18 +8817,18 @@ function RoleManagement({ addNotification, companyId }) {
 
           {/* Module picker — only shown for customizable roles */}
           {isCustomizable && (
-            <div className="border border-gray-100 rounded-xl p-4 bg-gray-50">
+            <div className="border border-indigo-50 rounded-3xl p-4 bg-indigo-50/30">
               <div className="flex items-center justify-between mb-3">
-                <div className="text-sm font-semibold text-gray-700">Choose which modules this person can access</div>
+                <div className="text-sm font-semibold text-slate-700">Choose which modules this person can access</div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setCustomPages(ALL_NAV.map(n => n.id))}
                     className="text-xs text-indigo-600 hover:underline"
                   >Select all</button>
-                  <span className="text-gray-300">|</span>
+                  <span className="text-slate-300">|</span>
                   <button
                     onClick={() => setCustomPages([])}
-                    className="text-xs text-gray-400 hover:underline"
+                    className="text-xs text-slate-400 hover:underline"
                   >Clear all</button>
                 </div>
               </div>
@@ -8842,7 +8842,7 @@ function RoleManagement({ addNotification, companyId }) {
                       className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all text-left ${
                         isOn
                           ? "bg-indigo-600 border-indigo-600 text-white"
-                          : "bg-white border-gray-200 text-gray-600 hover:border-indigo-300"
+                          : "bg-white border-indigo-100 text-slate-500 hover:border-indigo-300"
                       }`}
                     >
                       <span className="text-base">{nav.icon}</span>
@@ -8852,7 +8852,7 @@ function RoleManagement({ addNotification, companyId }) {
                   );
                 })}
               </div>
-              <div className="mt-3 text-xs text-gray-400">
+              <div className="mt-3 text-xs text-slate-400">
                 {customPages.length} module{customPages.length !== 1 ? "s" : ""} selected
               </div>
             </div>
@@ -8868,10 +8868,10 @@ function RoleManagement({ addNotification, companyId }) {
           )}
 
           <div className="flex gap-2 mt-4">
-            <button onClick={saveUser} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-lg hover:bg-indigo-700">
+            <button onClick={saveUser} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-indigo-700">
               {editingUser ? "Save Changes" : "Add User"}
             </button>
-            <button onClick={() => { setShowForm(false); setEditingUser(null); }} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">
+            <button onClick={() => { setShowForm(false); setEditingUser(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">
               Cancel
             </button>
           </div>
@@ -8883,19 +8883,19 @@ function RoleManagement({ addNotification, companyId }) {
         {users.map(u => {
           const effectivePages = getEffectivePages(u);
           return (
-            <div key={u.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+            <div key={u.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold ${ROLES[u.role]?.color || "bg-gray-400"}`}>
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold ${ROLES[u.role]?.color || "bg-slate-400"}`}>
                     {u.name?.[0]}
                   </div>
                   <div>
-                    <div className="font-semibold text-gray-800 text-sm">{u.name}</div>
-                    <div className="text-xs text-gray-400">{u.email}</div>
+                    <div className="font-semibold text-slate-800 text-sm">{u.name}</div>
+                    <div className="text-xs text-slate-400">{u.email}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-xs font-semibold text-white px-2 py-0.5 rounded-full ${ROLES[u.role]?.color || "bg-gray-400"}`}>
+                  <span className={`text-xs font-semibold text-white px-2 py-0.5 rounded-full ${ROLES[u.role]?.color || "bg-slate-400"}`}>
                     {ROLES[u.role]?.label}
                   </span>
                   <button onClick={() => inviteUser(u)} className="text-xs text-emerald-500 border border-emerald-200 px-2 py-1 rounded-lg hover:bg-emerald-50">
@@ -8921,13 +8921,13 @@ function RoleManagement({ addNotification, companyId }) {
                 })}
               </div>
               {u.custom_pages && (
-                <div className="mt-1 text-xs text-gray-400">Custom access · {effectivePages.length} modules</div>
+                <div className="mt-1 text-xs text-slate-400">Custom access · {effectivePages.length} modules</div>
               )}
             </div>
           );
         })}
         {users.length === 0 && (
-          <div className="text-center py-10 text-gray-400">No team members added yet. Click + Add User to get started.</div>
+          <div className="text-center py-10 text-slate-400">No team members added yet. Click + Add User to get started.</div>
         )}
       </div>
     </div>
@@ -9008,47 +9008,47 @@ function AuditTrail({ companyId }) {
 
   return (
     <div>
-      <h2 className="text-xl font-bold text-gray-800 mb-1">Audit Trail</h2>
-      <p className="text-sm text-gray-500 mb-4">Complete activity log across all modules</p>
+      <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-1">Audit Trail</h2>
+      <p className="text-sm text-slate-400 mb-4">Complete activity log across all modules</p>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2 mb-4">
-        <select value={filterModule} onChange={e => { setFilterModule(e.target.value); setPage(0); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+        <select value={filterModule} onChange={e => { setFilterModule(e.target.value); setPage(0); }} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
           <option value="all">All Modules</option>
           {modules.map(m => <option key={m} value={m}>{moduleIcons[m] || "📌"} {m}</option>)}
         </select>
-        <select value={filterAction} onChange={e => { setFilterAction(e.target.value); setPage(0); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+        <select value={filterAction} onChange={e => { setFilterAction(e.target.value); setPage(0); }} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
           <option value="all">All Actions</option>
           {actions.map(a => <option key={a} value={a}>{a}</option>)}
         </select>
-        <input placeholder="Filter by user email..." value={filterUser} onChange={e => { setFilterUser(e.target.value); setPage(0); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-48" />
-        <button onClick={fetchLogs} className="bg-gray-100 text-gray-600 text-sm px-3 py-2 rounded-lg hover:bg-gray-200">🔄 Refresh</button>
+        <input placeholder="Filter by user email..." value={filterUser} onChange={e => { setFilterUser(e.target.value); setPage(0); }} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm flex-1 min-w-48" />
+        <button onClick={fetchLogs} className="bg-slate-100 text-slate-500 text-sm px-3 py-2 rounded-2xl hover:bg-slate-100">🔄 Refresh</button>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-3 mb-4">
-        <div className="bg-white rounded-xl border border-gray-100 p-3 text-center">
-          <p className="text-lg font-bold text-gray-800">{filtered.length}</p>
-          <p className="text-xs text-gray-500">Total Actions</p>
+        <div className="bg-white rounded-3xl border border-indigo-50 p-3 text-center">
+          <p className="text-lg font-manrope font-bold text-slate-800">{filtered.length}</p>
+          <p className="text-xs text-slate-400">Total Actions</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-3 text-center">
-          <p className="text-lg font-bold text-gray-800">{users.length}</p>
-          <p className="text-xs text-gray-500">Users Active</p>
+        <div className="bg-white rounded-3xl border border-indigo-50 p-3 text-center">
+          <p className="text-lg font-manrope font-bold text-slate-800">{users.length}</p>
+          <p className="text-xs text-slate-400">Users Active</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-3 text-center">
+        <div className="bg-white rounded-3xl border border-indigo-50 p-3 text-center">
           <p className="text-lg font-bold text-emerald-600">{filtered.filter(l => l.action === "create").length}</p>
-          <p className="text-xs text-gray-500">Created</p>
+          <p className="text-xs text-slate-400">Created</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-3 text-center">
+        <div className="bg-white rounded-3xl border border-indigo-50 p-3 text-center">
           <p className="text-lg font-bold text-red-500">{filtered.filter(l => l.action === "delete").length}</p>
-          <p className="text-xs text-gray-500">Deleted</p>
+          <p className="text-xs text-slate-400">Deleted</p>
         </div>
       </div>
 
       {/* Log Table */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-xs text-gray-400 uppercase">
+          <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
             <tr>
               <th className="px-4 py-3 text-left">Time</th>
               <th className="px-4 py-3 text-left">User</th>
@@ -9060,16 +9060,16 @@ function AuditTrail({ companyId }) {
           </thead>
           <tbody>
             {paged.map(log => (
-              <tr key={log.id} className="border-t border-gray-50 hover:bg-gray-50/50">
-                <td className="px-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
-                <td className="px-4 py-2.5 text-gray-700 font-medium text-xs">{log.user_email}</td>
-                <td className="px-4 py-2.5"><span className={`text-xs px-1.5 py-0.5 rounded-full ${log.user_role === "admin" ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 text-gray-600"}`}>{log.user_role}</span></td>
+              <tr key={log.id} className="border-t border-indigo-50/50 hover:bg-indigo-50/30/50">
+                <td className="px-4 py-2.5 text-xs text-slate-400 whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
+                <td className="px-4 py-2.5 text-slate-700 font-medium text-xs">{log.user_email}</td>
+                <td className="px-4 py-2.5"><span className={`text-xs px-1.5 py-0.5 rounded-full ${log.user_role === "admin" ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-500"}`}>{log.user_role}</span></td>
                 <td className="px-4 py-2.5 text-xs"><span className="flex items-center gap-1">{moduleIcons[log.module] || "📌"} {log.module}</span></td>
-                <td className="px-4 py-2.5"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${actionColors[log.action] || "bg-gray-100 text-gray-700"}`}>{log.action}</span></td>
-                <td className="px-4 py-2.5 text-xs text-gray-600 max-w-xs truncate">{log.details}</td>
+                <td className="px-4 py-2.5"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${actionColors[log.action] || "bg-slate-100 text-slate-700"}`}>{log.action}</span></td>
+                <td className="px-4 py-2.5 text-xs text-slate-500 max-w-xs truncate">{log.details}</td>
               </tr>
             ))}
-            {paged.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No audit logs found</td></tr>}
+            {paged.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No audit logs found</td></tr>}
           </tbody>
         </table>
       </div>
@@ -9077,10 +9077,10 @@ function AuditTrail({ companyId }) {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between mt-3">
-          <span className="text-xs text-gray-400">Page {page + 1} of {totalPages} ({filtered.length} records)</span>
+          <span className="text-xs text-slate-400">Page {page + 1} of {totalPages} ({filtered.length} records)</span>
           <div className="flex gap-1">
-            <button onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0} className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg disabled:opacity-30">← Prev</button>
-            <button onClick={() => setPage(Math.min(totalPages - 1, page + 1))} disabled={page >= totalPages - 1} className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg disabled:opacity-30">Next →</button>
+            <button onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg disabled:opacity-30">← Prev</button>
+            <button onClick={() => setPage(Math.min(totalPages - 1, page + 1))} disabled={page >= totalPages - 1} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg disabled:opacity-30">Next →</button>
           </div>
         </div>
       )}
@@ -9208,31 +9208,31 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
     fetchCompanies();
   }
 
-  if (loading) return <div className="flex items-center justify-center h-screen bg-gray-50"><Spinner /></div>;
+  if (loading) return <div className="flex items-center justify-center h-screen bg-indigo-50/30"><Spinner /></div>;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-white flex items-center justify-center p-4">
       <div className="w-full max-w-2xl">
         <div className="text-center mb-8">
           <div className="text-3xl font-bold text-indigo-700 mb-1">🏡 PropManager</div>
-          <div className="text-sm text-gray-500">Welcome, {currentUser?.email}</div>
+          <div className="text-sm text-slate-400">Welcome, {currentUser?.email}</div>
         </div>
 
         {/* Your Companies */}
         {companies.length > 0 && (
           <div className="mb-6">
-            <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-3">Your Companies</h2>
+            <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3">Your Companies</h2>
             <div className="space-y-2">
               {companies.map(c => (
                 <button key={c.id} onClick={() => onSelectCompany(c, c.memberRole)}
-                  className="w-full bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between hover:border-indigo-300 hover:shadow-md transition-all text-left">
+                  className="w-full bg-white rounded-xl border border-indigo-100 p-4 flex items-center justify-between hover:border-indigo-300 hover:shadow-md transition-all text-left">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg">
                       {c.name[0]}
                     </div>
                     <div>
-                      <div className="font-semibold text-gray-800">{c.name}</div>
-                      <div className="text-xs text-gray-400">{c.type} · {c.memberRole}</div>
+                      <div className="font-semibold text-slate-800">{c.name}</div>
+                      <div className="text-xs text-slate-400">{c.type} · {c.memberRole}</div>
                     </div>
                   </div>
                   <span className="text-indigo-600 text-sm font-medium">Open →</span>
@@ -9244,65 +9244,65 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
 
         {/* Pending Requests */}
         {pendingRequests.length > 0 && (
-          <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <div className="mb-6 bg-amber-50 border border-amber-200 rounded-3xl p-4">
             <div className="text-sm font-semibold text-amber-800 mb-1">⏳ Pending Requests</div>
             <div className="text-xs text-amber-600">You have {pendingRequests.length} pending request(s) waiting for admin approval.</div>
           </div>
         )}
 
         {joinMessage && (
-          <div className="mb-4 bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-700">{joinMessage}</div>
+          <div className="mb-4 bg-green-50 border border-green-200 rounded-3xl p-4 text-sm text-green-700">{joinMessage}</div>
         )}
 
         {/* Actions */}
         <div className="grid grid-cols-2 gap-3 mb-6">
           <button onClick={() => { setShowCreate(true); setShowJoin(false); }}
-            className="bg-indigo-600 text-white rounded-xl p-4 text-center hover:bg-indigo-700 transition-colors">
+            className="bg-indigo-600 text-white rounded-3xl p-4 text-center hover:bg-indigo-700 transition-colors">
             <div className="text-2xl mb-1">🏢</div>
             <div className="text-sm font-semibold">Create Company</div>
             <div className="text-xs text-indigo-200">Start a new LLC or org</div>
           </button>
           <button onClick={() => { setShowJoin(true); setShowCreate(false); }}
-            className="bg-white border-2 border-indigo-200 text-indigo-700 rounded-xl p-4 text-center hover:border-indigo-400 transition-colors">
+            className="bg-white border-2 border-indigo-200 text-indigo-700 rounded-3xl p-4 text-center hover:border-indigo-400 transition-colors">
             <div className="text-2xl mb-1">🔗</div>
             <div className="text-sm font-semibold">Join Company</div>
-            <div className="text-xs text-gray-400">Enter code or search</div>
+            <div className="text-xs text-slate-400">Enter code or search</div>
           </button>
         </div>
 
         {/* Create Company Form */}
         {showCreate && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-4">
-            <h3 className="font-bold text-gray-800 mb-4">Create New Company</h3>
+          <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-6 mb-4">
+            <h3 className="font-bold text-slate-800 mb-4">Create New Company</h3>
             <div className="space-y-3">
               {/* Company Role Selection */}
               <div>
-                <label className="text-xs font-medium text-gray-600 block mb-2">Company Type *</label>
+                <label className="text-xs font-medium text-slate-500 block mb-2">Company Type *</label>
                 <div className="grid grid-cols-2 gap-3">
-                  <button type="button" onClick={() => setCreateForm({...createForm, company_role: "management"})} className={`p-3 rounded-xl border-2 text-left transition-all ${createForm.company_role === "management" ? "border-indigo-500 bg-indigo-50" : "border-gray-200 hover:border-gray-300"}`}>
+                  <button type="button" onClick={() => setCreateForm({...createForm, company_role: "management"})} className={`p-3 rounded-xl border-2 text-left transition-all ${createForm.company_role === "management" ? "border-indigo-500 bg-indigo-50" : "border-indigo-100 hover:border-indigo-200"}`}>
                     <div className="text-lg mb-1">🏢</div>
-                    <div className="text-sm font-semibold text-gray-800">Property Management</div>
-                    <div className="text-xs text-gray-500">I manage properties for owners</div>
+                    <div className="text-sm font-semibold text-slate-800">Property Management</div>
+                    <div className="text-xs text-slate-400">I manage properties for owners</div>
                   </button>
-                  <button type="button" onClick={() => setCreateForm({...createForm, company_role: "owner"})} className={`p-3 rounded-xl border-2 text-left transition-all ${createForm.company_role === "owner" ? "border-emerald-500 bg-emerald-50" : "border-gray-200 hover:border-gray-300"}`}>
+                  <button type="button" onClick={() => setCreateForm({...createForm, company_role: "owner"})} className={`p-3 rounded-xl border-2 text-left transition-all ${createForm.company_role === "owner" ? "border-emerald-500 bg-emerald-50" : "border-indigo-100 hover:border-indigo-200"}`}>
                     <div className="text-lg mb-1">🏠</div>
-                    <div className="text-sm font-semibold text-gray-800">Property Owner</div>
-                    <div className="text-xs text-gray-500">I own and manage my properties</div>
+                    <div className="text-sm font-semibold text-slate-800">Property Owner</div>
+                    <div className="text-xs text-slate-400">I own and manage my properties</div>
                   </button>
                 </div>
               </div>
-              <div><label className="text-xs font-medium text-gray-600">Company Name *</label><input value={createForm.name} onChange={e => setCreateForm({...createForm, name: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder={createForm.company_role === "management" ? "e.g. Sigma Property Management" : "e.g. Smith Properties LLC"} /></div>
+              <div><label className="text-xs font-medium text-slate-500">Company Name *</label><input value={createForm.name} onChange={e => setCreateForm({...createForm, name: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" placeholder={createForm.company_role === "management" ? "e.g. Sigma Property Management" : "e.g. Smith Properties LLC"} /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-xs font-medium text-gray-600">Entity Type</label><select value={createForm.type} onChange={e => setCreateForm({...createForm, type: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"><option>LLC</option><option>Corporation</option><option>Partnership</option><option>Sole Proprietorship</option><option>Trust</option><option>Other</option></select></div>
-                <div><label className="text-xs font-medium text-gray-600">Email</label><input type="email" value={createForm.email} onChange={e => setCreateForm({...createForm, email: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="company@email.com" /></div>
+                <div><label className="text-xs font-medium text-slate-500">Entity Type</label><select value={createForm.type} onChange={e => setCreateForm({...createForm, type: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1"><option>LLC</option><option>Corporation</option><option>Partnership</option><option>Sole Proprietorship</option><option>Trust</option><option>Other</option></select></div>
+                <div><label className="text-xs font-medium text-slate-500">Email</label><input type="email" value={createForm.email} onChange={e => setCreateForm({...createForm, email: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" placeholder="company@email.com" /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-xs font-medium text-gray-600">Address</label><input placeholder="123 Business Ave, City, State ZIP" value={createForm.address} onChange={e => setCreateForm({...createForm, address: e.target.value})} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" /></div>
-                <div><label className="text-xs font-medium text-gray-600">Phone</label><input type="tel" placeholder="(555) 123-4567" value={createForm.phone} onChange={e => setCreateForm({...createForm, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" /></div>
+                <div><label className="text-xs font-medium text-slate-500">Address</label><input placeholder="123 Business Ave, City, State ZIP" value={createForm.address} onChange={e => setCreateForm({...createForm, address: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" /></div>
+                <div><label className="text-xs font-medium text-slate-500">Phone</label><input type="tel" placeholder="(555) 123-4567" value={createForm.phone} onChange={e => setCreateForm({...createForm, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" /></div>
               </div>
               <div className="flex gap-2 pt-2">
-                <button onClick={createCompany} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-lg hover:bg-indigo-700">Create Company</button>
-                <button onClick={() => setShowCreate(false)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+                <button onClick={createCompany} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-indigo-700">Create Company</button>
+                <button onClick={() => setShowCreate(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
               </div>
             </div>
           </div>
@@ -9310,33 +9310,33 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
 
         {/* Join Company Form */}
         {showJoin && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-4">
-            <h3 className="font-bold text-gray-800 mb-4">Join a Company</h3>
+          <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-6 mb-4">
+            <h3 className="font-bold text-slate-800 mb-4">Join a Company</h3>
             <div className="space-y-3">
-              <div><label className="text-xs font-medium text-gray-600">Company ID (8-digit code)</label><input value={joinCode} onChange={e => setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 8))} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="e.g. 12345678" maxLength={8} /></div>
-              <div className="text-xs text-gray-400 text-center">— or —</div>
-              <div><label className="text-xs font-medium text-gray-600">Search by Name</label><input value={joinSearch} onChange={e => setJoinSearch(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1" placeholder="e.g. Sigma Housing" /></div>
+              <div><label className="text-xs font-medium text-slate-500">Company ID (8-digit code)</label><input value={joinCode} onChange={e => setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 8))} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" placeholder="e.g. 12345678" maxLength={8} /></div>
+              <div className="text-xs text-slate-400 text-center">— or —</div>
+              <div><label className="text-xs font-medium text-slate-500">Search by Name</label><input value={joinSearch} onChange={e => setJoinSearch(e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" placeholder="e.g. Sigma Housing" /></div>
               <div className="flex gap-2">
-                <button onClick={searchCompanies} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-lg hover:bg-indigo-700">Search</button>
-                <button onClick={() => setShowJoin(false)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+                <button onClick={searchCompanies} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-indigo-700">Search</button>
+                <button onClick={() => setShowJoin(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
               </div>
               {searchResults.length > 0 && (
                 <div className="space-y-2 mt-3">
                   {searchResults.map(c => (
-                    <div key={c.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
-                      <div><div className="text-sm font-semibold text-gray-800">{c.name}</div><div className="text-xs text-gray-400">{c.type}</div></div>
-                      <button onClick={() => requestJoin(c)} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700">Request to Join</button>
+                    <div key={c.id} className="flex items-center justify-between bg-indigo-50/30 rounded-lg p-3">
+                      <div><div className="text-sm font-semibold text-slate-800">{c.name}</div><div className="text-xs text-slate-400">{c.type}</div></div>
+                      <button onClick={() => requestJoin(c)} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-2xl hover:bg-indigo-700">Request to Join</button>
                     </div>
                   ))}
                 </div>
               )}
-              {searchResults.length === 0 && (joinCode || joinSearch) && <div className="text-xs text-gray-400 text-center">Click Search to find companies</div>}
+              {searchResults.length === 0 && (joinCode || joinSearch) && <div className="text-xs text-slate-400 text-center">Click Search to find companies</div>}
             </div>
           </div>
         )}
 
         <div className="text-center">
-          <button onClick={onLogout} className="text-sm text-gray-400 hover:text-red-500">Logout</button>
+          <button onClick={onLogout} className="text-sm text-slate-400 hover:text-red-500">Logout</button>
         </div>
       </div>
     </div>
@@ -9386,7 +9386,7 @@ function PendingRequestsPanel({ companyId, addNotification }) {
   if (loading || requests.length === 0) return null;
 
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+    <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 mb-4">
       <div className="flex items-center justify-between mb-3">
         <div className="text-sm font-bold text-amber-800">⏳ Pending Join Requests ({requests.length})</div>
       </div>
@@ -9394,8 +9394,8 @@ function PendingRequestsPanel({ companyId, addNotification }) {
         {requests.map(r => (
           <div key={r.id} className="flex items-center justify-between bg-white rounded-lg p-3">
             <div>
-              <div className="text-sm font-semibold text-gray-800">{r.user_name || r.user_email}</div>
-              <div className="text-xs text-gray-400">{r.user_email} · Requested: {new Date(r.created_at).toLocaleDateString()}</div>
+              <div className="text-sm font-semibold text-slate-800">{r.user_name || r.user_email}</div>
+              <div className="text-xs text-slate-400">{r.user_email} · Requested: {new Date(r.created_at).toLocaleDateString()}</div>
             </div>
             <div className="flex gap-2">
               <button onClick={() => handleRequest(r, "approve")} className="bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-green-700">Approve</button>
@@ -9450,7 +9450,7 @@ function PendingPMAssignments({ companyId, addNotification }) {
   if (loading || requests.length === 0) return null;
 
   return (
-    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+    <div className="bg-blue-50 border border-blue-200 rounded-3xl p-4 mb-4">
       <div className="flex items-center justify-between mb-3">
         <div className="text-sm font-bold text-blue-800">📨 PM Assignment Requests ({requests.length})</div>
       </div>
@@ -9458,8 +9458,8 @@ function PendingPMAssignments({ companyId, addNotification }) {
         {requests.map(r => (
           <div key={r.id} className="flex items-center justify-between bg-white rounded-lg p-3">
             <div>
-              <div className="text-sm font-semibold text-gray-800">{r.property_address}</div>
-              <div className="text-xs text-gray-400">Owner requested: {new Date(r.requested_at).toLocaleDateString()} · {r.requested_by}</div>
+              <div className="text-sm font-semibold text-slate-800">{r.property_address}</div>
+              <div className="text-xs text-slate-400">Owner requested: {new Date(r.requested_at).toLocaleDateString()} · {r.requested_by}</div>
             </div>
             <div className="flex gap-2">
               <button onClick={() => handleRequest(r, "accept")} className="bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-green-700">Accept</button>
@@ -9616,10 +9616,10 @@ export default function App() {
 
   if (!activeCompany?.id || !roleLoaded) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
+      <div className="flex items-center justify-center h-screen bg-indigo-50/30">
         <div className="text-center">
           <Spinner />
-          <p className="text-sm text-gray-400 mt-4">{!activeCompany?.id ? "Loading company..." : "Loading your access..."}</p>
+          <p className="text-sm text-slate-400 mt-4">{!activeCompany?.id ? "Loading company..." : "Loading your access..."}</p>
         </div>
       </div>
     );
