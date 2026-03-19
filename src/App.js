@@ -152,6 +152,24 @@ function sanitizeFileName(name) {
   if (!name) return "file";
   return String(name).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100);
 }
+// ============ CSV EXPORT HELPER ============
+function exportToCSV(data, columns, filename) {
+  if (!data || data.length === 0) { alert("No data to export."); return; }
+  const header = columns.map(c => c.label).join(",");
+  const rows = data.map(row => columns.map(c => {
+    let val = typeof c.key === "function" ? c.key(row) : row[c.key];
+    if (val === null || val === undefined) val = "";
+    val = String(val).replace(/"/g, '""');
+    return val.includes(",") || val.includes('"') || val.includes("\n") ? `"${val}"` : val;
+  }).join(","));
+  const csv = [header, ...rows].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename + ".csv"; a.click();
+  URL.revokeObjectURL(url);
+}
+
 function buildAddress(p) {
   const parts = [p.address_line_1, p.address_line_2, p.city, (p.state && p.zip) ? p.state + " " + p.zip : p.state || p.zip].filter(Boolean);
   return parts.join(", ") || p.address || "";
@@ -1072,11 +1090,19 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       // Auto-create tenant on tenant page when property becomes occupied
       if (form.status === "occupied" && form.tenant.trim()) {
         const { data: existingTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.tenant.trim()).eq("property", compositeAddress).maybeSingle();
+        let tenantId = existingTenant?.id;
         if (!existingTenant) {
-          await supabase.from("tenants").insert([{ company_id: companyId, name: form.tenant.trim(), email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", property: compositeAddress, rent: Number(form.rent) || 0, lease_status: "active", lease_start: form.lease_start || "", lease_end_date: form.lease_end || "", move_in: form.lease_start || "", move_out: form.lease_end || "", balance: 0 }]);
+          const { data: newT } = await supabase.from("tenants").insert([{ company_id: companyId, name: form.tenant.trim(), email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", property: compositeAddress, rent: Number(form.rent) || 0, lease_status: "active", lease_start: form.lease_start || "", lease_end_date: form.lease_end || "", move_in: form.lease_start || "", move_out: form.lease_end || "", balance: 0 }]).select("id").maybeSingle();
+          tenantId = newT?.id;
         } else {
-          // Update existing tenant with latest info
           await supabase.from("tenants").update({ email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", rent: Number(form.rent) || 0, lease_status: "active", lease_start: form.lease_start || "", lease_end_date: form.lease_end || "", move_in: form.lease_start || "", move_out: form.lease_end || "" }).eq("id", existingTenant.id).eq("company_id", companyId);
+        }
+        // Auto-create lease record if dates are provided and no active lease exists
+        if (form.lease_start && form.lease_end && form.rent) {
+          const { data: existingLease } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("property", compositeAddress).eq("status", "active").maybeSingle();
+          if (!existingLease) {
+            await supabase.from("leases").insert([{ company_id: companyId, tenant_name: form.tenant.trim(), tenant_id: tenantId || null, property: compositeAddress, start_date: form.lease_start, end_date: form.lease_end, rent_amount: Number(form.rent), security_deposit: Number(form.security_deposit) || 0, status: "active", payment_due_day: 1, rent_escalation_pct: 3, escalation_frequency: "annual" }]);
+          }
         }
       }
       // Cascade address change to all related tables
@@ -1154,9 +1180,12 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       if (fallbackErr) { alert("Failed to archive property: " + fallbackErr.message); return; }
       if (archiveTenant && propertyTenants) {
         for (const t of propertyTenants) {
-          await supabase.from("tenants").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", t.id).eq("company_id", companyId);
+          await supabase.from("tenants").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email, lease_status: "inactive" }).eq("id", t.id).eq("company_id", companyId);
         }
       }
+      // Cascade: terminate active leases and deactivate autopay for this property
+      await supabase.from("leases").update({ status: "terminated" }).eq("company_id", companyId).eq("property", address).eq("status", "active");
+      await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("property", address);
     }
     addNotification("📦", `Property archived: ${address}`);
     logAudit("archive", "properties", `Archived property: ${address}` + (archiveTenant ? " (with tenant)" : ""), id, userProfile?.email, userRole, companyId);
@@ -2700,7 +2729,13 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
     <div>
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-2xl font-manrope font-bold text-slate-800">Payments & Rent</h2>
-        <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ Record Payment</button>
+        <div className="flex gap-2">
+          <button onClick={() => exportToCSV(payments, [
+            { label: "Date", key: "date" }, { label: "Tenant", key: "tenant" }, { label: "Property", key: "property" },
+            { label: "Amount", key: "amount" }, { label: "Type", key: "type" }, { label: "Method", key: "method" }, { label: "Status", key: "status" },
+          ], "payments-export")} className="text-sm text-indigo-600 border border-indigo-200 px-3 py-2 rounded-2xl hover:bg-indigo-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
+          <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ Record Payment</button>
+        </div>
       </div>
 
       {showForm && (
@@ -5152,6 +5187,15 @@ function Inspections({ addNotification, userProfile, userRole, companyId }) {
             <div className="mt-3 flex gap-2 flex-wrap">
               <button onClick={() => setSelectedInspection(insp)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">📋 View Report</button>
               {insp.status === "scheduled" && <button onClick={() => updateStatus(insp.id, "completed")} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">✓ Mark Complete</button>}
+              {insp.status === "completed" && <button onClick={async () => {
+                const items = (() => { try { return JSON.parse(insp.items || "{}"); } catch { return {}; } })();
+                const failed = Object.entries(items).filter(([, v]) => v.pass === false).map(([k]) => k);
+                if (failed.length === 0) { alert("No failed items in this inspection."); return; }
+                if (!window.confirm(`Create work order for ${failed.length} failed item(s)?\n\n${failed.join(", ")}`)) return;
+                const { error } = await supabase.from("work_orders").insert([{ company_id: companyId, property: insp.property, issue: `Inspection findings: ${failed.join(", ")}`, priority: "normal", status: "open", notes: `Auto-created from ${insp.type} inspection on ${insp.date}` }]);
+                if (error) { alert("Error: " + error.message); return; }
+                addNotification("🔧", `Work order created from inspection at ${insp.property}`);
+              }} className="text-xs text-orange-600 border border-orange-200 px-3 py-1 rounded-lg hover:bg-orange-50"><span className="material-icons-outlined text-xs align-middle">build</span> Create Work Order</button>}
             </div>
           </div>
         ))}
@@ -5357,6 +5401,8 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
       alert("Error creating renewed lease: " + insertErr.message); return;
     }
     if (lease.tenant_id) await supabase.from("tenants").update({ rent: Math.round(escalated * 100) / 100, move_out: formatLocalDate(newEnd) }).eq("company_id", companyId).eq("id", lease.tenant_id);
+    // Sync autopay schedule to new rent amount
+    await supabase.from("autopay_schedules").update({ amount: Math.round(escalated * 100) / 100 }).eq("company_id", companyId).eq("tenant", lease.tenant_name).eq("enabled", true);
     // Update property table to reflect new lease end date
     const { error: _err4655 } = await supabase.from("properties").update({ lease_end: formatLocalDate(newEnd) }).eq("company_id", companyId).eq("address", lease.property);
     if (_err4655) { alert("Error updating properties: " + _err4655.message); return; }
@@ -7297,6 +7343,43 @@ function generatePaymentReceipt(payment, companyName = "PropManager") {
 }
 
 // ============ OWNER PORTAL ============
+function OwnerMaintenanceView({ companyId, properties }) {
+  const [workOrders, setWorkOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    async function load() {
+      const addrs = properties.map(p => p.address);
+      if (addrs.length === 0) { setLoading(false); return; }
+      const { data } = await supabase.from("work_orders").select("*").eq("company_id", companyId).in("property", addrs).order("created_at", { ascending: false }).limit(100);
+      setWorkOrders(data || []);
+      setLoading(false);
+    }
+    load();
+  }, [companyId, properties]);
+  if (loading) return <Spinner />;
+  const statusIcon = { open: "🔴", in_progress: "🟡", completed: "🟢" };
+  return (
+    <div className="space-y-2">
+      {workOrders.map(wo => (
+        <div key={wo.id} className="bg-white border border-indigo-50 rounded-2xl p-4">
+          <div className="flex justify-between items-start">
+            <div>
+              <div className="text-sm font-semibold text-slate-800">{wo.issue}</div>
+              <div className="text-xs text-slate-400">{wo.property} · {wo.date || new Date(wo.created_at).toLocaleDateString()}</div>
+            </div>
+            <div className="text-right">
+              <span className="text-xs">{statusIcon[wo.status] || "⚪"} {wo.status}</span>
+              {wo.cost > 0 && <div className="text-xs font-bold text-red-500 mt-0.5">${safeNum(wo.cost).toLocaleString()}</div>}
+            </div>
+          </div>
+          {wo.notes && <div className="text-xs text-slate-400 mt-1">{wo.notes}</div>}
+        </div>
+      ))}
+      {workOrders.length === 0 && <div className="text-center py-8 text-slate-400">No maintenance activity</div>}
+    </div>
+  );
+}
+
 function OwnerPortal({ currentUser, companyId }) {
   const [ownerData, setOwnerData] = useState(null);
   const [properties, setProperties] = useState([]);
@@ -7380,7 +7463,7 @@ function OwnerPortal({ currentUser, companyId }) {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-5 border-b border-indigo-50">
-        {[["overview","\ud83c\udfe0 Overview"],["statements","\ud83d\udcca Statements"],["distributions","💰 Distributions"],["properties","\ud83c\udfe2 Properties"]].map(([id, label]) => (
+        {[["overview","\ud83c\udfe0 Overview"],["statements","\ud83d\udcca Statements"],["distributions","💰 Distributions"],["properties","\ud83c\udfe2 Properties"],["maintenance","🔧 Maintenance"]].map(([id, label]) => (
           <button key={id} onClick={() => { setActiveTab(id); setViewStatement(null); }} className={"px-4 py-2.5 text-sm font-medium border-b-2 transition-colors " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-700")}>{label}</button>
         ))}
       </div>
@@ -7455,7 +7538,10 @@ function OwnerPortal({ currentUser, companyId }) {
                 <h3 className="font-bold text-slate-800">Owner Statement — {viewStatement.period}</h3>
                 <div className="text-xs text-slate-400">{viewStatement.owner_name} · Generated {new Date(viewStatement.created_at).toLocaleDateString()}</div>
               </div>
-              <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewStatement.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{viewStatement.status}</span>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { const w = window.open("", "_blank"); w.document.write("<pre>" + JSON.stringify(viewStatement, null, 2) + "</pre>"); w.document.title = "Statement " + viewStatement.period; setTimeout(() => w.print(), 300); }} className="text-xs text-indigo-600 border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50"><span className="material-icons-outlined text-xs align-middle">print</span></button>
+                <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewStatement.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{viewStatement.status}</span>
+              </div>
             </div>
             <div className="grid grid-cols-4 gap-3 mb-4">
               <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Income</div><div className="text-lg font-bold text-green-600">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
@@ -7494,6 +7580,14 @@ function OwnerPortal({ currentUser, companyId }) {
             </div>
           ))}
           {distributions.length === 0 && <div className="text-center py-8 text-slate-400">No distributions yet</div>}
+        </div>
+      )}
+
+      {/* MAINTENANCE TAB */}
+      {activeTab === "maintenance" && (
+        <div>
+          <h3 className="font-manrope font-bold text-slate-700 mb-3">Maintenance Activity</h3>
+          <OwnerMaintenanceView companyId={companyId} properties={properties} />
         </div>
       )}
 
@@ -8243,6 +8337,11 @@ function TenantPortal({ currentUser, companyId }) {
       setPayments(p.data || []);
       setWorkOrders(w.data || []);
       setDocuments(d.data || []);
+      // Check autopay status
+      if (tenantName) {
+        const { data: ap } = await supabase.from("autopay_schedules").select("enabled").eq("company_id", companyId).eq("tenant", tenantName).maybeSingle();
+        if (ap?.enabled) setAutopayEnabled(true);
+      }
       setLoading(false);
     }
     fetchData();
@@ -8374,9 +8473,13 @@ function TenantPortal({ currentUser, companyId }) {
     </div>
   );
 
+  const [autopayEnabled, setAutopayEnabled] = useState(false);
+  const [autopayLoading, setAutopayLoading] = useState(false);
+
   const tabs = [
     ["overview", "\ud83c\udfe0 Overview"],
     ["pay", "\ud83d\udcb3 Pay Rent"],
+    ["autopay", "🔄 Autopay"],
     ["history", "📋 History"],
     ["maintenance", "🔧 Maintenance"],
     ["documents", "\ud83d\udcc1 Documents"],
@@ -8501,10 +8604,66 @@ function TenantPortal({ currentUser, companyId }) {
         </div>
       )}
 
+      {/* ---- AUTOPAY TAB ---- */}
+      {activeTab === "autopay" && tenantData && (
+        <div className="max-w-md mx-auto">
+          <h3 className="font-manrope font-bold text-slate-800 mb-4">Recurring Payments</h3>
+          <div className="bg-white rounded-3xl border border-indigo-50 shadow-card p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="text-sm font-semibold text-slate-700">Monthly Autopay</div>
+                <div className="text-xs text-slate-400">Automatically pay rent on the 1st</div>
+              </div>
+              <button onClick={async () => {
+                setAutopayLoading(true);
+                try {
+                  if (autopayEnabled) {
+                    await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", tenantData.name);
+                    setAutopayEnabled(false);
+                    addNotification("🔄", "Autopay disabled");
+                  } else {
+                    const { data: existing } = await supabase.from("autopay_schedules").select("id").eq("company_id", companyId).eq("tenant", tenantData.name).maybeSingle();
+                    if (existing) {
+                      await supabase.from("autopay_schedules").update({ enabled: true, amount: safeNum(tenantData.rent), method: "stripe" }).eq("id", existing.id);
+                    } else {
+                      await supabase.from("autopay_schedules").insert([{ company_id: companyId, tenant: tenantData.name, property: tenantData.property, amount: safeNum(tenantData.rent), method: "stripe", day_of_month: 1, enabled: true }]);
+                    }
+                    setAutopayEnabled(true);
+                    addNotification("🔄", "Autopay enabled — $" + safeNum(tenantData.rent) + "/month");
+                  }
+                } catch (e) { alert("Error: " + e.message); }
+                setAutopayLoading(false);
+              }} disabled={autopayLoading} className={`relative w-12 h-6 rounded-full transition-colors ${autopayEnabled ? "bg-emerald-500" : "bg-slate-300"}`}>
+                <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${autopayEnabled ? "translate-x-6" : "translate-x-0.5"}`} />
+              </button>
+            </div>
+            {autopayEnabled && (
+              <div className="bg-emerald-50 rounded-2xl p-4 space-y-2">
+                <div className="flex justify-between text-sm"><span className="text-slate-400">Amount</span><span className="font-bold text-emerald-700">${safeNum(tenantData.rent).toLocaleString()}/month</span></div>
+                <div className="flex justify-between text-sm"><span className="text-slate-400">Payment Day</span><span className="font-medium text-slate-700">1st of each month</span></div>
+                <div className="flex justify-between text-sm"><span className="text-slate-400">Method</span><span className="font-medium text-slate-700">Stripe</span></div>
+              </div>
+            )}
+            {!autopayEnabled && (
+              <div className="bg-indigo-50/30 rounded-2xl p-4 text-center">
+                <span className="material-icons-outlined text-slate-300 text-3xl mb-2">autorenew</span>
+                <p className="text-sm text-slate-400">Enable autopay to have your rent automatically charged on the 1st of each month.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ---- PAYMENT HISTORY TAB ---- */}
       {activeTab === "history" && (
         <div>
-          <h3 className="font-semibold text-slate-700 mb-3">Payment History</h3>
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="font-semibold text-slate-700">Payment History</h3>
+            <button onClick={() => exportToCSV(payments, [
+              { label: "Date", key: "date" }, { label: "Type", key: "type" }, { label: "Amount", key: "amount" },
+              { label: "Method", key: "method" }, { label: "Status", key: "status" },
+            ], "my-payments")} className="text-xs text-indigo-600 border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50"><span className="material-icons-outlined text-xs align-middle mr-1">download</span>Export</button>
+          </div>
           <div className="space-y-2">
             {payments.map(p => (
               <div key={p.id} className="bg-white border border-indigo-50 rounded-2xl px-4 py-3 flex justify-between items-center">
