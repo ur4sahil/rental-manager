@@ -238,6 +238,57 @@ async function checkAccrualExists(companyId, month, tenantName) {
   return allLines.some(l => l.memo && l.memo.includes(tenantName));
 }
 
+// ============ NOTIFICATION QUEUE ============
+// Queues email notifications for async processing by Supabase Edge Function
+async function queueNotification(type, recipientEmail, data, companyId) {
+  if (!recipientEmail || !companyId) return;
+  try {
+    await supabase.from("notification_queue").insert([{
+      company_id: companyId,
+      type,
+      recipient_email: recipientEmail.toLowerCase(),
+      data: typeof data === "string" ? data : JSON.stringify(data),
+      status: "pending",
+    }]);
+  } catch (e) { console.warn("queueNotification failed:", e.message); }
+}
+
+// ============ OWNER DISTRIBUTION AUTOMATION ============
+// Auto-calculates management fee + owner net when rent is received
+async function autoOwnerDistribution(companyId, propertyAddress, paymentAmount, paymentDate, tenantName) {
+  try {
+    const { data: prop } = await supabase.from("properties")
+      .select("owner_id").eq("company_id", companyId).eq("address", propertyAddress).maybeSingle();
+    if (!prop?.owner_id) return; // No owner assigned — skip
+    const { data: owner } = await supabase.from("owners")
+      .select("id, name, email, management_fee_pct").eq("id", prop.owner_id).maybeSingle();
+    if (!owner) return;
+    const feePct = safeNum(owner.management_fee_pct || 10);
+    const mgmtFee = Math.round(paymentAmount * (feePct / 100) * 100) / 100;
+    const ownerNet = Math.round((paymentAmount - mgmtFee) * 100) / 100;
+    const classId = await getPropertyClassId(propertyAddress, companyId);
+    // Post GL: reclassify rental income → owner distribution payable + mgmt fee income
+    await autoPostJournalEntry({
+      companyId, date: paymentDate,
+      description: `Owner distribution accrual — ${owner.name} — ${tenantName}`,
+      reference: `ODIST-${shortId()}`,
+      property: propertyAddress,
+      lines: [
+        { account_id: "4000", account_name: "Rental Income", debit: paymentAmount, credit: 0, class_id: classId, memo: `Reclassify to owner dist — ${tenantName}` },
+        { account_id: "4200", account_name: "Management Fee Income", debit: 0, credit: mgmtFee, class_id: classId, memo: `Mgmt fee ${feePct}% — ${owner.name}` },
+        { account_id: "2200", account_name: "Owner Distributions Payable", debit: 0, credit: ownerNet, class_id: classId, memo: `Net to ${owner.name}` },
+      ]
+    });
+    // Create owner statement line item
+    const month = paymentDate.slice(0, 7);
+    await supabase.from("owner_distributions").insert([{
+      company_id: companyId, owner_id: owner.id, property: propertyAddress,
+      period: month, type: "rent", gross_amount: paymentAmount,
+      management_fee: mgmtFee, net_amount: ownerNet, status: "pending",
+    }]).then(({ error }) => { if (error) console.warn("Owner dist insert:", error.message); });
+  } catch (e) { console.warn("autoOwnerDistribution failed:", e.message); }
+}
+
 async function getPropertyClassId(propertyAddress, companyId) {
   if (!propertyAddress) return null;
   const { data } = await supabase.from("acct_classes").select("id").eq("name", propertyAddress).eq("company_id", companyId).limit(1);
@@ -1674,7 +1725,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
 
 
 // ============ TENANTS ============
-function Tenants({ addNotification, userProfile, userRole, companyId }) {
+function Tenants({ addNotification, userProfile, userRole, companyId, setPage }) {
   const [tenants, setTenants] = useState([]);
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -2360,6 +2411,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId }) {
                   <button onClick={() => { setLeaseModal("renew"); setLeaseInput(""); }} className="bg-green-50 rounded-3xl p-4 text-center hover:bg-green-100 transition-all">
                     <div className="text-2xl mb-1">🔄</div><div className="text-sm font-semibold text-green-700">Renew Lease</div>
                   </button>
+                  <button onClick={() => setPage("moveout")} className="bg-orange-50 rounded-3xl p-4 text-center hover:bg-orange-100 transition-all">
+                    <div className="text-2xl mb-1"><span className="material-icons-outlined text-orange-600">exit_to_app</span></div><div className="text-sm font-semibold text-orange-700">Move-Out</div>
+                  </button>
                   <button onClick={() => deleteTenant(selectedTenant.id, selectedTenant.name)} className="bg-red-50 rounded-3xl p-4 text-center hover:bg-red-100 transition-all">
                     <div className="text-2xl mb-1">📦</div><div className="text-sm font-semibold text-red-700">Archive Tenant</div>
                   </button>
@@ -2607,7 +2661,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
 
     // Update tenant balance and create ledger entry ONLY if GL posted successfully
     if (jeId) {
-      const { data: tenantRow } = await supabase.from("tenants").select("id, balance").eq("name", form.tenant).eq("company_id", companyId).maybeSingle();
+      const { data: tenantRow } = await supabase.from("tenants").select("id, balance, email").eq("name", form.tenant).eq("company_id", companyId).maybeSingle();
       if (tenantRow) {
         const payAmt = Number(form.amount);
         try {
@@ -2619,6 +2673,14 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
           date: form.date, description: `${form.type} payment (${form.method})`,
           amount: -payAmt, type: "payment", balance: safeNum(tenantRow.balance) - payAmt,
         });
+        // Queue payment receipt notification to tenant
+        if (tenantRow.email) {
+          queueNotification("payment_received", tenantRow.email, { tenant: form.tenant, amount: payAmt, date: form.date, property: form.property, method: form.method }, companyId);
+        }
+      }
+      // Auto-create owner distribution for rent payments
+      if (form.type === "rent") {
+        await autoOwnerDistribution(companyId, form.property, Number(form.amount), form.date, form.tenant);
       }
     }
 
@@ -5248,6 +5310,11 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
       }
     }
     logAudit(editingLease ? "update" : "create", "leases", (editingLease ? "Updated" : "Created") + " lease: " + form.tenant_name + " at " + form.property, editingLease?.id || "", userProfile?.email, userRole, companyId);
+    // Queue lease notification
+    if (!editingLease) {
+      const { data: leaseTenant } = await supabase.from("tenants").select("email").eq("name", form.tenant_name).eq("company_id", companyId).maybeSingle();
+      if (leaseTenant?.email) queueNotification("lease_created", leaseTenant.email, { tenant: form.tenant_name, property: form.property, startDate: form.start_date, endDate: form.end_date, rent: form.rent_amount }, companyId);
+    }
     resetForm(); fetchData();
     } finally { guardRelease("saveLease"); }
   }
@@ -5388,6 +5455,9 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
       });
     }
     logAudit("update", "leases", "Deposit return: $" + returned + " to " + lease.tenant_name, lease.id, userProfile?.email, userRole, companyId);
+    // Queue deposit return notification
+    const { data: depTenant } = await supabase.from("tenants").select("email").eq("name", lease.tenant_name).eq("company_id", companyId).maybeSingle();
+    if (depTenant?.email) queueNotification("deposit_returned", depTenant.email, { tenant: lease.tenant_name, returned, deducted, property: lease.property }, companyId);
     setShowDepositModal(null); setDepositForm({ amount_returned: "", deductions: "", return_date: formatLocalDate(new Date()) });
     fetchData();
   }
@@ -7711,8 +7781,8 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
 
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
-  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","accounting","documents","inspections","autopay","hoa","audittrail","leases","vendors","owners","notifications","archive"] },
-  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","documents","inspections","leases","vendors","owners","notifications"] },
+  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","accounting","documents","inspections","autopay","hoa","audittrail","leases","vendors","owners","notifications","archive","moveout"] },
+  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","documents","inspections","leases","vendors","owners","notifications","moveout"] },
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
   tenant: { label: "Tenant", color: "bg-indigo-50/300", pages: ["tenant_portal"] },
@@ -7736,6 +7806,7 @@ const ALL_NAV = [
   { id: "vendors", label: "Vendors", icon: "handyman" },
   { id: "owners", label: "Owners", icon: "person" },
   { id: "notifications", label: "Notifications", icon: "mail" },
+  { id: "moveout", label: "Move-Out", icon: "exit_to_app" },
 ];
 
 // ============ AUTOPAY / RECURRING RENT ============
@@ -8033,6 +8104,8 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
       } catch (e) { console.warn("Late fee balance RPC error:", e.message); }
     }
     addNotification("⚠️", `Late fee ${formatCurrency(feeAmount)} applied to ${payment.tenant}`);
+    // Queue notification to tenant
+    if (tenant?.email) queueNotification("late_fee_applied", tenant.email, { tenant: payment.tenant, amount: feeAmount, daysLate: payment.daysLate, property: payment.property }, companyId);
     // AUTO-POST TO ACCOUNTING: DR Accounts Receivable, CR Late Fee Income
     const classId = await getPropertyClassId(payment.property, companyId);
     if (feeAmount > 0) {
@@ -8204,68 +8277,38 @@ function TenantPortal({ currentUser, companyId }) {
     }
     setPaymentProcessing(true);
     try {
-      // Call Stripe Checkout via serverless function or edge function
-      // For now, we create a payment intent simulation and record the payment
-      // In production, replace this with actual Stripe API call to your backend
       const amt = Number(paymentAmount);
-      const today = formatLocalDate(new Date());
-      // Use dedicated tenant payment RPC (atomic, role-validated)
+      // Try Stripe Checkout via Supabase Edge Function
       try {
-        const { data: payResult, error: payErr } = await supabase.rpc("tenant_make_payment", {
-          p_company_id: companyId,
-          p_tenant_id: tenantData.id,
-          p_amount: amt,
-          p_method: "stripe",
+        const { data, error } = await supabase.functions.invoke("create-checkout-session", {
+          body: {
+            amount: Math.round(amt * 100), // Stripe uses cents
+            tenantId: tenantData.id,
+            tenantName: tenantData.name,
+            property: tenantData.property,
+            companyId: companyId,
+            successUrl: window.location.origin + "?payment=success",
+            cancelUrl: window.location.origin + "?payment=cancelled",
+          }
         });
-        if (payErr) throw new Error(payErr.message);
-      } catch (rpcE) {
-        // RPC not available — create pending payment only (no balance/ledger update until approved)
-        const { error: payErr } = await supabase.from("payments").insert([{ company_id: companyId,
-          tenant: tenantData.name, property: tenantData.property, amount: amt,
-          type: "rent", method: "stripe", status: "pending_approval", date: today,
-        }]);
-        if (payErr) throw new Error("Failed to record payment: " + payErr.message);
-        // Balance and ledger updated only when admin approves this payment
-      }
-      // Payment recorded as pending — balance and accounting updated when admin approves
-      // Show success to tenant
+        if (!error && data?.url) {
+          window.location.href = data.url; // Redirect to Stripe Checkout
+          return;
+        }
+      } catch (stripeErr) { console.warn("Stripe Edge Function not available, using fallback:", stripeErr.message); }
+      // Fallback: record payment as pending_approval (no Stripe integration yet)
+      const today = formatLocalDate(new Date());
+      const { error: payErr } = await supabase.from("payments").insert([{ company_id: companyId,
+        tenant: tenantData.name, property: tenantData.property, amount: amt,
+        type: "rent", method: "stripe", status: "pending_approval", date: today,
+      }]);
+      if (payErr) throw new Error("Failed to record payment: " + payErr.message);
       setPaymentSuccess(true);
       setPaymentAmount("");
       addNotification("💳", "Payment of $" + amt.toFixed(2) + " submitted for approval");
-      // Refresh tenant data
+      queueNotification("payment_received", currentUser?.email, { tenant: tenantData.name, amount: amt, date: today, status: "pending_approval" }, companyId);
       const { data: refreshed } = await supabase.from("tenants").select("*").eq("company_id", companyId).ilike("email", currentUser?.email || "").maybeSingle();
       if (refreshed) setTenantData(refreshed);
-      setPaymentProcessing(false);
-      return; // Don't post to accounting until admin approves
-      const newBalance = safeNum(tenantData.balance) - amt;
-      // Auto-post to accounting
-      const classId = await getPropertyClassId(tenantData.property, companyId);
-      const month = today.slice(0, 7);
-      let hasAccrual = false;
-      hasAccrual = await checkAccrualExists(companyId, month, tenantData.name);
-      if (hasAccrual) {
-        const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Online payment — " + tenantData.name + " — " + tenantData.property + " (settling AR)", reference: "SPAY-" + shortId(), property: tenantData.property,
-          lines: [
-            { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Stripe from " + tenantData.name },
-            { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement — " + tenantData.name },
-          ]
-        });
-        if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
-        
-      } else {
-        const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Online rent payment — " + tenantData.name + " — " + tenantData.property, reference: "SPAY-" + shortId(), property: tenantData.property,
-          lines: [
-            { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Stripe from " + tenantData.name },
-            { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: tenantData.name + " — " + tenantData.property },
-          ]
-        });
-        if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
-        
-      }
-      logAudit("create", "payments", "Online payment: $" + amt + " from " + tenantData.name, "", currentUser?.email, "tenant", companyId);
-      setPaymentSuccess(true);
-      setTimeout(() => setPaymentSuccess(false), 5000);
-      await refreshData();
     } catch (e) {
       alert("Payment failed: " + e.message);
     }
@@ -8935,6 +8978,305 @@ function RoleManagement({ addNotification, companyId }) {
 }
 
 // ============ MAIN APP ============
+// ============ MOVE-OUT LIFECYCLE WIZARD ============
+function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setPage }) {
+  const [step, setStep] = useState(1);
+  const [tenants, setTenants] = useState([]);
+  const [leases, setLeases] = useState([]);
+  const [selectedTenant, setSelectedTenant] = useState(null);
+  const [selectedLease, setSelectedLease] = useState(null);
+  const [moveOutDate, setMoveOutDate] = useState(formatLocalDate(new Date()));
+  const [checklist, setChecklist] = useState([]);
+  const [deductions, setDeductions] = useState([]);
+  const [newDeductionDesc, setNewDeductionDesc] = useState("");
+  const [newDeductionAmt, setNewDeductionAmt] = useState("");
+  const [arAction, setArAction] = useState("collect");
+  const [processing, setProcessing] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const defaultChecklist = ["Keys returned","All personal items removed","Unit cleaned","Walls patched/repaired","Appliances clean","Carpets cleaned","Final inspection done","Forwarding address collected","Utilities transferred","Security deposit review","Photos taken"];
+
+  useEffect(() => {
+    async function load() {
+      const [t, l] = await Promise.all([
+        supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null).eq("lease_status", "active"),
+        supabase.from("leases").select("*").eq("company_id", companyId).eq("status", "active"),
+      ]);
+      setTenants(t.data || []);
+      setLeases(l.data || []);
+      setChecklist(defaultChecklist.map(item => ({ label: item, checked: false, notes: "" })));
+      setLoading(false);
+    }
+    load();
+  }, [companyId]);
+
+  function selectTenant(tenantId) {
+    const t = tenants.find(x => String(x.id) === String(tenantId));
+    setSelectedTenant(t || null);
+    if (t) {
+      const lease = leases.find(l => l.tenant_name === t.name || l.property === t.property);
+      setSelectedLease(lease || null);
+    }
+  }
+
+  function addDeduction() {
+    if (!newDeductionDesc.trim() || !newDeductionAmt || isNaN(Number(newDeductionAmt))) return;
+    setDeductions([...deductions, { desc: newDeductionDesc.trim(), amount: Number(newDeductionAmt) }]);
+    setNewDeductionDesc(""); setNewDeductionAmt("");
+  }
+
+  const depositAmount = safeNum(selectedLease?.security_deposit);
+  const totalDeductions = deductions.reduce((s, d) => s + d.amount, 0);
+  const depositReturn = Math.max(0, depositAmount - totalDeductions);
+  const depositForfeited = Math.max(0, totalDeductions - depositAmount);
+  const outstandingBalance = safeNum(selectedTenant?.balance);
+
+  async function executeMoveOut() {
+    if (!selectedTenant || !selectedLease) return;
+    setProcessing(true);
+    try {
+      const cid = companyId;
+      const tName = selectedTenant.name;
+      const classId = await getPropertyClassId(selectedLease.property, cid);
+
+      // 1. Process deposit return/deductions GL
+      if (depositReturn > 0) {
+        await autoPostJournalEntry({ companyId: cid, date: moveOutDate, description: `Security deposit returned — ${tName}`, reference: `DEP-RTN-${shortId()}`, property: selectedLease.property,
+          lines: [
+            { account_id: "2100", account_name: "Security Deposits Held", debit: depositReturn, credit: 0, class_id: classId, memo: `Deposit return — ${tName}` },
+            { account_id: "1000", account_name: "Checking Account", debit: 0, credit: depositReturn, class_id: classId, memo: `Deposit refund to ${tName}` },
+          ]
+        });
+      }
+      if (totalDeductions > 0 && totalDeductions <= depositAmount) {
+        await autoPostJournalEntry({ companyId: cid, date: moveOutDate, description: `Deposit deductions — ${tName}`, reference: `DEP-DED-${shortId()}`, property: selectedLease.property,
+          lines: [
+            { account_id: "2100", account_name: "Security Deposits Held", debit: totalDeductions, credit: 0, class_id: classId, memo: `Deductions: ${deductions.map(d => d.desc).join(", ")}` },
+            { account_id: "4100", account_name: "Other Income", debit: 0, credit: totalDeductions, class_id: classId, memo: `Deposit forfeiture — ${tName}` },
+          ]
+        });
+      }
+
+      // 2. Handle outstanding AR
+      if (arAction === "waive" && outstandingBalance > 0) {
+        await autoPostJournalEntry({ companyId: cid, date: moveOutDate, description: `Bad debt write-off — ${tName}`, reference: `WOFF-${shortId()}`, property: selectedLease.property,
+          lines: [
+            { account_id: "5300", account_name: "Bad Debt Expense", debit: outstandingBalance, credit: 0, class_id: classId, memo: `Write-off at move-out — ${tName}` },
+            { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: outstandingBalance, class_id: classId, memo: `AR write-off — ${tName}` },
+          ]
+        });
+        try { await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: -outstandingBalance }); } catch (e) { console.warn("Balance write-off:", e.message); }
+      }
+
+      // 3. Terminate lease
+      await supabase.from("leases").update({ status: "terminated", end_date: moveOutDate }).eq("id", selectedLease.id).eq("company_id", cid);
+
+      // 4. Deactivate autopay
+      await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", cid).eq("tenant", tName);
+
+      // 5. Update tenant status
+      await supabase.from("tenants").update({ lease_status: "inactive", move_out: moveOutDate }).eq("id", selectedTenant.id).eq("company_id", cid);
+
+      // 6. Update property to vacant
+      await supabase.from("properties").update({ status: "vacant", tenant: null, lease_end: null }).eq("company_id", cid).eq("address", selectedLease.property);
+
+      // 7. Create ledger entries
+      if (depositReturn > 0) {
+        await safeLedgerInsert({ company_id: cid, tenant: tName, property: selectedLease.property, date: moveOutDate, description: "Security deposit returned", amount: -depositReturn, type: "deposit_return", balance: 0 });
+      }
+
+      // 8. Save inspection checklist
+      await supabase.from("inspections").insert([{ company_id: cid, property: selectedLease.property, type: "Move-Out", date: moveOutDate, inspector: userProfile?.name || "Admin", items: JSON.stringify(checklist), notes: `Move-out inspection for ${tName}` }]);
+
+      // 9. Audit + notifications
+      logAudit("update", "tenants", `Move-out completed: ${tName} from ${selectedLease.property}`, selectedTenant.id, userProfile?.email, userRole, cid);
+      addNotification("🚪", `Move-out completed: ${tName} from ${selectedLease.property}`);
+      if (selectedTenant.email) {
+        queueNotification("deposit_returned", selectedTenant.email, { tenant: tName, returned: depositReturn, deducted: totalDeductions, property: selectedLease.property, moveOutDate }, cid);
+      }
+
+      setCompleted(true);
+    } catch (e) {
+      alert("Move-out failed: " + e.message);
+    }
+    setProcessing(false);
+  }
+
+  if (loading) return <Spinner />;
+
+  if (completed) return (
+    <div className="max-w-xl mx-auto text-center py-20">
+      <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto mb-4">
+        <span className="material-icons-outlined text-3xl">check_circle</span>
+      </div>
+      <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-2">Move-Out Complete</h2>
+      <p className="text-slate-400 mb-6">All accounting entries posted, lease terminated, and property marked vacant.</p>
+      <button onClick={() => setPage("dashboard")} className="bg-indigo-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 transition-colors">Back to Dashboard</button>
+    </div>
+  );
+
+  const steps = ["Select Tenant", "Inspection", "Deposit", "AR Settlement", "Confirm"];
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-6">Move-Out Wizard</h2>
+
+      {/* Step indicator */}
+      <div className="flex items-center gap-2 mb-8">
+        {steps.map((s, i) => (
+          <div key={s} className="flex items-center gap-2 flex-1">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${i + 1 <= step ? "bg-indigo-600 text-white" : "bg-indigo-50 text-slate-400"}`}>{i + 1}</div>
+            <span className={`text-xs font-medium hidden md:block ${i + 1 <= step ? "text-indigo-600" : "text-slate-400"}`}>{s}</span>
+            {i < steps.length - 1 && <div className={`flex-1 h-0.5 ${i + 1 < step ? "bg-indigo-600" : "bg-indigo-50"}`} />}
+          </div>
+        ))}
+      </div>
+
+      {/* Step 1: Select Tenant */}
+      {step === 1 && (
+        <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-6">
+          <h3 className="text-lg font-manrope font-bold text-slate-800 mb-4">Select Tenant & Move-Out Date</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-medium text-slate-400 uppercase tracking-widest block mb-1">Tenant</label>
+              <select value={selectedTenant?.id || ""} onChange={e => selectTenant(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
+                <option value="">Select tenant...</option>
+                {tenants.map(t => <option key={t.id} value={t.id}>{t.name} — {t.property}</option>)}
+              </select>
+            </div>
+            {selectedTenant && (
+              <>
+                <div>
+                  <label className="text-xs font-medium text-slate-400 uppercase tracking-widest block mb-1">Move-Out Date</label>
+                  <input type="date" value={moveOutDate} onChange={e => setMoveOutDate(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" />
+                </div>
+                <div className="bg-indigo-50/30 rounded-2xl p-4 space-y-2 text-sm">
+                  <div className="flex justify-between"><span className="text-slate-400">Property</span><span className="font-medium text-slate-700">{selectedTenant.property}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-400">Monthly Rent</span><span className="font-medium text-slate-700">${safeNum(selectedTenant.rent)}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-400">Balance</span><span className={`font-bold ${outstandingBalance > 0 ? "text-red-600" : "text-emerald-600"}`}>${outstandingBalance.toFixed(2)}</span></div>
+                  {selectedLease && <div className="flex justify-between"><span className="text-slate-400">Security Deposit</span><span className="font-medium text-slate-700">${depositAmount.toFixed(2)}</span></div>}
+                </div>
+              </>
+            )}
+          </div>
+          <div className="flex justify-end mt-6">
+            <button disabled={!selectedTenant} onClick={() => setStep(2)} className="bg-indigo-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 disabled:opacity-40 transition-colors">Next →</button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 2: Inspection Checklist */}
+      {step === 2 && (
+        <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-6">
+          <h3 className="text-lg font-manrope font-bold text-slate-800 mb-4">Move-Out Inspection</h3>
+          <div className="space-y-2">
+            {checklist.map((item, i) => (
+              <div key={i} className={`flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-colors ${item.checked ? "bg-emerald-50 border-emerald-200" : "bg-white border-indigo-50 hover:bg-indigo-50/30"}`} onClick={() => { const c = [...checklist]; c[i] = { ...c[i], checked: !c[i].checked }; setChecklist(c); }}>
+                <span className={`material-icons-outlined text-lg ${item.checked ? "text-emerald-600" : "text-slate-300"}`}>{item.checked ? "check_circle" : "radio_button_unchecked"}</span>
+                <span className={`flex-1 text-sm ${item.checked ? "text-emerald-700 font-medium" : "text-slate-500"}`}>{item.label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-between mt-6">
+            <button onClick={() => setStep(1)} className="text-slate-400 px-4 py-2 rounded-2xl hover:bg-indigo-50/30 transition-colors">← Back</button>
+            <button onClick={() => setStep(3)} className="bg-indigo-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 transition-colors">Next →</button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: Deposit Accounting */}
+      {step === 3 && (
+        <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-6">
+          <h3 className="text-lg font-manrope font-bold text-slate-800 mb-4">Security Deposit Settlement</h3>
+          <div className="bg-indigo-50/30 rounded-2xl p-4 mb-4">
+            <div className="flex justify-between text-sm"><span className="text-slate-400">Original Deposit</span><span className="font-bold text-slate-700">${depositAmount.toFixed(2)}</span></div>
+          </div>
+          <h4 className="text-sm font-semibold text-slate-500 mb-2">Deductions</h4>
+          {deductions.map((d, i) => (
+            <div key={i} className="flex items-center justify-between py-2 border-b border-indigo-50/50">
+              <span className="text-sm text-slate-700">{d.desc}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-red-600">-${d.amount.toFixed(2)}</span>
+                <button onClick={() => setDeductions(deductions.filter((_, j) => j !== i))} className="text-slate-300 hover:text-red-500"><span className="material-icons-outlined text-sm">close</span></button>
+              </div>
+            </div>
+          ))}
+          <div className="flex gap-2 mt-3">
+            <input placeholder="Description (e.g., Wall damage)" value={newDeductionDesc} onChange={e => setNewDeductionDesc(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm flex-1" />
+            <input placeholder="$" type="number" value={newDeductionAmt} onChange={e => setNewDeductionAmt(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-24" />
+            <button onClick={addDeduction} className="bg-indigo-600 text-white px-3 py-2 rounded-2xl text-sm font-semibold">Add</button>
+          </div>
+          <div className="bg-emerald-50 rounded-2xl p-4 mt-4 space-y-1">
+            <div className="flex justify-between text-sm"><span className="text-slate-400">Total Deductions</span><span className="font-semibold text-red-600">-${totalDeductions.toFixed(2)}</span></div>
+            <div className="flex justify-between text-sm font-bold"><span className="text-emerald-700">Return to Tenant</span><span className="text-emerald-700">${depositReturn.toFixed(2)}</span></div>
+          </div>
+          <div className="flex justify-between mt-6">
+            <button onClick={() => setStep(2)} className="text-slate-400 px-4 py-2 rounded-2xl hover:bg-indigo-50/30 transition-colors">← Back</button>
+            <button onClick={() => setStep(4)} className="bg-indigo-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 transition-colors">Next →</button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 4: AR Settlement */}
+      {step === 4 && (
+        <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-6">
+          <h3 className="text-lg font-manrope font-bold text-slate-800 mb-4">Outstanding Balance</h3>
+          <div className={`rounded-2xl p-4 mb-4 ${outstandingBalance > 0 ? "bg-red-50" : "bg-emerald-50"}`}>
+            <div className="text-sm text-slate-400">Current Balance</div>
+            <div className={`text-2xl font-manrope font-bold ${outstandingBalance > 0 ? "text-red-600" : "text-emerald-600"}`}>${outstandingBalance.toFixed(2)}</div>
+          </div>
+          {outstandingBalance > 0 && (
+            <div className="space-y-2">
+              {[
+                { value: "collect", label: "Keep for Collection", desc: "Balance remains on tenant record for future collection", icon: "account_balance" },
+                { value: "waive", label: "Write Off (Bad Debt)", desc: "Post as bad debt expense and zero out balance", icon: "money_off" },
+                { value: "collections", label: "Send to Collections", desc: "Mark tenant for external collections agency", icon: "gavel" },
+              ].map(opt => (
+                <div key={opt.value} onClick={() => setArAction(opt.value)} className={`flex items-center gap-3 p-4 rounded-2xl border cursor-pointer transition-all ${arAction === opt.value ? "border-indigo-300 bg-indigo-50" : "border-indigo-50 hover:border-indigo-200"}`}>
+                  <span className={`material-icons-outlined ${arAction === opt.value ? "text-indigo-600" : "text-slate-400"}`}>{opt.icon}</span>
+                  <div><div className="text-sm font-semibold text-slate-700">{opt.label}</div><div className="text-xs text-slate-400">{opt.desc}</div></div>
+                </div>
+              ))}
+            </div>
+          )}
+          {outstandingBalance <= 0 && <p className="text-sm text-emerald-600 font-medium">No outstanding balance — tenant is settled.</p>}
+          <div className="flex justify-between mt-6">
+            <button onClick={() => setStep(3)} className="text-slate-400 px-4 py-2 rounded-2xl hover:bg-indigo-50/30 transition-colors">← Back</button>
+            <button onClick={() => setStep(5)} className="bg-indigo-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 transition-colors">Next →</button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 5: Confirm & Execute */}
+      {step === 5 && (
+        <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-6">
+          <h3 className="text-lg font-manrope font-bold text-slate-800 mb-4">Confirm Move-Out</h3>
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between py-2 border-b border-indigo-50"><span className="text-slate-400">Tenant</span><span className="font-semibold text-slate-700">{selectedTenant?.name}</span></div>
+            <div className="flex justify-between py-2 border-b border-indigo-50"><span className="text-slate-400">Property</span><span className="font-semibold text-slate-700">{selectedLease?.property}</span></div>
+            <div className="flex justify-between py-2 border-b border-indigo-50"><span className="text-slate-400">Move-Out Date</span><span className="font-semibold text-slate-700">{moveOutDate}</span></div>
+            <div className="flex justify-between py-2 border-b border-indigo-50"><span className="text-slate-400">Inspection Items</span><span className="font-semibold text-emerald-600">{checklist.filter(c => c.checked).length}/{checklist.length} checked</span></div>
+            <div className="flex justify-between py-2 border-b border-indigo-50"><span className="text-slate-400">Deposit Return</span><span className="font-semibold text-emerald-600">${depositReturn.toFixed(2)}</span></div>
+            {totalDeductions > 0 && <div className="flex justify-between py-2 border-b border-indigo-50"><span className="text-slate-400">Deductions</span><span className="font-semibold text-red-600">-${totalDeductions.toFixed(2)}</span></div>}
+            <div className="flex justify-between py-2 border-b border-indigo-50"><span className="text-slate-400">AR Action</span><span className="font-semibold text-slate-700 capitalize">{outstandingBalance > 0 ? arAction.replace("_", " ") : "Settled"}</span></div>
+          </div>
+          <div className="bg-amber-50 rounded-2xl p-3 mt-4 text-xs text-amber-700">
+            <span className="material-icons-outlined text-sm align-middle mr-1">warning</span>
+            This will terminate the lease, update property to vacant, and post all accounting entries. This cannot be undone.
+          </div>
+          <div className="flex justify-between mt-6">
+            <button onClick={() => setStep(4)} className="text-slate-400 px-4 py-2 rounded-2xl hover:bg-indigo-50/30 transition-colors">← Back</button>
+            <button onClick={executeMoveOut} disabled={processing} className="bg-red-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-red-700 disabled:opacity-40 transition-colors">
+              {processing ? "Processing..." : "Execute Move-Out"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const pageComponents = {
   dashboard: Dashboard,
   properties: Properties,
@@ -8953,6 +9295,7 @@ const pageComponents = {
   owners: OwnerManagement,
   notifications: EmailNotifications,
   roles: RoleManagement,
+  moveout: MoveOutWizard,
   tenant_portal: TenantPortal,
   owner_portal: OwnerPortal,
 };
