@@ -419,16 +419,16 @@ const priorityColors = {
 
 // ============ SHARED COMPONENTS ============
 function Badge({ status, label }) {
-  const color = statusColors[status] || "bg-gray-100 text-gray-600";
-  return <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${color}`}>{label || status}</span>;
+  const color = statusColors[status] || "bg-slate-100 text-slate-600";
+  return <span className={`px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wide ${color}`}>{label || status}</span>;
 }
 
-function StatCard({ label, value, sub, color = "text-gray-800", onClick }) {
+function StatCard({ label, value, sub, color = "text-slate-800", onClick }) {
   return (
-    <div onClick={onClick} className={"bg-white rounded-xl shadow-sm border border-gray-100 p-4" + (onClick ? " cursor-pointer hover:border-indigo-200 hover:shadow-md transition-all" : "")}>
-      <div className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">{label}</div>
-      <div className={`text-2xl font-bold ${color}`}>{value}</div>
-      {sub && <div className="text-xs text-gray-400 mt-1">{sub}</div>}
+    <div onClick={onClick} className={"bg-white rounded-3xl shadow-card border border-indigo-50 p-5" + (onClick ? " cursor-pointer hover:border-indigo-200 hover:shadow-md transition-all" : "")}>
+      <div className="text-xs text-slate-400 font-medium uppercase tracking-widest mb-1">{label}</div>
+      <div className={`text-2xl font-manrope font-bold ${color}`}>{value}</div>
+      {sub && <div className="text-xs text-slate-400 mt-1">{sub}</div>}
     </div>
   );
 }
@@ -444,10 +444,10 @@ function Spinner() {
 function Modal({ title, onClose, children }) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white">
-          <h3 className="font-bold text-gray-800 text-lg">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+      <div className="bg-white rounded-3xl shadow-card border border-indigo-50 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-indigo-50 sticky top-0 bg-white rounded-t-3xl">
+          <h3 className="font-manrope font-bold text-slate-800 text-lg">{title}</h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 transition-colors"><span className="material-icons-outlined text-lg">close</span></button>
         </div>
         <div className="p-6">{children}</div>
       </div>
@@ -463,8 +463,8 @@ function PropertyDropdown({ value, onChange, className = "", required = false, l
   }, [companyId]);
   return (
     <div>
-      {label && <label className="text-xs font-medium text-gray-600 block mb-1">{label} {required && "*"}</label>}
-      <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel ? sel.id : null); }} className={`border border-gray-200 rounded-lg px-3 py-2 text-sm w-full ${className}`} required={required}>
+      {label && <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">{label} {required && "*"}</label>}
+      <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel ? sel.id : null); }} className={`border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full focus:border-indigo-300 focus:outline-none transition-colors ${className}`} required={required}>
         <option value="">Select property...</option>
         {properties.map(p => <option key={p.id} value={p.address}>{p.address} ({p.type})</option>)}
       </select>
@@ -488,68 +488,79 @@ function PropertySelect({ value, onChange, className = "", companyId }) {
 // ============ LANDING PAGE ============
 function LandingPage({ onGetStarted }) {
   return (
-    <div className="min-h-screen bg-white">
-      <nav className="flex items-center justify-between px-8 py-4 border-b border-gray-100">
-        <div className="text-xl font-bold text-indigo-700">🏡 PropManager</div>
-        <button onClick={() => onGetStarted("login")} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">Sign In</button>
+    <div className="min-h-screen bg-[#fcf8ff]">
+      <nav className="flex items-center justify-between px-8 py-4 bg-white/80 backdrop-blur-md border-b border-indigo-50">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-200">
+            <span className="material-icons-outlined text-white text-sm">domain</span>
+          </div>
+          <span className="font-manrope font-extrabold text-xl tracking-tight text-indigo-900">Estate Logic</span>
+        </div>
+        <button onClick={() => onGetStarted("login")} className="bg-indigo-600 text-white text-sm px-5 py-2.5 rounded-2xl hover:bg-indigo-700 font-semibold transition-colors">Sign In</button>
       </nav>
-      <div className="bg-gradient-to-br from-indigo-50 to-white px-8 py-16 text-center">
-        <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4 leading-tight">Property Management<br />Made Simple</h1>
-        <p className="text-lg text-gray-500 mb-12 max-w-xl mx-auto">Manage properties, tenants, rent, maintenance, and accounting — all in one place.</p>
+      <div className="bg-gradient-to-br from-indigo-50/50 to-[#fcf8ff] px-8 py-16 text-center">
+        <p className="text-indigo-600 font-semibold text-sm uppercase tracking-widest mb-3">Property Management Platform</p>
+        <h1 className="text-4xl md:text-5xl font-manrope font-extrabold text-slate-900 mb-4 leading-tight">Property Management<br />Made Simple</h1>
+        <p className="text-lg text-slate-400 mb-12 max-w-xl mx-auto">Manage properties, tenants, rent, maintenance, and accounting — all in one place.</p>
 
-        <h2 className="text-lg font-semibold text-gray-700 mb-6">I am a...</h2>
+        <h2 className="text-lg font-manrope font-bold text-slate-700 mb-6">I am a...</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-          {/* Property Manager */}
-          <button onClick={() => onGetStarted("signup_pm")} className="bg-white rounded-2xl border-2 border-indigo-200 p-8 text-center hover:border-indigo-500 hover:shadow-lg transition-all group">
-            <div className="w-16 h-16 rounded-2xl bg-indigo-100 flex items-center justify-center text-3xl mx-auto mb-4 group-hover:bg-indigo-200">🏢</div>
-            <div className="text-lg font-bold text-gray-800 mb-2">Property Manager</div>
-            <p className="text-sm text-gray-500">I manage properties on behalf of owners. Full access to all management tools.</p>
-            <div className="mt-4 text-indigo-600 text-sm font-semibold">Get Started →</div>
+          <button onClick={() => onGetStarted("signup_pm")} className="bg-white rounded-3xl border border-indigo-100 p-8 text-center hover:border-indigo-300 hover:shadow-card transition-all group">
+            <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+              <span className="material-icons-outlined text-indigo-600 text-3xl">business</span>
+            </div>
+            <div className="text-lg font-manrope font-bold text-slate-800 mb-2">Property Manager</div>
+            <p className="text-sm text-slate-400">I manage properties on behalf of owners. Full access to all management tools.</p>
+            <div className="mt-4 text-indigo-600 text-sm font-bold">Get Started →</div>
           </button>
 
-          {/* Property Owner */}
-          <button onClick={() => onGetStarted("signup_owner")} className="bg-white rounded-2xl border-2 border-emerald-200 p-8 text-center hover:border-emerald-500 hover:shadow-lg transition-all group">
-            <div className="w-16 h-16 rounded-2xl bg-emerald-100 flex items-center justify-center text-3xl mx-auto mb-4 group-hover:bg-emerald-200">🏠</div>
-            <div className="text-lg font-bold text-gray-800 mb-2">Property Owner</div>
-            <p className="text-sm text-gray-500">I own properties and want to manage them directly or assign a property manager.</p>
-            <div className="mt-4 text-emerald-600 text-sm font-semibold">Get Started →</div>
+          <button onClick={() => onGetStarted("signup_owner")} className="bg-white rounded-3xl border border-emerald-100 p-8 text-center hover:border-emerald-300 hover:shadow-card transition-all group">
+            <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+              <span className="material-icons-outlined text-emerald-600 text-3xl">home</span>
+            </div>
+            <div className="text-lg font-manrope font-bold text-slate-800 mb-2">Property Owner</div>
+            <p className="text-sm text-slate-400">I own properties and want to manage them directly or assign a property manager.</p>
+            <div className="mt-4 text-emerald-600 text-sm font-bold">Get Started →</div>
           </button>
 
-          {/* Tenant */}
-          <button onClick={() => onGetStarted("signup_tenant")} className="bg-white rounded-2xl border-2 border-amber-200 p-8 text-center hover:border-amber-500 hover:shadow-lg transition-all group">
-            <div className="w-16 h-16 rounded-2xl bg-amber-100 flex items-center justify-center text-3xl mx-auto mb-4 group-hover:bg-amber-200">🔑</div>
-            <div className="text-lg font-bold text-gray-800 mb-2">Tenant</div>
-            <p className="text-sm text-gray-500">I have an invite code from my landlord or property manager to access my portal.</p>
-            <div className="mt-4 text-amber-600 text-sm font-semibold">Enter Invite Code →</div>
+          <button onClick={() => onGetStarted("signup_tenant")} className="bg-white rounded-3xl border border-amber-100 p-8 text-center hover:border-amber-300 hover:shadow-card transition-all group">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+              <span className="material-icons-outlined text-amber-600 text-3xl">vpn_key</span>
+            </div>
+            <div className="text-lg font-manrope font-bold text-slate-800 mb-2">Tenant</div>
+            <p className="text-sm text-slate-400">I have an invite code from my landlord or property manager to access my portal.</p>
+            <div className="mt-4 text-amber-600 text-sm font-bold">Enter Invite Code →</div>
           </button>
         </div>
 
         <div className="mt-10">
-          <button onClick={() => onGetStarted("login")} className="text-sm text-gray-500 hover:text-indigo-600">Already have an account? <span className="font-semibold">Sign In</span></button>
+          <button onClick={() => onGetStarted("login")} className="text-sm text-slate-400 hover:text-indigo-600 transition-colors">Already have an account? <span className="font-bold">Sign In</span></button>
         </div>
       </div>
 
-      <div className="px-8 py-16 bg-gray-50">
-        <h2 className="text-2xl font-bold text-center text-gray-800 mb-10">Everything You Need</h2>
+      <div className="px-8 py-16 bg-white/50">
+        <h2 className="text-2xl font-manrope font-bold text-center text-slate-800 mb-10">Everything You Need</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
           {[
-            { icon: "🏠", title: "Property Management", desc: "Track all your properties, units, and their status in one place." },
-            { icon: "👤", title: "Tenant Management", desc: "Manage tenant profiles, leases, and communication effortlessly." },
-            { icon: "💳", title: "Rent Collection", desc: "Collect rent via ACH, card, or autopay with automated reminders." },
-            { icon: "🔧", title: "Maintenance Tracking", desc: "Handle work orders from submission to completion with ease." },
-            { icon: "⚡", title: "Utility Management", desc: "Track and pay utility bills with full audit logs." },
-            { icon: "📊", title: "Full Accounting", desc: "General ledger, bank reconciliation, and financial reports." },
+            { icon: "apartment", title: "Property Management", desc: "Track all your properties, units, and their status in one place." },
+            { icon: "people", title: "Tenant Management", desc: "Manage tenant profiles, leases, and communication effortlessly." },
+            { icon: "payments", title: "Rent Collection", desc: "Collect rent via ACH, card, or autopay with automated reminders." },
+            { icon: "build", title: "Maintenance Tracking", desc: "Handle work orders from submission to completion with ease." },
+            { icon: "bolt", title: "Utility Management", desc: "Track and pay utility bills with full audit logs." },
+            { icon: "account_balance", title: "Full Accounting", desc: "General ledger, bank reconciliation, and financial reports." },
           ].map(f => (
-            <div key={f.title} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-              <div className="text-3xl mb-3">{f.icon}</div>
-              <div className="font-semibold text-gray-800 mb-1">{f.title}</div>
-              <div className="text-sm text-gray-500">{f.desc}</div>
+            <div key={f.title} className="bg-white rounded-3xl p-6 shadow-card border border-indigo-50 hover:border-indigo-200 transition-all">
+              <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mb-3">
+                <span className="material-icons-outlined text-xl">{f.icon}</span>
+              </div>
+              <div className="font-manrope font-bold text-slate-800 mb-1">{f.title}</div>
+              <div className="text-sm text-slate-400">{f.desc}</div>
             </div>
           ))}
         </div>
       </div>
-      <footer className="border-t border-gray-100 px-8 py-6 text-center text-xs text-gray-400">
-        © 2025 PropManager. All rights reserved.
+      <footer className="border-t border-indigo-50 px-8 py-6 text-center text-xs text-slate-400">
+        © 2025 Estate Logic by Sigma Housing LLC. All rights reserved.
       </footer>
     </div>
   );
@@ -7709,22 +7720,22 @@ const ROLES = {
 };
 
 const ALL_NAV = [
-  { id: "dashboard", label: "Dashboard", icon: "⊞" },
-  { id: "properties", label: "Properties", icon: "🏠" },
-  { id: "tenants", label: "Tenants", icon: "👤" },
-  { id: "payments", label: "Payments", icon: "💳" },
-  { id: "maintenance", label: "Maintenance", icon: "🔧" },
-  { id: "utilities", label: "Utilities", icon: "⚡" },
-  { id: "accounting", label: "Accounting", icon: "📊" },
-  { id: "documents", label: "Documents", icon: "📁" },
-  { id: "inspections", label: "Inspections", icon: "🔍" },
-  { id: "autopay", label: "Autopay", icon: "🔄" },
-  { id: "hoa", label: "HOA Payments", icon: "🏘️" },
-  { id: "audittrail", label: "Audit Trail", icon: "📋" },
-  { id: "leases", label: "Leases", icon: "📝" },
-  { id: "vendors", label: "Vendors", icon: "🛠️" },
-  { id: "owners", label: "Owners", icon: "👤" },
-  { id: "notifications", label: "Notifications", icon: "📨" },
+  { id: "dashboard", label: "Dashboard", icon: "dashboard" },
+  { id: "properties", label: "Properties", icon: "apartment" },
+  { id: "tenants", label: "Tenants", icon: "people" },
+  { id: "payments", label: "Payments", icon: "payments" },
+  { id: "maintenance", label: "Maintenance", icon: "build" },
+  { id: "utilities", label: "Utilities", icon: "bolt" },
+  { id: "accounting", label: "Accounting", icon: "account_balance" },
+  { id: "documents", label: "Documents", icon: "folder" },
+  { id: "inspections", label: "Inspections", icon: "search" },
+  { id: "autopay", label: "Autopay", icon: "autorenew" },
+  { id: "hoa", label: "HOA Payments", icon: "holiday_village" },
+  { id: "audittrail", label: "Audit Trail", icon: "history" },
+  { id: "leases", label: "Leases", icon: "description" },
+  { id: "vendors", label: "Vendors", icon: "handyman" },
+  { id: "owners", label: "Owners", icon: "person" },
+  { id: "notifications", label: "Notifications", icon: "mail" },
 ];
 
 // ============ AUTOPAY / RECURRING RENT ============
@@ -9618,7 +9629,7 @@ export default function App() {
   const allowedPages = customAllowedPages || ROLES[userRole]?.pages || ROLES[companyRole]?.pages || ["dashboard"];
   const navItems = ALL_NAV.filter(n => allowedPages.includes(n.id));
   const adminNav = (userRole === "admin" || companyRole === "admin")
-    ? [...navItems, { id: "roles", label: "Team & Roles", icon: "👥" }]
+    ? [...navItems, { id: "roles", label: "Team & Roles", icon: "group" }]
     : navItems;
 
   // Owner-admins (created their own company) get full app access
@@ -9629,76 +9640,81 @@ export default function App() {
   const safePage = allowedPages.includes(page) ? page : allowedPages[0];
 
   return (
-    <div className="flex h-screen bg-gray-50 font-sans overflow-hidden">
+    <div className="flex h-screen bg-[#fcf8ff] font-inter overflow-hidden">
       {/* Sidebar */}
-      <div className={`${sidebarOpen ? "flex" : "hidden"} md:flex flex-col w-56 bg-white border-r border-gray-100 shadow-sm z-20 fixed md:relative h-full`}>
-        <div className="px-5 py-4 border-b border-gray-100">
-          <div className="text-lg font-bold text-indigo-700">🏡 PropManager</div>
+      <div className={`${sidebarOpen ? "flex" : "hidden"} md:flex flex-col w-56 bg-white/80 backdrop-blur-md border-r border-indigo-50 z-20 fixed md:relative h-full`}>
+        <div className="px-5 py-4 border-b border-indigo-50">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-200">
+              <span className="material-icons-outlined text-white text-sm">domain</span>
+            </div>
+            <span className="font-manrope font-extrabold text-lg tracking-tight text-indigo-900">Estate Logic</span>
+          </div>
           {activeCompany && (
-            <div className="flex items-center gap-1.5 mt-1">
-              <span className="w-4 h-4 rounded bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold">{activeCompany.name[0]}</span>
-              <span className="text-xs text-gray-500 truncate max-w-32">{activeCompany.name}</span>
+            <div className="flex items-center gap-1.5 mt-2">
+              <span className="w-5 h-5 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold">{activeCompany.name[0]}</span>
+              <span className="text-xs text-slate-500 truncate max-w-32 font-medium">{activeCompany.name}</span>
             </div>
           )}
         </div>
-        <nav className="flex-1 py-3 overflow-y-auto">
+        <nav className="flex-1 py-3 px-2 overflow-y-auto">
           {adminNav.map(n => (
             <button key={n.id} onClick={() => { setPage(n.id); setSidebarOpen(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left transition-colors ${(effectivePage === n.id || safePage === n.id) && page === n.id ? "bg-indigo-50 text-indigo-700 font-semibold border-r-2 border-indigo-600" : "text-gray-600 hover:bg-gray-50"}`}>
-              <span>{n.icon}</span>{n.label}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left transition-all rounded-2xl mb-0.5 ${(effectivePage === n.id || safePage === n.id) && page === n.id ? "bg-indigo-50 text-indigo-700 font-semibold" : "text-slate-500 hover:bg-indigo-50/50 hover:text-slate-700"}`}>
+              <span className="material-icons-outlined text-lg">{n.icon}</span>{n.label}
             </button>
           ))}
         </nav>
-        <div className="px-4 py-3 border-t border-gray-100">
+        <div className="px-4 py-3 border-t border-indigo-50">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${ROLES[userRole]?.color || "bg-indigo-600"}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${ROLES[userRole]?.color || "bg-indigo-600"}`}>
                 {userProfile?.name?.[0]?.toUpperCase() || "U"}
               </div>
               <div>
-                <div className="text-xs font-semibold text-gray-700 truncate max-w-24">{userProfile?.name || "User"}</div>
+                <div className="text-xs font-semibold text-slate-700 truncate max-w-24">{userProfile?.name || "User"}</div>
                 <div className={`text-xs font-medium ${ROLES[userRole]?.color?.replace("bg-", "text-") || "text-indigo-600"}`}>{ROLES[userRole]?.label}</div>
               </div>
             </div>
-            <button onClick={handleLogout} className="text-xs text-gray-400 hover:text-red-500">Logout</button>
+            <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 transition-colors"><span className="material-icons-outlined text-lg">logout</span></button>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white border-b border-gray-100 px-4 py-3 flex items-center gap-3">
-          <button className="md:hidden text-gray-500 text-xl" onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button>
-          <div className="flex-1 text-sm text-gray-400 capitalize">{page.replace("_", " ")}</div>
-          <button onClick={switchCompany} className="hidden md:flex items-center gap-1.5 text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors font-medium border border-indigo-100">
-            <span>⇄</span> Switch Company
+        <header className="bg-white/80 backdrop-blur-md border-b border-indigo-50 px-4 py-3 flex items-center gap-3">
+          <button className="md:hidden text-slate-400 hover:text-slate-600 transition-colors" onClick={() => setSidebarOpen(!sidebarOpen)}><span className="material-icons-outlined">menu</span></button>
+          <div className="flex-1 text-sm text-slate-400 capitalize font-medium">{page.replace("_", " ")}</div>
+          <button onClick={switchCompany} className="hidden md:flex items-center gap-1.5 text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-2xl hover:bg-indigo-100 transition-colors font-semibold border border-indigo-100">
+            <span className="material-icons-outlined text-sm">swap_horiz</span> Switch Company
           </button>
-          <span className={`hidden md:inline-block text-white text-xs px-2 py-0.5 rounded-full font-semibold ${ROLES[userRole]?.color || "bg-indigo-600"}`}>
+          <span className={`hidden md:inline-block text-white text-xs px-2.5 py-1 rounded-full font-semibold uppercase tracking-wide ${ROLES[userRole]?.color || "bg-indigo-600"}`}>
             {ROLES[userRole]?.label}
           </span>
           <div className="relative">
-            <button onClick={() => { setShowNotifications(!showNotifications); setUnreadCount(0); }} className="relative text-gray-400 hover:text-gray-600 p-1">
-              🔔
+            <button onClick={() => { setShowNotifications(!showNotifications); setUnreadCount(0); }} className="relative w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 hover:bg-indigo-100 transition-colors">
+              <span className="material-icons-outlined">notifications</span>
               {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{unreadCount > 9 ? "9+" : unreadCount}</span>
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-white"></span>
               )}
             </button>
             {showNotifications && (
-              <div className="absolute right-0 top-8 w-80 bg-white rounded-xl shadow-xl border border-gray-100 z-50">
-                <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center">
-                  <span className="font-semibold text-gray-700 text-sm">Notifications</span>
-                  <button onClick={() => { setNotifications([]); setShowNotifications(false); }} className="text-xs text-gray-400 hover:text-red-500">Clear all</button>
+              <div className="absolute right-0 top-12 w-80 bg-white rounded-3xl shadow-card border border-indigo-50 z-50">
+                <div className="px-4 py-3 border-b border-indigo-50 flex justify-between items-center">
+                  <span className="font-manrope font-bold text-slate-700 text-sm">Notifications</span>
+                  <button onClick={() => { setNotifications([]); setShowNotifications(false); }} className="text-xs text-slate-400 hover:text-red-500">Clear all</button>
                 </div>
                 <div className="max-h-72 overflow-y-auto">
                   {notifications.length === 0 ? (
-                    <div className="px-4 py-6 text-center text-gray-400 text-sm">No notifications yet</div>
+                    <div className="px-4 py-6 text-center text-slate-400 text-sm">No notifications yet</div>
                   ) : (
                     notifications.map(n => (
-                      <div key={n.id} className="px-4 py-3 border-b border-gray-50 hover:bg-gray-50 flex items-start gap-2">
+                      <div key={n.id} className="px-4 py-3 border-b border-indigo-50/50 hover:bg-indigo-50/30 flex items-start gap-2 transition-colors">
                         <span className="text-lg">{n.icon}</span>
                         <div className="flex-1">
-                          <div className="text-sm text-gray-700">{n.message}</div>
-                          <div className="text-xs text-gray-400 mt-0.5">{n.time}</div>
+                          <div className="text-sm text-slate-700">{n.message}</div>
+                          <div className="text-xs text-slate-400 mt-0.5">{n.time}</div>
                         </div>
                       </div>
                     ))
@@ -9709,7 +9725,7 @@ export default function App() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
           {userRole === "admin" && activeCompany && <PendingRequestsPanel companyId={activeCompany.id} addNotification={addNotification} />}
           {userRole === "admin" && activeCompany && <PendingPMAssignments companyId={activeCompany.id} addNotification={addNotification} />}
           <Page
@@ -9725,6 +9741,22 @@ export default function App() {
           />
         </main>
       </div>
+
+      {/* Mobile Bottom Nav */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-indigo-50 px-4 pt-3 pb-6 flex justify-around items-center z-40 md:hidden">
+        {[
+          { id: "dashboard", icon: "dashboard", label: "Home" },
+          { id: "properties", icon: "apartment", label: "Assets" },
+          { id: "tenants", icon: "people", label: "Tenants" },
+          { id: "payments", icon: "payments", label: "Rent" },
+          { id: "maintenance", icon: "build", label: "Repair" },
+        ].map(n => (
+          <button key={n.id} onClick={() => setPage(n.id)} className={`flex flex-col items-center gap-1 transition-colors ${page === n.id ? "text-indigo-600" : "text-slate-400"}`}>
+            {page === n.id ? <div className="bg-indigo-50 p-2 rounded-xl"><span className="material-icons-outlined">{n.icon}</span></div> : <span className="material-icons-outlined">{n.icon}</span>}
+            <span className="text-[10px] font-bold uppercase tracking-tight">{n.label}</span>
+          </button>
+        ))}
+      </nav>
 
       {sidebarOpen && <div className="fixed inset-0 bg-black bg-opacity-20 z-10 md:hidden" onClick={() => setSidebarOpen(false)} />}
       {showNotifications && <div className="fixed inset-0 z-30" onClick={() => setShowNotifications(false)} />}
