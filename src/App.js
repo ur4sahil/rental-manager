@@ -3383,8 +3383,116 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
   const [utilSearch, setUtilSearch] = useState("");
   const [utilFilterStatus, setUtilFilterStatus] = useState("all");
   const [utilFilterProp, setUtilFilterProp] = useState("all");
+  
+  // === Utility Automation ===
+  const [utilTab, setUtilTab] = useState("bills"); // bills / automation / jobs
+  const [utilAccounts, setUtilAccounts] = useState([]);
+  const [autoBills, setAutoBills] = useState([]);
+  const [autoJobs, setAutoJobs] = useState([]);
+  const [providers, setProviders] = useState([]);
+  const [showAccountForm, setShowAccountForm] = useState(false);
+  const [editingAccount, setEditingAccount] = useState(null);
+  const [accountForm, setAccountForm] = useState({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "" });
+  const [show2FAPrompt, setShow2FAPrompt] = useState(null); // job awaiting 2FA
+  const [twoFACode, setTwoFACode] = useState("");
+  const [billViewModal, setBillViewModal] = useState(null); // bill being reviewed
+  const [paymentMethodModal, setPaymentMethodModal] = useState(null); // bill for payment auth
 
-  useEffect(() => { fetchUtilities(); }, [companyId]);
+  useEffect(() => { fetchUtilities(); fetchAutomationData(); }, [companyId]);
+
+  async function fetchAutomationData() {
+    const [accts, bills, jobs, provs] = await Promise.all([
+      supabase.from("utility_accounts").select("*").eq("company_id", companyId).is("archived_at", null).order("property"),
+      supabase.from("utility_bills").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }).limit(100),
+      supabase.from("automation_jobs").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(50),
+      supabase.from("utility_providers").select("*").eq("is_active", true).order("display_name"),
+    ]);
+    setUtilAccounts(accts.data || []);
+    setAutoBills(bills.data || []);
+    setAutoJobs(jobs.data || []);
+    setProviders(provs.data || []);
+  }
+
+  async function saveAccount() {
+    if (!accountForm.property || !accountForm.provider || !accountForm.username || !accountForm.password) {
+      alert("Property, provider, username, and password are required."); return;
+    }
+    // Encrypt credentials client-side before sending
+    // In production, this should be done server-side via Edge Function
+    // For now, we use a simple encoding (NOT production-grade encryption)
+    const iv = Array.from(crypto.getRandomValues(new Uint8Array(12))).map(b => b.toString(16).padStart(2, "0")).join("");
+    const providerInfo = providers.find(p => p.id === accountForm.provider);
+    const payload = {
+      company_id: companyId,
+      property: accountForm.property,
+      provider: accountForm.provider,
+      provider_display: providerInfo?.display_name || accountForm.provider,
+      account_number: accountForm.account_number,
+      username_encrypted: btoa(accountForm.username), // TODO: Replace with server-side AES-256
+      password_encrypted: btoa(accountForm.password), // TODO: Replace with server-side AES-256
+      encryption_iv: iv,
+      login_url: providerInfo?.login_url || "",
+      account_type: accountForm.account_type,
+      check_frequency: accountForm.check_frequency,
+      two_factor_method: accountForm.two_factor_method,
+      notes: accountForm.notes,
+    };
+    let error;
+    if (editingAccount) {
+      ({ error } = await supabase.from("utility_accounts").update(payload).eq("id", editingAccount.id).eq("company_id", companyId));
+    } else {
+      ({ error } = await supabase.from("utility_accounts").insert([payload]));
+    }
+    if (error) { alert("Error saving account: " + error.message); return; }
+    addNotification("⚡", (editingAccount ? "Updated" : "Added") + " utility account: " + (providerInfo?.display_name || accountForm.provider));
+    setShowAccountForm(false);
+    setEditingAccount(null);
+    setAccountForm({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "" });
+    fetchAutomationData();
+  }
+
+  async function deleteAccount(acct) {
+    if (!window.confirm("Archive this utility account? Automation will stop for this account.")) return;
+    await supabase.from("utility_accounts").update({ archived_at: new Date().toISOString() }).eq("id", acct.id).eq("company_id", companyId);
+    addNotification("📦", "Utility account archived: " + acct.provider_display);
+    fetchAutomationData();
+  }
+
+  async function triggerManualCheck(acct) {
+    // Queue a manual bill check job
+    const { error } = await supabase.from("automation_jobs").insert([{
+      company_id: companyId,
+      utility_account_id: acct.id,
+      job_type: "fetch_bill",
+      status: "queued",
+      triggered_by: userProfile?.email || "manual",
+    }]);
+    if (error) { alert("Error queuing job: " + error.message); return; }
+    addNotification("🔄", "Bill check queued for " + acct.provider_display + " at " + acct.property);
+    fetchAutomationData();
+  }
+
+  async function authorizeBillPayment(bill, paymentMethod) {
+    const { error } = await supabase.from("utility_bills").update({
+      status: "authorized",
+      payment_method_selected: paymentMethod,
+      authorized_by: userProfile?.email,
+      authorized_at: new Date().toISOString(),
+    }).eq("id", bill.id).eq("company_id", companyId);
+    if (error) { alert("Error authorizing: " + error.message); return; }
+    // Queue payment job
+    await supabase.from("automation_jobs").insert([{
+      company_id: companyId,
+      utility_account_id: bill.utility_account_id,
+      bill_id: bill.id,
+      job_type: "pay_bill",
+      status: "queued",
+      triggered_by: userProfile?.email || "manual",
+    }]);
+    addNotification("✅", "Payment authorized: " + bill.provider_display + " $" + bill.amount);
+    setPaymentMethodModal(null);
+    fetchAutomationData();
+  }
 
   async function fetchUtilities() {
     const { data } = await supabase.from("utilities").select("*").eq("company_id", companyId).order("due", { ascending: true }).limit(500);
@@ -5193,6 +5301,7 @@ function Accounting({ companyId, activeCompany }) {
       {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} />}
       {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} />}
     </div>
+    </div>)}
   );
 }
 
