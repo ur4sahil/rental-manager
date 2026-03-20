@@ -11002,7 +11002,7 @@ function PendingPMAssignments({ companyId, addNotification }) {
   );
 }
 
-export default function SidebarGroup({ item, page, setPage, setSidebarOpen, effectivePage, safePage }) {
+function SidebarGroup({ item, page, setPage, setSidebarOpen, effectivePage, safePage }) {
   const [open, setOpen] = useState(() => item.children?.some(c => c.id === page));
   const isChildActive = item.children?.some(c => c.id === page);
   return (
@@ -11027,7 +11027,7 @@ export default function SidebarGroup({ item, page, setPage, setSidebarOpen, effe
   );
 }
 
-function App() {
+export default function App() {
   const [screen, setScreen] = useState("landing");
   const [page, setPage] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
