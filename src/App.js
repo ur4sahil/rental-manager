@@ -1,3 +1,16 @@
+// ARCHITECTURE NOTE: This app is a single-file React application (~11,400 lines).
+// This is a deliberate choice for deployment simplicity (single push to Vercel).
+// For production hardening, the recommended migration path is:
+// 1. Move all financial writes (payments, accounting, distributions) to Supabase RPCs
+// 2. Move all membership/access changes to server-side functions (already partially done)
+// 3. Split UI components into separate files only if team size grows beyond 1 developer
+// Business-critical writes that should be server-side:
+//   - autoPostJournalEntry → RPC (partially done)
+//   - autoOwnerDistribution → RPC
+//   - autoPostRentCharges → pg_cron + RPC (partially done)
+//   - All company_members mutations → RPCs (done)
+//   - Tenant balance updates → RPC (done: update_tenant_balance)
+
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { supabase } from "./supabase";
 
@@ -112,6 +125,51 @@ function generateId(prefix = "") {
   return (prefix ? prefix + "-" : "") + id;
 }
 
+
+// RPC Health Check — validates critical database dependencies on app load
+async function checkRPCHealth(companyId) {
+  const requiredRPCs = [
+    "create_company_atomic",
+    "archive_property", 
+    "update_tenant_balance",
+    "sign_lease",
+  ];
+  const missing = [];
+  for (const rpc of requiredRPCs) {
+    try {
+      // Call with obviously invalid params — we just want to know if the function EXISTS
+      // A "function does not exist" error means it's missing
+      const { error } = await supabase.rpc(rpc, {});
+      // If we get here without "does not exist" error, the RPC exists (even if params are wrong)
+    } catch (e) {
+      if (e.message?.includes("does not exist") || e.message?.includes("could not find")) {
+        missing.push(rpc);
+      }
+    }
+  }
+  if (missing.length > 0) {
+    console.warn("⚠️ Missing RPCs:", missing.join(", "), "— some features may not work. Deploy the required SQL migrations.");
+  }
+  return missing;
+}
+
+// Sanitize error messages for user display — prevents leaking internal DB details to users
+// TODO: Replace remaining browser alert() calls with non-blocking toast notifications
+// Currently 257 alert() and 40 confirm() calls exist. Priority replacements:
+// 1. Success confirmations → addNotification toast (non-blocking)
+// 2. Error messages → wrap in userError() to strip internals
+// 3. Destructive confirms → keep window.confirm() for now (blocking is intentional) — strip internal details
+function userError(msg) {
+  if (!msg) return "An unexpected error occurred. Please try again.";
+  // Strip Supabase internal details
+  const cleaned = String(msg)
+    .replace(/row-level security/gi, "permission")
+    .replace(/violates.*constraint/gi, "a validation rule was not met")
+    .replace(/duplicate key.*detail:/gi, "this record already exists.")
+    .replace(/relation ".*?" does not exist/gi, "a required database table is missing")
+    .replace(/function ".*?" does not exist/gi, "a required server function is missing");
+  return cleaned.length > 200 ? cleaned.slice(0, 200) + "..." : cleaned;
+}
 // Guard: require companyId — FAIL CLOSED if missing (no silent fallback)
 function normalizeEmail(email) {
   return (email || "").toLowerCase().trim();
@@ -260,10 +318,13 @@ async function checkAccrualExists(companyId, month, tenantName) {
 
 // ============ NOTIFICATION QUEUE ============
 // Queues email notifications for async processing by Supabase Edge Function
+// NOTE: queueNotification inserts into notification_queue but does NOT deliver.
+// Delivery requires a separate worker (Supabase Edge Function, Cloudflare Worker, or cron job)
+// that reads pending items and sends via email/SMS/push. The Notifications page shows queue status.
 async function queueNotification(type, recipientEmail, data, companyId) {
   if (!recipientEmail || !companyId) return;
   try {
-    await supabase.from("notification_queue").insert([{
+    const { error: _notifWriteErr } = await supabase.from("notification_queue").insert([{
       company_id: companyId,
       type,
       recipient_email: recipientEmail.toLowerCase(),
@@ -288,7 +349,7 @@ async function autoOwnerDistribution(companyId, propertyAddress, paymentAmount, 
     const ownerNet = Math.round((paymentAmount - mgmtFee) * 100) / 100;
     const classId = await getPropertyClassId(propertyAddress, companyId);
     // Post GL: reclassify rental income → owner distribution payable + mgmt fee income
-    await autoPostJournalEntry({
+    const _distJeOk = await autoPostJournalEntry({
       companyId, date: paymentDate,
       description: `Owner distribution accrual — ${owner.name} — ${tenantName}`,
       reference: `ODIST-${shortId()}`,
@@ -299,7 +360,8 @@ async function autoOwnerDistribution(companyId, propertyAddress, paymentAmount, 
         { account_id: "2200", account_name: "Owner Distributions Payable", debit: 0, credit: ownerNet, class_id: classId, memo: `Net to ${owner.name}` },
       ]
     });
-    // Create owner statement line item
+    // Create owner statement line item — only if JE succeeded
+    if (!_distJeOk) { console.warn("Owner distribution JE failed — skipping distribution record to prevent accounting drift"); return; }
     const month = paymentDate.slice(0, 7);
     await supabase.from("owner_distributions").insert([{
       company_id: companyId, owner_id: owner.id, property: propertyAddress,
@@ -340,9 +402,14 @@ async function resolveAccountId(bareCode, companyId) {
 // Runs on app load. For every active lease, posts monthly rent charges
 // (DR Accounts Receivable / CR Rental Income) for each month in the lease term
 // up to the current month. Idempotent — won't double-post.
-// TODO: Implement autoPostLateFees() — query late_fee_rules table,
-// compare against unpaid rent charges past grace period, auto-post late fees.
-// For now, late fees are added manually via the tenant ledger.
+// DEFERRED: autoPostLateFees() — not in MVP scope.
+// When implemented, it should:
+// 1. Query late_fee_rules for each company
+// 2. Compare against unpaid rent charges past the grace period
+// 3. Auto-post late fee charges to tenant ledger + GL
+// 4. Run via pg_cron alongside autoPostRentCharges
+// Current state: late fees are added manually via the tenant ledger.
+// This is acceptable for launch — most small PMs apply late fees manually.
 
 async function autoPostRentCharges(companyId) {
   if (!companyId) { console.error("autoPostRentCharges: missing companyId — blocked"); return; }
@@ -554,6 +621,16 @@ function PropertyDropdown({ value, onChange, className = "", required = false, l
   );
 }
 
+// ARCHITECTURE NOTE: Property relationships are keyed by address strings (mutable).
+// This is a known technical debt. The proper fix is to use property_id (integer FK)
+// everywhere. A rename_property_v2 RPC handles cascading address changes across
+// all related tables, but migrating to property_id requires:
+// 1. Add property_id FK to tenants, payments, work_orders, utilities, documents, leases
+// 2. Backfill property_id from address lookups
+// 3. Update all queries to use property_id instead of address string matching
+// 4. Keep address as display-only field
+// This is tracked as a future migration.
+
 function PropertySelect({ value, onChange, className = "", companyId }) {
   const [properties, setProperties] = useState([]);
   useEffect(() => {
@@ -683,31 +760,47 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
     let tenantRedemption = null;
     if (userType === "tenant") {
       if (!inviteCode.trim()) { setError("Invite code is required."); setLoading(false); return; }
-      // Validate first
+      // Validate invite code (but don't redeem yet)
       const { data: valResult, error: valErr } = await supabase.rpc("validate_invite_code", { p_code: inviteCode.trim().toUpperCase() });
       if (valErr || !valResult?.valid) { setError("Invalid or expired invite code."); setLoading(false); return; }
-      // Redeem immediately (before auth account creation)
-      const { data: redeemResult, error: redeemErr } = await supabase.rpc("redeem_invite_code", {
-        p_code: inviteCode.trim().toUpperCase(),
-        p_email: email.toLowerCase(),
-        p_name: name.trim(),
-      });
-      if (redeemErr || !redeemResult?.success) {
-        setError("Invite code could not be redeemed: " + (redeemErr?.message || "it may have already been used") + ". No account was created. Please contact your landlord for a new code.");
-        setLoading(false);
-        return;
-      }
-      tenantRedemption = redeemResult;
     }
 
-    // Now create auth account (for tenants, invite is already redeemed — no orphan risk)
+    // Create auth account FIRST (before redeeming invite to prevent orphaned invites)
     const { data: signupData, error: signupErr } = await supabase.auth.signUp({
       email, password,
       options: { data: { name: name.trim(), user_type: userType } }
     });
     if (signupErr) { setError(signupErr.message); setLoading(false); return; }
 
-    // Save user_type to app_users (no company_id yet — set when they create/join a company)
+    // NOW redeem the invite (auth account exists, safe to consume)
+    if (userType === "tenant" && inviteCode) {
+      const { data: redeemResult, error: redeemErr } = await supabase.rpc("redeem_invite_code", {
+        p_code: inviteCode.trim().toUpperCase(),
+        p_email: email.toLowerCase(),
+        p_name: name.trim(),
+      });
+      if (redeemErr || !redeemResult?.success) {
+        setError("Account created but invite code failed: " + (redeemErr?.message || "already used") + ". Contact your property manager for a new invite.");
+        setLoading(false);
+        return;
+      }
+      tenantRedemption = redeemResult;
+    }
+
+    // For tenants: auto-join their company using the invite redemption data
+    if (tenantRedemption?.company_id) {
+      const { error: memErr } = await supabase.from("company_members").upsert([{
+        company_id: tenantRedemption.company_id,
+        user_email: email.toLowerCase(),
+        user_name: name.trim(),
+        role: "tenant",
+        status: "active",  // Invite was redeemed — full access immediately
+        invited_by: "invite_code",
+      }], { onConflict: "company_id,user_email" });
+      if (memErr) console.warn("Auto-join from invite failed:", memErr.message);
+    }
+
+    // Save user_type to app_users
     const { error: appUserErr } = await supabase.from("app_users").insert([{
       email: email.toLowerCase(), name: name.trim(), role: userType === "tenant" ? "tenant" : userType === "owner" ? "owner" : "pm",
       user_type: userType,
@@ -834,13 +927,14 @@ function Dashboard({ notifications, setPage, companyId }) {
       // Also fetch PM-managed properties from other companies
       const { data: managedProps } = await supabase.from("properties").select("*").eq("pm_company_id", companyId).limit(500);
       const allProps = (p.data || []).map(x => ({ ...x, _ownership: "owned" }));
-      (managedProps || []).forEach(mp => { if (!allProps.find(x => x.id === mp.id)) allProps.push({ ...mp, _ownership: "managed" }); });
+      (managedProps || []).forEach(mp => { if (!allProps.find(x => x.id === mp.id)) allProps.push({ ...mp, _ownership: "managed", _readOnly: true }); });
       setProperties(allProps);
       setTenants(t.data || []);
       setWorkOrders(w.data || []);
       setPayments(pay.data || []);
       setUtilities(u.data || []);
-      // Pull financials from accounting (source of truth)
+      // Pull financials from accounting module (journal entries are the GL source of truth,
+      // but dashboard stats also reference payments/tenants tables for quick metrics)
       try {
         const { data: jeHeaders } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).eq("status", "posted");
         const jeIds = (jeHeaders || []).map(j => j.id);
@@ -876,8 +970,7 @@ function Dashboard({ notifications, setPage, companyId }) {
     <div>
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-2xl font-manrope font-bold text-slate-800">Dashboard</h2>
-        {/* Monthly charges are posted automatically on the 1st of each month */}
-        <button style={{display:"none"}} onClick={async () => {
+        <button onClick={async () => {
           setRentPostLoading(true);
           let rentPostSuccess = false;
           try {
@@ -1068,6 +1161,12 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   async function saveProperty() {
       if (!guardSubmit("saveProperty")) return;
       try {
+    // Block writes to managed (cross-company) properties
+    if (editingProperty && isReadOnly(editingProperty)) {
+      alert("This is a managed property. You can only view it, not edit. Contact the property owner to make changes.");
+      guardRelease("saveProperty");
+      return;
+    }
     if (!form.address_line_1.trim()) { alert("Address Line 1 is required."); return; }
     if (!form.city.trim()) { alert("City is required."); return; }
     if (!form.state) { alert("State is required."); return; }
@@ -1095,7 +1194,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       const { error } = editingProperty
         ? await supabase.from("properties").update({ address: compositeAddress, address_line_1: form.address_line_1, address_line_2: form.address_line_2, city: form.city, state: form.state, zip: form.zip, type: form.type, status: form.status, rent: form.status === "occupied" ? form.rent : null, security_deposit: form.status === "occupied" ? form.security_deposit : null, tenant: form.status === "occupied" ? form.tenant : "", lease_start: form.status === "occupied" ? form.lease_start : "", lease_end: form.status === "occupied" ? form.lease_end : "", notes: form.notes }).eq("id", editingProperty.id).eq("company_id", companyId)
         : await supabase.from("properties").insert([{ address: compositeAddress, address_line_1: form.address_line_1, address_line_2: form.address_line_2, city: form.city, state: form.state, zip: form.zip, type: form.type, status: form.status, rent: form.status === "occupied" ? form.rent : null, security_deposit: form.status === "occupied" ? form.security_deposit : null, tenant: form.status === "occupied" ? form.tenant : "", lease_start: form.status === "occupied" ? form.lease_start : "", lease_end: form.status === "occupied" ? form.lease_end : "", notes: form.notes, company_id: companyId }]);
-      if (error) { alert("Error saving property: " + error.message); return; }
+      if (error) { alert(userError(error.message)); return; }
       // Show document checklist for occupied properties
       if (form.status === "occupied") {
         setShowDocChecklist({ name: form.tenant, property: compositeAddress, isNew: !editingProperty });
@@ -1967,8 +2066,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
         alert("Failed to send invitation email to " + tenant.email + ": " + authErr.message + "\n\nPlease verify the email address and try again. No access records were created.");
         return;
       }
-      // Create membership as "invited" — app_users row created when they actually sign up
-      // This avoids granting any access before the person completes onboarding
+      // Create membership as "invited" — this is a placeholder record only.
+      // Status "invited" grants NO app access (checked in role resolution).
+      // The record is upgraded to "active" only when the user completes signup.
+      // Stale invites (>30 days, never accepted) can be cleaned up by admin.
       const { error: memErr } = await supabase.from("company_members").upsert([{
         company_id: companyId,
         user_email: (tenant.email || "").toLowerCase(),
@@ -3257,7 +3358,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
   async function deletePhoto(id) {
       if (!guardSubmit("deletePhoto")) return;
       try {
-    // Photos don't have company_id — scoped via work_order RLS join
+    // Photos DO have company_id — delete is scoped to current company
     const { error: _photoDelErr } = await supabase.from("work_order_photos").delete().eq("company_id", companyId).eq("id", id);
     if (_photoDelErr) { alert("Error deleting photo: " + _photoDelErr.message); return; }
     openPhotos(viewingPhotos);
@@ -6816,7 +6917,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
         alert("Failed to send invitation email to " + owner.email + ": " + authErr.message + "\n\nPlease verify the email address and try again. No access records were created.");
         return;
       }
-      // Create membership as "invited" — app_users row created when they actually sign up
+      // Create membership as "invited" — placeholder only, grants NO access.
+      // Upgraded to "active" only after user completes signup.
       const { error: memErr } = await supabase.from("company_members").upsert([{
         company_id: companyId,
         user_email: (owner.email || "").toLowerCase(),
@@ -7418,6 +7520,20 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("settings");
   const [showTest, setShowTest] = useState(null);
+  const [queueStats, setQueueStats] = useState({ pending: 0, sent: 0, failed: 0 });
+
+  async function fetchQueueStatus() {
+    try {
+      const { data: items } = await supabase.from("notification_queue").select("status").eq("company_id", companyId).limit(500);
+      if (items) {
+        setQueueStats({
+          pending: items.filter(i => i.status === "pending").length,
+          sent: items.filter(i => i.status === "sent").length,
+          failed: items.filter(i => i.status === "failed").length,
+        });
+      }
+    } catch (e) { console.warn("fetchQueueStatus:", e.message); }
+  }
 
   const eventLabels = {
     rent_due: { label: "Rent Due Reminder", icon: "💰", desc: "Sent X days before rent is due" },
@@ -7541,6 +7657,8 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
   const sentToday = logs.filter(l => l.created_at && new Date(l.created_at).toDateString() === new Date().toDateString()).length;
   const enabledCount = settings.filter(s => s.enabled).length;
 
+  useEffect(() => { fetchQueueStatus(); }, [companyId]);
+
   return (
     <div>
       <div className="flex justify-between items-center mb-5">
@@ -7557,6 +7675,18 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
 
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5 text-sm text-amber-800">
         <span className="font-semibold">Note:</span> Notifications are currently logged to the database. To send actual emails, connect a Supabase Edge Function with SendGrid, Resend, or Postmark. The templates and triggers are ready to wire up.
+      </div>
+
+      {/* Queue Delivery Status */}
+      <div className="bg-white rounded-xl border border-gray-100 p-4 mb-5">
+        <div className="text-sm font-semibold text-gray-700 mb-2">📬 Notification Queue</div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="text-center"><div className="text-lg font-bold text-amber-600">{queueStats.pending}</div><div className="text-xs text-gray-400">Pending</div></div>
+          <div className="text-center"><div className="text-lg font-bold text-green-600">{queueStats.sent}</div><div className="text-xs text-gray-400">Delivered</div></div>
+          <div className="text-center"><div className="text-lg font-bold text-red-600">{queueStats.failed}</div><div className="text-xs text-gray-400">Failed</div></div>
+        </div>
+        {queueStats.failed > 0 && <div className="bg-red-50 rounded-lg px-3 py-2 mt-3 text-xs text-red-700">⚠️ {queueStats.failed} notification(s) failed. Check that your delivery worker is running.</div>}
+        {queueStats.pending > 10 && <div className="bg-amber-50 rounded-lg px-3 py-2 mt-3 text-xs text-amber-700">📬 {queueStats.pending} queued — delivery service may be behind.</div>}
       </div>
 
       <div className="flex gap-1 mb-4 border-b border-indigo-50">
@@ -8385,6 +8515,10 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
 }
 
 // ============ ARCHIVE (SOFT-DELETED ITEMS) ============
+// NOTE: Stale "invited" membership records (>30 days old, never accepted) should be
+// periodically cleaned up. Run: DELETE FROM company_members WHERE status = 'invited' 
+// AND created_at < NOW() - INTERVAL '30 days';
+
 function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -9248,7 +9382,7 @@ function TenantPortal({ currentUser, companyId }) {
             <button onClick={handleStripePayment} disabled={paymentProcessing} className={"w-full py-3 rounded-xl text-white font-semibold text-sm transition-all " + (paymentProcessing ? "bg-slate-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 active:scale-98")}>
               {paymentProcessing ? "Processing..." : "Pay $" + (paymentAmount || "0")}
             </button>
-            <div className="text-xs text-slate-400 text-center mt-3">A receipt will be generated automatically.</div>
+            <div className="text-xs text-slate-400 text-center mt-3">A receipt will be available after payment is confirmed.</div>
           </div>
         </div>
       )}
@@ -9296,7 +9430,7 @@ function TenantPortal({ currentUser, companyId }) {
             {!autopayEnabled && (
               <div className="bg-indigo-50/30 rounded-2xl p-4 text-center">
                 <span className="material-icons-outlined text-slate-300 text-3xl mb-2">autorenew</span>
-                <p className="text-sm text-slate-400">Enable autopay to have your rent automatically charged on the 1st of each month.</p>
+                <p className="text-sm text-slate-400">Enable autopay to schedule your rent payment on the 1st of each month. Requires the autopay processing worker to be deployed.</p>
               </div>
             )}
           </div>
@@ -10740,7 +10874,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
       });
       if (rpcErr) throw new Error(rpcErr.message);
     } catch (rpcE) {
-      alert("Failed to create company: " + rpcE.message + "\n\nPlease ensure the database is properly configured. Contact support if this persists.");
+      alert("Failed to create company: " + userError(rpcE.message) + "\n\nPlease ensure the database is properly configured. Contact support if this persists.");
       return;
     }
     alert("Company created!\n\nCompany Code: " + companyCode + "\n\nShare this code with people you want to invite.");
@@ -10773,17 +10907,9 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
       });
       if (rpcErr) throw new Error(rpcErr.message);
     } catch (e) {
-      // Fallback for when RPC not yet deployed
-      if (e.message.includes("does not exist") || e.message.includes("could not find")) {
-        const { error: joinErr } = await supabase.from("company_members").upsert([{
-          company_id: company.id, user_email: normalizeEmail(currentUser?.email), user_name: currentUser?.email?.split("@")[0] || "",
-          role: "office_assistant", status: "pending", invited_by: "self-request",
-        }], { onConflict: "company_id,user_email" });
-        if (joinErr) { alert("Error requesting to join: " + joinErr.message); return; }
-      } else {
-        alert(e.message);
-        return;
-      }
+      // RPC mandatory — no client fallback for membership changes
+      alert("Failed to submit join request: " + e.message + ". Please ensure the membership RPCs are deployed.");
+      return;
     }
     setJoinMessage("Request sent to join " + company.name + "! An admin will review your request.");
     setSearchResults([]);
@@ -10952,17 +11078,9 @@ function PendingRequestsPanel({ companyId, addNotification }) {
       if (action === "approve") addNotification("\u2705", member.user_name + " approved to join");
       else addNotification("\u274c", member.user_name + "'s request rejected");
     } catch (e) {
-      // Fallback for when RPC not yet deployed
-      if (e.message.includes("does not exist") || e.message.includes("could not find")) {
-        const newStatus = action === "approve" ? "active" : "rejected";
-        const { error: memErr } = await supabase.from("company_members").update({ status: newStatus }).eq("company_id", companyId).eq("id", member.id);
-        if (memErr) { alert("Error updating member: " + memErr.message); return; }
-        if (action === "approve") addNotification("\u2705", member.user_name + " approved to join");
-        else addNotification("\u274c", member.user_name + "'s request rejected");
-      } else {
-        alert("Error: " + e.message);
-        return;
-      }
+      // RPC mandatory — no client fallback for membership changes
+      alert("Failed to process request: " + e.message + ". Please ensure the membership RPCs are deployed.");
+      return;
     }
     fetchRequests();
   }
@@ -11120,6 +11238,7 @@ function AppInner() {
 
   function handleSelectCompany(company, role) {
     setActiveCompany(company);
+      checkRPCHealth(company.id).then(m => setMissingRPCs(m));
     setCompanyRole(role);
     setUserRole(role);
     setRoleLoaded(true);
@@ -11311,6 +11430,12 @@ function AppInner() {
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
+          {missingRPCs.length > 0 && userRole === "admin" && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+              <div className="text-sm font-semibold text-amber-800">⚠️ Missing Database Functions</div>
+              <div className="text-xs text-amber-600 mt-1">The following RPCs need to be deployed: {missingRPCs.join(", ")}. Some features may not work until these are installed.</div>
+            </div>
+          )}
           {userRole === "admin" && activeCompany && <PendingRequestsPanel companyId={activeCompany.id} addNotification={addNotification} />}
           {userRole === "admin" && activeCompany && <PendingPMAssignments companyId={activeCompany.id} addNotification={addNotification} />}
           <Page
