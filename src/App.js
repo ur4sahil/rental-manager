@@ -1880,6 +1880,60 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
           </div>
         </Modal>
       )}
+
+      {/* Recurring Rent Setup Modal */}
+      {showRecurringSetup && (
+        <Modal title="Set Up Recurring Rent" onClose={() => setShowRecurringSetup(null)}>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">Would you like to set up automatic monthly rent posting for <strong>{showRecurringSetup.tenant}</strong> at <strong>{showRecurringSetup.property}</strong>?</p>
+            <div className="bg-indigo-50 rounded-lg p-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div><div className="text-xs text-gray-500">Monthly Rent</div><div className="font-bold text-gray-800">${safeNum(showRecurringSetup.rent).toLocaleString()}</div></div>
+                <div><div className="text-xs text-gray-500">Posts On</div><div className="font-bold text-gray-800">1st of each month</div></div>
+              </div>
+            </div>
+            <div className="bg-amber-50 rounded-lg p-3">
+              <div className="text-xs font-semibold text-amber-700 mb-1">Late Fee Settings</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="text-xs text-gray-500">Grace Period (days)</label><input type="number" defaultValue={5} id="rr-grace" className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-full mt-1" /></div>
+                <div><label className="text-xs text-gray-500">Late Fee ($)</label><input type="number" defaultValue={50} id="rr-latefee" className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-full mt-1" /></div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={async () => {
+                const grace = Number(document.getElementById("rr-grace")?.value) || 5;
+                const lateFee = Number(document.getElementById("rr-latefee")?.value) || 50;
+                const { error } = await supabase.from("recurring_journal_entries").insert([{
+                  company_id: companyId,
+                  description: "Monthly rent — " + showRecurringSetup.tenant + " — " + showRecurringSetup.property,
+                  frequency: "monthly",
+                  day_of_month: 1,
+                  amount: showRecurringSetup.rent,
+                  tenant_name: showRecurringSetup.tenant,
+                  tenant_id: showRecurringSetup.tenantId,
+                  property: showRecurringSetup.property,
+                  debit_account_id: "1200",
+                  debit_account_name: "Accounts Receivable",
+                  credit_account_id: "4000",
+                  credit_account_name: "Rental Income",
+                  status: "active",
+                  late_fee_enabled: true,
+                  grace_period_days: grace,
+                  late_fee_amount: lateFee,
+                  next_post_date: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().split("T")[0],
+                  created_by: userProfile?.email || "",
+                }]);
+                if (error) { alert("Failed to create recurring entry: " + userError(error.message)); }
+                else { addNotification("🔄", "Recurring rent set up for " + showRecurringSetup.tenant); }
+                setShowRecurringSetup(null);
+              }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 flex-1">Yes, Set Up Recurring Rent</button>
+              <button onClick={() => setShowRecurringSetup(null)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg flex-1">Skip for Now</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+
     </div>
   );
 }
@@ -2652,58 +2706,6 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       {tenantTab === "evictions" && <EvictionWorkflow addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
 
       {tenantTab === "tenants" && (<>
-      {/* Recurring Rent Setup Modal */}
-      {showRecurringSetup && (
-        <Modal title="Set Up Recurring Rent" onClose={() => setShowRecurringSetup(null)}>
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600">Would you like to set up automatic monthly rent posting for <strong>{showRecurringSetup.tenant}</strong> at <strong>{showRecurringSetup.property}</strong>?</p>
-            <div className="bg-indigo-50 rounded-lg p-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div><div className="text-xs text-gray-500">Monthly Rent</div><div className="font-bold text-gray-800">${safeNum(showRecurringSetup.rent).toLocaleString()}</div></div>
-                <div><div className="text-xs text-gray-500">Posts On</div><div className="font-bold text-gray-800">1st of each month</div></div>
-              </div>
-            </div>
-            <div className="bg-amber-50 rounded-lg p-3">
-              <div className="text-xs font-semibold text-amber-700 mb-1">Late Fee Settings</div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-xs text-gray-500">Grace Period (days)</label><input type="number" defaultValue={5} id="rr-grace" className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-full mt-1" /></div>
-                <div><label className="text-xs text-gray-500">Late Fee ($)</label><input type="number" defaultValue={50} id="rr-latefee" className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-full mt-1" /></div>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={async () => {
-                const grace = Number(document.getElementById("rr-grace")?.value) || 5;
-                const lateFee = Number(document.getElementById("rr-latefee")?.value) || 50;
-                const { error } = await supabase.from("recurring_journal_entries").insert([{
-                  company_id: companyId,
-                  description: "Monthly rent — " + showRecurringSetup.tenant + " — " + showRecurringSetup.property,
-                  frequency: "monthly",
-                  day_of_month: 1,
-                  amount: showRecurringSetup.rent,
-                  tenant_name: showRecurringSetup.tenant,
-                  tenant_id: showRecurringSetup.tenantId,
-                  property: showRecurringSetup.property,
-                  debit_account_id: "1200",
-                  debit_account_name: "Accounts Receivable",
-                  credit_account_id: "4000",
-                  credit_account_name: "Rental Income",
-                  status: "active",
-                  late_fee_enabled: true,
-                  grace_period_days: grace,
-                  late_fee_amount: lateFee,
-                  next_post_date: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().split("T")[0],
-                  created_by: userProfile?.email || "",
-                }]);
-                if (error) { alert("Failed to create recurring entry: " + userError(error.message)); }
-                else { addNotification("🔄", "Recurring rent set up for " + showRecurringSetup.tenant); }
-                setShowRecurringSetup(null);
-              }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 flex-1">Yes, Set Up Recurring Rent</button>
-              <button onClick={() => setShowRecurringSetup(null)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg flex-1">Skip for Now</button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
       {/* Required Documents Prompt */}
       {showTenantDocPrompt && (
         <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 mb-4">
@@ -7747,6 +7749,9 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
     } catch (e) { console.warn("fetchQueueStatus:", e.message); }
   }
 
+  const channels = ["in_app", "email", "push"];
+  const channelLabels = { in_app: "In-App", email: "Email", push: "Push" };
+
   const eventLabels = {
     rent_due: { label: "Rent Due Reminder", icon: "💰", desc: "Sent X days before rent is due" },
     rent_overdue: { label: "Rent Overdue Notice", icon: "\u26a0\ufe0f", desc: "Sent when rent is past due" },
@@ -7929,6 +7934,16 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
                 <div className="flex items-center gap-3 text-xs mb-2">
                   <span className="text-slate-400">Recipients:</span>
                   <span className="font-medium text-slate-500">{s.recipients}</span>
+                  <div className="flex gap-1 mr-3">
+                    {channels.map(ch => (
+                      <button key={ch} onClick={async () => {
+                        const currentChannels = s.channels ? JSON.parse(s.channels) : { in_app: true, email: true, push: false };
+                        currentChannels[ch] = !currentChannels[ch];
+                        await supabase.from("notification_settings").update({ channels: JSON.stringify(currentChannels) }).eq("id", s.id).eq("company_id", companyId);
+                        fetchSettings();
+                      }} className={"text-xs px-2 py-0.5 rounded " + ((s.channels ? JSON.parse(s.channels) : { in_app: true, email: true, push: false })[ch] ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 text-gray-400")}>{channelLabels[ch]}</button>
+                    ))}
+                  </div>
                   {s.days_before > 0 && (
                     <div className="flex items-center gap-1">
                       <span className="text-slate-400">Days before:</span>
@@ -11481,6 +11496,7 @@ function AppInner() {
   function handleSelectCompany(company, role) {
     setActiveCompany(company);
       checkRPCHealth(company.id).then(m => setMissingRPCs(m)).catch(() => {});
+    loadInboxNotifications(company.id);
     setCompanyRole(role);
     setUserRole(role);
     setRoleLoaded(true);
@@ -11513,10 +11529,37 @@ function AppInner() {
     } catch { setRoleLoaded(true); /* still mark loaded so UI doesn't hang */ }
   }
 
-  function addNotification(icon, message) {
-    const n = { id: shortId(), icon, message, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
-    setNotifications(prev => [n, ...prev].slice(0, 20));
+  function addNotification(icon, message, options = {}) {
+    const n = { id: shortId(), icon, message, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), read: false };
+    setNotifications(prev => [n, ...prev].slice(0, 50));
     setUnreadCount(prev => prev + 1);
+    // Persist to DB for notification history
+    if (activeCompany?.id) {
+      supabase.from("notification_inbox").insert([{
+        company_id: activeCompany.id,
+        icon, message,
+        recipient_email: options.recipient || userProfile?.email || "",
+        notification_type: options.type || "general",
+        read: false,
+      }]).then(({ error }) => { if (error) console.warn("Inbox write:", error.message); });
+    }
+  }
+
+  // Load persisted notifications on company select
+  async function loadInboxNotifications(cid) {
+    const { data } = await supabase.from("notification_inbox").select("*")
+      .eq("company_id", cid)
+      .or("recipient_email.eq." + (currentUser?.email || "none") + ",recipient_email.eq.")
+      .order("created_at", { ascending: false }).limit(50);
+    if (data) {
+      setNotifications(data.map(n => ({
+        id: n.id, icon: n.icon, message: n.message,
+        time: new Date(n.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        read: n.read, dbId: n.id,
+        date: new Date(n.created_at).toLocaleDateString(),
+      })));
+      setUnreadCount(data.filter(n => !n.read).length);
+    }
   }
 
   async function handleLogout() {
@@ -11639,7 +11682,18 @@ function AppInner() {
             {ROLES[userRole]?.label}
           </span>
           <div className="relative">
-            <button onClick={() => { setShowNotifications(!showNotifications); setUnreadCount(0); }} className="relative w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 hover:bg-indigo-100 transition-colors">
+            <button onClick={() => { 
+              setShowNotifications(!showNotifications); 
+              // Mark all as read in DB
+              if (!showNotifications && activeCompany?.id && unreadCount > 0) {
+                supabase.from("notification_inbox").update({ read: true })
+                  .eq("company_id", activeCompany.id).eq("read", false)
+                  .or("recipient_email.eq." + (currentUser?.email || "none") + ",recipient_email.eq.")
+                  .then(() => {});
+                setUnreadCount(0);
+                setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+              }
+            }} className="relative w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 hover:bg-indigo-100 transition-colors">
               <span className="material-icons-outlined">notifications</span>
               {unreadCount > 0 && (
                 <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-white"></span>
@@ -11649,14 +11703,17 @@ function AppInner() {
               <div className="absolute right-0 top-12 w-80 bg-white rounded-3xl shadow-card border border-indigo-50 z-50">
                 <div className="px-4 py-3 border-b border-indigo-50 flex justify-between items-center">
                   <span className="font-manrope font-bold text-slate-700 text-sm">Notifications</span>
-                  <button onClick={() => { setNotifications([]); setShowNotifications(false); }} className="text-xs text-slate-400 hover:text-red-500">Clear all</button>
+                  <div className="flex gap-2">
+                    <button onClick={() => { setPage("notifications"); setShowNotifications(false); }} className="text-xs text-indigo-600 hover:underline">View All</button>
+                    <button onClick={() => { setNotifications([]); setShowNotifications(false); }} className="text-xs text-slate-400 hover:text-red-500">Clear</button>
+                  </div>
                 </div>
                 <div className="max-h-72 overflow-y-auto">
                   {notifications.length === 0 ? (
                     <div className="px-4 py-6 text-center text-slate-400 text-sm">No notifications yet</div>
                   ) : (
                     notifications.map(n => (
-                      <div key={n.id} className="px-4 py-3 border-b border-indigo-50/50 hover:bg-indigo-50/30 flex items-start gap-2 transition-colors">
+                      <div key={n.id} className={"px-4 py-3 border-b border-indigo-50/50 hover:bg-indigo-50/30 flex items-start gap-2 transition-colors " + (!n.read ? "bg-indigo-50/40" : "")}>
                         <span className="text-lg">{n.icon}</span>
                         <div className="flex-1">
                           <div className="text-sm text-slate-700">{n.message}</div>
