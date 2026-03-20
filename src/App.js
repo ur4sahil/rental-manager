@@ -5390,7 +5390,7 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
 }
 
 // --- Main Accounting Component (Supabase-backed) ---
-function Accounting({ companyId, activeCompany }) {
+function Accounting({ companyId, activeCompany, addNotification, userProfile }) {
   const [acctAccounts, setAcctAccounts] = useState([]);
   const [journalEntries, setJournalEntries] = useState([]);
   const [acctClasses, setAcctClasses] = useState([]);
