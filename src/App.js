@@ -1298,7 +1298,6 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
 
   async function assignPM(property) {
     if (!guardSubmit("assignPM")) return;
-    try {
     if (!pmCode.trim()) { alert("Please enter the PM company's 8-digit code."); return; }
     const { data: pmCompany } = await supabase.from("companies").select("id, name, company_role").eq("company_code", pmCode.trim()).maybeSingle();
     if (!pmCompany) { alert("No company found with that code."); return; }
@@ -2020,8 +2019,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
 
   async function sendMessage() {
     if (!guardSubmit("sendMessage")) return;
-    try {
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim()) { guardRelease("sendMessage"); return; }
     const { error: _err_messages_1499 } = await supabase.from("messages").insert([{ company_id: companyId,
       tenant: selectedTenant.name,
       property: selectedTenant.property,
@@ -2091,8 +2089,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
 
   async function renewLease(newMoveOut) {
     if (!guardSubmit("renewLease")) return;
-    try {
-    if (!newMoveOut) return;
+    if (!newMoveOut) { guardRelease("renewLease"); return; }
     const { error } = await supabase.from("tenants").update({ move_out: newMoveOut, lease_end_date: newMoveOut, lease_status: "active" }).eq("company_id", companyId).eq("id", selectedTenant.id);
     if (error) { setError("Failed to renew lease: " + error.message); return; }
     // #4: Update active lease end_date if one exists, or create one
