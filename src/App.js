@@ -1175,33 +1175,32 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   }
 
   async function saveProperty() {
-      if (!guardSubmit("saveProperty")) return;
-      try {
-    // Check for duplicate address (new properties only)
+    // Validate BEFORE acquiring guard lock (so failed validation doesn't lock the button)
+    if (!form.address_line_1.trim()) { alert("Address Line 1 is required."); return; }
+    if (!form.city.trim()) { alert("City is required."); return; }
+    if (!form.state) { alert("State is required."); return; }
+    if (!form.zip.trim()) { alert("ZIP code is required."); return; }
+    if (editingProperty && isReadOnly(editingProperty)) {
+      alert("This is a managed property. You can only view it, not edit.");
+      return;
+    }
+    if (!guardSubmit("saveProperty")) return;
+    try {
+    // Check for duplicate address (new properties only — requires DB query, so after guard)
     if (!editingProperty) {
       const compositeCheck = [form.address_line_1, form.address_line_2, form.city, form.state, form.zip].filter(Boolean).join(", ");
       const { data: dup } = await supabase.from("properties").select("id").eq("company_id", companyId).eq("address", compositeCheck).is("archived_at", null).maybeSingle();
       if (dup) { alert("A property with this address already exists."); guardRelease("saveProperty"); return; }
     }
-    // Block writes to managed (cross-company) properties
-    if (editingProperty && isReadOnly(editingProperty)) {
-      alert("This is a managed property. You can only view it, not edit. Contact the property owner to make changes.");
-      guardRelease("saveProperty");
-      return;
-    }
-    if (!form.address_line_1.trim()) { alert("Address Line 1 is required."); return; }
-    if (!form.city.trim()) { alert("City is required."); return; }
-    if (!form.state) { alert("State is required."); return; }
-    if (!form.zip.trim()) { alert("ZIP code is required."); return; }
     if (form.status === "occupied") {
-      if (!form.tenant.trim()) { alert("Tenant name is required for occupied properties."); return; }
-      if (!form.tenant_email.trim() || !form.tenant_email.includes("@")) { alert("A valid tenant email is required for occupied properties."); return; }
-      if (!form.tenant_phone.trim()) { alert("Tenant phone number is required for occupied properties."); return; }
-      if (!form.rent || isNaN(Number(form.rent)) || Number(form.rent) <= 0) { alert("Monthly rent is required for occupied properties."); return; }
-      if (!form.security_deposit || isNaN(Number(form.security_deposit))) { alert("Security deposit amount is required for occupied properties."); return; }
-      if (!form.lease_start) { alert("Lease start date is required for occupied properties."); return; }
-      if (!form.lease_end) { alert("Lease end date is required for occupied properties."); return; }
-      if (form.lease_start >= form.lease_end) { alert("Lease end date must be after lease start date."); return; }
+      if (!form.tenant.trim()) { alert("Tenant name is required for occupied properties."); guardRelease("saveProperty"); return; }
+      if (!form.tenant_email.trim() || !form.tenant_email.includes("@")) { alert("A valid tenant email is required for occupied properties."); guardRelease("saveProperty"); return; }
+      if (!form.tenant_phone.trim()) { alert("Tenant phone number is required for occupied properties."); guardRelease("saveProperty"); return; }
+      if (!form.rent || isNaN(Number(form.rent)) || Number(form.rent) <= 0) { alert("Monthly rent is required for occupied properties."); guardRelease("saveProperty"); return; }
+      if (!form.security_deposit || isNaN(Number(form.security_deposit))) { alert("Security deposit amount is required for occupied properties."); guardRelease("saveProperty"); return; }
+      if (!form.lease_start) { alert("Lease start date is required for occupied properties."); guardRelease("saveProperty"); return; }
+      if (!form.lease_end) { alert("Lease end date is required for occupied properties."); guardRelease("saveProperty"); return; }
+      if (form.lease_start >= form.lease_end) { alert("Lease end date must be after lease start date."); guardRelease("saveProperty"); return; }
     }
     // Build composite address for backward compatibility
     const compositeAddress = [form.address_line_1, form.address_line_2, form.city, form.state + " " + form.zip].filter(Boolean).join(", ");
@@ -1546,8 +1545,8 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-manrope font-bold text-slate-800">Properties</h2>
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-2">
+        <h2 className="text-xl md:text-2xl font-manrope font-bold text-slate-800">Properties</h2>
         <div className="flex items-center gap-3">
           <div className="flex gap-1">
             <button onClick={() => setShowArchived(false)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (!showArchived ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>Active ({properties.length})</button>
@@ -2781,9 +2780,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       )}
 
       {/* Tab Navigation */}
-      <div className="flex items-center gap-4 mb-4 border-b border-indigo-50 pb-3">
-        <h2 className="text-xl font-bold text-gray-800">Tenants</h2>
-        <div className="flex gap-1 ml-2">
+      <div className="flex flex-col md:flex-row md:items-center gap-2 mb-4 border-b border-indigo-50 pb-3">
+        <h2 className="text-xl md:text-2xl font-bold text-gray-800">Tenants</h2>
+        <div className="flex gap-1 overflow-x-auto pb-1">
           {[["tenants", "Tenants"], ["leases", "Leases"], ["moveout", "Move-Out"], ["evictions", "Evictions"], ["archived", "Archived"]].map(([id, label]) => (
             <button key={id} onClick={() => { setTenantTab(id); if (id === "archived") { supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200).then(({ data }) => setArchivedTenants(data || [])); } }} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (tenantTab === id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
           ))}
@@ -3577,11 +3576,11 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
           </div>
         </div>
       )}
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="text-2xl font-manrope font-bold text-slate-800">Maintenance</h2>
-        <div className="flex gap-1">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-5 gap-2">
+        <h2 className="text-xl md:text-2xl font-manrope font-bold text-slate-800">Maintenance</h2>
+        <div className="flex gap-1 overflow-x-auto pb-1">
           {[["workorders", "Work Orders"], ["inspections", "Inspections"], ["vendors", "Vendors"], ["archived", "Archived"]].map(([id, label]) => (
-            <button key={id} onClick={() => setMaintTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (maintTab === id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
+            <button key={id} onClick={() => setMaintTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap " + (maintTab === id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
           ))}
         </div>
       </div>
@@ -3910,9 +3909,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
       )}
 
       {/* Tab Navigation */}
-      <div className="flex items-center gap-4 mb-5 border-b border-indigo-50 pb-3">
-        <h2 className="text-2xl font-manrope font-bold text-slate-800">Utilities</h2>
-        <div className="flex gap-1 ml-2">
+      <div className="flex flex-col md:flex-row md:items-center gap-2 mb-5 border-b border-indigo-50 pb-3">
+        <h2 className="text-xl md:text-2xl font-manrope font-bold text-slate-800">Utilities</h2>
+        <div className="flex gap-1 overflow-x-auto pb-1">
           {[["bills", "Manual Bills"], ["automation", "⚡ Automation"], ["jobs", "Job History"]].map(([id, label]) => (
             <button key={id} onClick={() => setUtilTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (utilTab === id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
           ))}
@@ -11930,7 +11929,7 @@ function AppInner() {
   return (
     <div className="flex h-screen bg-[#fcf8ff] font-inter overflow-hidden">
       {/* Sidebar */}
-      <div className={`${sidebarOpen ? "flex" : "hidden"} md:flex flex-col w-56 bg-white/80 backdrop-blur-md border-r border-indigo-50 z-20 fixed md:relative h-full`}>
+      <div className={`${sidebarOpen ? "flex" : "hidden"} md:flex flex-col w-56 bg-white/80 backdrop-blur-md border-r border-indigo-50 z-30 fixed md:relative h-full`}>
         <div className="px-5 py-4 border-b border-indigo-50">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-200">
