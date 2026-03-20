@@ -112,16 +112,6 @@ function generateId(prefix = "") {
   return (prefix ? prefix + "-" : "") + id;
 }
 
-// Safe write wrapper — logs errors instead of silently failing
-    return result;
-  } catch (e) {
-    const msg = "DB write failed" + (context ? " in " + context : "") + ": " + e.message;
-    console.warn(msg);
-    if (alertOnError) alert(msg);
-    return { error: e };
-  }
-}
-
 // Guard: require companyId — FAIL CLOSED if missing (no silent fallback)
 function normalizeEmail(email) {
   return (email || "").toLowerCase().trim();
