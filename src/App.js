@@ -1245,6 +1245,32 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       } finally { guardRelease("saveProperty"); }
   }
 
+  async function deactivateProperty(property) {
+    if (!window.confirm(`Deactivate "${property.address}"?\n\nThis will:\n• Mark the property as inactive\n• Hide related tenants and work orders from active views\n• Preserve all accounting history\n• You can reactivate it anytime\n\nUse Archive instead if you want to fully remove it.`)) return;
+    const { error } = await supabase.from("properties").update({ 
+      status: "inactive",
+    }).eq("id", property.id).eq("company_id", companyId);
+    if (error) { alert(userError(error.message)); return; }
+    // Deactivate accounting class
+    await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("name", property.address);
+    // Mark tenants as inactive
+    await supabase.from("tenants").update({ lease_status: "inactive" }).eq("company_id", companyId).eq("property", property.address).is("archived_at", null);
+    addNotification("⏸️", `Deactivated property: ${property.address}`);
+    logAudit("deactivate", "properties", `Deactivated property: ${property.address}`, property.id, userProfile?.email, userRole, companyId);
+    fetchProperties();
+  }
+
+  async function reactivateProperty(property) {
+    const { error } = await supabase.from("properties").update({ 
+      status: property.tenant ? "occupied" : "vacant",
+    }).eq("id", property.id).eq("company_id", companyId);
+    if (error) { alert(userError(error.message)); return; }
+    await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("name", property.address);
+    await supabase.from("tenants").update({ lease_status: "active" }).eq("company_id", companyId).eq("property", property.address).is("archived_at", null);
+    addNotification("▶️", `Reactivated property: ${property.address}`);
+    fetchProperties();
+  }
+
   async function deleteProperty(id, address) {
       if (!guardSubmit("deleteProperty")) return;
       try {
@@ -1288,6 +1314,8 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("property", address);
     }
     addNotification("📦", `Property archived: ${address}`);
+    // Deactivate the accounting class for this property
+    await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("name", address);
     logAudit("archive", "properties", `Archived property: ${address}` + (archiveTenant ? " (with tenant)" : ""), id, userProfile?.email, userRole, companyId);
     fetchProperties();
       } finally { guardRelease("deleteProperty"); }
@@ -1664,7 +1692,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
               <div><label className="text-xs font-medium text-slate-400 mb-1 block">ZIP *</label><input placeholder="20770" value={form.zip} onChange={e => setForm({ ...form, zip: e.target.value.replace(/[^\d-]/g, "").slice(0, 10) })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
             </div>
             <div><label className="text-xs font-medium text-slate-400 mb-1 block">Type *</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full"><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></select></div>
-            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status *</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full"><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option></select></div>
+            <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status *</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full"><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option><option value="inactive">Inactive</option></select></div>
             {form.status === "occupied" && (<>
               <div className="col-span-1 sm:col-span-2 bg-indigo-50 rounded-lg px-3 py-2"><div className="text-xs font-semibold text-indigo-700">Tenant Information</div></div>
               <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant Name *</label><input placeholder="Jane Doe" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
@@ -1734,8 +1762,11 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
                 {p.lease_end && <div className="flex justify-between"><span>Lease End:</span><span>{p.lease_end}</span></div>}
               </div>
               {isReadOnly(p) && <div className="mt-2 text-xs text-purple-600 bg-purple-50 rounded-lg px-2 py-1">🔒 Managed property — view only</div>}
+              {p.status === "inactive" && <div className="mt-2 text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-1">⏸ Inactive — accounting history preserved</div>}
               <div className="flex gap-2 mt-3 pt-3 border-t border-indigo-50/50 flex-wrap" onClick={e => e.stopPropagation()}>
                 {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
+                {!isReadOnly(p) && isAdmin && p.status !== "inactive" && <button onClick={() => deactivateProperty(p)} className="text-xs text-amber-600 hover:underline">Deactivate</button>}
+                {!isReadOnly(p) && isAdmin && p.status === "inactive" && <button onClick={() => reactivateProperty(p)} className="text-xs text-green-600 hover:underline">Reactivate</button>}
                 {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline">Archive</button>}
                 {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline">Assign PM</button>}
                 {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline">Remove PM</button>}
@@ -8758,6 +8789,10 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
       const { error: propErr } = await supabase.from("properties").update({ status: "occupied", tenant: item.name }).eq("company_id", companyId).eq("address", item.property).is("archived_at", null);
       if (propErr) console.warn("Failed to update property:", propErr.message);
     }
+    // Reactivate accounting class if restoring a property
+    if (item._table === "properties" && item.address) {
+      await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("name", item.address);
+    }
     addNotification("♻️", `Restored ${item._label}: ${item.address || item.name || item.issue || item.tenant_name || item.tenant || "item"}`);
     fetchArchived();
   }
@@ -11355,8 +11390,18 @@ function PendingPMAssignments({ companyId, addNotification }) {
 }
 
 function AppInner() {
-  const [screen, setScreen] = useState("landing");
-  const [page, setPage] = useState("dashboard");
+  const [screen, setScreenRaw] = useState("landing");
+  const [page, setPageRaw] = useState("dashboard");
+
+  function setPage(p) { setPageRaw(p); window.history.pushState({ page: p, screen: "app" }, "", "#" + p); }
+  function setScreen(s) { setScreenRaw(s); if (s !== "app") window.history.pushState({ screen: s }, "", "#" + s); }
+
+  useEffect(() => {
+    const onPop = (e) => { if (e.state?.page) setPageRaw(e.state.page); if (e.state?.screen) setScreenRaw(e.state.screen); };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -11367,6 +11412,22 @@ function AppInner() {
   const [customAllowedPages, setCustomAllowedPages] = useState(null);
   // Company context
   const [activeCompany, setActiveCompany] = useState(null);
+
+  // Browser back button support
+  useEffect(() => {
+    const handlePopState = (e) => {
+      if (e.state?.page) {
+        _setPage(e.state.page);
+      } else if (e.state?.screen) {
+        _setScreen(e.state.screen);
+      } else {
+        // No state — go to dashboard or landing
+        if (screen === "app") _setPage("dashboard");
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [screen]);
   const [companyRole, setCompanyRole] = useState("");
   const [roleLoaded, setRoleLoaded] = useState(false);
   const [missingRPCs, setMissingRPCs] = useState([]);
