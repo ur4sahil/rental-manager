@@ -1213,8 +1213,8 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       }
       // Admin: direct save
       const { error } = editingProperty
-        ? await supabase.from("properties").update({ address: compositeAddress, address_line_1: form.address_line_1, address_line_2: form.address_line_2, city: form.city, state: form.state, zip: form.zip, type: form.type, status: form.status, rent: form.status === "occupied" ? form.rent : null, security_deposit: form.status === "occupied" ? form.security_deposit : null, tenant: form.status === "occupied" ? form.tenant : "", lease_start: form.status === "occupied" ? form.lease_start : "", lease_end: form.status === "occupied" ? form.lease_end : "", notes: form.notes }).eq("id", editingProperty.id).eq("company_id", companyId)
-        : await supabase.from("properties").insert([{ address: compositeAddress, address_line_1: form.address_line_1, address_line_2: form.address_line_2, city: form.city, state: form.state, zip: form.zip, type: form.type, status: form.status, rent: form.status === "occupied" ? form.rent : null, security_deposit: form.status === "occupied" ? form.security_deposit : null, tenant: form.status === "occupied" ? form.tenant : "", lease_start: form.status === "occupied" ? form.lease_start : "", lease_end: form.status === "occupied" ? form.lease_end : "", notes: form.notes, company_id: companyId }]);
+        ? await supabase.from("properties").update({ address: compositeAddress, address_line_1: form.address_line_1, address_line_2: form.address_line_2, city: form.city, state: form.state, zip: form.zip, type: form.type, status: form.status, rent: form.status === "occupied" ? form.rent : null, security_deposit: form.status === "occupied" ? form.security_deposit : null, tenant: form.status === "occupied" ? form.tenant : "", lease_start: form.status === "occupied" ? form.lease_start : null, lease_end: form.status === "occupied" ? form.lease_end : null, notes: form.notes }).eq("id", editingProperty.id).eq("company_id", companyId)
+        : await supabase.from("properties").insert([{ address: compositeAddress, address_line_1: form.address_line_1, address_line_2: form.address_line_2, city: form.city, state: form.state, zip: form.zip, type: form.type, status: form.status, rent: form.status === "occupied" ? form.rent : null, security_deposit: form.status === "occupied" ? form.security_deposit : null, tenant: form.status === "occupied" ? form.tenant : "", lease_start: form.status === "occupied" ? form.lease_start : null, lease_end: form.status === "occupied" ? form.lease_end : null, notes: form.notes, company_id: companyId }]);
       if (error) { alert(userError(error.message)); return; }
       // Show document checklist for occupied properties
       if (form.status === "occupied") {
@@ -1225,12 +1225,12 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
         const { data: existingTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.tenant.trim()).eq("property", compositeAddress).maybeSingle();
         let tenantId = existingTenant?.id;
         if (!existingTenant) {
-          const { data: newT } = await supabase.from("tenants").insert([{ company_id: companyId, name: form.tenant.trim(), email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", property: compositeAddress, rent: Number(form.rent) || 0, lease_status: "active", lease_start: form.lease_start || "", lease_end_date: form.lease_end || "", move_in: form.lease_start || "", move_out: form.lease_end || "", balance: 0 }]).select("id").maybeSingle();
+          const { data: newT } = await supabase.from("tenants").insert([{ company_id: companyId, name: form.tenant.trim(), email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", property: compositeAddress, rent: Number(form.rent) || 0, lease_status: "active", lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, balance: 0 }]).select("id").maybeSingle();
           tenantId = newT?.id;
           // Notify: new tenant move-in
           queueNotification("move_in", (form.tenant_email || "").toLowerCase(), { tenant: form.tenant.trim(), property: compositeAddress, moveInDate: form.lease_start || formatLocalDate(new Date()) }, companyId);
         } else {
-          await supabase.from("tenants").update({ email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", rent: Number(form.rent) || 0, lease_status: "active", lease_start: form.lease_start || "", lease_end_date: form.lease_end || "", move_in: form.lease_start || "", move_out: form.lease_end || "" }).eq("id", existingTenant.id).eq("company_id", companyId);
+          await supabase.from("tenants").update({ email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", rent: Number(form.rent) || 0, lease_status: "active", lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null }).eq("id", existingTenant.id).eq("company_id", companyId);
         }
         // Auto-create lease record if dates are provided and no active lease exists
         if (form.lease_start && form.lease_end && form.rent) {
@@ -12053,11 +12053,11 @@ function AppInner() {
       {/* Mobile Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-indigo-50 px-4 pt-3 pb-6 flex justify-around items-center z-40 md:hidden">
         {[
-          { id: "dashboard", icon: "dashboard", label: "Home" },
-          { id: "properties", icon: "apartment", label: "Assets" },
+          { id: "dashboard", icon: "dashboard", label: "Dashboard" },
+          { id: "properties", icon: "apartment", label: "Properties" },
           { id: "tenants", icon: "people", label: "Tenants" },
-          { id: "payments", icon: "payments", label: "Rent" },
-          { id: "maintenance", icon: "build", label: "Repair" },
+          { id: "payments", icon: "payments", label: "Payments" },
+          { id: "maintenance", icon: "build", label: "Maint." },
         ].map(n => (
           <button key={n.id} onClick={() => setPage(n.id)} className={`flex flex-col items-center gap-1 transition-colors ${page === n.id ? "text-indigo-600" : "text-slate-400"}`}>
             {page === n.id ? <div className="bg-indigo-50 p-2 rounded-xl"><span className="material-icons-outlined">{n.icon}</span></div> : <span className="material-icons-outlined">{n.icon}</span>}
