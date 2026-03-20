@@ -330,13 +330,41 @@ async function checkAccrualExists(companyId, month, tenantName) {
 async function queueNotification(type, recipientEmail, data, companyId) {
   if (!recipientEmail || !companyId) return;
   try {
-    const { error: _notifWriteErr } = await supabase.from("notification_queue").insert([{
-      company_id: companyId,
-      type,
-      recipient_email: recipientEmail.toLowerCase(),
-      data: typeof data === "string" ? data : JSON.stringify(data),
-      status: "pending",
-    }]);
+    // Check if this notification type is enabled and which channels are active
+    const { data: settings } = await supabase.from("notification_settings")
+      .select("enabled, channels, recipient_filter")
+      .eq("company_id", companyId).eq("type", type).maybeSingle();
+    
+    // If setting exists and is disabled, skip entirely
+    if (settings && !settings.enabled) return;
+    
+    const channels = settings?.channels 
+      ? (typeof settings.channels === "string" ? JSON.parse(settings.channels) : settings.channels) 
+      : { in_app: true, email: true, push: false };
+    
+    // Queue for email if email channel is enabled
+    if (channels.email) {
+      const { error: _notifWriteErr } = await supabase.from("notification_queue").insert([{
+        company_id: companyId,
+        type,
+        recipient_email: recipientEmail.toLowerCase(),
+        data: typeof data === "string" ? data : JSON.stringify(data),
+        status: "pending",
+      }]);
+      if (_notifWriteErr) console.warn("Email queue failed:", _notifWriteErr.message);
+    }
+    
+    // Queue for push if push channel is enabled
+    if (channels.push) {
+      // Find push subscriptions for this recipient
+      const { data: subs } = await supabase.from("push_subscriptions")
+        .select("subscription").eq("company_id", companyId).eq("user_email", recipientEmail.toLowerCase());
+      // Push delivery would be handled by the Edge Function
+      // For now, log that push was requested
+      if (subs?.length > 0) {
+        console.log("Push queued for", recipientEmail, "type:", type);
+      }
+    }
   } catch (e) { console.warn("queueNotification failed:", e.message); }
 }
 
@@ -907,7 +935,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
 }
 
 // ============ DASHBOARD ============
-function Dashboard({ notifications, setPage, companyId }) {
+function Dashboard({ notifications, setPage, companyId, addNotification }) {
   const [properties, setProperties] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [workOrders, setWorkOrders] = useState([]);
@@ -7970,8 +7998,18 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
         if (daysUntilDue <= daysBefore && daysUntilDue >= 0) {
           const tenant = tenants.find(t => t.name === lease.tenant_name);
           if (tenant?.email) {
-            const msg = (rentDueSetting.template || "").replace("${amount}", "$" + lease.rent_amount).replace("${due_date}", nextDue.toLocaleDateString()).replace("${property}", lease.property);
-            const { error: _err6104 } = await supabase.from("notification_log").insert([{ company_id: companyId, event_type: "rent_due", recipient_email: normalizeEmail(tenant.email), subject: "Rent Due Reminder", message: msg, status: "sent", related_id: lease.id }]);
+            // Check if already notified for this period (prevent duplicate reminders)
+            const monthKey = nextDue.getFullYear() + "-" + String(nextDue.getMonth()+1).padStart(2,"0");
+            const { data: existing } = await supabase.from("notification_log").select("id").eq("company_id", companyId).eq("event_type", "rent_due").eq("related_id", lease.id).ilike("message", "%" + monthKey + "%").limit(1);
+            if (existing?.length > 0) continue; // Already sent for this period
+            
+            const msg = "Rent of $" + lease.rent_amount + " is due on " + nextDue.toLocaleDateString() + " for " + lease.property;
+            // Queue for email delivery
+            queueNotification("rent_due", tenant.email, { tenant: lease.tenant_name, amount: lease.rent_amount, date: nextDue.toLocaleDateString(), property: lease.property }, companyId);
+            // In-app notification
+            addNotification("💰", "Rent reminder sent to " + tenant.name, { type: "rent_due", recipient: tenant.email });
+            // Log
+            const { error: _err6104 } = await supabase.from("notification_log").insert([{ company_id: companyId, event_type: "rent_due", recipient_email: normalizeEmail(tenant.email), subject: "Rent Due Reminder", message: msg + " " + monthKey, status: "queued", related_id: lease.id }]);
             if (_err6104) console.warn("notification_log write failed:", _err6104.message);
             count++;
           }
@@ -7988,8 +8026,14 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
         if (daysLeft <= daysBefore && daysLeft > 0) {
           const tenant = tenants.find(t => t.name === lease.tenant_name);
           if (tenant?.email) {
-            const msg = (leaseExpSetting.template || "").replace("${property}", lease.property).replace("${end_date}", lease.end_date);
-            const { error: _err6121 } = await supabase.from("notification_log").insert([{ company_id: companyId, event_type: "lease_expiring", recipient_email: normalizeEmail(tenant.email), subject: "Lease Expiration Notice", message: msg, status: "sent", related_id: lease.id }]);
+            // Check if already notified for this lease expiry
+            const { data: existingLease } = await supabase.from("notification_log").select("id").eq("company_id", companyId).eq("event_type", "lease_expiring").eq("related_id", lease.id).limit(1);
+            if (existingLease?.length > 0) continue;
+            
+            const msg = "Lease for " + lease.property + " expires on " + lease.end_date + " (" + daysLeft + " days remaining)";
+            queueNotification("lease_expiry", tenant.email, { tenant: lease.tenant_name, property: lease.property, date: lease.end_date, daysLeft }, companyId);
+            addNotification("📋", "Lease expiry warning sent to " + tenant.name, { type: "lease_expiry", recipient: tenant.email });
+            const { error: _err6121 } = await supabase.from("notification_log").insert([{ company_id: companyId, event_type: "lease_expiring", recipient_email: normalizeEmail(tenant.email), subject: "Lease Expiration Notice", message: msg, status: "queued", related_id: lease.id }]);
             if (_err6121) console.warn("notification_log write failed:", _err6121.message);
             count++;
           }
@@ -8067,6 +8111,15 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
                 <div className="flex items-center gap-3 text-xs mb-2">
                   <span className="text-slate-400">Recipients:</span>
                   <span className="font-medium text-slate-500">{s.recipients}</span>
+                  <select value={s.recipient_filter || "all"} onChange={async (e) => {
+                    await supabase.from("notification_settings").update({ recipient_filter: e.target.value }).eq("id", s.id).eq("company_id", companyId);
+                    fetchSettings();
+                  }} className="text-xs border border-gray-200 rounded px-1.5 py-0.5 mr-2">
+                    <option value="all">All</option>
+                    <option value="tenant_only">Tenant Only</option>
+                    <option value="admin_only">Admin Only</option>
+                    <option value="both">Admin + Tenant</option>
+                  </select>
                   <div className="flex gap-1 mr-3">
                     {channels.map(ch => (
                       <button key={ch} onClick={async () => {
@@ -11628,6 +11681,9 @@ function AppInner() {
     setActiveCompany(company);
       checkRPCHealth(company.id).then(m => setMissingRPCs(m)).catch(() => {});
     loadInboxNotifications(company.id);
+    registerPushNotifications();
+    // Auto-run daily notification check (rent reminders, lease expiry)
+    autoNotificationCheck(company.id);
     setCompanyRole(role);
     setUserRole(role);
     setRoleLoaded(true);
@@ -11674,6 +11730,101 @@ function AppInner() {
         read: false,
       }]).then(({ error }) => { if (error) console.warn("Inbox write:", error.message); });
     }
+  }
+
+
+  // Push Notification Registration
+  async function registerPushNotifications() {
+    try {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        console.warn("Push notifications not supported");
+        return;
+      }
+      const registration = await navigator.serviceWorker.register("/sw.js");
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") { console.warn("Push permission denied"); return; }
+      
+      // Get VAPID public key from Supabase (or use a hardcoded one for now)
+      // For production, generate VAPID keys and store the public key here
+      const VAPID_PUBLIC_KEY = ""; // TODO: Set your VAPID public key
+      if (!VAPID_PUBLIC_KEY) { console.warn("VAPID key not configured — push disabled"); return; }
+      
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: VAPID_PUBLIC_KEY,
+      });
+      
+      // Save subscription to DB
+      if (activeCompany?.id && currentUser?.email) {
+        await supabase.from("push_subscriptions").upsert([{
+          company_id: activeCompany.id,
+          user_email: currentUser.email,
+          subscription: JSON.parse(JSON.stringify(subscription)),
+        }], { onConflict: "company_id,user_email" }).then(({ error }) => {
+          if (error) console.warn("Push subscription save:", error.message);
+          else console.log("Push notifications enabled");
+        });
+      }
+    } catch (e) { console.warn("Push registration failed:", e.message); }
+  }
+
+
+  async function autoNotificationCheck(cid) {
+    try {
+      const lastCheck = sessionStorage.getItem("notifCheck_" + cid);
+      const today = new Date().toDateString();
+      if (lastCheck === today) return; // Already checked today
+      sessionStorage.setItem("notifCheck_" + cid, today);
+      
+      // Check rent due reminders
+      const { data: activeLeases } = await supabase.from("leases").select("id, tenant_name, property, rent_amount, payment_due_day, end_date")
+        .eq("company_id", cid).eq("status", "active").limit(200);
+      if (!activeLeases) return;
+      
+      const todayDate = new Date();
+      let queued = 0;
+      
+      for (const lease of activeLeases) {
+        // Rent due reminder (3 days before due date)
+        const dueDay = Math.min(lease.payment_due_day || 1, 28);
+        const nextDue = new Date(todayDate.getFullYear(), todayDate.getMonth(), dueDay);
+        if (nextDue < todayDate) nextDue.setMonth(nextDue.getMonth() + 1);
+        const daysUntil = Math.ceil((nextDue - todayDate) / 86400000);
+        
+        if (daysUntil <= 3 && daysUntil >= 0) {
+          const { data: tenant } = await supabase.from("tenants").select("email").eq("company_id", cid).eq("name", lease.tenant_name).is("archived_at", null).maybeSingle();
+          if (tenant?.email) {
+            // Check duplicate
+            const monthKey = nextDue.getFullYear() + "-" + String(nextDue.getMonth()+1).padStart(2,"0");
+            const { data: already } = await supabase.from("notification_queue").select("id")
+              .eq("company_id", cid).eq("type", "rent_due").ilike("data", "%" + lease.tenant_name + "%" + monthKey + "%").limit(1);
+            if (!already?.length) {
+              await queueNotification("rent_due", tenant.email, { tenant: lease.tenant_name, amount: lease.rent_amount, date: nextDue.toLocaleDateString(), property: lease.property, month: monthKey }, cid);
+              queued++;
+            }
+          }
+        }
+        
+        // Lease expiry warning (60 days before)
+        if (lease.end_date) {
+          const endDate = new Date(lease.end_date);
+          const daysLeft = Math.ceil((endDate - todayDate) / 86400000);
+          if (daysLeft <= 60 && daysLeft > 0) {
+            const { data: tenant } = await supabase.from("tenants").select("email").eq("company_id", cid).eq("name", lease.tenant_name).is("archived_at", null).maybeSingle();
+            if (tenant?.email) {
+              const { data: already } = await supabase.from("notification_queue").select("id")
+                .eq("company_id", cid).eq("type", "lease_expiry").ilike("data", "%" + lease.id + "%").limit(1);
+              if (!already?.length) {
+                await queueNotification("lease_expiry", tenant.email, { tenant: lease.tenant_name, property: lease.property, date: lease.end_date, daysLeft, leaseId: lease.id }, cid);
+                queued++;
+              }
+            }
+          }
+        }
+      }
+      
+      if (queued > 0) console.log("Auto notification check: queued", queued, "notifications");
+    } catch (e) { console.warn("Auto notification check:", e.message); }
   }
 
   // Load persisted notifications on company select
