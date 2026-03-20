@@ -1790,7 +1790,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
 
 
 // ============ TENANTS ============
-function Tenants({ addNotification, userProfile, userRole, companyId, setPage }) {
+function Tenants({ addNotification, userProfile, userRole, companyId, setPage, initialTab }) {
   const [tenants, setTenants] = useState([]);
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1814,6 +1814,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage })
   const [bulkAction, setBulkAction] = useState(null);
   const [leaseModal, setLeaseModal] = useState(null);
   const [tenantDocs, setTenantDocs] = useState([]);
+  const [tenantTab, setTenantTab] = useState(initialTab || "tenants");
   const [showTenantDocPrompt, setShowTenantDocPrompt] = useState(null); // 'renew' | 'notice'
   const [leaseInput, setLeaseInput] = useState("");
   // eslint-disable-next-line no-unused-vars
@@ -2533,6 +2534,21 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage })
         </div>
       )}
 
+      {/* Tab Navigation */}
+      <div className="flex items-center gap-4 mb-4 border-b border-indigo-50 pb-3">
+        <h2 className="text-xl font-bold text-gray-800">Tenants</h2>
+        <div className="flex gap-1 ml-2">
+          {[["tenants", "Tenants"], ["leases", "Leases"], ["moveout", "Move-Out"], ["evictions", "Evictions"]].map(([id, label]) => (
+            <button key={id} onClick={() => setTenantTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (tenantTab === id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      {tenantTab !== "tenants" && tenantTab === "leases" && <Leases addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
+      {tenantTab === "moveout" && <MoveOutManager addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
+      {tenantTab === "evictions" && <EvictionTracker addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
+
+      {tenantTab === "tenants" && (<>
       {/* Required Documents Prompt */}
       {showTenantDocPrompt && (
         <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 mb-4">
@@ -2827,8 +2843,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage })
   );
 }
 
-// ============ PAYMENTS ============
+// ============ PAYMENTS =========  </>)}
+===
 function Payments({ addNotification, userProfile, userRole, companyId }) {
+  const [payTab, setPayTab] = useState("payments");
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -3002,6 +3020,8 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
         </div>
       )}
 
+      {payTab === "autopay" && <Autopay addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
+      {payTab === "payments" && (<>
       <div className="grid grid-cols-3 gap-3 mb-5">
         <StatCard label="Expected" value={`${formatCurrency(totalExpected)}`} color="text-slate-700" />
         <StatCard label="Collected" value={`${formatCurrency(totalCollected)}`} color="text-green-600" />
@@ -3089,11 +3109,13 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
         );
       })()}
     </div>
+    </>)}
   );
 }
 
 // ============ MAINTENANCE ============
 function Maintenance({ addNotification, userProfile, userRole, companyId }) {
+  const [maintTab, setMaintTab] = useState("workorders");
   const [workOrders, setWorkOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
@@ -3291,6 +3313,9 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
       )}
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-2xl font-manrope font-bold text-slate-800">Maintenance & Work Orders</h2>
+      {maintTab === "inspections" && <Inspections addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
+      {maintTab === "vendors" && <VendorManagement addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
+      {maintTab === "workorders" && (<>
         <button onClick={() => { setEditingWO(null); setForm({ property: "", tenant: "", issue: "", priority: "normal", status: "open", assigned: "", cost: 0, notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Work Order</button>
       </div>
 
@@ -3368,6 +3393,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
         ))}
       </div>
     </div>
+    </>)}
   );
 }
 
@@ -8449,8 +8475,8 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
 
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
-  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","accounting","documents","inspections","autopay","hoa","audittrail","leases","vendors","owners","notifications","archive","moveout","evictions"] },
-  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","documents","inspections","leases","vendors","owners","notifications","moveout","evictions"] },
+  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","owners","archive"] },
+  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","archive"] },
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
   tenant: { label: "Tenant", color: "bg-indigo-50/300", pages: ["tenant_portal"] },
@@ -8461,28 +8487,13 @@ const ALL_NAV = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard" },
   { id: "properties", label: "Properties", icon: "apartment" },
   { id: "tenants", label: "Tenants", icon: "people" },
-  { id: "leases", label: "Leases", icon: "description" },
   { id: "payments", label: "Payments", icon: "payments" },
   { id: "maintenance", label: "Maintenance", icon: "build" },
+  { id: "utilities", label: "Utilities", icon: "bolt" },
+  { id: "hoa", label: "HOA Payments", icon: "holiday_village" },
   { id: "accounting", label: "Accounting", icon: "account_balance" },
-  { id: "_group_operations", label: "Operations", icon: "settings", children: [
-    { id: "utilities", label: "Utilities", icon: "bolt" },
-    { id: "hoa", label: "HOA Payments", icon: "holiday_village" },
-    { id: "autopay", label: "Autopay", icon: "autorenew" },
-    { id: "vendors", label: "Vendors", icon: "handyman" },
-  ]},
-  { id: "_group_records", label: "Records", icon: "folder_open", children: [
-    { id: "documents", label: "Documents", icon: "folder" },
-    { id: "inspections", label: "Inspections", icon: "search" },
-    { id: "owners", label: "Owners", icon: "person" },
-    { id: "audittrail", label: "Audit Trail", icon: "history" },
-  ]},
-  { id: "_group_actions", label: "Actions", icon: "assignment", children: [
-    { id: "moveout", label: "Move-Out", icon: "exit_to_app" },
-    { id: "evictions", label: "Evictions", icon: "gavel" },
-    { id: "notifications", label: "Notifications", icon: "mail" },
-    { id: "archive", label: "Archive", icon: "inventory_2" },
-  ]},
+  { id: "owners", label: "Owners", icon: "person" },
+  { id: "archive", label: "Archive", icon: "inventory_2" },
 ];
 
 // ============ AUTOPAY / RECURRING RENT ============
@@ -11002,30 +11013,6 @@ function PendingPMAssignments({ companyId, addNotification }) {
   );
 }
 
-function SidebarGroup({ item, page, setPage, setSidebarOpen, effectivePage, safePage }) {
-  const [open, setOpen] = useState(() => item.children?.some(c => c.id === page));
-  const isChildActive = item.children?.some(c => c.id === page);
-  return (
-    <div className="mb-0.5">
-      <button onClick={() => setOpen(!open)}
-        className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left transition-all rounded-2xl ${isChildActive ? "text-indigo-700" : "text-slate-500 hover:bg-indigo-50/50 hover:text-slate-700"}`}>
-        <span className="material-icons-outlined text-lg">{item.icon}</span>
-        <span className="flex-1">{item.label}</span>
-        <span className={"material-icons-outlined text-xs transition-transform " + (open ? "rotate-180" : "")} style={{fontSize:"16px"}}>{open ? "expand_less" : "expand_more"}</span>
-      </button>
-      {open && (
-        <div className="ml-4 pl-3 border-l border-indigo-100">
-          {item.children.map(c => (
-            <button key={c.id} onClick={() => { setPage(c.id); setSidebarOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3 py-2 text-sm text-left transition-all rounded-2xl mb-0.5 ${page === c.id ? "bg-indigo-50 text-indigo-700 font-semibold" : "text-slate-400 hover:bg-indigo-50/50 hover:text-slate-700"}`}>
-              <span className="material-icons-outlined" style={{fontSize:"16px"}}>{c.icon}</span>{c.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function App() {
   const [screen, setScreen] = useState("landing");
@@ -11182,7 +11169,7 @@ export default function App() {
 
   // Build nav based on confirmed role (roleLoaded is true at this point)
   const allowedPages = customAllowedPages || ROLES[userRole]?.pages || ROLES[companyRole]?.pages || ["dashboard"];
-  const navItems = ALL_NAV.filter(n => n.children ? n.children.some(c => allowedPages.includes(c.id)) : allowedPages.includes(n.id)).map(n => n.children ? {...n, children: n.children.filter(c => allowedPages.includes(c.id))} : n);
+  const navItems = ALL_NAV.filter(n => allowedPages.includes(n.id));
   const adminNav = (userRole === "admin" || companyRole === "admin")
     ? [...navItems, { id: "roles", label: "Team & Roles", icon: "group" }]
     : navItems;
@@ -11213,11 +11200,9 @@ export default function App() {
           )}
         </div>
         <nav className="flex-1 py-3 px-2 overflow-y-auto">
-          {adminNav.map(n => n.children ? (
-            <SidebarGroup key={n.id} item={n} page={page} setPage={setPage} setSidebarOpen={setSidebarOpen} effectivePage={effectivePage} safePage={safePage} />
-          ) : (
+          {adminNav.map(n => (
             <button key={n.id} onClick={() => { setPage(n.id); setSidebarOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left transition-all rounded-2xl mb-0.5 ${(effectivePage === n.id || safePage === n.id) && page === n.id ? "bg-indigo-50 text-indigo-700 font-semibold" : "text-slate-500 hover:bg-indigo-50/50 hover:text-slate-700"}`}>
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left transition-all rounded-2xl mb-0.5 ${page === n.id ? "bg-indigo-50 text-indigo-700 font-semibold" : "text-slate-500 hover:bg-indigo-50/50 hover:text-slate-700"}`}>
               <span className="material-icons-outlined text-lg">{n.icon}</span>{n.label}
             </button>
           ))}
@@ -11233,7 +11218,8 @@ export default function App() {
                 <div className={`text-xs font-medium ${ROLES[userRole]?.color?.replace("bg-", "text-") || "text-indigo-600"}`}>{ROLES[userRole]?.label}</div>
               </div>
             </div>
-            <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 transition-colors"><span className="material-icons-outlined text-lg">logout</span></button>
+            <button onClick={() => { setPage("audittrail"); setSidebarOpen(false); }} className="text-slate-400 hover:text-indigo-500 transition-colors" title="Audit Trail"><span className="material-icons-outlined text-lg">history</span></button>
+              <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 transition-colors"><span className="material-icons-outlined text-lg">logout</span></button>
           </div>
         </div>
       </div>
