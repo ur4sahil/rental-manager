@@ -3588,9 +3588,120 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
         </Modal>
       )}
 
+      {/* Tab Navigation */}
+      <div className="flex items-center gap-4 mb-5 border-b border-indigo-50 pb-3">
+        <h2 className="text-2xl font-manrope font-bold text-slate-800">Utilities</h2>
+        <div className="flex gap-1 ml-2">
+          {[["bills", "Manual Bills"], ["automation", "⚡ Automation"], ["jobs", "Job History"]].map(([id, label]) => (
+            <button key={id} onClick={() => setUtilTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (utilTab === id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* ===== AUTOMATION TAB ===== */}
+      {utilTab === "automation" && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="font-semibold text-gray-700">Connected Utility Accounts</h3>
+              <p className="text-xs text-gray-400 mt-0.5">{utilAccounts.length} account{utilAccounts.length !== 1 ? "s" : ""} connected</p>
+            </div>
+            <button onClick={() => { setEditingAccount(null); setAccountForm({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "" }); setShowAccountForm(true); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">+ Add Account</button>
+          </div>
+
+          {showAccountForm && (
+            <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
+              <h3 className="font-semibold text-gray-700 mb-3">{editingAccount ? "Edit Account" : "Connect Utility Account"}</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={accountForm.property} onChange={v => setAccountForm({...accountForm, property: v})} companyId={companyId} /></div>
+                <div><label className="text-xs font-medium text-gray-500 mb-1 block">Provider *</label><select value={accountForm.provider} onChange={e => { const p = providers.find(x => x.id === e.target.value); setAccountForm({...accountForm, provider: e.target.value, account_type: p?.account_type || "electric"}); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option value="">Select provider...</option>{providers.map(p => <option key={p.id} value={p.id}>{p.display_name} ({p.region})</option>)}</select></div>
+                <div><label className="text-xs font-medium text-gray-500 mb-1 block">Account Number</label><input placeholder="e.g. 1234567890" value={accountForm.account_number} onChange={e => setAccountForm({...accountForm, account_number: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+                <div><label className="text-xs font-medium text-gray-500 mb-1 block">Account Type</label><select value={accountForm.account_type} onChange={e => setAccountForm({...accountForm, account_type: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option value="electric">Electric</option><option value="gas">Gas</option><option value="water_sewer">Water/Sewer</option><option value="electric_gas">Electric + Gas</option><option value="trash">Trash</option></select></div>
+                <div className="col-span-1 sm:col-span-2 bg-amber-50 rounded-lg px-3 py-2"><div className="text-xs font-semibold text-amber-700">🔐 Login Credentials (encrypted before storage)</div></div>
+                <div><label className="text-xs font-medium text-gray-500 mb-1 block">Username / Email *</label><input placeholder="your-login@email.com" value={accountForm.username} onChange={e => setAccountForm({...accountForm, username: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" autoComplete="off" /></div>
+                <div><label className="text-xs font-medium text-gray-500 mb-1 block">Password *</label><input type="password" placeholder="••••••••" value={accountForm.password} onChange={e => setAccountForm({...accountForm, password: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" autoComplete="new-password" /></div>
+                <div><label className="text-xs font-medium text-gray-500 mb-1 block">Check Frequency</label><select value={accountForm.check_frequency} onChange={e => setAccountForm({...accountForm, check_frequency: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option value="weekly">Weekly</option><option value="biweekly">Every 2 Weeks</option><option value="monthly">Monthly</option></select></div>
+                <div><label className="text-xs font-medium text-gray-500 mb-1 block">2FA Method</label><select value={accountForm.two_factor_method} onChange={e => setAccountForm({...accountForm, two_factor_method: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option value="none">None</option><option value="sms">SMS</option><option value="email">Email</option></select></div>
+              </div>
+              <div className="flex gap-2 mt-3">
+                <button onClick={saveAccount} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">Save Account</button>
+                <button onClick={() => { setShowAccountForm(false); setEditingAccount(null); }} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {utilAccounts.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
+              <div className="text-4xl mb-3">⚡</div>
+              <div className="text-gray-500 font-medium">No utility accounts connected</div>
+              <div className="text-xs text-gray-400 mt-1">Add your first account to start automated bill fetching</div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
+              {utilAccounts.map(acct => (
+                <div key={acct.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                  <div className="flex items-start justify-between mb-2">
+                    <div><div className="font-semibold text-gray-800 text-sm">{acct.provider_display}</div><div className="text-xs text-gray-400">{acct.property}</div></div>
+                    <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (acct.last_check_status === "success" ? "bg-green-100 text-green-700" : acct.last_check_status === "failed" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-500")}>{acct.last_check_status || "never"}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs mt-2">
+                    <div><span className="text-gray-400">Account #</span><div className="font-semibold text-gray-700">{acct.account_number || "—"}</div></div>
+                    <div><span className="text-gray-400">Type</span><div className="font-semibold text-gray-700 capitalize">{acct.account_type?.replace("_", "/")}</div></div>
+                    <div><span className="text-gray-400">Last Checked</span><div className="font-semibold text-gray-700">{acct.last_checked_at ? new Date(acct.last_checked_at).toLocaleDateString() : "Never"}</div></div>
+                    <div><span className="text-gray-400">Frequency</span><div className="font-semibold text-gray-700 capitalize">{acct.check_frequency}</div></div>
+                  </div>
+                  <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50">
+                    <button onClick={() => triggerManualCheck(acct)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">🔄 Check Now</button>
+                    <button onClick={() => deleteAccount(acct)} className="text-xs text-red-500 hover:underline ml-auto">Archive</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {autoBills.length > 0 && (
+            <div>
+              <h3 className="font-semibold text-gray-700 mb-3">Fetched Bills</h3>
+              <div className="space-y-2">
+                {autoBills.map(bill => (
+                  <div key={bill.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4">
+                    <div className="flex-1"><div className="font-semibold text-gray-800 text-sm">{bill.provider_display || bill.provider}</div><div className="text-xs text-gray-400">{bill.property} · Due {bill.due_date || "—"}</div></div>
+                    <div className="text-lg font-bold text-gray-800">${safeNum(bill.amount).toLocaleString()}</div>
+                    <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (bill.status === "paid" ? "bg-green-100 text-green-700" : bill.status === "authorized" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{bill.status?.replace("_", " ")}</span>
+                    {bill.status === "pending_review" && <button onClick={() => authorizeBillPayment(bill, "default_on_file")} className="text-xs bg-green-50 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-100 border border-green-200">Authorize Pay</button>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ===== JOB HISTORY TAB ===== */}
+      {utilTab === "jobs" && (
+        <div>
+          <h3 className="font-semibold text-gray-700 mb-3">Automation Job History</h3>
+          {autoJobs.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-xl border border-gray-100"><div className="text-gray-400">No automation jobs yet</div></div>
+          ) : (
+            <div className="space-y-2">
+              {autoJobs.map(job => (
+                <div key={job.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4">
+                  <div className="flex-1"><div className="font-semibold text-gray-800 text-sm capitalize">{job.job_type?.replace("_", " ")}</div><div className="text-xs text-gray-400">{job.triggered_by} · {job.created_at ? new Date(job.created_at).toLocaleString() : ""}</div></div>
+                  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (job.status === "completed" ? "bg-green-100 text-green-700" : job.status === "failed" ? "bg-red-100 text-red-700" : job.status === "running" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500")}>{job.status}</span>
+                  {job.error_message && <div className="text-xs text-red-500 max-w-xs truncate">{job.error_message}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ===== MANUAL BILLS TAB ===== */}
+      {utilTab === "bills" && (<>
       {/* Toolbar */}
       <div className="flex flex-col md:flex-row gap-3 mb-4">
-        <h2 className="text-2xl font-manrope font-bold text-slate-800 mr-auto">Utility Management</h2>
+        <div className="mr-auto"></div>
         <input placeholder="Search..." value={utilSearch} onChange={e => setUtilSearch(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-40" />
         <select value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
           <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
@@ -5301,6 +5412,7 @@ function Accounting({ companyId, activeCompany }) {
       {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} />}
       {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} />}
     </div>
+    </>)}
   );
 }
 
@@ -8349,21 +8461,28 @@ const ALL_NAV = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard" },
   { id: "properties", label: "Properties", icon: "apartment" },
   { id: "tenants", label: "Tenants", icon: "people" },
+  { id: "leases", label: "Leases", icon: "description" },
   { id: "payments", label: "Payments", icon: "payments" },
   { id: "maintenance", label: "Maintenance", icon: "build" },
-  { id: "utilities", label: "Utilities", icon: "bolt" },
   { id: "accounting", label: "Accounting", icon: "account_balance" },
-  { id: "documents", label: "Documents", icon: "folder" },
-  { id: "inspections", label: "Inspections", icon: "search" },
-  { id: "autopay", label: "Autopay", icon: "autorenew" },
-  { id: "hoa", label: "HOA Payments", icon: "holiday_village" },
-  { id: "audittrail", label: "Audit Trail", icon: "history" },
-  { id: "leases", label: "Leases", icon: "description" },
-  { id: "vendors", label: "Vendors", icon: "handyman" },
-  { id: "owners", label: "Owners", icon: "person" },
-  { id: "notifications", label: "Notifications", icon: "mail" },
-  { id: "moveout", label: "Move-Out", icon: "exit_to_app" },
-  { id: "evictions", label: "Evictions", icon: "gavel" },
+  { id: "_group_operations", label: "Operations", icon: "settings", children: [
+    { id: "utilities", label: "Utilities", icon: "bolt" },
+    { id: "hoa", label: "HOA Payments", icon: "holiday_village" },
+    { id: "autopay", label: "Autopay", icon: "autorenew" },
+    { id: "vendors", label: "Vendors", icon: "handyman" },
+  ]},
+  { id: "_group_records", label: "Records", icon: "folder_open", children: [
+    { id: "documents", label: "Documents", icon: "folder" },
+    { id: "inspections", label: "Inspections", icon: "search" },
+    { id: "owners", label: "Owners", icon: "person" },
+    { id: "audittrail", label: "Audit Trail", icon: "history" },
+  ]},
+  { id: "_group_actions", label: "Actions", icon: "assignment", children: [
+    { id: "moveout", label: "Move-Out", icon: "exit_to_app" },
+    { id: "evictions", label: "Evictions", icon: "gavel" },
+    { id: "notifications", label: "Notifications", icon: "mail" },
+    { id: "archive", label: "Archive", icon: "inventory_2" },
+  ]},
 ];
 
 // ============ AUTOPAY / RECURRING RENT ============
@@ -10883,7 +11002,32 @@ function PendingPMAssignments({ companyId, addNotification }) {
   );
 }
 
-export default function App() {
+export default function SidebarGroup({ item, page, setPage, setSidebarOpen, effectivePage, safePage }) {
+  const [open, setOpen] = useState(() => item.children?.some(c => c.id === page));
+  const isChildActive = item.children?.some(c => c.id === page);
+  return (
+    <div className="mb-0.5">
+      <button onClick={() => setOpen(!open)}
+        className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left transition-all rounded-2xl ${isChildActive ? "text-indigo-700" : "text-slate-500 hover:bg-indigo-50/50 hover:text-slate-700"}`}>
+        <span className="material-icons-outlined text-lg">{item.icon}</span>
+        <span className="flex-1">{item.label}</span>
+        <span className={"material-icons-outlined text-xs transition-transform " + (open ? "rotate-180" : "")} style={{fontSize:"16px"}}>{open ? "expand_less" : "expand_more"}</span>
+      </button>
+      {open && (
+        <div className="ml-4 pl-3 border-l border-indigo-100">
+          {item.children.map(c => (
+            <button key={c.id} onClick={() => { setPage(c.id); setSidebarOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3 py-2 text-sm text-left transition-all rounded-2xl mb-0.5 ${page === c.id ? "bg-indigo-50 text-indigo-700 font-semibold" : "text-slate-400 hover:bg-indigo-50/50 hover:text-slate-700"}`}>
+              <span className="material-icons-outlined" style={{fontSize:"16px"}}>{c.icon}</span>{c.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function App() {
   const [screen, setScreen] = useState("landing");
   const [page, setPage] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -11038,7 +11182,7 @@ export default function App() {
 
   // Build nav based on confirmed role (roleLoaded is true at this point)
   const allowedPages = customAllowedPages || ROLES[userRole]?.pages || ROLES[companyRole]?.pages || ["dashboard"];
-  const navItems = ALL_NAV.filter(n => allowedPages.includes(n.id));
+  const navItems = ALL_NAV.filter(n => n.children ? n.children.some(c => allowedPages.includes(c.id)) : allowedPages.includes(n.id)).map(n => n.children ? {...n, children: n.children.filter(c => allowedPages.includes(c.id))} : n);
   const adminNav = (userRole === "admin" || companyRole === "admin")
     ? [...navItems, { id: "roles", label: "Team & Roles", icon: "group" }]
     : navItems;
@@ -11069,7 +11213,9 @@ export default function App() {
           )}
         </div>
         <nav className="flex-1 py-3 px-2 overflow-y-auto">
-          {adminNav.map(n => (
+          {adminNav.map(n => n.children ? (
+            <SidebarGroup key={n.id} item={n} page={page} setPage={setPage} setSidebarOpen={setSidebarOpen} effectivePage={effectivePage} safePage={safePage} />
+          ) : (
             <button key={n.id} onClick={() => { setPage(n.id); setSidebarOpen(false); }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left transition-all rounded-2xl mb-0.5 ${(effectivePage === n.id || safePage === n.id) && page === n.id ? "bg-indigo-50 text-indigo-700 font-semibold" : "text-slate-500 hover:bg-indigo-50/50 hover:text-slate-700"}`}>
               <span className="material-icons-outlined text-lg">{n.icon}</span>{n.label}
