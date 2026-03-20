@@ -1084,7 +1084,29 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
 
   const isAdmin = userRole === "admin";
 
-  useEffect(() => { fetchProperties(); fetchChangeRequests(); }, [companyId]);
+  useEffect(() => { fetchProperties(); fetchChangeRequests(); fetchArchivedProperties(); }, [companyId]);
+
+  async function fetchArchivedProperties() {
+    const { data } = await supabase.from("properties").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200);
+    setArchivedProperties(data || []);
+  }
+
+  async function restoreProperty(prop) {
+    if (!window.confirm("Restore property \"" + prop.address + "\"?")) return;
+    const { error } = await supabase.from("properties").update({ archived_at: null, archived_by: null }).eq("id", prop.id).eq("company_id", companyId);
+    if (error) { alert(userError(error.message)); return; }
+    await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("name", prop.address);
+    addNotification("♻️", "Restored: " + prop.address);
+    fetchProperties(); fetchArchivedProperties();
+  }
+
+  async function permanentDeleteProperty(prop) {
+    if (!window.confirm("PERMANENTLY delete \"" + prop.address + "\"?\n\nThis cannot be undone. All related data will be lost.")) return;
+    const { error } = await supabase.from("properties").delete().eq("id", prop.id).eq("company_id", companyId);
+    if (error) { alert(userError(error.message)); return; }
+    addNotification("🗑️", "Permanently deleted: " + prop.address);
+    fetchArchivedProperties();
+  }
 
   async function fetchProperties() {
     // Fetch properties owned by this company
@@ -1447,7 +1469,9 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   const [visibleCols, setVisibleCols] = useState(["address","type","status","rent","tenant","lease_end"]);
   const [showColPicker, setShowColPicker] = useState(false);
   const [showPmAssign, setShowPmAssign] = useState(null);
-  const [showRecurringSetup, setShowRecurringSetup] = useState(null); // { tenant, property, rent }
+  const [showRecurringSetup, setShowRecurringSetup] = useState(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivedProperties, setArchivedProperties] = useState([]); // { tenant, property, rent }
   const [showDocChecklist, setShowDocChecklist] = useState(null);
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [propertyDocs, setPropertyDocs] = useState([]);
@@ -1487,11 +1511,35 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-manrope font-bold text-slate-800">Properties</h2>
-        <div className="text-xs text-slate-400">
-          {filtered.length} of {properties.length} properties
-          {hasManagedProps && <span> · {properties.filter(p => p._ownership === "managed").length} PM-managed</span>}
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1">
+            <button onClick={() => setShowArchived(false)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (!showArchived ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>Active ({properties.length})</button>
+            <button onClick={() => { setShowArchived(true); fetchArchivedProperties(); }} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (showArchived ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>Archived ({archivedProperties.length})</button>
+          </div>
         </div>
       </div>
+
+      {showArchived ? (
+        <div>
+          {archivedProperties.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-xl border border-gray-100"><div className="text-gray-400">No archived properties</div></div>
+          ) : (
+            <div className="space-y-2">
+              {archivedProperties.map(p => (
+                <div key={p.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4 opacity-70">
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-700 text-sm">{p.address}</div>
+                    <div className="text-xs text-gray-400">Archived {p.archived_at ? new Date(p.archived_at).toLocaleDateString() : ""} by {p.archived_by || "unknown"}</div>
+                    <div className="text-xs text-amber-600 mt-1">{p.archived_at ? Math.max(0, 180 - Math.floor((Date.now() - new Date(p.archived_at)) / 86400000)) : "?"} days until auto-purge</div>
+                  </div>
+                  <button onClick={() => restoreProperty(p)} className="text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 border border-emerald-200">Restore</button>
+                  <button onClick={() => permanentDeleteProperty(p)} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100 border border-red-200">Delete Forever</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (<>
 
       {isAdmin && pendingRequests.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 flex items-center justify-between">
@@ -1934,6 +1982,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       )}
 
 
+    </>)}
     </div>
   );
 }
@@ -1964,6 +2013,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [leaseModal, setLeaseModal] = useState(null);
   const [tenantDocs, setTenantDocs] = useState([]);
   const [tenantTab, setTenantTab] = useState(initialTab || "tenants");
+  const [archivedTenants, setArchivedTenants] = useState([]);
   const [showTenantDocPrompt, setShowTenantDocPrompt] = useState(null); // 'renew' | 'notice'
   const [leaseInput, setLeaseInput] = useState("");
   // eslint-disable-next-line no-unused-vars
@@ -2695,13 +2745,28 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       <div className="flex items-center gap-4 mb-4 border-b border-indigo-50 pb-3">
         <h2 className="text-xl font-bold text-gray-800">Tenants</h2>
         <div className="flex gap-1 ml-2">
-          {[["tenants", "Tenants"], ["leases", "Leases"], ["moveout", "Move-Out"], ["evictions", "Evictions"]].map(([id, label]) => (
-            <button key={id} onClick={() => setTenantTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (tenantTab === id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
+          {[["tenants", "Tenants"], ["leases", "Leases"], ["moveout", "Move-Out"], ["evictions", "Evictions"], ["archived", "Archived"]].map(([id, label]) => (
+            <button key={id} onClick={() => { setTenantTab(id); if (id === "archived") { supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200).then(({ data }) => setArchivedTenants(data || [])); } }} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (tenantTab === id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
           ))}
         </div>
       </div>
 
       {tenantTab === "leases" && <LeaseManagement addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
+      {tenantTab === "archived" && (
+        <div>
+          {archivedTenants.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-xl border border-gray-100"><div className="text-gray-400">No archived tenants</div><button onClick={async () => { const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200); setArchivedTenants(data || []); }} className="text-xs text-indigo-600 mt-2 hover:underline">Refresh</button></div>
+          ) : archivedTenants.map(t => (
+            <div key={t.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4 opacity-70 mb-2">
+              <div className="flex-1">
+                <div className="font-semibold text-gray-700 text-sm">{t.name}</div>
+                <div className="text-xs text-gray-400">{t.property} · Archived {t.archived_at ? new Date(t.archived_at).toLocaleDateString() : ""}</div>
+              </div>
+              <button onClick={async () => { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", t.id).eq("company_id", companyId); addNotification("♻️", "Restored: " + t.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); fetchTenants(); }} className="text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 border border-emerald-200">♻️ Restore</button>
+            </div>
+          ))}
+        </div>
+      )}
       {tenantTab === "moveout" && <MoveOutWizard addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
       {tenantTab === "evictions" && <EvictionWorkflow addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
 
@@ -3177,6 +3242,9 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
         </div>
       )}
 
+      {payTab === "archived" && (
+        <ArchivedItems tableName="payments" label="Payment" fields="id, tenant, property, amount, type, date, archived_at, archived_by" companyId={companyId} addNotification={addNotification} onRestore={() => { fetchPayments(); }} />
+      )}
       {payTab === "autopay" && <Autopay addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
       {payTab === "payments" && (<>
       <div className="grid grid-cols-3 gap-3 mb-5">
@@ -3471,12 +3539,15 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-2xl font-manrope font-bold text-slate-800">Maintenance</h2>
         <div className="flex gap-1">
-          {[["workorders", "Work Orders"], ["inspections", "Inspections"], ["vendors", "Vendors"]].map(([id, label]) => (
+          {[["workorders", "Work Orders"], ["inspections", "Inspections"], ["vendors", "Vendors"], ["archived", "Archived"]].map(([id, label]) => (
             <button key={id} onClick={() => setMaintTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (maintTab === id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
           ))}
         </div>
       </div>
 
+      {maintTab === "archived" && (
+        <ArchivedItems tableName="work_orders" label="Work Order" fields="id, issue, property, status, priority, archived_at, archived_by" companyId={companyId} addNotification={addNotification} onRestore={() => { fetchWorkOrders(); }} />
+      )}
       {maintTab === "inspections" && <Inspections addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
       {maintTab === "vendors" && <VendorManagement addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
       {maintTab === "workorders" && (<>
@@ -4015,6 +4086,68 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
   );
 }
 
+
+
+// ============ REUSABLE ARCHIVED ITEMS COMPONENT ============
+function ArchivedItems({ tableName, label, fields, companyId, addNotification, onRestore }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { fetchItems(); }, [companyId]);
+
+  async function fetchItems() {
+    setLoading(true);
+    const { data } = await supabase.from(tableName).select(fields).eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200);
+    setItems(data || []);
+    setLoading(false);
+  }
+
+  async function restore(item) {
+    if (!window.confirm("Restore this " + label.toLowerCase() + "?")) return;
+    const { error } = await supabase.from(tableName).update({ archived_at: null, archived_by: null }).eq("id", item.id).eq("company_id", companyId);
+    if (error) { alert("Restore failed: " + error.message); return; }
+    addNotification("♻️", "Restored " + label + ": " + (item.address || item.name || item.issue || item.tenant || "item"));
+    fetchItems();
+    if (onRestore) onRestore();
+  }
+
+  async function permanentDelete(item) {
+    if (!window.confirm("PERMANENTLY delete this " + label.toLowerCase() + "? This cannot be undone.")) return;
+    const { error } = await supabase.from(tableName).delete().eq("id", item.id).eq("company_id", companyId);
+    if (error) { alert("Delete failed: " + error.message); return; }
+    addNotification("🗑️", "Deleted " + label);
+    fetchItems();
+  }
+
+  if (loading) return <Spinner />;
+
+  return (
+    <div>
+      {items.length === 0 ? (
+        <div className="text-center py-12 bg-white rounded-xl border border-gray-100"><div className="text-gray-400">No archived {label.toLowerCase()}s</div></div>
+      ) : (
+        <div className="space-y-2">
+          {items.map(item => (
+            <div key={item.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4 opacity-70">
+              <div className="flex-1">
+                <div className="font-semibold text-gray-700 text-sm">{item.address || item.name || item.issue || item.tenant || "Item"}</div>
+                <div className="text-xs text-gray-400">
+                  {item.property && <span>{item.property} · </span>}
+                  {item.amount && <span>${Number(item.amount).toLocaleString()} · </span>}
+                  Archived {item.archived_at ? new Date(item.archived_at).toLocaleDateString() : ""}
+                  {item.archived_by && <span> by {item.archived_by}</span>}
+                </div>
+                <div className="text-xs text-amber-600 mt-1">{item.archived_at ? Math.max(0, 180 - Math.floor((Date.now() - new Date(item.archived_at)) / 86400000)) : "?"} days until auto-purge</div>
+              </div>
+              <button onClick={() => restore(item)} className="text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 border border-emerald-200">♻️ Restore</button>
+              <button onClick={() => permanentDelete(item)} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100 border border-red-200">🗑️ Delete</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ============ RECURRING JOURNAL ENTRIES ============
 function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
@@ -8883,8 +9016,8 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
 
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
-  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","owners","archive","notifications","audittrail","documents","leases","autopay","inspections","vendors","moveout","evictions"] },
-  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","archive","notifications","documents","leases","inspections","vendors","moveout","evictions"] },
+  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","owners","notifications","audittrail","documents","leases","autopay","inspections","vendors","moveout","evictions"] },
+  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","notifications","documents","leases","inspections","vendors","moveout","evictions"] },
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
   tenant: { label: "Tenant", color: "bg-indigo-50/300", pages: ["tenant_portal"] },
@@ -8901,7 +9034,6 @@ const ALL_NAV = [
   { id: "hoa", label: "HOA Payments", icon: "holiday_village" },
   { id: "accounting", label: "Accounting", icon: "account_balance" },
   { id: "owners", label: "Owners", icon: "person" },
-  { id: "archive", label: "Archive", icon: "inventory_2" },
 ];
 
 // ============ AUTOPAY / RECURRING RENT ============
@@ -10903,7 +11035,6 @@ const pageComponents = {
   evictions: EvictionWorkflow,
   tenant_portal: TenantPortal,
   owner_portal: OwnerPortal,
-  archive: ArchivePage,
 };
 
 // ============ AUDIT TRAIL (Admin Panel) ============
