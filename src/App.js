@@ -2839,12 +2839,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
           {ft.length === 0 && <div className="text-center py-8 text-slate-400">No tenants found</div>}
         </>;
       })()}
+    </>)}
     </div>
   );
 }
 
-// ============ PAYMENTS =========  </>)}
-===
+// ============ PAYMENTS ============
 function Payments({ addNotification, userProfile, userRole, companyId }) {
   const [payTab, setPayTab] = useState("payments");
   const [payments, setPayments] = useState([]);
