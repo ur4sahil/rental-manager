@@ -36,7 +36,7 @@ class ErrorBoundary extends React.Component {
 }
 
 // Safe number conversion - prevents NaN from breaking calculations
-const safeNum = (val) => { const n = Number(val); return isNaN(n) ? 0 : n; };
+const safeNum = (val) => { const n = Number(val); return (isNaN(n) || !isFinite(n)) ? 0 : n; };
 // Parse "YYYY-MM-DD" as LOCAL date (not UTC) to avoid timezone day-shift
 function parseLocalDate(str) {
   if (!str) return new Date(NaN);
@@ -177,6 +177,7 @@ function userError(msg) {
   return cleaned.length > 200 ? cleaned.slice(0, 200) + "..." : cleaned;
 }
 // Guard: require companyId — FAIL CLOSED if missing (no silent fallback)
+function isValidEmail(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e).trim()); }
 function normalizeEmail(email) {
   return (email || "").toLowerCase().trim();
 }
@@ -804,7 +805,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
       email, password,
       options: { data: { name: name.trim(), user_type: userType } }
     });
-    if (signupErr) { setError(signupErr.message); setLoading(false); return; }
+    if (signupErr) { setError(userError(signupErr.message)); setLoading(false); return; }
 
     // NOW redeem the invite (auth account exists, safe to consume)
     if (userType === "tenant" && inviteCode) {
@@ -1176,6 +1177,12 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   async function saveProperty() {
       if (!guardSubmit("saveProperty")) return;
       try {
+    // Check for duplicate address (new properties only)
+    if (!editingProperty) {
+      const compositeCheck = [form.address_line_1, form.address_line_2, form.city, form.state, form.zip].filter(Boolean).join(", ");
+      const { data: dup } = await supabase.from("properties").select("id").eq("company_id", companyId).eq("address", compositeCheck).is("archived_at", null).maybeSingle();
+      if (dup) { alert("A property with this address already exists."); guardRelease("saveProperty"); return; }
+    }
     // Block writes to managed (cross-company) properties
     if (editingProperty && isReadOnly(editingProperty)) {
       alert("This is a managed property. You can only view it, not edit. Contact the property owner to make changes.");
@@ -2064,6 +2071,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   async function saveTenant() {
       if (!guardSubmit("saveTenant")) return;
       try {
+    if (form.email && !isValidEmail(form.email)) { alert("Please enter a valid email address."); guardRelease("saveTenant"); return; }
     if (!form.name.trim()) { alert("Tenant name is required."); return; }
     if (!form.email.trim() || !form.email.includes("@") || !form.email.includes(".")) { alert("Please enter a valid email address."); return; }
     if (!form.property) { alert("Please select a property."); return; }
@@ -2151,7 +2159,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     // Terminate active leases for this tenant
     const { error: leaseErr } = await supabase.from("leases").update({ status: "terminated", archived_at: new Date().toISOString() }).eq("company_id", companyId).eq("tenant_name", name).eq("status", "active");
     if (leaseErr) console.warn("Failed to terminate leases:", leaseErr.message);
-    // Archive autopay for this tenant
+    // Archive autopay schedules for this tenant
+    await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", name);
     await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", name);
     addNotification("🗑️", `Tenant deleted: ${name}`);
     logAudit("delete", "tenants", `Deleted tenant: ${name} (property→vacant, lease terminated, autopay disabled)`, id, userProfile?.email, userRole, companyId);
@@ -2189,7 +2198,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       // Also send magic link — but only if invite code was created successfully
       if (codeInsertError) { alert("Failed to create invite code: " + codeInsertError.message); return; }
       const { error: authErr } = await supabase.auth.signInWithOtp({
-        email: tenant.email,
+        email: (tenant.email || "").trim().toLowerCase(),
         options: { data: { name: tenant.name, role: "tenant" } }
       });
       if (authErr) {
@@ -3126,6 +3135,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
     if (!form.property.trim()) { alert("Property is required."); return; }
     if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0) { alert("Please enter a valid amount."); return; }
     if (!form.date) { alert("Payment date is required."); return; }
+    if (new Date(form.date + "T12:00:00") > new Date()) { alert("Payment date cannot be in the future."); return; }
     if (!["rent","deposit","late_fee","other"].includes(form.type)) { form.type = "rent"; }
     // #18: Check if tenant is archived
     const { data: tenantCheck } = await supabase.from("tenants").select("id, archived_at").eq("company_id", companyId).ilike("name", form.tenant.trim()).maybeSingle();
@@ -3489,6 +3499,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
       try {
     const file = photoRef.current?.files?.[0];
     if (!file || !viewingPhotos) return;
+    if (file.size > 10 * 1024 * 1024) { alert("Photo must be under 10MB."); setUploadingPhoto(false); return; }
     setUploadingPhoto(true);
     const fileName = `wo_${viewingPhotos.id}_${shortId()}_${sanitizeFileName(file.name)}`;
     const { error: uploadError } = await supabase.storage.from("maintenance-photos").upload(fileName, file);
@@ -7287,7 +7298,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
     if (!window.confirm("Send portal invite to " + owner.name + " (" + owner.email + ")?\n\nThis will:\n1. Create their authentication account\n2. Send a magic link to their email\n3. They can log in and access the Owner Portal")) return;
     try {
       const { error: authErr } = await supabase.auth.signInWithOtp({
-        email: owner.email,
+        email: (owner.email || "").trim().toLowerCase(),
         options: { data: { name: owner.name, role: "owner" } }
       });
       if (authErr) {
@@ -10132,7 +10143,7 @@ function RoleManagement({ addNotification, companyId }) {
     if (!window.confirm(`Send login invite to ${user.name} (${user.email})?\n\nRole: ${roleName}\n\nThis will:\n1. Create their authentication account\n2. Send a magic link to their email\n3. They can log in and access their assigned modules`)) return;
     try {
       const { error: authErr } = await supabase.auth.signInWithOtp({
-        email: user.email,
+        email: (user.email || "").trim().toLowerCase(),
         options: { data: { name: user.name, role: user.role } }
       });
       if (authErr) {
@@ -11681,6 +11692,10 @@ function AppInner() {
   }
 
   function handleSelectCompany(company, role) {
+    // Clear previous company's cached data
+    setNotifications([]);
+    setUnreadCount(0);
+    setMissingRPCs([]);
     setActiveCompany(company);
       checkRPCHealth(company.id).then(m => setMissingRPCs(m)).catch(() => {});
     loadInboxNotifications(company.id);
