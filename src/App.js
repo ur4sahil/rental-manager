@@ -3312,10 +3312,19 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
         </div>
       )}
       <div className="flex items-center justify-between mb-5">
-        <h2 className="text-2xl font-manrope font-bold text-slate-800">Maintenance & Work Orders</h2>
+        <h2 className="text-2xl font-manrope font-bold text-slate-800">Maintenance</h2>
+        <div className="flex gap-1">
+          {[["workorders", "Work Orders"], ["inspections", "Inspections"], ["vendors", "Vendors"]].map(([id, label]) => (
+            <button key={id} onClick={() => setMaintTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (maintTab === id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
+          ))}
+        </div>
+      </div>
+
       {maintTab === "inspections" && <Inspections addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
       {maintTab === "vendors" && <VendorManagement addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
       {maintTab === "workorders" && (<>
+      <div className="flex items-center justify-between mb-4">
+        <div></div>
         <button onClick={() => { setEditingWO(null); setForm({ property: "", tenant: "", issue: "", priority: "normal", status: "open", assigned: "", cost: 0, notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Work Order</button>
       </div>
 
