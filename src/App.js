@@ -128,29 +128,35 @@ function generateId(prefix = "") {
 
 // RPC Health Check — validates critical database dependencies on app load
 async function checkRPCHealth(companyId) {
-  const requiredRPCs = [
-    "create_company_atomic",
-    "archive_property", 
-    "update_tenant_balance",
-    "sign_lease",
-  ];
-  const missing = [];
-  for (const rpc of requiredRPCs) {
-    try {
-      // Call with obviously invalid params — we just want to know if the function EXISTS
-      // A "function does not exist" error means it's missing
-      const { error } = await supabase.rpc(rpc, {});
-      // If we get here without "does not exist" error, the RPC exists (even if params are wrong)
-    } catch (e) {
-      if (e.message?.includes("does not exist") || e.message?.includes("could not find")) {
-        missing.push(rpc);
+  try {
+    const requiredRPCs = [
+      "create_company_atomic",
+      "archive_property", 
+      "update_tenant_balance",
+      "sign_lease",
+    ];
+    const missing = [];
+    for (const rpc of requiredRPCs) {
+      try {
+        const { error } = await supabase.rpc(rpc, {});
+        if (error?.message?.includes("does not exist") || error?.message?.includes("could not find")) {
+          missing.push(rpc);
+        }
+      } catch (e) {
+        if (e.message?.includes("does not exist") || e.message?.includes("could not find")) {
+          missing.push(rpc);
+        }
+        // Other errors (network, etc.) — skip silently
       }
     }
+    if (missing.length > 0) {
+      console.warn("Missing RPCs:", missing.join(", "));
+    }
+    return missing;
+  } catch (e) {
+    console.warn("RPC health check failed:", e.message);
+    return []; // Never crash the app over a health check
   }
-  if (missing.length > 0) {
-    console.warn("⚠️ Missing RPCs:", missing.join(", "), "— some features may not work. Deploy the required SQL migrations.");
-  }
-  return missing;
 }
 
 // Sanitize error messages for user display — prevents leaking internal DB details to users
@@ -11188,6 +11194,7 @@ function AppInner() {
   const [activeCompany, setActiveCompany] = useState(null);
   const [companyRole, setCompanyRole] = useState("");
   const [roleLoaded, setRoleLoaded] = useState(false);
+  const [missingRPCs, setMissingRPCs] = useState([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -11237,7 +11244,7 @@ function AppInner() {
 
   function handleSelectCompany(company, role) {
     setActiveCompany(company);
-      checkRPCHealth(company.id).then(m => setMissingRPCs(m));
+      checkRPCHealth(company.id).then(m => setMissingRPCs(m)).catch(() => {});
     setCompanyRole(role);
     setUserRole(role);
     setRoleLoaded(true);
