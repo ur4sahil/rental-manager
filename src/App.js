@@ -1221,6 +1221,8 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
         if (!existingTenant) {
           const { data: newT } = await supabase.from("tenants").insert([{ company_id: companyId, name: form.tenant.trim(), email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", property: compositeAddress, rent: Number(form.rent) || 0, lease_status: "active", lease_start: form.lease_start || "", lease_end_date: form.lease_end || "", move_in: form.lease_start || "", move_out: form.lease_end || "", balance: 0 }]).select("id").maybeSingle();
           tenantId = newT?.id;
+          // Notify: new tenant move-in
+          queueNotification("move_in", (form.tenant_email || "").toLowerCase(), { tenant: form.tenant.trim(), property: compositeAddress, moveInDate: form.lease_start || formatLocalDate(new Date()) }, companyId);
         } else {
           await supabase.from("tenants").update({ email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", rent: Number(form.rent) || 0, lease_status: "active", lease_start: form.lease_start || "", lease_end_date: form.lease_end || "", move_in: form.lease_start || "", move_out: form.lease_end || "" }).eq("id", existingTenant.id).eq("company_id", companyId);
         }
@@ -10463,6 +10465,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
       // 9. Audit + notifications
       logAudit("update", "tenants", `Move-out completed: ${tName} from ${selectedLease.property}`, selectedTenant.id, userProfile?.email, userRole, cid);
       addNotification("🚪", `Move-out completed: ${tName} from ${selectedLease.property}`);
+      queueNotification("move_out", selectedTenant?.email || "", { tenant: tName, property: selectedLease?.property, moveOutDate: formatLocalDate(new Date()) }, cid);
       if (selectedTenant.email) {
         queueNotification("deposit_returned", selectedTenant.email, { tenant: tName, returned: depositReturn, deducted: totalDeductions, property: selectedLease.property, moveOutDate }, cid);
       }
@@ -11746,7 +11749,7 @@ function AppInner() {
       
       // Get VAPID public key from Supabase (or use a hardcoded one for now)
       // For production, generate VAPID keys and store the public key here
-      const VAPID_PUBLIC_KEY = ""; // TODO: Set your VAPID public key
+      const VAPID_PUBLIC_KEY = "BLV2riRSH-L82eUcJpVA-0986CrgShKwJoMVVp7DfXMpSXFCi6f3p-EUKjIjdWnmnRDdkAMgw-4nKVZ27lUVqQk";
       if (!VAPID_PUBLIC_KEY) { console.warn("VAPID key not configured — push disabled"); return; }
       
       const subscription = await registration.pushManager.subscribe({
