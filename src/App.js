@@ -1,5 +1,26 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { supabase } from "./supabase";
+
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, info) { console.error("ErrorBoundary caught:", error, info); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-gray-50">
+          <div className="text-center p-8 max-w-md">
+            <div className="text-5xl mb-4">⚠️</div>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">Something went wrong</h2>
+            <p className="text-sm text-gray-500 mb-4">{this.state.error?.message || "An unexpected error occurred"}</p>
+            <button onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }} className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700">Reload App</button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Safe number conversion - prevents NaN from breaking calculations
 const safeNum = (val) => { const n = Number(val); return isNaN(n) ? 0 : n; };
@@ -92,14 +113,6 @@ function generateId(prefix = "") {
 }
 
 // Safe write wrapper — logs errors instead of silently failing
-async function safeWrite(operation, context = "", alertOnError = false) {
-  try {
-    const result = await operation;
-    if (result?.error) {
-      const msg = "DB write error" + (context ? " in " + context : "") + ": " + result.error.message;
-      console.warn(msg);
-      if (alertOnError) alert(msg);
-    }
     return result;
   } catch (e) {
     const msg = "DB write failed" + (context ? " in " + context : "") + ": " + e.message;
@@ -144,15 +157,8 @@ function formatPhoneInput(value) {
 }
 
 // Validate phone — must be 10 digits (US) or start with + (international)
-function isValidPhone(value) {
-  if (!value) return true; // optional fields
-  const digits = value.replace(/\D/g, "");
-  if (value.startsWith("+")) return digits.length >= 10 && digits.length <= 15;
-  return digits.length === 10;
-}
 
 // Format phone: strips non-digits, limits to 10 digits, formats as (xxx) xxx-xxxx
-
 
 function sanitizeFileName(name) {
   if (!name) return "file";
@@ -344,6 +350,10 @@ async function resolveAccountId(bareCode, companyId) {
 // Runs on app load. For every active lease, posts monthly rent charges
 // (DR Accounts Receivable / CR Rental Income) for each month in the lease term
 // up to the current month. Idempotent — won't double-post.
+// TODO: Implement autoPostLateFees() — query late_fee_rules table,
+// compare against unpaid rent charges past grace period, auto-post late fees.
+// For now, late fees are added manually via the tenant ledger.
+
 async function autoPostRentCharges(companyId) {
   if (!companyId) { console.error("autoPostRentCharges: missing companyId — blocked"); return; }
   try {
@@ -832,7 +842,7 @@ function Dashboard({ notifications, setPage, companyId }) {
         companyQuery("utilities", companyId),
       ]);
       // Also fetch PM-managed properties from other companies
-      const { data: managedProps } = await supabase.from("properties").select("*").eq("pm_company_id", companyId);
+      const { data: managedProps } = await supabase.from("properties").select("*").eq("pm_company_id", companyId).limit(500);
       const allProps = (p.data || []).map(x => ({ ...x, _ownership: "owned" }));
       (managedProps || []).forEach(mp => { if (!allProps.find(x => x.id === mp.id)) allProps.push({ ...mp, _ownership: "managed" }); });
       setProperties(allProps);
@@ -1054,14 +1064,14 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
 
   async function openPropertyDetail(p) {
     setSelectedProperty(p);
-    const { data: docs } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).order("created_at", { ascending: false });
+    const { data: docs } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).order("created_at", { ascending: false }).limit(100);
     setPropertyDocs(docs || []);
-    const { data: wos } = await supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address).order("created_at", { ascending: false });
+    const { data: wos } = await supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address).order("created_at", { ascending: false }).limit(100);
     setPropertyWorkOrders(wos || []);
   }
 
   async function fetchChangeRequests() {
-    const { data } = await supabase.from("property_change_requests").select("*").eq("company_id", companyId).order("requested_at", { ascending: false });
+    const { data } = await supabase.from("property_change_requests").select("*").eq("company_id", companyId).order("requested_at", { ascending: false }).limit(100);
     setChangeRequests(data || []);
   }
 
@@ -1284,7 +1294,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   async function loadTimeline(p) {
     setTimelineProperty(p);
     const [pay, wo, docs] = await Promise.all([
-      supabase.from("payments").select("*").eq("company_id", companyId).eq("property", p.address),
+      supabase.from("payments").select("*").eq("company_id", companyId).eq("property", p.address).limit(200),
       supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address),
       supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address),
     ]);
@@ -1297,6 +1307,8 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   }
 
   async function assignPM(property) {
+    if (!guardSubmit("assignPM")) return;
+    try {
     if (!pmCode.trim()) { alert("Please enter the PM company's 8-digit code."); return; }
     const { data: pmCompany } = await supabase.from("companies").select("id, name, company_role").eq("company_code", pmCode.trim()).maybeSingle();
     if (!pmCompany) { alert("No company found with that code."); return; }
@@ -1490,7 +1502,6 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
           {isAdmin ? "+ Add" : "+ Request"}
         </button>
       </div>
-
 
       {/* ===== PROPERTY DETAIL PANEL ===== */}
       {selectedProperty && (
@@ -1788,7 +1799,6 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   );
 }
 
-
 // ============ TENANTS ============
 function Tenants({ addNotification, userProfile, userRole, companyId, setPage, initialTab }) {
   const [tenants, setTenants] = useState([]);
@@ -1903,20 +1913,26 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     if (tenantRow && safeNum(tenantRow.balance) < 0) {
       if (!window.confirm(`Tenant "${name}" has a credit balance of $${Math.abs(safeNum(tenantRow.balance)).toFixed(2)}. Deleting will forfeit this credit. Continue?`)) return;
     }
-    if (!window.confirm(`Delete tenant "${name}"? This will also remove their ledger entries and messages. This cannot be undone.`)) return;
-    // Get tenant's property before deletion for cascade updates
-    const { data: tenantDetail } = await supabase.from("tenants").select("property").eq("id", id).eq("company_id", companyId).maybeSingle();
+    if (!window.confirm(`Archive tenant "${name}"?\n\nThis will hide the tenant and terminate their lease. You can restore from the Archive page within 180 days.`)) return;
+    // Get tenant's property before archiving for cascade updates
+    const { data: tenantDetail } = await supabase.from("tenants").select("property, balance").eq("id", id).eq("company_id", companyId).maybeSingle();
     const tenantProperty = tenantDetail?.property;
-    // Atomic cascade delete — server-side RPC required
-    const { error: delRpcErr } = await supabase.rpc("delete_tenant_cascade", { p_company_id: companyId, p_tenant_id: id, p_tenant_name: name });
-    if (delRpcErr) { alert("Failed to delete tenant: " + delRpcErr.message); return; }
-    // #1: Update property to vacant when tenant archived
+    // Soft-delete: archive instead of permanent deletion
+    const { error: archiveErr } = await supabase.from("tenants").update({ 
+      archived_at: new Date().toISOString(), 
+      archived_by: userProfile?.email,
+      lease_status: "inactive" 
+    }).eq("id", id).eq("company_id", companyId);
+    if (archiveErr) { alert("Failed to archive tenant: " + archiveErr.message); return; }
+    // Update property to vacant when tenant archived
     if (tenantProperty) {
-      await supabase.from("properties").update({ status: "vacant", tenant: "", lease_end: null }).eq("company_id", companyId).eq("address", tenantProperty).eq("tenant", name);
+      const { error: propErr } = await supabase.from("properties").update({ status: "vacant", tenant: "", lease_end: null, lease_start: "" }).eq("company_id", companyId).eq("address", tenantProperty).eq("tenant", name);
+      if (propErr) console.warn("Failed to update property to vacant:", propErr.message);
     }
     // Terminate active leases for this tenant
-    await supabase.from("leases").update({ status: "terminated" }).eq("company_id", companyId).eq("tenant_name", name).eq("status", "active");
-    // Disable autopay for this tenant
+    const { error: leaseErr } = await supabase.from("leases").update({ status: "terminated", archived_at: new Date().toISOString() }).eq("company_id", companyId).eq("tenant_name", name).eq("status", "active");
+    if (leaseErr) console.warn("Failed to terminate leases:", leaseErr.message);
+    // Archive autopay for this tenant
     await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", name);
     addNotification("🗑️", `Tenant deleted: ${name}`);
     logAudit("delete", "tenants", `Deleted tenant: ${name} (property→vacant, lease terminated, autopay disabled)`, id, userProfile?.email, userRole, companyId);
@@ -1984,7 +2000,6 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       } finally { guardRelease("inviteTenant"); }
   }
 
-
   function startEdit(t) {
     setEditingTenant(t);
     setForm({ name: t.name, email: t.email, phone: t.phone, property: t.property, lease_status: t.lease_status, lease_start: t.lease_start || t.move_in || "", lease_end: t.lease_end_date || t.move_out || "", rent: t.rent || "" });
@@ -1992,7 +2007,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
 
   async function fetchTenantDocs(tenant) {
-    const { data } = await supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", tenant.name).order("created_at", { ascending: false });
+    const { data } = await supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", tenant.name).order("created_at", { ascending: false }).limit(50);
     setTenantDocs(data || []);
   }
 
@@ -2000,20 +2015,22 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     setSelectedTenant(tenant);
     setActivePanel("detail");
     fetchTenantDocs(tenant);
-    const { data } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId).eq("tenant", tenant.name).eq("property", tenant.property || "").order("date", { ascending: false });
+    const { data } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId).eq("tenant", tenant.name).eq("property", tenant.property || "").order("date", { ascending: false }).limit(200);
     setLedger(data || []);
   }
 
   async function openMessages(tenant) {
     setSelectedTenant(tenant);
     setActivePanel("messages");
-    const { data } = await supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tenant.name).order("created_at", { ascending: true });
+    const { data } = await supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tenant.name).order("created_at", { ascending: true }).limit(100);
     setMessages(data || []);
     const { error: _err1494 } = await supabase.from("messages").update({ read: true }).eq("company_id", companyId).eq("tenant", tenant.name);
     if (_err1494) console.warn("messages write failed:", _err1494.message);
   }
 
   async function sendMessage() {
+    if (!guardSubmit("sendMessage")) return;
+    try {
     if (!newMessage.trim()) return;
     const { error: _err_messages_1499 } = await supabase.from("messages").insert([{ company_id: companyId,
       tenant: selectedTenant.name,
@@ -2083,6 +2100,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
 
   async function renewLease(newMoveOut) {
+    if (!guardSubmit("renewLease")) return;
+    try {
     if (!newMoveOut) return;
     const { error } = await supabase.from("tenants").update({ move_out: newMoveOut, lease_end_date: newMoveOut, lease_status: "active" }).eq("company_id", companyId).eq("id", selectedTenant.id);
     if (error) { setError("Failed to renew lease: " + error.message); return; }
@@ -2217,7 +2236,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     `;
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
-    const safeWin = window.open(url, "_blank");
+    const safeWin = window.open(url, "_blank", "noopener,noreferrer");
     if (safeWin) safeWin.onload = () => URL.revokeObjectURL(url);
   }
 
@@ -2384,7 +2403,6 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
         </div>
       )}
 
-
       {/* ===== TENANT DETAIL VIEW ===== */}
       {selectedTenant && ["detail","ledger","documents","messages","actions"].includes(activePanel) && (
         <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-end">
@@ -2544,9 +2562,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
         </div>
       </div>
 
-      {tenantTab !== "tenants" && tenantTab === "leases" && <Leases addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
-      {tenantTab === "moveout" && <MoveOutManager addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
-      {tenantTab === "evictions" && <EvictionTracker addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
+      {tenantTab === "leases" && <LeaseManagement addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
+      {tenantTab === "moveout" && <MoveOutWizard addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
+      {tenantTab === "evictions" && <EvictionWorkflow addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
 
       {tenantTab === "tenants" && (<>
       {/* Required Documents Prompt */}
@@ -3463,8 +3481,11 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
       provider: accountForm.provider,
       provider_display: providerInfo?.display_name || accountForm.provider,
       account_number: accountForm.account_number,
-      username_encrypted: btoa(accountForm.username), // TODO: Replace with server-side AES-256
-      password_encrypted: btoa(accountForm.password), // TODO: Replace with server-side AES-256
+      // SECURITY: Credentials are encoded before storage. In production, use a Supabase Edge Function
+      // with server-side AES-256-GCM encryption. The current encoding prevents casual viewing but 
+      // is NOT cryptographically secure. Deploy the encrypt-credentials Edge Function for production use.
+      username_encrypted: btoa(unescape(encodeURIComponent(accountForm.username))),
+      password_encrypted: btoa(unescape(encodeURIComponent(accountForm.password))),
       encryption_iv: iv,
       login_url: providerInfo?.login_url || "",
       account_type: accountForm.account_type,
@@ -3524,7 +3545,21 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
       status: "queued",
       triggered_by: userProfile?.email || "manual",
     }]);
-    addNotification("✅", "Payment authorized: " + bill.provider_display + " $" + bill.amount);
+    // Auto-post journal entry for utility payment (DR Utilities Expense, CR Checking)
+    const classId = await getPropertyClassId(bill.property, companyId);
+    const _jeOk = await autoPostJournalEntry({
+      companyId,
+      date: formatLocalDate(new Date()),
+      description: "Utility payment — " + (bill.provider_display || bill.provider) + " — " + bill.property,
+      reference: "UTIL-" + bill.id,
+      property: bill.property,
+      lines: [
+        { account_id: "5400", account_name: "Utilities Expense", debit: safeNum(bill.amount), credit: 0, class_id: classId, memo: (bill.provider_display || bill.provider) + " bill" },
+        { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(bill.amount), class_id: classId, memo: "Utility payment" },
+      ]
+    });
+    if (!_jeOk) { alert("Payment authorized but accounting entry failed. Please check the Accounting module."); }
+    addNotification("✅", "Payment authorized: " + (bill.provider_display || bill.provider) + " $" + bill.amount);
     setPaymentMethodModal(null);
     fetchAutomationData();
   }
@@ -3840,7 +3875,6 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
     </div>
   );
 }
-
 
 // ============ ACCOUNTING (QuickBooks-Style with Supabase) ============
 
@@ -6340,7 +6374,6 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
   );
 }
 
-
 // ============ VENDOR MANAGEMENT ============
 function VendorManagement({ addNotification, userProfile, userRole, companyId }) {
   const [vendors, setVendors] = useState([]);
@@ -6705,7 +6738,6 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
     </div>
   );
 }
-
 
 // ============ OWNER MANAGEMENT & STATEMENTS ============
 function OwnerManagement({ addNotification, userProfile, userRole, companyId }) {
@@ -7155,7 +7187,6 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
   );
 }
 
-
 // ============ BANK RECONCILIATION ============
 function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
   const [reconPeriod, setReconPeriod] = useState(formatLocalDate(new Date()).slice(0, 7));
@@ -7390,7 +7421,6 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
     </div>
   );
 }
-
 
 // ============ EMAIL NOTIFICATIONS ============
 function EmailNotifications({ addNotification, userProfile, userRole, companyId }) {
@@ -7647,7 +7677,6 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId 
   );
 }
 
-
 // ============ E-SIGNATURE COMPONENT ============
 function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   const canvasRef = useRef(null);
@@ -7883,7 +7912,6 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
     </Modal>
   );
 }
-
 
 // ============ PDF RECEIPT GENERATOR ============
 function generatePaymentReceipt(payment, companyName = "PropManager") {
@@ -8144,7 +8172,7 @@ function OwnerPortal({ currentUser, companyId }) {
                 <div className="text-xs text-slate-400">{viewStatement.owner_name} · Generated {new Date(viewStatement.created_at).toLocaleDateString()}</div>
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={() => { const w = window.open("", "_blank"); w.document.write("<pre>" + JSON.stringify(viewStatement, null, 2) + "</pre>"); w.document.title = "Statement " + viewStatement.period; setTimeout(() => w.print(), 300); }} className="text-xs text-indigo-600 border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50"><span className="material-icons-outlined text-xs align-middle">print</span></button>
+                <button onClick={() => { const w = window.open("", "_blank", "noopener,noreferrer"); w.document.write("<pre>" + JSON.stringify(viewStatement, null, 2) + "</pre>"); w.document.title = "Statement " + viewStatement.period; setTimeout(() => w.print(), 300); }} className="text-xs text-indigo-600 border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50"><span className="material-icons-outlined text-xs align-middle">print</span></button>
                 <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewStatement.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{viewStatement.status}</span>
               </div>
             </div>
@@ -8217,7 +8245,6 @@ function OwnerPortal({ currentUser, companyId }) {
     </div>
   );
 }
-
 
 // ============ HOA PAYMENTS ============
 function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
@@ -8370,8 +8397,6 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
   );
 }
 
-
-
 // ============ ARCHIVE (SOFT-DELETED ITEMS) ============
 function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
   const [items, setItems] = useState([]);
@@ -8408,6 +8433,28 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
     if (error) {
       alert("Failed to restore: " + error.message);
       return;
+    }
+    // If restoring a property, also offer to restore its archived tenant
+    if (item._table === "properties" && item.address) {
+      const { data: archivedTenants } = await supabase.from("tenants").select("id, name").eq("company_id", companyId).eq("property", item.address).not("archived_at", "is", null);
+      if (archivedTenants?.length > 0) {
+        const shouldRestore = window.confirm(`Found ${archivedTenants.length} archived tenant(s) for this property: ${archivedTenants.map(t => t.name).join(", ")}\n\nWould you like to restore them too?`);
+        if (shouldRestore) {
+          for (const t of archivedTenants) {
+            const { error: tErr } = await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", t.id).eq("company_id", companyId);
+            if (tErr) console.warn("Failed to restore tenant:", t.name, tErr.message);
+          }
+          // Also restore associated leases
+          const { error: lErr } = await supabase.from("leases").update({ archived_at: null, status: "active" }).eq("company_id", companyId).eq("property", item.address).not("archived_at", "is", null);
+          if (lErr) console.warn("Failed to restore leases:", lErr.message);
+          addNotification("♻️", `Restored property + ${archivedTenants.length} tenant(s)`);
+        }
+      }
+    }
+    // If restoring a tenant, update their property back to occupied
+    if (item._table === "tenants" && item.property) {
+      const { error: propErr } = await supabase.from("properties").update({ status: "occupied", tenant: item.name }).eq("company_id", companyId).eq("address", item.property).is("archived_at", null);
+      if (propErr) console.warn("Failed to update property:", propErr.message);
     }
     addNotification("♻️", `Restored ${item._label}: ${item.address || item.name || item.issue || item.tenant_name || item.tenant || "item"}`);
     fetchArchived();
@@ -8484,8 +8531,8 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
 
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
-  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","owners","archive"] },
-  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","archive"] },
+  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","owners","archive","notifications","audittrail","documents","leases","autopay","inspections","vendors","moveout","evictions"] },
+  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","archive","notifications","documents","leases","inspections","vendors","moveout","evictions"] },
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
   tenant: { label: "Tenant", color: "bg-indigo-50/300", pages: ["tenant_portal"] },
@@ -9411,7 +9458,6 @@ function TenantPortal({ currentUser, companyId }) {
     </div>
   );
 }
-
 
 // ============ ROLE MANAGEMENT ============
 function RoleManagement({ addNotification, companyId }) {
@@ -10505,6 +10551,7 @@ const pageComponents = {
   evictions: EvictionWorkflow,
   tenant_portal: TenantPortal,
   owner_portal: OwnerPortal,
+  archive: ArchivePage,
 };
 
 // ============ AUDIT TRAIL (Admin Panel) ============
@@ -10958,7 +11005,6 @@ function PendingRequestsPanel({ companyId, addNotification }) {
   );
 }
 
-
 // ============ PM ASSIGNMENT REQUESTS PANEL ============
 function PendingPMAssignments({ companyId, addNotification }) {
   const [requests, setRequests] = useState([]);
@@ -11022,8 +11068,7 @@ function PendingPMAssignments({ companyId, addNotification }) {
   );
 }
 
-
-export default function App() {
+function AppInner() {
   const [screen, setScreen] = useState("landing");
   const [page, setPage] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -11043,7 +11088,7 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) { setCurrentUser(session.user); setScreen("company_select"); autoSelectCompany(session.user); }
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         setCurrentUser(session.user);
         // Only redirect to company_select if we don't have a company yet
@@ -11059,6 +11104,7 @@ export default function App() {
       }
     });
     return () => subscription.unsubscribe();
+    return () => { if (authSub) authSub.unsubscribe(); };
   }, []);
 
   // Auto-select company ONLY for tenant/owner roles — everyone else sees the company selector
@@ -11314,4 +11360,8 @@ export default function App() {
       {showNotifications && <div className="fixed inset-0 z-30" onClick={() => setShowNotifications(false)} />}
     </div>
   );
+}
+
+export default function App() {
+  return <ErrorBoundary><AppInner /></ErrorBoundary>;
 }
