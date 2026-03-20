@@ -3108,8 +3108,8 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
       </div>
         );
       })()}
-    </div>
     </>)}
+    </div>
   );
 }
 
@@ -3392,8 +3392,8 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
           </div>
         ))}
       </div>
-    </div>
     </>)}
+    </div>
   );
 }
 
