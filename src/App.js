@@ -918,8 +918,6 @@ function Dashboard({ notifications, setPage, companyId }) {
   const [acctRevenue, setAcctRevenue] = useState(0);
   const [acctExpenses, setAcctExpenses] = useState(0);
 
-  const [rentPostLoading, setRentPostLoading] = useState(false);
-  const [lastRentPost, setLastRentPost] = useState(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -976,45 +974,6 @@ function Dashboard({ notifications, setPage, companyId }) {
     <div>
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-2xl font-manrope font-bold text-slate-800">Dashboard</h2>
-        <button onClick={async () => {
-          setRentPostLoading(true);
-          let rentPostSuccess = false;
-          try {
-            // Try server-side batch function first (atomic, no N+1)
-            const { data: rpcResult, error: rpcErr } = await supabase.rpc("batch_post_rent_charges", { p_company_id: companyId });
-            if (rpcErr) {
-              // Fallback to client-side if RPC not yet deployed
-              console.warn("Batch RPC not available, using client-side:", rpcErr.message);
-              const clientResult = await autoPostRentCharges(companyId);
-              if (clientResult?.posted > 0) addNotification("⚡", "Posted " + clientResult.posted + " rent charge(s)" + (clientResult.failed > 0 ? " (" + clientResult.failed + " failed)" : ""));
-              else if (clientResult?.failed > 0) addNotification("⚠️", clientResult.failed + " rent charge(s) failed to post");
-              else addNotification("ℹ️", "No new rent charges needed for this period");
-              rentPostSuccess = (clientResult?.posted > 0 || clientResult?.failed === 0);
-            } else {
-              const count = rpcResult?.charges_posted || 0;
-              if (count > 0) addNotification("⚡", `Posted ${count} rent charge(s) for this month`);
-              rentPostSuccess = true;
-            }
-          } catch (e) {
-            console.warn("Rent posting error:", e);
-            try {
-              const fallbackResult = await autoPostRentCharges(companyId);
-              if (fallbackResult?.posted > 0) addNotification("⚡", "Posted " + fallbackResult.posted + " rent charge(s)");
-              rentPostSuccess = (fallbackResult?.failed || 0) === 0;
-            } catch {}
-          }
-          if (rentPostSuccess) setLastRentPost(new Date().toLocaleTimeString());
-          else addNotification("⚠️", "Rent charge posting encountered errors — check console");
-          setRentPostLoading(false);
-          // Refresh data
-          const { data: refreshPay } = await companyQuery("payments", companyId);
-          setPayments(refreshPay || []);
-          const { data: refreshT } = await companyQuery("tenants", companyId);
-          setTenants(refreshT || []);
-        }} disabled={rentPostLoading} className="flex items-center gap-2 bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700 disabled:opacity-50">
-          {rentPostLoading ? "Processing..." : "⚡ Run Monthly Charges"}
-          {lastRentPost && <span className="text-xs text-indigo-200">Last: {lastRentPost}</span>}
-        </button>
       </div>
 
       {/* Notifications Banner */}
@@ -1460,6 +1419,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   const [visibleCols, setVisibleCols] = useState(["address","type","status","rent","tenant","lease_end"]);
   const [showColPicker, setShowColPicker] = useState(false);
   const [showPmAssign, setShowPmAssign] = useState(null);
+  const [showRecurringSetup, setShowRecurringSetup] = useState(null); // { tenant, property, rent }
   const [showDocChecklist, setShowDocChecklist] = useState(null);
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [propertyDocs, setPropertyDocs] = useState([]);
@@ -2661,6 +2621,58 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       {tenantTab === "evictions" && <EvictionWorkflow addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
 
       {tenantTab === "tenants" && (<>
+      {/* Recurring Rent Setup Modal */}
+      {showRecurringSetup && (
+        <Modal title="Set Up Recurring Rent" onClose={() => setShowRecurringSetup(null)}>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">Would you like to set up automatic monthly rent posting for <strong>{showRecurringSetup.tenant}</strong> at <strong>{showRecurringSetup.property}</strong>?</p>
+            <div className="bg-indigo-50 rounded-lg p-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div><div className="text-xs text-gray-500">Monthly Rent</div><div className="font-bold text-gray-800">${safeNum(showRecurringSetup.rent).toLocaleString()}</div></div>
+                <div><div className="text-xs text-gray-500">Posts On</div><div className="font-bold text-gray-800">1st of each month</div></div>
+              </div>
+            </div>
+            <div className="bg-amber-50 rounded-lg p-3">
+              <div className="text-xs font-semibold text-amber-700 mb-1">Late Fee Settings</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="text-xs text-gray-500">Grace Period (days)</label><input type="number" defaultValue={5} id="rr-grace" className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-full mt-1" /></div>
+                <div><label className="text-xs text-gray-500">Late Fee ($)</label><input type="number" defaultValue={50} id="rr-latefee" className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-full mt-1" /></div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={async () => {
+                const grace = Number(document.getElementById("rr-grace")?.value) || 5;
+                const lateFee = Number(document.getElementById("rr-latefee")?.value) || 50;
+                const { error } = await supabase.from("recurring_journal_entries").insert([{
+                  company_id: companyId,
+                  description: "Monthly rent — " + showRecurringSetup.tenant + " — " + showRecurringSetup.property,
+                  frequency: "monthly",
+                  day_of_month: 1,
+                  amount: showRecurringSetup.rent,
+                  tenant_name: showRecurringSetup.tenant,
+                  tenant_id: showRecurringSetup.tenantId,
+                  property: showRecurringSetup.property,
+                  debit_account_id: "1200",
+                  debit_account_name: "Accounts Receivable",
+                  credit_account_id: "4000",
+                  credit_account_name: "Rental Income",
+                  status: "active",
+                  late_fee_enabled: true,
+                  grace_period_days: grace,
+                  late_fee_amount: lateFee,
+                  next_post_date: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().split("T")[0],
+                  created_by: userProfile?.email || "",
+                }]);
+                if (error) { alert("Failed to create recurring entry: " + userError(error.message)); }
+                else { addNotification("🔄", "Recurring rent set up for " + showRecurringSetup.tenant); }
+                setShowRecurringSetup(null);
+              }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 flex-1">Yes, Set Up Recurring Rent</button>
+              <button onClick={() => setShowRecurringSetup(null)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg flex-1">Skip for Now</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Required Documents Prompt */}
       {showTenantDocPrompt && (
         <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 mb-4">
@@ -3966,6 +3978,168 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
         </>;
       })()}
     </>)}
+    </div>
+  );
+}
+
+
+// ============ RECURRING JOURNAL ENTRIES ============
+function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingEntry, setEditingEntry] = useState(null);
+  const [form, setForm] = useState({
+    description: "", frequency: "monthly", day_of_month: 1, amount: "",
+    tenant_name: "", property: "", debit_account_id: "1200", debit_account_name: "Accounts Receivable",
+    credit_account_id: "4000", credit_account_name: "Rental Income",
+    late_fee_enabled: true, grace_period_days: 5, late_fee_amount: 50,
+  });
+
+  useEffect(() => { fetchEntries(); }, [companyId]);
+
+  async function fetchEntries() {
+    setLoading(true);
+    const { data } = await supabase.from("recurring_journal_entries").select("*")
+      .eq("company_id", companyId).order("created_at", { ascending: false }).limit(200);
+    setEntries(data || []);
+    setLoading(false);
+  }
+
+  async function saveEntry() {
+    if (!form.description.trim() || !form.amount) { alert("Description and amount are required."); return; }
+    const payload = {
+      company_id: companyId,
+      description: form.description, frequency: form.frequency,
+      day_of_month: Number(form.day_of_month) || 1, amount: Number(form.amount),
+      tenant_name: form.tenant_name, property: form.property,
+      debit_account_id: form.debit_account_id, debit_account_name: form.debit_account_name,
+      credit_account_id: form.credit_account_id, credit_account_name: form.credit_account_name,
+      status: "active", late_fee_enabled: form.late_fee_enabled,
+      grace_period_days: Number(form.grace_period_days) || 5,
+      late_fee_amount: Number(form.late_fee_amount) || 0,
+      next_post_date: new Date(new Date().getFullYear(), new Date().getMonth() + 1, Number(form.day_of_month) || 1).toISOString().split("T")[0],
+      created_by: userProfile?.email || "",
+    };
+    if (editingEntry) {
+      const { error } = await supabase.from("recurring_journal_entries").update(payload).eq("id", editingEntry.id).eq("company_id", companyId);
+      if (error) { alert(userError(error.message)); return; }
+      addNotification("✏️", "Updated recurring entry: " + form.description);
+    } else {
+      const { error } = await supabase.from("recurring_journal_entries").insert([payload]);
+      if (error) { alert(userError(error.message)); return; }
+      addNotification("🔄", "Created recurring entry: " + form.description);
+    }
+    setShowForm(false); setEditingEntry(null);
+    setForm({ description: "", frequency: "monthly", day_of_month: 1, amount: "", tenant_name: "", property: "", debit_account_id: "1200", debit_account_name: "Accounts Receivable", credit_account_id: "4000", credit_account_name: "Rental Income", late_fee_enabled: true, grace_period_days: 5, late_fee_amount: 50 });
+    fetchEntries();
+  }
+
+  async function toggleStatus(entry) {
+    const newStatus = entry.status === "active" ? "paused" : "active";
+    const { error } = await supabase.from("recurring_journal_entries").update({ status: newStatus }).eq("id", entry.id).eq("company_id", companyId);
+    if (error) { alert(userError(error.message)); return; }
+    addNotification(newStatus === "active" ? "▶️" : "⏸️", (newStatus === "active" ? "Resumed" : "Paused") + ": " + entry.description);
+    fetchEntries();
+  }
+
+  async function deleteEntry(entry) {
+    if (!window.confirm("Delete this recurring entry? This cannot be undone.")) return;
+    const { error } = await supabase.from("recurring_journal_entries").delete().eq("id", entry.id).eq("company_id", companyId);
+    if (error) { alert(userError(error.message)); return; }
+    addNotification("🗑️", "Deleted: " + entry.description);
+    fetchEntries();
+  }
+
+  async function runNow() {
+    if (!window.confirm("Post all active recurring entries for this month now?")) return;
+    const result = await autoPostRentCharges(companyId);
+    if (result?.posted > 0) addNotification("⚡", "Posted " + result.posted + " charge(s)");
+    else addNotification("ℹ️", "No new charges needed for this period");
+    fetchEntries();
+  }
+
+  if (loading) return <Spinner />;
+
+  const active = entries.filter(e => e.status === "active");
+  const paused = entries.filter(e => e.status === "paused");
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className="text-sm text-gray-500">{active.length} active · {paused.length} paused</div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={runNow} className="bg-amber-50 text-amber-700 text-xs px-3 py-1.5 rounded-lg border border-amber-200 hover:bg-amber-100">⚡ Post Now</button>
+          <button onClick={() => { setEditingEntry(null); setForm({ description: "", frequency: "monthly", day_of_month: 1, amount: "", tenant_name: "", property: "", debit_account_id: "1200", debit_account_name: "Accounts Receivable", credit_account_id: "4000", credit_account_name: "Rental Income", late_fee_enabled: true, grace_period_days: 5, late_fee_amount: 50 }); setShowForm(true); }} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700">+ Add Entry</button>
+        </div>
+      </div>
+
+      {showForm && (
+        <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
+          <h3 className="font-semibold text-gray-700 mb-3">{editingEntry ? "Edit Recurring Entry" : "New Recurring Entry"}</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="col-span-2"><label className="text-xs text-gray-500 mb-1 block">Description *</label><input value={form.description} onChange={e => setForm({...form, description: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" placeholder="Monthly rent — John Doe — 123 Main St" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Amount *</label><input type="number" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Day of Month</label><input type="number" min="1" max="28" value={form.day_of_month} onChange={e => setForm({...form, day_of_month: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Tenant</label><input value={form.tenant_name} onChange={e => setForm({...form, tenant_name: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Debit Account</label><input value={form.debit_account_name} onChange={e => setForm({...form, debit_account_name: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Credit Account</label><input value={form.credit_account_name} onChange={e => setForm({...form, credit_account_name: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+            <div className="col-span-2 bg-amber-50 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <input type="checkbox" checked={form.late_fee_enabled} onChange={e => setForm({...form, late_fee_enabled: e.target.checked})} />
+                <span className="text-xs font-semibold text-amber-700">Enable Auto Late Fees</span>
+              </div>
+              {form.late_fee_enabled && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="text-xs text-gray-500 mb-1 block">Grace Period (days)</label><input type="number" value={form.grace_period_days} onChange={e => setForm({...form, grace_period_days: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-full" /></div>
+                  <div><label className="text-xs text-gray-500 mb-1 block">Late Fee ($)</label><input type="number" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-full" /></div>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button onClick={saveEntry} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">{editingEntry ? "Update" : "Create"}</button>
+            <button onClick={() => { setShowForm(false); setEditingEntry(null); }} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {entries.length === 0 ? (
+        <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
+          <div className="text-4xl mb-3">🔄</div>
+          <div className="text-gray-500 font-medium">No recurring entries</div>
+          <div className="text-xs text-gray-400 mt-1">Recurring entries are created automatically when you add a tenant, or you can add them manually.</div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {entries.map(e => (
+            <div key={e.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (e.status === "paused" ? "opacity-60 border-gray-200" : "border-gray-100")}>
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <div className="font-semibold text-gray-800 text-sm">{e.description}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">
+                    {e.tenant_name && <span>{e.tenant_name} · </span>}
+                    {e.property && <span>{e.property} · </span>}
+                    Day {e.day_of_month} · {e.frequency}
+                    {e.late_fee_enabled && <span> · Late fee: ${safeNum(e.late_fee_amount)} after {e.grace_period_days}d</span>}
+                  </div>
+                </div>
+                <div className="text-lg font-bold text-gray-800">${safeNum(e.amount).toLocaleString()}</div>
+                <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (e.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500")}>{e.status}</span>
+                <div className="flex gap-1">
+                  <button onClick={() => toggleStatus(e)} className={"text-xs px-2 py-1 rounded-lg " + (e.status === "active" ? "text-amber-600 hover:bg-amber-50" : "text-green-600 hover:bg-green-50")}>{e.status === "active" ? "⏸ Pause" : "▶ Resume"}</button>
+                  <button onClick={() => { setEditingEntry(e); setForm({ description: e.description, frequency: e.frequency, day_of_month: e.day_of_month, amount: e.amount, tenant_name: e.tenant_name || "", property: e.property || "", debit_account_id: e.debit_account_id || "1200", debit_account_name: e.debit_account_name || "Accounts Receivable", credit_account_id: e.credit_account_id || "4000", credit_account_name: e.credit_account_name || "Rental Income", late_fee_enabled: e.late_fee_enabled !== false, grace_period_days: e.grace_period_days || 5, late_fee_amount: e.late_fee_amount || 50 }); setShowForm(true); }} className="text-xs text-indigo-600 px-2 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
+                  <button onClick={() => deleteEntry(e)} className="text-xs text-red-500 px-2 py-1 rounded-lg hover:bg-red-50">Delete</button>
+                </div>
+              </div>
+              {e.next_post_date && <div className="text-xs text-gray-400 mt-2">Next post: {e.next_post_date}</div>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -5469,7 +5643,7 @@ function Accounting({ companyId, activeCompany }) {
     <div>
       <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-5">Accounting & Financials</h2>
       <div className="flex gap-2 mb-5 border-b border-indigo-50 overflow-x-auto">
-        {[["overview","Overview"],["coa","Chart of Accounts"],["journal","Journal Entries"],["bankimport","Bank Import"],["reconcile","Reconcile"],["classes","Class Tracking"],["reports","Reports"]].map(([id,label]) => (
+        {[["overview","Overview"],["coa","Chart of Accounts"],["journal","Journal Entries"],["recurring","🔄 Recurring"],["bankimport","Bank Import"],["reconcile","Reconcile"],["classes","Class Tracking"],["reports","Reports"]].map(([id,label]) => (
           <button key={id} onClick={() => setActiveTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-700"}`}>
             {label}
             {id === "journal" && pendingCount > 0 && <span className="ml-1.5 bg-amber-100 text-amber-700 text-xs px-1.5 py-0.5 rounded-full">{pendingCount}</span>}
@@ -5569,6 +5743,7 @@ function Accounting({ companyId, activeCompany }) {
         </div>
       )}
 
+      {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} addNotification={addNotification} userProfile={userProfile} />}
       {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} />}
       {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} />}
       {activeTab === "bankimport" && <AcctBankImport accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAddJournalEntry={addJournalEntry} />}
