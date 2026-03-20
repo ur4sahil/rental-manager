@@ -11208,7 +11208,6 @@ function AppInner() {
         setScreen("landing");
       }
     });
-    return () => subscription.unsubscribe();
     return () => { if (authSub) authSub.unsubscribe(); };
   }, []);
 
