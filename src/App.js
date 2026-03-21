@@ -13,7 +13,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { supabase } from "./supabase";
-import { Btn, Card, Input, Select, Textarea, FormField, PageHeader, SectionTitle, EmptyState, TabBar, BulkBar, IconBtn, FilterPill } from "./ui";
+import { Input, Textarea } from "./ui";
 
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }
@@ -1263,17 +1263,17 @@ function Properties({ addNotification, userRole, userProfile, companyId, showToa
   if (!editingProperty) {
   const compositeCheck = [form.address_line_1, form.address_line_2, form.city, form.state, form.zip].filter(Boolean).join(", ");
   const { data: dup } = await supabase.from("properties").select("id").eq("company_id", companyId).eq("address", compositeCheck).is("archived_at", null).maybeSingle();
-  if (dup) { showToast("A property with this address already exists."); guardRelease("saveProperty", "error"); return; }
+  if (dup) { showToast("A property with this address already exists.", "error"); guardRelease("saveProperty"); return; }
   }
   if (form.status === "occupied") {
-  if (!form.tenant.trim()) { showToast("Tenant name is required for occupied properties."); guardRelease("saveProperty", "error"); return; }
-  if (!form.tenant_email.trim() || !form.tenant_email.includes("@")) { showToast("A valid tenant email is required for occupied properties."); guardRelease("saveProperty", "error"); return; }
-  if (!form.tenant_phone.trim()) { showToast("Tenant phone number is required for occupied properties."); guardRelease("saveProperty", "error"); return; }
-  if (!form.rent || isNaN(Number(form.rent)) || Number(form.rent) <= 0) { showToast("Monthly rent is required for occupied properties."); guardRelease("saveProperty", "error"); return; }
-  if (!form.security_deposit || isNaN(Number(form.security_deposit))) { showToast("Security deposit amount is required for occupied properties."); guardRelease("saveProperty", "error"); return; }
-  if (!form.lease_start) { showToast("Lease start date is required for occupied properties."); guardRelease("saveProperty", "error"); return; }
-  if (!form.lease_end) { showToast("Lease end date is required for occupied properties."); guardRelease("saveProperty", "error"); return; }
-  if (form.lease_start >= form.lease_end) { showToast("Lease end date must be after lease start date."); guardRelease("saveProperty", "error"); return; }
+  if (!form.tenant.trim()) { showToast("Tenant name is required for occupied properties.", "error"); guardRelease("saveProperty"); return; }
+  if (!form.tenant_email.trim() || !form.tenant_email.includes("@")) { showToast("A valid tenant email is required for occupied properties.", "error"); guardRelease("saveProperty"); return; }
+  if (!form.tenant_phone.trim()) { showToast("Tenant phone number is required for occupied properties.", "error"); guardRelease("saveProperty"); return; }
+  if (!form.rent || isNaN(Number(form.rent)) || Number(form.rent) <= 0) { showToast("Monthly rent is required for occupied properties.", "error"); guardRelease("saveProperty"); return; }
+  if (!form.security_deposit || isNaN(Number(form.security_deposit))) { showToast("Security deposit amount is required for occupied properties.", "error"); guardRelease("saveProperty"); return; }
+  if (!form.lease_start) { showToast("Lease start date is required for occupied properties.", "error"); guardRelease("saveProperty"); return; }
+  if (!form.lease_end) { showToast("Lease end date is required for occupied properties.", "error"); guardRelease("saveProperty"); return; }
+  if (form.lease_start >= form.lease_end) { showToast("Lease end date must be after lease start date.", "error"); guardRelease("saveProperty"); return; }
   }
   // Build composite address for backward compatibility
   const compositeAddress = [form.address_line_1, form.address_line_2, form.city, form.state + " " + form.zip].filter(Boolean).join(", ");
@@ -1860,7 +1860,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, showToa
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Monthly Rent ($) *</label><Input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} required /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Security Deposit ($) *</label><Input placeholder="1500" value={form.security_deposit} onChange={e => setForm({ ...form, security_deposit: e.target.value })} required /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Start Date *</label><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} required /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease End Date *</label><Input type="date" value={form.lease_end} onChange={e => { if (form.lease_start && e.target.value && e.target.value <= form.lease_start) { showToast("Lease end date must be after lease start date."); return; } setForm({ ...form, lease_end: e.target.value }, "error"); }} required /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease End Date *</label><Input type="date" value={form.lease_end} onChange={e => { if (form.lease_start && e.target.value && e.target.value <= form.lease_start) { showToast("Lease end date must be after lease start date.", "error"); return; } setForm({ ...form, lease_end: e.target.value }); }} required /></div>
   </>)}
   <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="Any additional notes" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
   </div>
@@ -2158,7 +2158,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   async function saveTenant() {
   if (!guardSubmit("saveTenant")) return;
   try {
-  if (form.email && !isValidEmail(form.email)) { showToast("Please enter a valid email address."); guardRelease("saveTenant", "error"); return; }
+  if (form.email && !isValidEmail(form.email)) { showToast("Please enter a valid email address.", "error"); guardRelease("saveTenant"); return; }
   if (!form.name.trim()) { showToast("Tenant name is required.", "error"); return; }
   if (!form.email.trim() || !form.email.includes("@") || !form.email.includes(".")) { showToast("Please enter a valid email address.", "error"); return; }
   if (!form.property) { showToast("Please select a property.", "error"); return; }
@@ -3651,15 +3651,15 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   try {
   const file = photoRef.current?.files?.[0];
   if (!file || !viewingPhotos) return;
-  if (file.size > 10 * 1024 * 1024) { showToast("Photo must be under 10MB."); setUploadingPhoto(false, "error"); return; }
+  if (file.size > 10 * 1024 * 1024) { showToast("Photo must be under 10MB.", "error"); setUploadingPhoto(false); return; }
   setUploadingPhoto(true);
   const fileName = `wo_${viewingPhotos.id}_${shortId()}_${sanitizeFileName(file.name)}`;
   const { error: uploadError } = await supabase.storage.from("maintenance-photos").upload(fileName, file);
-  if (uploadError) { showToast("Upload failed: " + uploadError.message); setUploadingPhoto(false, "error"); return; }
+  if (uploadError) { showToast("Upload failed: " + uploadError.message, "error"); setUploadingPhoto(false); return; }
   // Store file path (not public URL) — signed URLs generated on display
   const storagePath = fileName;
   const { error: _photoErr } = await supabase.from("work_order_photos").insert([{ work_order_id: viewingPhotos.id, property: viewingPhotos.property, url: storagePath, caption: file.name, company_id: companyId, storage_bucket: "maintenance-photos" }]);
-  if (_photoErr) { showToast("Error saving photo: " + _photoErr.message); setUploadingPhoto(false, "error"); return; }
+  if (_photoErr) { showToast("Error saving photo: " + _photoErr.message, "error"); setUploadingPhoto(false); return; }
   addNotification("📸", `Photo uploaded for: ${viewingPhotos.issue}`);
   setUploadingPhoto(false);
   if (photoRef.current) photoRef.current.value = "";
@@ -3744,7 +3744,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   {maintTab === "archived" && (
   <ArchivedItems tableName="work_orders" label="Work Order" fields="id, issue, property, status, priority, archived_at, archived_by" companyId={companyId} addNotification={addNotification} onRestore={() => { fetchWorkOrders(); }} />
   )}
-  {maintTab === "inspections" && <Inspections addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
+  {maintTab === "inspections" && <Inspections addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} showToast={showToast} showConfirm={showConfirm} />}
   {maintTab === "vendors" && <VendorManagement addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
   {maintTab === "workorders" && (<>
   <div className="flex items-center justify-between mb-4">
@@ -6499,7 +6499,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   {insp.status === "completed" && <button onClick={async () => {
   const items = (() => { try { return JSON.parse(insp.items || "{}"); } catch { return {}; } })();
   const failed = Object.entries(items).filter(([, v]) => v.pass === false).map(([k]) => k);
-  if (failed.length === 0) { showToast("No failed items in this inspection.", "error"); return; }
+  if (failed.length === 0) { showToast("No failed items in this inspection.", "info"); return; }
   if (!await showConfirm({ message: `Create work order for ${failed.length} failed item(s)?\n\n${failed.join(", ")}` })) return;
   const { error } = await supabase.from("work_orders").insert([{ company_id: companyId, property: insp.property, issue: `Inspection findings: ${failed.join(", ")}`, priority: "normal", status: "open", notes: `Auto-created from ${insp.type} inspection on ${insp.date}` }]);
   if (error) { showToast("Error: " + error.message, "error"); return; }
@@ -7512,7 +7512,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   if (memErr) { showToast("Error creating invite: " + memErr.message, "error"); return; }
   addNotification("✉️", "Portal invite sent to " + owner.name);
   logAudit("create", "owners", "Invited owner to portal: " + owner.email, owner.id, userProfile?.email, userRole, companyId);
-  showToast("Owner portal invite sent to " + owner.email + "!\n\nThey can log in and see their properties, statements, and distributions.", "warning");
+  showToast("Owner portal invite sent to " + owner.email + "!", "success");
   } catch (e) {
   showToast("Error inviting owner: " + e.message, "error");
   }
@@ -8648,7 +8648,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   </div>
 
   <button onClick={() => {
-  if (!consentAgreed) { showToast("You must agree to the electronic signature consent before signing.", "success"); return; }
+  if (!consentAgreed) { showToast("You must agree to the electronic signature consent before signing.", "error"); return; }
   // Verify current user is authorized to sign as this signer
   const signer = pendingSigners[0];
   if (signer.signer_email && userProfile?.email && signer.signer_email.toLowerCase() !== userProfile.email.toLowerCase()) {
