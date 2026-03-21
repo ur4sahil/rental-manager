@@ -12947,7 +12947,7 @@ function AuditTrail({ companyId }) {
 }
 
 // ============ COMPANY SELECTOR ============
-function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast }) {
+function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, showConfirm }) {
   const [companies, setCompanies] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -12989,10 +12989,12 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast }) 
   async function createCompany() {
   if (creating) return;
   if (!createForm.name.trim()) { showToast("Company name is required.", "error"); return; }
-  // Prevent duplicate company with same name for this user
-  const { data: dupCheck } = await supabase.from("companies").select("id").ilike("name", createForm.name.trim()).limit(1);
-  if (dupCheck && dupCheck.length > 0) { showToast("A company with this name already exists.", "error"); return; }
   setCreating(true);
+  // Check if user already has a company with the same name
+  const userCompanyNames = companies.map(c => c.name?.toLowerCase().trim());
+  if (userCompanyNames.includes(createForm.name.trim().toLowerCase())) {
+  if (!await showConfirm({ message: 'You already have a company named "' + createForm.name.trim() + '" in your profile. Create another with the same name?' })) { setCreating(false); return; }
+  }
   const companyId = "co-" + shortId() + shortId().slice(0, 4);
   // Generate unique 8-digit numeric company code
   // Generate unique company code with collision retry
@@ -13638,7 +13640,7 @@ function AppInner() {
 
   if (screen === "landing") return <LandingPage onGetStarted={(mode) => { setLoginMode(mode); setScreen("login"); }} />;
   if (screen === "login") return <LoginPage onLogin={() => {}} onBack={() => setScreen("landing")} initialMode={loginMode} />;
-  if (screen === "company_select") return <CompanySelector currentUser={currentUser} onSelectCompany={handleSelectCompany} onLogout={handleLogout} showToast={showToast} />;
+  if (screen === "company_select") return <CompanySelector currentUser={currentUser} onSelectCompany={handleSelectCompany} onLogout={handleLogout} showToast={showToast} showConfirm={showConfirm} />;
 
   if (!activeCompany?.id || !roleLoaded) {
   return (
