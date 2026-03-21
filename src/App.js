@@ -716,8 +716,8 @@ function PropertySelect({ value, onChange, className = "", companyId }) {
 }
 
 // ============ INLINE DOCUMENT UPLOAD MODAL ============
-function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUploaded }) {
-  const [form, setForm] = useState({ name: "", type: "Lease", tenant_visible: false });
+function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUploaded, isTenantUpload }) {
+  const [form, setForm] = useState({ name: "", type: "Lease", tenant_visible: !!isTenantUpload });
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef();
 
@@ -760,7 +760,7 @@ function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUpl
   <label className="text-xs font-medium text-slate-400 block mb-1">File *</label>
   <input ref={fileRef} type="file" className="text-sm" />
   </div>
-  <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} className="accent-indigo-600" />Visible to tenant</label>
+  {!isTenantUpload && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} className="accent-indigo-600" />Visible to tenant</label>}
   <button onClick={handleUpload} disabled={uploading} className="w-full bg-indigo-600 text-white py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 disabled:opacity-50">{uploading ? "Uploading..." : "Upload"}</button>
   </div>
   </Modal>
@@ -1098,20 +1098,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   <h2 className="text-2xl font-manrope font-bold text-slate-800">Dashboard</h2>
   </div>
 
-  {/* Notifications Banner */}
-  {notifications.length > 0 && (
-  <div className="mb-5 space-y-2">
-  {notifications.slice(0, 3).map(n => (
-  <div key={n.id} className="bg-indigo-50 border border-indigo-100 rounded-2xl px-4 py-3 flex items-center justify-between">
-  <div className="flex items-center gap-2">
-  <span>{n.icon}</span>
-  <span className="text-sm text-indigo-800">{n.message}</span>
-  </div>
-  <span className="text-xs text-indigo-400">{n.time}</span>
-  </div>
-  ))}
-  </div>
-  )}
+  {/* Notifications accessible via bell icon in header */}
 
   <div className="grid grid-cols-2 gap-3 mb-4 md:grid-cols-4">
   <StatCard onClick={() => setPage("properties")} label="Occupancy" value={`${occupied}/${properties.length}`} sub={`${properties.length ? Math.round(occupied / properties.length * 100) : 0}% occupied`} color="text-green-600" />
@@ -9812,6 +9799,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   const [showMaintForm, setShowMaintForm] = useState(false);
   const [maintForm, setMaintForm] = useState({ issue: "", priority: "normal", notes: "" });
   const [maintPhotos, setMaintPhotos] = useState([]);
+  const [showTenantDocUpload, setShowTenantDocUpload] = useState(false);
 
   useEffect(() => {
   async function fetchData() {
@@ -10248,7 +10236,10 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   {/* ---- DOCUMENTS TAB ---- */}
   {activeTab === "documents" && (
   <div>
-  <h3 className="font-semibold text-slate-700 mb-3">My Documents</h3>
+  <div className="flex items-center justify-between mb-3">
+  <h3 className="font-semibold text-slate-700">My Documents</h3>
+  <button onClick={() => setShowTenantDocUpload(true)} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700">+ Upload</button>
+  </div>
   <div className="space-y-2">
   {documents.map(d => (
   <div key={d.id} className="bg-white border border-indigo-50 rounded-2xl px-4 py-3 flex justify-between items-center">
@@ -10261,11 +10252,12 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="text-xs text-slate-400">{d.type || "Document"} · {new Date(d.uploaded_at).toLocaleDateString()}</div>
   </div>
   </div>
-  {d.url && <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">View</a>}
+  <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">View</button>
   </div>
   ))}
   {documents.length === 0 && <div className="text-center py-8 text-slate-400">No documents uploaded yet</div>}
   </div>
+  {showTenantDocUpload && <DocUploadModal onClose={() => setShowTenantDocUpload(false)} companyId={companyId} property={tenantData?.property || ""} tenant={tenantData?.name || ""} showToast={showToast} isTenantUpload onUploaded={async () => { const { data } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).is("archived_at", null).order("uploaded_at", { ascending: false }); setDocuments(data || []); }} />}
   </div>
   )}
 
