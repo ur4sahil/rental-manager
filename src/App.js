@@ -6348,46 +6348,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   <StatCard label="Net Income" value={acctFmt(plData.netIncome)} color={plData.netIncome >= 0 ? "text-blue-700" : "text-red-600"} sub="Year to date" />
   <StatCard label="Total Assets" value={acctFmt(bsData.totalAssets)} color="text-purple-700" sub="Balance sheet" />
   </div>
-  {/* Monthly Rent Accrual */}
-  <div className="bg-blue-50 border border-blue-100 rounded-3xl p-4 mb-4 flex items-center justify-between">
-  <div>
-  <p className="text-sm font-semibold text-blue-800">Monthly Rent Accrual</p>
-  <p className="text-xs text-blue-600">Generate AR entries for all active leases this month (DR Accounts Receivable, CR Rental Income)</p>
-  </div>
-  <button onClick={async () => {
-  const { data: activeTenants } = await supabase.from("tenants").select("*").eq("company_id", companyId).eq("lease_status", "active");
-  if (!activeTenants || activeTenants.length === 0) { showToast("No active leases found.", "error"); return; }
-  const today = formatLocalDate(new Date());
-  const month = today.slice(0, 7);
-  // Check if already accrued this month
-  const { data: existing } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).like("reference", `ACCR-${month}%`).neq("status", "voided");
-  if (existing && existing.length > 0) { showToast("Rent already accrued for " + month + ". " + existing.length + " entries exist.", "error"); return; }
-  // Iterate active LEASES (not tenants) for accurate rent amounts and multi-property support
-  const { data: activeLeases } = await supabase.from("leases").select("*").eq("company_id", companyId).eq("status", "active");
-  let count = 0;
-  for (const lease of (activeLeases || [])) {
-  const rent = safeNum(lease.rent_amount);
-  if (rent <= 0) continue;
-  const classId = await getPropertyClassId(lease.property, companyId);
-  const result = await postAccountingTransaction({
-  date: today,
-  description: `Rent accrual ${month} — ${lease.tenant_name} — ${lease.property}`,
-  reference: `ACCR-${month}-${lease.id}`,
-  property: lease.property,
-  lines: [
-  { account_id: "1100", account_name: "Accounts Receivable", debit: rent, credit: 0, class_id: classId, memo: `${lease.tenant_name} rent due` },
-  { account_id: "4000", account_name: "Rental Income", debit: 0, credit: rent, class_id: classId, memo: `${lease.tenant_name} — ${lease.property}` },
-  ],
-  ledgerEntry: { tenant: lease.tenant_name, property: lease.property, date: today, description: `Rent accrual — ${month}`, amount: rent, type: "charge", balance: 0 },
-  balanceUpdate: lease.tenant_id ? { tenantId: lease.tenant_id, amount: rent } : null,
-  });
-  if (!result.jeId) continue; // skip this lease, toast already shown
-  count++;
-  }
-  showToast("Accrued rent for " + count + " active leases for " + month, "success");
-  fetchAll();
-  }} className="bg-blue-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-blue-700 shrink-0">Generate Accruals</button>
-  </div>
+  {/* Rent accruals are now auto-posted on login and after lease creation */}
   {pendingCount > 0 && <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 mb-4 text-sm text-amber-700">⏳ {pendingCount} draft journal {pendingCount === 1 ? "entry" : "entries"} awaiting review</div>}
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4 mb-4">
   <h3 className="font-semibold text-slate-700 mb-3">Recent Journal Entries</h3>
