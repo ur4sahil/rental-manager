@@ -2310,6 +2310,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
 // ============ TENANTS ============
 function Tenants({ addNotification, userProfile, userRole, companyId, setPage, initialTab, showToast, showConfirm }) {
+  const isAdmin = userRole === "admin";
   function exportTenants() {
   const exportData = tenants.filter(t => !t.archived_at);
   exportToCSV(exportData, [
