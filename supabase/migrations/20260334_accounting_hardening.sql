@@ -2,7 +2,9 @@
 -- Adds tenant_id to ledger_entries, class_id to properties, unique constraint on acct_classes
 
 -- 1. Add tenant_id column to ledger_entries for reliable lookups (vs name-based)
-ALTER TABLE ledger_entries ADD COLUMN IF NOT EXISTS tenant_id UUID;
+-- Fix: drop UUID column if it was incorrectly created, re-add as BIGINT to match tenants.id
+ALTER TABLE ledger_entries DROP COLUMN IF EXISTS tenant_id;
+ALTER TABLE ledger_entries ADD COLUMN IF NOT EXISTS tenant_id BIGINT;
 
 -- Backfill tenant_id from tenant name where possible
 UPDATE ledger_entries le
