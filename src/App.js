@@ -13857,10 +13857,10 @@ function AppInner() {
   }
   }, [screen, activeCompany]);
 
-  if (screen === "loading") return <div className="flex items-center justify-center h-screen bg-indigo-50/30"><Spinner /></div>;
-  if (screen === "landing") return <LandingPage onGetStarted={(mode) => { setLoginMode(mode); setScreen("login"); }} />;
-  if (screen === "login") return <LoginPage onLogin={() => {}} onBack={() => setScreen("landing")} initialMode={loginMode} />;
-  if (screen === "company_select") return <CompanySelector currentUser={currentUser} onSelectCompany={handleSelectCompany} onLogout={handleLogout} showToast={showToast} showConfirm={showConfirm} />;
+  if (screen === "loading") return <><div className="flex items-center justify-center h-screen bg-indigo-50/30"><Spinner /></div><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
+  if (screen === "landing") return <><LandingPage onGetStarted={(mode) => { setLoginMode(mode); setScreen("login"); }} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
+  if (screen === "login") return <><LoginPage onLogin={() => {}} onBack={() => setScreen("landing")} initialMode={loginMode} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
+  if (screen === "company_select") return <><CompanySelector currentUser={currentUser} onSelectCompany={handleSelectCompany} onLogout={handleLogout} showToast={showToast} showConfirm={showConfirm} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
 
   if (!activeCompany?.id || !roleLoaded) {
   return (
