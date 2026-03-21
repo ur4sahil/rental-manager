@@ -295,17 +295,29 @@ async function autoPostJournalEntry({ date, description, reference, property, li
   p_reference: reference || "",
   p_property: property || "",
   p_status: status,
-  p_lines: JSON.stringify(lines || []),
+  p_lines: JSON.stringify(resolvedLines || []),
   });
   if (!rpcErr && jeId) return jeId;
-  console.warn("JE RPC fallback:", rpcErr?.message);
+  // RPC failed — try client-side fallback insert
+  console.warn("JE RPC failed, trying client fallback:", rpcErr?.message);
   } catch (e) {
-  console.error("Journal entry RPC failed:", e.message);
-  return null; // RPC is required — no client-side fallback
+  console.warn("Journal entry RPC unavailable, trying client fallback:", e.message);
   }
-  return null;
+  // Client-side fallback: insert JE header + lines directly
+  try {
+  const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
+  company_id: cid, date, description, reference: reference || "", property: property || "", status
+  }]).select("id").maybeSingle();
+  if (jeErr || !jeRow) { console.error("JE fallback insert failed:", jeErr?.message); return null; }
+  if (resolvedLines.length > 0) {
+  await supabase.from("acct_journal_lines").insert(resolvedLines.map(l => ({
+  journal_entry_id: jeRow.id, account_id: l.account_id, account_name: l.account_name || "",
+  debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || ""
+  })));
+  }
+  return jeRow.id;
+  } catch (fallbackErr) { console.error("JE client fallback also failed:", fallbackErr.message); return null; }
   } catch (e) { console.warn("Auto-post JE failed:", e); return null; }
-  // Note: callers should check return value if JE posting is critical
 }
 
 // Batch check if AR accrual exists for a tenant in a given month — avoids N+1 queries
@@ -425,7 +437,12 @@ async function resolveAccountId(bareCode, companyId) {
   if (d1?.length > 0) { resolved = d1[0].id; }
   else {
   const { data: d2 } = await supabase.from("acct_accounts").select("id").eq("company_id", cid).eq("id", bareCode).limit(1);
-  if (d2?.length > 0) resolved = d2[0].id;
+  if (d2?.length > 0) { resolved = d2[0].id; }
+  else {
+  // Try matching by ID ending with the bare code (handles various prefix formats)
+  const { data: d3 } = await supabase.from("acct_accounts").select("id").eq("company_id", cid).like("id", "%" + bareCode).limit(1);
+  if (d3?.length > 0) resolved = d3[0].id;
+  }
   }
   _acctIdCache[cid][bareCode] = resolved;
   return resolved;
@@ -13506,6 +13523,26 @@ function AppInner() {
   setScreen("company_select");
   }
 
+  async function ensureDefaultAccounts(cid) {
+  const defaults = [
+  { id: "1000", name: "Checking Account", type: "asset", sub_type: "current_asset", is_active: true },
+  { id: "1100", name: "Accounts Receivable", type: "asset", sub_type: "current_asset", is_active: true },
+  { id: "2100", name: "Security Deposits Held", type: "liability", sub_type: "current_liability", is_active: true },
+  { id: "2200", name: "Owner Distributions Payable", type: "liability", sub_type: "current_liability", is_active: true },
+  { id: "4000", name: "Rental Income", type: "revenue", sub_type: "operating_revenue", is_active: true },
+  { id: "4010", name: "Late Fee Income", type: "revenue", sub_type: "operating_revenue", is_active: true },
+  { id: "4100", name: "Other Income", type: "revenue", sub_type: "other_revenue", is_active: true },
+  { id: "4200", name: "Management Fee Income", type: "revenue", sub_type: "operating_revenue", is_active: true },
+  { id: "5300", name: "Repairs & Maintenance", type: "expense", sub_type: "operating_expense", is_active: true },
+  { id: "5400", name: "Utilities Expense", type: "expense", sub_type: "operating_expense", is_active: true },
+  ];
+  const { data: existing } = await supabase.from("acct_accounts").select("id").eq("company_id", cid);
+  if (existing && existing.length > 0) return; // already has accounts
+  const rows = defaults.map(a => ({ ...a, company_id: cid }));
+  await supabase.from("acct_accounts").insert(rows);
+  console.log("Seeded default chart of accounts for company", cid);
+  }
+
   function handleSelectCompany(company, role) {
   // Clear previous company's cached data
   setNotifications([]);
@@ -13517,6 +13554,12 @@ function AppInner() {
   registerPushNotifications();
   // Auto-run daily notification check (rent reminders, lease expiry)
   autoNotificationCheck(company.id);
+  // Ensure default chart of accounts exists
+  ensureDefaultAccounts(company.id).catch(e => console.warn("COA seed:", e.message));
+  // Auto-post rent accruals (idempotent — skips already posted months)
+  if (role !== "tenant" && role !== "owner") {
+  autoPostRentCharges(company.id).catch(e => console.warn("Auto rent charges:", e.message));
+  }
   setCompanyRole(role);
   setUserRole(role);
   setRoleLoaded(true);
