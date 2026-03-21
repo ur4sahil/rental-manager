@@ -1156,7 +1156,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
 }
 
 // ============ PROPERTIES (Admin-Controlled with Approval Workflow) ============
-function Properties({ addNotification, userRole, userProfile, companyId, showToast, showConfirm }) {
+function Properties({ addNotification, userRole, userProfile, companyId, setPage, showToast, showConfirm }) {
   function exportProperties() {
   const exportData = properties.filter(p => !p.archived_at);
   exportToCSV(exportData, [
@@ -6043,7 +6043,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
   <StatCard label="Total Revenue" value={acctFmt(plData.totalRevenue)} color="text-green-600" sub="Year to date" />
   <StatCard label="Total Expenses" value={acctFmt(plData.totalExpenses)} color="text-red-500" sub="Year to date" />
-  <StatCard onClick={() => setPage("accounting")} label="Net Income" value={acctFmt(plData.netIncome)} color={plData.netIncome >= 0 ? "text-blue-700" : "text-red-600"} sub="Year to date" />
+  <StatCard label="Net Income" value={acctFmt(plData.netIncome)} color={plData.netIncome >= 0 ? "text-blue-700" : "text-red-600"} sub="Year to date" />
   <StatCard label="Total Assets" value={acctFmt(bsData.totalAssets)} color="text-purple-700" sub="Balance sheet" />
   </div>
   {/* Monthly Rent Accrual */}
