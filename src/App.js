@@ -1583,7 +1583,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }
 
   async function deactivateProperty(property) {
-  if (!await showConfirm({ message: `Deactivate "${property.address}"?\n\nThis will:\n• Mark the property as inactive\n• Hide related tenants and work orders from active views\n• Preserve all accounting history\n• You can reactivate it anytime\n\nUse Archive instead if you want to fully remove it.`, variant: "danger", confirmText: "Delete" })) return;
+  if (!await showConfirm({ message: `Deactivate "${property.address}"?\n\nThis will:\n• Mark the property as inactive\n• Hide related tenants and work orders from active views\n• Preserve all accounting history\n• You can reactivate it anytime\n\nUse Delete instead if you want to fully remove it.`, variant: "danger", confirmText: "Deactivate" })) return;
   const { error } = await supabase.from("properties").update({ 
   status: "inactive",
   }).eq("id", property.id).eq("company_id", companyId);
@@ -1619,7 +1619,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   showToast("This property belongs to another company and cannot be archived here.", "error");
   return;
   }
-  if (!await showConfirm({ message: `Archive property "${address}"?\n\nThis will hide it from the active list. You can restore it from the Archive page within 180 days.` })) return;
+  if (!await showConfirm({ message: `Delete property "${address}"?\n\nThis will hide it from the active list. You can restore within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
   // #17: Check if tenants have outstanding balance before archive
   const { data: propertyTenants } = await supabase.from("tenants").select("id, name, balance").eq("company_id", companyId).eq("property", address).is("archived_at", null);
   const tenantsWithBalance = (propertyTenants || []).filter(t => safeNum(t.balance) > 0);
@@ -1629,7 +1629,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }
   let archiveTenant = false;
   if (propertyTenants?.length > 0) {
-  archiveTenant = await showConfirm({ message: `This property has ${propertyTenants.length} tenant(s): ${propertyTenants.map(t => t.name).join(", ")}\n\nWould you also like to archive the tenant(s)?\n\nClick OK to archive tenant(s) too, or Cancel to keep them.` });
+  archiveTenant = await showConfirm({ message: `This property has ${propertyTenants.length} tenant(s): ${propertyTenants.map(t => t.name).join(", ")}\n\nWould you also like to delete the tenant(s)?\n\nClick OK to delete tenant(s) too, or Cancel to keep them.` });
   }
   // Use archive RPC (soft delete)
   const { error: archiveErr } = await supabase.rpc("archive_property", {
@@ -2137,7 +2137,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
   {!isReadOnly(p) && isAdmin && p.status !== "inactive" && <button onClick={() => deactivateProperty(p)} className="text-xs text-amber-600 hover:underline">Deactivate</button>}
   {!isReadOnly(p) && isAdmin && p.status === "inactive" && <button onClick={() => reactivateProperty(p)} className="text-xs text-green-600 hover:underline">Reactivate</button>}
-  {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline">Archive</button>}
+  {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline">Delete</button>}
   {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline">Assign PM</button>}
   {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline">Remove PM</button>}
   <button onClick={() => loadTimeline(p)} className="text-xs text-slate-400 hover:underline ml-auto">Timeline</button>
@@ -2178,7 +2178,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {p.pm_company_name && <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded mr-2">PM</span>}
   {isReadOnly(p) && <span className="text-xs text-purple-500 mr-2">🔒 view only</span>}
   {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>}
-  {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline mr-2">Archive</button>}
+  {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline mr-2">Delete</button>}
   {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline mr-2">PM</button>}
   {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline mr-2">-PM</button>}
   <button onClick={() => loadTimeline(p)} className="text-xs text-slate-400 hover:underline">TL</button>
@@ -2472,13 +2472,13 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const { data: activeLease } = await supabase.from("leases").select("security_deposit").eq("company_id", companyId).eq("tenant_name", name).eq("status", "active").maybeSingle();
   if (activeLease && safeNum(activeLease.security_deposit) > 0) {
   if (isAdmin) {
-  if (!await showConfirm({ message: `Tenant "${name}" has an unreturned security deposit of ${formatCurrency(activeLease.security_deposit)}.\n\nArchiving without processing the deposit through the Move-Out Wizard will leave the deposit liability on your books.\n\nProceed anyway?`, variant: "danger", confirmText: "Archive Anyway" })) return;
+  if (!await showConfirm({ message: `Tenant "${name}" has an unreturned security deposit of ${formatCurrency(activeLease.security_deposit)}.\n\nDeleting without processing the deposit through the Move-Out Wizard will leave the deposit liability on your books.\n\nProceed anyway?`, variant: "danger", confirmText: "Delete Anyway" })) return;
   } else {
-  showToast("Cannot archive \"" + name + "\" — a security deposit of " + formatCurrency(activeLease.security_deposit) + " has not been returned. Please use the Move-Out Wizard first.", "error");
+  showToast("Cannot delete \"" + name + "\" — a security deposit of " + formatCurrency(activeLease.security_deposit) + " has not been returned. Please use the Move-Out Wizard first.", "error");
   return;
   }
   }
-  if (!await showConfirm({ message: `Archive tenant "${name}"?\n\nThis will hide the tenant and terminate their lease. You can restore from the Archive page within 180 days.` })) return;
+  if (!await showConfirm({ message: `Delete tenant "${name}"?\n\nThis will hide the tenant and terminate their lease. You can restore within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
   // Get tenant's property before archiving for cascade updates
   const { data: tenantDetail } = await supabase.from("tenants").select("property, balance").eq("id", id).eq("company_id", companyId).maybeSingle();
   const tenantProperty = tenantDetail?.property;
@@ -3246,7 +3246,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <button onClick={() => setBulkAction("notice")} className="text-xs bg-orange-100 text-orange-700 px-3 py-1.5 rounded-lg hover:bg-orange-200 font-medium">Send Notice</button>
   <button onClick={() => setBulkAction("charge")} className="text-xs bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-200 font-medium">Add Charge</button>
   <button onClick={() => setBulkAction("status")} className="text-xs bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-200 font-medium">Change Status</button>
-  <button onClick={() => setBulkAction("archive")} className="text-xs bg-red-100 text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-200 font-medium">Archive</button>
+  <button onClick={() => setBulkAction("archive")} className="text-xs bg-red-100 text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-200 font-medium">Delete</button>
   <button onClick={() => setSelectedTenants(new Set())} className="text-xs text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-100">Deselect All</button>
   </div>
   </div>
@@ -3362,7 +3362,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   addNotification("📦", `${count} tenant(s) archived`);
   logAudit("archive", "tenants", `Bulk archived ${count} tenants`, "", userProfile?.email, userRole, companyId);
   setBulkAction(null); setSelectedTenants(new Set()); fetchTenants();
-  }} className="w-full bg-red-600 text-white text-sm py-2.5 rounded-lg hover:bg-red-700 font-semibold">Confirm Archive</button>
+  }} className="w-full bg-red-600 text-white text-sm py-2.5 rounded-lg hover:bg-red-700 font-semibold">Confirm Delete</button>
   </div>
   </Modal>
   )}
@@ -3418,7 +3418,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <button onClick={() => openMessages(t)} className="text-xs text-slate-500 border border-indigo-100 px-2 py-1 rounded-lg hover:bg-indigo-50/30">Msg</button>
   <button onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="text-xs text-slate-500 border border-indigo-100 px-2 py-1 rounded-lg hover:bg-indigo-50/30">Lease</button>
   <button onClick={() => startEdit(t)} className="text-xs text-blue-600 hover:underline">Edit</button>
-  <button onClick={() => deleteTenant(t.id, t.name)} className="text-xs text-red-500 hover:underline">Archive</button>
+  <button onClick={() => deleteTenant(t.id, t.name)} className="text-xs text-red-500 hover:underline">Delete</button>
   <button onClick={() => inviteTenant(t)} className="text-xs text-purple-600 hover:underline">Invite</button>
   </div>
   );
@@ -4243,7 +4243,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   }
 
   async function deleteAccount(acct) {
-  if (!await showConfirm({ message: "Archive this utility account? Automation will stop for this account." })) return;
+  if (!await showConfirm({ message: "Delete this utility account? Automation will stop for this account.", variant: "danger", confirmText: "Delete" })) return;
   await supabase.from("utility_accounts").update({ archived_at: new Date().toISOString() }).eq("id", acct.id).eq("company_id", companyId);
   addNotification("📦", "Utility account archived: " + acct.provider_display);
   fetchAutomationData();
@@ -4458,7 +4458,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </div>
   <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50">
   <button onClick={() => triggerManualCheck(acct)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">🔄 Check Now</button>
-  <button onClick={() => deleteAccount(acct)} className="text-xs text-red-500 hover:underline ml-auto">Archive</button>
+  <button onClick={() => deleteAccount(acct)} className="text-xs text-red-500 hover:underline ml-auto">Delete</button>
   </div>
   </div>
   ))}
@@ -9399,7 +9399,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
   {h.status === "pending" && <button onClick={() => payHOA(h)} className="text-xs text-green-600 hover:underline mr-2">Pay</button>}
   <button onClick={() => { setEditingHoa(h); setForm({ property: h.property, hoa_name: h.hoa_name, amount: String(h.amount), due_date: h.due_date, frequency: h.frequency || "monthly", status: h.status, notes: h.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>
-  <button onClick={() => deleteHOA(h.id)} className="text-xs text-red-500 hover:underline">Archive</button>
+  <button onClick={() => deleteHOA(h.id)} className="text-xs text-red-500 hover:underline">Delete</button>
   </td>
   </tr>
   ))}
