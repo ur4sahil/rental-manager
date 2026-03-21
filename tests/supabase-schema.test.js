@@ -31,6 +31,7 @@ async function testTableExistence() {
     'messages', 'hoa_payments', 'companies', 'company_members',
     'push_subscriptions', 'pm_assignment_requests',
     'property_change_requests', 'recurring_journal_entries',
+    'doc_templates', 'doc_generated',
   ];
   for (const table of requiredTables) {
     const { error } = await supabase.from(table).select('*').limit(0);
@@ -95,6 +96,13 @@ async function testColumnExistence() {
   // Company members columns
   const { data: cm } = await supabase.from('company_members').select('company_id, user_email, user_name, role, status, custom_pages').limit(1);
   assert(cm !== null, 'Company members has company_id, user_email, role, status, custom_pages');
+
+  // Document builder columns
+  const { data: dt } = await supabase.from('doc_templates').select('id, company_id, name, category, description, body, fields, is_system, is_active, created_by').limit(1);
+  assert(dt !== null, 'doc_templates has id, company_id, name, category, body, fields, is_system, is_active');
+
+  const { data: dg } = await supabase.from('doc_generated').select('id, company_id, template_id, name, field_values, rendered_body, status, property_address, tenant_name, recipients, created_by').limit(1);
+  assert(dg !== null, 'doc_generated has id, company_id, template_id, name, field_values, rendered_body, status');
 }
 
 // ───────────────────────────────────────────

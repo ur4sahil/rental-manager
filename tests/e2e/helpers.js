@@ -152,7 +152,7 @@ async function goToPage(page, pageId) {
     dashboard: 'Dashboard', properties: 'Properties', tenants: 'Tenants',
     payments: 'Payments', maintenance: 'Maintenance', utilities: 'Utilities',
     hoa: 'HOA Payments', accounting: 'Accounting', owners: 'Owners',
-    roles: 'Team & Roles',
+    doc_builder: 'Doc Builder', roles: 'Team & Roles',
   };
 
   if (sidebarMap[pageId]) {
@@ -241,6 +241,59 @@ async function goToPage(page, pageId) {
   return false;
 }
 
+/**
+ * Detect toast notifications (replaced native alert/confirm).
+ * Toasts render in a fixed container at bottom-right with type-specific classes.
+ */
+async function waitForToast(page, { type, textContains, timeout = 3000 } = {}) {
+  // Toast container: fixed bottom-4 right-4 z-[100]
+  const toastSelector = type
+    ? `[class*="z-\\[100\\]"] [class*="${type === 'error' ? 'red' : type === 'success' ? 'emerald' : type === 'warning' ? 'amber' : 'white'}"]`
+    : '[class*="z-\\[100\\]"] [class*="rounded-2xl"]';
+  try {
+    const toast = page.locator(toastSelector).first();
+    await toast.waitFor({ state: 'visible', timeout });
+    if (textContains) {
+      const text = await toast.textContent();
+      return text && text.toLowerCase().includes(textContains.toLowerCase());
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Detect custom confirmation modal (replaced native window.confirm).
+ * Confirm modal renders with z-[90] and has Confirm/Cancel buttons.
+ */
+async function waitForConfirmModal(page, timeout = 3000) {
+  try {
+    const modal = page.locator('[class*="z-\\[90\\]"]').first();
+    await modal.waitFor({ state: 'visible', timeout });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Click confirm or cancel on the custom confirmation modal.
+ */
+async function respondToConfirmModal(page, confirm = true) {
+  const modal = page.locator('[class*="z-\\[90\\]"]').first();
+  if (await modal.isVisible({ timeout: 2000 }).catch(() => false)) {
+    if (confirm) {
+      await modal.locator('button:has-text("Confirm"), button:has-text("Delete"), button:has-text("OK")').first().click();
+    } else {
+      await modal.locator('button:has-text("Cancel")').first().click();
+    }
+    await page.waitForTimeout(300);
+    return true;
+  }
+  return false;
+}
+
 module.exports = {
   login,
   navigateTo,
@@ -250,4 +303,7 @@ module.exports = {
   assertModalIsTopLayer,
   assertButtonsClickable,
   assertNoUnexpectedTruncation,
+  waitForToast,
+  waitForConfirmModal,
+  respondToConfirmModal,
 };

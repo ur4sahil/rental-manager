@@ -2,7 +2,7 @@
 // 01 — LANDING PAGE, AUTH FLOW, SESSION MANAGEMENT
 // ═══════════════════════════════════════════════════════════════
 const { test, expect } = require('@playwright/test');
-const { login, assertNoHorizontalOverflow, collectConsoleErrors } = require('./helpers');
+const { login, assertNoHorizontalOverflow, collectConsoleErrors, waitForToast } = require('./helpers');
 
 test.describe('Landing Page', () => {
   test('renders hero section with all elements', async ({ page }) => {
@@ -78,10 +78,11 @@ test.describe('Authentication', () => {
     await page.fill('input[type="password"]', 'wrongpassword');
     const submitBtn = page.locator('button[type="submit"], button:has-text("Sign In")').last();
     await submitBtn.click();
-    // Should show an error message
+    // Should show an error message (inline error text or toast notification)
     await page.waitForTimeout(2000);
     const errorVisible = await page.locator('text=Invalid').isVisible().catch(() => false)
-      || await page.locator('[class*="red"]').first().isVisible().catch(() => false);
+      || await page.locator('[class*="red"]').first().isVisible().catch(() => false)
+      || await waitForToast(page, { type: 'error', timeout: 2000 });
     expect(errorVisible).toBeTruthy();
   });
 

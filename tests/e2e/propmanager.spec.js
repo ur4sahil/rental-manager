@@ -68,7 +68,7 @@ test('All sidebar modules load without crashing', async ({ page }) => {
   const modules = [
     'Dashboard', 'Properties', 'Tenants', 'Payments',
     'Maintenance', 'Utilities', 'Accounting', 'Documents',
-    'Inspections', 'Autopay', 'Late Fees', 'Audit Trail',
+    'Doc Builder', 'Inspections', 'Autopay', 'Late Fees', 'Audit Trail',
     'Leases', 'Vendors', 'Owners', 'Notifications', 'Team & Roles',
   ];
   for (const mod of modules) {

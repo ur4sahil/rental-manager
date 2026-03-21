@@ -377,6 +377,53 @@ async function testFullLifecycle() {
   assert(!gone || gone.length === 0, 'Lifecycle: all test data cleaned up');
 }
 
+async function testDocumentBuilder() {
+  console.log('\n📝 DOCUMENT BUILDER');
+  // Template CRUD
+  const { data: tmpl, error: tmplErr } = await supabase.from('doc_templates').insert({
+    name: 'Test Template', category: 'general', description: 'Automated test',
+    body: '<p>Dear {{tenant_name}},</p><p>Property: {{property_address}}</p>',
+    fields: [
+      { name: 'tenant_name', label: 'Tenant Name', type: 'text', required: true },
+      { name: 'property_address', label: 'Property', type: 'text', required: true },
+    ],
+    is_system: false, created_by: 'test@test.com',
+  }).select().single();
+  assert(!tmplErr && tmpl, 'Can create doc_template');
+
+  if (tmpl) {
+    const { data: fetched } = await supabase.from('doc_templates').select('*').eq('id', tmpl.id).single();
+    assert(fetched && fetched.name === 'Test Template', 'Template name saved correctly');
+    assert(fetched && Array.isArray(fetched.fields) && fetched.fields.length === 2, 'Template fields JSONB saved correctly');
+    assert(fetched && fetched.body.includes('{{tenant_name}}'), 'Template body with merge fields saved');
+
+    // Generated document CRUD
+    const rendered = fetched.body.replace('{{tenant_name}}', 'Alice').replace('{{property_address}}', '123 Main St');
+    const { data: doc, error: docErr } = await supabase.from('doc_generated').insert({
+      template_id: tmpl.id, name: 'Test Letter — Alice',
+      field_values: { tenant_name: 'Alice', property_address: '123 Main St' },
+      rendered_body: rendered, status: 'draft',
+      property_address: '123 Main St', tenant_name: 'Alice',
+      created_by: 'test@test.com',
+    }).select().single();
+    assert(!docErr && doc, 'Can create doc_generated from template');
+
+    if (doc) {
+      assert(doc.status === 'draft', 'Generated doc status is draft');
+      assert(doc.rendered_body.includes('Alice'), 'Rendered body has merged values');
+      assert(!doc.rendered_body.includes('{{tenant_name}}'), 'No unresolved merge fields in rendered body');
+
+      // Update status
+      await supabase.from('doc_generated').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('id', doc.id);
+      const { data: updated } = await supabase.from('doc_generated').select('status, sent_at').eq('id', doc.id).single();
+      assert(updated && updated.status === 'sent' && updated.sent_at, 'Generated doc status updated to sent');
+
+      await supabase.from('doc_generated').delete().eq('id', doc.id);
+    }
+    await supabase.from('doc_templates').delete().eq('id', tmpl.id);
+  }
+}
+
 async function run() {
   console.log('🧪 PropManager Data Layer Tests');
   console.log('================================');
@@ -396,6 +443,7 @@ async function run() {
   await testLateFeeRule();
   await testUtilityBill();
   await testDocumentRecord();
+  await testDocumentBuilder();
   await testDeletePropertyWithOwner();
   await testMismatchedJournalEntry();
   await testAuditTrail();

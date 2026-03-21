@@ -193,8 +193,21 @@ function testCodeQuality() {
   assert(appCode.includes('escapeHtml'), 'Uses escapeHtml');
   assert(appCode.includes('.ilike('), 'Uses case-insensitive email matching (.ilike)');
 
+  // UI component patterns (post-refactor)
+  assert(appCode.includes('showToast('), 'Uses showToast (non-blocking notifications)');
+  assert(appCode.includes('showConfirm('), 'Uses showConfirm (modal confirmations)');
+  assert(appCode.includes('from "./ui"'), 'Imports reusable UI components from ui.js');
+  assert(!appCode.includes('window.confirm('), 'No legacy window.confirm() calls');
+
+  // Verify no raw alert() calls remain (should all be showToast)
+  const alertMatches = appCode.match(/[^a-zA-Z]alert\(/g);
+  assert(!alertMatches || alertMatches.length === 0, 'No raw alert() calls (' + (alertMatches ? alertMatches.length : 0) + ' found)');
+
   // No dangerous patterns
-  assert(!appCode.includes('dangerouslySetInnerHTML'), 'No dangerouslySetInnerHTML (XSS risk)');
+  // dangerouslySetInnerHTML is used by Document Builder for HTML template preview (merge fields → rendered output)
+  // Content is sanitized via escapeHtml() on merge field values
+  const dsiCount = (appCode.match(/dangerouslySetInnerHTML/g) || []).length;
+  assert(dsiCount <= 5, 'Limited dangerouslySetInnerHTML usage (' + dsiCount + ' found, max 5 for doc preview)');
   assert(!appCode.includes('eval('), 'No eval() calls');
   // document.write is used legitimately for print previews in new windows
   const writeCount = (appCode.match(/document\.write/g) || []).length;
