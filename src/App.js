@@ -13270,7 +13270,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
   </div>
   <div className="flex items-center gap-2 shrink-0 ml-3">
-  <a href={window.location.origin + "/#dashboard"} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.stopPropagation(); }} className="text-indigo-600 text-xs font-medium hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>New Tab</a>
+  <a href={window.location.origin + "/?company=" + c.id} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.stopPropagation(); }} className="text-indigo-600 text-xs font-medium hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>Open</a>
   {c.memberRole === "admin" && <button onClick={(e) => { e.stopPropagation(); deleteCompany(c); }} disabled={deleting === c.id} className="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors disabled:opacity-50">{deleting === c.id ? "Deleting..." : "Delete"}</button>}
   </div>
   </div>
@@ -13598,6 +13598,15 @@ function AppInner() {
   memberships = emailResult;
   }
   if (!memberships || memberships.length === 0) { setScreen("company_select"); return; }
+  // Check for ?company=UUID in URL — auto-select that company if user is a member
+  const urlCompanyId = new URLSearchParams(window.location.search).get("company");
+  if (urlCompanyId) {
+  const match = memberships.find(m => m.company_id === urlCompanyId);
+  if (match) {
+  const { data: company } = await supabase.from("companies").select("*").eq("id", urlCompanyId).maybeSingle();
+  if (company) { window.history.replaceState({}, "", window.location.pathname); handleSelectCompany(company, match.role); return; }
+  }
+  }
   // Only tenants auto-select their company (skip selector)
   const tenantMembership = memberships.find(m => m.role === "tenant");
   if (tenantMembership) {
