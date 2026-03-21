@@ -782,6 +782,10 @@ function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUpl
   tenant_visible: form.tenant_visible, uploaded_at: new Date().toISOString(),
   }]);
   if (insertErr) { showToast("File uploaded but record failed: " + insertErr.message, "error"); setUploading(false); return; }
+  // Update tenant doc_status to complete when a doc is uploaded for them
+  if (tenant) {
+  await supabase.from("tenants").update({ doc_status: "complete" }).eq("company_id", companyId).ilike("name", tenant).eq("doc_status", "pending_docs");
+  }
   showToast("Document uploaded", "success");
   setUploading(false);
   if (onUploaded) onUploaded();
@@ -1159,6 +1163,43 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   <StatCard onClick={() => setPage("maintenance")} label="Open Work Orders" value={openWO} sub={`${workOrders.filter(w => w.priority === "emergency").length} emergency`} color="text-orange-500" />
   <StatCard onClick={() => setPage("utilities")} label="Pending Utilities" value={utilities.filter(u => u.status === "pending").length} sub="awaiting payment" color="text-yellow-600" />
   </div>
+  {/* Pending Tasks */}
+  {(() => {
+  const pendingDocs = tenants.filter(t => t.doc_status === "pending_docs" && !t.archived_at);
+  const delinquentTenants = tenants.filter(t => t.balance > 0 && !t.archived_at);
+  const emergencyWO = workOrders.filter(w => w.priority === "emergency" && w.status !== "completed");
+  const expiringLeases = tenants.filter(t => {
+  const end = t.lease_end_date || t.move_out;
+  if (!end) return false;
+  const days = Math.ceil((parseLocalDate(end) - new Date()) / 86400000);
+  return days > 0 && days <= 30;
+  });
+  const tasks = [
+  ...pendingDocs.map(t => ({ icon: "📄", text: t.name + " — documents pending upload", type: "docs", link: "tenants" })),
+  ...delinquentTenants.map(t => ({ icon: "💰", text: t.name + " — balance due " + formatCurrency(t.balance), type: "balance", link: "tenants" })),
+  ...emergencyWO.map(w => ({ icon: "🚨", text: (w.property || "Property") + " — " + w.issue, type: "emergency", link: "maintenance" })),
+  ...expiringLeases.map(t => ({ icon: "📅", text: t.name + " — lease expires " + (t.lease_end_date || t.move_out), type: "lease", link: "tenants" })),
+  ...hoaDue.map(h => ({ icon: "🏘️", text: (h.property || "HOA") + " — " + formatCurrency(h.amount) + " due " + h.due_date, type: "hoa", link: "hoa" })),
+  ];
+  return tasks.length > 0 ? (
+  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5 mb-6">
+  <div className="flex items-center justify-between mb-3">
+  <h3 className="font-manrope font-bold text-slate-700">Pending Tasks ({tasks.length})</h3>
+  </div>
+  <div className="space-y-2 max-h-64 overflow-y-auto">
+  {tasks.slice(0, 15).map((task, i) => (
+  <div key={i} onClick={() => setPage(task.link)} className="flex items-center gap-3 bg-indigo-50/30 rounded-xl px-3 py-2.5 cursor-pointer hover:bg-indigo-50 transition-colors">
+  <span className="text-lg">{task.icon}</span>
+  <span className="text-sm text-slate-700 flex-1">{task.text}</span>
+  <span className="text-xs text-indigo-400">→</span>
+  </div>
+  ))}
+  {tasks.length > 15 && <div className="text-xs text-slate-400 text-center pt-1">+{tasks.length - 15} more</div>}
+  </div>
+  </div>
+  ) : null;
+  })()}
+
   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
   <h3 className="font-semibold text-slate-700 mb-3">Lease Expirations</h3>
@@ -2226,14 +2267,16 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [tenantDocs, setTenantDocs] = useState([]);
   const [tenantTab, setTenantTab] = useState(initialTab || "tenants");
   const [archivedTenants, setArchivedTenants] = useState([]);
-  const [showTenantDocPrompt, setShowTenantDocPrompt] = useState(null); // 'renew' | 'notice'
+  const [showTenantDocPrompt, setShowTenantDocPrompt] = useState(null);
   const [showDocUpload, setShowDocUpload] = useState(null);
+  const [docExceptions, setDocExceptions] = useState([]);
   const [leaseInput, setLeaseInput] = useState("");
   // eslint-disable-next-line no-unused-vars
   const [error, setError] = useState("");
 
   useEffect(() => {
   fetchTenants();
+  fetchDocExceptions();
   supabase.from("properties").select("*").eq("company_id", companyId).is("archived_at", null)
   .then(({ data, error }) => { if (error) console.warn("Tenants property fetch:", error.message); setProperties(data || []); });
   }, [companyId]);
@@ -2242,6 +2285,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null);
   setTenants(data || []);
   setLoading(false);
+  }
+  async function fetchDocExceptions() {
+  const { data } = await supabase.from("doc_exception_requests").select("*").eq("company_id", companyId).order("created_at", { ascending: false });
+  setDocExceptions(data || []);
   }
 
   async function saveTenant() {
@@ -2261,7 +2308,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
   const { error } = editingTenant
   ? await supabase.from("tenants").update({ name: form.name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, move_in: form.lease_start, move_out: form.lease_end, lease_end_date: form.lease_end, rent: form.rent }).eq("id", editingTenant.id).eq("company_id", companyId)
-  : await supabase.from("tenants").insert([{ company_id: companyId, name: form.name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, rent: form.rent, balance: 0 }]);
+  : await supabase.from("tenants").insert([{ company_id: companyId, name: form.name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, rent: form.rent, balance: 0, doc_status: "pending_docs" }]);
   if (error) { showToast("Error saving tenant: " + error.message, "error"); return; }
   if (editingTenant) {
   // Cascade name change to all related tables
@@ -3004,10 +3051,42 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="flex gap-2 mt-3">
   <button onClick={() => { setShowDocUpload({ property: selectedTenant?.property || "", tenant: selectedTenant?.name || showTenantDocPrompt || "" }); setShowTenantDocPrompt(null); }} className="bg-amber-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-amber-700">Upload Documents Now</button>
   {isAdmin ? (
-  <button onClick={() => setShowTenantDocPrompt(null)} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Admin: Skip for Now</button>
+  <button onClick={async () => { await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", showTenantDocPrompt).is("archived_at", null); showToast("Document exception approved for " + showTenantDocPrompt, "success"); setShowTenantDocPrompt(null); fetchTenants(); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Admin: Approve Exception</button>
   ) : (
-  <button onClick={async () => { if (await showConfirm({ message: "Skipping requires admin approval. An approval request will be sent. Continue?" })) { setShowTenantDocPrompt(null); addNotification("📋", "Document skip request sent for " + showTenantDocPrompt); } }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Request Exception</button>
+  <button onClick={async () => { if (!await showConfirm({ message: "Skipping requires admin approval. An approval request will be sent. Continue?" })) return; await supabase.from("doc_exception_requests").insert([{ company_id: companyId, tenant_name: showTenantDocPrompt, property: selectedTenant?.property || "", requested_by: userProfile?.email || "" }]); addNotification("📋", "Document exception request sent for " + showTenantDocPrompt); logAudit("request", "tenants", "Document exception requested for " + showTenantDocPrompt, "", userProfile?.email, userRole, companyId); setShowTenantDocPrompt(null); fetchDocExceptions(); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Request Exception</button>
   )}
+  </div>
+  </div>
+  )}
+
+  {/* Document Exception Requests — Admin Panel */}
+  {isAdmin && docExceptions.filter(r => r.status === "pending").length > 0 && (
+  <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 mb-4">
+  <div className="text-sm font-bold text-amber-800 mb-2">📋 Pending Document Exception Requests ({docExceptions.filter(r => r.status === "pending").length})</div>
+  <div className="space-y-2">
+  {docExceptions.filter(r => r.status === "pending").map(r => (
+  <div key={r.id} className="bg-white rounded-xl border border-amber-100 px-4 py-3 flex items-center justify-between">
+  <div>
+  <div className="text-sm font-semibold text-slate-800">{r.tenant_name}</div>
+  <div className="text-xs text-slate-400">{r.property} · Requested by {r.requested_by} · {new Date(r.created_at).toLocaleDateString()}</div>
+  </div>
+  <div className="flex gap-2">
+  <button onClick={async () => {
+  await supabase.from("doc_exception_requests").update({ status: "approved", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() }).eq("id", r.id);
+  await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", r.tenant_name).is("archived_at", null);
+  showToast("Exception approved for " + r.tenant_name, "success");
+  logAudit("approve", "tenants", "Document exception approved for " + r.tenant_name, "", userProfile?.email, userRole, companyId);
+  fetchDocExceptions(); fetchTenants();
+  }} className="text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 font-medium">Approve</button>
+  <button onClick={async () => {
+  await supabase.from("doc_exception_requests").update({ status: "rejected", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() }).eq("id", r.id);
+  showToast("Exception rejected for " + r.tenant_name, "info");
+  logAudit("reject", "tenants", "Document exception rejected for " + r.tenant_name, "", userProfile?.email, userRole, companyId);
+  fetchDocExceptions();
+  }} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100 font-medium">Reject</button>
+  </div>
+  </div>
+  ))}
   </div>
   </div>
   )}
@@ -3214,11 +3293,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {tenantView === "card" && (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
   {ft.map(t => (
-  <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4 cursor-pointer hover:border-indigo-200 hover:shadow-md transition-all">
+  <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className={"rounded-3xl shadow-card border p-4 cursor-pointer hover:shadow-md transition-all " + (t.doc_status === "pending_docs" ? "bg-slate-50 border-amber-200 opacity-60" : "bg-white border-indigo-50 hover:border-indigo-200")}>
   <div className="flex justify-between items-start mb-2">
   <div className="flex items-center gap-3">
-  <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg">{t.name?.[0]}</div>
-  <div><div className="font-semibold text-slate-800">{t.name}</div><div className="text-xs text-slate-400">{t.property}</div></div>
+  <div className={"w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg " + (t.doc_status === "pending_docs" ? "bg-amber-100 text-amber-700" : "bg-indigo-100 text-indigo-700")}>{t.name?.[0]}</div>
+  <div><div className="font-semibold text-slate-800">{t.name}</div><div className="text-xs text-slate-400">{t.property}</div>{t.doc_status === "pending_docs" && <div className="text-xs text-amber-600 font-medium">Pending documents</div>}</div>
   </div>
   <Badge status={t.lease_status} />
   </div>
