@@ -3210,7 +3210,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div><span className="text-slate-400">Balance</span><div className={`font-semibold ${t.balance > 0 ? "text-red-500" : "text-slate-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</div></div>
   <div><span className="text-slate-400">Rent</span><div className="font-semibold text-slate-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</div></div>
   </div>
-  <div className="mt-2 text-xs text-indigo-400 text-center">Click to view details →</div>
+  <div className="flex items-center justify-between mt-3 pt-2 border-t border-indigo-50">
+  <button onClick={e => { e.stopPropagation(); setSelectedTenant(t); setActivePanel("ledger"); openLedger(t); }} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">View Ledger</button>
+  <span className="text-xs text-slate-300">Click for details →</span>
+  </div>
   </div>
   ))}
   </div>
