@@ -11382,7 +11382,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   // Template editor
   const [editingTemplate, setEditingTemplate] = useState(null);
-  const [templateForm, setTemplateForm] = useState({ name: "", category: "general", description: "", body: "", fields: [] });
+  const [templateForm, setTemplateForm] = useState({ name: "", category: "general", description: "", body: "", fields: [], field_config: {} });
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
 
   // Send modal
@@ -11421,6 +11421,48 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }, [showTemplateEditor, step]);
 
   const startDrag = () => { isDragging.current = true; document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none"; };
+
+  // ---- Advanced field helpers ----
+  function evaluateFormula(formula, values) {
+  try {
+  const expr = formula.replace(/[a-z_][a-z0-9_]*/gi, (m) => {
+  const v = parseFloat(values[m]);
+  return isNaN(v) ? 0 : v;
+  });
+  if (!/^[\d\s+\-*/().]+$/.test(expr)) return 0;
+  return new Function("return (" + expr + ")")() || 0;
+  } catch { return 0; }
+  }
+
+  function isFieldVisible(fieldName, values, fieldConfig) {
+  const cond = fieldConfig?.conditional?.[fieldName];
+  if (!cond) return true;
+  if (cond.visible_when) {
+  const actual = String(values[cond.visible_when.field] || "").toLowerCase();
+  return actual === String(cond.visible_when.eq).toLowerCase();
+  }
+  if (cond.hidden_when) {
+  const actual = String(values[cond.hidden_when.field] || "").toLowerCase();
+  return actual !== String(cond.hidden_when.eq).toLowerCase();
+  }
+  return true;
+  }
+
+  function recalcFields(values, fieldConfig) {
+  const calc = fieldConfig?.calculated;
+  if (!calc) return values;
+  const updated = { ...values };
+  Object.entries(calc).forEach(([name, cfg]) => {
+  updated[name] = evaluateFormula(cfg.formula, updated);
+  });
+  return updated;
+  }
+
+  function formatAddressBlock(val) {
+  if (!val || typeof val !== "object") return "";
+  const parts = [val.line1, val.line2, [val.city, val.state].filter(Boolean).join(", ") + (val.zip ? " " + val.zip : "")].filter(Boolean);
+  return parts.join("\n");
+  }
 
   const CATEGORIES = ["notices", "leases", "maintenance", "general"];
 
@@ -11519,19 +11561,27 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   async function startDocument(template, docMode) {
   setSelectedTemplate(template);
   setMode(docMode);
+  const fc = template.field_config || {};
   if (docMode === "prefill" && prefillProperty) {
   const data = await loadPrefillData(prefillProperty);
-  setFieldValues(applyPrefill(template, data));
+  setFieldValues(recalcFields(applyPrefill(template, data), fc));
   } else {
-  setFieldValues(applyDefaults(template));
+  setFieldValues(recalcFields(applyDefaults(template), fc));
   }
   setStep("fill");
   }
 
   // ---- Merge + render ----
-  function renderMergedBody(body, values) {
+  function renderMergedBody(body, values, fieldConfig) {
   return (body || "").replace(/\{\{(\w+)\}\}/g, (match, fieldName) => {
+  // Hide merge tags for conditionally hidden fields
+  if (fieldConfig && !isFieldVisible(fieldName, values, fieldConfig)) return "";
   const val = values[fieldName];
+  // Address block: format multi-line
+  if (val && typeof val === "object" && val.line1 !== undefined) {
+  const formatted = formatAddressBlock(val);
+  return formatted ? escapeHtml(formatted).replace(/\n/g, "<br/>") : '<span style="color:#ef4444;background:#fef2f2;padding:0 4px;border-radius:4px;">' + match + '</span>';
+  }
   return val !== undefined && val !== "" ? escapeHtml(String(val)) : '<span style="color:#ef4444;background:#fef2f2;padding:0 4px;border-radius:4px;">' + match + '</span>';
   });
   }
@@ -11539,9 +11589,17 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // ---- Validation ----
   function validateFields(template, values) {
   const errors = [];
+  const fc = template.field_config || {};
   (template.fields || []).forEach(f => {
-  if (f.required && (!values[f.name] || String(values[f.name]).trim() === "")) {
+  if (!isFieldVisible(f.name, values, fc)) return; // skip hidden
+  if (fc.calculated?.[f.name]) return; // skip calculated
+  if (f.required) {
+  const val = values[f.name];
+  if (f.type === "address_block") {
+  if (!val || typeof val !== "object" || !val.line1?.trim()) errors.push(f.label + " is required");
+  } else if (!val || String(val).trim() === "") {
   errors.push(f.label + " is required");
+  }
   }
   });
   return errors;
@@ -11551,7 +11609,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   async function saveDocument(status = "draft") {
   const errors = validateFields(selectedTemplate, fieldValues);
   if (errors.length > 0) { showToast(errors[0], "error"); return null; }
-  const rendered = renderMergedBody(selectedTemplate.body, fieldValues);
+  const rendered = renderMergedBody(selectedTemplate.body, fieldValues, selectedTemplate.field_config);
   const docName = selectedTemplate.name + " — " + (fieldValues.tenant_name || fieldValues.recipient_name || "Document") + " " + formatLocalDate(new Date());
   const payload = {
   company_id: companyId, template_id: selectedTemplate.id, name: docName,
@@ -11824,7 +11882,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="grid grid-cols-3 gap-2 mb-2">
   <Input value={f.label} onChange={e => updateField(i, "label", e.target.value)} placeholder="Label" className="text-xs" />
   <select value={f.type} onChange={e => updateField(i, "type", e.target.value)} className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs">
-  {["text","textarea","number","currency","date","checkbox","select","signature_placeholder"].map(t => <option key={t} value={t}>{t}</option>)}
+  {["text","textarea","number","currency","date","checkbox","select","address_block","signature_placeholder"].map(t => <option key={t} value={t}>{t}</option>)}
   </select>
   <Input value={f.section || ""} onChange={e => updateField(i, "section", e.target.value)} placeholder="Section" className="text-xs" />
   </div>
@@ -11845,6 +11903,73 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   ))}
   </div>
   </div>
+
+  {/* Advanced Field Config */}
+  {templateForm.fields.length > 0 && (
+  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+  <h3 className="font-manrope font-bold text-slate-700 mb-3">Advanced Field Config</h3>
+
+  {/* Calculated Fields */}
+  <div className="mb-4">
+  <div className="flex items-center justify-between mb-2">
+  <h4 className="text-xs font-semibold text-amber-700 uppercase tracking-wide flex items-center gap-1"><span className="material-icons-outlined text-sm">calculate</span>Calculated Fields</h4>
+  <button onClick={() => {
+  const name = prompt("Field name to make calculated (must match an existing field):");
+  if (!name?.trim()) return;
+  const formula = prompt("Formula (use field names, e.g. rent + late_fee):");
+  if (!formula?.trim()) return;
+  setTemplateForm(prev => ({ ...prev, field_config: { ...prev.field_config, calculated: { ...(prev.field_config?.calculated || {}), [name.trim()]: { formula: formula.trim() } } } }));
+  }} className="text-xs text-amber-600 hover:text-amber-800">+ Add</button>
+  </div>
+  {Object.entries(templateForm.field_config?.calculated || {}).map(([name, cfg]) => (
+  <div key={name} className="flex items-center gap-2 text-xs bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-1">
+  <span className="font-mono font-semibold text-amber-800">{name}</span>
+  <span className="text-amber-500">=</span>
+  <span className="font-mono text-amber-700 flex-1">{cfg.formula}</span>
+  <button onClick={() => {
+  const calc = { ...(templateForm.field_config?.calculated || {}) };
+  delete calc[name];
+  setTemplateForm(prev => ({ ...prev, field_config: { ...prev.field_config, calculated: calc } }));
+  }} className="text-red-400 hover:text-red-600">✕</button>
+  </div>
+  ))}
+  {Object.keys(templateForm.field_config?.calculated || {}).length === 0 && <p className="text-xs text-slate-400 italic">No calculated fields. Use formulas like <code className="bg-slate-100 px-1 rounded">rent * days / 30</code></p>}
+  </div>
+
+  {/* Conditional Fields */}
+  <div className="mb-4">
+  <div className="flex items-center justify-between mb-2">
+  <h4 className="text-xs font-semibold text-violet-700 uppercase tracking-wide flex items-center gap-1"><span className="material-icons-outlined text-sm">visibility</span>Conditional Visibility</h4>
+  <button onClick={() => {
+  const name = prompt("Field to show/hide conditionally:");
+  if (!name?.trim()) return;
+  const depField = prompt("Show when which field...");
+  if (!depField?.trim()) return;
+  const eqVal = prompt("...equals what value?");
+  if (eqVal === null) return;
+  setTemplateForm(prev => ({ ...prev, field_config: { ...prev.field_config, conditional: { ...(prev.field_config?.conditional || {}), [name.trim()]: { visible_when: { field: depField.trim(), eq: eqVal } } } } }));
+  }} className="text-xs text-violet-600 hover:text-violet-800">+ Add</button>
+  </div>
+  {Object.entries(templateForm.field_config?.conditional || {}).map(([name, cfg]) => (
+  <div key={name} className="flex items-center gap-2 text-xs bg-violet-50 border border-violet-100 rounded-lg px-3 py-2 mb-1">
+  <span className="font-mono font-semibold text-violet-800">{name}</span>
+  <span className="text-violet-500">visible when</span>
+  <span className="font-mono text-violet-700">{cfg.visible_when?.field} = "{cfg.visible_when?.eq}"</span>
+  <button onClick={() => {
+  const cond = { ...(templateForm.field_config?.conditional || {}) };
+  delete cond[name];
+  setTemplateForm(prev => ({ ...prev, field_config: { ...prev.field_config, conditional: cond } }));
+  }} className="text-red-400 hover:text-red-600 ml-auto">✕</button>
+  </div>
+  ))}
+  {Object.keys(templateForm.field_config?.conditional || {}).length === 0 && <p className="text-xs text-slate-400 italic">No conditions. Show/hide fields based on other field values.</p>}
+  </div>
+
+  <div className="text-xs text-slate-400 border-t border-indigo-50 pt-2">
+  <strong>Address blocks:</strong> Set field type to "address_block" above — it renders as a 5-field structured address (street, apt, city, state, zip).
+  </div>
+  </div>
+  )}
   </div>
 
   {/* Drag handle */}
@@ -11867,7 +11992,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 mb-2">Preview</h3>
-  <div className="prose prose-sm max-w-none border border-indigo-50 rounded-xl p-6 bg-white min-h-64" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }} dangerouslySetInnerHTML={{ __html: renderMergedBody(templateForm.body, {}) }} />
+  <div className="prose prose-sm max-w-none border border-indigo-50 rounded-xl p-6 bg-white min-h-64" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }} dangerouslySetInnerHTML={{ __html: renderMergedBody(templateForm.body, {}, templateForm.field_config) }} />
   </div>
   </div>
   </div>
@@ -11877,24 +12002,78 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   // ============ DOCUMENT FILL — FULL SCREEN ============
   if (step === "fill" && selectedTemplate) {
+  const fc = selectedTemplate.field_config || {};
   const sections = [...new Set((selectedTemplate.fields || []).map(f => f.section).filter(Boolean))];
   const unsectioned = (selectedTemplate.fields || []).filter(f => !f.section);
+  const isCalc = (name) => !!fc.calculated?.[name];
+
+  const updateVal = (name, val) => {
+  const next = { ...fieldValues, [name]: val };
+  setFieldValues(recalcFields(next, fc));
+  };
+
   const renderField = (f) => {
-  const val = fieldValues[f.name] || "";
+  if (!isFieldVisible(f.name, fieldValues, fc)) return null;
   const base = "border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full focus:border-indigo-300 focus:outline-none";
-  if (f.type === "textarea") return <textarea value={val} onChange={e => setFieldValues({...fieldValues, [f.name]: e.target.value})} className={base} rows={3} />;
+
+  // Calculated field — read-only display
+  if (isCalc(f.name)) {
+  const calcVal = fieldValues[f.name] || 0;
+  const displayVal = f.type === "currency" ? formatCurrency(calcVal) : calcVal;
+  return (
+  <div className="flex items-center gap-2">
+  <div className={base + " bg-slate-50 text-slate-600"}>{displayVal}</div>
+  <span className="material-icons-outlined text-sm text-amber-500" title={"Formula: " + fc.calculated[f.name].formula}>calculate</span>
+  </div>
+  );
+  }
+
+  // Address block — structured 5-field input
+  if (f.type === "address_block") {
+  const addr = fieldValues[f.name] || { line1: "", line2: "", city: "", state: "", zip: "" };
+  const setAddr = (key, v) => updateVal(f.name, { ...addr, [key]: v });
+  return (
+  <div className="space-y-2">
+  <input type="text" value={addr.line1 || ""} onChange={e => setAddr("line1", e.target.value)} className={base} placeholder="Street address" />
+  <input type="text" value={addr.line2 || ""} onChange={e => setAddr("line2", e.target.value)} className={base} placeholder="Apt, suite, unit (optional)" />
+  <div className="grid grid-cols-3 gap-2">
+  <input type="text" value={addr.city || ""} onChange={e => setAddr("city", e.target.value)} className={base} placeholder="City" />
+  <input type="text" value={addr.state || ""} onChange={e => setAddr("state", e.target.value)} className={base} placeholder="State" />
+  <input type="text" value={addr.zip || ""} onChange={e => setAddr("zip", e.target.value)} className={base} placeholder="ZIP" />
+  </div>
+  </div>
+  );
+  }
+
+  const val = fieldValues[f.name] || "";
+  if (f.type === "textarea") return <textarea value={val} onChange={e => updateVal(f.name, e.target.value)} className={base} rows={3} />;
   if (f.type === "select") return (
-  <select value={val} onChange={e => setFieldValues({...fieldValues, [f.name]: e.target.value})} className={base}>
+  <select value={val} onChange={e => updateVal(f.name, e.target.value)} className={base}>
   <option value="">Select...</option>
   {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
   </select>
   );
   if (f.type === "checkbox") return (
-  <label className="flex items-center gap-2"><input type="checkbox" checked={!!val} onChange={e => setFieldValues({...fieldValues, [f.name]: e.target.checked})} className="accent-indigo-600" />{f.label}</label>
+  <label className="flex items-center gap-2"><input type="checkbox" checked={!!val} onChange={e => updateVal(f.name, e.target.checked)} className="accent-indigo-600" />{f.label}</label>
   );
   if (f.type === "signature_placeholder") return <div className="border-b-2 border-slate-300 py-4 text-xs text-slate-400 italic">Signature placeholder — will be available after e-sign integration</div>;
   const inputType = f.type === "date" ? "date" : f.type === "number" ? "number" : f.type === "currency" ? "text" : "text";
-  return <input type={inputType} value={val} onChange={e => setFieldValues({...fieldValues, [f.name]: e.target.value})} className={base} placeholder={f.type === "currency" ? "$0.00" : ""} />;
+  return <input type={inputType} value={val} onChange={e => updateVal(f.name, e.target.value)} className={base} placeholder={f.type === "currency" ? "$0.00" : ""} />;
+  };
+
+  const renderFieldRow = (f) => {
+  if (!isFieldVisible(f.name, fieldValues, fc)) return null;
+  return (
+  <div key={f.name}>
+  {f.type !== "checkbox" && (
+  <label className="text-xs font-medium text-slate-500 block mb-1">
+  {f.label} {f.required && !isCalc(f.name) && "*"}
+  {isCalc(f.name) && <span className="text-amber-500 ml-1">(calculated)</span>}
+  </label>
+  )}
+  {renderField(f)}
+  </div>
+  );
   };
 
   return (
@@ -11918,31 +12097,24 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="flex-1 flex overflow-hidden">
   {/* Left: Form fields */}
   <div style={{ width: splitPercent + "%" }} className="overflow-y-auto p-6 space-y-4">
-  {sections.map(section => (
+  {sections.map(section => {
+  const sectionFields = (selectedTemplate.fields || []).filter(f => f.section === section).map(renderFieldRow).filter(Boolean);
+  if (sectionFields.length === 0) return null;
+  return (
   <div key={section} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 text-sm mb-3 uppercase tracking-wide">{section}</h3>
-  <div className="space-y-3">
-  {(selectedTemplate.fields || []).filter(f => f.section === section).map(f => (
-  <div key={f.name}>
-  {f.type !== "checkbox" && <label className="text-xs font-medium text-slate-500 block mb-1">{f.label} {f.required && "*"}</label>}
-  {renderField(f)}
+  <div className="space-y-3">{sectionFields}</div>
   </div>
-  ))}
-  </div>
-  </div>
-  ))}
-  {unsectioned.length > 0 && (
+  );
+  })}
+  {unsectioned.length > 0 && (() => {
+  const rows = unsectioned.map(renderFieldRow).filter(Boolean);
+  return rows.length > 0 ? (
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
-  <div className="space-y-3">
-  {unsectioned.map(f => (
-  <div key={f.name}>
-  {f.type !== "checkbox" && <label className="text-xs font-medium text-slate-500 block mb-1">{f.label} {f.required && "*"}</label>}
-  {renderField(f)}
+  <div className="space-y-3">{rows}</div>
   </div>
-  ))}
-  </div>
-  </div>
-  )}
+  ) : null;
+  })()}
   </div>
 
   {/* Drag handle */}
@@ -11953,7 +12125,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 text-sm mb-3">Live Preview</h3>
   <div className="prose prose-sm max-w-none border border-indigo-50 rounded-xl p-6 bg-white" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }}
-  dangerouslySetInnerHTML={{ __html: renderMergedBody(selectedTemplate.body, fieldValues) }} />
+  dangerouslySetInnerHTML={{ __html: renderMergedBody(selectedTemplate.body, fieldValues, fc) }} />
   </div>
   </div>
   </div>
@@ -11963,7 +12135,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   // ============ PREVIEW + EXPORT — FULL SCREEN ============
   if (step === "preview" && selectedTemplate) {
-  const rendered = renderMergedBody(selectedTemplate.body, fieldValues);
+  const rendered = renderMergedBody(selectedTemplate.body, fieldValues, selectedTemplate.field_config);
   return (
   <div className="fixed inset-0 z-50 bg-[#fcf8ff] flex flex-col">
   {/* Toolbar */}
@@ -12119,7 +12291,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {tab === "templates" && (
   <div>
   <div className="flex justify-end mb-4">
-  <button onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", category: "general", description: "", body: "", fields: [] }); setShowTemplateEditor(true); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Template</button>
+  <button onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", category: "general", description: "", body: "", fields: [], field_config: {} }); setShowTemplateEditor(true); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Template</button>
   </div>
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
   {templates.map(t => (
@@ -12134,7 +12306,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <p className="text-xs text-slate-400 mt-2">{t.description}</p>
   <div className="text-xs text-slate-500 mt-2">{(t.fields || []).length} fields</div>
   <div className="mt-3 flex gap-2">
-  <button onClick={() => { setEditingTemplate(t); setTemplateForm({ name: t.name, category: t.category, description: t.description || "", body: t.body || "", fields: t.fields || [] }); setShowTemplateEditor(true); }} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
+  <button onClick={() => { setEditingTemplate(t); setTemplateForm({ name: t.name, category: t.category, description: t.description || "", body: t.body || "", fields: t.fields || [], field_config: t.field_config || {} }); setShowTemplateEditor(true); }} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
   <button onClick={() => { setSelectedTemplate(t); setMode("blank"); setFieldValues(applyDefaults(t)); setStep("fill"); setTab("create"); }} className="text-xs text-emerald-600 border border-emerald-200 px-3 py-1 rounded-lg hover:bg-emerald-50">Use</button>
   <button onClick={() => deleteTemplate(t)} className="text-xs text-red-400 hover:text-red-600 ml-auto">Delete</button>
   </div>
