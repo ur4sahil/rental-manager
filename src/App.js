@@ -1361,7 +1361,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, showToa
   property_status: form.status,
   rent: form.rent,
   tenant: form.tenant,
-  lease_end: form.lease_end,
+  lease_end: form.lease_end || null,
   notes: form.notes,
   }]);
   if (error) { showToast("Error submitting request: " + error.message, "error"); return; }
