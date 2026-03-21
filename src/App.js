@@ -1005,7 +1005,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   setUtilities(u.data || []);
   // Fetch upcoming HOA payments (due within 14 days)
   const fourteenDays = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
-  const { data: hoaData } = await supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("status", "unpaid").lte("due_date", fourteenDays).order("due_date", { ascending: true });
+  const { data: hoaData } = await supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("status", "unpaid").is("archived_at", null).lte("due_date", fourteenDays).order("due_date", { ascending: true });
   setHoaDue(hoaData || []);
   // Pull financials from accounting module (journal entries are the GL source of truth,
   // but dashboard stats also reference payments/tenants tables for quick metrics)
@@ -1236,7 +1236,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, showToa
 
   async function openPropertyDetail(p) {
   setSelectedProperty(p);
-  const { data: docs } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).order("created_at", { ascending: false }).limit(100);
+  const { data: docs } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("created_at", { ascending: false }).limit(100);
   setPropertyDocs(docs || []);
   const { data: wos } = await supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address).order("created_at", { ascending: false }).limit(100);
   setPropertyWorkOrders(wos || []);
@@ -1507,9 +1507,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, showToa
   async function loadTimeline(p) {
   setTimelineProperty(p);
   const [pay, wo, docs] = await Promise.all([
-  supabase.from("payments").select("*").eq("company_id", companyId).eq("property", p.address).limit(200),
-  supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address),
-  supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address),
+  supabase.from("payments").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).limit(200),
+  supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null),
+  supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null),
   ]);
   const all = [
   ...(pay.data || []).map(x => ({ ...x, _type: "payment", _date: x.date })),
@@ -2324,7 +2324,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
 
   async function fetchTenantDocs(tenant) {
-  const { data } = await supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", tenant.name).order("created_at", { ascending: false }).limit(50);
+  const { data } = await supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", tenant.name).is("archived_at", null).order("created_at", { ascending: false }).limit(50);
   setTenantDocs(data || []);
   }
 
@@ -3211,7 +3211,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   useEffect(() => { fetchPayments(); }, [companyId]);
 
   async function fetchPayments() {
-  const { data } = await supabase.from("payments").select("*").eq("company_id", companyId).order("date", { ascending: false }).limit(500);
+  const { data } = await supabase.from("payments").select("*").eq("company_id", companyId).is("archived_at", null).order("date", { ascending: false }).limit(500);
   setPayments(data || []);
   setLoading(false);
   }
@@ -3231,7 +3231,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   if (selectedPayments.size === 0) return;
   if (!await showConfirm({ message: "Delete " + selectedPayments.size + " selected payment(s)?\n\nThis cannot be undone.", variant: "danger", confirmText: "Delete" })) return;
   const ids = Array.from(selectedPayments);
-  const { error } = await supabase.from("payments").delete().in("id", ids).eq("company_id", companyId);
+  const { error } = await supabase.from("payments").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).in("id", ids).eq("company_id", companyId);
   if (error) { showToast("Error deleting payments: " + error.message, "error"); return; }
   showToast(ids.length + " payment(s) deleted", "success");
   setSelectedPayments(new Set());
@@ -4389,7 +4389,7 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   async function fetchEntries() {
   setLoading(true);
   const { data } = await supabase.from("recurring_journal_entries").select("*")
-  .eq("company_id", companyId).order("created_at", { ascending: false }).limit(200);
+  .eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }).limit(200);
   setEntries(data || []);
   setLoading(false);
   }
@@ -4433,7 +4433,7 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
 
   async function deleteEntry(entry) {
   if (!await showConfirm({ message: "Delete this recurring entry? This cannot be undone.", variant: "danger", confirmText: "Delete" })) return;
-  const { error } = await supabase.from("recurring_journal_entries").delete().eq("id", entry.id).eq("company_id", companyId);
+  const { error } = await supabase.from("recurring_journal_entries").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", entry.id).eq("company_id", companyId);
   if (error) { showToast(userError(error.message), "error"); return; }
   addNotification("🗑️", "Deleted: " + entry.description);
   fetchEntries();
@@ -6155,7 +6155,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   useEffect(() => { fetchDocs(); }, [companyId]);
 
   async function fetchDocs() {
-  const { data } = await supabase.from("documents").select("*").eq("company_id", companyId).order("uploaded_at", { ascending: false }).limit(500);
+  const { data } = await supabase.from("documents").select("*").eq("company_id", companyId).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(500);
   setDocs(data || []);
   setLoading(false);
   }
@@ -6206,11 +6206,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   if (!guardSubmit("deleteDoc")) return;
   try {
   if (!await showConfirm({ message: `Delete "${name}"?`, variant: "danger", confirmText: "Delete" })) return;
-  // Also delete from storage if file_name is known
-  if (file_name) {
-  await supabase.storage.from("documents").remove([file_name]);
-  }
-  const { error } = await supabase.from("documents").delete().eq("id", id).eq("company_id", companyId);
+  const { error } = await supabase.from("documents").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", id).eq("company_id", companyId);
   if (error) { showToast("Error deleting document: " + error.message, "error"); return; }
   addNotification("🗑️", `Document deleted: ${name}`);
   fetchDocs();
@@ -7076,7 +7072,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   async function fetchData() {
   setLoading(true);
   const [v, inv, wo] = await Promise.all([
-  supabase.from("vendors").select("*").eq("company_id", companyId).order("name"),
+  supabase.from("vendors").select("*").eq("company_id", companyId).is("archived_at", null).order("name"),
   supabase.from("vendor_invoices").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
   supabase.from("work_orders").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(100),
   ]);
@@ -7127,8 +7123,8 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   if (!guardSubmit("deleteVendor")) return;
   try {
   if (!await showConfirm({ message: "Delete vendor " + name + "?", variant: "danger", confirmText: "Delete" })) return;
-  await supabase.from("vendors").delete().eq("id", id).eq("company_id", companyId);
-  logAudit("delete", "vendors", "Deleted vendor: " + name, id, userProfile?.email, userRole, companyId);
+  await supabase.from("vendors").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", id).eq("company_id", companyId);
+  logAudit("delete", "vendors", "Archived vendor: " + name, id, userProfile?.email, userRole, companyId);
   fetchData();
   } finally { guardRelease("deleteVendor"); }
   }
@@ -7442,7 +7438,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   supabase.from("properties").select("*").eq("company_id", companyId),
   supabase.from("owner_statements").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
   supabase.from("owner_distributions").select("*").eq("company_id", companyId).order("date", { ascending: false }),
-  supabase.from("payments").select("*").eq("company_id", companyId).eq("status", "paid"),
+  supabase.from("payments").select("*").eq("company_id", companyId).eq("status", "paid").is("archived_at", null),
   supabase.from("vendor_invoices").select("*").eq("company_id", companyId).eq("status", "paid"),
   supabase.from("utilities").select("*").eq("company_id", companyId).eq("status", "paid"),
   ]);
@@ -7538,7 +7534,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   if (ownerProps.length === 0) { showToast("No properties assigned to " + owner.name, "error"); return; }
 
   // Fetch FRESH data from DB for accurate statement (not stale component state)
-  const { data: freshPayments } = await supabase.from("payments").select("*").eq("company_id", companyId).eq("status", "paid").gte("date", startDate).lte("date", endDate);
+  const { data: freshPayments } = await supabase.from("payments").select("*").eq("company_id", companyId).eq("status", "paid").is("archived_at", null).gte("date", startDate).lte("date", endDate);
   const monthPayments = (freshPayments || []).filter(p => ownerProps.includes(p.property));
   const totalIncome = monthPayments.reduce((s, p) => s + safeNum(p.amount), 0);
 
@@ -9020,7 +9016,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   useEffect(() => { fetchHOA(); }, [companyId]);
 
   async function fetchHOA() {
-  const { data } = await supabase.from("hoa_payments").select("*").eq("company_id", companyId).order("due_date", { ascending: false });
+  const { data } = await supabase.from("hoa_payments").select("*").eq("company_id", companyId).is("archived_at", null).order("due_date", { ascending: false });
   setHoaPayments(data || []);
   setLoading(false);
   }
@@ -9082,8 +9078,8 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   if (!guardSubmit("deleteHOA")) return;
   try {
   if (!await showConfirm({ message: "Delete this HOA payment?", variant: "danger", confirmText: "Delete" })) return;
-  await supabase.from("hoa_payments").delete().eq("id", id).eq("company_id", companyId);
-  logAudit("delete", "hoa", "Deleted HOA payment", id, userProfile?.email, userRole, companyId);
+  await supabase.from("hoa_payments").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", id).eq("company_id", companyId);
+  logAudit("delete", "hoa", "Archived HOA payment", id, userProfile?.email, userRole, companyId);
   fetchHOA();
   } finally { guardRelease("deleteHOA"); }
   }
@@ -9180,6 +9176,13 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
   { name: "documents", label: "Document", fields: "id, name, property, type, archived_at" },
   { name: "leases", label: "Lease", fields: "id, tenant_name, property, status, archived_at" },
   { name: "payments", label: "Payment", fields: "id, tenant, property, amount, archived_at" },
+  { name: "vendors", label: "Vendor", fields: "id, name, email, phone, archived_at, archived_by" },
+  { name: "hoa_payments", label: "HOA Payment", fields: "id, property, amount, due_date, status, archived_at, archived_by" },
+  { name: "autopay_schedules", label: "Autopay Schedule", fields: "id, tenant, property, amount, archived_at, archived_by" },
+  { name: "recurring_journal_entries", label: "Recurring Entry", fields: "id, description, status, archived_at, archived_by" },
+  { name: "late_fee_rules", label: "Late Fee Rule", fields: "id, name, fee_type, fee_amount, archived_at, archived_by" },
+  { name: "app_users", label: "Team Member", fields: "id, name, email, role, archived_at, archived_by" },
+  { name: "doc_generated", label: "Generated Doc", fields: "id, template_name, property, archived_at, archived_by" },
   ];
   let all = [];
   for (const t of tables) {
@@ -9243,11 +9246,11 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
   const daysUntilPurge = (item) => Math.max(0, 180 - Math.floor((new Date() - new Date(item.archived_at)) / 86400000));
 
   function getItemTitle(item) {
-  return item.address || item.name || item.issue || item.tenant_name || item.tenant || "Unnamed";
+  return item.address || item.name || item.issue || item.tenant_name || item.tenant || item.description || item.template_name || "Unnamed";
   }
 
   function getItemSubtitle(item) {
-  return item.property || item.email || item.type || item.status || "";
+  return item.property || item.email || item.type || item.status || item.fee_type || item.role || item.due_date || "";
   }
 
   return (
@@ -9280,7 +9283,7 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
   {filtered.map(item => (
   <div key={item._table + item.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4 flex items-center gap-4">
   <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-lg">
-  {item._table === "properties" ? "🏠" : item._table === "tenants" ? "👤" : item._table === "work_orders" ? "🔧" : item._table === "documents" ? "📄" : item._table === "leases" ? "📋" : "💰"}
+  {item._table === "properties" ? "🏠" : item._table === "tenants" ? "👤" : item._table === "work_orders" ? "🔧" : item._table === "documents" || item._table === "doc_generated" ? "📄" : item._table === "leases" ? "📋" : item._table === "vendors" ? "🏗️" : item._table === "hoa_payments" ? "🏘️" : item._table === "autopay_schedules" ? "🔄" : item._table === "recurring_journal_entries" ? "📊" : item._table === "late_fee_rules" ? "⚠️" : item._table === "app_users" ? "👥" : "💰"}
   </div>
   <div className="flex-1 min-w-0">
   <div className="font-semibold text-slate-800 text-sm">{getItemTitle(item)}</div>
@@ -9342,7 +9345,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   async function fetchData() {
   try {
   const [s, t] = await Promise.all([
-  supabase.from("autopay_schedules").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
+  supabase.from("autopay_schedules").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }),
   supabase.from("tenants").select("*").eq("company_id", companyId),
   ]);
   setSchedules(s.data || []);
@@ -9385,8 +9388,8 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   if (!guardSubmit("deleteSchedule")) return;
   try {
   if (!await showConfirm({ message: `Delete autopay schedule for ${tenant}?`, variant: "danger", confirmText: "Delete" })) return;
-  await supabase.from("autopay_schedules").delete().eq("id", id).eq("company_id", companyId);
-  logAudit("delete", "autopay", `Autopay deleted: ${tenant}`, id, userProfile?.email, userRole, companyId);
+  await supabase.from("autopay_schedules").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", id).eq("company_id", companyId);
+  logAudit("delete", "autopay", `Autopay archived: ${tenant}`, id, userProfile?.email, userRole, companyId);
   fetchData();
   } finally { guardRelease("deleteSchedule"); }
   }
@@ -9568,8 +9571,8 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   async function fetchData() {
   try {
   const [r, p, t, lRes] = await Promise.all([
-  supabase.from("late_fee_rules").select("*").eq("company_id", companyId),
-  supabase.from("payments").select("*").eq("company_id", companyId).eq("status", "unpaid"),
+  supabase.from("late_fee_rules").select("*").eq("company_id", companyId).is("archived_at", null),
+  supabase.from("payments").select("*").eq("company_id", companyId).eq("status", "unpaid").is("archived_at", null),
   supabase.from("tenants").select("*").eq("company_id", companyId),
   supabase.from("leases").select("tenant_name, payment_due_day, status").eq("company_id", companyId).eq("status", "active"),
   ]);
@@ -9690,7 +9693,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   <div className="font-semibold text-indigo-800 text-sm">{r.name}</div>
   <div className="text-xs text-indigo-500">{r.grace_days} day grace · {r.fee_type === "flat" ? `${formatCurrency(r.fee_amount)} flat` : `${r.fee_amount}% of rent`}</div>
   </div>
-  <button onClick={async () => { if(!await showConfirm({ message: "Delete this late fee rule?" }))return; await supabase.from("late_fee_rules").delete().eq("id", r.id).eq("company_id", companyId); fetchData(); }} className="text-xs text-red-400 hover:text-red-600">Delete</button>
+  <button onClick={async () => { if(!await showConfirm({ message: "Delete this late fee rule?" }))return; await supabase.from("late_fee_rules").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", r.id).eq("company_id", companyId); fetchData(); }} className="text-xs text-red-400 hover:text-red-600">Delete</button>
   </div>
   ))}
   </div>
@@ -9767,9 +9770,9 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   const [l, m, p, w, d] = await Promise.all([
   supabase.from("ledger_entries").select("*").eq("company_id", companyId).eq("tenant", tenant.name).order("date", { ascending: false }),
   supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tenant.name).order("created_at", { ascending: true }),
-  supabase.from("payments").select("*").eq("company_id", companyId).eq("tenant", tenant.name).order("date", { ascending: false }),
+  supabase.from("payments").select("*").eq("company_id", companyId).eq("tenant", tenant.name).is("archived_at", null).order("date", { ascending: false }),
   supabase.from("work_orders").select("*").eq("company_id", companyId).eq("tenant", tenant.name).order("created_at", { ascending: false }),
-  supabase.from("documents").select("*").eq("company_id", companyId).eq("tenant", tenant.name).order("uploaded_at", { ascending: false }),
+  supabase.from("documents").select("*").eq("company_id", companyId).eq("tenant", tenant.name).is("archived_at", null).order("uploaded_at", { ascending: false }),
   ]);
   setLedger(l.data || []);
   setMessages(m.data || []);
@@ -9790,7 +9793,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   if (!tenantData) return;
   const [l, p, w, m] = await Promise.all([
   supabase.from("ledger_entries").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).order("date", { ascending: false }),
-  supabase.from("payments").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).order("date", { ascending: false }),
+  supabase.from("payments").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).is("archived_at", null).order("date", { ascending: false }),
   supabase.from("work_orders").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).order("created_at", { ascending: false }),
   supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).order("created_at", { ascending: true }),
   ]);
@@ -10252,7 +10255,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   useEffect(() => { fetchUsers(); }, [companyId]);
 
   async function fetchUsers() {
-  const { data } = await supabase.from("app_users").select("*").eq("company_id", companyId).order("created_at", { ascending: false });
+  const { data } = await supabase.from("app_users").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false });
   setUsers(data || []);
   setLoading(false);
   }
@@ -10351,7 +10354,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   if (!guardSubmit("removeUser")) return;
   try {
   if (!await showConfirm({ message: `Remove ${name}?`, variant: "danger", confirmText: "Delete" })) return;
-  await supabase.from("app_users").delete().eq("id", id).eq("company_id", companyId);
+  await supabase.from("app_users").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", id).eq("company_id", companyId);
   // Also deactivate their company membership
   if (email) {
   const { error: _err7920 } = await supabase.from("company_members").update({ status: "removed" }).eq("company_id", companyId).eq("user_email", email.toLowerCase());
@@ -11411,7 +11414,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }
   setTemplates(all);
   // Fetch generated documents
-  const { data: docs } = await supabase.from("doc_generated").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(200);
+  const { data: docs } = await supabase.from("doc_generated").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }).limit(200);
   setGeneratedDocs(docs || []);
   setLoading(false);
   }
@@ -11703,7 +11706,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   async function deleteGeneratedDoc(d) {
   if (!await showConfirm({ message: "Delete this generated document?", variant: "danger", confirmText: "Delete" })) return;
-  await supabase.from("doc_generated").delete().eq("id", d.id);
+  await supabase.from("doc_generated").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", d.id);
   showToast("Document deleted", "success");
   fetchAll();
   }
