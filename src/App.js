@@ -410,6 +410,9 @@ async function autoOwnerDistribution(companyId, propertyAddress, paymentAmount, 
 
 async function getPropertyClassId(propertyAddress, companyId) {
   if (!propertyAddress) return null;
+  // Try properties.class_id first (reliable FK), fall back to name lookup
+  const { data: prop } = await supabase.from("properties").select("class_id").eq("company_id", companyId).eq("address", propertyAddress).maybeSingle();
+  if (prop?.class_id) return prop.class_id;
   const { data } = await supabase.from("acct_classes").select("id").eq("name", propertyAddress).eq("company_id", companyId).limit(1);
   return data?.[0]?.id || null;
 }
@@ -549,9 +552,9 @@ async function autoPostRentCharges(companyId) {
   });
   if (!jeResult) { console.warn("Rent JE failed for", lease.tenant_name, monthStr, "— skipping balance update"); failed++; cursor.setMonth(cursor.getMonth() + 1); continue; }
 
-  // Create ledger entry for this rent charge (always, even without tenant_id)
+  // Create ledger entry for this rent charge
   await safeLedgerInsert({ company_id: cid,
-  tenant: lease.tenant_name, property: lease.property,
+  tenant: lease.tenant_name, tenant_id: lease.tenant_id || null, property: lease.property,
   date: chargeDate, description: "Rent charge — " + monthStr,
   amount: monthRent, type: "charge", balance: 0,
   });
@@ -588,6 +591,48 @@ async function autoPostRentCharges(companyId) {
   console.warn("Auto rent charge posting failed:", e);
   return { posted: 0, failed: -1 };
   }
+}
+
+// ============ AUTO-POST RECURRING JOURNAL ENTRIES ============
+// Runs on company select. Posts active recurring entries that haven't been posted this month.
+async function autoPostRecurringEntries(companyId) {
+  try {
+  if (!companyId) return { posted: 0 };
+  const cid = companyId;
+  const thisMonth = formatLocalDate(new Date()).slice(0, 7);
+  const today = formatLocalDate(new Date());
+  const { data: entries } = await supabase.from("recurring_journal_entries").select("*").eq("company_id", cid).eq("status", "active").is("archived_at", null);
+  if (!entries || entries.length === 0) return { posted: 0 };
+  let posted = 0;
+  for (const entry of entries) {
+  // Skip if already posted this month
+  if (entry.last_posted_date && entry.last_posted_date.slice(0, 7) === thisMonth) continue;
+  const classId = entry.property ? await getPropertyClassId(entry.property, cid) : null;
+  const jeOk = await autoPostJournalEntry({
+  companyId: cid, date: today,
+  description: entry.description || "Recurring entry",
+  reference: "RECUR-" + (entry.id || shortId()).toString().slice(0, 8) + "-" + thisMonth,
+  property: entry.property || "",
+  lines: [
+  { account_id: entry.debit_account_id, account_name: entry.debit_account_name || "", debit: safeNum(entry.amount), credit: 0, class_id: classId, memo: entry.description },
+  { account_id: entry.credit_account_id, account_name: entry.credit_account_name || "", debit: 0, credit: safeNum(entry.amount), class_id: classId, memo: entry.description },
+  ]
+  });
+  if (jeOk) {
+  await supabase.from("recurring_journal_entries").update({ last_posted_date: today, next_post_date: null }).eq("id", entry.id).eq("company_id", cid);
+  // If linked to a tenant, update their balance
+  if (entry.tenant_id && entry.debit_account_id === "1100") {
+  await supabase.rpc("update_tenant_balance", { p_tenant_id: entry.tenant_id, p_amount_change: safeNum(entry.amount) }).catch(e => console.warn("Recurring balance update:", e.message));
+  }
+  posted++;
+  }
+  }
+  if (posted > 0) {
+  console.log("📋 Auto-posted " + posted + " recurring journal entry(ies)");
+  logAudit("create", "accounting", "Auto-posted " + posted + " recurring journal entries", "", "system", "system", companyId);
+  }
+  return { posted };
+  } catch (e) { console.warn("Auto recurring entries failed:", e); return { posted: 0 }; }
 }
 
 // ============ STYLES ============
@@ -1326,7 +1371,18 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (!await showConfirm({ message: "Restore property \"" + prop.address + "\"?" })) return;
   const { error } = await supabase.from("properties").update({ archived_at: null, archived_by: null }).eq("id", prop.id).eq("company_id", companyId);
   if (error) { showToast(userError(error.message), "error"); return; }
-  await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("name", prop.address);
+  if (prop.class_id) await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("id", prop.class_id);
+  else await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("name", prop.address);
+  // #9: Prompt to restore archived tenants/leases
+  const { data: archivedTenants } = await supabase.from("tenants").select("id, name").eq("company_id", companyId).eq("property", prop.address).not("archived_at", "is", null);
+  if (archivedTenants?.length > 0) {
+  const shouldRestore = await showConfirm({ message: `This property has ${archivedTenants.length} archived tenant(s): ${archivedTenants.map(t => t.name).join(", ")}\n\nWould you like to restore them and their leases?` });
+  if (shouldRestore) {
+  const tenantIds = archivedTenants.map(t => t.id);
+  await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("company_id", companyId).in("id", tenantIds);
+  await supabase.from("leases").update({ status: "active" }).eq("company_id", companyId).eq("property", prop.address).eq("status", "terminated");
+  }
+  }
   addNotification("♻️", "Restored: " + prop.address);
   fetchProperties(); fetchArchivedProperties();
   }
@@ -1393,6 +1449,16 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const compositeCheck = [form.address_line_1, form.address_line_2, form.city, form.state, form.zip].filter(Boolean).join(", ");
   const { data: dup } = await supabase.from("properties").select("id").eq("company_id", companyId).eq("address", compositeCheck).is("archived_at", null).maybeSingle();
   if (dup) { showToast("A property with this address already exists.", "error"); guardRelease("saveProperty"); return; }
+  }
+  // #7: Block occupied→vacant/maintenance without Move-Out Wizard (admin can override)
+  if (editingProperty && editingProperty.status === "occupied" && form.status !== "occupied") {
+  if (isAdmin) {
+  if (!await showConfirm({ message: "This property has an active tenant. Changing status to \"" + form.status + "\" without using the Move-Out Wizard may leave leases, tenant records, and accounting in an inconsistent state.\n\nUse the Move-Out Wizard instead for a clean transition.\n\nOverride and change status anyway?", variant: "danger", confirmText: "Override" })) { guardRelease("saveProperty"); return; }
+  } else {
+  showToast("Cannot change an occupied property to \"" + form.status + "\". Please use the Move-Out Wizard to properly process the tenant move-out.", "error");
+  guardRelease("saveProperty");
+  return;
+  }
   }
   if (form.status === "occupied") {
   if (!form.tenant.trim()) { showToast("Tenant name is required for occupied properties.", "error"); guardRelease("saveProperty"); return; }
@@ -1474,7 +1540,12 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   // Auto-create accounting class for new properties
   if (!editingProperty) {
   const classId = generateId("PROP");
-  await supabase.from("acct_classes").upsert([{ id: classId, name: form.address, description: `${form.type} · ${formatCurrency(form.rent)}/mo`, color: pickColor(form.address || ""), is_active: true, company_id: companyId }], { onConflict: "id" });
+  const { data: newClass } = await supabase.from("acct_classes").upsert([{ id: classId, name: compositeAddress, description: `${form.type} · ${formatCurrency(form.rent)}/mo`, color: pickColor(compositeAddress || ""), is_active: true, company_id: companyId }], { onConflict: "company_id,name" }).select("id").maybeSingle();
+  // #17: Store class_id on property for reliable lookups
+  if (newClass?.id) await supabase.from("properties").update({ class_id: newClass.id }).eq("company_id", companyId).eq("address", compositeAddress);
+  } else {
+  // Update accounting class description when property is edited
+  await supabase.from("acct_classes").update({ description: `${form.type} · ${formatCurrency(form.rent)}/mo` }).eq("company_id", companyId).eq("name", compositeAddress);
   }
   addNotification("🏠", editingProperty ? `Property updated: ${form.address}` : `New property added: ${form.address}`);
   logAudit(editingProperty ? "update" : "create", "properties", `${editingProperty ? "Updated" : "Added"} property: ${form.address}`, editingProperty?.id || "", userProfile?.email, userRole, companyId);
@@ -1485,11 +1556,15 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   request_type: editingProperty ? "edit" : "add",
   property_id: editingProperty?.id || null,
   requested_by: user?.email || "unknown",
-  address: form.address,
+  address: compositeAddress,
   type: form.type,
   property_status: form.status,
   rent: form.rent,
   tenant: form.tenant,
+  tenant_email: form.tenant_email || null,
+  tenant_phone: form.tenant_phone || null,
+  security_deposit: form.security_deposit || null,
+  lease_start: form.lease_start || null,
   lease_end: form.lease_end || null,
   notes: form.notes,
   }]);
@@ -1512,7 +1587,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }).eq("id", property.id).eq("company_id", companyId);
   if (error) { showToast(userError(error.message), "error"); return; }
   // Deactivate accounting class
-  await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("name", property.address);
+  if (property.class_id) await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("id", property.class_id);
+  else await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("name", property.address);
   // Mark tenants as inactive
   await supabase.from("tenants").update({ lease_status: "inactive" }).eq("company_id", companyId).eq("property", property.address).is("archived_at", null);
   addNotification("⏸️", `Deactivated property: ${property.address}`);
@@ -1525,7 +1601,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   status: property.tenant ? "occupied" : "vacant",
   }).eq("id", property.id).eq("company_id", companyId);
   if (error) { showToast(userError(error.message), "error"); return; }
-  await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("name", property.address);
+  if (property.class_id) await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("id", property.class_id);
+  else await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("name", property.address);
   await supabase.from("tenants").update({ lease_status: "active" }).eq("company_id", companyId).eq("property", property.address).is("archived_at", null);
   addNotification("▶️", `Reactivated property: ${property.address}`);
   fetchProperties();
@@ -1575,7 +1652,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }
   addNotification("📦", `Property archived: ${address}`);
   // Deactivate the accounting class for this property
-  await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("name", address);
+  const { data: archProp } = await supabase.from("properties").select("class_id").eq("id", id).eq("company_id", companyId).maybeSingle();
+  if (archProp?.class_id) await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("id", archProp.class_id);
+  else await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("name", address);
   logAudit("archive", "properties", `Archived property: ${address}` + (archiveTenant ? " (with tenant)" : ""), id, userProfile?.email, userRole, companyId);
   fetchProperties();
   } finally { guardRelease("deleteProperty"); }
@@ -1590,8 +1669,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (apErr) { showToast("Error adding property: " + apErr.message, "error"); return; }
   // Auto-create accounting class for this property
   const classId = generateId("PROP");
-  const { error: classErr } = await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · ${formatCurrency(req.rent)}/mo`, color: pickColor(req?.address || ""), is_active: true, company_id: companyId }], { onConflict: "id" });
+  const { data: newClass, error: classErr } = await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · ${formatCurrency(req.rent)}/mo`, color: pickColor(req?.address || ""), is_active: true, company_id: companyId }], { onConflict: "company_id,name" }).select("id").maybeSingle();
   if (classErr) console.warn("Accounting class creation failed:", classErr.message);
+  if (newClass?.id) await supabase.from("properties").update({ class_id: newClass.id }).eq("company_id", companyId).eq("address", req.address);
   addNotification("✅", `Property approved & added: ${req.address}`);
   } else if (req.request_type === "edit" && req.property_id) {
   // Check if address changed and cascade
@@ -2308,10 +2388,24 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (!await showConfirm({ message: "This tenant was modified by another user since you started editing. Your changes may overwrite theirs. Continue?" })) return;
   }
   }
+  // #15: Block duplicate tenant (same name + property)
+  if (!editingTenant) {
+  const { data: dupCheck } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.name.trim()).eq("property", form.property).is("archived_at", null).maybeSingle();
+  if (dupCheck) { showToast("A tenant named \"" + form.name.trim() + "\" already exists at this property.", "error"); return; }
+  }
+  // #3: Keep lease_start/move_in and lease_end_date/move_out in sync
   const { error } = editingTenant
-  ? await supabase.from("tenants").update({ name: form.name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, move_in: form.lease_start, move_out: form.lease_end, lease_end_date: form.lease_end, rent: form.rent }).eq("id", editingTenant.id).eq("company_id", companyId)
+  ? await supabase.from("tenants").update({ name: form.name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, move_in: form.lease_start || null, lease_end_date: form.lease_end || null, move_out: form.lease_end || null, rent: form.rent }).eq("id", editingTenant.id).eq("company_id", companyId)
   : await supabase.from("tenants").insert([{ company_id: companyId, name: form.name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, rent: form.rent, balance: 0, doc_status: "pending_docs" }]);
   if (error) { showToast("Error saving tenant: " + error.message, "error"); return; }
+  // #1: Auto-create lease when tenant added with dates/rent (mirrors Properties module)
+  if (!editingTenant && form.lease_start && form.lease_end && form.rent) {
+  const { data: newTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.name.trim()).eq("property", form.property).is("archived_at", null).maybeSingle();
+  const { data: existingLease } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("property", form.property).eq("status", "active").maybeSingle();
+  if (!existingLease) {
+  await supabase.from("leases").insert([{ company_id: companyId, tenant_name: form.name.trim(), tenant_id: newTenant?.id || null, property: form.property, start_date: form.lease_start, end_date: form.lease_end, rent_amount: Number(form.rent), status: "active", payment_due_day: 1, rent_escalation_pct: 3, escalation_frequency: "annual" }]);
+  }
+  }
   if (editingTenant) {
   // Cascade name change to all related tables
   if (editingTenant.name !== form.name) {
@@ -2364,6 +2458,16 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
   if (tenantRow && safeNum(tenantRow.balance) < 0) {
   if (!await showConfirm({ message: `Tenant "${name}" has a credit balance of $${Math.abs(safeNum(tenantRow.balance)).toFixed(2)}. Deleting will forfeit this credit. Continue?` })) return;
+  }
+  // #16: Check for unreturned security deposit
+  const { data: activeLease } = await supabase.from("leases").select("security_deposit").eq("company_id", companyId).eq("tenant_name", name).eq("status", "active").maybeSingle();
+  if (activeLease && safeNum(activeLease.security_deposit) > 0) {
+  if (isAdmin) {
+  if (!await showConfirm({ message: `Tenant "${name}" has an unreturned security deposit of ${formatCurrency(activeLease.security_deposit)}.\n\nArchiving without processing the deposit through the Move-Out Wizard will leave the deposit liability on your books.\n\nProceed anyway?`, variant: "danger", confirmText: "Archive Anyway" })) return;
+  } else {
+  showToast("Cannot archive \"" + name + "\" — a security deposit of " + formatCurrency(activeLease.security_deposit) + " has not been returned. Please use the Move-Out Wizard first.", "error");
+  return;
+  }
   }
   if (!await showConfirm({ message: `Archive tenant "${name}"?\n\nThis will hide the tenant and terminate their lease. You can restore from the Archive page within 180 days.` })) return;
   // Get tenant's property before archiving for cascade updates
@@ -2469,7 +2573,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   setSelectedTenant(tenant);
   setActivePanel("detail");
   fetchTenantDocs(tenant);
-  const { data } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId).eq("tenant", tenant.name).eq("property", tenant.property || "").order("date", { ascending: false }).limit(200);
+  // Use tenant_id for reliable lookups, fall back to name+property
+  let ledgerQuery = supabase.from("ledger_entries").select("*").eq("company_id", companyId);
+  if (tenant.id) ledgerQuery = ledgerQuery.eq("tenant_id", tenant.id);
+  else ledgerQuery = ledgerQuery.eq("tenant", tenant.name).eq("property", tenant.property || "");
+  const { data } = await ledgerQuery.order("date", { ascending: false }).limit(200);
   setLedger(data || []);
   }
 
@@ -2502,9 +2610,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (!guardSubmit("addLedgerEntry")) return;
   try {
   if (!newCharge.description || !newCharge.amount) return;
-  const amount = newCharge.type === "payment" || newCharge.type === "credit"
-  ? -Math.abs(Number(newCharge.amount))
-  : Math.abs(Number(newCharge.amount));
+  // #4: Late fees are positive charges (increase balance), not negative like payments
+  const isCredit = newCharge.type === "payment" || newCharge.type === "credit";
+  const amount = isCredit ? -Math.abs(Number(newCharge.amount)) : Math.abs(Number(newCharge.amount));
   const today = formatLocalDate(new Date());
   const classId = await getPropertyClassId(selectedTenant.property, companyId);
   const ledgerData = { tenant: selectedTenant.name, property: selectedTenant.property, date: today, description: newCharge.description, amount, type: newCharge.type, balance: 0 };
@@ -2517,6 +2625,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   jeLines = [
   { account_id: "1100", account_name: "Accounts Receivable", debit: Math.abs(amount), credit: 0, class_id: classId, memo: selectedTenant.name + ": " + newCharge.description },
   { account_id: "4100", account_name: "Other Income", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
+  ];
+  } else if (newCharge.type === "late_fee") {
+  jeDesc = "Late fee — " + selectedTenant.name + " — " + newCharge.description;
+  jeLines = [
+  { account_id: "1100", account_name: "Accounts Receivable", debit: Math.abs(amount), credit: 0, class_id: classId, memo: "Late fee: " + selectedTenant.name },
+  { account_id: "4010", account_name: "Late Fee Income", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
   ];
   } else {
   jeDesc = "Manual " + newCharge.type + " — " + selectedTenant.name + " — " + newCharge.description;
@@ -3159,22 +3273,41 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="space-y-3">
   <div><label className="text-xs font-medium text-slate-400 block mb-1">Description</label><Input id="bulk-charge-desc" placeholder="Late fee, utility charge, etc." /></div>
   <div><label className="text-xs font-medium text-slate-400 block mb-1">Amount ($)</label><Input id="bulk-charge-amt" type="number" placeholder="50.00" /></div>
+  <div><label className="text-xs font-medium text-slate-400 block mb-1">Revenue Account</label>
+  <select id="bulk-charge-acct" className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
+  <option value="4100">4100 — Other Income</option>
+  <option value="4000">4000 — Rental Income</option>
+  <option value="4010">4010 — Late Fee Income</option>
+  <option value="4200">4200 — Management Fee Income</option>
+  </select>
+  </div>
   <button onClick={async () => {
   const desc = document.getElementById("bulk-charge-desc").value;
   const amt = Math.abs(Number(document.getElementById("bulk-charge-amt").value));
+  const acctCode = document.getElementById("bulk-charge-acct").value;
+  const acctNames = { "4100": "Other Income", "4000": "Rental Income", "4010": "Late Fee Income", "4200": "Management Fee Income" };
   if (!desc || !amt) { showToast("Description and amount required.", "error"); return; }
   let count = 0;
   for (const tid of selectedTenants) {
   const t = tenants.find(x => x.id === tid);
   if (!t) continue;
-  const ledgerOk = await safeLedgerInsert({ company_id: companyId, tenant: t.name, property: t.property, date: formatLocalDate(new Date()), description: desc, amount: amt, type: "charge", balance: 0 });
-  if (ledgerOk) {
-  await supabase.rpc("update_tenant_balance", { p_tenant_id: tid, p_amount_change: amt }).catch(() => {});
-  count++;
+  const classId = await getPropertyClassId(t.property, companyId);
+  const result = await postAccountingTransaction({
+  date: formatLocalDate(new Date()), description: "Bulk charge — " + t.name + " — " + desc,
+  reference: "BULK-" + shortId(), property: t.property || "",
+  lines: [
+  { account_id: "1100", account_name: "Accounts Receivable", debit: amt, credit: 0, class_id: classId, memo: t.name + ": " + desc },
+  { account_id: acctCode, account_name: acctNames[acctCode] || "Other Income", debit: 0, credit: amt, class_id: classId, memo: desc },
+  ],
+  ledgerEntry: { tenant: t.name, property: t.property, date: formatLocalDate(new Date()), description: desc, amount: amt, type: "charge", balance: 0 },
+  balanceUpdate: { tenantId: tid, amount: amt },
+  silent: true,
+  });
+  if (result.jeId) count++;
   }
-  }
-  addNotification("💰", `Charge of ${formatCurrency(amt)} added to ${count} tenant(s)`);
-  logAudit("create", "tenants", `Bulk charge $${amt} "${desc}" to ${count} tenants`, "", userProfile?.email, userRole, companyId);
+  if (count > 0) addNotification("💰", `Charge of ${formatCurrency(amt)} added to ${count} tenant(s)`);
+  if (count < selectedTenants.size) showToast((selectedTenants.size - count) + " charge(s) failed — check the Accounting module.", "error");
+  logAudit("create", "tenants", `Bulk charge $${amt} "${desc}" to ${count} tenants (acct ${acctCode})`, "", userProfile?.email, userRole, companyId);
   setBulkAction(null); setSelectedTenants(new Set()); fetchTenants();
   }} className="w-full bg-blue-600 text-white text-sm py-2.5 rounded-lg hover:bg-blue-700 font-semibold">Add Charges</button>
   </div>
@@ -3502,7 +3635,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   if (balErr) showToast("Balance update failed: " + balErr.message + ". Please verify the tenant balance.", "error");
   } catch (e) { console.warn("Balance RPC error:", e.message); }
   await safeLedgerInsert({ company_id: companyId,
-  tenant: form.tenant, property: form.property,
+  tenant: form.tenant, tenant_id: tenantRow.id, property: form.property,
   date: form.date, description: `${form.type} payment (${form.method})`,
   amount: -payAmt, type: "payment", balance: safeNum(tenantRow.balance) - payAmt,
   });
@@ -5989,7 +6122,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   is_active: true,
   company_id: companyId,
   }));
-  await supabase.from("acct_classes").upsert(newClasses, { onConflict: "id" });
+  await supabase.from("acct_classes").upsert(newClasses, { onConflict: "company_id,name" });
   // Re-fetch classes after sync
   const { data: updatedClasses } = await supabase.from("acct_classes").select("*").eq("company_id", companyId).order("name");
   setAcctClasses(updatedClasses || []);
@@ -10798,7 +10931,8 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   lines: [
   { account_id: "5300", account_name: "Bad Debt Expense", debit: outstandingBalance, credit: 0, class_id: classId, memo: `Write-off at move-out — ${tName}` },
   { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: outstandingBalance, class_id: classId, memo: `AR write-off — ${tName}` },
-  ], balanceUpdate: { tenantId: selectedTenant.id, amount: -outstandingBalance } });
+  ], ledgerEntry: { tenant: tName, property: selectedLease.property, date: moveOutDate, description: "Bad debt write-off", amount: -outstandingBalance, type: "adjustment", balance: 0 },
+  balanceUpdate: { tenantId: selectedTenant.id, amount: -outstandingBalance } });
   }
 
   // #7: Track completed steps for error recovery
@@ -10829,7 +10963,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
 
   // 7. Create ledger entries
   if (depositReturn > 0) {
-  await safeLedgerInsert({ company_id: cid, tenant: tName, property: selectedLease.property, date: moveOutDate, description: "Security deposit returned", amount: -depositReturn, type: "deposit_return", balance: 0 });
+  await safeLedgerInsert({ company_id: cid, tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: "Security deposit returned", amount: -depositReturn, type: "deposit_return", balance: 0 });
   }
 
   // 8. Save inspection checklist
@@ -13506,7 +13640,17 @@ function AppInner() {
   return result;
   }
   if (ledgerEntry) {
-  result.ledgerOk = await safeLedgerInsert({ company_id: companyId, ...ledgerEntry });
+  // Auto-inject tenant_id from balanceUpdate if not provided
+  const enrichedEntry = { ...ledgerEntry };
+  if (!enrichedEntry.tenant_id && balanceUpdate?.tenantId) enrichedEntry.tenant_id = balanceUpdate.tenantId;
+  // #14: Calculate running balance (current balance + this entry's amount)
+  if (balanceUpdate?.tenantId && enrichedEntry.balance === 0) {
+  try {
+  const { data: tRow } = await supabase.from("tenants").select("balance").eq("id", balanceUpdate.tenantId).maybeSingle();
+  enrichedEntry.balance = safeNum(tRow?.balance) + safeNum(balanceUpdate.amount);
+  } catch (_) { /* keep balance as-is */ }
+  }
+  result.ledgerOk = await safeLedgerInsert({ company_id: companyId, ...enrichedEntry });
   }
   if (balanceUpdate?.tenantId) {
   try {
@@ -13652,9 +13796,11 @@ function AppInner() {
   autoNotificationCheck(company.id);
   // Ensure default chart of accounts exists BEFORE any accounting operations
   ensureDefaultAccounts(company.id).then(() => {
-  // Auto-post rent accruals (idempotent — skips already posted months)
   if (role !== "tenant" && role !== "owner") {
+  // Auto-post rent accruals (idempotent — skips already posted months)
   autoPostRentCharges(company.id).catch(e => console.warn("Auto rent charges:", e.message));
+  // Auto-post recurring journal entries (idempotent — skips already posted months)
+  autoPostRecurringEntries(company.id).catch(e => console.warn("Auto recurring entries:", e.message));
   }
   }).catch(e => console.warn("COA seed:", e.message));
   setCompanyRole(role);
