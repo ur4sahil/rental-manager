@@ -14067,6 +14067,7 @@ function AppInner() {
   <div className={`text-xs font-medium ${ROLES[userRole]?.color?.replace("bg-", "text-") || "text-indigo-600"}`}>{ROLES[userRole]?.label}</div>
   </div>
   </div>
+  <button onClick={() => { setSidebarOpen(false); switchCompany(); }} className="text-slate-400 hover:text-indigo-500 transition-colors" title="Switch Company"><span className="material-icons-outlined text-lg">swap_horiz</span></button>
   <button onClick={() => { setPage("audittrail"); setSidebarOpen(false); }} className="text-slate-400 hover:text-indigo-500 transition-colors" title="Audit Trail"><span className="material-icons-outlined text-lg">history</span></button>
   <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 transition-colors"><span className="material-icons-outlined text-lg">logout</span></button>
   </div>
