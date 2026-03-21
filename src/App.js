@@ -11392,6 +11392,36 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   const previewRef = useRef();
 
+  // Full-screen split pane
+  const [splitPercent, setSplitPercent] = useState(50);
+  const isDragging = useRef(false);
+
+  useEffect(() => {
+  const onMouseMove = (e) => {
+  if (!isDragging.current) return;
+  const pct = (e.clientX / window.innerWidth) * 100;
+  setSplitPercent(Math.min(75, Math.max(25, pct)));
+  };
+  const onMouseUp = () => { isDragging.current = false; document.body.style.cursor = ""; document.body.style.userSelect = ""; };
+  document.addEventListener("mousemove", onMouseMove);
+  document.addEventListener("mouseup", onMouseUp);
+  return () => { document.removeEventListener("mousemove", onMouseMove); document.removeEventListener("mouseup", onMouseUp); };
+  }, []);
+
+  // Escape key to exit full-screen modes
+  useEffect(() => {
+  const onKey = (e) => {
+  if (e.key !== "Escape") return;
+  if (showTemplateEditor) { setShowTemplateEditor(false); setEditingTemplate(null); }
+  else if (step === "preview") setStep("fill");
+  else if (step === "fill") resetFlow();
+  };
+  document.addEventListener("keydown", onKey);
+  return () => document.removeEventListener("keydown", onKey);
+  }, [showTemplateEditor, step]);
+
+  const startDrag = () => { isDragging.current = true; document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none"; };
+
   const CATEGORIES = ["notices", "leases", "maintenance", "general"];
 
   useEffect(() => { fetchAll(); }, [companyId]);
@@ -11744,45 +11774,51 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   if (loading) return <Spinner />;
 
-  // ============ TEMPLATE EDITOR MODAL ============
+  // ============ TEMPLATE EDITOR — FULL SCREEN ============
   if (showTemplateEditor) {
   const sections = [...new Set(templateForm.fields.map(f => f.section).filter(Boolean))];
   return (
-  <div>
-  <div className="flex items-center justify-between mb-5">
-  <h2 className="text-2xl font-manrope font-bold text-slate-800">{editingTemplate ? "Edit Template" : "New Template"}</h2>
-  <button onClick={() => { setShowTemplateEditor(false); setEditingTemplate(null); }} className="text-sm text-slate-500 hover:text-slate-700">Cancel</button>
+  <div className="fixed inset-0 z-50 bg-[#fcf8ff] flex flex-col">
+  {/* Toolbar */}
+  <div className="h-14 border-b border-indigo-100 bg-white/80 backdrop-blur-md flex items-center px-5 gap-3 shrink-0">
+  <button onClick={() => { setShowTemplateEditor(false); setEditingTemplate(null); }} className="text-slate-400 hover:text-slate-600"><span className="material-icons-outlined text-xl">arrow_back</span></button>
+  <div className="flex-1 min-w-0">
+  <h2 className="text-lg font-manrope font-bold text-slate-800 truncate">{editingTemplate ? "Edit Template" : "New Template"}{templateForm.name ? ": " + templateForm.name : ""}</h2>
   </div>
-  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-  {/* Left: Template config */}
-  <div className="space-y-4">
+  <button onClick={saveTemplate} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-indigo-700 font-semibold">{editingTemplate ? "Update Template" : "Create Template"}</button>
+  <span className="text-xs text-slate-300 ml-2">Esc to close</span>
+  </div>
+
+  {/* Split pane */}
+  <div className="flex-1 flex overflow-hidden">
+  {/* Left: Template config + fields */}
+  <div style={{ width: splitPercent + "%" }} className="overflow-y-auto p-6 space-y-4">
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 mb-3">Template Details</h3>
   <div className="grid grid-cols-2 gap-3">
   <div>
   <label className="text-xs font-medium text-slate-400 block mb-1">Name *</label>
-  <Input value={templateForm.name} onChange={e => setTemplateForm({...templateForm, name: e.target.value})}  placeholder="e.g. Pet Addendum" />
+  <Input value={templateForm.name} onChange={e => setTemplateForm({...templateForm, name: e.target.value})} placeholder="e.g. Pet Addendum" />
   </div>
   <div>
   <label className="text-xs font-medium text-slate-400 block mb-1">Category</label>
-  <select value={templateForm.category} onChange={e => setTemplateForm({...templateForm, category: e.target.value})} >
+  <select value={templateForm.category} onChange={e => setTemplateForm({...templateForm, category: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
   {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
   </select>
   </div>
   </div>
   <div className="mt-3">
   <label className="text-xs font-medium text-slate-400 block mb-1">Description</label>
-  <Input value={templateForm.description} onChange={e => setTemplateForm({...templateForm, description: e.target.value})}  placeholder="Brief description" />
+  <Input value={templateForm.description} onChange={e => setTemplateForm({...templateForm, description: e.target.value})} placeholder="Brief description" />
   </div>
   </div>
 
-  {/* Fields */}
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
   <div className="flex items-center justify-between mb-3">
   <h3 className="font-manrope font-bold text-slate-700">Form Fields ({templateForm.fields.length})</h3>
   <button onClick={addField} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700">+ Add Field</button>
   </div>
-  <div className="space-y-3 max-h-96 overflow-y-auto">
+  <div className="space-y-3">
   {templateForm.fields.map((f, i) => (
   <div key={i} className="border border-indigo-50 rounded-xl p-3 bg-indigo-50/20">
   <div className="grid grid-cols-3 gap-2 mb-2">
@@ -11811,33 +11847,35 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   </div>
 
+  {/* Drag handle */}
+  <div onMouseDown={startDrag} className="w-1.5 bg-indigo-100 hover:bg-indigo-300 cursor-col-resize shrink-0 transition-colors" />
+
   {/* Right: Body editor + preview */}
-  <div className="space-y-4">
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+  <div style={{ width: (100 - splitPercent) + "%" }} className="overflow-y-auto p-6 space-y-4">
+  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5 flex flex-col">
   <div className="flex items-center justify-between mb-2">
   <h3 className="font-manrope font-bold text-slate-700">Document Body (HTML + Merge Fields)</h3>
   {templateForm.fields.length > 0 && (
-  <div className="flex gap-1 flex-wrap">
+  <div className="flex gap-1 flex-wrap max-w-[60%]">
   {templateForm.fields.filter(f => f.name).map(f => (
   <button key={f.name} onClick={() => insertMergeField(f.name)} className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full hover:bg-indigo-200">{"{{}}" + f.label}</button>
   ))}
   </div>
   )}
   </div>
-  <Textarea value={templateForm.body} onChange={e => setTemplateForm({...templateForm, body: e.target.value})} className="text-xs font-mono" rows={18} placeholder='<h1>Document Title</h1>\n<p>Dear {{tenant_name}},</p>\n<p>Your rent at {{property_address}} is...</p>' />
+  <Textarea value={templateForm.body} onChange={e => setTemplateForm({...templateForm, body: e.target.value})} className="text-xs font-mono flex-1 min-h-[400px]" rows={30} placeholder='<h1>Document Title</h1>\n<p>Dear {{tenant_name}},</p>\n<p>Your rent at {{property_address}} is...</p>' />
   </div>
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 mb-2">Preview</h3>
-  <div className="prose prose-sm max-w-none border border-indigo-50 rounded-xl p-4 bg-white min-h-32" dangerouslySetInnerHTML={{ __html: renderMergedBody(templateForm.body, {}) }} />
+  <div className="prose prose-sm max-w-none border border-indigo-50 rounded-xl p-6 bg-white min-h-64" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }} dangerouslySetInnerHTML={{ __html: renderMergedBody(templateForm.body, {}) }} />
   </div>
-  <button onClick={saveTemplate} className="w-full bg-indigo-600 text-white py-2.5 rounded-2xl font-semibold hover:bg-indigo-700">{editingTemplate ? "Update Template" : "Create Template"}</button>
   </div>
   </div>
   </div>
   );
   }
 
-  // ============ DOCUMENT CREATION FLOW ============
+  // ============ DOCUMENT FILL — FULL SCREEN ============
   if (step === "fill" && selectedTemplate) {
   const sections = [...new Set((selectedTemplate.fields || []).map(f => f.section).filter(Boolean))];
   const unsectioned = (selectedTemplate.fields || []).filter(f => !f.section);
@@ -11860,23 +11898,26 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   };
 
   return (
-  <div>
-  <div className="flex items-center gap-3 mb-5">
-  <button onClick={resetFlow} className="text-slate-400 hover:text-slate-600"><span className="material-icons-outlined">arrow_back</span></button>
-  <div>
-  <h2 className="text-xl font-manrope font-bold text-slate-800">{selectedTemplate.name}</h2>
+  <div className="fixed inset-0 z-50 bg-[#fcf8ff] flex flex-col">
+  {/* Toolbar */}
+  <div className="h-14 border-b border-indigo-100 bg-white/80 backdrop-blur-md flex items-center px-5 gap-3 shrink-0">
+  <button onClick={resetFlow} className="text-slate-400 hover:text-slate-600"><span className="material-icons-outlined text-xl">arrow_back</span></button>
+  <div className="flex-1 min-w-0">
+  <h2 className="text-lg font-manrope font-bold text-slate-800 truncate">{selectedTemplate.name}</h2>
   <p className="text-xs text-slate-400">{mode === "prefill" ? "Prefilled from " + (prefillProperty || "property") : "Blank mode"} · Fill the form, then preview</p>
   </div>
   <button onClick={() => {
   const errors = validateFields(selectedTemplate, fieldValues);
   if (errors.length > 0) { showToast(errors[0], "error"); return; }
   setStep("preview");
-  }} className="ml-auto bg-indigo-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-indigo-700 font-semibold">Preview →</button>
+  }} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-indigo-700 font-semibold">Preview →</button>
+  <span className="text-xs text-slate-300 ml-2">Esc to close</span>
   </div>
 
-  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-  {/* Form */}
-  <div className="space-y-4">
+  {/* Split pane */}
+  <div className="flex-1 flex overflow-hidden">
+  {/* Left: Form fields */}
+  <div style={{ width: splitPercent + "%" }} className="overflow-y-auto p-6 space-y-4">
   {sections.map(section => (
   <div key={section} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 text-sm mb-3 uppercase tracking-wide">{section}</h3>
@@ -11904,40 +11945,62 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   )}
   </div>
 
-  {/* Live preview */}
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5 sticky top-4">
+  {/* Drag handle */}
+  <div onMouseDown={startDrag} className="w-1.5 bg-indigo-100 hover:bg-indigo-300 cursor-col-resize shrink-0 transition-colors" />
+
+  {/* Right: Live preview */}
+  <div style={{ width: (100 - splitPercent) + "%" }} className="overflow-y-auto p-6">
+  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 text-sm mb-3">Live Preview</h3>
-  <div className="border border-indigo-50 rounded-xl p-5 bg-white prose prose-sm max-w-none min-h-64 overflow-y-auto max-h-[70vh]" style={{ fontFamily: "Georgia, serif", fontSize: "13px", lineHeight: "1.6" }}
+  <div className="prose prose-sm max-w-none border border-indigo-50 rounded-xl p-6 bg-white" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }}
   dangerouslySetInnerHTML={{ __html: renderMergedBody(selectedTemplate.body, fieldValues) }} />
+  </div>
   </div>
   </div>
   </div>
   );
   }
 
-  // ============ PREVIEW + EXPORT STEP ============
+  // ============ PREVIEW + EXPORT — FULL SCREEN ============
   if (step === "preview" && selectedTemplate) {
   const rendered = renderMergedBody(selectedTemplate.body, fieldValues);
   return (
-  <div>
-  <div className="flex items-center gap-3 mb-5">
-  <button onClick={() => setStep("fill")} className="text-slate-400 hover:text-slate-600"><span className="material-icons-outlined">arrow_back</span></button>
-  <div>
-  <h2 className="text-xl font-manrope font-bold text-slate-800">Document Preview</h2>
+  <div className="fixed inset-0 z-50 bg-[#fcf8ff] flex flex-col">
+  {/* Toolbar */}
+  <div className="h-14 border-b border-indigo-100 bg-white/80 backdrop-blur-md flex items-center px-5 gap-3 shrink-0">
+  <button onClick={() => setStep("fill")} className="text-slate-400 hover:text-slate-600"><span className="material-icons-outlined text-xl">arrow_back</span></button>
+  <div className="flex-1 min-w-0">
+  <h2 className="text-lg font-manrope font-bold text-slate-800 truncate">Document Preview</h2>
   <p className="text-xs text-slate-400">Review the final document, then export or send</p>
   </div>
+  <div className="flex items-center gap-2">
+  <button onClick={() => exportPDF()} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-xl hover:bg-red-100">
+  <span className="material-icons-outlined text-sm">picture_as_pdf</span>PDF
+  </button>
+  <button onClick={() => exportDOCX()} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100">
+  <span className="material-icons-outlined text-sm">article</span>DOCX
+  </button>
+  <button onClick={() => exportTXT()} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100">
+  <span className="material-icons-outlined text-sm">text_snippet</span>TXT
+  </button>
+  </div>
+  <span className="text-xs text-slate-300 ml-2">Esc to go back</span>
   </div>
 
-  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-  {/* Document preview */}
-  <div className="lg:col-span-2">
-  <div ref={previewRef} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-8" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7", color: "#1a1a1a" }}>
+  {/* Split pane */}
+  <div className="flex-1 flex overflow-hidden">
+  {/* Left: Document preview */}
+  <div style={{ width: splitPercent + "%" }} className="overflow-y-auto p-6 flex justify-center">
+  <div ref={previewRef} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-10 w-full max-w-[8.5in]" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7", color: "#1a1a1a" }}>
   <div dangerouslySetInnerHTML={{ __html: rendered }} />
   </div>
   </div>
 
-  {/* Actions sidebar */}
-  <div className="space-y-4">
+  {/* Drag handle */}
+  <div onMouseDown={startDrag} className="w-1.5 bg-indigo-100 hover:bg-indigo-300 cursor-col-resize shrink-0 transition-colors" />
+
+  {/* Right: Actions sidebar */}
+  <div style={{ width: (100 - splitPercent) + "%" }} className="overflow-y-auto p-6 space-y-4">
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 mb-3">Export</h3>
   <div className="space-y-2">
@@ -11960,7 +12023,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {fieldValues.tenant_name && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.tenant} onChange={e => setSendTo({...sendTo, tenant: e.target.checked})} className="accent-indigo-600" />Email to tenant ({fieldValues.tenant_name})</label>}
   <div>
   <label className="text-xs font-medium text-slate-400 block mb-1">Custom recipients (comma-separated)</label>
-  <Input value={sendTo.custom} onChange={e => setSendTo({...sendTo, custom: e.target.value})}  placeholder="email@example.com" />
+  <Input value={sendTo.custom} onChange={e => setSendTo({...sendTo, custom: e.target.value})} placeholder="email@example.com" />
   </div>
   </div>
   <button onClick={async () => {
@@ -11978,8 +12041,6 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <button onClick={async () => { await saveDocument("final"); resetFlow(); }} className="w-full bg-slate-100 text-slate-700 py-2.5 rounded-2xl font-semibold hover:bg-slate-200">Finalize</button>
   </div>
   </div>
-
-  <button onClick={() => setStep("fill")} className="w-full text-sm text-slate-500 hover:text-slate-700">← Back to edit</button>
   </div>
   </div>
   </div>
