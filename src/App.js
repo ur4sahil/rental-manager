@@ -934,22 +934,22 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   {isSignup && (
   <div className="mb-4">
   <label className="text-xs font-medium text-slate-500 block mb-1">Full Name</label>
-  <input value={name} onChange={e => setName(e.target.value)} placeholder="John Smith" className="w-full border border-indigo-100 rounded-2xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
+  <Input value={name} onChange={e => setName(e.target.value)} placeholder="John Smith" />
   </div>
   )}
   <div className="mb-4">
   <label className="text-xs font-medium text-slate-500 block mb-1">Email</label>
-  <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" className="w-full border border-indigo-100 rounded-2xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
+  <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
   </div>
   <div className="mb-4">
   <label className="text-xs font-medium text-slate-500 block mb-1">Password</label>
-  <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full border border-indigo-100 rounded-2xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" onKeyDown={e => e.key === "Enter" && (isSignup ? handleSignup(mode.replace("signup_", "")) : handleLogin())} />
+  <Input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && (isSignup ? handleSignup(mode.replace("signup_", "")) : handleLogin())} />
   </div>
 
   {mode === "signup_tenant" && (
   <div className="mb-4">
   <label className="text-xs font-medium text-slate-500 block mb-1">Invite Code *</label>
-  <input value={inviteCode} onChange={e => setInviteCode(e.target.value.toUpperCase())} placeholder="e.g. TNT-38472916" className="w-full border border-amber-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500 bg-amber-50 font-mono tracking-wider" />
+  <Input value={inviteCode} onChange={e => setInviteCode(e.target.value.toUpperCase())} placeholder="e.g. TNT-38472916" className="bg-amber-50 font-mono tracking-wider" />
   <p className="text-xs text-slate-400 mt-1">Check your invite email from your landlord or property manager</p>
   </div>
   )}
@@ -1678,7 +1678,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, showToa
   <p className="text-xs text-slate-400 mt-1">{req.type} · ${req.rent}/mo</p>
   </div>
   <div className="flex flex-col gap-2 shrink-0">
-  <input value={reviewNotes[req.id] || ""} onChange={e => setReviewNotes(prev => ({...prev, [req.id]: e.target.value}))} placeholder="Note" className="border border-indigo-100 rounded-2xl px-2 py-1 text-xs w-32" />
+  <Input value={reviewNotes[req.id] || ""} onChange={e => setReviewNotes(prev => ({...prev, [req.id]: e.target.value}))} placeholder="Note" className="text-xs w-32" />
   <div className="flex gap-1">
   <button onClick={() => approveRequest(req)} className="bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-lg">✓ Approve</button>
   <button onClick={() => rejectRequest(req)} className="bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg">✕ Reject</button>
@@ -1691,7 +1691,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, showToa
   )}
 
   <div className="flex flex-col md:flex-row gap-3 mb-4">
-  <input placeholder="Search properties..." value={search} onChange={e => setSearch(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm flex-1" />
+  <Input placeholder="Search properties..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1" />
   <select value={filter} onChange={e => setFilter(e.target.value)} >
   <option value="all">All Status</option><option value="occupied">Occupied</option><option value="vacant">Vacant</option><option value="maintenance">Maintenance</option>
   </select>
@@ -1842,25 +1842,25 @@ function Properties({ addNotification, userRole, userProfile, companyId, showToa
   <h3 className="text-sm font-semibold text-slate-700 mb-3">{editingProperty ? "Edit Property" : "Add Property"}</h3>
   {!isAdmin && <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 mb-3">Submitted for admin approval.</p>}
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address Line 1 *</label><input placeholder="123 Main St" value={form.address_line_1} onChange={e => setForm({ ...form, address_line_1: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
-  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address Line 2</label><input placeholder="Apt 4B, Suite 200, etc." value={form.address_line_2} onChange={e => setForm({ ...form, address_line_2: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">City *</label><input placeholder="Greenbelt" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
+  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address Line 1 *</label><Input placeholder="123 Main St" value={form.address_line_1} onChange={e => setForm({ ...form, address_line_1: e.target.value })} required /></div>
+  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address Line 2</label><Input placeholder="Apt 4B, Suite 200, etc." value={form.address_line_2} onChange={e => setForm({ ...form, address_line_2: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">City *</label><Input placeholder="Greenbelt" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} required /></div>
   <div className="grid grid-cols-2 gap-2">
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">State *</label><select value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required><option value="">--</option>{US_STATES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">ZIP *</label><input placeholder="20770" value={form.zip} onChange={e => setForm({ ...form, zip: e.target.value.replace(/[^\d-]/g, "").slice(0, 10) })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">ZIP *</label><Input placeholder="20770" value={form.zip} onChange={e => setForm({ ...form, zip: e.target.value.replace(/[^\d-]/g, "").slice(0, 10) })} required /></div>
   </div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Type *</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full"><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status *</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full"><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option><option value="inactive">Inactive</option></select></div>
   {form.status === "occupied" && (<>
   <div className="col-span-1 sm:col-span-2 bg-indigo-50 rounded-lg px-3 py-2"><div className="text-xs font-semibold text-indigo-700">Tenant Information</div></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant Name *</label><input placeholder="Jane Doe" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant Email *</label><input type="email" placeholder="tenant@email.com" value={form.tenant_email} onChange={e => setForm({ ...form, tenant_email: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant Phone *</label><input type="tel" placeholder="(555) 123-4567" value={form.tenant_phone} onChange={e => setForm({ ...form, tenant_phone: formatPhoneInput(e.target.value) })} maxLength={14} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant Name *</label><Input placeholder="Jane Doe" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} required /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant Email *</label><Input type="email" placeholder="tenant@email.com" value={form.tenant_email} onChange={e => setForm({ ...form, tenant_email: e.target.value })} required /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant Phone *</label><Input type="tel" placeholder="(555) 123-4567" value={form.tenant_phone} onChange={e => setForm({ ...form, tenant_phone: formatPhoneInput(e.target.value) })} maxLength={14} required /></div>
   <div className="col-span-1 sm:col-span-2 bg-indigo-50 rounded-lg px-3 py-2 mt-1"><div className="text-xs font-semibold text-indigo-700">Lease Details</div></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Monthly Rent ($) *</label><input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Security Deposit ($) *</label><input placeholder="1500" value={form.security_deposit} onChange={e => setForm({ ...form, security_deposit: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Start Date *</label><input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease End Date *</label><input type="date" value={form.lease_end} onChange={e => { if (form.lease_start && e.target.value && e.target.value <= form.lease_start) { showToast("Lease end date must be after lease start date."); return; } setForm({ ...form, lease_end: e.target.value }, "error"); }} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Monthly Rent ($) *</label><Input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} required /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Security Deposit ($) *</label><Input placeholder="1500" value={form.security_deposit} onChange={e => setForm({ ...form, security_deposit: e.target.value })} required /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Start Date *</label><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} required /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease End Date *</label><Input type="date" value={form.lease_end} onChange={e => { if (form.lease_start && e.target.value && e.target.value <= form.lease_start) { showToast("Lease end date must be after lease start date."); return; } setForm({ ...form, lease_end: e.target.value }, "error"); }} required /></div>
   </>)}
   <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="Any additional notes" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
   </div>
@@ -2014,7 +2014,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, showToa
   </div>
   <div>
   <label className="text-xs font-medium text-slate-500 block mb-1">PM Company's 8-Digit Code</label>
-  <input value={pmCode} onChange={e => setPmCode(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="e.g. 12345678" maxLength={8} className="w-full border border-indigo-100 rounded-2xl px-3 py-2.5 text-sm font-mono tracking-wider" />
+  <Input value={pmCode} onChange={e => setPmCode(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="e.g. 12345678" maxLength={8} className="font-mono tracking-wider" />
   <p className="text-xs text-slate-400 mt-1">Ask the property manager for their company code</p>
   </div>
   <button onClick={() => assignPM(showPmAssign)} className="w-full bg-purple-600 text-white text-sm py-2.5 rounded-lg hover:bg-purple-700 font-semibold">Assign Property Manager</button>
@@ -2053,8 +2053,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, showToa
   <div className="bg-amber-50 rounded-lg p-3">
   <div className="text-xs font-semibold text-amber-700 mb-1">Late Fee Settings</div>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs text-gray-500">Grace Period (days)</label><input type="number" defaultValue={5} id="rr-grace" className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-full mt-1" /></div>
-  <div><label className="text-xs text-gray-500">Late Fee ($)</label><input type="number" defaultValue={50} id="rr-latefee" className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-full mt-1" /></div>
+  <div><label className="text-xs text-gray-500">Grace Period (days)</label><Input type="number" defaultValue={5} id="rr-grace" className="mt-1" /></div>
+  <div><label className="text-xs text-gray-500">Late Fee ($)</label><Input type="number" defaultValue={50} id="rr-latefee" className="mt-1" /></div>
   </div>
   </div>
   <div className="flex gap-2">
@@ -2597,8 +2597,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <option value="credit">Credit</option>
   <option value="late_fee">Late Fee</option>
   </select>
-  <input placeholder="e.g. Rent, Late fee, Repair" value={newCharge.description} title="Description" onChange={e => setNewCharge({ ...newCharge, description: e.target.value })} className="border border-indigo-100 rounded-2xl px-2 py-2 text-xs" />
-  <input placeholder="0.00" value={newCharge.amount} title="Amount ($)" onChange={e => setNewCharge({ ...newCharge, amount: e.target.value })} className="border border-indigo-100 rounded-2xl px-2 py-2 text-xs" />
+  <Input placeholder="e.g. Rent, Late fee, Repair" value={newCharge.description} title="Description" onChange={e => setNewCharge({ ...newCharge, description: e.target.value })} className="text-xs" />
+  <Input placeholder="0.00" value={newCharge.amount} title="Amount ($)" onChange={e => setNewCharge({ ...newCharge, amount: e.target.value })} className="text-xs" />
   </div>
   <button onClick={addLedgerEntry} className="mt-2 w-full bg-indigo-600 text-white text-xs py-2 rounded-2xl hover:bg-indigo-700">Add Transaction</button>
   </div>
@@ -2641,7 +2641,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {messages.length === 0 && <div className="text-center py-6 text-slate-400 text-sm">No messages yet</div>}
   </div>
   <div className="p-4 border-t border-indigo-50 flex gap-2">
-  <input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} placeholder="Type a message..." className="flex-1 border border-indigo-100 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
+  <Input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} placeholder="Type a message..." className="flex-1" />
   <button onClick={sendMessage} className="bg-indigo-600 text-white px-4 py-2.5 rounded-2xl hover:bg-indigo-700 text-sm font-medium">Send</button>
   </div>
   </div>
@@ -2671,7 +2671,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {leaseModal === "renew" && (
   <div className="bg-indigo-50 rounded-3xl p-4 mb-3 border border-indigo-100">
   <div className="text-sm font-semibold text-indigo-700 mb-2">Enter New Lease End Date</div>
-  <input type="date" value={leaseInput} onChange={e => setLeaseInput(e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mb-2" />
+  <Input type="date" value={leaseInput} onChange={e => setLeaseInput(e.target.value)} className="mb-2" />
   <div className="flex gap-2">
   <button onClick={() => renewLease(leaseInput)} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">Confirm Renewal</button>
   <button onClick={() => setLeaseModal(null)} className="bg-slate-200 text-slate-500 text-xs px-4 py-2 rounded-lg">Cancel</button>
@@ -2772,8 +2772,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <select value={newCharge.type} onChange={e => setNewCharge({...newCharge, type: e.target.value})} className="border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs">
   <option value="charge">Charge</option><option value="payment">Payment</option><option value="credit">Credit</option><option value="late_fee">Late Fee</option>
   </select>
-  <input placeholder="Description" value={newCharge.description} onChange={e => setNewCharge({...newCharge, description: e.target.value})} className="border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs w-32" />
-  <input placeholder="$0.00" value={newCharge.amount} onChange={e => setNewCharge({...newCharge, amount: e.target.value})} className="border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs w-20" />
+  <Input placeholder="Description" value={newCharge.description} onChange={e => setNewCharge({...newCharge, description: e.target.value})} className="text-xs w-32" />
+  <Input placeholder="$0.00" value={newCharge.amount} onChange={e => setNewCharge({...newCharge, amount: e.target.value})} className="text-xs w-20" />
   <button onClick={addLedgerEntry} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg">Add</button>
   </div>
   </div>
@@ -2836,7 +2836,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ))}
   </div>
   <div className="flex gap-2">
-  <input value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type a message..." className="flex-1 border border-indigo-100 rounded-2xl px-3 py-2 text-sm" onKeyDown={e => e.key === "Enter" && sendMessage()} />
+  <Input value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type a message..." className="flex-1" onKeyDown={e => e.key === "Enter" && sendMessage()} />
   <button onClick={sendMessage} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Send</button>
   </div>
   </div>
@@ -2939,7 +2939,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   {/* Filters */}
   <div className="flex flex-wrap gap-2 mb-4">
-  <input placeholder="Search name, email, phone, property..." value={tenantSearch || ""} onChange={e => setTenantSearch(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm flex-1 min-w-48" />
+  <Input placeholder="Search name, email, phone, property..." value={tenantSearch || ""} onChange={e => setTenantSearch(e.target.value)} className="flex-1 min-w-48" />
   <select value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} >
   <option value="all">All Status</option><option value="active">Active</option><option value="notice">Notice</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
   </select>
@@ -2999,8 +2999,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {bulkAction === "charge" && (
   <Modal title={`Add Charge to ${selectedTenants.size} Tenant(s)`} onClose={() => setBulkAction(null)}>
   <div className="space-y-3">
-  <div><label className="text-xs font-medium text-slate-400 block mb-1">Description</label><input id="bulk-charge-desc" placeholder="Late fee, utility charge, etc." className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
-  <div><label className="text-xs font-medium text-slate-400 block mb-1">Amount ($)</label><input id="bulk-charge-amt" type="number" placeholder="50.00" className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div><label className="text-xs font-medium text-slate-400 block mb-1">Description</label><Input id="bulk-charge-desc" placeholder="Late fee, utility charge, etc." /></div>
+  <div><label className="text-xs font-medium text-slate-400 block mb-1">Amount ($)</label><Input id="bulk-charge-amt" type="number" placeholder="50.00" /></div>
   <button onClick={async () => {
   const desc = document.getElementById("bulk-charge-desc").value;
   const amt = Math.abs(Number(document.getElementById("bulk-charge-amt").value));
@@ -3071,16 +3071,16 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-slate-700 mb-3">{editingTenant ? "Edit Tenant" : "New Tenant"}</h3>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Full Name *</label><input placeholder="Jane Doe" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Email</label><input type="email" placeholder="tenant@email.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Phone</label><input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({ ...form, phone: formatPhoneInput(e.target.value) })} maxLength={14} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Full Name *</label><Input placeholder="Jane Doe" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Email</label><Input type="email" placeholder="tenant@email.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({ ...form, phone: formatPhoneInput(e.target.value) })} maxLength={14} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Monthly Rent ($)</label><input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Monthly Rent ($)</label><Input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Status</label><select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
   {["active", "notice", "expired"].map(s => <option key={s}>{s}</option>)}
   </select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Move-in Date</label><input type="date" value={form.lease_start} onChange={e => setForm({ ...form, move_in: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Move-out Date</label><input type="date" value={form.lease_end} onChange={e => setForm({ ...form, move_out: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Move-in Date</label><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, move_in: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Move-out Date</label><Input type="date" value={form.lease_end} onChange={e => setForm({ ...form, move_out: e.target.value })} /></div>
   </div>
   <div className="flex gap-2 mt-3">
   <button onClick={saveTenant} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
@@ -3384,10 +3384,10 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-slate-700 mb-3">New Payment</h3>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant *</label><input placeholder="Jane Doe" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant *</label><Input placeholder="Jane Doe" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($) *</label><input placeholder="1500.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Date</label><input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($) *</label><Input placeholder="1500.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Date</label><Input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Method</label><select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
   {["ACH", "card", "autopay", "cash", "check"].map(m => <option key={m}>{m}</option>)}
   </select></div>
@@ -3418,7 +3418,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
 
   {/* Filters */}
   <div className="flex flex-wrap gap-2 mb-4">
-  <input placeholder="Search tenant or property..." value={paySearch} onChange={e => setPaySearch(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm flex-1 min-w-40" />
+  <Input placeholder="Search tenant or property..." value={paySearch} onChange={e => setPaySearch(e.target.value)} className="flex-1 min-w-40" />
   <select value={payFilterStatus} onChange={e => setPayFilterStatus(e.target.value)} >
   <option value="all">All Status</option><option value="paid">Paid</option><option value="unpaid">Unpaid</option><option value="partial">Partial</option>
   </select>
@@ -3706,7 +3706,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div className="bg-indigo-50/30 rounded-3xl p-4 mb-4">
   <div className="text-xs font-semibold text-slate-500 mb-2">Upload New Photo</div>
   <div className="flex gap-2">
-  <input type="file" accept="image/*" ref={photoRef} className="flex-1 border border-indigo-100 rounded-2xl px-3 py-2 text-sm" />
+  <Input type="file" accept="image/*" ref={photoRef} className="flex-1" />
   <button onClick={uploadPhoto} disabled={uploadingPhoto} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700 disabled:opacity-50">{uploadingPhoto ? "Uploading..." : "Upload"}</button>
   </div>
   </div>
@@ -3762,15 +3762,15 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   setForm({ ...form, property: v, tenant: tenant });
   }} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant</label><input placeholder={form.property && !form.tenant ? "Vacant — no tenant" : "Tenant name"} value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className={"border rounded-lg px-3 py-2 text-sm w-full " + (!form.tenant && form.property ? "border-gray-100 bg-indigo-50/30 text-slate-400" : "border-indigo-100")} readOnly={!!(form.property && !form.tenant)} /></div>
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Issue *</label><input placeholder="Describe the maintenance issue" value={form.issue} onChange={e => setForm({ ...form, issue: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Issue *</label><Input placeholder="Describe the maintenance issue" value={form.issue} onChange={e => setForm({ ...form, issue: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Priority</label><select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
   {["normal", "emergency", "low"].map(p => <option key={p}>{p}</option>)}
   </select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
   {["open", "in_progress", "completed"].map(s => <option key={s}>{s}</option>)}
   </select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Assigned To</label><input placeholder="Vendor or staff name" value={form.assigned} onChange={e => setForm({ ...form, assigned: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Cost ($)</label><input placeholder="0.00" type="number" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Assigned To</label><Input placeholder="Vendor or staff name" value={form.assigned} onChange={e => setForm({ ...form, assigned: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Cost ($)</label><Input placeholder="0.00" type="number" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} /></div>
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="Completion details, parts used, etc." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
   </div>
   <div className="flex gap-2 mt-3">
@@ -3785,7 +3785,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <button key={s} onClick={() => setFilter(s)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === s ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{s.replace("_", " ")}</button>
   ))}
   <div className="flex-1" />
-  <input placeholder="Search issue, property, tenant..." value={woSearch} onChange={e => setWoSearch(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm min-w-40" />
+  <Input placeholder="Search issue, property, tenant..." value={woSearch} onChange={e => setWoSearch(e.target.value)} className="min-w-40" />
   <select value={woFilterProp} onChange={e => setWoFilterProp(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm">
   <option value="all">All Properties</option>
   {[...new Set(workOrders.map(w => w.property).filter(Boolean))].sort().map(p => <option key={p} value={p}>{p.length > 30 ? p.slice(0, 30) + "..." : p}</option>)}
@@ -4117,11 +4117,11 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={accountForm.property} onChange={v => setAccountForm({...accountForm, property: v})} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-gray-500 mb-1 block">Provider *</label><select value={accountForm.provider} onChange={e => { const p = providers.find(x => x.id === e.target.value); setAccountForm({...accountForm, provider: e.target.value, account_type: p?.account_type || "electric"}); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option value="">Select provider...</option>{providers.map(p => <option key={p.id} value={p.id}>{p.display_name} ({p.region})</option>)}</select></div>
-  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Account Number</label><input placeholder="e.g. 1234567890" value={accountForm.account_number} onChange={e => setAccountForm({...accountForm, account_number: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Account Number</label><Input placeholder="e.g. 1234567890" value={accountForm.account_number} onChange={e => setAccountForm({...accountForm, account_number: e.target.value})} /></div>
   <div><label className="text-xs font-medium text-gray-500 mb-1 block">Account Type</label><select value={accountForm.account_type} onChange={e => setAccountForm({...accountForm, account_type: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option value="electric">Electric</option><option value="gas">Gas</option><option value="water_sewer">Water/Sewer</option><option value="electric_gas">Electric + Gas</option><option value="trash">Trash</option></select></div>
   <div className="col-span-1 sm:col-span-2 bg-amber-50 rounded-lg px-3 py-2"><div className="text-xs font-semibold text-amber-700">🔐 Login Credentials (encrypted before storage)</div></div>
-  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Username / Email *</label><input placeholder="your-login@email.com" value={accountForm.username} onChange={e => setAccountForm({...accountForm, username: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" autoComplete="off" /></div>
-  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Password *</label><input type="password" placeholder="••••••••" value={accountForm.password} onChange={e => setAccountForm({...accountForm, password: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" autoComplete="new-password" /></div>
+  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Username / Email *</label><Input placeholder="your-login@email.com" value={accountForm.username} onChange={e => setAccountForm({...accountForm, username: e.target.value})} autoComplete="off" /></div>
+  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Password *</label><Input type="password" placeholder="••••••••" value={accountForm.password} onChange={e => setAccountForm({...accountForm, password: e.target.value})} autoComplete="new-password" /></div>
   <div><label className="text-xs font-medium text-gray-500 mb-1 block">Check Frequency</label><select value={accountForm.check_frequency} onChange={e => setAccountForm({...accountForm, check_frequency: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option value="weekly">Weekly</option><option value="biweekly">Every 2 Weeks</option><option value="monthly">Monthly</option></select></div>
   <div><label className="text-xs font-medium text-gray-500 mb-1 block">2FA Method</label><select value={accountForm.two_factor_method} onChange={e => setAccountForm({...accountForm, two_factor_method: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option value="none">None</option><option value="sms">SMS</option><option value="email">Email</option></select></div>
   </div>
@@ -4204,7 +4204,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {/* Toolbar */}
   <div className="flex flex-col md:flex-row gap-3 mb-4">
   <div className="mr-auto"></div>
-  <input placeholder="Search..." value={utilSearch} onChange={e => setUtilSearch(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-40" />
+  <Input placeholder="Search..." value={utilSearch} onChange={e => setUtilSearch(e.target.value)} className="w-40" />
   <select value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} >
   <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
   </select>
@@ -4233,9 +4233,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <h3 className="font-semibold text-slate-700 mb-3">New Utility Bill</h3>
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Provider</label><input placeholder="e.g. PEPCO, Washington Gas" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($)</label><input placeholder="150.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Due Date</label><input type="date" value={form.due} onChange={e => setForm({ ...form, due: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Provider</label><Input placeholder="e.g. PEPCO, Washington Gas" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($)</label><Input placeholder="150.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Due Date</label><Input type="date" value={form.due} onChange={e => setForm({ ...form, due: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Responsibility</label><select value={form.responsibility} onChange={e => setForm({ ...form, responsibility: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
   {["owner", "tenant", "shared"].map(r => <option key={r}>{r}</option>)}
   </select></div>
@@ -4468,13 +4468,13 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-gray-700 mb-3">{editingEntry ? "Edit Recurring Entry" : "New Recurring Entry"}</h3>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-  <div className="col-span-2"><label className="text-xs text-gray-500 mb-1 block">Description *</label><input value={form.description} onChange={e => setForm({...form, description: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" placeholder="Monthly rent — John Doe — 123 Main St" /></div>
-  <div><label className="text-xs text-gray-500 mb-1 block">Amount *</label><input type="number" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-  <div><label className="text-xs text-gray-500 mb-1 block">Day of Month</label><input type="number" min="1" max="28" value={form.day_of_month} onChange={e => setForm({...form, day_of_month: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-  <div><label className="text-xs text-gray-500 mb-1 block">Tenant</label><input value={form.tenant_name} onChange={e => setForm({...form, tenant_name: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+  <div className="col-span-2"><label className="text-xs text-gray-500 mb-1 block">Description *</label><Input value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Monthly rent — John Doe — 123 Main St" /></div>
+  <div><label className="text-xs text-gray-500 mb-1 block">Amount *</label><Input type="number" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} /></div>
+  <div><label className="text-xs text-gray-500 mb-1 block">Day of Month</label><Input type="number" min="1" max="28" value={form.day_of_month} onChange={e => setForm({...form, day_of_month: e.target.value})} /></div>
+  <div><label className="text-xs text-gray-500 mb-1 block">Tenant</label><Input value={form.tenant_name} onChange={e => setForm({...form, tenant_name: e.target.value})} /></div>
   <div><label className="text-xs text-gray-500 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
-  <div><label className="text-xs text-gray-500 mb-1 block">Debit Account</label><input value={form.debit_account_name} onChange={e => setForm({...form, debit_account_name: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
-  <div><label className="text-xs text-gray-500 mb-1 block">Credit Account</label><input value={form.credit_account_name} onChange={e => setForm({...form, credit_account_name: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full" /></div>
+  <div><label className="text-xs text-gray-500 mb-1 block">Debit Account</label><Input value={form.debit_account_name} onChange={e => setForm({...form, debit_account_name: e.target.value})} /></div>
+  <div><label className="text-xs text-gray-500 mb-1 block">Credit Account</label><Input value={form.credit_account_name} onChange={e => setForm({...form, credit_account_name: e.target.value})} /></div>
   <div className="col-span-2 bg-amber-50 rounded-lg p-3">
   <div className="flex items-center gap-2 mb-2">
   <input type="checkbox" checked={form.late_fee_enabled} onChange={e => setForm({...form, late_fee_enabled: e.target.checked})} />
@@ -4482,8 +4482,8 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   </div>
   {form.late_fee_enabled && (
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs text-gray-500 mb-1 block">Grace Period (days)</label><input type="number" value={form.grace_period_days} onChange={e => setForm({...form, grace_period_days: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-full" /></div>
-  <div><label className="text-xs text-gray-500 mb-1 block">Late Fee ($)</label><input type="number" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-full" /></div>
+  <div><label className="text-xs text-gray-500 mb-1 block">Grace Period (days)</label><Input type="number" value={form.grace_period_days} onChange={e => setForm({...form, grace_period_days: e.target.value})} /></div>
+  <div><label className="text-xs text-gray-500 mb-1 block">Late Fee ($)</label><Input type="number" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} /></div>
   </div>
   )}
   </div>
@@ -4891,7 +4891,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   })}
   <AcctModal isOpen={!!modal} onClose={() => setModal(null)} title={modal === "add" ? "New Account" : "Edit Account"} size="md">
   <div className="space-y-3">
-  <div><label className="text-xs font-medium text-slate-500">Account Name *</label><input value={form.name} onChange={e => setForm({...form, name:e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" placeholder="e.g. Operating Checking" /></div>
+  <div><label className="text-xs font-medium text-slate-500">Account Name *</label><Input value={form.name} onChange={e => setForm({...form, name:e.target.value})} className="mt-1" placeholder="e.g. Operating Checking" /></div>
   <div className="grid grid-cols-2 gap-3">
   <div>
   <label className="text-xs font-medium text-slate-500">Type *</label>
@@ -4899,7 +4899,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   {dynamicTypes.map(t => <option key={t} value={t}>{t}</option>)}
   <option value="__custom__">+ Add Custom Type...</option>
   </select>
-  {form.type === "__custom__" && <input value={form.customType} onChange={e => setForm({...form, customType: e.target.value})} className="w-full border border-indigo-300 rounded-lg px-3 py-2 text-sm mt-1 bg-indigo-50" placeholder="Enter new account type" autoFocus />}
+  {form.type === "__custom__" && <Input value={form.customType} onChange={e => setForm({...form, customType: e.target.value})} className="mt-1 bg-indigo-50" placeholder="Enter new account type" autoFocus />}
   </div>
   <div>
   <label className="text-xs font-medium text-slate-500">Subtype</label>
@@ -4908,7 +4908,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   <option value="__custom__">+ Add Custom Subtype...</option>
   <option value="">None</option>
   </select>
-  {form.subtype === "__custom__" && <input value={form.customSubtype} onChange={e => setForm({...form, customSubtype: e.target.value})} className="w-full border border-indigo-300 rounded-lg px-3 py-2 text-sm mt-1 bg-indigo-50" placeholder="Enter new subtype" />}
+  {form.subtype === "__custom__" && <Input value={form.customSubtype} onChange={e => setForm({...form, customSubtype: e.target.value})} className="mt-1 bg-indigo-50" placeholder="Enter new subtype" />}
   </div>
   </div>
   <div><label className="text-xs font-medium text-slate-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
@@ -4981,10 +4981,10 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   const JEFormUI = () => (
   <div className="space-y-4">
   <div className="grid grid-cols-3 gap-3">
-  <div><label className="text-xs font-medium text-slate-500">Date *</label><input type="date" value={form.date} onChange={e => setForm({...form, date:e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" /></div>
-  <div><label className="text-xs font-medium text-slate-500">Reference</label><input value={form.reference} onChange={e => setForm({...form, reference:e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" placeholder="Invoice #, Check #..." /></div>
+  <div><label className="text-xs font-medium text-slate-500">Date *</label><Input type="date" value={form.date} onChange={e => setForm({...form, date:e.target.value})} className="mt-1" /></div>
+  <div><label className="text-xs font-medium text-slate-500">Reference</label><Input value={form.reference} onChange={e => setForm({...form, reference:e.target.value})} className="mt-1" placeholder="Invoice #, Check #..." /></div>
   <div><label className="text-xs font-medium text-slate-500">Property *</label><select value={form.property} onChange={e => setForm({...form, property:e.target.value})} className={`w-full border rounded-lg px-3 py-2 text-sm mt-1 ${!form.property ? "border-red-300 bg-red-50" : "border-indigo-100"}`}><option value="">-- Select Property --</option>{properties.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-  <div className="col-span-3"><label className="text-xs font-medium text-slate-500">Description *</label><input value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" placeholder="What is this entry for?" /></div>
+  <div className="col-span-3"><label className="text-xs font-medium text-slate-500">Description *</label><Input value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="mt-1" placeholder="What is this entry for?" /></div>
   </div>
   <div className="flex items-center justify-between mb-2">
   <p className="text-xs font-semibold text-slate-500 uppercase">Journal Entry Lines</p>
@@ -4998,9 +4998,9 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   <tr key={i} className="border-b border-indigo-50/50">
   <td className="px-2 py-1.5"><select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.id} - {a.name}</option>)}</optgroup>)}</select></td>
   <td className="px-2 py-1.5"><select value={line.class_id || ""} onChange={e => setLine(i,"class_id",e.target.value||null)} className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></td>
-  <td className="px-2 py-1.5"><input value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white" /></td>
-  <td className="px-2 py-1.5"><input type="number" step="0.01" min="0" value={line.debit} onChange={e => { setLine(i,"debit",e.target.value); if(e.target.value) setLine(i,"credit",""); }} placeholder="0.00" className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono" /></td>
-  <td className="px-2 py-1.5"><input type="number" step="0.01" min="0" value={line.credit} onChange={e => { setLine(i,"credit",e.target.value); if(e.target.value) setLine(i,"debit",""); }} placeholder="0.00" className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono" /></td>
+  <td className="px-2 py-1.5"><Input value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="bg-white" /></td>
+  <td className="px-2 py-1.5"><Input type="number" step="0.01" min="0" value={line.debit} onChange={e => { setLine(i,"debit",e.target.value); if(e.target.value) setLine(i,"credit",""); }} placeholder="0.00" className="text-right bg-white font-mono" /></td>
+  <td className="px-2 py-1.5"><Input type="number" step="0.01" min="0" value={line.credit} onChange={e => { setLine(i,"credit",e.target.value); if(e.target.value) setLine(i,"debit",""); }} placeholder="0.00" className="text-right bg-white font-mono" /></td>
   <td className="px-2 py-1.5"><button onClick={() => removeLine(i)} disabled={form.lines.length<=2} className="text-slate-300 hover:text-red-500 disabled:opacity-20">✕</button></td>
   </tr>
   ))}
@@ -5168,7 +5168,7 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   </div>
   <AcctModal isOpen={!!modal} onClose={() => setModal(null)} title={modal === "add" ? "New Class" : "Edit Class"} size="sm">
   <div className="space-y-3">
-  <div><label className="text-xs font-medium text-slate-500">Name *</label><input placeholder="e.g. 123 Main St" value={form.name} onChange={e => setForm({...form,name:e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" /></div>
+  <div><label className="text-xs font-medium text-slate-500">Name *</label><Input placeholder="e.g. 123 Main St" value={form.name} onChange={e => setForm({...form,name:e.target.value})} className="mt-1" /></div>
   <div><label className="text-xs font-medium text-slate-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form,description:e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
   <div><label className="text-xs font-medium text-slate-500 block mb-2">Color</label><div className="flex gap-2 flex-wrap">{COLORS.map(c => <button key={c} type="button" onClick={() => setForm({...form,color:c})} className={`w-7 h-7 rounded-full border-2 ${form.color===c?"border-gray-800 scale-110":"border-transparent"}`} style={{background:c}} />)}</div></div>
   <div className="flex justify-end gap-2 pt-2">
@@ -5196,7 +5196,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
   const PeriodPicker = () => (
   <div className="flex flex-wrap items-center gap-2 mb-4">
   {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${period === p ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-400 border-indigo-100"}`}>{p}</button>)}
-  {period === "Custom" && <><input type="date" value={customDates.start} onChange={e => setCustomDates(d=>({...d,start:e.target.value}))} className="border border-indigo-100 rounded-xl px-3 py-1.5 text-xs" /><span className="text-slate-400 text-xs">to</span><input type="date" value={customDates.end} onChange={e => setCustomDates(d=>({...d,end:e.target.value}))} className="border border-indigo-100 rounded-xl px-3 py-1.5 text-xs" /></>}
+  {period === "Custom" && <><Input type="date" value={customDates.start} onChange={e => setCustomDates(d=>({...d,start:e.target.value}))} className="text-xs" /><span className="text-slate-400 text-xs">to</span><Input type="date" value={customDates.end} onChange={e => setCustomDates(d=>({...d,end:e.target.value}))} /></>}
   </div>
   );
 
@@ -5248,7 +5248,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
   {/* Balance Sheet */}
   {activeReport === "bs" && (
   <div>
-  <div className="flex items-center gap-3 mb-4"><span className="text-sm text-slate-500">As of:</span><input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="border border-indigo-100 rounded-xl px-3 py-1.5 text-sm" />{bsBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl">✓ Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-xl">⚠ Out of Balance</span>}</div>
+  <div className="flex items-center gap-3 mb-4"><span className="text-sm text-slate-500">As of:</span><Input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} />{bsBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl">✓ Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-xl">⚠ Out of Balance</span>}</div>
   <div className="grid grid-cols-2 gap-4">
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
   <p className="text-base font-black text-slate-900 mb-3">ASSETS</p>
@@ -5293,7 +5293,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
   {/* AR Aging Report */}
   {activeReport === "ar" && (
   <div>
-  <div className="flex items-center gap-3 mb-4"><span className="text-sm text-slate-500">As of:</span><input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="border border-indigo-100 rounded-xl px-3 py-1.5 text-sm" /></div>
+  <div className="flex items-center gap-3 mb-4"><span className="text-sm text-slate-500">As of:</span><Input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} /></div>
 
   {/* Aging Summary Buckets */}
   <div className="grid grid-cols-5 gap-3 mb-5">
@@ -5380,7 +5380,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
   {/* Trial Balance */}
   {activeReport === "tb" && (
   <div>
-  <div className="flex items-center gap-3 mb-4"><span className="text-sm text-slate-500">As of:</span><input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="border border-indigo-100 rounded-xl px-3 py-1.5 text-sm" />{tbBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl">✓ Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-xl">⚠ Out of Balance by {acctFmt(Math.abs(tbTotalDebit - tbTotalCredit))}</span>}</div>
+  <div className="flex items-center gap-3 mb-4"><span className="text-sm text-slate-500">As of:</span><Input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} />{tbBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl">✓ Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-xl">⚠ Out of Balance by {acctFmt(Math.abs(tbTotalDebit - tbTotalCredit))}</span>}</div>
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden">
   <table className="w-full text-sm">
   <thead className="bg-indigo-50/30"><tr><th className="px-4 py-3 text-left text-xs font-semibold text-slate-400">#</th><th className="px-4 py-3 text-left text-xs font-semibold text-slate-400">Account</th><th className="px-4 py-3 text-left text-xs font-semibold text-slate-400">Type</th><th className="px-4 py-3 text-right text-xs font-semibold text-slate-400">Debit</th><th className="px-4 py-3 text-right text-xs font-semibold text-slate-400">Credit</th></tr></thead>
@@ -5693,7 +5693,7 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
   ))}
   <div className="grid grid-cols-4 gap-2">
   <select value={newRule.matchType} onChange={e=>setNewRule(r=>({...r,matchType:e.target.value}))} className="border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs"><option value="contains">Contains</option><option value="startsWith">Starts With</option><option value="equals">Equals</option><option value="regex">Regex</option></select>
-  <input value={newRule.matchValue} onChange={e=>setNewRule(r=>({...r,matchValue:e.target.value}))} placeholder="Match text..." className="border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs" />
+  <Input value={newRule.matchValue} onChange={e=>setNewRule(r=>({...r,matchValue:e.target.value}))} placeholder="Match text..." className="text-xs" />
   <select value={newRule.accountId} onChange={e=>setNewRule(r=>({...r,accountId:e.target.value}))} className="border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs"><option value="">Account...</option>{accounts.filter(a=>a.is_active&&!["Bank"].includes(a.subtype)).map(a=><option key={a.id} value={a.id}>{a.id}-{a.name}</option>)}</select>
   <button onClick={addRule} className="bg-violet-600 text-white text-xs px-3 py-1.5 rounded-lg">+ Add</button>
   </div>
@@ -6252,9 +6252,9 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-slate-700 mb-3">Upload Document</h3>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Document Name *</label><input placeholder="Lease Agreement 2026" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Document Name *</label><Input placeholder="Lease Agreement 2026" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant</label><input placeholder="Optional — link to a tenant" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant</label><Input placeholder="Optional — link to a tenant" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Document Type</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
   {["Lease", "Inspection", "Maintenance", "Financial", "Notice", "Other"].map(t => <option key={t}>{t}</option>)}
   </select></div>
@@ -6262,7 +6262,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   <input type="checkbox" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} />
   Visible to Tenant
   </label>
-  <input type="file" ref={fileRef} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm col-span-2" />
+  <Input type="file" ref={fileRef} className="col-span-2" />
   </div>
   <div className="flex gap-2 mt-3">
   <button onClick={uploadDocument} disabled={uploading} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700 disabled:opacity-50">
@@ -6454,8 +6454,8 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Inspection Type</label><select value={form.type} onChange={e => { setForm({ ...form, type: e.target.value }); initChecklist(e.target.value); }} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
   {["Move-In", "Move-Out", "Periodic"].map(t => <option key={t}>{t}</option>)}
   </select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Inspector</label><input placeholder="Inspector name" value={form.inspector} onChange={e => setForm({ ...form, inspector: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Date</label><input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Inspector</label><Input placeholder="Inspector name" value={form.inspector} onChange={e => setForm({ ...form, inspector: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Date</label><Input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="General notes about the inspection" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
   </div>
 
@@ -6875,11 +6875,11 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   {showTemplateForm && (
   <Modal title="Lease Template" onClose={() => setShowTemplateForm(false)}>
   <div className="space-y-3">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Template Name *</label><input placeholder="Standard 12-Month Lease" value={templateForm.name} onChange={e => setTemplateForm({...templateForm, name: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Description</label><input placeholder="Default template for residential leases" value={templateForm.description} onChange={e => setTemplateForm({...templateForm, description: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Template Name *</label><Input placeholder="Standard 12-Month Lease" value={templateForm.name} onChange={e => setTemplateForm({...templateForm, name: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Description</label><Input placeholder="Default template for residential leases" value={templateForm.description} onChange={e => setTemplateForm({...templateForm, description: e.target.value})} /></div>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs text-slate-400">Lease Length (months)</label><input type="number" min="1" max="120" placeholder="12" value={templateForm.default_lease_months} onChange={e => setTemplateForm({...templateForm, default_lease_months: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400">Annual Escalation %</label><input type="number" step="0.1" min="0" max="25" placeholder="3.0" value={templateForm.default_escalation_pct} onChange={e => setTemplateForm({...templateForm, default_escalation_pct: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+  <div><label className="text-xs text-slate-400">Lease Length (months)</label><Input type="number" min="1" max="120" placeholder="12" value={templateForm.default_lease_months} onChange={e => setTemplateForm({...templateForm, default_lease_months: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400">Annual Escalation %</label><Input type="number" step="0.1" min="0" max="25" placeholder="3.0" value={templateForm.default_escalation_pct} onChange={e => setTemplateForm({...templateForm, default_escalation_pct: e.target.value})} /></div>
   </div>
   <Textarea placeholder="Standard clauses..." value={templateForm.clauses} onChange={e => setTemplateForm({...templateForm, clauses: e.target.value})}  rows={4} />
   <Textarea placeholder="Special terms..." value={templateForm.special_terms} onChange={e => setTemplateForm({...templateForm, special_terms: e.target.value})}  rows={3} />
@@ -6894,9 +6894,9 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <Modal title={"Return Deposit — " + showDepositModal.tenant_name} onClose={() => setShowDepositModal(null)}>
   <div className="space-y-3">
   <div className="bg-purple-50 rounded-lg p-3 text-sm"><div className="flex justify-between"><span className="text-slate-400">Original Deposit:</span><span className="font-bold">${safeNum(showDepositModal.security_deposit).toLocaleString()}</span></div></div>
-  <div><label className="text-xs text-slate-400">Amount to Return ($)</label><input type="number" value={depositForm.amount_returned} onChange={e => setDepositForm({...depositForm, amount_returned: e.target.value})} placeholder={String(showDepositModal.security_deposit)} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+  <div><label className="text-xs text-slate-400">Amount to Return ($)</label><Input type="number" value={depositForm.amount_returned} onChange={e => setDepositForm({...depositForm, amount_returned: e.target.value})} placeholder={String(showDepositModal.security_deposit)} /></div>
   <div><label className="text-xs text-slate-400">Deduction Reasons</label><Textarea value={depositForm.deductions} onChange={e => setDepositForm({...depositForm, deductions: e.target.value})} placeholder="Cleaning, damages, unpaid rent..." className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" rows={3} /></div>
-  <div><label className="text-xs text-slate-400">Return Date</label><input type="date" value={depositForm.return_date} onChange={e => setDepositForm({...depositForm, return_date: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+  <div><label className="text-xs text-slate-400">Return Date</label><Input type="date" value={depositForm.return_date} onChange={e => setDepositForm({...depositForm, return_date: e.target.value})} /></div>
   {Number(depositForm.amount_returned || 0) < safeNum(showDepositModal.security_deposit) && depositForm.amount_returned && (
   <div className="bg-red-50 rounded-lg p-2 text-xs text-red-700">Deducting ${(safeNum(showDepositModal.security_deposit) - Number(depositForm.amount_returned)).toLocaleString()} from deposit</div>
   )}
@@ -6937,23 +6937,23 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   </select>
   </div>
   <div><label className="text-xs text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Lease Start *</label><input type="date" value={form.start_date} onChange={e => setForm({...form, start_date: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Lease End *</label><input type="date" value={form.end_date} onChange={e => setForm({...form, end_date: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Monthly Rent ($) *</label><input type="number" min="0" step="0.01" placeholder="1500.00" value={form.rent_amount} onChange={e => setForm({...form, rent_amount: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Security Deposit ($)</label><input type="number" min="0" step="0.01" placeholder="1500.00" value={form.security_deposit} onChange={e => setForm({...form, security_deposit: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Annual Escalation %</label><input type="number" step="0.1" min="0" max="25" placeholder="3.0" value={form.rent_escalation_pct} onChange={e => setForm({...form, rent_escalation_pct: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Payment Due Day</label><input type="number" min="1" max="31" placeholder="1" value={form.payment_due_day} onChange={e => setForm({...form, payment_due_day: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Lease Start *</label><Input type="date" value={form.start_date} onChange={e => setForm({...form, start_date: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Lease End *</label><Input type="date" value={form.end_date} onChange={e => setForm({...form, end_date: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Monthly Rent ($) *</label><Input type="number" min="0" step="0.01" placeholder="1500.00" value={form.rent_amount} onChange={e => setForm({...form, rent_amount: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Security Deposit ($)</label><Input type="number" min="0" step="0.01" placeholder="1500.00" value={form.security_deposit} onChange={e => setForm({...form, security_deposit: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Annual Escalation %</label><Input type="number" step="0.1" min="0" max="25" placeholder="3.0" value={form.rent_escalation_pct} onChange={e => setForm({...form, rent_escalation_pct: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Payment Due Day</label><Input type="number" min="1" max="31" placeholder="1" value={form.payment_due_day} onChange={e => setForm({...form, payment_due_day: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Lease Type</label>
   <select value={form.lease_type} onChange={e => setForm({...form, lease_type: e.target.value})} ><option value="fixed">Fixed Term</option><option value="month_to_month">Month-to-Month</option><option value="renewal">Renewal</option></select></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Renewal Notice (days)</label><input type="number" min="0" max="180" placeholder="60" value={form.renewal_notice_days} onChange={e => setForm({...form, renewal_notice_days: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Renewal Notice (days)</label><Input type="number" min="0" max="180" placeholder="60" value={form.renewal_notice_days} onChange={e => setForm({...form, renewal_notice_days: e.target.value})} /></div>
   </div>
   {/* Late Fee Settings */}
   <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 mb-4">
   <div className="text-sm font-semibold text-amber-800 mb-2">⚠️ Late Fee Settings</div>
   <div className="grid grid-cols-3 gap-3">
-  <div><label className="text-xs text-slate-400 mb-1 block">Grace Period (days)</label><input type="number" min="0" max="30" placeholder="5" value={form.late_fee_grace_days} onChange={e => setForm({...form, late_fee_grace_days: e.target.value})} className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white" /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Grace Period (days)</label><Input type="number" min="0" max="30" placeholder="5" value={form.late_fee_grace_days} onChange={e => setForm({...form, late_fee_grace_days: e.target.value})} className="border-amber-200 bg-white" /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Fee Type</label><select value={form.late_fee_type} onChange={e => setForm({...form, late_fee_type: e.target.value})} className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></select></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">{form.late_fee_type === "flat" ? "Fee Amount ($)" : "Fee Percentage (%)"}</label><input type="number" step="0.01" min="0" placeholder="50.00" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white" /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">{form.late_fee_type === "flat" ? "Fee Amount ($)" : "Fee Percentage (%)"}</label><Input type="number" step="0.01" min="0" placeholder="50.00" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} className="border-amber-200 bg-white" /></div>
   </div>
   <p className="text-xs text-amber-600 mt-2">Late fees auto-apply to tenant ledger after grace period. Admin can waive from ledger.</p>
   </div>
@@ -7018,9 +7018,9 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="flex justify-between"><span className="text-slate-400">Current Rent:</span><span className="font-bold">${showRentIncrease.rent_amount}/mo</span></div>
   <div className="flex justify-between"><span className="text-slate-400">Property:</span><span>{showRentIncrease.property}</span></div>
   </div>
-  <div><label className="text-xs text-slate-400 mb-1 block">New Monthly Rent ($) *</label><input type="number" min="0" step="0.01" placeholder="1600.00" value={rentIncreaseForm.new_amount} onChange={e => setRentIncreaseForm({...rentIncreaseForm, new_amount: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Effective Date *</label><input type="date" value={rentIncreaseForm.effective_date} onChange={e => setRentIncreaseForm({...rentIncreaseForm, effective_date: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Reason</label><input value={rentIncreaseForm.reason} onChange={e => setRentIncreaseForm({...rentIncreaseForm, reason: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" placeholder="Market adjustment, annual increase..." /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">New Monthly Rent ($) *</label><Input type="number" min="0" step="0.01" placeholder="1600.00" value={rentIncreaseForm.new_amount} onChange={e => setRentIncreaseForm({...rentIncreaseForm, new_amount: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Effective Date *</label><Input type="date" value={rentIncreaseForm.effective_date} onChange={e => setRentIncreaseForm({...rentIncreaseForm, effective_date: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Reason</label><Input value={rentIncreaseForm.reason} onChange={e => setRentIncreaseForm({...rentIncreaseForm, reason: e.target.value})} placeholder="Market adjustment, annual increase..." /></div>
   {rentIncreaseForm.new_amount && Number(rentIncreaseForm.new_amount) !== showRentIncrease.rent_amount && (
   <div className={`text-sm font-semibold rounded-lg p-2 text-center ${Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
   {Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "+" : ""}{Math.round((Number(rentIncreaseForm.new_amount) - showRentIncrease.rent_amount) / showRentIncrease.rent_amount * 100)}% ({Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "+" : ""}${Number(rentIncreaseForm.new_amount) - showRentIncrease.rent_amount}/mo)
@@ -7263,11 +7263,11 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
   <h3 className="font-manrope font-semibold text-slate-800 mb-4">{editingVendor ? "Edit Vendor" : "Add New Vendor"}</h3>
   <div className="grid grid-cols-2 gap-3 mb-4">
-  <div><label className="text-xs text-slate-400 mb-1 block">Name *</label><input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" placeholder="John Smith" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Company</label><input value={form.company} onChange={e => setForm({...form, company: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" placeholder="ABC Plumbing LLC" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Email</label><input type="email" placeholder="vendor@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Phone</label><input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address</label><input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Name *</label><Input value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="John Smith" /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Company</label><Input value={form.company} onChange={e => setForm({...form, company: e.target.value})} placeholder="ABC Plumbing LLC" /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Email</label><Input type="email" placeholder="vendor@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address</label><Input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Specialty</label>
   <select value={form.specialty} onChange={e => setForm({...form, specialty: e.target.value})} >
   {specialties.map(s => <option key={s} value={s}>{s}</option>)}
@@ -7278,10 +7278,10 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <option value="active">Active</option><option value="preferred">Preferred</option><option value="inactive">Inactive</option><option value="blocked">Blocked</option>
   </select>
   </div>
-  <div><label className="text-xs text-slate-400 mb-1 block">License #</label><input placeholder="e.g. VA-12345" value={form.license_number} onChange={e => setForm({...form, license_number: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Insurance Expiry</label><input type="date" value={form.insurance_expiry} onChange={e => setForm({...form, insurance_expiry: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Hourly Rate ($)</label><input placeholder="0.00" type="number" value={form.hourly_rate} onChange={e => setForm({...form, hourly_rate: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Flat Rate ($)</label><input placeholder="0.00" type="number" value={form.flat_rate} onChange={e => setForm({...form, flat_rate: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">License #</label><Input placeholder="e.g. VA-12345" value={form.license_number} onChange={e => setForm({...form, license_number: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Insurance Expiry</label><Input type="date" value={form.insurance_expiry} onChange={e => setForm({...form, insurance_expiry: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Hourly Rate ($)</label><Input placeholder="0.00" type="number" value={form.hourly_rate} onChange={e => setForm({...form, hourly_rate: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Flat Rate ($)</label><Input placeholder="0.00" type="number" value={form.flat_rate} onChange={e => setForm({...form, flat_rate: e.target.value})} /></div>
   </div>
   <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Notes</label><Textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" rows={2} /></div>
   <div className="flex gap-2">
@@ -7303,11 +7303,11 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   </select>
   </div>
   <div><label className="text-xs text-slate-400 mb-1 block">Property</label><PropertySelect value={invoiceForm.property} onChange={v => setInvoiceForm({...invoiceForm, property: v})} companyId={companyId} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Amount ($) *</label><input type="number" min="0" step="0.01" placeholder="500.00" value={invoiceForm.amount} onChange={e => setInvoiceForm({...invoiceForm, amount: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Invoice #</label><input placeholder="INV-001" value={invoiceForm.invoice_number} onChange={e => setInvoiceForm({...invoiceForm, invoice_number: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Invoice Date</label><input type="date" value={invoiceForm.invoice_date} onChange={e => setInvoiceForm({...invoiceForm, invoice_date: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Due Date</label><input type="date" value={invoiceForm.due_date} onChange={e => setInvoiceForm({...invoiceForm, due_date: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div className="col-span-2"><label className="text-xs text-slate-400 mb-1 block">Description</label><input value={invoiceForm.description} onChange={e => setInvoiceForm({...invoiceForm, description: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" placeholder="Plumbing repair at 123 Main St" /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Amount ($) *</label><Input type="number" min="0" step="0.01" placeholder="500.00" value={invoiceForm.amount} onChange={e => setInvoiceForm({...invoiceForm, amount: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Invoice #</label><Input placeholder="INV-001" value={invoiceForm.invoice_number} onChange={e => setInvoiceForm({...invoiceForm, invoice_number: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Invoice Date</label><Input type="date" value={invoiceForm.invoice_date} onChange={e => setInvoiceForm({...invoiceForm, invoice_date: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Due Date</label><Input type="date" value={invoiceForm.due_date} onChange={e => setInvoiceForm({...invoiceForm, due_date: e.target.value})} /></div>
+  <div className="col-span-2"><label className="text-xs text-slate-400 mb-1 block">Description</label><Input value={invoiceForm.description} onChange={e => setInvoiceForm({...invoiceForm, description: e.target.value})} placeholder="Plumbing repair at 123 Main St" /></div>
   </div>
   <div className="flex gap-2">
   <button onClick={saveInvoice} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700">Save Invoice</button>
@@ -7320,7 +7320,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   {activeTab === "vendors" && (
   <div>
   <div className="flex gap-2 mb-4">
-  <input placeholder="Search vendors..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="flex-1 border border-indigo-100 rounded-2xl px-3 py-2 text-sm" />
+  <Input placeholder="Search vendors..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="flex-1" />
   <select value={filterSpecialty} onChange={e => setFilterSpecialty(e.target.value)} >
   <option value="all">All Specialties</option>
   {specialties.map(s => <option key={s} value={s}>{s}</option>)}
@@ -7675,7 +7675,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   {activeOwners.map(o => <option key={o.id} value={o.id}>{o.name} ({properties.filter(p => String(p.owner_id) === String(o.id)).length} properties)</option>)}
   </select>
   </div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Month</label><input placeholder="Enter name" type="month" value={genMonth} onChange={e => setGenMonth(e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Month</label><Input placeholder="Enter name" type="month" value={genMonth} onChange={e => setGenMonth(e.target.value)} /></div>
   </div>
   {genOwner && (
   <div className="bg-indigo-50/30 rounded-lg p-3 mb-4 text-xs text-slate-500">
@@ -7696,13 +7696,13 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
   <h3 className="font-manrope font-semibold text-slate-800 mb-4">{editingOwner ? "Edit Owner" : "Add New Owner"}</h3>
   <div className="grid grid-cols-2 gap-3 mb-4">
-  <div><label className="text-xs text-slate-400 mb-1 block">Name *</label><input placeholder="John Smith" value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Company</label><input placeholder="Smith Properties LLC" value={form.company} onChange={e => setForm({...form, company: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Email</label><input type="email" placeholder="vendor@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Phone</label><input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address</label><input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Tax ID / EIN</label><input placeholder="XX-XXXXXXX" value={form.tax_id} onChange={e => setForm({...form, tax_id: e.target.value})} maxLength={10} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Management Fee %</label><input type="number" step="0.5" min="0" max="50" placeholder="10.0" value={form.management_fee_pct} onChange={e => setForm({...form, management_fee_pct: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Name *</label><Input placeholder="John Smith" value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Company</label><Input placeholder="Smith Properties LLC" value={form.company} onChange={e => setForm({...form, company: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Email</label><Input type="email" placeholder="vendor@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address</label><Input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Tax ID / EIN</label><Input placeholder="XX-XXXXXXX" value={form.tax_id} onChange={e => setForm({...form, tax_id: e.target.value})} maxLength={10} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Management Fee %</label><Input type="number" step="0.5" min="0" max="50" placeholder="10.0" value={form.management_fee_pct} onChange={e => setForm({...form, management_fee_pct: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Payment Method</label>
   <select value={form.payment_method} onChange={e => setForm({...form, payment_method: e.target.value})} >
   <option value="check">Check</option><option value="ach">ACH</option><option value="wire">Wire</option>
@@ -8021,8 +8021,8 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-5">
   <h3 className="font-manrope font-semibold text-slate-800 mb-3">Start Bank Reconciliation</h3>
   <div className="grid grid-cols-3 gap-3">
-  <div><label className="text-xs text-slate-400 mb-1 block">Month</label><input placeholder="Enter name" type="month" value={reconPeriod} onChange={e => setReconPeriod(e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Bank Ending Balance ($)</label><input type="number" step="0.01" value={bankBalance} onChange={e => setBankBalance(e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" placeholder="Enter from bank statement" /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Month</label><Input placeholder="Enter name" type="month" value={reconPeriod} onChange={e => setReconPeriod(e.target.value)} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Bank Ending Balance ($)</label><Input type="number" step="0.01" value={bankBalance} onChange={e => setBankBalance(e.target.value)} placeholder="Enter from bank statement" /></div>
   <div className="flex items-end"><button onClick={startReconciliation} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700 w-full">Begin Reconciliation</button></div>
   </div>
   </div>
@@ -8370,7 +8370,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   )}
   </div>
   <div className="mb-2">
-  <textarea value={s.template} onChange={e => updateTemplate(s, e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-xs text-slate-500" rows={2} />
+  <Textarea value={s.template} onChange={e => updateTemplate(s, e.target.value)} className="text-xs text-slate-500" rows={2} />
   </div>
   <button onClick={() => sendTestNotification(s)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Send Test</button>
   </div>
@@ -9115,13 +9115,13 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   <h3 className="font-semibold text-slate-700 mb-3">{editingHoa ? "Edit HOA Payment" : "New HOA Payment"}</h3>
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">HOA Company</label><input placeholder="e.g. Riverside HOA" value={form.hoa_name} onChange={e => setForm({ ...form, hoa_name: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($)</label><input placeholder="250.00" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Due Date</label><input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">HOA Company</label><Input placeholder="e.g. Riverside HOA" value={form.hoa_name} onChange={e => setForm({ ...form, hoa_name: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($)</label><Input placeholder="250.00" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Due Date</label><Input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Frequency</label><select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
   <option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="annual">Annual</option>
   </select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
   </div>
   <div className="flex gap-2 mt-3">
   <button onClick={saveHOA} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
@@ -9489,7 +9489,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   {tenants.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
   </select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($)</label><input placeholder="1500.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($)</label><Input placeholder="1500.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Payment Method</label><select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
   {["ACH", "card", "cash", "check"].map(m => <option key={m}>{m}</option>)}
   </select></div>
@@ -9699,10 +9699,10 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-5">
   <h3 className="font-semibold text-slate-700 mb-3">New Late Fee Rule</h3>
   <div className="grid grid-cols-2 gap-3">
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Rule Name *</label><input placeholder="Standard Late Fee" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Grace Period (days)</label><input type="number" min="0" max="30" placeholder="5" value={form.grace_days} onChange={e => setForm({ ...form, grace_days: e.target.value })} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Rule Name *</label><Input placeholder="Standard Late Fee" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Grace Period (days)</label><Input type="number" min="0" max="30" placeholder="5" value={form.grace_days} onChange={e => setForm({ ...form, grace_days: e.target.value })} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Fee Type</label><select value={form.fee_type} onChange={e => setForm({ ...form, fee_type: e.target.value })} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></select></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">{form.fee_type === "flat" ? "Fee Amount ($)" : "Percentage (%)"}</label><input type="number" min="0" step="0.01" placeholder={form.fee_type === "flat" ? "50.00" : "5.0"} value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" /></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">{form.fee_type === "flat" ? "Fee Amount ($)" : "Percentage (%)"}</label><Input type="number" min="0" step="0.01" placeholder={form.fee_type === "flat" ? "50.00" : "5.0"} value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} /></div>
   </div>
   <div className="flex gap-2 mt-3">
   <button onClick={saveRule} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">Save Rule</button>
@@ -10153,7 +10153,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
   <h4 className="font-medium text-slate-700 mb-3">Submit a Maintenance Request</h4>
   <label className="text-xs font-medium text-slate-400 mb-1 block">What's the issue? *</label>
-  <input placeholder="e.g. Leaking faucet in kitchen" value={maintForm.issue} onChange={e => setMaintForm({...maintForm, issue: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mb-3" />
+  <Input placeholder="e.g. Leaking faucet in kitchen" value={maintForm.issue} onChange={e => setMaintForm({...maintForm, issue: e.target.value})} className="mb-3" />
   <select value={maintForm.priority} onChange={e => setMaintForm({...maintForm, priority: e.target.value})} className="mb-3">
   <option value="normal">Normal Priority</option>
   <option value="urgent">Urgent</option>
@@ -10227,7 +10227,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   {messages.length === 0 && <div className="text-center py-6 text-slate-400 text-sm">No messages yet. Send a message to your property manager below.</div>}
   </div>
   <div className="p-3 border-t border-indigo-50 flex gap-2">
-  <input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} placeholder="Message your property manager..." className="flex-1 border border-indigo-100 rounded-2xl px-3 py-2 text-sm" />
+  <Input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} placeholder="Message your property manager..." className="flex-1" />
   <button onClick={sendMessage} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-indigo-700">Send</button>
   </div>
   </div>
@@ -10815,8 +10815,8 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   </div>
   ))}
   <div className="flex gap-2 mt-3">
-  <input placeholder="Description (e.g., Wall damage)" value={newDeductionDesc} onChange={e => setNewDeductionDesc(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm flex-1" />
-  <input placeholder="$" type="number" value={newDeductionAmt} onChange={e => setNewDeductionAmt(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-24" />
+  <Input placeholder="Description (e.g., Wall damage)" value={newDeductionDesc} onChange={e => setNewDeductionDesc(e.target.value)} className="flex-1" />
+  <Input placeholder="$" type="number" value={newDeductionAmt} onChange={e => setNewDeductionAmt(e.target.value)} className="w-24" />
   <button onClick={addDeduction} className="bg-indigo-600 text-white px-3 py-2 rounded-2xl text-sm font-semibold">Add</button>
   </div>
   <div className="bg-emerald-50 rounded-2xl p-4 mt-4 space-y-1">
@@ -11184,7 +11184,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
 
   {/* Filters */}
   <div className="flex flex-wrap gap-2 mb-4">
-  <input placeholder="Search tenant or property..." value={evSearch} onChange={e => setEvSearch(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm flex-1 min-w-40" />
+  <Input placeholder="Search tenant or property..." value={evSearch} onChange={e => setEvSearch(e.target.value)} className="flex-1 min-w-40" />
   <select value={filterStage} onChange={e => setFilterStage(e.target.value)} >
   <option value="all">All Cases</option>
   <option value="active">Active Only</option>
@@ -11278,10 +11278,10 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <div className="text-xs font-semibold text-slate-400 uppercase mb-3">Advance to Next Stage</div>
   <div className="space-y-2">
   <div className="grid grid-cols-2 gap-2">
-  <div><label className="text-xs text-slate-400 block mb-1">Date</label><input type="date" value={stageDate} onChange={e => setStageDate(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
-  <div><label className="text-xs text-slate-400 block mb-1">Cost ($)</label><input type="number" value={stageCost} onChange={e => setStageCost(e.target.value)} placeholder="0.00" className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div><label className="text-xs text-slate-400 block mb-1">Date</label><Input type="date" value={stageDate} onChange={e => setStageDate(e.target.value)} /></div>
+  <div><label className="text-xs text-slate-400 block mb-1">Cost ($)</label><Input type="number" value={stageCost} onChange={e => setStageCost(e.target.value)} placeholder="0.00" /></div>
   </div>
-  <div><label className="text-xs text-slate-400 block mb-1">Notes</label><input value={stageNote} onChange={e => setStageNote(e.target.value)} placeholder="Court case #, attorney notes, details..." className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div><label className="text-xs text-slate-400 block mb-1">Notes</label><Input value={stageNote} onChange={e => setStageNote(e.target.value)} placeholder="Court case #, attorney notes, details..." /></div>
   <div className="flex gap-2 flex-wrap">
   {EVICTION_STAGES.filter(s => stageIdx(s.id) === stageIdx(selectedCase.current_stage) + 1).map(nextS => (
   <button key={nextS.id} onClick={() => advanceStage(selectedCase, nextS.id)} className={`text-xs text-white px-4 py-2 rounded-lg font-medium ${nextS.color} hover:opacity-90`}>
@@ -11783,15 +11783,15 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {templateForm.fields.map((f, i) => (
   <div key={i} className="border border-indigo-50 rounded-xl p-3 bg-indigo-50/20">
   <div className="grid grid-cols-3 gap-2 mb-2">
-  <input value={f.label} onChange={e => updateField(i, "label", e.target.value)} placeholder="Label" className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs w-full" />
+  <Input value={f.label} onChange={e => updateField(i, "label", e.target.value)} placeholder="Label" className="text-xs" />
   <select value={f.type} onChange={e => updateField(i, "type", e.target.value)} className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs">
   {["text","textarea","number","currency","date","checkbox","select","signature_placeholder"].map(t => <option key={t} value={t}>{t}</option>)}
   </select>
-  <input value={f.section || ""} onChange={e => updateField(i, "section", e.target.value)} placeholder="Section" className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs w-full" />
+  <Input value={f.section || ""} onChange={e => updateField(i, "section", e.target.value)} placeholder="Section" className="text-xs" />
   </div>
   <div className="grid grid-cols-3 gap-2">
-  <input value={f.prefill_from || ""} onChange={e => updateField(i, "prefill_from", e.target.value)} placeholder="Prefill from" className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs" />
-  <input value={f.default_value || ""} onChange={e => updateField(i, "default_value", e.target.value)} placeholder="Default value" className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs" />
+  <Input value={f.prefill_from || ""} onChange={e => updateField(i, "prefill_from", e.target.value)} placeholder="Prefill from" className="text-xs" />
+  <Input value={f.default_value || ""} onChange={e => updateField(i, "default_value", e.target.value)} placeholder="Default value" className="text-xs" />
   <div className="flex items-center gap-2">
   <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={f.required} onChange={e => updateField(i, "required", e.target.checked)} className="accent-indigo-600" />Required</label>
   <button onClick={() => insertMergeField(f.name || f.label.toLowerCase().replace(/[^a-z0-9]+/g, "_"))} className="text-xs text-indigo-600 hover:underline" title="Insert into body">{"{{}}"}</button>
@@ -11799,7 +11799,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   </div>
   {f.type === "select" && (
-  <input value={(f.options || []).join(", ")} onChange={e => updateField(i, "options", e.target.value.split(",").map(s => s.trim()))} placeholder="Options (comma-separated)" className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs w-full mt-2" />
+  <Input value={(f.options || []).join(", ")} onChange={e => updateField(i, "options", e.target.value.split(",").map(s => s.trim()))} placeholder="Options (comma-separated)" className="text-xs mt-2" />
   )}
   <div className="text-xs text-slate-400 mt-1">Merge tag: <code className="bg-slate-100 px-1 rounded">{"{{" + (f.name || "field_name") + "}}"}</code></div>
   </div>
@@ -11821,7 +11821,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   )}
   </div>
-  <textarea value={templateForm.body} onChange={e => setTemplateForm({...templateForm, body: e.target.value})} className="border border-indigo-100 rounded-2xl px-3 py-2 text-xs w-full font-mono" rows={18} placeholder='<h1>Document Title</h1>\n<p>Dear {{tenant_name}},</p>\n<p>Your rent at {{property_address}} is...</p>' />
+  <Textarea value={templateForm.body} onChange={e => setTemplateForm({...templateForm, body: e.target.value})} className="text-xs font-mono" rows={18} placeholder='<h1>Document Title</h1>\n<p>Dear {{tenant_name}},</p>\n<p>Your rent at {{property_address}} is...</p>' />
   </div>
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 mb-2">Preview</h3>
@@ -12227,7 +12227,7 @@ function AuditTrail({ companyId }) {
   <option value="all">All Actions</option>
   {actions.map(a => <option key={a} value={a}>{a}</option>)}
   </select>
-  <input placeholder="Filter by user email..." value={filterUser} onChange={e => { setFilterUser(e.target.value); setPage(0); }} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm flex-1 min-w-48" />
+  <Input placeholder="Filter by user email..." value={filterUser} onChange={e => { setFilterUser(e.target.value); setPage(0); }} className="flex-1 min-w-48" />
   <button onClick={fetchLogs} className="bg-slate-100 text-slate-500 text-sm px-3 py-2 rounded-2xl hover:bg-slate-100">🔄 Refresh</button>
   </div>
 
@@ -12489,14 +12489,14 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast }) 
   </button>
   </div>
   </div>
-  <div><label className="text-xs font-medium text-slate-500">Company Name *</label><input value={createForm.name} onChange={e => setCreateForm({...createForm, name: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" placeholder={createForm.company_role === "management" ? "e.g. Sigma Property Management" : "e.g. Smith Properties LLC"} /></div>
+  <div><label className="text-xs font-medium text-slate-500">Company Name *</label><Input value={createForm.name} onChange={e => setCreateForm({...createForm, name: e.target.value})} className="mt-1" placeholder={createForm.company_role === "management" ? "e.g. Sigma Property Management" : "e.g. Smith Properties LLC"} /></div>
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-slate-500">Entity Type</label><select value={createForm.type} onChange={e => setCreateForm({...createForm, type: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1"><option>LLC</option><option>Corporation</option><option>Partnership</option><option>Sole Proprietorship</option><option>Trust</option><option>Other</option></select></div>
-  <div><label className="text-xs font-medium text-slate-500">Email</label><input type="email" value={createForm.email} onChange={e => setCreateForm({...createForm, email: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" placeholder="company@email.com" /></div>
+  <div><label className="text-xs font-medium text-slate-500">Email</label><Input type="email" value={createForm.email} onChange={e => setCreateForm({...createForm, email: e.target.value})} className="mt-1" placeholder="company@email.com" /></div>
   </div>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-500">Address</label><input placeholder="123 Business Ave, City, State ZIP" value={createForm.address} onChange={e => setCreateForm({...createForm, address: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" /></div>
-  <div><label className="text-xs font-medium text-slate-500">Phone</label><input type="tel" placeholder="(555) 123-4567" value={createForm.phone} onChange={e => setCreateForm({...createForm, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" /></div>
+  <div><label className="text-xs font-medium text-slate-500">Address</label><Input placeholder="123 Business Ave, City, State ZIP" value={createForm.address} onChange={e => setCreateForm({...createForm, address: e.target.value})} className="mt-1" /></div>
+  <div><label className="text-xs font-medium text-slate-500">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={createForm.phone} onChange={e => setCreateForm({...createForm, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="mt-1" /></div>
   </div>
   <div className="flex gap-2 pt-2">
   <button onClick={createCompany} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-indigo-700">Create Company</button>
@@ -12511,9 +12511,9 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast }) 
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-6 mb-4">
   <h3 className="font-bold text-slate-800 mb-4">Join a Company</h3>
   <div className="space-y-3">
-  <div><label className="text-xs font-medium text-slate-500">Company ID (8-digit code)</label><input value={joinCode} onChange={e => setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 8))} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" placeholder="e.g. 12345678" maxLength={8} /></div>
+  <div><label className="text-xs font-medium text-slate-500">Company ID (8-digit code)</label><Input value={joinCode} onChange={e => setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 8))} className="mt-1" placeholder="e.g. 12345678" maxLength={8} /></div>
   <div className="text-xs text-slate-400 text-center">— or —</div>
-  <div><label className="text-xs font-medium text-slate-500">Search by Name</label><input value={joinSearch} onChange={e => setJoinSearch(e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" placeholder="e.g. Sigma Housing" /></div>
+  <div><label className="text-xs font-medium text-slate-500">Search by Name</label><Input value={joinSearch} onChange={e => setJoinSearch(e.target.value)} className="mt-1" placeholder="e.g. Sigma Housing" /></div>
   <div className="flex gap-2">
   <button onClick={searchCompanies} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-indigo-700">Search</button>
   <button onClick={() => setShowJoin(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
