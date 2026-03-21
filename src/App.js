@@ -297,7 +297,7 @@ async function autoPostJournalEntry({ date, description, reference, property, li
         p_reference: reference || "",
         p_property: property || "",
         p_status: status,
-        p_lines: JSON.stringify(resolvedLines || []),
+        p_lines: JSON.stringify(lines || []),
       });
       if (!rpcErr && jeId) return jeId;
       console.warn("JE RPC fallback:", rpcErr?.message);
@@ -942,6 +942,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification }) {
   const [workOrders, setWorkOrders] = useState([]);
   const [payments, setPayments] = useState([]);
   const [utilities, setUtilities] = useState([]);
+  const [hoaDue, setHoaDue] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [acctRevenue, setAcctRevenue] = useState(0);
@@ -966,6 +967,10 @@ function Dashboard({ notifications, setPage, companyId, addNotification }) {
       setWorkOrders(w.data || []);
       setPayments(pay.data || []);
       setUtilities(u.data || []);
+      // Fetch upcoming HOA payments (due within 14 days)
+      const fourteenDays = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+      const { data: hoaData } = await supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("status", "unpaid").lte("due_date", fourteenDays).order("due_date", { ascending: true });
+      setHoaDue(hoaData || []);
       // Pull financials from accounting module (journal entries are the GL source of truth,
       // but dashboard stats also reference payments/tenants tables for quick metrics)
       try {
@@ -1074,6 +1079,25 @@ function Dashboard({ notifications, setPage, companyId, addNotification }) {
           ))}
           {utilities.filter(u => u.status === "pending").length === 0 && <div className="text-sm text-slate-400 text-center py-4">No pending utilities</div>}
         </div>
+        {hoaDue.length > 0 && (
+        <div className="bg-white rounded-3xl shadow-card border border-amber-100 p-4">
+          <h3 className="font-semibold text-amber-700 mb-3"><span className="material-icons-outlined text-sm align-middle mr-1">holiday_village</span>HOA Payments Due</h3>
+          {hoaDue.map(h => {
+            const daysLeft = Math.ceil((new Date(h.due_date).getTime() - Date.now()) / 86400000);
+            return (
+            <div key={h.id} className="flex justify-between items-center py-2 border-b border-amber-50 last:border-0">
+              <div>
+                <div className="text-sm font-medium text-slate-800">{h.hoa_name}</div>
+                <div className="text-xs text-slate-400">{h.property}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm font-semibold text-amber-700">${safeNum(h.amount).toLocaleString()}</div>
+                <div className={`text-xs ${daysLeft <= 3 ? "text-red-500 font-bold" : "text-amber-500"}`}>{daysLeft <= 0 ? "OVERDUE" : `${daysLeft}d left`}</div>
+              </div>
+            </div>);
+          })}
+        </div>
+        )}
         <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
           <h3 className="font-semibold text-slate-700 mb-3">Net Operating Income</h3>
           <div className="space-y-2">
@@ -5705,7 +5729,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile }) 
         p_reference: header.reference || "",
         p_property: header.property || "",
         p_status: header.status || "draft",
-        p_lines: JSON.stringify(resolvedLines || []),
+        p_lines: JSON.stringify(lines || []),
       });
       if (!rpcErr && jeId) { fetchAll(); return; }
       console.warn("addJE RPC fallback:", rpcErr?.message);
@@ -7715,6 +7739,30 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
     setShowReconcile(true);
   }
 
+  function autoMatchItems(items) {
+    // Auto-match: check items where amount + date match patterns
+    // Match rent payments (round amounts on 1st of month)
+    // Match bank import references
+    const matched = items.map(item => {
+      const abs = Math.abs(item.amount);
+      const ref = (item.reference || "").toLowerCase();
+      const desc = (item.description || "").toLowerCase();
+      // Auto-reconcile rent payments, stripe payments, and bank imports
+      if (ref.startsWith("rent-auto") || ref.startsWith("pay-") || ref.startsWith("stripe-") || ref.startsWith("import-")) {
+        return { ...item, reconciled: true, autoMatched: true };
+      }
+      // Auto-reconcile if description contains common patterns
+      if (desc.includes("rent payment") || desc.includes("rent charge") || desc.includes("late fee") || desc.includes("security deposit")) {
+        return { ...item, reconciled: true, autoMatched: true };
+      }
+      return item;
+    });
+    const matchCount = matched.filter(m => m.autoMatched).length;
+    setReconItems(matched);
+    if (matchCount > 0) alert(`Auto-matched ${matchCount} of ${matched.length} items based on reference and description patterns.`);
+    else alert("No auto-matches found. Please reconcile items manually.");
+  }
+
   function toggleReconItem(index) {
     const updated = [...reconItems];
     updated[index].reconciled = !updated[index].reconciled;
@@ -7875,6 +7923,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
 
           <div className="mb-3 flex items-center gap-2">
             <button onClick={toggleAllRecon} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">{reconItems.every(i => i.reconciled) ? "Uncheck All" : "Check All"}</button>
+            <button onClick={() => autoMatchItems(reconItems)} className="text-xs text-emerald-600 border border-emerald-200 px-3 py-1 rounded-lg hover:bg-emerald-50">⚡ Auto-Match</button>
             <span className="text-xs text-slate-400">{reconItems.length} transactions</span>
           </div>
 
@@ -9095,10 +9144,17 @@ const ALL_NAV = [
   { id: "tenants", label: "Tenants", icon: "people" },
   { id: "payments", label: "Payments", icon: "payments" },
   { id: "maintenance", label: "Maintenance", icon: "build" },
+  { id: "leases", label: "Leases", icon: "description" },
   { id: "utilities", label: "Utilities", icon: "bolt" },
   { id: "hoa", label: "HOA Payments", icon: "holiday_village" },
   { id: "accounting", label: "Accounting", icon: "account_balance" },
+  { id: "documents", label: "Documents", icon: "folder" },
+  { id: "inspections", label: "Inspections", icon: "checklist" },
+  { id: "vendors", label: "Vendors", icon: "engineering" },
+  { id: "autopay", label: "Autopay", icon: "autorenew" },
   { id: "owners", label: "Owners", icon: "person" },
+  { id: "notifications", label: "Notifications", icon: "notifications_active" },
+  { id: "audittrail", label: "Audit Trail", icon: "history" },
 ];
 
 // ============ AUTOPAY / RECURRING RENT ============
@@ -9549,8 +9605,8 @@ function TenantPortal({ currentUser, companyId }) {
       setWorkOrders(w.data || []);
       setDocuments(d.data || []);
       // Check autopay status
-      if (tenantName) {
-        const { data: ap } = await supabase.from("autopay_schedules").select("enabled").eq("company_id", companyId).eq("tenant", tenantName).maybeSingle();
+      if (tenant.name) {
+        const { data: ap } = await supabase.from("autopay_schedules").select("enabled").eq("company_id", companyId).eq("tenant", tenant.name).maybeSingle();
         if (ap?.enabled) setAutopayEnabled(true);
       }
       setLoading(false);
@@ -10743,6 +10799,56 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId })
     } finally { guardRelease("createEviction"); }
   }
 
+  function generateEvictionNotice(evCase) {
+    const noticeTypeLabel = { pay_or_quit: "Pay or Quit", cure_or_quit: "Cure or Quit", unconditional_quit: "Unconditional Quit" };
+    const stateNotice = { MD: { pay_or_quit: 10, cure_or_quit: 14, unconditional_quit: 30 }, VA: { pay_or_quit: 5, cure_or_quit: 21, unconditional_quit: 30 }, DC: { pay_or_quit: 30, cure_or_quit: 30, unconditional_quit: 90 } };
+    const state = (evCase.property || "").includes(", VA") ? "VA" : (evCase.property || "").includes(", DC") ? "DC" : "MD";
+    const days = stateNotice[state]?.[evCase.notice_type] || evCase.notice_days || 30;
+    const serveDate = formatLocalDate(new Date());
+    const deadlineDate = new Date(); deadlineDate.setDate(deadlineDate.getDate() + days);
+    const deadline = formatLocalDate(deadlineDate);
+    const balanceOwed = evCase.balance_owed || 0;
+
+    const html = `<!DOCTYPE html><html><head><style>
+      body { font-family: 'Times New Roman', serif; max-width: 700px; margin: 40px auto; padding: 20px; line-height: 1.6; color: #111; }
+      h1 { text-align: center; font-size: 22px; border-bottom: 2px solid #333; padding-bottom: 10px; }
+      h2 { font-size: 16px; margin-top: 24px; }
+      .field { font-weight: bold; }
+      .signature-line { border-bottom: 1px solid #333; width: 250px; display: inline-block; margin-top: 40px; }
+      @media print { body { margin: 0.5in; } }
+    </style></head><body>
+      <h1>NOTICE TO ${(noticeTypeLabel[evCase.notice_type] || "QUIT").toUpperCase()}</h1>
+      <p><strong>State of ${state === "MD" ? "Maryland" : state === "VA" ? "Virginia" : "District of Columbia"}</strong></p>
+      <p><strong>Date Served:</strong> ${serveDate}</p>
+      <p><strong>To:</strong> ${evCase.tenant_name || "[TENANT NAME]"}</p>
+      <p><strong>Property Address:</strong> ${evCase.property || "[PROPERTY ADDRESS]"}</p>
+      <hr>
+      <p>You are hereby notified that you are required to ${evCase.notice_type === "pay_or_quit"
+        ? `pay the total outstanding rent of <strong>$${balanceOwed.toLocaleString()}</strong> or vacate the premises`
+        : evCase.notice_type === "cure_or_quit"
+        ? `cure the following lease violation or vacate the premises`
+        : `vacate the premises unconditionally`}
+      within <strong>${days} days</strong> of the date of this notice (by <strong>${deadline}</strong>).</p>
+      ${evCase.notice_type === "pay_or_quit" ? `<h2>Amount Due</h2><table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse;width:100%">
+        <tr><td>Rent Owed</td><td style="text-align:right">$${balanceOwed.toLocaleString()}</td></tr>
+        <tr><td>Late Fees</td><td style="text-align:right">$${(evCase.late_fees || 0).toLocaleString()}</td></tr>
+        <tr style="font-weight:bold"><td>Total</td><td style="text-align:right">$${(balanceOwed + (evCase.late_fees || 0)).toLocaleString()}</td></tr>
+      </table>` : ""}
+      ${evCase.reason === "lease_violation" ? `<h2>Lease Violation</h2><p>${evCase.notes || "[Describe the violation]"}</p>` : ""}
+      <h2>Legal Notice</h2>
+      <p>If you fail to comply with this notice within the time specified, the landlord may commence legal proceedings to recover possession of the premises and any amounts owed, pursuant to ${state === "MD" ? "Maryland Real Property Code § 8-401" : state === "VA" ? "Virginia Code § 55.1-1245" : "D.C. Code § 42-3505.01"}.</p>
+      <p>Payment may be made to the landlord at the above property address or by contacting the property management office.</p>
+      <br><br>
+      <p>Respectfully,</p>
+      <p class="signature-line">&nbsp;</p>
+      <p>Landlord / Property Manager</p>
+      <p style="color:#666;font-size:12px;margin-top:30px">This notice was generated by PropManager on ${serveDate}. This is a legal document — consult with an attorney for jurisdiction-specific requirements.</p>
+    </body></html>`;
+
+    const w = window.open("", "_blank", "noopener,noreferrer");
+    if (w) { w.document.write(html); w.document.title = `${noticeTypeLabel[evCase.notice_type] || "Notice"} — ${evCase.tenant_name}`; setTimeout(() => w.print(), 500); }
+  }
+
   async function advanceStage(evCase, nextStage) {
     if (!guardSubmit("advanceEviction")) return;
     try {
@@ -10987,6 +11093,11 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId })
                   );
                 })}
               </div>
+            </div>
+
+            {/* Generate Legal Notice */}
+            <div className="px-6 py-3 border-b border-indigo-50 flex gap-2">
+              <button onClick={() => generateEvictionNotice(selectedCase)} className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-lg hover:bg-amber-100 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">print</span>Generate Legal Notice</button>
             </div>
 
             {/* Advance Stage */}

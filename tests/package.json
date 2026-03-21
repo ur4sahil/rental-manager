@@ -1,0 +1,35 @@
+{
+  "name": "propmanager-tests",
+  "version": "2.0.0",
+  "description": "Comprehensive test suite for PropManager",
+  "main": "index.js",
+  "scripts": {
+    "test": "npm run test:infra && npm run test:schema && npm run test:data && npm run test:e2e",
+    "test:infra": "node infra.test.js",
+    "test:schema": "node supabase-schema.test.js",
+    "test:data": "node data-layer.test.js",
+    "test:e2e": "npx playwright test",
+    "test:e2e:headed": "npx playwright test --headed",
+    "test:e2e:chromium": "npx playwright test --project=chromium-desktop",
+    "test:e2e:firefox": "npx playwright test --project=firefox-desktop",
+    "test:e2e:webkit": "npx playwright test --project=webkit-desktop",
+    "test:e2e:mobile": "npx playwright test --project=iphone --project=android",
+    "test:e2e:tablet": "npx playwright test --project=ipad",
+    "test:e2e:visual": "npx playwright test e2e/14-visual-responsive.spec.js",
+    "test:e2e:navigation": "npx playwright test e2e/13-sidebar-navigation.spec.js",
+    "test:e2e:auth": "npx playwright test e2e/01-landing-auth.spec.js",
+    "test:report": "npx playwright show-report",
+    "seed": "node seed-test-data.js",
+    "cleanup": "node cleanup-test-data.js",
+    "browsers:install": "npx playwright install"
+  },
+  "keywords": [],
+  "author": "Sigma Housing LLC",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@supabase/supabase-js": "^2.98.0",
+    "dotenv": "^17.3.1"
+  }
+}

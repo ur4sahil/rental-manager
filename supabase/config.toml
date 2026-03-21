@@ -1,0 +1,24 @@
+
+[functions.send-notification]
+enabled = true
+verify_jwt = false
+import_map = "./functions/send-notification/deno.json"
+entrypoint = "./functions/send-notification/index.ts"
+
+[functions.stripe-webhook]
+enabled = true
+verify_jwt = false
+import_map = "./functions/stripe-webhook/deno.json"
+entrypoint = "./functions/stripe-webhook/index.ts"
+
+[functions.create-checkout-session]
+enabled = true
+verify_jwt = true
+import_map = "./functions/create-checkout-session/deno.json"
+entrypoint = "./functions/create-checkout-session/index.ts"
+
+[functions.auto-rent-charges]
+enabled = true
+verify_jwt = false
+import_map = "./functions/auto-rent-charges/deno.json"
+entrypoint = "./functions/auto-rent-charges/index.ts"
