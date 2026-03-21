@@ -715,6 +715,58 @@ function PropertySelect({ value, onChange, className = "", companyId }) {
   );
 }
 
+// ============ INLINE DOCUMENT UPLOAD MODAL ============
+function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUploaded }) {
+  const [form, setForm] = useState({ name: "", type: "Lease", tenant_visible: false });
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef();
+
+  async function handleUpload() {
+  const file = fileRef.current?.files?.[0];
+  if (!file) { showToast("Please select a file", "error"); return; }
+  if (!form.name.trim()) { showToast("Document name is required", "error"); return; }
+  setUploading(true);
+  const fileName = companyId + "/" + shortId() + "_" + sanitizeFileName(file.name);
+  const { error: uploadErr } = await supabase.storage.from("documents").upload(fileName, file, { cacheControl: "3600", upsert: false });
+  if (uploadErr) { showToast("Upload failed: " + uploadErr.message, "error"); setUploading(false); return; }
+  const { error: insertErr } = await supabase.from("documents").insert([{
+  company_id: companyId, name: form.name.trim(), file_name: fileName, url: fileName,
+  property: property || "", tenant: tenant || "", type: form.type,
+  tenant_visible: form.tenant_visible, uploaded_at: new Date().toISOString(),
+  }]);
+  if (insertErr) { showToast("File uploaded but record failed: " + insertErr.message, "error"); setUploading(false); return; }
+  showToast("Document uploaded", "success");
+  setUploading(false);
+  if (onUploaded) onUploaded();
+  onClose();
+  }
+
+  return (
+  <Modal title="Upload Document" onClose={onClose}>
+  <div className="space-y-3">
+  {property && <div className="text-xs text-slate-400">Property: <span className="font-semibold text-slate-600">{property}</span></div>}
+  {tenant && <div className="text-xs text-slate-400">Tenant: <span className="font-semibold text-slate-600">{tenant}</span></div>}
+  <div>
+  <label className="text-xs font-medium text-slate-400 block mb-1">Document Name *</label>
+  <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Signed Lease Agreement" />
+  </div>
+  <div>
+  <label className="text-xs font-medium text-slate-400 block mb-1">Type</label>
+  <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
+  {["Lease","Notice","ID","Insurance","Inspection","Receipt","Other"].map(t => <option key={t} value={t}>{t}</option>)}
+  </select>
+  </div>
+  <div>
+  <label className="text-xs font-medium text-slate-400 block mb-1">File *</label>
+  <input ref={fileRef} type="file" className="text-sm" />
+  </div>
+  <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} className="accent-indigo-600" />Visible to tenant</label>
+  <button onClick={handleUpload} disabled={uploading} className="w-full bg-indigo-600 text-white py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 disabled:opacity-50">{uploading ? "Uploading..." : "Upload"}</button>
+  </div>
+  </Modal>
+  );
+}
+
 // ============ LANDING PAGE ============
 function LandingPage({ onGetStarted }) {
   return (
@@ -1582,6 +1634,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const [showArchived, setShowArchived] = useState(false);
   const [archivedProperties, setArchivedProperties] = useState([]); // { tenant, property, rent }
   const [showDocChecklist, setShowDocChecklist] = useState(null);
+  const [showDocUpload, setShowDocUpload] = useState(null); // { property, tenant }
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [propertyDocs, setPropertyDocs] = useState([]);
   const [propertyWorkOrders, setPropertyWorkOrders] = useState([]); // property/tenant that needs docs
@@ -1829,7 +1882,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="px-6 py-4">
   <div className="flex gap-2 flex-wrap">
   {!isReadOnly(selectedProperty) && <button onClick={() => { setEditingProperty(selectedProperty); setForm({ address_line_1: selectedProperty.address_line_1 || selectedProperty.address || "", address_line_2: selectedProperty.address_line_2 || "", city: selectedProperty.city || "", state: selectedProperty.state || "", zip: selectedProperty.zip || "", type: selectedProperty.type, status: selectedProperty.status, rent: selectedProperty.rent || "", security_deposit: selectedProperty.security_deposit || "", tenant: selectedProperty.tenant || "", tenant_email: selectedProperty._tenantEmail || "", tenant_phone: selectedProperty._tenantPhone || "", lease_start: selectedProperty.lease_start || "", lease_end: selectedProperty.lease_end || "", notes: selectedProperty.notes || "" }); setShowForm(true); setSelectedProperty(null); }} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">Edit Property</button>}
-  <button onClick={() => { setPage("documents"); setSelectedProperty(null); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-2xl hover:bg-slate-100">Upload Document</button>
+  <button onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-2xl hover:bg-slate-200">Upload Document</button>
   <button onClick={() => { setPage("maintenance"); setSelectedProperty(null); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-2xl hover:bg-slate-100">New Work Order</button>
   </div>
   </div>
@@ -1894,7 +1947,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   ))}
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={() => { setPage("documents"); setShowDocChecklist(null); }} className="bg-amber-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-amber-700">Upload Documents Now</button>
+  <button onClick={() => { setShowDocUpload({ property: showDocChecklist.property, tenant: showDocChecklist.name }); setShowDocChecklist(null); }} className="bg-amber-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-amber-700">Upload Documents Now</button>
   <button onClick={async () => { if (isAdmin || await showConfirm({ message: "Skip document upload? This will require admin approval later." })) setShowDocChecklist(null); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Skip for Now</button>
   </div>
   </div>
@@ -2093,6 +2146,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
 
   </>)}
+  {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedProperty) { supabase.from("documents").select("*").eq("company_id", companyId).eq("property", selectedProperty.address).is("archived_at", null).order("created_at", { ascending: false }).limit(100).then(({ data }) => setPropertyDocs(data || [])); } }} />}
   </div>
   );
 }
@@ -2139,6 +2193,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [tenantTab, setTenantTab] = useState(initialTab || "tenants");
   const [archivedTenants, setArchivedTenants] = useState([]);
   const [showTenantDocPrompt, setShowTenantDocPrompt] = useState(null); // 'renew' | 'notice'
+  const [showDocUpload, setShowDocUpload] = useState(null);
   const [leaseInput, setLeaseInput] = useState("");
   // eslint-disable-next-line no-unused-vars
   const [error, setError] = useState("");
@@ -2818,7 +2873,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ))}
   </div>
   )}
-  <button onClick={() => { setPage("documents"); setSelectedTenant(null); setActivePanel(null); }} className="mt-3 bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">Upload Documents</button>
+  <button onClick={() => setShowDocUpload({ property: selectedTenant?.property || "", tenant: selectedTenant?.name || "" })} className="mt-3 bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">Upload Documents</button>
   </div>
   )}
 
@@ -2913,7 +2968,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ))}
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={() => { setPage("documents"); setShowTenantDocPrompt(null); }} className="bg-amber-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-amber-700">Upload Documents Now</button>
+  <button onClick={() => { setShowDocUpload({ property: selectedTenant?.property || "", tenant: selectedTenant?.name || showTenantDocPrompt || "" }); setShowTenantDocPrompt(null); }} className="bg-amber-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-amber-700">Upload Documents Now</button>
   {isAdmin ? (
   <button onClick={() => setShowTenantDocPrompt(null)} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Admin: Skip for Now</button>
   ) : (
@@ -3188,6 +3243,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </>;
   })()}
   </>)}
+  {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedTenant) { supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", selectedTenant.name).is("archived_at", null).order("created_at", { ascending: false }).limit(50).then(({ data }) => setTenantDocs(data || [])); } }} />}
   </div>
   );
 }
