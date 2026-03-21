@@ -424,28 +424,38 @@ async function getPropertyClassId(propertyAddress, companyId) {
 
 // Resolve bare account codes (1000, 1100, etc.) to actual DB IDs for this company
 const _acctIdCache = {};
+const _acctCodeToName = { "1000": "Checking Account", "1100": "Accounts Receivable", "2100": "Security Deposits Held", "2200": "Owner Distributions Payable", "4000": "Rental Income", "4010": "Late Fee Income", "4100": "Other Income", "4200": "Management Fee Income", "5300": "Repairs & Maintenance", "5400": "Utilities Expense" };
 async function resolveAccountId(bareCode, companyId) {
   if (!companyId) return bareCode;
   const cid = companyId;
   // Key cache by company to prevent cross-company stale hits
   if (!_acctIdCache[cid]) _acctIdCache[cid] = {};
   if (_acctIdCache[cid]?.[bareCode]) return _acctIdCache[cid][bareCode];
-  // Try prefixed format first (co-abc12-1000), then bare code
-  const prefix = cid.slice(0, 8) + "-" + bareCode;
-  let resolved = bareCode;
-  const { data: d1 } = await supabase.from("acct_accounts").select("id").eq("company_id", cid).eq("id", prefix).limit(1);
-  if (d1?.length > 0) { resolved = d1[0].id; }
-  else {
-  const { data: d2 } = await supabase.from("acct_accounts").select("id").eq("company_id", cid).eq("id", bareCode).limit(1);
-  if (d2?.length > 0) { resolved = d2[0].id; }
-  else {
-  // Try matching by ID ending with the bare code (handles various prefix formats)
-  const { data: d3 } = await supabase.from("acct_accounts").select("id").eq("company_id", cid).like("id", "%" + bareCode).limit(1);
-  if (d3?.length > 0) resolved = d3[0].id;
+  // Bulk-fetch all accounts for this company once and cache them all
+  const { data: allAccts } = await supabase.from("acct_accounts").select("id, name").eq("company_id", cid);
+  if (allAccts && allAccts.length > 0) {
+  // Build lookup maps
+  for (const a of allAccts) {
+  // Cache by exact ID match
+  if (/^\d{4}$/.test(a.id)) _acctIdCache[cid][a.id] = a.id;
+  // Cache by suffix (e.g., "co-abc12-1000" → cache under "1000")
+  const suffix = a.id.match(/(\d{4})$/);
+  if (suffix) _acctIdCache[cid][suffix[1]] = a.id;
+  // Cache by name → code mapping (e.g., "Checking Account" → its ID, mapped from code "1000")
+  for (const [code, name] of Object.entries(_acctCodeToName)) {
+  if (a.name === name) _acctIdCache[cid][code] = a.id;
   }
   }
-  _acctIdCache[cid][bareCode] = resolved;
-  return resolved;
+  }
+  if (_acctIdCache[cid]?.[bareCode]) return _acctIdCache[cid][bareCode];
+  // Last resort: ensure the account exists by upserting it
+  const acctName = _acctCodeToName[bareCode] || "Account " + bareCode;
+  const acctType = bareCode[0] === "1" ? "asset" : bareCode[0] === "2" ? "liability" : bareCode[0] === "4" ? "revenue" : "expense";
+  const subType = bareCode[0] === "1" ? "current_asset" : bareCode[0] === "2" ? "current_liability" : bareCode[0] === "4" ? "operating_revenue" : "operating_expense";
+  const { data: created } = await supabase.from("acct_accounts").upsert([{ id: bareCode, company_id: cid, name: acctName, type: acctType, sub_type: subType, is_active: true }], { onConflict: "id" }).select("id").maybeSingle();
+  const resolvedId = created?.id || bareCode;
+  _acctIdCache[cid][bareCode] = resolvedId;
+  return resolvedId;
 }
 
 // ============ AUTOMATIC RENT CHARGE ENGINE ============
@@ -13637,11 +13647,15 @@ function AppInner() {
   { id: "5300", name: "Repairs & Maintenance", type: "expense", sub_type: "operating_expense", is_active: true },
   { id: "5400", name: "Utilities Expense", type: "expense", sub_type: "operating_expense", is_active: true },
   ];
-  const { data: existing } = await supabase.from("acct_accounts").select("id").eq("company_id", cid);
-  if (existing && existing.length > 0) return; // already has accounts
-  const rows = defaults.map(a => ({ ...a, company_id: cid }));
-  await supabase.from("acct_accounts").insert(rows);
-  console.log("Seeded default chart of accounts for company", cid);
+  const { data: existing } = await supabase.from("acct_accounts").select("id, name").eq("company_id", cid);
+  const existingNames = new Set((existing || []).map(a => a.name));
+  const missing = defaults.filter(a => !existingNames.has(a.name));
+  if (missing.length === 0) return; // all required accounts exist
+  const rows = missing.map(a => ({ ...a, company_id: cid }));
+  await supabase.from("acct_accounts").upsert(rows, { onConflict: "id" });
+  // Clear account ID cache so new accounts are picked up
+  delete _acctIdCache[cid];
+  console.log("Seeded", missing.length, "missing accounts for company", cid);
   }
 
   function handleSelectCompany(company, role) {
@@ -13655,12 +13669,13 @@ function AppInner() {
   registerPushNotifications();
   // Auto-run daily notification check (rent reminders, lease expiry)
   autoNotificationCheck(company.id);
-  // Ensure default chart of accounts exists
-  ensureDefaultAccounts(company.id).catch(e => console.warn("COA seed:", e.message));
+  // Ensure default chart of accounts exists BEFORE any accounting operations
+  ensureDefaultAccounts(company.id).then(() => {
   // Auto-post rent accruals (idempotent — skips already posted months)
   if (role !== "tenant" && role !== "owner") {
   autoPostRentCharges(company.id).catch(e => console.warn("Auto rent charges:", e.message));
   }
+  }).catch(e => console.warn("COA seed:", e.message));
   setCompanyRole(role);
   setUserRole(role);
   setRoleLoaded(true);
