@@ -13121,11 +13121,12 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   if (creating) return;
   if (!createForm.name.trim()) { showToast("Company name is required.", "error"); return; }
   setCreating(true);
-  // Check if user already has a company with the same name
+  // Block duplicate company names entirely
   const userCompanyNames = companies.map(c => c.name?.toLowerCase().trim());
   if (userCompanyNames.includes(createForm.name.trim().toLowerCase())) {
-  const proceed = await showConfirm({ message: 'You already have a company named "' + createForm.name.trim() + '" in your profile. Create another with the same name?', confirmText: "Create Anyway" });
-  if (!proceed) { showToast("Company creation cancelled.", "info"); setCreating(false); return; }
+  showToast('You already have a company named "' + createForm.name.trim() + '".', "error");
+  setCreating(false);
+  return;
   }
   const companyId = "co-" + shortId() + shortId().slice(0, 4);
   // Generate unique 8-digit numeric company code
@@ -13271,7 +13272,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
   <div className="flex items-center gap-2 shrink-0 ml-3">
   <a href={window.location.origin + "/?company=" + c.id} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.stopPropagation(); }} className="text-indigo-600 text-xs font-medium hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>Open</a>
-  {c.memberRole === "admin" && <button onClick={(e) => { e.stopPropagation(); deleteCompany(c); }} disabled={deleting === c.id} className="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors disabled:opacity-50">{deleting === c.id ? "Deleting..." : "Delete"}</button>}
+  {!["tenant", "owner"].includes(c.memberRole) && <button onClick={(e) => { e.stopPropagation(); deleteCompany(c); }} disabled={deleting === c.id} className="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors disabled:opacity-50">{deleting === c.id ? "Deleting..." : "Delete"}</button>}
   </div>
   </div>
   ))}
@@ -13293,8 +13294,9 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
 
   {/* Actions */}
   <div className="grid grid-cols-2 gap-3 mb-6">
-  <button onClick={() => { setShowCreate(true); setShowJoin(false); }}
-  className="bg-indigo-600 text-white rounded-3xl p-4 text-center hover:bg-indigo-700 transition-colors">
+  <button onClick={() => { if (!creating) { setShowCreate(true); setShowJoin(false); } }}
+  disabled={creating}
+  className="bg-indigo-600 text-white rounded-3xl p-4 text-center hover:bg-indigo-700 transition-colors disabled:opacity-50">
   <div className="text-2xl mb-1">🏢</div>
   <div className="text-sm font-semibold">Create Company</div>
   <div className="text-xs text-indigo-200">Start a new LLC or org</div>
