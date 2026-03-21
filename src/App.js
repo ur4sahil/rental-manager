@@ -8445,12 +8445,12 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   fetchData();
   }
 
+  useEffect(() => { fetchQueueStatus(); }, [companyId]);
+
   if (loading) return <Spinner />;
 
   const sentToday = logs.filter(l => l.created_at && new Date(l.created_at).toDateString() === new Date().toDateString()).length;
   const enabledCount = settings.filter(s => s.enabled).length;
-
-  useEffect(() => { fetchQueueStatus(); }, [companyId]);
 
   return (
   <div>
@@ -8512,7 +8512,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   <span className="font-medium text-slate-500">{s.recipients}</span>
   <select value={s.recipient_filter || "all"} onChange={async (e) => {
   await supabase.from("notification_settings").update({ recipient_filter: e.target.value }).eq("id", s.id).eq("company_id", companyId);
-  fetchSettings();
+  fetchData();
   }} className="text-xs border border-gray-200 rounded px-1.5 py-0.5 mr-2">
   <option value="all">All</option>
   <option value="tenant_only">Tenant Only</option>
@@ -8525,7 +8525,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   const currentChannels = s.channels ? JSON.parse(s.channels) : { in_app: true, email: true, push: false };
   currentChannels[ch] = !currentChannels[ch];
   await supabase.from("notification_settings").update({ channels: JSON.stringify(currentChannels) }).eq("id", s.id).eq("company_id", companyId);
-  fetchSettings();
+  fetchData();
   }} className={"text-xs px-2 py-0.5 rounded " + ((s.channels ? JSON.parse(s.channels) : { in_app: true, email: true, push: false })[ch] ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 text-gray-400")}>{channelLabels[ch]}</button>
   ))}
   </div>
