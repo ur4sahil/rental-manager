@@ -13578,17 +13578,20 @@ function AppInner() {
   const [urlCompanyParam] = useState(() => new URLSearchParams(window.location.search).get("company"));
 
   useEffect(() => {
-  let autoSelectRan = false;
+  let initialCheckDone = false;
   supabase.auth.getSession().then(({ data: { session } }) => {
-  if (session) { setCurrentUser(session.user); setScreen("company_select"); autoSelectRan = true; autoSelectCompany(session.user); }
+  initialCheckDone = true;
+  if (session) { setCurrentUser(session.user); setScreen("company_select"); autoSelectCompany(session.user); }
   else { setScreen("landing"); }
   });
   const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_event, session) => {
   if (session) {
   setCurrentUser(session.user);
-  // Only redirect to company_select if we don't have a company yet
+  // On initial load, getSession already handles it — skip duplicate
+  // On new login (initialCheckDone=true), always proceed
+  if (!initialCheckDone) return;
   setActiveCompany(prev => {
-  if (!prev && !autoSelectRan) { setScreen("company_select"); autoSelectCompany(session.user); }
+  if (!prev) { setScreen("company_select"); autoSelectCompany(session.user); }
   return prev;
   });
   } else {
