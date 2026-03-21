@@ -11768,6 +11768,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const payload = {
   company_id: companyId, template_id: selectedTemplate.id, name: docName,
   field_values: fieldValues, rendered_body: rendered, status,
+  output_type: selectedTemplate.template_type === "pdf_overlay" ? "pdf_overlay" : "html",
   property_address: fieldValues.property_address || "",
   tenant_name: fieldValues.tenant_name || fieldValues.recipient_name || "",
   created_by: userProfile?.email,
@@ -11783,6 +11784,63 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   // ---- Export: PDF ----
   async function exportPDF(doc) {
+  const template = doc?._template || selectedTemplate;
+  const values = doc?.field_values || fieldValues;
+
+  // PDF Overlay: use pdf-lib to write values onto the original PDF
+  if (template?.template_type === "pdf_overlay" && template?.pdf_storage_path) {
+  try {
+  showToast("Generating PDF...", "info");
+  const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+  const url = await getSignedUrl("documents", template.pdf_storage_path);
+  if (!url) { showToast("Could not load PDF template", "error"); return; }
+  const resp = await fetch(url);
+  const origBytes = new Uint8Array(await resp.arrayBuffer());
+  const pdfDoc = await PDFDocument.load(origBytes);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const pages = pdfDoc.getPages();
+
+  for (const placement of (template.pdf_field_placements || [])) {
+  const pageIdx = (placement.page || 1) - 1;
+  if (pageIdx < 0 || pageIdx >= pages.length) continue;
+  const page = pages[pageIdx];
+  const { width: pgW, height: pgH } = page.getSize();
+  const val = values[placement.field_name];
+  let text = "";
+  if (val && typeof val === "object" && val.line1 !== undefined) {
+  text = formatAddressBlock(val);
+  } else {
+  text = val ? String(val) : "";
+  }
+  if (!text) continue;
+  const x = (placement.x / 100) * pgW;
+  const y = pgH - ((placement.y / 100) * pgH) - (placement.font_size || 12);
+  const fontSize = placement.font_size || 12;
+
+  // Handle multi-line (address blocks)
+  const lines = text.split("\n");
+  lines.forEach((line, li) => {
+  page.drawText(line, { x, y: y - (li * (fontSize + 2)), size: fontSize, font, color: rgb(0.1, 0.1, 0.1) });
+  });
+  }
+
+  const filledBytes = await pdfDoc.save();
+  const blob = new Blob([filledBytes], { type: "application/pdf" });
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = (doc?.name || template?.name || "document").replace(/[^a-zA-Z0-9_-]/g, "_") + ".pdf";
+  a.click();
+  URL.revokeObjectURL(blobUrl);
+  showToast("PDF downloaded", "success");
+  } catch (err) {
+  console.error("PDF export error:", err);
+  showToast("PDF export failed: " + err.message, "error");
+  }
+  return;
+  }
+
+  // HTML template: use html2pdf.js
   const html2pdf = (await import("html2pdf.js")).default;
   const container = document.createElement("div");
   container.innerHTML = '<div style="font-family:Georgia,serif;font-size:13px;line-height:1.6;color:#1a1a1a;padding:40px;max-width:700px;margin:0 auto;">' + (doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues)) + '</div>';
@@ -12650,7 +12708,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   </div>
   <div className="flex gap-2">
-  <button onClick={() => exportPDF(d)} className="text-xs text-red-600 border border-red-200 px-2 py-1 rounded-lg hover:bg-red-50" title="PDF">PDF</button>
+  <button onClick={() => { const t = templates.find(t => t.id === d.template_id); exportPDF({ ...d, _template: t }); }} className="text-xs text-red-600 border border-red-200 px-2 py-1 rounded-lg hover:bg-red-50" title="PDF">PDF</button>
   <button onClick={() => exportDOCX(d)} className="text-xs text-blue-600 border border-blue-200 px-2 py-1 rounded-lg hover:bg-blue-50" title="DOCX">DOCX</button>
   <button onClick={() => exportTXT(d)} className="text-xs text-slate-500 border border-slate-200 px-2 py-1 rounded-lg hover:bg-slate-50" title="TXT">TXT</button>
   <button onClick={() => {
