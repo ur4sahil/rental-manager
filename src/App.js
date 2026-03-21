@@ -14158,20 +14158,7 @@ function AppInner() {
   </div>
 
   {/* Mobile Bottom Nav */}
-  <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-indigo-50 px-4 pt-3 pb-6 flex justify-around items-center z-40 md:hidden">
-  {[
-  { id: "dashboard", icon: "dashboard", label: "Dashboard" },
-  { id: "properties", icon: "apartment", label: "Properties" },
-  { id: "tenants", icon: "people", label: "Tenants" },
-  { id: "payments", icon: "payments", label: "Payments" },
-  { id: "maintenance", icon: "build", label: "Maint." },
-  ].map(n => (
-  <button key={n.id} onClick={() => setPage(n.id)} className={`flex flex-col items-center gap-1 transition-colors ${page === n.id ? "text-indigo-600" : "text-slate-400"}`}>
-  {page === n.id ? <div className="bg-indigo-50 p-2 rounded-xl"><span className="material-icons-outlined">{n.icon}</span></div> : <span className="material-icons-outlined">{n.icon}</span>}
-  <span className="text-[10px] font-bold uppercase tracking-tight">{n.label}</span>
-  </button>
-  ))}
-  </nav>
+  {/* Bottom nav removed — mobile navigation via sidebar hamburger menu */}
 
   {sidebarOpen && <div className="fixed inset-0 bg-black bg-opacity-20 z-10 md:hidden" onClick={() => setSidebarOpen(false)} />}
   {showNotifications && <div className="fixed inset-0 z-30" onClick={() => setShowNotifications(false)} />}
