@@ -12953,6 +12953,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast }) 
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState({ name: "", type: "LLC", company_role: "management", address: "", phone: "", email: "" });
   const [joinCode, setJoinCode] = useState("");
   const [joinSearch, setJoinSearch] = useState(""); // Deprecated — code-only joining
@@ -12986,7 +12987,12 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast }) 
   }
 
   async function createCompany() {
+  if (creating) return;
   if (!createForm.name.trim()) { showToast("Company name is required.", "error"); return; }
+  // Prevent duplicate company with same name for this user
+  const { data: dupCheck } = await supabase.from("companies").select("id").ilike("name", createForm.name.trim()).limit(1);
+  if (dupCheck && dupCheck.length > 0) { showToast("A company with this name already exists.", "error"); return; }
+  setCreating(true);
   const companyId = "co-" + shortId() + shortId().slice(0, 4);
   // Generate unique 8-digit numeric company code
   // Generate unique company code with collision retry
@@ -12996,7 +13002,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast }) 
   companyCode = String(10000000 + (ccArr[0] % 89999999));
   const { data: existing } = await supabase.from("companies").select("id").eq("company_code", companyCode).maybeSingle();
   if (!existing) break;
-  if (attempt === 4) { showToast("Could not generate unique company code. Please try again.", "error"); return; }
+  if (attempt === 4) { showToast("Could not generate unique company code. Please try again.", "error"); setCreating(false); return; }
   }
   // Atomic company creation: company + membership + app_users + chart of accounts in one transaction
   try {
@@ -13015,11 +13021,13 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast }) 
   if (rpcErr) throw new Error(rpcErr.message);
   } catch (rpcE) {
   showToast("Failed to create company: " + userError(rpcE.message) + "\n\nPlease ensure the database is properly configured. Contact support if this persists.", "error");
+  setCreating(false);
   return;
   }
-  showToast("Company created!\n\nCompany Code: " + companyCode + "\n\nShare this code with people you want to invite.", "success");
+  showToast("Company created! Company Code: " + companyCode + " — share this code to invite team members.", "success");
   setShowCreate(false);
   setCreateForm({ name: "", type: "LLC", company_role: "management", address: "", phone: "", email: "" });
+  setCreating(false);
   fetchCompanies();
   }
 
@@ -13151,7 +13159,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast }) 
   <div><label className="text-xs font-medium text-slate-500">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={createForm.phone} onChange={e => setCreateForm({...createForm, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="mt-1" /></div>
   </div>
   <div className="flex gap-2 pt-2">
-  <button onClick={createCompany} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-indigo-700">Create Company</button>
+  <button onClick={createCompany} disabled={creating} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-indigo-700 disabled:opacity-50">{creating ? "Creating..." : "Create Company"}</button>
   <button onClick={() => setShowCreate(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
