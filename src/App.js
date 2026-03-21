@@ -1184,7 +1184,8 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
 
   if (loading) return <Spinner />;
 
-  const occupied = properties.filter(p => p.status === "occupied").length;
+  const activeProperties = properties.filter(p => !p.archived_at);
+  const occupied = activeProperties.filter(p => p.status === "occupied").length;
   const dashMonth = formatLocalDate(new Date()).slice(0, 7);
   const totalRent = payments.filter(p => p.type === "rent" && p.status === "paid" && p.date?.startsWith(dashMonth)).reduce((s, p) => s + safeNum(p.amount), 0);
   const delinquent = tenants.filter(t => t.balance > 0).length;
@@ -1199,7 +1200,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   {/* Notifications accessible via bell icon in header */}
 
   <div className="grid grid-cols-2 gap-3 mb-4 md:grid-cols-4">
-  <StatCard onClick={() => setPage("properties")} label="Occupancy" value={`${occupied}/${properties.length}`} sub={`${properties.length ? Math.round(occupied / properties.length * 100) : 0}% occupied`} color="text-green-600" />
+  <StatCard onClick={() => setPage("properties")} label="Occupancy" value={`${occupied}/${activeProperties.length}`} sub={`${activeProperties.length ? Math.round(occupied / activeProperties.length * 100) : 0}% occupied`} color="text-green-600" />
   <StatCard onClick={() => setPage("accounting")} label="Revenue (Acctg)" value={`${formatCurrency(acctRevenue)}`} sub="from journal entries" color="text-blue-600" />
   <StatCard onClick={() => setPage("accounting")} label="Expenses (Acctg)" value={`${formatCurrency(acctExpenses)}`} sub="from journal entries" color="text-red-500" />
   <StatCard onClick={() => setPage("accounting")} label="Net Income" value={`$${(acctRevenue - acctExpenses).toLocaleString()}`} sub="revenue - expenses" color={acctRevenue - acctExpenses >= 0 ? "text-emerald-600" : "text-red-600"} />
