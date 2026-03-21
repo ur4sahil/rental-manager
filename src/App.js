@@ -1899,12 +1899,12 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <h3 className="text-sm font-semibold text-slate-700 mb-3">{editingProperty ? "Edit Property" : "Add Property"}</h3>
   {!isAdmin && <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 mb-3">Submitted for admin approval.</p>}
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address Line 1 *</label><Input placeholder="123 Main St" value={form.address_line_1} onChange={e => setForm({ ...form, address_line_1: e.target.value })} required /></div>
-  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address Line 2</label><Input placeholder="Apt 4B, Suite 200, etc." value={form.address_line_2} onChange={e => setForm({ ...form, address_line_2: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">City *</label><Input placeholder="Greenbelt" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} required /></div>
+  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address Line 1 *</label><Input placeholder="123 Main St" value={form.address_line_1} onChange={e => setForm({ ...form, address_line_1: e.target.value })} autoComplete="address-line1" name="address-line1" required /></div>
+  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address Line 2</label><Input placeholder="Apt 4B, Suite 200, etc." value={form.address_line_2} onChange={e => setForm({ ...form, address_line_2: e.target.value })} autoComplete="address-line2" name="address-line2" /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">City *</label><Input placeholder="Greenbelt" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} autoComplete="address-level2" name="city" required /></div>
   <div className="grid grid-cols-2 gap-2">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">State *</label><select value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required><option value="">--</option>{US_STATES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">ZIP *</label><Input placeholder="20770" value={form.zip} onChange={async e => { const z = e.target.value.replace(/\D/g, "").slice(0, 5); setForm(f => ({ ...f, zip: z })); if (z.length === 5) { const loc = await lookupZip(z); if (loc) setForm(f => ({ ...f, city: f.city || loc.city, state: f.state || loc.state })); } }} maxLength={5} required /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">State *</label><select value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" autoComplete="address-level1" name="state" required><option value="">--</option>{US_STATES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">ZIP *</label><Input placeholder="20770" value={form.zip} onChange={async e => { const z = e.target.value.replace(/\D/g, "").slice(0, 5); setForm(f => ({ ...f, zip: z })); if (z.length === 5) { const loc = await lookupZip(z); if (loc) setForm(f => ({ ...f, city: f.city || loc.city, state: f.state || loc.state })); } }} maxLength={5} autoComplete="postal-code" name="postal-code" required /></div>
   </div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Type *</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full"><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status *</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full"><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option><option value="inactive">Inactive</option></select></div>
@@ -13101,8 +13101,8 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3">Your Companies</h2>
   <div className="space-y-2">
   {companies.map(c => (
-  <button key={c.id} onClick={() => onSelectCompany(c, c.memberRole)}
-  className="w-full bg-white rounded-xl border border-indigo-100 p-4 flex items-center justify-between hover:border-indigo-300 hover:shadow-md transition-all text-left">
+  <a key={c.id} href={"#company-" + c.id} onClick={(e) => { e.preventDefault(); if (e.ctrlKey || e.metaKey) { window.open(window.location.origin + "/#dashboard", "_blank"); return; } onSelectCompany(c, c.memberRole); }}
+  className="w-full bg-white rounded-xl border border-indigo-100 p-4 flex items-center justify-between hover:border-indigo-300 hover:shadow-md transition-all text-left block">
   <div className="flex items-center gap-3">
   <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg">
   {c.name[0]}
@@ -13113,7 +13113,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
   </div>
   <span className="text-indigo-600 text-sm font-medium">Open →</span>
-  </button>
+  </a>
   ))}
   </div>
   </div>
