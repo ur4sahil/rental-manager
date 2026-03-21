@@ -73,7 +73,7 @@ async function safeLedgerInsert(entry) {
   if (error) {
     console.error("LEDGER ENTRY FAILED:", error.message, entry);
     // Alert user so they know balance and ledger may be out of sync
-    alert("Warning: Ledger entry failed to save for " + (entry.tenant || "unknown") + ": " + error.message + ". Balance may be out of sync — please check the tenant ledger.");
+    showToast("Warning: Ledger entry failed to save for " + (entry.tenant || "unknown") + ": " + error.message + ". Balance may be out of sync — please check the tenant ledger.", "error");
   }
   return !error;
 }
@@ -160,11 +160,8 @@ async function checkRPCHealth(companyId) {
 }
 
 // Sanitize error messages for user display — prevents leaking internal DB details to users
-// TODO: Replace remaining browser alert() calls with non-blocking toast notifications
-// Currently 257 alert() and 40 confirm() calls exist. Priority replacements:
-// 1. Success confirmations → addNotification toast (non-blocking)
-// 2. Error messages → wrap in userError() to strip internals
-// 3. Destructive confirms → keep window.confirm() for now (blocking is intentional) — strip internal details
+// ✅ DONE: Replaced all browser alert() calls with showToast() non-blocking notifications
+// ✅ DONE: Replaced all window.confirm() calls with showConfirm() modal confirmations
 function userError(msg) {
   if (!msg) return "An unexpected error occurred. Please try again.";
   // Strip Supabase internal details
@@ -220,8 +217,8 @@ function sanitizeFileName(name) {
   return String(name).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100);
 }
 // ============ CSV EXPORT HELPER ============
-function exportToCSV(data, columns, filename) {
-  if (!data || data.length === 0) { alert("No data to export."); return; }
+function exportToCSV(data, columns, filename, showToast) {
+  if (!data || data.length === 0) { if (showToast) showToast("No data to export.", "error"); return; }
   const header = columns.map(c => c.label).join(",");
   const rows = data.map(row => columns.map(c => {
     let val = typeof c.key === "function" ? c.key(row) : row[c.key];
@@ -639,6 +636,44 @@ function Modal({ title, onClose, children }) {
   );
 }
 
+// ============ TOAST NOTIFICATION SYSTEM ============
+let _toastIdCounter = 0;
+function ToastContainer({ toasts, removeToast }) {
+  return (
+    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 max-w-sm">
+      {toasts.map(t => (
+        <div key={t.id} className={"flex items-start gap-3 px-4 py-3 rounded-2xl shadow-lg border backdrop-blur-md animate-slide-up " + (t.type === "error" ? "bg-red-50 border-red-200 text-red-800" : t.type === "warning" ? "bg-amber-50 border-amber-200 text-amber-800" : t.type === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-white border-indigo-100 text-slate-700")}>
+          <span className="material-icons-outlined text-lg mt-0.5">{t.type === "error" ? "error" : t.type === "warning" ? "warning" : t.type === "success" ? "check_circle" : "info"}</span>
+          <div className="flex-1 text-sm">{t.message}</div>
+          <button onClick={() => removeToast(t.id)} className="text-slate-400 hover:text-slate-600 ml-1"><span className="material-icons-outlined text-sm">close</span></button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ============ CONFIRM MODAL SYSTEM ============
+function ConfirmModal({ config, onConfirm, onCancel }) {
+  if (!config) return null;
+  const isDanger = config.variant === "danger";
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-40 z-[90] flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl shadow-card border border-indigo-50 w-full max-w-md">
+        <div className="px-6 py-4 border-b border-indigo-50">
+          <h3 className="font-manrope font-bold text-slate-800 text-lg">{config.title || (isDanger ? "Confirm Action" : "Are you sure?")}</h3>
+        </div>
+        <div className="px-6 py-5">
+          <p className="text-sm text-slate-600 whitespace-pre-line">{config.message}</p>
+        </div>
+        <div className="px-6 py-4 border-t border-indigo-50 flex justify-end gap-3">
+          <button onClick={onCancel} className="px-4 py-2 text-sm font-semibold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors">{config.cancelText || "Cancel"}</button>
+          <button onClick={onConfirm} className={"px-4 py-2 text-sm font-semibold text-white rounded-xl transition-colors " + (isDanger ? "bg-red-600 hover:bg-red-700" : "bg-indigo-600 hover:bg-indigo-700")}>{config.confirmText || (isDanger ? "Delete" : "Confirm")}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ============ SHARED PROPERTY DROPDOWN ============
 function PropertyDropdown({ value, onChange, className = "", required = false, label = "Property", companyId }) {
   const [properties, setProperties] = useState([]);
@@ -936,7 +971,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
 }
 
 // ============ DASHBOARD ============
-function Dashboard({ notifications, setPage, companyId, addNotification }) {
+function Dashboard({ notifications, setPage, companyId, addNotification, showToast, showConfirm }) {
   const [properties, setProperties] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [workOrders, setWorkOrders] = useState([]);
@@ -1120,7 +1155,20 @@ function Dashboard({ notifications, setPage, companyId, addNotification }) {
 }
 
 // ============ PROPERTIES (Admin-Controlled with Approval Workflow) ============
-function Properties({ addNotification, userRole, userProfile, companyId }) {
+function Properties({ addNotification, userRole, userProfile, companyId, showToast, showConfirm }) {
+  function exportProperties() {
+    const exportData = properties.filter(p => !p.archived_at);
+    exportToCSV(exportData, [
+      { label: "Address", key: "address" },
+      { label: "Type", key: "type" },
+      { label: "Status", key: "status" },
+      { label: "Bedrooms", key: "bedrooms" },
+      { label: "Bathrooms", key: "bathrooms" },
+      { label: "Rent", key: "rent" },
+      { label: "Tenant", key: "tenant" },
+      { label: "Owner", key: "owner_name" },
+    ], "properties_" + new Date().toLocaleDateString(), showToast);
+  }
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -1145,18 +1193,18 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   }
 
   async function restoreProperty(prop) {
-    if (!window.confirm("Restore property \"" + prop.address + "\"?")) return;
+    if (!await showConfirm({ message: "Restore property \"" + prop.address + "\"?" })) return;
     const { error } = await supabase.from("properties").update({ archived_at: null, archived_by: null }).eq("id", prop.id).eq("company_id", companyId);
-    if (error) { alert(userError(error.message)); return; }
+    if (error) { showToast(userError(error.message), "error"); return; }
     await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("name", prop.address);
     addNotification("♻️", "Restored: " + prop.address);
     fetchProperties(); fetchArchivedProperties();
   }
 
   async function permanentDeleteProperty(prop) {
-    if (!window.confirm("PERMANENTLY delete \"" + prop.address + "\"?\n\nThis cannot be undone. All related data will be lost.")) return;
+    if (!await showConfirm({ message: "PERMANENTLY delete \"" + prop.address + "\"?\n\nThis cannot be undone. All related data will be lost.", variant: "danger", confirmText: "Delete" })) return;
     const { error } = await supabase.from("properties").delete().eq("id", prop.id).eq("company_id", companyId);
-    if (error) { alert(userError(error.message)); return; }
+    if (error) { showToast(userError(error.message), "error"); return; }
     addNotification("🗑️", "Permanently deleted: " + prop.address);
     fetchArchivedProperties();
   }
@@ -1200,12 +1248,12 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
 
   async function saveProperty() {
     // Validate BEFORE acquiring guard lock (so failed validation doesn't lock the button)
-    if (!form.address_line_1.trim()) { alert("Address Line 1 is required."); return; }
-    if (!form.city.trim()) { alert("City is required."); return; }
-    if (!form.state) { alert("State is required."); return; }
-    if (!form.zip.trim()) { alert("ZIP code is required."); return; }
+    if (!form.address_line_1.trim()) { showToast("Address Line 1 is required.", "error"); return; }
+    if (!form.city.trim()) { showToast("City is required.", "error"); return; }
+    if (!form.state) { showToast("State is required.", "error"); return; }
+    if (!form.zip.trim()) { showToast("ZIP code is required.", "error"); return; }
     if (editingProperty && isReadOnly(editingProperty)) {
-      alert("This is a managed property. You can only view it, not edit.");
+      showToast("This is a managed property. You can only view it, not edit.", "error");
       return;
     }
     if (!guardSubmit("saveProperty")) return;
@@ -1214,17 +1262,17 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     if (!editingProperty) {
       const compositeCheck = [form.address_line_1, form.address_line_2, form.city, form.state, form.zip].filter(Boolean).join(", ");
       const { data: dup } = await supabase.from("properties").select("id").eq("company_id", companyId).eq("address", compositeCheck).is("archived_at", null).maybeSingle();
-      if (dup) { alert("A property with this address already exists."); guardRelease("saveProperty"); return; }
+      if (dup) { showToast("A property with this address already exists."); guardRelease("saveProperty", "error"); return; }
     }
     if (form.status === "occupied") {
-      if (!form.tenant.trim()) { alert("Tenant name is required for occupied properties."); guardRelease("saveProperty"); return; }
-      if (!form.tenant_email.trim() || !form.tenant_email.includes("@")) { alert("A valid tenant email is required for occupied properties."); guardRelease("saveProperty"); return; }
-      if (!form.tenant_phone.trim()) { alert("Tenant phone number is required for occupied properties."); guardRelease("saveProperty"); return; }
-      if (!form.rent || isNaN(Number(form.rent)) || Number(form.rent) <= 0) { alert("Monthly rent is required for occupied properties."); guardRelease("saveProperty"); return; }
-      if (!form.security_deposit || isNaN(Number(form.security_deposit))) { alert("Security deposit amount is required for occupied properties."); guardRelease("saveProperty"); return; }
-      if (!form.lease_start) { alert("Lease start date is required for occupied properties."); guardRelease("saveProperty"); return; }
-      if (!form.lease_end) { alert("Lease end date is required for occupied properties."); guardRelease("saveProperty"); return; }
-      if (form.lease_start >= form.lease_end) { alert("Lease end date must be after lease start date."); guardRelease("saveProperty"); return; }
+      if (!form.tenant.trim()) { showToast("Tenant name is required for occupied properties."); guardRelease("saveProperty", "error"); return; }
+      if (!form.tenant_email.trim() || !form.tenant_email.includes("@")) { showToast("A valid tenant email is required for occupied properties."); guardRelease("saveProperty", "error"); return; }
+      if (!form.tenant_phone.trim()) { showToast("Tenant phone number is required for occupied properties."); guardRelease("saveProperty", "error"); return; }
+      if (!form.rent || isNaN(Number(form.rent)) || Number(form.rent) <= 0) { showToast("Monthly rent is required for occupied properties."); guardRelease("saveProperty", "error"); return; }
+      if (!form.security_deposit || isNaN(Number(form.security_deposit))) { showToast("Security deposit amount is required for occupied properties."); guardRelease("saveProperty", "error"); return; }
+      if (!form.lease_start) { showToast("Lease start date is required for occupied properties."); guardRelease("saveProperty", "error"); return; }
+      if (!form.lease_end) { showToast("Lease end date is required for occupied properties."); guardRelease("saveProperty", "error"); return; }
+      if (form.lease_start >= form.lease_end) { showToast("Lease end date must be after lease start date."); guardRelease("saveProperty", "error"); return; }
     }
     // Build composite address for backward compatibility
     const compositeAddress = [form.address_line_1, form.address_line_2, form.city, form.state + " " + form.zip].filter(Boolean).join(", ");
@@ -1232,14 +1280,14 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     if (isAdmin) {
       // Guard: block edits to managed (cross-company) properties
       if (editingProperty && editingProperty.company_id !== companyId) {
-        alert("This property belongs to another company and cannot be edited here.");
+        showToast("This property belongs to another company and cannot be edited here.", "error");
         return;
       }
       // Admin: direct save
       const { error } = editingProperty
         ? await supabase.from("properties").update({ address: compositeAddress, address_line_1: form.address_line_1, address_line_2: form.address_line_2, city: form.city, state: form.state, zip: form.zip, type: form.type, status: form.status, rent: form.status === "occupied" ? form.rent : null, security_deposit: form.status === "occupied" ? form.security_deposit : null, tenant: form.status === "occupied" ? form.tenant : "", lease_start: form.status === "occupied" ? form.lease_start : null, lease_end: form.status === "occupied" ? form.lease_end : null, notes: form.notes }).eq("id", editingProperty.id).eq("company_id", companyId)
         : await supabase.from("properties").insert([{ address: compositeAddress, address_line_1: form.address_line_1, address_line_2: form.address_line_2, city: form.city, state: form.state, zip: form.zip, type: form.type, status: form.status, rent: form.status === "occupied" ? form.rent : null, security_deposit: form.status === "occupied" ? form.security_deposit : null, tenant: form.status === "occupied" ? form.tenant : "", lease_start: form.status === "occupied" ? form.lease_start : null, lease_end: form.status === "occupied" ? form.lease_end : null, notes: form.notes, company_id: companyId }]);
-      if (error) { alert(userError(error.message)); return; }
+      if (error) { showToast(userError(error.message), "error"); return; }
       // Show document checklist for occupied properties
       if (form.status === "occupied") {
         setShowDocChecklist({ name: form.tenant, property: compositeAddress, isNew: !editingProperty });
@@ -1315,7 +1363,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
         lease_end: form.lease_end,
         notes: form.notes,
       }]);
-      if (error) { alert("Error submitting request: " + error.message); return; }
+      if (error) { showToast("Error submitting request: " + error.message, "error"); return; }
       addNotification("📋", `Change request submitted for: ${form.address} — awaiting admin approval`);
       logAudit("request", "properties", `Requested ${editingProperty ? "edit" : "add"}: ${form.address}`, editingProperty?.id || "", userProfile?.email, userRole, companyId);
       fetchChangeRequests();
@@ -1328,11 +1376,11 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   }
 
   async function deactivateProperty(property) {
-    if (!window.confirm(`Deactivate "${property.address}"?\n\nThis will:\n• Mark the property as inactive\n• Hide related tenants and work orders from active views\n• Preserve all accounting history\n• You can reactivate it anytime\n\nUse Archive instead if you want to fully remove it.`)) return;
+    if (!await showConfirm({ message: `Deactivate "${property.address}"?\n\nThis will:\n• Mark the property as inactive\n• Hide related tenants and work orders from active views\n• Preserve all accounting history\n• You can reactivate it anytime\n\nUse Archive instead if you want to fully remove it.`, variant: "danger", confirmText: "Delete" })) return;
     const { error } = await supabase.from("properties").update({ 
       status: "inactive",
     }).eq("id", property.id).eq("company_id", companyId);
-    if (error) { alert(userError(error.message)); return; }
+    if (error) { showToast(userError(error.message), "error"); return; }
     // Deactivate accounting class
     await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("name", property.address);
     // Mark tenants as inactive
@@ -1346,7 +1394,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     const { error } = await supabase.from("properties").update({ 
       status: property.tenant ? "occupied" : "vacant",
     }).eq("id", property.id).eq("company_id", companyId);
-    if (error) { alert(userError(error.message)); return; }
+    if (error) { showToast(userError(error.message), "error"); return; }
     await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("name", property.address);
     await supabase.from("tenants").update({ lease_status: "active" }).eq("company_id", companyId).eq("property", property.address).is("archived_at", null);
     addNotification("▶️", `Reactivated property: ${property.address}`);
@@ -1356,23 +1404,23 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   async function deleteProperty(id, address) {
       if (!guardSubmit("deleteProperty")) return;
       try {
-    if (!isAdmin) { alert("Only admins can archive properties."); return; }
+    if (!isAdmin) { showToast("Only admins can archive properties.", "error"); return; }
     const targetProp = properties.find(p => String(p.id) === String(id));
     if (targetProp && targetProp.company_id !== companyId) {
-      alert("This property belongs to another company and cannot be archived here.");
+      showToast("This property belongs to another company and cannot be archived here.", "error");
       return;
     }
-    if (!window.confirm(`Archive property "${address}"?\n\nThis will hide it from the active list. You can restore it from the Archive page within 180 days.`)) return;
+    if (!await showConfirm({ message: `Archive property "${address}"?\n\nThis will hide it from the active list. You can restore it from the Archive page within 180 days.` })) return;
     // #17: Check if tenants have outstanding balance before archive
     const { data: propertyTenants } = await supabase.from("tenants").select("id, name, balance").eq("company_id", companyId).eq("property", address).is("archived_at", null);
     const tenantsWithBalance = (propertyTenants || []).filter(t => safeNum(t.balance) > 0);
     if (tenantsWithBalance.length > 0) {
       const balMsg = tenantsWithBalance.map(t => `${t.name}: $${safeNum(t.balance).toFixed(2)}`).join(", ");
-      if (!window.confirm(`Warning: ${tenantsWithBalance.length} tenant(s) have outstanding balances:\n${balMsg}\n\nArchiving will make these balances harder to collect. Continue anyway?`)) return;
+      if (!await showConfirm({ message: `Warning: ${tenantsWithBalance.length} tenant(s) have outstanding balances:\n${balMsg}\n\nArchiving will make these balances harder to collect. Continue anyway?` })) return;
     }
     let archiveTenant = false;
     if (propertyTenants?.length > 0) {
-      archiveTenant = window.confirm(`This property has ${propertyTenants.length} tenant(s): ${propertyTenants.map(t => t.name).join(", ")}\n\nWould you also like to archive the tenant(s)?\n\nClick OK to archive tenant(s) too, or Cancel to keep them.`);
+      archiveTenant = await showConfirm({ message: `This property has ${propertyTenants.length} tenant(s): ${propertyTenants.map(t => t.name).join(", ")}\n\nWould you also like to archive the tenant(s)?\n\nClick OK to archive tenant(s) too, or Cancel to keep them.` });
     }
     // Use archive RPC (soft delete)
     const { error: archiveErr } = await supabase.rpc("archive_property", {
@@ -1385,7 +1433,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
     if (archiveErr) {
       // Fallback: direct soft delete if RPC not deployed yet
       const { error: fallbackErr } = await supabase.from("properties").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", id).eq("company_id", companyId);
-      if (fallbackErr) { alert("Failed to archive property: " + fallbackErr.message); return; }
+      if (fallbackErr) { showToast("Failed to archive property: " + fallbackErr.message, "error"); return; }
       if (archiveTenant && propertyTenants) {
         for (const t of propertyTenants) {
           await supabase.from("tenants").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email, lease_status: "inactive" }).eq("id", t.id).eq("company_id", companyId);
@@ -1409,7 +1457,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       try {
     if (req.request_type === "add") {
       const { error: apErr } = await supabase.from("properties").insert([{ company_id: companyId, address: req.address, type: req.type, status: req.property_status, rent: req.rent, tenant: req.tenant, lease_end: req.lease_end, notes: req.notes }]);
-      if (apErr) { alert("Error adding property: " + apErr.message); return; }
+      if (apErr) { showToast("Error adding property: " + apErr.message, "error"); return; }
       // Auto-create accounting class for this property
       const classId = generateId("PROP");
       const { error: classErr } = await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · ${formatCurrency(req.rent)}/mo`, color: pickColor(req?.address || ""), is_active: true, company_id: companyId }], { onConflict: "id" });
@@ -1419,20 +1467,20 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       // Check if address changed and cascade
       const { data: oldProp } = await supabase.from("properties").select("address").eq("company_id", companyId).eq("id", req.property_id).maybeSingle();
       const { error: editErr } = await supabase.from("properties").update({ address: req.address, type: req.type, status: req.property_status, rent: req.rent, tenant: req.tenant, lease_end: req.lease_end, notes: req.notes }).eq("id", req.property_id).eq("company_id", companyId);
-      if (editErr) { alert("Error updating property: " + editErr.message); return; }
+      if (editErr) { showToast("Error updating property: " + editErr.message, "error"); return; }
       if (oldProp && oldProp.address !== req.address) {
         // Atomic cascade rename via RPC
         const { error: cascErr } = await supabase.rpc("rename_property_v2", {
           p_company_id: companyId, p_property_id: req.property_id,
           p_new_address: req.address
         });
-        if (cascErr) alert("Property updated but cascade rename failed: " + cascErr.message + ". Some related records may still show the old address.");
+        if (cascErr) showToast("Property updated but cascade rename failed: " + cascErr.message + ". Some related records may still show the old address.", "error");
       }
       addNotification("✅", `Property edit approved: ${req.address}`);
     }
     const { data: { user } } = await supabase.auth.getUser();
     const { error: statusErr } = await supabase.from("property_change_requests").update({ status: "approved", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNotes[req.id] || "" }).eq("company_id", companyId).eq("id", req.id);
-    if (statusErr) alert("Warning: Property was updated but the request status could not be marked as approved: " + statusErr.message);
+    if (statusErr) showToast("Warning: Property was updated but the request status could not be marked as approved: " + statusErr.message, "error");
     logAudit("approve", "properties", `Approved ${req.request_type} request: ${req.address} (requested by ${req.requested_by})`, req.id, user?.email, "admin", companyId);
     setReviewNotes(prev => { const n = {...prev}; delete n[req.id]; return n; });
     fetchProperties();
@@ -1446,7 +1494,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       try {
     const { data: { user } } = await supabase.auth.getUser();
     const { error: rejStatusErr } = await supabase.from("property_change_requests").update({ status: "rejected", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNotes[req.id] || "" }).eq("company_id", companyId).eq("id", req.id);
-    if (rejStatusErr) alert("Warning: Could not mark request as rejected: " + rejStatusErr.message);
+    if (rejStatusErr) showToast("Warning: Could not mark request as rejected: " + rejStatusErr.message, "error");
     addNotification("❌", `Property request rejected: ${req.address}`);
     logAudit("reject", "properties", `Rejected ${req.request_type} request: ${req.address} (requested by ${req.requested_by})`, req.id, user?.email, "admin", companyId);
     setReviewNotes(prev => { const n = {...prev}; delete n[req.id]; return n; });
@@ -1472,19 +1520,19 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
 
   async function assignPM(property) {
     if (!guardSubmit("assignPM")) return;
-    if (!pmCode.trim()) { alert("Please enter the PM company's 8-digit code."); return; }
+    if (!pmCode.trim()) { showToast("Please enter the PM company's 8-digit code.", "error"); return; }
     const { data: pmCompany } = await supabase.from("companies").select("id, name, company_role").eq("company_code", pmCode.trim()).maybeSingle();
-    if (!pmCompany) { alert("No company found with that code."); return; }
-    if (pmCompany.company_role !== "management") { alert(pmCompany.name + " is not a management company. Only management companies can be assigned as PM."); return; }
+    if (!pmCompany) { showToast("No company found with that code.", "error"); return; }
+    if (pmCompany.company_role !== "management") { showToast(pmCompany.name + " is not a management company. Only management companies can be assigned as PM.", "error"); return; }
     // Check for existing pending or accepted assignment
     const { data: existingReq } = await supabase.from("pm_assignment_requests").select("id, status")
       .eq("owner_company_id", companyId).eq("pm_company_id", pmCompany.id).eq("property_id", property.id)
       .in("status", ["pending", "accepted"]).maybeSingle();
-    if (existingReq?.status === "pending") { alert("A request to assign " + pmCompany.name + " is already pending for this property."); return; }
-    if (existingReq?.status === "accepted") { alert(pmCompany.name + " is already assigned as PM for this property."); return; }
+    if (existingReq?.status === "pending") { showToast("A request to assign " + pmCompany.name + " is already pending for this property.", "error"); return; }
+    if (existingReq?.status === "accepted") { showToast(pmCompany.name + " is already assigned as PM for this property.", "error"); return; }
     // Also check if property already has this PM directly assigned
-    if (property.pm_company_id === pmCompany.id) { alert(pmCompany.name + " is already the property manager for this property."); return; }
-    if (!window.confirm("Request " + pmCompany.name + " to manage " + property.address + "?\n\nThey will need to accept before getting access to this property.")) return;
+    if (property.pm_company_id === pmCompany.id) { showToast(pmCompany.name + " is already the property manager for this property.", "error"); return; }
+    if (!await showConfirm({ message: "Request " + pmCompany.name + " to manage " + property.address + "?\n\nThey will need to accept before getting access to this property." })) return;
     // Create assignment REQUEST (not direct assignment)
     const { error: reqErr } = await supabase.from("pm_assignment_requests").insert([{
       owner_company_id: companyId,
@@ -1494,7 +1542,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       property_address: property.address,
       requested_by: normalizeEmail(userProfile?.email),
     }]);
-    if (reqErr) { alert("Error creating PM request: " + reqErr.message); return; }
+    if (reqErr) { showToast("Error creating PM request: " + reqErr.message, "error"); return; }
     addNotification("📨", "PM assignment request sent to " + pmCompany.name + " for " + property.address);
     logAudit("create", "pm_requests", "Requested PM: " + pmCompany.name + " for " + property.address, property.id, userProfile?.email, userRole, companyId);
     setShowPmAssign(null);
@@ -1505,9 +1553,9 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
   async function removePM(property) {
       if (!guardSubmit("removePM")) return;
       try {
-    if (!window.confirm("Remove " + (property.pm_company_name || "PM") + " as property manager for " + property.address + "?\n\nYou will regain full operational control.")) return;
+    if (!await showConfirm({ message: "Remove " + (property.pm_company_name || "PM") + " as property manager for " + property.address + "?\n\nYou will regain full operational control.", variant: "danger", confirmText: "Delete" })) return;
     const { error: rmErr } = await supabase.from("properties").update({ pm_company_id: null, pm_company_name: null }).eq("id", property.id).eq("company_id", companyId);
-    if (rmErr) { alert("Error removing PM: " + rmErr.message); return; }
+    if (rmErr) { showToast("Error removing PM: " + rmErr.message, "error"); return; }
     addNotification("🏠", "PM removed from " + property.address + ". You now have full control.");
     logAudit("update", "properties", "Removed PM from " + property.address, property.id, userProfile?.email, userRole, companyId);
     fetchProperties();
@@ -1572,6 +1620,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-2">
         <h2 className="text-xl md:text-2xl font-manrope font-bold text-slate-800">Properties</h2>
         <div className="flex items-center gap-3">
+          <button onClick={exportProperties} className="text-sm text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-2xl hover:bg-indigo-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
           <div className="flex gap-1">
             <button onClick={() => setShowArchived(false)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (!showArchived ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>Active ({properties.length})</button>
             <button onClick={() => { setShowArchived(true); fetchArchivedProperties(); }} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (showArchived ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>Archived ({archivedProperties.length})</button>
@@ -1810,7 +1859,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
               <div><label className="text-xs font-medium text-slate-400 mb-1 block">Monthly Rent ($) *</label><input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
               <div><label className="text-xs font-medium text-slate-400 mb-1 block">Security Deposit ($) *</label><input placeholder="1500" value={form.security_deposit} onChange={e => setForm({ ...form, security_deposit: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
               <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Start Date *</label><input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
-              <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease End Date *</label><input type="date" value={form.lease_end} onChange={e => { if (form.lease_start && e.target.value && e.target.value <= form.lease_start) { alert("Lease end date must be after lease start date."); return; } setForm({ ...form, lease_end: e.target.value }); }} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
+              <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease End Date *</label><input type="date" value={form.lease_end} onChange={e => { if (form.lease_start && e.target.value && e.target.value <= form.lease_start) { showToast("Lease end date must be after lease start date."); return; } setForm({ ...form, lease_end: e.target.value }, "error"); }} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required /></div>
             </>)}
             <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><textarea placeholder="Any additional notes" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
           </div>
@@ -1845,7 +1894,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={() => { setPage("documents"); setShowDocChecklist(null); }} className="bg-amber-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-amber-700">Upload Documents Now</button>
-            <button onClick={() => { if (isAdmin || window.confirm("Skip document upload? This will require admin approval later.")) setShowDocChecklist(null); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Skip for Now</button>
+            <button onClick={async () => { if (isAdmin || await showConfirm({ message: "Skip document upload? This will require admin approval later." })) setShowDocChecklist(null); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Skip for Now</button>
           </div>
         </div>
       )}
@@ -2031,7 +2080,7 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
                   next_post_date: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().split("T")[0],
                   created_by: userProfile?.email || "",
                 }]);
-                if (error) { alert("Failed to create recurring entry: " + userError(error.message)); }
+                if (error) { showToast("Failed to create recurring entry: " + userError(error.message), "error"); }
                 else { addNotification("🔄", "Recurring rent set up for " + showRecurringSetup.tenant); }
                 setShowRecurringSetup(null);
               }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 flex-1">Yes, Set Up Recurring Rent</button>
@@ -2048,7 +2097,21 @@ function Properties({ addNotification, userRole, userProfile, companyId }) {
 }
 
 // ============ TENANTS ============
-function Tenants({ addNotification, userProfile, userRole, companyId, setPage, initialTab }) {
+function Tenants({ addNotification, userProfile, userRole, companyId, setPage, initialTab, showToast, showConfirm }) {
+  function exportTenants() {
+    const exportData = tenants.filter(t => !t.archived_at);
+    exportToCSV(exportData, [
+      { label: "Name", key: "name" },
+      { label: "Email", key: "email" },
+      { label: "Phone", key: "phone" },
+      { label: "Property", key: "property" },
+      { label: "Rent", key: "rent" },
+      { label: "Balance", key: "balance" },
+      { label: "Status", key: "status" },
+      { label: "Lease Start", key: "lease_start" },
+      { label: "Lease End", key: "lease_end" },
+    ], "tenants_" + new Date().toLocaleDateString(), showToast);
+  }
   const [tenants, setTenants] = useState([]);
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -2094,22 +2157,22 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   async function saveTenant() {
       if (!guardSubmit("saveTenant")) return;
       try {
-    if (form.email && !isValidEmail(form.email)) { alert("Please enter a valid email address."); guardRelease("saveTenant"); return; }
-    if (!form.name.trim()) { alert("Tenant name is required."); return; }
-    if (!form.email.trim() || !form.email.includes("@") || !form.email.includes(".")) { alert("Please enter a valid email address."); return; }
-    if (!form.property) { alert("Please select a property."); return; }
-    if (form.rent && (isNaN(Number(form.rent)) || Number(form.rent) < 0)) { alert("Rent must be a valid positive number."); return; }
+    if (form.email && !isValidEmail(form.email)) { showToast("Please enter a valid email address."); guardRelease("saveTenant", "error"); return; }
+    if (!form.name.trim()) { showToast("Tenant name is required.", "error"); return; }
+    if (!form.email.trim() || !form.email.includes("@") || !form.email.includes(".")) { showToast("Please enter a valid email address.", "error"); return; }
+    if (!form.property) { showToast("Please select a property.", "error"); return; }
+    if (form.rent && (isNaN(Number(form.rent)) || Number(form.rent) < 0)) { showToast("Rent must be a valid positive number.", "error"); return; }
     // #27: Stale data check — verify record hasn't been modified by another user
     if (editingTenant) {
       const { data: freshTenant } = await supabase.from("tenants").select("updated_at").eq("id", editingTenant.id).eq("company_id", companyId).maybeSingle();
       if (freshTenant?.updated_at && editingTenant.updated_at && freshTenant.updated_at !== editingTenant.updated_at) {
-        if (!window.confirm("This tenant was modified by another user since you started editing. Your changes may overwrite theirs. Continue?")) return;
+        if (!await showConfirm({ message: "This tenant was modified by another user since you started editing. Your changes may overwrite theirs. Continue?" })) return;
       }
     }
     const { error } = editingTenant
       ? await supabase.from("tenants").update({ name: form.name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, move_in: form.lease_start, move_out: form.lease_end, lease_end_date: form.lease_end, rent: form.rent }).eq("id", editingTenant.id).eq("company_id", companyId)
       : await supabase.from("tenants").insert([{ ...form, email: normalizeEmail(form.email), balance: 0, company_id: companyId }]);
-    if (error) { alert("Error saving tenant: " + error.message); return; }
+    if (error) { showToast("Error saving tenant: " + error.message, "error"); return; }
     if (editingTenant) {
       // Cascade name change to all related tables
       if (editingTenant.name !== form.name) {
@@ -2157,13 +2220,13 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     // Check for outstanding balance before allowing deletion
     const { data: tenantRow } = await supabase.from("tenants").select("balance").eq("id", id).eq("company_id", companyId).maybeSingle();
     if (tenantRow && safeNum(tenantRow.balance) > 0) {
-      alert(`Cannot delete tenant "${name}" with an outstanding balance of $${safeNum(tenantRow.balance).toFixed(2)}. Please settle the balance first.`);
+      showToast(`Cannot delete tenant "${name}" with an outstanding balance of $${safeNum(tenantRow.balance).toFixed(2)}. Please settle the balance first.`, "error");
       return;
     }
     if (tenantRow && safeNum(tenantRow.balance) < 0) {
-      if (!window.confirm(`Tenant "${name}" has a credit balance of $${Math.abs(safeNum(tenantRow.balance)).toFixed(2)}. Deleting will forfeit this credit. Continue?`)) return;
+      if (!await showConfirm({ message: `Tenant "${name}" has a credit balance of $${Math.abs(safeNum(tenantRow.balance)).toFixed(2)}. Deleting will forfeit this credit. Continue?` })) return;
     }
-    if (!window.confirm(`Archive tenant "${name}"?\n\nThis will hide the tenant and terminate their lease. You can restore from the Archive page within 180 days.`)) return;
+    if (!await showConfirm({ message: `Archive tenant "${name}"?\n\nThis will hide the tenant and terminate their lease. You can restore from the Archive page within 180 days.` })) return;
     // Get tenant's property before archiving for cascade updates
     const { data: tenantDetail } = await supabase.from("tenants").select("property, balance").eq("id", id).eq("company_id", companyId).maybeSingle();
     const tenantProperty = tenantDetail?.property;
@@ -2173,7 +2236,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       archived_by: userProfile?.email,
       lease_status: "inactive" 
     }).eq("id", id).eq("company_id", companyId);
-    if (archiveErr) { alert("Failed to archive tenant: " + archiveErr.message); return; }
+    if (archiveErr) { showToast("Failed to archive tenant: " + archiveErr.message, "error"); return; }
     // Update property to vacant when tenant archived
     if (tenantProperty) {
       const { error: propErr } = await supabase.from("properties").update({ status: "vacant", tenant: "", lease_end: null, lease_start: "" }).eq("company_id", companyId).eq("address", tenantProperty).eq("tenant", name);
@@ -2194,8 +2257,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   async function inviteTenant(tenant) {
       if (!guardSubmit("inviteTenant")) return;
       try {
-    if (!tenant.email) { alert("This tenant has no email address. Please add one first."); return; }
-    if (!window.confirm("Send portal invite to " + tenant.email + "?\n\nThis will:\n1. Generate a unique invite code for this tenant\n2. Send a magic link to their email\n3. They can sign up using the invite code to access their portal")) return;
+    if (!tenant.email) { showToast("This tenant has no email address. Please add one first.", "error"); return; }
+    if (!await showConfirm({ message: "Send portal invite to " + tenant.email + "?\n\nThis will:\n1. Generate a unique invite code for this tenant\n2. Send a magic link to their email\n3. They can sign up using the invite code to access their portal" })) return;
     try {
       // Generate unique invite code
       // Generate unique invite code with collision retry
@@ -2205,7 +2268,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
         code = "TNT-" + String(10000000 + (codeArr[0] % 89999999));
         const { data: existing } = await supabase.from("tenant_invite_codes").select("id").eq("code", code).maybeSingle();
         if (!existing) break; // No collision — code is unique
-        if (attempt === 4) { alert("Could not generate unique invite code. Please try again."); return; }
+        if (attempt === 4) { showToast("Could not generate unique invite code. Please try again.", "error"); return; }
       }
       const { error: codeInsertError } = await supabase.from("tenant_invite_codes").insert([{
         code: code,
@@ -2219,14 +2282,14 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       }]);
 
       // Also send magic link — but only if invite code was created successfully
-      if (codeInsertError) { alert("Failed to create invite code: " + codeInsertError.message); return; }
+      if (codeInsertError) { showToast("Failed to create invite code: " + codeInsertError.message, "error"); return; }
       const { error: authErr } = await supabase.auth.signInWithOtp({
         email: (tenant.email || "").trim().toLowerCase(),
         options: { data: { name: tenant.name, role: "tenant" } }
       });
       if (authErr) {
         // Auth failed — do NOT create membership records for a non-deliverable invite
-        alert("Failed to send invitation email to " + tenant.email + ": " + authErr.message + "\n\nPlease verify the email address and try again. No access records were created.");
+        showToast("Failed to send invitation email to " + tenant.email + ": " + authErr.message + "\n\nPlease verify the email address and try again. No access records were created.", "error");
         return;
       }
       // Create membership as "invited" — this is a placeholder record only.
@@ -2241,14 +2304,14 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
         status: "invited",
         invited_by: userProfile?.email || "admin",
       }], { onConflict: "company_id,user_email" });
-      if (memErr) { alert("Error creating invite: " + memErr.message); return; }
+      if (memErr) { showToast("Error creating invite: " + memErr.message, "error"); return; }
       addNotification("✉️", "Invite code generated for " + tenant.email);
       logAudit("create", "tenants", "Invited tenant to portal: " + tenant.email, tenant.id, userProfile?.email, userRole, companyId);
       // Show masked code — full code sent via email only
       const maskedCode = code.slice(0, 2) + "****" + code.slice(-2);
-      alert("Tenant invite created!\n\nA magic link and invite code have been sent to " + tenant.email + ".\n\nCode hint: " + maskedCode + " (full code in their email)\n\n" + tenant.name + " can sign up by selecting 'I'm a Tenant' and entering the code from their email.");
+      showToast("Tenant invite created!\n\nA magic link and invite code have been sent to " + tenant.email + ".\n\nCode hint: " + maskedCode + " (full code in their email)\n\n" + tenant.name + " can sign up by selecting 'I'm a Tenant' and entering the code from their email.", "success");
     } catch (e) {
-      alert("Error inviting tenant: " + e.message);
+      showToast("Error inviting tenant: " + e.message, "error");
     }
       } finally { guardRelease("inviteTenant"); }
   }
@@ -2315,12 +2378,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       type: newCharge.type,
       balance: 0,
     });
-    if (!ledgerOk) { alert("Failed to create ledger entry. Please try again."); return; }
+    if (!ledgerOk) { showToast("Failed to create ledger entry. Please try again.", "error"); return; }
     // Atomic balance update (prevents drift from concurrent writes)
     try {
       const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: amount });
-      if (balErr) { alert("Balance update failed: " + balErr.message); }
-    } catch (e) { alert("Balance update failed: " + e.message); }
+      if (balErr) { showToast("Balance update failed: " + balErr.message, "error"); }
+    } catch (e) { showToast("Balance update failed: " + e.message, "error"); }
     // Post accounting JE for manual charges/credits
     if (Math.abs(amount) > 0) {
       const classId = await getPropertyClassId(selectedTenant.property, companyId);
@@ -2331,7 +2394,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
             { account_id: "4100", account_name: "Other Income", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
           ]
         });
-        if (!_jeOk) { alert("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module."); }
+        if (!_jeOk) { showToast("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
         
       } else if (newCharge.type === "payment" || newCharge.type === "credit") {
         const _jeOk = await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "Manual " + newCharge.type + " — " + selectedTenant.name + " — " + newCharge.description, reference: "MANUAL-" + shortId(), property: selectedTenant.property || "",
@@ -2340,7 +2403,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
             { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
           ]
         });
-        if (!_jeOk) { alert("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module."); }
+        if (!_jeOk) { showToast("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
         
       }
     }
@@ -2854,7 +2917,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
             {isAdmin ? (
               <button onClick={() => setShowTenantDocPrompt(null)} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Admin: Skip for Now</button>
             ) : (
-              <button onClick={() => { if (window.confirm("Skipping requires admin approval. An approval request will be sent. Continue?")) { setShowTenantDocPrompt(null); addNotification("📋", "Document skip request sent for " + showTenantDocPrompt); } }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Request Exception</button>
+              <button onClick={async () => { if (await showConfirm({ message: "Skipping requires admin approval. An approval request will be sent. Continue?" })) { setShowTenantDocPrompt(null); addNotification("📋", "Document skip request sent for " + showTenantDocPrompt); } }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Request Exception</button>
             )}
           </div>
         </div>
@@ -2869,6 +2932,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
               <button key={m} onClick={() => setTenantView(m)} className={`px-3 py-1.5 text-sm rounded-md ${tenantView === m ? "bg-white shadow-sm text-indigo-700 font-semibold" : "text-slate-400"}`}>{icon}</button>
             ))}
           </div>
+          <button onClick={exportTenants} className="text-sm text-indigo-600 border border-indigo-200 px-3 py-2 rounded-2xl hover:bg-indigo-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
           <button onClick={() => { setEditingTenant(null); setForm({ name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700 whitespace-nowrap">+ Add</button>
         </div>
       </div>
@@ -2939,7 +3003,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
             <button onClick={async () => {
               const desc = document.getElementById("bulk-charge-desc").value;
               const amt = Math.abs(Number(document.getElementById("bulk-charge-amt").value));
-              if (!desc || !amt) { alert("Description and amount required."); return; }
+              if (!desc || !amt) { showToast("Description and amount required.", "error"); return; }
               let count = 0;
               for (const tid of selectedTenants) {
                 const t = tenants.find(x => x.id === tid);
@@ -3129,7 +3193,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
 }
 
 // ============ PAYMENTS ============
-function Payments({ addNotification, userProfile, userRole, companyId }) {
+function Payments({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [payTab, setPayTab] = useState("payments");
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -3151,27 +3215,62 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
     setLoading(false);
   }
 
+  async function bulkMarkPaid() {
+    if (selectedPayments.size === 0) return;
+    const ids = Array.from(selectedPayments);
+    const { error } = await supabase.from("payments").update({ status: "paid" }).in("id", ids).eq("company_id", companyId);
+    if (error) { showToast("Error updating payments: " + error.message, "error"); return; }
+    showToast(ids.length + " payment(s) marked as paid", "success");
+    addNotification("💰", ids.length + " payments marked as paid");
+    setSelectedPayments(new Set());
+    fetchPayments();
+  }
+
+  async function bulkDeletePayments() {
+    if (selectedPayments.size === 0) return;
+    if (!await showConfirm({ message: "Delete " + selectedPayments.size + " selected payment(s)?\n\nThis cannot be undone.", variant: "danger", confirmText: "Delete" })) return;
+    const ids = Array.from(selectedPayments);
+    const { error } = await supabase.from("payments").delete().in("id", ids).eq("company_id", companyId);
+    if (error) { showToast("Error deleting payments: " + error.message, "error"); return; }
+    showToast(ids.length + " payment(s) deleted", "success");
+    setSelectedPayments(new Set());
+    fetchPayments();
+  }
+
+  function exportSelectedPayments() {
+    const selected = payments.filter(p => selectedPayments.has(p.id));
+    exportToCSV(selected, [
+      { label: "Date", key: "date" },
+      { label: "Tenant", key: "tenant" },
+      { label: "Property", key: "property" },
+      { label: "Amount", key: "amount" },
+      { label: "Type", key: "type" },
+      { label: "Method", key: "method" },
+      { label: "Status", key: "status" },
+    ], "selected_payments_" + new Date().toLocaleDateString(), showToast);
+  }
+
   async function addPayment() {
     if (!guardSubmit("addPayment")) return;
     try {
-    if (!form.tenant.trim()) { alert("Tenant name is required."); return; }
-    if (!form.property.trim()) { alert("Property is required."); return; }
-    if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0) { alert("Please enter a valid amount."); return; }
-    if (!form.date) { alert("Payment date is required."); return; }
-    if (new Date(form.date + "T12:00:00") > new Date()) { alert("Payment date cannot be in the future."); return; }
+    if (!form.tenant.trim()) { showToast("Tenant name is required.", "error"); return; }
+    if (!form.property.trim()) { showToast("Property is required.", "error"); return; }
+    if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0) { showToast("Please enter a valid amount.", "error"); return; }
+    if (!form.date) { showToast("Payment date is required.", "error"); return; }
+    if (new Date(form.date + "T12:00:00") > new Date()) { showToast("Payment date cannot be in the future.", "error"); return; }
     if (!["rent","deposit","late_fee","other"].includes(form.type)) { form.type = "rent"; }
     // #18: Check if tenant is archived
     const { data: tenantCheck } = await supabase.from("tenants").select("id, archived_at").eq("company_id", companyId).ilike("name", form.tenant.trim()).maybeSingle();
     if (tenantCheck?.archived_at) {
-      if (!window.confirm(`Warning: "${form.tenant}" is an archived tenant. Recording a payment for an archived tenant is unusual. Continue?`)) return;
+      if (!await showConfirm({ message: `Warning: "${form.tenant}" is an archived tenant. Recording a payment for an archived tenant is unusual. Continue?` })) return;
     }
     // Duplicate detection: check for same tenant + amount + date in last 5 minutes
     const { data: recentDup } = await supabase.from("payments").select("id").eq("company_id", companyId).eq("tenant", form.tenant).eq("amount", Number(form.amount)).eq("date", form.date).limit(1);
     if (recentDup && recentDup.length > 0) {
-      if (!window.confirm("A payment for $" + form.amount + " from " + form.tenant + " on " + form.date + " already exists. Record another?")) return;
+      if (!await showConfirm({ message: "A payment for $" + form.amount + " from " + form.tenant + " on " + form.date + " already exists. Record another?" })) return;
     }
     const { error } = await supabase.from("payments").insert([{ ...form, amount: Number(form.amount), company_id: companyId }]);
-    if (error) { alert("Error recording payment: " + error.message); return; }
+    if (error) { showToast("Error recording payment: " + error.message, "error"); return; }
     // Only auto-post to accounting if payment is actually paid (not unpaid/partial)
     if (form.status !== "paid") {
       addNotification("💳", `Payment recorded (${form.status}): ${formatCurrency(form.amount)} from ${form.tenant}`);
@@ -3225,7 +3324,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
     }
     if (!jeId) {
       console.error("GL posting failed for payment — tenant balance NOT updated to prevent drift");
-      alert("Payment was saved but the accounting entry failed to post. Tenant balance was NOT updated. Please check the Accounting module and post manually if needed.");
+      showToast("Payment was saved but the accounting entry failed to post. Tenant balance was NOT updated. Please check the Accounting module and post manually if needed.", "error");
     }
     addNotification("💳", `Payment recorded: ${formatCurrency(form.amount)} from ${form.tenant}`);
     logAudit("create", "payments", `Payment: ${formatCurrency(form.amount)} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole, companyId);
@@ -3237,7 +3336,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
         const payAmt = Number(form.amount);
         try {
           const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -payAmt });
-          if (balErr) alert("Balance update failed: " + balErr.message + ". Please verify the tenant balance.");
+          if (balErr) showToast("Balance update failed: " + balErr.message + ". Please verify the tenant balance.", "error");
         } catch (e) { console.warn("Balance RPC error:", e.message); }
         await safeLedgerInsert({ company_id: companyId,
           tenant: form.tenant, property: form.property,
@@ -3275,7 +3374,7 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
           <button onClick={() => exportToCSV(payments, [
             { label: "Date", key: "date" }, { label: "Tenant", key: "tenant" }, { label: "Property", key: "property" },
             { label: "Amount", key: "amount" }, { label: "Type", key: "type" }, { label: "Method", key: "method" }, { label: "Status", key: "status" },
-          ], "payments-export")} className="text-sm text-indigo-600 border border-indigo-200 px-3 py-2 rounded-2xl hover:bg-indigo-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
+          ], "payments-export", showToast)} className="text-sm text-indigo-600 border border-indigo-200 px-3 py-2 rounded-2xl hover:bg-indigo-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
           <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ Record Payment</button>
         </div>
       </div>
@@ -3340,14 +3439,9 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
         <div className="bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3 mb-4 flex items-center justify-between">
           <span className="text-sm font-medium text-indigo-800">{selectedPayments.size} payment{selectedPayments.size > 1 ? "s" : ""} selected</span>
           <div className="flex gap-2">
-            <button onClick={() => {
-              const selected = payments.filter(p => selectedPayments.has(p.id));
-              exportToCSV(selected, [
-                { label: "Date", key: "date" }, { label: "Tenant", key: "tenant" }, { label: "Property", key: "property" },
-                { label: "Amount", key: "amount" }, { label: "Type", key: "type" }, { label: "Method", key: "method" }, { label: "Status", key: "status" },
-              ], "selected-payments-export");
-              setSelectedPayments(new Set());
-            }} className="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-200 font-medium">Export Selected</button>
+            <button onClick={bulkMarkPaid} className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-200 font-medium">Mark Paid</button>
+            <button onClick={exportSelectedPayments} className="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-200 font-medium">Export Selected</button>
+            <button onClick={bulkDeletePayments} className="text-xs bg-red-100 text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-200 font-medium">Delete</button>
             <button onClick={() => setSelectedPayments(new Set())} className="text-xs text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-100">Deselect</button>
           </div>
         </div>
@@ -3402,7 +3496,19 @@ function Payments({ addNotification, userProfile, userRole, companyId }) {
 }
 
 // ============ MAINTENANCE ============
-function Maintenance({ addNotification, userProfile, userRole, companyId }) {
+function Maintenance({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
+  function exportWorkOrders() {
+    exportToCSV(workOrders, [
+      { label: "Property", key: "property" },
+      { label: "Tenant", key: "tenant" },
+      { label: "Issue", key: "issue" },
+      { label: "Priority", key: "priority" },
+      { label: "Status", key: "status" },
+      { label: "Assigned", key: "assigned" },
+      { label: "Cost", key: "cost" },
+      { label: "Created", key: "created_at" },
+    ], "work_orders_" + new Date().toLocaleDateString(), showToast);
+  }
   const [maintTab, setMaintTab] = useState("workorders");
   const [workOrders, setWorkOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -3417,6 +3523,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
   const [woSearch, setWoSearch] = useState("");
   const [woFilterProp, setWoFilterProp] = useState("all");
   const [woFilterAssigned, setWoFilterAssigned] = useState("all");
+  const [selectedWOs, setSelectedWOs] = useState(new Set());
 
   useEffect(() => { fetchWorkOrders(); }, [companyId]);
 
@@ -3426,25 +3533,46 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
     setLoading(false);
   }
 
+  async function bulkUpdateWOStatus(newStatus) {
+    if (selectedWOs.size === 0) return;
+    const ids = Array.from(selectedWOs);
+    const { error } = await supabase.from("work_orders").update({ status: newStatus }).in("id", ids).eq("company_id", companyId);
+    if (error) { showToast("Error updating work orders: " + error.message, "error"); return; }
+    showToast(ids.length + " work order(s) updated to " + newStatus, "success");
+    addNotification("🔧", ids.length + " work orders → " + newStatus);
+    setSelectedWOs(new Set());
+    fetchWorkOrders();
+  }
+
+  async function bulkAssignVendor(vendorName) {
+    if (selectedWOs.size === 0 || !vendorName) return;
+    const ids = Array.from(selectedWOs);
+    const { error } = await supabase.from("work_orders").update({ assigned: vendorName }).in("id", ids).eq("company_id", companyId);
+    if (error) { showToast("Error assigning vendor: " + error.message, "error"); return; }
+    showToast(ids.length + " work order(s) assigned to " + vendorName, "success");
+    setSelectedWOs(new Set());
+    fetchWorkOrders();
+  }
+
   async function saveWorkOrder() {
       if (!guardSubmit("saveWorkOrder")) return;
       try {
-    if (!form.property.trim()) { alert("Property is required."); return; }
-    if (!form.issue.trim()) { alert("Issue description is required."); return; }
+    if (!form.property.trim()) { showToast("Property is required.", "error"); return; }
+    if (!form.issue.trim()) { showToast("Issue description is required.", "error"); return; }
     // #18: Check if property is archived
     if (!editingWO) {
       const { data: propCheck } = await supabase.from("properties").select("archived_at").eq("company_id", companyId).eq("address", form.property).maybeSingle();
-      if (propCheck?.archived_at) { alert("Cannot create a work order for an archived property."); return; }
+      if (propCheck?.archived_at) { showToast("Cannot create a work order for an archived property.", "error"); return; }
     }
     // #20: Warn when editing cost on a completed work order (GL already posted)
     if (editingWO && editingWO.status === "completed" && safeNum(form.cost) !== safeNum(editingWO.cost)) {
-      if (!window.confirm(`This work order is completed and its cost was already posted to accounting ($${safeNum(editingWO.cost)}). Changing the cost to $${safeNum(form.cost)} will NOT update the GL entry.\n\nYou may need to void and re-post the journal entry manually. Continue?`)) return;
+      if (!await showConfirm({ message: `This work order is completed and its cost was already posted to accounting ($${safeNum(editingWO.cost)}). Changing the cost to $${safeNum(form.cost)} will NOT update the GL entry.\n\nYou may need to void and re-post the journal entry manually. Continue?` })) return;
     }
     const payload = editingWO ? form : { ...form, created: formatLocalDate(new Date()) };
     const { error } = editingWO
       ? await supabase.from("work_orders").update({ property: payload.property, tenant: payload.tenant, issue: payload.issue, priority: payload.priority, status: payload.status, assigned: payload.assigned, cost: payload.cost, notes: payload.notes }).eq("id", editingWO.id).eq("company_id", companyId)
       : await supabase.from("work_orders").insert([{ ...payload, company_id: companyId }]);
-    if (error) { alert("Error saving work order: " + error.message); return; }
+    if (error) { showToast("Error saving work order: " + error.message, "error"); return; }
     if (editingWO) {
       const costChanged = safeNum(form.cost) !== safeNum(editingWO.cost);
       addNotification("🔧", `Work order updated: ${form.issue}`);
@@ -3467,7 +3595,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
 
   async function updateStatus(wo, newStatus) {
     const { error } = await supabase.from("work_orders").update({ status: newStatus }).eq("company_id", companyId).eq("id", wo.id);
-    if (error) { alert("Error updating status: " + error.message); return; }
+    if (error) { showToast("Error updating status: " + error.message, "error"); return; }
     // AUTO-POST TO ACCOUNTING when completed with a cost (with duplicate guard)
     if (newStatus === "completed" && safeNum(wo.cost) > 0) {
       const { data: existingWoJE } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).eq("reference", "WO-" + wo.id).limit(1);
@@ -3485,7 +3613,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid for: ${wo.issue}` },
         ]
       });
-      if (!_jeOk) { alert("Accounting entry failed. The record was saved but the journal entry could not be posted. Please check the accounting module."); }
+      if (!_jeOk) { showToast("Accounting entry failed. The record was saved but the journal entry could not be posted. Please check the accounting module.", "error"); }
       
     }
     addNotification("🔧", `Work order "${wo.issue}" marked as ${newStatus.replace("_", " ")}`);
@@ -3522,15 +3650,15 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
       try {
     const file = photoRef.current?.files?.[0];
     if (!file || !viewingPhotos) return;
-    if (file.size > 10 * 1024 * 1024) { alert("Photo must be under 10MB."); setUploadingPhoto(false); return; }
+    if (file.size > 10 * 1024 * 1024) { showToast("Photo must be under 10MB."); setUploadingPhoto(false, "error"); return; }
     setUploadingPhoto(true);
     const fileName = `wo_${viewingPhotos.id}_${shortId()}_${sanitizeFileName(file.name)}`;
     const { error: uploadError } = await supabase.storage.from("maintenance-photos").upload(fileName, file);
-    if (uploadError) { alert("Upload failed: " + uploadError.message); setUploadingPhoto(false); return; }
+    if (uploadError) { showToast("Upload failed: " + uploadError.message); setUploadingPhoto(false, "error"); return; }
     // Store file path (not public URL) — signed URLs generated on display
     const storagePath = fileName;
     const { error: _photoErr } = await supabase.from("work_order_photos").insert([{ work_order_id: viewingPhotos.id, property: viewingPhotos.property, url: storagePath, caption: file.name, company_id: companyId, storage_bucket: "maintenance-photos" }]);
-    if (_photoErr) { alert("Error saving photo: " + _photoErr.message); setUploadingPhoto(false); return; }
+    if (_photoErr) { showToast("Error saving photo: " + _photoErr.message); setUploadingPhoto(false, "error"); return; }
     addNotification("📸", `Photo uploaded for: ${viewingPhotos.issue}`);
     setUploadingPhoto(false);
     if (photoRef.current) photoRef.current.value = "";
@@ -3543,7 +3671,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
       try {
     // Photos DO have company_id — delete is scoped to current company
     const { error: _photoDelErr } = await supabase.from("work_order_photos").delete().eq("company_id", companyId).eq("id", id);
-    if (_photoDelErr) { alert("Error deleting photo: " + _photoDelErr.message); return; }
+    if (_photoDelErr) { showToast("Error deleting photo: " + _photoDelErr.message, "error"); return; }
     openPhotos(viewingPhotos);
       } finally { guardRelease("deletePhoto"); }
   }
@@ -3602,6 +3730,9 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
       )}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-5 gap-2">
         <h2 className="text-xl md:text-2xl font-manrope font-bold text-slate-800">Maintenance</h2>
+        <div className="flex items-center gap-2">
+          <button onClick={exportWorkOrders} className="text-sm text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-2xl hover:bg-indigo-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
+        </div>
         <div className="flex gap-1 overflow-x-auto pb-1">
           {[["workorders", "Work Orders"], ["inspections", "Inspections"], ["vendors", "Vendors"], ["archived", "Archived"]].map(([id, label]) => (
             <button key={id} onClick={() => setMaintTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap " + (maintTab === id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
@@ -3664,16 +3795,31 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
         </select>
       </div>
       <div className="text-xs text-slate-400 mb-3">{filtered.length} of {workOrders.length} work orders</div>
+      {/* WO Bulk Action Bar */}
+      {selectedWOs.size > 0 && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3 mb-3 flex items-center justify-between">
+          <span className="text-sm font-medium text-indigo-800">{selectedWOs.size} work order{selectedWOs.size > 1 ? "s" : ""} selected</span>
+          <div className="flex gap-2">
+            <button onClick={() => bulkUpdateWOStatus("in_progress")} className="text-xs bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-200 font-medium">In Progress</button>
+            <button onClick={() => bulkUpdateWOStatus("completed")} className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-200 font-medium">Complete</button>
+            <button onClick={() => bulkUpdateWOStatus("open")} className="text-xs bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-200 font-medium">Reopen</button>
+            <button onClick={() => setSelectedWOs(new Set())} className="text-xs text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-100">Deselect</button>
+          </div>
+        </div>
+      )}
       <div className="space-y-3">
         {filtered.map(w => (
-          <div key={w.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
+          <div key={w.id} className={"bg-white rounded-3xl shadow-card border p-4 " + (selectedWOs.has(w.id) ? "border-indigo-300 ring-1 ring-indigo-200" : "border-indigo-50")}>
             <div className="flex justify-between items-start">
-              <div>
+              <div className="flex items-start gap-3">
+                <input type="checkbox" checked={selectedWOs.has(w.id)} onChange={e => { const s = new Set(selectedWOs); e.target.checked ? s.add(w.id) : s.delete(w.id); setSelectedWOs(s); }} className="mt-1.5 accent-indigo-600" />
+                <div>
                 <div className="flex items-center gap-2">
                   <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${priorityColors[w.priority]}`}>{w.priority}</span>
                   <span className="font-semibold text-slate-800">{w.issue}</span>
                 </div>
                 <div className="text-xs text-slate-400 mt-1">{w.property} · {w.tenant}{!w.assigned && w.tenant && <span className="ml-1 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Tenant Request</span>}</div>
+                </div>
               </div>
               <Badge status={w.status} label={w.status?.replace("_", " ")} />
             </div>
@@ -3699,7 +3845,17 @@ function Maintenance({ addNotification, userProfile, userRole, companyId }) {
 }
 
 // ============ UTILITIES ============
-function Utilities({ addNotification, userProfile, userRole, companyId }) {
+function Utilities({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
+  function exportUtilities() {
+    exportToCSV(utilities, [
+      { label: "Property", key: "property" },
+      { label: "Provider", key: "provider" },
+      { label: "Type", key: "type" },
+      { label: "Amount", key: "amount" },
+      { label: "Due Date", key: "due" },
+      { label: "Status", key: "status" },
+    ], "utilities_" + new Date().toLocaleDateString(), showToast);
+  }
   const [utilities, setUtilities] = useState([]);
   const [auditLog, setAuditLog] = useState([]);
   const [showAudit, setShowAudit] = useState(null);
@@ -3742,7 +3898,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
 
   async function saveAccount() {
     if (!accountForm.property || !accountForm.provider || !accountForm.username || !accountForm.password) {
-      alert("Property, provider, username, and password are required."); return;
+      showToast("Property, provider, username, and password are required.", "error"); return;
     }
     // Encrypt credentials client-side before sending
     // In production, this should be done server-side via Edge Function
@@ -3773,7 +3929,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
     } else {
       ({ error } = await supabase.from("utility_accounts").insert([payload]));
     }
-    if (error) { alert("Error saving account: " + error.message); return; }
+    if (error) { showToast("Error saving account: " + error.message, "error"); return; }
     addNotification("⚡", (editingAccount ? "Updated" : "Added") + " utility account: " + (providerInfo?.display_name || accountForm.provider));
     setShowAccountForm(false);
     setEditingAccount(null);
@@ -3782,7 +3938,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
   }
 
   async function deleteAccount(acct) {
-    if (!window.confirm("Archive this utility account? Automation will stop for this account.")) return;
+    if (!await showConfirm({ message: "Archive this utility account? Automation will stop for this account." })) return;
     await supabase.from("utility_accounts").update({ archived_at: new Date().toISOString() }).eq("id", acct.id).eq("company_id", companyId);
     addNotification("📦", "Utility account archived: " + acct.provider_display);
     fetchAutomationData();
@@ -3797,7 +3953,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
       status: "queued",
       triggered_by: userProfile?.email || "manual",
     }]);
-    if (error) { alert("Error queuing job: " + error.message); return; }
+    if (error) { showToast("Error queuing job: " + error.message, "error"); return; }
     addNotification("🔄", "Bill check queued for " + acct.provider_display + " at " + acct.property);
     fetchAutomationData();
   }
@@ -3809,7 +3965,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
       authorized_by: userProfile?.email,
       authorized_at: new Date().toISOString(),
     }).eq("id", bill.id).eq("company_id", companyId);
-    if (error) { alert("Error authorizing: " + error.message); return; }
+    if (error) { showToast("Error authorizing: " + error.message, "error"); return; }
     // Queue payment job
     await supabase.from("automation_jobs").insert([{
       company_id: companyId,
@@ -3832,7 +3988,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
         { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(bill.amount), class_id: classId, memo: "Utility payment" },
       ]
     });
-    if (!_jeOk) { alert("Payment authorized but accounting entry failed. Please check the Accounting module."); }
+    if (!_jeOk) { showToast("Payment authorized but accounting entry failed. Please check the Accounting module.", "error"); }
     addNotification("✅", "Payment authorized: " + (bill.provider_display || bill.provider) + " $" + bill.amount);
     setPaymentMethodModal(null);
     fetchAutomationData();
@@ -3847,12 +4003,12 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
   async function addUtility() {
       if (!guardSubmit("addUtility")) return;
       try {
-    if (!form.property.trim()) { alert("Property is required."); return; }
-    if (!form.provider.trim()) { alert("Provider name is required."); return; }
-    if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0) { alert("Please enter a valid amount."); return; }
-    if (!form.due) { alert("Due date is required."); return; }
+    if (!form.property.trim()) { showToast("Property is required.", "error"); return; }
+    if (!form.provider.trim()) { showToast("Provider name is required.", "error"); return; }
+    if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0) { showToast("Please enter a valid amount.", "error"); return; }
+    if (!form.due) { showToast("Due date is required.", "error"); return; }
     const { error } = await supabase.from("utilities").insert([{ ...form, amount: Number(form.amount), company_id: companyId }]);
-    if (error) { alert("Error adding utility: " + error.message); return; }
+    if (error) { showToast("Error adding utility: " + error.message, "error"); return; }
     addNotification("⚡", `Utility bill added: ${form.provider} at ${form.property}`);
     logAudit("create", "utilities", `Utility added: ${form.provider} ${formatCurrency(form.amount)} at ${form.property}`, "", userProfile?.email, userRole, companyId);
     setShowForm(false);
@@ -3864,10 +4020,10 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
   async function approvePay(u) {
       if (!guardSubmit("approvePay")) return;
       try {
-    if (u.status === "paid") { alert("This utility is already marked as paid."); return; }
+    if (u.status === "paid") { showToast("This utility is already marked as paid.", "error"); return; }
     const now = new Date().toISOString();
     const { error } = await supabase.from("utilities").update({ status: "paid", paid_at: now }).eq("company_id", companyId).eq("id", u.id);
-    if (error) { alert("Error approving payment: " + error.message); return; }
+    if (error) { showToast("Error approving payment: " + error.message, "error"); return; }
     await supabase.from("utility_audit").insert([{ company_id: companyId,
       utility_id: u.id,
       property: u.property,
@@ -3892,7 +4048,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid: ${u.provider}` },
         ]
       });
-      if (!_jeOk) { alert("Accounting entry failed. The record was saved but the journal entry could not be posted. Please check the accounting module."); }
+      if (!_jeOk) { showToast("Accounting entry failed. The record was saved but the journal entry could not be posted. Please check the accounting module.", "error"); }
       // #15: Create ledger entry for utility payment
       await safeLedgerInsert({ company_id: companyId, tenant: "", property: u.property, date: formatLocalDate(new Date()), description: `Utility: ${u.provider}`, amount: amt, type: "expense", balance: 0 });
     }
@@ -3935,6 +4091,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId }) {
       {/* Tab Navigation */}
       <div className="flex flex-col md:flex-row md:items-center gap-2 mb-5 border-b border-indigo-50 pb-3">
         <h2 className="text-xl md:text-2xl font-manrope font-bold text-slate-800">Utilities</h2>
+        <button onClick={exportUtilities} className="text-sm text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-2xl hover:bg-indigo-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
         <div className="flex gap-1 overflow-x-auto pb-1">
           {[["bills", "Manual Bills"], ["automation", "⚡ Automation"], ["jobs", "Job History"]].map(([id, label]) => (
             <button key={id} onClick={() => setUtilTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (utilTab === id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
@@ -4167,18 +4324,18 @@ function ArchivedItems({ tableName, label, fields, companyId, addNotification, o
   }
 
   async function restore(item) {
-    if (!window.confirm("Restore this " + label.toLowerCase() + "?")) return;
+    if (!await showConfirm({ message: "Restore this " + label.toLowerCase() + "?" })) return;
     const { error } = await supabase.from(tableName).update({ archived_at: null, archived_by: null }).eq("id", item.id).eq("company_id", companyId);
-    if (error) { alert("Restore failed: " + error.message); return; }
+    if (error) { showToast("Restore failed: " + error.message, "error"); return; }
     addNotification("♻️", "Restored " + label + ": " + (item.address || item.name || item.issue || item.tenant || "item"));
     fetchItems();
     if (onRestore) onRestore();
   }
 
   async function permanentDelete(item) {
-    if (!window.confirm("PERMANENTLY delete this " + label.toLowerCase() + "? This cannot be undone.")) return;
+    if (!await showConfirm({ message: "PERMANENTLY delete this " + label.toLowerCase() + "? This cannot be undone.", variant: "danger", confirmText: "Delete" })) return;
     const { error } = await supabase.from(tableName).delete().eq("id", item.id).eq("company_id", companyId);
-    if (error) { alert("Delete failed: " + error.message); return; }
+    if (error) { showToast("Delete failed: " + error.message, "error"); return; }
     addNotification("🗑️", "Deleted " + label);
     fetchItems();
   }
@@ -4237,7 +4394,7 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   }
 
   async function saveEntry() {
-    if (!form.description.trim() || !form.amount) { alert("Description and amount are required."); return; }
+    if (!form.description.trim() || !form.amount) { showToast("Description and amount are required.", "error"); return; }
     const payload = {
       company_id: companyId,
       description: form.description, frequency: form.frequency,
@@ -4253,11 +4410,11 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
     };
     if (editingEntry) {
       const { error } = await supabase.from("recurring_journal_entries").update(payload).eq("id", editingEntry.id).eq("company_id", companyId);
-      if (error) { alert(userError(error.message)); return; }
+      if (error) { showToast(userError(error.message), "error"); return; }
       addNotification("✏️", "Updated recurring entry: " + form.description);
     } else {
       const { error } = await supabase.from("recurring_journal_entries").insert([payload]);
-      if (error) { alert(userError(error.message)); return; }
+      if (error) { showToast(userError(error.message), "error"); return; }
       addNotification("🔄", "Created recurring entry: " + form.description);
     }
     setShowForm(false); setEditingEntry(null);
@@ -4268,21 +4425,21 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   async function toggleStatus(entry) {
     const newStatus = entry.status === "active" ? "paused" : "active";
     const { error } = await supabase.from("recurring_journal_entries").update({ status: newStatus }).eq("id", entry.id).eq("company_id", companyId);
-    if (error) { alert(userError(error.message)); return; }
+    if (error) { showToast(userError(error.message), "error"); return; }
     addNotification(newStatus === "active" ? "▶️" : "⏸️", (newStatus === "active" ? "Resumed" : "Paused") + ": " + entry.description);
     fetchEntries();
   }
 
   async function deleteEntry(entry) {
-    if (!window.confirm("Delete this recurring entry? This cannot be undone.")) return;
+    if (!await showConfirm({ message: "Delete this recurring entry? This cannot be undone.", variant: "danger", confirmText: "Delete" })) return;
     const { error } = await supabase.from("recurring_journal_entries").delete().eq("id", entry.id).eq("company_id", companyId);
-    if (error) { alert(userError(error.message)); return; }
+    if (error) { showToast(userError(error.message), "error"); return; }
     addNotification("🗑️", "Deleted: " + entry.description);
     fetchEntries();
   }
 
   async function runNow() {
-    if (!window.confirm("Post all active recurring entries for this month now?")) return;
+    if (!await showConfirm({ message: "Post all active recurring entries for this month now?" })) return;
     const result = await autoPostRentCharges(companyId);
     if (result?.posted > 0) addNotification("⚡", "Posted " + result.posted + " charge(s)");
     else addNotification("ℹ️", "No new charges needed for this period");
@@ -4673,7 +4830,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
     if (!form.name.trim()) return;
     const finalType = form.type === "__custom__" ? form.customType.trim() : form.type;
     const finalSubtype = form.subtype === "__custom__" ? form.customSubtype.trim() : form.subtype;
-    if (!finalType) { alert("Please enter an account type."); return; }
+    if (!finalType) { showToast("Please enter an account type.", "error"); return; }
     if (modal === "add") {
       const newId = nextAccountId(accounts, finalType);
       await onAdd({ id: newId, name: form.name, type: finalType, subtype: finalSubtype || "", description: form.description, balance: 0, is_active: true });
@@ -4809,7 +4966,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   const validation = validateJE(form.lines.filter(l => l.account_id));
 
   const saveEntry = async (status) => {
-    if (!form.property) { alert("Please select a property."); return; }
+    if (!form.property) { showToast("Please select a property.", "error"); return; }
     if (!form.description.trim() || !validation.isValid) return;
     const lines = form.lines.filter(l => l.account_id).map(l => ({ ...l, debit: parseFloat(l.debit) || 0, credit: parseFloat(l.credit) || 0 }));
     if (modal === "add") {
@@ -5620,7 +5777,7 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
 }
 
 // --- Main Accounting Component (Supabase-backed) ---
-function Accounting({ companyId, activeCompany, addNotification, userProfile }) {
+function Accounting({ companyId, activeCompany, addNotification, userProfile, showToast, showConfirm }) {
   const [acctAccounts, setAcctAccounts] = useState([]);
   const [journalEntries, setJournalEntries] = useState([]);
   const [acctClasses, setAcctClasses] = useState([]);
@@ -5690,7 +5847,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile }) 
       if (!guardSubmit("addAccount")) return;
       try {
     const { error } = await supabase.from("acct_accounts").insert([{ ...acct, company_id: companyId }]);
-    if (error) { alert("Error creating account: " + error.message); return; }
+    if (error) { showToast("Error creating account: " + error.message, "error"); return; }
     fetchAll();
       } finally { guardRelease("addAccount"); }
   }
@@ -5701,17 +5858,17 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile }) 
       is_active: acct.is_active, description: acct.description || "",
       parent_id: acct.parent_id || null
     }).eq("company_id", companyId).eq("id", id);
-    if (error) { alert("Error updating account: " + error.message); return; }
+    if (error) { showToast("Error updating account: " + error.message, "error"); return; }
     fetchAll();
   }
   async function toggleAccount(id, currentActive) {
     if (currentActive) {
       // Check if any posted JEs reference this account before deactivating
       const { data: refs } = await supabase.from("acct_journal_lines").select("id").eq("account_id", id).limit(1);
-      if (refs?.length > 0 && !window.confirm("This account has journal entries. Deactivating will hide it from reports but existing entries remain. Continue?")) return;
+      if (refs?.length > 0 && !await showConfirm({ message: "This account has journal entries. Deactivating will hide it from reports but existing entries remain. Continue?" })) return;
     }
     const { error: _err3877 } = await supabase.from("acct_accounts").update({ is_active: !currentActive }).eq("company_id", companyId).eq("id", id);
-    if (_err3877) { alert("Error updating acct_accounts: " + _err3877.message); return; }
+    if (_err3877) { showToast("Error updating acct_accounts: " + _err3877.message, "error"); return; }
     fetchAll();
   }
 
@@ -5738,19 +5895,19 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile }) 
     // Validate DR/CR balance before inserting
     if (lines?.length > 0) {
       const v = validateJE(lines);
-      if (!v.isValid) { alert("Journal entry is out of balance by $" + v.difference.toFixed(2) + ". Debits must equal credits."); return; }
+      if (!v.isValid) { showToast("Journal entry is out of balance by $" + v.difference.toFixed(2) + ". Debits must equal credits.", "error"); return; }
     }
     const number = nextJENumber(journalEntries);
     const jeId = generateId("je");
     const { error: headerErr } = await supabase.from("acct_journal_entries").insert([{ company_id: companyId, id: jeId, number, date: header.date, description: header.description, reference: header.reference || "", property: header.property || "", status: header.status || "draft" }]);
-    if (headerErr) { alert("Error creating journal entry: " + headerErr.message); return; }
+    if (headerErr) { showToast("Error creating journal entry: " + headerErr.message, "error"); return; }
     if (lines?.length > 0) {
       const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: jeId, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "" })));
       if (linesErr) {
         console.warn("JE lines failed, cleaning up:", linesErr.message);
         const { error: _err3909 } = await supabase.from("acct_journal_entries").delete().eq("company_id", companyId).eq("id", jeId);
         if (_err3909) console.warn("acct_journal_entries write failed:", _err3909.message);
-        alert("Error creating journal entry lines: " + linesErr.message);
+        showToast("Error creating journal entry lines: " + linesErr.message, "error");
         return;
       }
     }
@@ -5763,7 +5920,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile }) 
     // Validate debit/credit balance before saving
     if (lines?.length > 0) {
       const v = validateJE(lines);
-      if (!v.isValid) { alert("Journal entry is out of balance by $" + v.difference.toFixed(2) + ". Debits must equal credits."); return; }
+      if (!v.isValid) { showToast("Journal entry is out of balance by $" + v.difference.toFixed(2) + ". Debits must equal credits.", "error"); return; }
     }
     delete header.number;
     // Save old lines before deleting so we can restore on failure
@@ -5780,7 +5937,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile }) 
         if (oldLines?.length > 0) {
           await supabase.from("acct_journal_lines").insert(oldLines.map(l => ({ journal_entry_id: id, account_id: l.account_id, account_name: l.account_name, debit: l.debit, credit: l.credit, class_id: l.class_id, memo: l.memo })));
         }
-        alert("Error updating journal lines: " + linesErr.message);
+        showToast("Error updating journal lines: " + linesErr.message, "error");
         fetchAll();
         return;
       }
@@ -5790,18 +5947,18 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile }) 
   async function postJournalEntry(id) {
     // Check JE has lines before posting
     const je = journalEntries.find(j => j.id === id);
-    if (!je?.lines || je.lines.length === 0) { alert("Cannot post a journal entry with no lines."); return; }
+    if (!je?.lines || je.lines.length === 0) { showToast("Cannot post a journal entry with no lines.", "error"); return; }
     const v = validateJE(je.lines);
-    if (!v.isValid) { alert("Cannot post: journal entry is out of balance by $" + v.difference.toFixed(2)); return; }
+    if (!v.isValid) { showToast("Cannot post: journal entry is out of balance by $" + v.difference.toFixed(2), "error"); return; }
     const { error: _err3952 } = await supabase.from("acct_journal_entries").update({ status: "posted" }).eq("company_id", companyId).eq("id", id);
-    if (_err3952) { alert("Error updating acct_journal_entries: " + _err3952.message); return; }
+    if (_err3952) { showToast("Error updating acct_journal_entries: " + _err3952.message, "error"); return; }
     fetchAll();
   }
   async function voidJournalEntry(id) {
     // Find the JE to check if it affected a tenant balance
     const je = journalEntries.find(j => j.id === id);
     const { error: _err3958 } = await supabase.from("acct_journal_entries").update({ status: "voided" }).eq("company_id", companyId).eq("id", id);
-    if (_err3958) { alert("Error updating acct_journal_entries: " + _err3958.message); return; }
+    if (_err3958) { showToast("Error updating acct_journal_entries: " + _err3958.message, "error"); return; }
     // Reverse tenant balance based on JE type
     if (je) {
       const { data: jeLines } = await supabase.from("acct_journal_lines").select("*").eq("journal_entry_id", id);
@@ -5822,7 +5979,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile }) 
             // Reverse: if charge increased AR (positive), decrease balance; if payment decreased AR (negative), increase balance
             try {
               const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -arImpact });
-              if (balErr) alert("Balance update failed: " + balErr.message + ". Please verify the tenant balance.");
+              if (balErr) showToast("Balance update failed: " + balErr.message + ". Please verify the tenant balance.", "error");
             } catch (e) { console.warn("Void balance RPC error:", e.message); }
             await safeLedgerInsert({ company_id: companyId,
               tenant: tenantName.trim(), property: je.property || "",
@@ -5842,7 +5999,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile }) 
       if (!guardSubmit("addClass")) return;
       try {
     const { error } = await supabase.from("acct_classes").insert([{ ...cls, company_id: companyId }]);
-    if (error) { alert("Error creating class: " + error.message); return; }
+    if (error) { showToast("Error creating class: " + error.message, "error"); return; }
     fetchAll();
       } finally { guardRelease("addClass"); }
   }
@@ -5852,12 +6009,12 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile }) 
       name: cls.name, type: cls.type, is_active: cls.is_active,
       description: cls.description || "", color: cls.color || "#3B82F6"
     }).eq("company_id", companyId).eq("id", id);
-    if (error) { alert("Error updating class: " + error.message); return; }
+    if (error) { showToast("Error updating class: " + error.message, "error"); return; }
     fetchAll();
   }
   async function toggleClass(id, currentActive) {
     const { error: _err4013 } = await supabase.from("acct_classes").update({ is_active: !currentActive }).eq("company_id", companyId).eq("id", id);
-    if (_err4013) { alert("Error updating acct_classes: " + _err4013.message); return; }
+    if (_err4013) { showToast("Error updating acct_classes: " + _err4013.message, "error"); return; }
     fetchAll();
   }
 
@@ -5897,12 +6054,12 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile }) 
             </div>
             <button onClick={async () => {
               const { data: activeTenants } = await supabase.from("tenants").select("*").eq("company_id", companyId).eq("lease_status", "active");
-              if (!activeTenants || activeTenants.length === 0) { alert("No active leases found."); return; }
+              if (!activeTenants || activeTenants.length === 0) { showToast("No active leases found.", "error"); return; }
               const today = formatLocalDate(new Date());
               const month = today.slice(0, 7);
               // Check if already accrued this month
               const { data: existing } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).like("reference", `ACCR-${month}%`).neq("status", "voided");
-              if (existing && existing.length > 0) { alert("Rent already accrued for " + month + ". " + existing.length + " entries exist."); return; }
+              if (existing && existing.length > 0) { showToast("Rent already accrued for " + month + ". " + existing.length + " entries exist.", "error"); return; }
               // Iterate active LEASES (not tenants) for accurate rent amounts and multi-property support
               const { data: activeLeases } = await supabase.from("leases").select("*").eq("company_id", companyId).eq("status", "active");
               let count = 0;
@@ -5921,12 +6078,12 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile }) 
                     { account_id: "4000", account_name: "Rental Income", debit: 0, credit: rent, class_id: classId, memo: `${lease.tenant_name} — ${lease.property}` },
                   ]
                 });
-                if (!_jeOk) { alert("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module."); }
+                if (!_jeOk) { showToast("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
                 
                 // Update tenant balance (they now owe this amount)
                 if (lease.tenant_id) {
                   const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: rent });
-                  if (balErr) alert("Balance update failed: " + balErr.message + ". Please verify the tenant balance.");
+                  if (balErr) showToast("Balance update failed: " + balErr.message + ". Please verify the tenant balance.", "error");
                 }
                 // Create ledger entry
                 await safeLedgerInsert({ company_id: companyId,
@@ -5935,7 +6092,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile }) 
                 });
                 count++;
               }
-              alert("Accrued rent for " + count + " active leases for " + month);
+              showToast("Accrued rent for " + count + " active leases for " + month, "success");
               fetchAll();
             }} className="bg-blue-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-blue-700 shrink-0">Generate Accruals</button>
           </div>
@@ -5985,7 +6142,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile }) 
 }
 
 // ============ DOCUMENTS ============
-function Documents({ addNotification, userProfile, userRole, companyId }) {
+function Documents({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -6014,7 +6171,7 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
       upsert: false,
     });
     if (uploadError) {
-      alert("Upload failed: " + uploadError.message);
+      showToast("Upload failed: " + uploadError.message, "error");
       setUploading(false);
       return;
     }
@@ -6031,7 +6188,7 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
       uploaded_at: new Date().toISOString(),
     }]);
     if (insertError) {
-      alert("File uploaded to storage but failed to save record: " + insertError.message);
+      showToast("File uploaded to storage but failed to save record: " + insertError.message, "error");
       setUploading(false);
       return;
     }
@@ -6047,13 +6204,13 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
   async function deleteDoc(id, name, file_name) {
       if (!guardSubmit("deleteDoc")) return;
       try {
-    if (!window.confirm(`Delete "${name}"?`)) return;
+    if (!await showConfirm({ message: `Delete "${name}"?`, variant: "danger", confirmText: "Delete" })) return;
     // Also delete from storage if file_name is known
     if (file_name) {
       await supabase.storage.from("documents").remove([file_name]);
     }
     const { error } = await supabase.from("documents").delete().eq("id", id).eq("company_id", companyId);
-    if (error) { alert("Error deleting document: " + error.message); return; }
+    if (error) { showToast("Error deleting document: " + error.message, "error"); return; }
     addNotification("🗑️", `Document deleted: ${name}`);
     fetchDocs();
       } finally { guardRelease("deleteDoc"); }
@@ -6072,7 +6229,7 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
       addNotification("🔧", `Repaired URLs for ${repaired} document(s)`);
       fetchDocs();
     } else {
-      alert("All document URLs look fine — no repairs needed.");
+      showToast("All document URLs look fine — no repairs needed.", "success");
     }
   }
 
@@ -6142,10 +6299,10 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
                           const isFullUrl = d.url && d.url.startsWith("http");
                           if (isFullUrl) { window.open(d.url, "_blank", "noopener,noreferrer"); return; }
                           const path = d.file_name || d.url;
-                          if (!path) { alert("No file path available."); return; }
+                          if (!path) { showToast("No file path available.", "error"); return; }
                           const url = await getSignedUrl("documents", path);
                           if (url) window.open(url, "_blank", "noopener,noreferrer");
-                          else alert("Could not generate secure download link.");
+                          else showToast("Could not generate secure download link.", "error");
                         }} className="text-xs text-indigo-600 hover:underline">View</button>
                         <button onClick={async () => {
                           const isFullUrl = d.url && d.url.startsWith("http");
@@ -6161,7 +6318,7 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
                         <button onClick={async () => {
                           const url = await getSignedUrl("documents", d.file_name);
                           if (url) window.open(url, "_blank", "noopener,noreferrer");
-                          else alert("Could not generate secure link for this file.");
+                          else showToast("Could not generate secure link for this file.", "error");
                         }} className="text-xs text-indigo-600 hover:underline">View</button>
                       </>
                     ) : (
@@ -6183,7 +6340,17 @@ function Documents({ addNotification, userProfile, userRole, companyId }) {
 }
 
 // ============ INSPECTIONS ============
-function Inspections({ addNotification, userProfile, userRole, companyId }) {
+function Inspections({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
+  function exportInspections() {
+    exportToCSV(inspections, [
+      { label: "Property", key: "property" },
+      { label: "Type", key: "type" },
+      { label: "Inspector", key: "inspector" },
+      { label: "Date", key: "date" },
+      { label: "Status", key: "status" },
+      { label: "Notes", key: "notes" },
+    ], "inspections_" + new Date().toLocaleDateString(), showToast);
+  }
   const [inspections, setInspections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -6209,10 +6376,10 @@ function Inspections({ addNotification, userProfile, userRole, companyId }) {
   async function saveInspection() {
       if (!guardSubmit("saveInspection")) return;
       try {
-    if (!form.property.trim()) { alert("Property is required."); return; }
-    if (!form.date) { alert("Inspection date is required."); return; }
+    if (!form.property.trim()) { showToast("Property is required.", "error"); return; }
+    if (!form.date) { showToast("Inspection date is required.", "error"); return; }
     const { error } = await supabase.from("inspections").insert([{ ...form, checklist: JSON.stringify(checklist), company_id: companyId }]);
-    if (error) { alert("Error saving inspection: " + error.message); return; }
+    if (error) { showToast("Error saving inspection: " + error.message, "error"); return; }
     addNotification("🔍", `Inspection scheduled: ${form.type} at ${form.property}`);
     setShowForm(false);
     setForm({ property: "", type: "Move-In", inspector: "", date: formatLocalDate(new Date()), status: "scheduled", notes: "" });
@@ -6223,7 +6390,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId }) {
 
   async function updateStatus(id, status) {
     const { error: usErr } = await supabase.from("inspections").update({ status }).eq("company_id", companyId).eq("id", id);
-    if (usErr) { alert("Error updating status: " + usErr.message); return; }
+    if (usErr) { showToast("Error updating status: " + usErr.message, "error"); return; }
     fetchInspections();
   }
 
@@ -6272,7 +6439,10 @@ function Inspections({ addNotification, userProfile, userRole, companyId }) {
 
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-2xl font-manrope font-bold text-slate-800">Inspections</h2>
-        <button onClick={() => { setShowForm(!showForm); initChecklist("Move-In"); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Inspection</button>
+        <div className="flex gap-2">
+          <button onClick={exportInspections} className="text-sm text-indigo-600 border border-indigo-200 px-3 py-2 rounded-2xl hover:bg-indigo-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
+          <button onClick={() => { setShowForm(!showForm); initChecklist("Move-In"); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Inspection</button>
+        </div>
       </div>
 
       {showForm && (
@@ -6328,10 +6498,10 @@ function Inspections({ addNotification, userProfile, userRole, companyId }) {
               {insp.status === "completed" && <button onClick={async () => {
                 const items = (() => { try { return JSON.parse(insp.items || "{}"); } catch { return {}; } })();
                 const failed = Object.entries(items).filter(([, v]) => v.pass === false).map(([k]) => k);
-                if (failed.length === 0) { alert("No failed items in this inspection."); return; }
-                if (!window.confirm(`Create work order for ${failed.length} failed item(s)?\n\n${failed.join(", ")}`)) return;
+                if (failed.length === 0) { showToast("No failed items in this inspection.", "error"); return; }
+                if (!await showConfirm({ message: `Create work order for ${failed.length} failed item(s)?\n\n${failed.join(", ")}` })) return;
                 const { error } = await supabase.from("work_orders").insert([{ company_id: companyId, property: insp.property, issue: `Inspection findings: ${failed.join(", ")}`, priority: "normal", status: "open", notes: `Auto-created from ${insp.type} inspection on ${insp.date}` }]);
-                if (error) { alert("Error: " + error.message); return; }
+                if (error) { showToast("Error: " + error.message, "error"); return; }
                 addNotification("🔧", `Work order created from inspection at ${insp.property}`);
               }} className="text-xs text-orange-600 border border-orange-200 px-3 py-1 rounded-lg hover:bg-orange-50"><span className="material-icons-outlined text-xs align-middle">build</span> Create Work Order</button>}
             </div>
@@ -6344,7 +6514,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId }) {
 }
 
 // ============ LEASE MANAGEMENT ============
-function LeaseManagement({ addNotification, userProfile, userRole, companyId }) {
+function LeaseManagement({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [leases, setLeases] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -6412,19 +6582,19 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
   async function saveLease() {
     if (!guardSubmit("saveLease")) return;
     try {
-    if (!form.tenant_name) { alert("Please select a tenant."); return; }
-    if (!form.property) { alert("Please select a property."); return; }
-    if (!form.start_date || !form.end_date) { alert("Lease start and end dates are required."); return; }
-    if (!form.rent_amount || isNaN(Number(form.rent_amount)) || Number(form.rent_amount) <= 0) { alert("Please enter a valid positive rent amount."); return; }
-    if (form.start_date >= form.end_date) { alert("Lease end date must be after start date."); return; }
-    if (Number(form.security_deposit || 0) < 0) { alert("Security deposit cannot be negative."); return; }
-    if (Number(form.rent_escalation_pct || 0) < 0 || Number(form.rent_escalation_pct || 0) > 25) { alert("Rent escalation must be between 0% and 25%."); return; }
+    if (!form.tenant_name) { showToast("Please select a tenant.", "error"); return; }
+    if (!form.property) { showToast("Please select a property.", "error"); return; }
+    if (!form.start_date || !form.end_date) { showToast("Lease start and end dates are required.", "error"); return; }
+    if (!form.rent_amount || isNaN(Number(form.rent_amount)) || Number(form.rent_amount) <= 0) { showToast("Please enter a valid positive rent amount.", "error"); return; }
+    if (form.start_date >= form.end_date) { showToast("Lease end date must be after start date.", "error"); return; }
+    if (Number(form.security_deposit || 0) < 0) { showToast("Security deposit cannot be negative.", "error"); return; }
+    if (Number(form.rent_escalation_pct || 0) < 0 || Number(form.rent_escalation_pct || 0) > 25) { showToast("Rent escalation must be between 0% and 25%.", "error"); return; }
     const tenant = tenants.find(t => t.name === form.tenant_name);
     // Prevent duplicate active leases for same tenant+property
     if (!editingLease) {
       const { data: existingActive } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("tenant_name", form.tenant_name).eq("property", form.property).eq("status", "active").limit(1);
       if (existingActive?.length > 0) {
-        if (!window.confirm("An active lease already exists for " + form.tenant_name + " at " + form.property + ". Creating another will result in double rent charges. Continue?")) return;
+        if (!await showConfirm({ message: "An active lease already exists for " + form.tenant_name + " at " + form.property + ". Creating another will result in double rent charges. Continue?" })) return;
       }
     }
     const payload = {
@@ -6457,7 +6627,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
             { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant_name + " — " + form.property },
           ]
         });
-        if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
+        if (!_jeOk) { showToast("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
         
         // Create ledger entry for deposit collection
         if (tenant?.id) {
@@ -6465,15 +6635,15 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
             tenant: form.tenant_name, property: form.property, date: form.start_date,
             description: "Security deposit collected", amount: dep, type: "deposit", balance: 0,
           });
-          if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
+          if (!_jeOk) { showToast("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
         }
       }
     }
-    if (error) { alert("Error saving lease: " + error.message); return; }
+    if (error) { showToast("Error saving lease: " + error.message, "error"); return; }
     // Update properties table to reflect lease assignment
     if (!editingLease && tenant) {
       const { error: _err4608 } = await supabase.from("properties").update({ tenant: form.tenant_name, lease_end: form.end_date, status: "occupied" }).eq("company_id", companyId).eq("address", form.property);
-      if (_err4608) { alert("Error updating properties: " + _err4608.message); return; }
+      if (_err4608) { showToast("Error updating properties: " + _err4608.message, "error"); return; }
     }
     // (property_id auto-filled by DB trigger from property address)
     // Auto-post rent charges — prompt if backdated
@@ -6482,7 +6652,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
       const today = new Date();
       const monthsBack = Math.max(0, (today.getFullYear() - leaseStartDate.getFullYear()) * 12 + (today.getMonth() - leaseStartDate.getMonth()));
       if (monthsBack > 0) {
-        if (window.confirm("This lease starts " + monthsBack + " month(s) in the past.\n\nWould you like to post " + monthsBack + " backdated rent accrual entries now?\n\n• Each month will create an Accounts Receivable charge\n• Tenant balance will be updated\n• You can also do this later from the Dashboard")) {
+        if (await showConfirm({ message: "This lease starts " + monthsBack + " month(s) in the past.\n\nWould you like to post " + monthsBack + " backdated rent accrual entries now?\n\n• Each month will create an Accounts Receivable charge\n• Tenant balance will be updated\n• You can also do this later from the Dashboard" })) {
           const result = await autoPostRentCharges(companyId);
           if (result?.posted > 0) addNotification("⚡", "Posted " + result.posted + " backdated rent charge(s)");
           if (result?.failed > 0) addNotification("⚠️", result.failed + " charge(s) failed");
@@ -6528,40 +6698,40 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     // Bug 15: Clamp for leap year (Feb 29 in non-leap year → Feb 28)
     const endLastDay = new Date(newEnd.getFullYear(), newEnd.getMonth() + 1, 0).getDate();
     if (newEnd.getDate() > endLastDay) newEnd.setDate(endLastDay);
-    if (!window.confirm("Renew lease for " + lease.tenant_name + "?\nNew rent: $" + Math.round(escalated * 100) / 100 + "/mo\nNew term: " + newStart + " to " + formatLocalDate(newEnd))) return;
+    if (!await showConfirm({ message: "Renew lease for " + lease.tenant_name + "?\nNew rent: $" + Math.round(escalated * 100) / 100 + "/mo\nNew term: " + newStart + " to " + formatLocalDate(newEnd) })) return;
     // Bug 1-2: Check errors and rollback on failure
     const { error: updateErr } = await supabase.from("leases").update({ status: "renewed" }).eq("company_id", companyId).eq("id", lease.id);
-    if (updateErr) { alert("Error updating old lease: " + updateErr.message); return; }
+    if (updateErr) { showToast("Error updating old lease: " + updateErr.message, "error"); return; }
     const { error: insertErr } = await supabase.from("leases").insert([{ company_id: companyId, tenant_id: lease.tenant_id, tenant_name: lease.tenant_name, property: lease.property, start_date: newStart, end_date: formatLocalDate(newEnd), rent_amount: Math.round(escalated * 100) / 100, security_deposit: lease.security_deposit, rent_escalation_pct: lease.rent_escalation_pct, escalation_frequency: lease.escalation_frequency, payment_due_day: lease.payment_due_day, lease_type: "renewal", auto_renew: lease.auto_renew, renewal_notice_days: lease.renewal_notice_days, clauses: lease.clauses, special_terms: lease.special_terms, status: "active", renewed_from: lease.id, created_by: userProfile?.email || "", move_in_checklist: "[]", move_out_checklist: lease.move_out_checklist }]);
     if (insertErr) {
       const { error: _err4650 } = await supabase.from("leases").update({ status: "active" }).eq("company_id", companyId).eq("id", lease.id); // rollback
-      if (_err4650) { alert("Error updating leases: " + _err4650.message); return; }
-      alert("Error creating renewed lease: " + insertErr.message); return;
+      if (_err4650) { showToast("Error updating leases: " + _err4650.message, "error"); return; }
+      showToast("Error creating renewed lease: " + insertErr.message, "error"); return;
     }
     if (lease.tenant_id) await supabase.from("tenants").update({ rent: Math.round(escalated * 100) / 100, move_out: formatLocalDate(newEnd) }).eq("company_id", companyId).eq("id", lease.tenant_id);
     // Sync autopay schedule to new rent amount
     await supabase.from("autopay_schedules").update({ amount: Math.round(escalated * 100) / 100 }).eq("company_id", companyId).eq("tenant", lease.tenant_name).eq("enabled", true);
     // Update property table to reflect new lease end date
     const { error: _err4655 } = await supabase.from("properties").update({ lease_end: formatLocalDate(newEnd) }).eq("company_id", companyId).eq("address", lease.property);
-    if (_err4655) { alert("Error updating properties: " + _err4655.message); return; }
+    if (_err4655) { showToast("Error updating properties: " + _err4655.message, "error"); return; }
     logAudit("create", "leases", "Renewed lease: " + lease.tenant_name + " new rent $" + Math.round(escalated * 100) / 100, lease.id, userProfile?.email, userRole, companyId);
     await autoPostRentCharges(companyId);
     fetchData();
   }
 
   async function terminateLease(lease) {
-    if (!window.confirm("Terminate lease for " + lease.tenant_name + "? This cannot be undone.")) return;
+    if (!await showConfirm({ message: "Terminate lease for " + lease.tenant_name + "? This cannot be undone." })) return;
     const { error: termErr } = await supabase.from("leases").update({ status: "terminated" }).eq("company_id", companyId).eq("id", lease.id);
-    if (termErr) { alert("Error terminating lease: " + termErr.message); return; }
+    if (termErr) { showToast("Error terminating lease: " + termErr.message, "error"); return; }
     if (lease.tenant_id) {
       const { error: _err4666 } = await supabase.from("tenants").update({ lease_status: "inactive" }).eq("company_id", companyId).eq("id", lease.tenant_id);
-      if (_err4666) { alert("Error updating tenants: " + _err4666.message); return; }
+      if (_err4666) { showToast("Error updating tenants: " + _err4666.message, "error"); return; }
       // Deactivate any autopay schedules for this tenant
       const { error: _err4668 } = await supabase.from("autopay_schedules").update({ active: false }).eq("company_id", companyId).eq("tenant", lease.tenant_name);
-      if (_err4668) { alert("Error updating autopay_schedules: " + _err4668.message); return; }
+      if (_err4668) { showToast("Error updating autopay_schedules: " + _err4668.message, "error"); return; }
       // Update property status back to vacant
       const { error: _err4670 } = await supabase.from("properties").update({ status: "vacant", tenant: "", lease_end: "" }).eq("company_id", companyId).eq("address", lease.property);
-      if (_err4670) { alert("Error updating properties: " + _err4670.message); return; }
+      if (_err4670) { showToast("Error updating properties: " + _err4670.message, "error"); return; }
       // Create termination ledger entry
       await safeLedgerInsert({ company_id: companyId,
         tenant: lease.tenant_name, property: lease.property, date: formatLocalDate(new Date()),
@@ -6582,25 +6752,25 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
     if (type === "out") update.move_out_completed = allDone;
     // update only contains checklist field + completion flag — safe
     const { error: _err4690 } = await supabase.from("leases").update(update).eq("id", lease.id).eq("company_id", companyId);
-    if (_err4690) { alert("Error updating leases: " + _err4690.message); return; }
+    if (_err4690) { showToast("Error updating leases: " + _err4690.message, "error"); return; }
     fetchData();
   }
 
   async function processDepositReturn(lease) {
     if (lease.deposit_status === "returned" || lease.deposit_status === "forfeited") {
-      alert("Deposit has already been processed for this lease."); return;
+      showToast("Deposit has already been processed for this lease.", "error"); return;
     }
     const returned = Number(depositForm.amount_returned || 0);
     const deposit = safeNum(lease.security_deposit);
     const deducted = deposit - returned;
-    if (returned < 0 || deducted < 0) { alert("Amounts cannot be negative."); return; }
+    if (returned < 0 || deducted < 0) { showToast("Amounts cannot be negative.", "error"); return; }
     if (returned > deposit) {
-      if (!window.confirm("Return amount ($" + returned + ") exceeds the original deposit ($" + deposit + "). Continue?")) return;
+      if (!await showConfirm({ message: "Return amount ($" + returned + ") exceeds the original deposit ($" + deposit + "). Continue?" })) return;
     }
-    if (!depositForm.return_date) { alert("Return date is required."); return; }
+    if (!depositForm.return_date) { showToast("Return date is required.", "error"); return; }
     const status = returned >= deposit ? "returned" : returned > 0 ? "partial_return" : "forfeited";
     const { error: depErr } = await supabase.from("leases").update({ deposit_status: status, deposit_returned: returned, deposit_return_date: depositForm.return_date, deposit_deductions: depositForm.deductions }).eq("company_id", companyId).eq("id", lease.id);
-    if (depErr) { alert("Error processing deposit return: " + depErr.message); return; }
+    if (depErr) { showToast("Error processing deposit return: " + depErr.message, "error"); return; }
     const classId = await getPropertyClassId(lease.property, companyId);
     if (returned > 0) {
       const _jeOk = await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Security deposit return — " + lease.tenant_name, reference: "DEPRET-" + shortId(), property: lease.property,
@@ -6609,7 +6779,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: returned, class_id: classId, memo: "Deposit refund" },
         ]
       });
-      if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
+      if (!_jeOk) { showToast("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
       
     }
     if (deducted > 0) {
@@ -6619,7 +6789,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
           { account_id: "4100", account_name: "Other Income", debit: 0, credit: deducted, class_id: classId, memo: "Deposit forfeiture: " + lease.tenant_name },
         ]
       });
-      if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
+      if (!_jeOk) { showToast("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
       
     }
     // Create ledger entry and update balance for deposit return
@@ -6628,9 +6798,9 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
         tenant: lease.tenant_name, property: lease.property, date: depositForm.return_date,
         description: "Security deposit returned", amount: -returned, type: "deposit_return", balance: 0,
       });
-      if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
+      if (!_jeOk) { showToast("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
       const { error: depBalErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: -returned });
-      if (depBalErr) alert("Deposit return balance update failed: " + depBalErr.message + ". Please verify the tenant balance.");
+      if (depBalErr) showToast("Deposit return balance update failed: " + depBalErr.message + ". Please verify the tenant balance.", "error");
     }
     if (deducted > 0 && lease.tenant_id) {
       await safeLedgerInsert({ company_id: companyId,
@@ -6649,9 +6819,9 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
   async function saveTemplate() {
       if (!guardSubmit("saveTemplate")) return;
       try {
-    if (!templateForm.name) { alert("Template name is required."); return; }
+    if (!templateForm.name) { showToast("Template name is required.", "error"); return; }
     const { error } = await supabase.from("lease_templates").insert([{ ...templateForm, default_deposit_months: Number(templateForm.default_deposit_months || 1), default_lease_months: Number(templateForm.default_lease_months || 12), default_escalation_pct: Number(templateForm.default_escalation_pct || 3), payment_due_day: Math.max(1, Math.min(31, Number(templateForm.payment_due_day || 1))), company_id: companyId }]);
-    if (error) { alert("Error: " + error.message); return; }
+    if (error) { showToast("Error: " + error.message, "error"); return; }
     setShowTemplateForm(false); setTemplateForm({ name: "", description: "", clauses: "", special_terms: "", default_deposit_months: "1", default_lease_months: "12", default_escalation_pct: "3", payment_due_day: "1" });
     fetchData();
       } finally { guardRelease("saveTemplate"); }
@@ -6856,10 +7026,10 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
               </div>
             )}
             <button onClick={async () => {
-              if (!rentIncreaseForm.new_amount || !rentIncreaseForm.effective_date) { alert("Amount and date required."); return; }
+              if (!rentIncreaseForm.new_amount || !rentIncreaseForm.effective_date) { showToast("Amount and date required.", "error"); return; }
               const newAmt = Number(rentIncreaseForm.new_amount);
               const { error: _err4960 } = await supabase.from("leases").update({ rent_amount: newAmt, rent_increase_history: JSON.stringify([...(JSON.parse(showRentIncrease.rent_increase_history || "[]")), { from: showRentIncrease.rent_amount, to: newAmt, date: rentIncreaseForm.effective_date, reason: rentIncreaseForm.reason }]) }).eq("company_id", companyId).eq("id", showRentIncrease.id);
-              if (_err4960) { alert("Error updating leases: " + _err4960.message); return; }
+              if (_err4960) { showToast("Error updating leases: " + _err4960.message, "error"); return; }
               if (showRentIncrease.tenant_id) await supabase.from("tenants").update({ rent: newAmt }).eq("company_id", companyId).eq("id", showRentIncrease.tenant_id);
               addNotification("📈", `Rent increased to ${formatCurrency(newAmt)}/mo for ${showRentIncrease.tenant_name}`);
               logAudit("update", "leases", `Rent increase: ${formatCurrency(showRentIncrease.rent_amount)} → ${formatCurrency(newAmt)} for ${showRentIncrease.tenant_name}`, showRentIncrease.id, userProfile?.email, userRole, companyId);
@@ -6874,7 +7044,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId }) 
 }
 
 // ============ VENDOR MANAGEMENT ============
-function VendorManagement({ addNotification, userProfile, userRole, companyId }) {
+function VendorManagement({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [vendors, setVendors] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [workOrders, setWorkOrders] = useState([]);
@@ -6918,9 +7088,9 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
   async function saveVendor() {
       if (!guardSubmit("saveVendor")) return;
       try {
-    if (!form.name) { alert("Vendor name is required."); return; }
-    if (form.hourly_rate && (isNaN(Number(form.hourly_rate)) || Number(form.hourly_rate) < 0)) { alert("Hourly rate must be a valid positive number."); return; }
-    if (form.flat_rate && (isNaN(Number(form.flat_rate)) || Number(form.flat_rate) < 0)) { alert("Flat rate must be a valid positive number."); return; }
+    if (!form.name) { showToast("Vendor name is required.", "error"); return; }
+    if (form.hourly_rate && (isNaN(Number(form.hourly_rate)) || Number(form.hourly_rate) < 0)) { showToast("Hourly rate must be a valid positive number.", "error"); return; }
+    if (form.flat_rate && (isNaN(Number(form.flat_rate)) || Number(form.flat_rate) < 0)) { showToast("Flat rate must be a valid positive number.", "error"); return; }
     const payload = {
       ...form,
       hourly_rate: Number(form.hourly_rate || 0),
@@ -6933,7 +7103,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
     } else {
       ({ error } = await supabase.from("vendors").insert([{ ...payload, email: normalizeEmail(payload.email), company_id: companyId }]));
     }
-    if (error) { alert("Error: " + error.message); return; }
+    if (error) { showToast("Error: " + error.message, "error"); return; }
     logAudit(editingVendor ? "update" : "create", "vendors", (editingVendor ? "Updated" : "Added") + " vendor: " + form.name, editingVendor?.id || "", userProfile?.email, userRole, companyId);
     resetVendorForm();
     fetchData();
@@ -6955,7 +7125,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
   async function deleteVendor(id, name) {
       if (!guardSubmit("deleteVendor")) return;
       try {
-    if (!window.confirm("Delete vendor " + name + "?")) return;
+    if (!await showConfirm({ message: "Delete vendor " + name + "?", variant: "danger", confirmText: "Delete" })) return;
     await supabase.from("vendors").delete().eq("id", id).eq("company_id", companyId);
     logAudit("delete", "vendors", "Deleted vendor: " + name, id, userProfile?.email, userRole, companyId);
     fetchData();
@@ -6965,8 +7135,8 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
   async function saveInvoice() {
       if (!guardSubmit("saveInvoice")) return;
       try {
-    if (!invoiceForm.vendor_id) { alert("Please select a vendor."); return; }
-    if (!invoiceForm.amount || isNaN(Number(invoiceForm.amount)) || Number(invoiceForm.amount) <= 0) { alert("Please enter a valid positive amount."); return; }
+    if (!invoiceForm.vendor_id) { showToast("Please select a vendor.", "error"); return; }
+    if (!invoiceForm.amount || isNaN(Number(invoiceForm.amount)) || Number(invoiceForm.amount) <= 0) { showToast("Please enter a valid positive amount.", "error"); return; }
     const { error } = await supabase.from("vendor_invoices").insert([{
       ...invoiceForm,
       amount: Number(invoiceForm.amount),
@@ -6975,7 +7145,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
       status: "pending",
       company_id: companyId,
     }]);
-    if (error) { alert("Error: " + error.message); return; }
+    if (error) { showToast("Error: " + error.message, "error"); return; }
     logAudit("create", "vendor_invoices", "Invoice: $" + invoiceForm.amount + " from " + invoiceForm.vendor_name, "", userProfile?.email, userRole, companyId);
     setShowInvoiceForm(false);
     setInvoiceForm({ vendor_id: "", vendor_name: "", work_order_id: "", property: "", description: "", amount: "", invoice_number: "", invoice_date: formatLocalDate(new Date()), due_date: "", payment_method: "", notes: "" });
@@ -6986,11 +7156,11 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
   async function payInvoice(inv) {
     if (!guardSubmit("payInvoice")) return;
     try {
-    if (inv.status === "paid") { alert("This invoice is already paid."); return; }
-    if (!window.confirm("Mark invoice #" + (inv.invoice_number || inv.id.slice(0,8)) + " as paid ($" + inv.amount + ")?")) return;
+    if (inv.status === "paid") { showToast("This invoice is already paid.", "error"); return; }
+    if (!await showConfirm({ message: "Mark invoice #" + (inv.invoice_number || inv.id.slice(0,8)) + " as paid ($" + inv.amount + ")?" })) return;
     const today = formatLocalDate(new Date());
     const { error: invErr } = await supabase.from("vendor_invoices").update({ status: "paid", paid_date: today }).eq("company_id", companyId).eq("id", inv.id);
-    if (invErr) { alert("Error marking invoice as paid: " + invErr.message); return; }
+    if (invErr) { showToast("Error marking invoice as paid: " + invErr.message, "error"); return; }
     // Update vendor total_paid
     const vendor = vendors.find(v => String(v.id) === String(inv.vendor_id));
     if (vendor) {
@@ -7025,7 +7195,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
         { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(inv.amount), class_id: classId, memo: "Payment to " + inv.vendor_name },
       ]
     });
-    if (!_jeOk) { alert("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module."); }
+    if (!_jeOk) { showToast("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
     
     logAudit("update", "vendor_invoices", "Paid invoice: $" + inv.amount + " to " + inv.vendor_name, inv.id, userProfile?.email, userRole, companyId);
     fetchData();
@@ -7034,7 +7204,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
 
   async function rateVendor(vendor, rating) {
     const { error } = await supabase.from("vendors").update({ rating }).eq("company_id", companyId).eq("id", vendor.id);
-    if (error) { alert("Failed to update rating: " + error.message); return; }
+    if (error) { showToast("Failed to update rating: " + error.message, "error"); return; }
     fetchData();
   }
 
@@ -7239,7 +7409,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId })
 }
 
 // ============ OWNER MANAGEMENT & STATEMENTS ============
-function OwnerManagement({ addNotification, userProfile, userRole, companyId }) {
+function OwnerManagement({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [owners, setOwners] = useState([]);
   const [properties, setProperties] = useState([]);
   const [statements, setStatements] = useState([]);
@@ -7288,8 +7458,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
   async function saveOwner() {
       if (!guardSubmit("saveOwner")) return;
       try {
-    if (!form.name) { alert("Owner name is required."); return; }
-    if (isNaN(Number(form.management_fee_pct || 10)) || Number(form.management_fee_pct || 10) < 0 || Number(form.management_fee_pct || 10) > 100) { alert("Management fee must be between 0% and 100%."); return; }
+    if (!form.name) { showToast("Owner name is required.", "error"); return; }
+    if (isNaN(Number(form.management_fee_pct || 10)) || Number(form.management_fee_pct || 10) < 0 || Number(form.management_fee_pct || 10) > 100) { showToast("Management fee must be between 0% and 100%.", "error"); return; }
     const payload = { ...form, management_fee_pct: Number(form.management_fee_pct || 10) };
     let error;
     if (editingOwner) {
@@ -7297,7 +7467,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
     } else {
       ({ error } = await supabase.from("owners").insert([{ ...payload, email: normalizeEmail(payload.email), company_id: companyId }]));
     }
-    if (error) { alert("Error: " + error.message); return; }
+    if (error) { showToast("Error: " + error.message, "error"); return; }
     logAudit(editingOwner ? "update" : "create", "owners", (editingOwner ? "Updated" : "Added") + " owner: " + form.name, editingOwner?.id || "", userProfile?.email, userRole, companyId);
     resetForm(); fetchData();
       } finally { guardRelease("saveOwner"); }
@@ -7317,15 +7487,15 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
   async function inviteOwner(owner) {
       if (!guardSubmit("inviteOwner")) return;
       try {
-    if (!owner.email) { alert("This owner has no email address. Please add one first."); return; }
-    if (!window.confirm("Send portal invite to " + owner.name + " (" + owner.email + ")?\n\nThis will:\n1. Create their authentication account\n2. Send a magic link to their email\n3. They can log in and access the Owner Portal")) return;
+    if (!owner.email) { showToast("This owner has no email address. Please add one first.", "error"); return; }
+    if (!await showConfirm({ message: "Send portal invite to " + owner.name + " (" + owner.email + ")?\n\nThis will:\n1. Create their authentication account\n2. Send a magic link to their email\n3. They can log in and access the Owner Portal" })) return;
     try {
       const { error: authErr } = await supabase.auth.signInWithOtp({
         email: (owner.email || "").trim().toLowerCase(),
         options: { data: { name: owner.name, role: "owner" } }
       });
       if (authErr) {
-        alert("Failed to send invitation email to " + owner.email + ": " + authErr.message + "\n\nPlease verify the email address and try again. No access records were created.");
+        showToast("Failed to send invitation email to " + owner.email + ": " + authErr.message + "\n\nPlease verify the email address and try again. No access records were created.", "error");
         return;
       }
       // Create membership as "invited" — placeholder only, grants NO access.
@@ -7338,12 +7508,12 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
         status: "invited",
         invited_by: userProfile?.email || "admin",
       }], { onConflict: "company_id,user_email" });
-      if (memErr) { alert("Error creating invite: " + memErr.message); return; }
+      if (memErr) { showToast("Error creating invite: " + memErr.message, "error"); return; }
       addNotification("✉️", "Portal invite sent to " + owner.name);
       logAudit("create", "owners", "Invited owner to portal: " + owner.email, owner.id, userProfile?.email, userRole, companyId);
-      alert("Owner portal invite sent to " + owner.email + "!\n\nThey can log in and see their properties, statements, and distributions.");
+      showToast("Owner portal invite sent to " + owner.email + "!\n\nThey can log in and see their properties, statements, and distributions.", "warning");
     } catch (e) {
-      alert("Error inviting owner: " + e.message);
+      showToast("Error inviting owner: " + e.message, "error");
     }
       } finally { guardRelease("inviteOwner"); }
   }
@@ -7351,12 +7521,12 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
   async function assignPropertyToOwner(propertyId, ownerId) {
     const owner = owners.find(o => String(o.id) === String(ownerId));
     const { error: _err5445 } = await supabase.from("properties").update({ owner_id: ownerId || null, owner_name: owner?.name || "" }).eq("company_id", companyId).eq("id", propertyId);
-    if (_err5445) { alert("Error updating properties: " + _err5445.message); return; }
+    if (_err5445) { showToast("Error updating properties: " + _err5445.message, "error"); return; }
     fetchData();
   }
 
   async function generateStatement() {
-    if (!genOwner) { alert("Please select an owner."); return; }
+    if (!genOwner) { showToast("Please select an owner.", "error"); return; }
     const owner = owners.find(o => String(o.id) === String(genOwner));
     if (!owner) return;
     const startDate = genMonth + "-01";
@@ -7364,7 +7534,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
     const endDate = formatLocalDate(endObj);
 
     const ownerProps = properties.filter(p => String(p.owner_id) === String(owner.id)).map(p => p.address);
-    if (ownerProps.length === 0) { alert("No properties assigned to " + owner.name); return; }
+    if (ownerProps.length === 0) { showToast("No properties assigned to " + owner.name, "error"); return; }
 
     // Fetch FRESH data from DB for accurate statement (not stale component state)
     const { data: freshPayments } = await supabase.from("payments").select("*").eq("company_id", companyId).eq("status", "paid").gte("date", startDate).lte("date", endDate);
@@ -7399,7 +7569,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
       management_fee: mgmtFee, net_to_owner: netToOwner,
       line_items: JSON.stringify(lineItems), status: "draft",
     }]);
-    if (error) { alert("Error: " + error.message); return; }
+    if (error) { showToast("Error: " + error.message, "error"); return; }
     logAudit("create", "owner_statements", "Generated statement for " + owner.name + " — " + genMonth, "", userProfile?.email, userRole, companyId);
     setShowGenerate(false);
     fetchData();
@@ -7407,16 +7577,16 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
 
   async function markStatementSent(stmt) {
     const { error } = await supabase.from("owner_statements").update({ status: "sent", sent_date: formatLocalDate(new Date()) }).eq("company_id", companyId).eq("id", stmt.id);
-    if (error) { alert("Failed to mark statement as sent: " + error.message); return; }
+    if (error) { showToast("Failed to mark statement as sent: " + error.message, "error"); return; }
     fetchData();
   }
 
   async function distributeToOwner(stmt) {
     if (!guardSubmit("distributeToOwner")) return;
     try {
-    if (stmt.status === "paid") { alert("This statement has already been distributed."); return; }
-    if (stmt.net_to_owner <= 0) { alert("Net amount is $0 or negative. Nothing to distribute."); return; }
-    if (!window.confirm("Distribute $" + stmt.net_to_owner.toLocaleString() + " to " + stmt.owner_name + "?")) return;
+    if (stmt.status === "paid") { showToast("This statement has already been distributed.", "warning"); return; }
+    if (stmt.net_to_owner <= 0) { showToast("Net amount is $0 or negative. Nothing to distribute.", "warning"); return; }
+    if (!await showConfirm({ message: "Distribute $" + stmt.net_to_owner.toLocaleString() + " to " + stmt.owner_name + "?" })) return;
     const today = formatLocalDate(new Date());
     const owner = owners.find(o => String(o.id) === String(stmt.owner_id));
     // Record distribution
@@ -7425,7 +7595,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
       amount: stmt.net_to_owner, method: owner?.payment_method || "check",
       reference: "DIST-" + stmt.period, date: today,
     }]);
-    if (distErr) { alert("Error recording distribution: " + distErr.message); return; }
+    if (distErr) { showToast("Error recording distribution: " + distErr.message, "error"); return; }
     // Post to accounting BEFORE marking statement as paid
     const distJeOk = await autoPostJournalEntry({
       companyId,
@@ -7451,13 +7621,13 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId }) 
           { account_id: "4200", account_name: "Management Fee Income", debit: 0, credit: safeNum(stmt.management_fee), memo: stmt.owner_name },
         ]
       });
-      if (!_jeOk) { alert("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module."); }
+      if (!_jeOk) { showToast("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
       
     }
     // Mark statement as paid only AFTER distribution + JE posting succeed
-    if (!distJeOk) { alert("Distribution recorded but accounting entry failed. Statement NOT marked as paid."); fetchData(); return; }
+    if (!distJeOk) { showToast("Distribution recorded but accounting entry failed. Statement NOT marked as paid.", "warning"); fetchData(); return; }
     const { error: _err5549 } = await supabase.from("owner_statements").update({ status: "paid", paid_date: today }).eq("company_id", companyId).eq("id", stmt.id);
-    if (_err5549) { alert("Error updating owner_statements: " + _err5549.message); return; }
+    if (_err5549) { showToast("Error updating owner_statements: " + _err5549.message, "error"); return; }
     logAudit("create", "owner_distributions", "Distributed $" + stmt.net_to_owner + " to " + stmt.owner_name, stmt.id, userProfile?.email, userRole, companyId);
     fetchData();
     } finally { guardRelease("distributeToOwner"); }
@@ -7706,18 +7876,18 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
   }
 
   async function startReconciliation() {
-    if (!bankBalance || isNaN(Number(bankBalance))) { alert("Please enter the bank ending balance."); return; }
+    if (!bankBalance || isNaN(Number(bankBalance))) { showToast("Please enter the bank ending balance.", "error"); return; }
     const startDate = reconPeriod + "-01";
     const endObj = parseLocalDate(startDate); endObj.setMonth(endObj.getMonth() + 1); endObj.setDate(0);
     const endDate = formatLocalDate(endObj);
 
     // Pull all journal lines hitting the Checking Account (1000) in this period
     const { data: entries } = await supabase.from("acct_journal_entries").select("id, date, description, reference, status").eq("company_id", companyId).gte("date", startDate).lte("date", endDate).eq("status", "posted");
-    if (!entries || entries.length === 0) { alert("No posted journal entries found for " + reconPeriod); return; }
+    if (!entries || entries.length === 0) { showToast("No posted journal entries found for " + reconPeriod, "error"); return; }
 
     const entryIds = entries.map(e => e.id);
     const { data: lines } = await supabase.from("acct_journal_lines").select("*").in("journal_entry_id", entryIds).eq("account_name", "Checking Account");
-    if (!lines || lines.length === 0) { alert("No checking account transactions found for " + reconPeriod); return; }
+    if (!lines || lines.length === 0) { showToast("No checking account transactions found for " + reconPeriod, "error"); return; }
 
     // Build reconciliation items
     const items = lines.map(l => {
@@ -7759,8 +7929,8 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
     });
     const matchCount = matched.filter(m => m.autoMatched).length;
     setReconItems(matched);
-    if (matchCount > 0) alert(`Auto-matched ${matchCount} of ${matched.length} items based on reference and description patterns.`);
-    else alert("No auto-matches found. Please reconcile items manually.");
+    if (matchCount > 0) showToast(`Auto-matched ${matchCount} of ${matched.length} items based on reference and description patterns.`, "success");
+    else showToast("No auto-matches found. Please reconcile items manually.", "success");
   }
 
   function toggleReconItem(index) {
@@ -7808,7 +7978,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
       unreconciled_items: JSON.stringify(reconItems.filter(i => !i.reconciled)),
       reconciled_by: "",
     }]);
-    if (error) { alert("Error: " + error.message); return; }
+    if (error) { showToast("Error: " + error.message, "error"); return; }
 
     // Mark journal lines as reconciled in DB
     const reconIds = reconItems.filter(i => i.reconciled).map(i => i.id);
@@ -7825,7 +7995,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
           .update({ reconciled: true, reconciled_date: today })
           .in("id", safeIds)
           .in("journal_entry_id", validJeIdArr);
-        if (reconErr) { alert("Reconciliation update failed: " + reconErr.message); return; }
+        if (reconErr) { showToast("Reconciliation update failed: " + reconErr.message, "error"); return; }
       }
     }
 
@@ -7948,7 +8118,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
 }
 
 // ============ EMAIL NOTIFICATIONS ============
-function EmailNotifications({ addNotification, userProfile, userRole, companyId }) {
+function EmailNotifications({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [settings, setSettings] = useState([]);
   const [logs, setLogs] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -8301,9 +8471,9 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
     }
     if (toCreate.length > 0) {
       const { error: sigInitErr } = await supabase.from("lease_signatures").insert(toCreate.map(s => ({ ...s, company_id: companyId })));
-    if (sigInitErr) { alert("Error creating signature requests: " + sigInitErr.message); return; }
+    if (sigInitErr) { showToast("Error creating signature requests: " + sigInitErr.message, "error"); return; }
       const { error: _err6295 } = await supabase.from("leases").update({ signature_status: "pending" }).eq("company_id", companyId).eq("id", lease.id);
-      if (_err6295) { alert("Error updating leases: " + _err6295.message); return; }
+      if (_err6295) { showToast("Error updating leases: " + _err6295.message, "error"); return; }
     }
     fetchSigners();
   }
@@ -8355,9 +8525,9 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
       const ctx = canvas.getContext("2d");
       const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
       const hasContent = pixels.some((v, i) => i % 4 === 3 && v > 0);
-      if (!hasContent) { alert("Please draw your signature first."); return; }
+      if (!hasContent) { showToast("Please draw your signature first.", "error"); return; }
     } else {
-      if (!typedName.trim()) { alert("Please type your name."); return; }
+      if (!typedName.trim()) { showToast("Please type your name.", "error"); return; }
       sigData = "typed:" + typedName.trim() + "|ts:" + new Date().toISOString();
     }
 
@@ -8380,7 +8550,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
       logAudit("update", "leases", "E-signature (server-verified): " + signer.signer_name + " signed lease for " + lease.tenant_name + " [hash:" + (signResult?.integrity_hash || "").slice(0, 12) + "]", lease.id, userProfile?.email, "", companyId);
     } catch (rpcErr) {
       // No client-side fallback — server-side signing is required for legal compliance
-      alert("Signature failed: " + rpcErr.message + "\n\nPlease ensure the e-signature system is properly configured. Contact your administrator if this persists.");
+      showToast("Signature failed: " + rpcErr.message + "\n\nPlease ensure the e-signature system is properly configured. Contact your administrator if this persists.", "error");
       setSigning(false);
       return;
     }
@@ -8477,11 +8647,11 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
             </div>
 
             <button onClick={() => {
-              if (!consentAgreed) { alert("You must agree to the electronic signature consent before signing."); return; }
+              if (!consentAgreed) { showToast("You must agree to the electronic signature consent before signing.", "success"); return; }
               // Verify current user is authorized to sign as this signer
               const signer = pendingSigners[0];
               if (signer.signer_email && userProfile?.email && signer.signer_email.toLowerCase() !== userProfile.email.toLowerCase()) {
-                alert("You are signed in as " + userProfile.email + " but this signature is for " + signer.signer_email + ". Please sign in with the correct account.");
+                showToast("You are signed in as " + userProfile.email + " but this signature is for " + signer.signer_email + ". Please sign in with the correct account.", "warning");
                 return;
               }
               submitSignature(signer);
@@ -8604,7 +8774,7 @@ function OwnerMaintenanceView({ companyId, properties }) {
   );
 }
 
-function OwnerPortal({ currentUser, companyId }) {
+function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   const [ownerData, setOwnerData] = useState(null);
   const [properties, setProperties] = useState([]);
   const [statements, setStatements] = useState([]);
@@ -8838,7 +9008,7 @@ function OwnerPortal({ currentUser, companyId }) {
 }
 
 // ============ HOA PAYMENTS ============
-function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
+function HOAPayments({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [hoaPayments, setHoaPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -8857,17 +9027,17 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
   async function saveHOA() {
       if (!guardSubmit("saveHOA")) return;
     try {
-    if (!form.property || !form.hoa_name || !form.amount) { alert("Property, HOA name, and amount are required."); return; }
-    if (!form.due_date) { setForm({...form, due_date: formatLocalDate(new Date())}); alert("Due date was not set — defaulting to today. Please verify and save again."); return; }
+    if (!form.property || !form.hoa_name || !form.amount) { showToast("Property, HOA name, and amount are required.", "error"); return; }
+    if (!form.due_date) { setForm({...form, due_date: formatLocalDate(new Date())}); showToast("Due date was not set — defaulting to today. Please verify and save again.", "error"); return; }
     const payload = { ...form, amount: Number(form.amount) };
     if (editingHoa) {
       const { error: hoaErr } = await supabase.from("hoa_payments").update({ property: payload.property, hoa_name: payload.hoa_name, amount: payload.amount, due_date: payload.due_date, frequency: payload.frequency, status: payload.status, notes: payload.notes }).eq("id", editingHoa.id).eq("company_id", companyId);
-      if (hoaErr) { alert("Error updating HOA: " + hoaErr.message); return; }
+      if (hoaErr) { showToast("Error updating HOA: " + hoaErr.message, "error"); return; }
       addNotification("🏘️", `HOA payment updated: ${form.hoa_name}`);
       logAudit("update", "hoa", `HOA updated: ${form.hoa_name} ${formatCurrency(form.amount)}`, editingHoa.id, userProfile?.email, userRole, companyId);
     } else {
       const { error: hoaErr } = await supabase.from("hoa_payments").insert([{ ...payload, company_id: companyId }]);
-      if (hoaErr) { alert("Error saving HOA: " + hoaErr.message); return; }
+      if (hoaErr) { showToast("Error saving HOA: " + hoaErr.message, "error"); return; }
       addNotification("🏘️", `HOA payment added: ${form.hoa_name} — ${formatCurrency(form.amount)}`);
       logAudit("create", "hoa", `HOA added: ${form.hoa_name} ${formatCurrency(form.amount)} at ${form.property}`, "", userProfile?.email, userRole, companyId);
     }
@@ -8881,7 +9051,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
   async function payHOA(h) {
     if (!guardSubmit("payHOA")) return;
     try {
-    if (h.status === "paid") { alert("This HOA payment is already marked as paid."); return; }
+    if (h.status === "paid") { showToast("This HOA payment is already marked as paid.", "error"); return; }
     const today = formatLocalDate(new Date());
     await supabase.from("hoa_payments").update({ status: "paid", paid_date: today }).eq("company_id", companyId).eq("id", h.id);
     addNotification("✅", `HOA paid: ${h.hoa_name} ${formatCurrency(h.amount)}`);
@@ -8900,7 +9070,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(h.amount), class_id: classId, memo: `HOA: ${h.hoa_name}` },
         ]
       });
-      if (!_jeOk) { alert("Accounting entry failed. The record was saved but the journal entry could not be posted. Please check the accounting module."); }
+      if (!_jeOk) { showToast("Accounting entry failed. The record was saved but the journal entry could not be posted. Please check the accounting module.", "error"); }
       
     }
     fetchHOA();
@@ -8910,7 +9080,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId }) {
   async function deleteHOA(id) {
       if (!guardSubmit("deleteHOA")) return;
       try {
-    if (!window.confirm("Delete this HOA payment?")) return;
+    if (!await showConfirm({ message: "Delete this HOA payment?", variant: "danger", confirmText: "Delete" })) return;
     await supabase.from("hoa_payments").delete().eq("id", id).eq("company_id", companyId);
     logAudit("delete", "hoa", "Deleted HOA payment", id, userProfile?.email, userRole, companyId);
     fetchHOA();
@@ -9023,17 +9193,17 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
   }
 
   async function restoreItem(item) {
-    if (!window.confirm(`Restore this ${item._label.toLowerCase()}?`)) return;
+    if (!await showConfirm({ message: `Restore this ${item._label.toLowerCase()}?` })) return;
     const { error } = await supabase.from(item._table).update({ archived_at: null, archived_by: null }).eq("id", item.id).eq("company_id", companyId);
     if (error) {
-      alert("Failed to restore: " + error.message);
+      showToast("Failed to restore: " + error.message, "error");
       return;
     }
     // If restoring a property, also offer to restore its archived tenant
     if (item._table === "properties" && item.address) {
       const { data: archivedTenants } = await supabase.from("tenants").select("id, name").eq("company_id", companyId).eq("property", item.address).not("archived_at", "is", null);
       if (archivedTenants?.length > 0) {
-        const shouldRestore = window.confirm(`Found ${archivedTenants.length} archived tenant(s) for this property: ${archivedTenants.map(t => t.name).join(", ")}\n\nWould you like to restore them too?`);
+        const shouldRestore = await showConfirm({ message: `Found ${archivedTenants.length} archived tenant(s) for this property: ${archivedTenants.map(t => t.name).join(", ")}\n\nWould you like to restore them too?` });
         if (shouldRestore) {
           for (const t of archivedTenants) {
             const { error: tErr } = await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", t.id).eq("company_id", companyId);
@@ -9060,9 +9230,9 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
   }
 
   async function permanentDelete(item) {
-    if (!window.confirm(`PERMANENTLY delete this ${item._label.toLowerCase()}? This cannot be undone.`)) return;
+    if (!await showConfirm({ message: `PERMANENTLY delete this ${item._label.toLowerCase()}? This cannot be undone.`, variant: "danger", confirmText: "Delete" })) return;
     const { error } = await supabase.from(item._table).delete().eq("id", item.id).eq("company_id", companyId);
-    if (error) { alert("Failed to delete: " + error.message); return; }
+    if (error) { showToast("Failed to delete: " + error.message, "error"); return; }
     addNotification("🗑️", `Permanently deleted ${item._label}`);
     fetchArchived();
   }
@@ -9158,7 +9328,7 @@ const ALL_NAV = [
 ];
 
 // ============ AUTOPAY / RECURRING RENT ============
-function Autopay({ addNotification, userProfile, userRole, companyId }) {
+function Autopay({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [schedules, setSchedules] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -9185,12 +9355,12 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
   async function saveSchedule() {
       if (!guardSubmit("saveSchedule")) return;
       try {
-    if (!form.tenant) { alert("Please select a tenant."); return; }
-    if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0) { alert("Please enter a valid positive amount."); return; }
-    if (!form.start_date) { alert("Start date is required."); return; }
-    if (!form.day_of_month || Number(form.day_of_month) < 1 || Number(form.day_of_month) > 31 || isNaN(Number(form.day_of_month))) { alert("Day of month must be between 1 and 31."); return; }
+    if (!form.tenant) { showToast("Please select a tenant.", "error"); return; }
+    if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0) { showToast("Please enter a valid positive amount.", "error"); return; }
+    if (!form.start_date) { showToast("Start date is required.", "error"); return; }
+    if (!form.day_of_month || Number(form.day_of_month) < 1 || Number(form.day_of_month) > 31 || isNaN(Number(form.day_of_month))) { showToast("Day of month must be between 1 and 31.", "error"); return; }
     const { error } = await supabase.from("autopay_schedules").insert([{ ...form, amount: Number(form.amount), company_id: companyId }]);
-    if (error) { alert("Error saving schedule: " + error.message); return; }
+    if (error) { showToast("Error saving schedule: " + error.message, "error"); return; }
     addNotification("🔄", `Autopay schedule created for ${form.tenant}`);
     logAudit("create", "autopay", `Autopay created: ${form.tenant} $${form.amount}/mo at ${form.property}`, "", userProfile?.email, userRole, companyId);
     setShowForm(false);
@@ -9203,7 +9373,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
     // #11: Use 'enabled' consistently for autopay field name
     const newState = !s.enabled;
     const { error: togErr } = await supabase.from("autopay_schedules").update({ enabled: newState }).eq("company_id", companyId).eq("id", s.id);
-    if (togErr) { alert("Error toggling autopay: " + togErr.message); return; }
+    if (togErr) { showToast("Error toggling autopay: " + togErr.message, "error"); return; }
     addNotification("🔄", `Autopay ${newState ? "activated" : "paused"} for ${s.tenant}`);
     logAudit("update", "autopay", `Autopay ${newState ? "enabled" : "disabled"}: ${s.tenant}`, s.id, userProfile?.email, userRole, companyId);
     fetchData();
@@ -9212,7 +9382,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
   async function deleteSchedule(id, tenant) {
       if (!guardSubmit("deleteSchedule")) return;
       try {
-    if (!window.confirm(`Delete autopay schedule for ${tenant}?`)) return;
+    if (!await showConfirm({ message: `Delete autopay schedule for ${tenant}?`, variant: "danger", confirmText: "Delete" })) return;
     await supabase.from("autopay_schedules").delete().eq("id", id).eq("company_id", companyId);
     logAudit("delete", "autopay", `Autopay deleted: ${tenant}`, id, userProfile?.email, userRole, companyId);
     fetchData();
@@ -9221,13 +9391,13 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
 
   async function runNow(s) {
     if (s._processing) return; s._processing = true;
-    if (!s.amount || safeNum(s.amount) <= 0) { alert("Invalid autopay amount."); s._processing = false; return; }
+    if (!s.amount || safeNum(s.amount) <= 0) { showToast("Invalid autopay amount.", "error"); s._processing = false; return; }
     const today = formatLocalDate(new Date());
     // Duplicate guard: check for existing payment today
     const { data: todayPay } = await supabase.from("payments").select("id").eq("company_id", companyId).eq("tenant", s.tenant).eq("date", today).eq("method", s.method).limit(1);
-    if (todayPay?.length > 0) { if (!window.confirm("A payment from " + s.tenant + " was already recorded today. Run again?")) { s._processing = false; return; } }
+    if (todayPay?.length > 0) { if (!await showConfirm({ message: "A payment from " + s.tenant + " was already recorded today. Run again?" })) { s._processing = false; return; } }
     const { error } = await supabase.from("payments").insert([{ company_id: companyId, tenant: s.tenant, property: s.property, amount: s.amount, type: "rent", method: s.method, status: "paid", date: today }]);
-    if (error) { alert("Error: " + error.message); return; }
+    if (error) { showToast("Error: " + error.message, "error"); return; }
     // AUTO-POST TO ACCOUNTING: Same smart AR logic as manual payments
     const classId = await getPropertyClassId(s.property, companyId);
     const amt = safeNum(s.amount);
@@ -9241,7 +9411,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement — " + s.tenant },
         ]
       });
-      if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
+      if (!_jeOk) { showToast("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
       
     } else {
       const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Autopay — " + s.tenant + " — " + s.property, reference: "APAY-" + shortId(), property: s.property,
@@ -9250,7 +9420,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: s.tenant + " — " + s.property },
         ]
       });
-      if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
+      if (!_jeOk) { showToast("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
       
     }
     logAudit("create", "payments", "Autopay: $" + s.amount + " from " + s.tenant + " at " + s.property, "", userProfile?.email, userRole, companyId);
@@ -9261,7 +9431,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
     if (tenantRow) {
       try {
         const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -amt });
-        if (balErr) alert("Balance update failed: " + balErr.message + ". Please verify the tenant balance.");
+        if (balErr) showToast("Balance update failed: " + balErr.message + ". Please verify the tenant balance.", "error");
       } catch (e) { console.warn("Autopay balance RPC error:", e.message); }
       await safeLedgerInsert({ company_id: companyId,
         tenant: s.tenant, property: s.property,
@@ -9383,7 +9553,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId }) {
 }
 
 // ============ LATE FEES ============
-function LateFees({ addNotification, userProfile, userRole, companyId }) {
+function LateFees({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [rules, setRules] = useState([]);
   const [flagged, setFlagged] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -9431,11 +9601,11 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
   async function saveRule() {
       if (!guardSubmit("saveRule")) return;
       try {
-    if (!form.grace_days || !form.fee_amount) { alert("Please fill all fields."); return; }
-    if (isNaN(Number(form.grace_days)) || Number(form.grace_days) < 0) { alert("Grace days must be a valid number."); return; }
-    if (isNaN(Number(form.fee_amount)) || Number(form.fee_amount) <= 0) { alert("Fee amount must be a positive number."); return; }
+    if (!form.grace_days || !form.fee_amount) { showToast("Please fill all fields.", "error"); return; }
+    if (isNaN(Number(form.grace_days)) || Number(form.grace_days) < 0) { showToast("Grace days must be a valid number.", "error"); return; }
+    if (isNaN(Number(form.fee_amount)) || Number(form.fee_amount) <= 0) { showToast("Fee amount must be a positive number.", "error"); return; }
     const { error } = await supabase.from("late_fee_rules").insert([{ ...form, grace_days: Number(form.grace_days), fee_amount: Number(form.fee_amount), company_id: companyId }]);
-    if (error) { alert("Error: " + error.message); return; }
+    if (error) { showToast("Error: " + error.message, "error"); return; }
     addNotification("⚠️", `Late fee rule "${form.name}" created`);
     setShowForm(false);
     fetchData();
@@ -9460,7 +9630,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
       // Atomic balance update (prevents drift from concurrent writes)
       try {
         const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenant.id, p_amount_change: feeAmount });
-        if (balErr) alert("Balance update failed: " + balErr.message + ". Please verify the tenant balance.");
+        if (balErr) showToast("Balance update failed: " + balErr.message + ". Please verify the tenant balance.", "error");
       } catch (e) { console.warn("Late fee balance RPC error:", e.message); }
     }
     addNotification("⚠️", `Late fee ${formatCurrency(feeAmount)} applied to ${payment.tenant}`);
@@ -9481,7 +9651,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
           { account_id: "4010", account_name: "Late Fee Income", debit: 0, credit: feeAmount, class_id: classId, memo: payment.daysLate + " days overdue" },
         ]
       });
-      if (!_jeOk) { alert("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module."); }
+      if (!_jeOk) { showToast("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
       
     }
     fetchData();
@@ -9489,8 +9659,8 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
 
   async function applyAllFees() {
     const rule = rules[0];
-    if (!rule) { alert("Create a late fee rule first."); return; }
-    if (!window.confirm(`Apply late fees to all ${flagged.filter(p => p.daysLate > rule.grace_days).length} overdue tenants?`)) return;
+    if (!rule) { showToast("Create a late fee rule first.", "error"); return; }
+    if (!await showConfirm({ message: `Apply late fees to all ${flagged.filter(p => p.daysLate > rule.grace_days).length} overdue tenants?` })) return;
     for (const p of flagged.filter(p => p.daysLate > rule.grace_days)) await applyLateFee(p, rule);
   }
 
@@ -9518,7 +9688,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
                 <div className="font-semibold text-indigo-800 text-sm">{r.name}</div>
                 <div className="text-xs text-indigo-500">{r.grace_days} day grace · {r.fee_type === "flat" ? `${formatCurrency(r.fee_amount)} flat` : `${r.fee_amount}% of rent`}</div>
               </div>
-              <button onClick={async () => { if(!window.confirm("Delete this late fee rule?"))return; await supabase.from("late_fee_rules").delete().eq("id", r.id).eq("company_id", companyId); fetchData(); }} className="text-xs text-red-400 hover:text-red-600">Delete</button>
+              <button onClick={async () => { if(!await showConfirm({ message: "Delete this late fee rule?" }))return; await supabase.from("late_fee_rules").delete().eq("id", r.id).eq("company_id", companyId); fetchData(); }} className="text-xs text-red-400 hover:text-red-600">Delete</button>
             </div>
           ))}
         </div>
@@ -9566,7 +9736,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId }) {
 }
 
 // ============ TENANT PORTAL ============
-function TenantPortal({ currentUser, companyId }) {
+function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   const [tenantData, setTenantData] = useState(null);
   const [ledger, setLedger] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -9636,10 +9806,10 @@ function TenantPortal({ currentUser, companyId }) {
       if (!guardSubmit("handleStripePayment")) return;
       try {
     if (!paymentAmount || isNaN(Number(paymentAmount)) || Number(paymentAmount) <= 0) {
-      alert("Please enter a valid payment amount."); return;
+      showToast("Please enter a valid payment amount.", "error"); return;
     }
     if (Number(paymentAmount) > safeNum(tenantData.balance) * 2) {
-      if (!window.confirm("Payment amount ($" + paymentAmount + ") is significantly more than your balance ($" + safeNum(tenantData.balance).toFixed(2) + "). Continue?")) return;
+      if (!await showConfirm({ message: "Payment amount ($" + paymentAmount + ") is significantly more than your balance ($" + safeNum(tenantData.balance).toFixed(2) + "). Continue?" })) return;
     }
     setPaymentProcessing(true);
     try {
@@ -9676,7 +9846,7 @@ function TenantPortal({ currentUser, companyId }) {
       const { data: refreshed } = await supabase.from("tenants").select("*").eq("company_id", companyId).ilike("email", currentUser?.email || "").maybeSingle();
       if (refreshed) setTenantData(refreshed);
     } catch (e) {
-      alert("Payment failed: " + e.message);
+      showToast("Payment failed: " + e.message, "error");
     }
     setPaymentProcessing(false);
       } finally { guardRelease("handleStripePayment"); }
@@ -9686,7 +9856,7 @@ function TenantPortal({ currentUser, companyId }) {
   async function submitMaintenanceRequest() {
       if (!guardSubmit("submitMaintenanceRequest")) return;
       try {
-    if (!maintForm.issue.trim()) { alert("Please describe the issue."); return; }
+    if (!maintForm.issue.trim()) { showToast("Please describe the issue.", "error"); return; }
     // Create the work order first
     const { data: newWO, error } = await supabase.from("work_orders").insert([{ company_id: companyId,
       property: tenantData.property,
@@ -9711,7 +9881,7 @@ function TenantPortal({ currentUser, companyId }) {
         }
       }
     }
-    if (error) { alert("Error submitting request: " + error.message); return; }
+    if (error) { showToast("Error submitting request: " + error.message, "error"); return; }
     logAudit("create", "maintenance", "Tenant submitted: " + maintForm.issue, "", currentUser?.email, "tenant", companyId);
     setMaintForm({ issue: "", priority: "normal", notes: "" });
     setMaintPhotos([]);
@@ -9898,7 +10068,7 @@ function TenantPortal({ currentUser, companyId }) {
                     setAutopayEnabled(true);
                     addNotification("🔄", "Autopay enabled — $" + safeNum(tenantData.rent) + "/month");
                   }
-                } catch (e) { alert("Error: " + e.message); }
+                } catch (e) { showToast("Error: " + e.message, "error"); }
                 setAutopayLoading(false);
               }} disabled={autopayLoading} className={`relative w-12 h-6 rounded-full transition-colors ${autopayEnabled ? "bg-emerald-500" : "bg-slate-300"}`}>
                 <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${autopayEnabled ? "translate-x-6" : "translate-x-0.5"}`} />
@@ -9929,7 +10099,7 @@ function TenantPortal({ currentUser, companyId }) {
             <button onClick={() => exportToCSV(payments, [
               { label: "Date", key: "date" }, { label: "Type", key: "type" }, { label: "Amount", key: "amount" },
               { label: "Method", key: "method" }, { label: "Status", key: "status" },
-            ], "my-payments")} className="text-xs text-indigo-600 border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50"><span className="material-icons-outlined text-xs align-middle mr-1">download</span>Export</button>
+            ], "my-payments", showToast)} className="text-xs text-indigo-600 border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50"><span className="material-icons-outlined text-xs align-middle mr-1">download</span>Export</button>
           </div>
           <div className="space-y-2">
             {payments.map(p => (
@@ -10065,7 +10235,7 @@ function TenantPortal({ currentUser, companyId }) {
 }
 
 // ============ ROLE MANAGEMENT ============
-function RoleManagement({ addNotification, companyId }) {
+function RoleManagement({ addNotification, companyId, showToast, showConfirm }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -10116,10 +10286,10 @@ function RoleManagement({ addNotification, companyId }) {
   async function saveUser() {
       if (!guardSubmit("saveUser")) return;
       try {
-    if (!form.email.trim()) { alert("Email is required."); return; }
-    if (!form.name.trim()) { alert("Name is required."); return; }
-    if (!form.email.trim() || !form.email.includes("@")) { alert("Please enter a valid email address."); return; }
-    if (customPages.length === 0) { alert("Please select at least one module."); return; }
+    if (!form.email.trim()) { showToast("Email is required.", "error"); return; }
+    if (!form.name.trim()) { showToast("Name is required.", "error"); return; }
+    if (!form.email.trim() || !form.email.includes("@")) { showToast("Please enter a valid email address.", "error"); return; }
+    if (customPages.length === 0) { showToast("Please select at least one module.", "error"); return; }
 
     const payload = {
       email: form.email,
@@ -10145,24 +10315,24 @@ function RoleManagement({ addNotification, companyId }) {
           });
           if (rpcErr) throw new Error(rpcErr.message);
         } catch (rpcE) {
-          alert("Failed to update user email: " + rpcE.message + "\n\nNo changes were made. Please ensure the database is properly configured.");
+          showToast("Failed to update user email: " + rpcE.message + "\n\nNo changes were made. Please ensure the database is properly configured.", "error");
           return;
         }
       } else {
         // No email change — just update role/name/pages
         const { error } = await supabase.from("app_users").update({ email: normalizeEmail(payload.email), role: payload.role, name: payload.name, custom_pages: payload.custom_pages, company_id: payload.company_id }).eq("company_id", companyId).eq("id", editingUser.id);
-        if (error) { alert("Error: " + error.message); return; }
+        if (error) { showToast("Error: " + error.message, "error"); return; }
         await supabase.from("company_members").upsert([{ company_id: companyId, user_email: (form.email || "").toLowerCase(), user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
       }
       addNotification("👥", `${form.name}'s access updated`);
     } else {
       const { error, data: newUser } = await supabase.from("app_users").insert([{ ...payload, email: normalizeEmail(payload.email) }]).select();
-      if (error) { alert("Error: " + error.message); return; }
+      if (error) { showToast("Error: " + error.message, "error"); return; }
       // Also add to company_members
       await supabase.from("company_members").upsert([{ company_id: companyId, user_email: (form.email || "").toLowerCase(), user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
       addNotification("👥", `${form.name} added as ${ROLES[form.role]?.label}`);
       // Offer to send invite
-      if (newUser?.[0] && window.confirm(`${form.name} has been added!\n\nWould you like to send them a login invite now?`)) {
+      if (newUser?.[0] && await showConfirm({ message: `${form.name} has been added!\n\nWould you like to send them a login invite now?` })) {
         await inviteUser({ ...newUser[0], ...payload });
       }
     }
@@ -10178,12 +10348,12 @@ function RoleManagement({ addNotification, companyId }) {
   async function removeUser(id, name, email) {
       if (!guardSubmit("removeUser")) return;
       try {
-    if (!window.confirm(`Remove ${name}?`)) return;
+    if (!await showConfirm({ message: `Remove ${name}?`, variant: "danger", confirmText: "Delete" })) return;
     await supabase.from("app_users").delete().eq("id", id).eq("company_id", companyId);
     // Also deactivate their company membership
     if (email) {
       const { error: _err7920 } = await supabase.from("company_members").update({ status: "removed" }).eq("company_id", companyId).eq("user_email", email.toLowerCase());
-      if (_err7920) { alert("Error updating company_members: " + _err7920.message); return; }
+      if (_err7920) { showToast("Error updating company_members: " + _err7920.message, "error"); return; }
     }
     addNotification("👥", `${name} removed`);
     fetchUsers();
@@ -10193,16 +10363,16 @@ function RoleManagement({ addNotification, companyId }) {
   async function inviteUser(user) {
       if (!guardSubmit("inviteUser")) return;
       try {
-    if (!user.email) { alert("This user has no email address."); return; }
+    if (!user.email) { showToast("This user has no email address.", "error"); return; }
     const roleName = ROLES[user.role]?.label || user.role;
-    if (!window.confirm(`Send login invite to ${user.name} (${user.email})?\n\nRole: ${roleName}\n\nThis will:\n1. Create their authentication account\n2. Send a magic link to their email\n3. They can log in and access their assigned modules`)) return;
+    if (!await showConfirm({ message: `Send login invite to ${user.name} (${user.email})?\n\nRole: ${roleName}\n\nThis will:\n1. Create their authentication account\n2. Send a magic link to their email\n3. They can log in and access their assigned modules` })) return;
     try {
       const { error: authErr } = await supabase.auth.signInWithOtp({
         email: (user.email || "").trim().toLowerCase(),
         options: { data: { name: user.name, role: user.role } }
       });
       if (authErr) {
-        alert("Failed to send invitation email to " + user.email + ": " + authErr.message + "\n\nPlease verify the email address and try again. No access records were created.");
+        showToast("Failed to send invitation email to " + user.email + ": " + authErr.message + "\n\nPlease verify the email address and try again. No access records were created.", "error");
         return;
       }
       // Auth succeeded — create membership as "invited" only (no app_users until they sign up)
@@ -10210,12 +10380,12 @@ function RoleManagement({ addNotification, companyId }) {
         company_id: companyId, user_email: (user.email || "").toLowerCase(), user_name: user.name,
         role: user.role, status: "invited", invited_by: "admin",
       }], { onConflict: "company_id,user_email" });
-      if (memErr) { alert("Error creating invite: " + memErr.message); return; }
+      if (memErr) { showToast("Error creating invite: " + memErr.message, "error"); return; }
       addNotification("✉️", `Invite sent to ${user.name} (${roleName})`);
       logAudit("create", "team", "Invited " + user.name + " as " + roleName + ": " + user.email, user.id || "", "", "admin", companyId);
-      alert(`Invite sent to ${user.email}!\n\nThey will receive a magic link to log in.\n\nIf they don't see it, they can use 'Forgot Password' on the login page to set their password.`);
+      showToast(`Invite sent to ${user.email}!\n\nThey will receive a magic link to log in.\n\nIf they don't see it, they can use 'Forgot Password' on the login page to set their password.`, "success");
     } catch (e) {
-      alert("Error sending invite: " + e.message);
+      showToast("Error sending invite: " + e.message, "error");
     }
       } finally { guardRelease("inviteUser"); }
   }
@@ -10404,7 +10574,7 @@ function RoleManagement({ addNotification, companyId }) {
 
 // ============ MAIN APP ============
 // ============ MOVE-OUT LIFECYCLE WIZARD ============
-function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setPage }) {
+function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setPage, showToast, showConfirm }) {
   const [step, setStep] = useState(1);
   const [tenants, setTenants] = useState([]);
   const [leases, setLeases] = useState([]);
@@ -10516,7 +10686,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
       if (propErr) throw new Error("Property update failed: " + propErr.message + ". Completed: " + completedSteps.join(", "));
       completedSteps.push("property_vacant");
       } catch (stepErr) {
-        alert("Move-out partially completed. " + stepErr.message + "\n\nPlease manually verify and fix any inconsistent state.");
+        showToast("Move-out partially completed. " + stepErr.message + "\n\nPlease manually verify and fix any inconsistent state.", "error");
         console.error("Move-out partial failure:", stepErr, "Completed steps:", completedSteps);
       }
 
@@ -10538,7 +10708,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
 
       setCompleted(true);
     } catch (e) {
-      alert("Move-out failed: " + e.message);
+      showToast("Move-out failed: " + e.message, "error");
     }
     setProcessing(false);
   }
@@ -10729,7 +10899,7 @@ const EVICTION_STAGES = [
   { id: "closed", label: "Closed", icon: "check_circle", color: "bg-slate-500" },
 ];
 
-function EvictionWorkflow({ addNotification, userProfile, userRole, companyId }) {
+function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [cases, setCases] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -10758,7 +10928,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId })
   async function createCase() {
     if (!guardSubmit("createEviction")) return;
     try {
-      if (!form.tenant_name || !form.property) { alert("Select a tenant."); return; }
+      if (!form.tenant_name || !form.property) { showToast("Select a tenant.", "error"); return; }
       const noticeDate = new Date();
       noticeDate.setDate(noticeDate.getDate() + parseInt(form.notice_days));
       const caseData = {
@@ -10783,7 +10953,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId })
         total_costs: 0,
       };
       const { error } = await companyInsert("eviction_cases", caseData, companyId);
-      if (error) { alert("Error creating eviction case: " + error.message); return; }
+      if (error) { showToast("Error creating eviction case: " + error.message, "error"); return; }
       // Update tenant status to notice
       if (form.tenant_id) {
         await supabase.from("tenants").update({ lease_status: "notice", move_out: formatLocalDate(noticeDate) }).eq("id", form.tenant_id).eq("company_id", companyId);
@@ -10873,7 +11043,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId })
       if (nextStage === "lockout") updates.lockout_date = stageDate || formatLocalDate(new Date());
 
       const { error } = await supabase.from("eviction_cases").update(updates).eq("id", evCase.id).eq("company_id", companyId);
-      if (error) { alert("Error updating case: " + error.message); return; }
+      if (error) { showToast("Error updating case: " + error.message, "error"); return; }
 
       // Post legal costs to accounting if any
       if (safeNum(stageCost) > 0) {
@@ -10900,7 +11070,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId })
   }
 
   async function closeCase(evCase, outcome) {
-    if (!window.confirm(`Close this eviction case as "${outcome}"?\n\n${outcome === "completed" ? "This will also: set tenant to inactive, mark property vacant, terminate lease, and disable autopay." : outcome === "tenant_cured" ? "Tenant status will return to active." : "No tenant/property changes will be made."}`)) return;
+    if (!await showConfirm({ message: `Close this eviction case as "${outcome}"?\n\n${outcome === "completed" ? "This will also: set tenant to inactive, mark property vacant, terminate lease, and disable autopay." : outcome === "tenant_cured" ? "Tenant status will return to active." : "No tenant/property changes will be made."}` })) return;
     const history = JSON.parse(evCase.stage_history || "[]");
     history.push({ stage: "closed", date: formatLocalDate(new Date()), note: `Case closed — ${outcome}`, cost: 0, by: userProfile?.email });
     await supabase.from("eviction_cases").update({ status: "closed", current_stage: "closed", outcome, stage_history: JSON.stringify(history) }).eq("id", evCase.id).eq("company_id", companyId);
@@ -11346,7 +11516,7 @@ function AuditTrail({ companyId }) {
 }
 
 // ============ COMPANY SELECTOR ============
-function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
+function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast }) {
   const [companies, setCompanies] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -11385,7 +11555,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
   }
 
   async function createCompany() {
-    if (!createForm.name.trim()) { alert("Company name is required."); return; }
+    if (!createForm.name.trim()) { showToast("Company name is required.", "error"); return; }
     const companyId = "co-" + shortId() + shortId().slice(0, 4);
     // Generate unique 8-digit numeric company code
     // Generate unique company code with collision retry
@@ -11395,7 +11565,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
       companyCode = String(10000000 + (ccArr[0] % 89999999));
       const { data: existing } = await supabase.from("companies").select("id").eq("company_code", companyCode).maybeSingle();
       if (!existing) break;
-      if (attempt === 4) { alert("Could not generate unique company code. Please try again."); return; }
+      if (attempt === 4) { showToast("Could not generate unique company code. Please try again.", "error"); return; }
     }
     // Atomic company creation: company + membership + app_users + chart of accounts in one transaction
     try {
@@ -11413,18 +11583,18 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
       });
       if (rpcErr) throw new Error(rpcErr.message);
     } catch (rpcE) {
-      alert("Failed to create company: " + userError(rpcE.message) + "\n\nPlease ensure the database is properly configured. Contact support if this persists.");
+      showToast("Failed to create company: " + userError(rpcE.message) + "\n\nPlease ensure the database is properly configured. Contact support if this persists.", "error");
       return;
     }
-    alert("Company created!\n\nCompany Code: " + companyCode + "\n\nShare this code with people you want to invite.");
+    showToast("Company created!\n\nCompany Code: " + companyCode + "\n\nShare this code with people you want to invite.", "success");
     setShowCreate(false);
     setCreateForm({ name: "", type: "LLC", company_role: "management", address: "", phone: "", email: "" });
     fetchCompanies();
   }
 
   async function searchCompanies() {
-    if (!joinCode.trim()) { alert("Please enter the 8-digit company code shared by your administrator."); return; }
-    if (joinCode.trim().length < 8) { alert("Please enter the full 8-digit company code."); return; }
+    if (!joinCode.trim()) { showToast("Please enter the 8-digit company code shared by your administrator.", "error"); return; }
+    if (joinCode.trim().length < 8) { showToast("Please enter the full 8-digit company code.", "error"); return; }
     // Only exact code match — no name search (prevents company enumeration)
     const { data } = await supabase.from("companies").select("id, name, type").eq("company_code", joinCode.trim()).limit(1);
     setSearchResults(data || []);
@@ -11434,10 +11604,10 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
     // Check if already a member
     const { data: existing } = await supabase.from("company_members").select("status").eq("company_id", company.id).ilike("user_email", currentUser?.email || "").maybeSingle();
     if (existing) {
-      if (existing.status === "active") { alert("You're already a member of " + company.name); return; }
-      if (existing.status === "pending") { alert("Your request to join " + company.name + " is pending admin approval."); return; }
-      if (existing.status === "rejected") { alert("Your previous request to join " + company.name + " was rejected. Please contact the company admin directly."); return; }
-      if (existing.status === "removed") { alert("You were previously removed from " + company.name + ". Please contact the company admin to be re-added."); return; }
+      if (existing.status === "active") { showToast("You're already a member of " + company.name, "error"); return; }
+      if (existing.status === "pending") { showToast("Your request to join " + company.name + " is pending admin approval.", "error"); return; }
+      if (existing.status === "rejected") { showToast("Your previous request to join " + company.name + " was rejected. Please contact the company admin directly.", "error"); return; }
+      if (existing.status === "removed") { showToast("You were previously removed from " + company.name + ". Please contact the company admin to be re-added.", "error"); return; }
     }
     // Server-side join request — verifies auth identity
     try {
@@ -11447,7 +11617,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout }) {
       if (rpcErr) throw new Error(rpcErr.message);
     } catch (e) {
       // RPC mandatory — no client fallback for membership changes
-      alert("Failed to submit join request: " + e.message + ". Please ensure the membership RPCs are deployed.");
+      showToast("Failed to submit join request: " + e.message + ". Please ensure the membership RPCs are deployed.", "error");
       return;
     }
     setJoinMessage("Request sent to join " + company.name + "! An admin will review your request.");
@@ -11618,7 +11788,7 @@ function PendingRequestsPanel({ companyId, addNotification }) {
       else addNotification("\u274c", member.user_name + "'s request rejected");
     } catch (e) {
       // RPC mandatory — no client fallback for membership changes
-      alert("Failed to process request: " + e.message + ". Please ensure the membership RPCs are deployed.");
+      showToast("Failed to process request: " + e.message + ". Please ensure the membership RPCs are deployed.", "error");
       return;
     }
     fetchRequests();
@@ -11674,14 +11844,14 @@ function PendingPMAssignments({ companyId, addNotification }) {
         if (error) throw new Error(error.message);
         addNotification("✅", "Accepted: now managing " + req.property_address);
       } catch (e) {
-        alert("Error accepting assignment: " + e.message);
+        showToast("Error accepting assignment: " + e.message, "error");
         return;
       }
     } else {
       const { error } = await supabase.from("pm_assignment_requests").update({
         status: "declined", reviewed_at: new Date().toISOString(),
       }).eq("id", req.id).eq("pm_company_id", companyId);
-      if (error) { alert("Error declining: " + error.message); return; }
+      if (error) { showToast("Error declining: " + error.message, "error"); return; }
       addNotification("❌", "Declined PM request for " + req.property_address);
     }
     fetchRequests();
@@ -11729,6 +11899,25 @@ function AppInner() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [toasts, setToasts] = useState([]);
+  const [confirmConfig, setConfirmConfig] = useState(null);
+  const confirmResolveRef = useRef(null);
+
+  function showToast(message, type = "info") {
+    const id = ++_toastIdCounter;
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+  }
+  function removeToast(id) { setToasts(prev => prev.filter(t => t.id !== id)); }
+
+  function showConfirm(config) {
+    return new Promise(resolve => {
+      confirmResolveRef.current = resolve;
+      setConfirmConfig(typeof config === "string" ? { message: config } : config);
+    });
+  }
+  function handleConfirm() { confirmResolveRef.current?.(true); setConfirmConfig(null); }
+  function handleCancel() { confirmResolveRef.current?.(false); setConfirmConfig(null); }
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
@@ -12157,6 +12346,8 @@ function AppInner() {
             userProfile={userProfile}
             companyId={activeCompany.id}
             activeCompany={activeCompany}
+            showToast={showToast}
+            showConfirm={showConfirm}
           />
         </main>
       </div>
@@ -12179,6 +12370,8 @@ function AppInner() {
 
       {sidebarOpen && <div className="fixed inset-0 bg-black bg-opacity-20 z-10 md:hidden" onClick={() => setSidebarOpen(false)} />}
       {showNotifications && <div className="fixed inset-0 z-30" onClick={() => setShowNotifications(false)} />}
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
+      <ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} />
     </div>
   );
 }
