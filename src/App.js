@@ -13087,6 +13087,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   const [createForm, setCreateForm] = useState({ name: "", type: "LLC", company_role: "management", address: "", phone: "", email: "" });
   const [joinCode, setJoinCode] = useState("");
   const [joinSearch, setJoinSearch] = useState(""); // Deprecated — code-only joining
+  const [companySearch, setCompanySearch] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [joinMessage, setJoinMessage] = useState("");
 
@@ -13123,7 +13124,8 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   // Check if user already has a company with the same name
   const userCompanyNames = companies.map(c => c.name?.toLowerCase().trim());
   if (userCompanyNames.includes(createForm.name.trim().toLowerCase())) {
-  if (!await showConfirm({ message: 'You already have a company named "' + createForm.name.trim() + '" in your profile. Create another with the same name?' })) { setCreating(false); return; }
+  const proceed = await showConfirm({ message: 'You already have a company named "' + createForm.name.trim() + '" in your profile. Create another with the same name?', confirmText: "Create Anyway" });
+  if (!proceed) { showToast("Company creation cancelled.", "info"); setCreating(false); return; }
   }
   const companyId = "co-" + shortId() + shortId().slice(0, 4);
   // Generate unique 8-digit numeric company code
@@ -13215,12 +13217,14 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   // Empty company — hard delete with warning
   if (!await showConfirm({ message: '⚠️ PERMANENTLY DELETE "' + company.name + '"?\n\nThis company has no data and will be deleted immediately. This cannot be undone.', variant: "danger", confirmText: "Delete Permanently" })) return;
   setDeleting(company.id);
-  // Delete membership, app_users, accounting setup, then company
-  await supabase.from("company_members").delete().eq("company_id", company.id);
-  await supabase.from("app_users").delete().eq("company_id", company.id);
-  await supabase.from("acct_accounts").delete().eq("company_id", company.id);
-  await supabase.from("acct_classes").delete().eq("company_id", company.id);
-  await supabase.from("notification_settings").delete().eq("company_id", company.id);
+  // Delete all related records in parallel, then company
+  await Promise.all([
+  supabase.from("company_members").delete().eq("company_id", company.id),
+  supabase.from("app_users").delete().eq("company_id", company.id),
+  supabase.from("acct_accounts").delete().eq("company_id", company.id),
+  supabase.from("acct_classes").delete().eq("company_id", company.id),
+  supabase.from("notification_settings").delete().eq("company_id", company.id),
+  ]);
   await supabase.from("companies").delete().eq("id", company.id);
   showToast('"' + company.name + '" permanently deleted.', "success");
   } else {
@@ -13249,12 +13253,14 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   {/* Your Companies */}
   {companies.length > 0 && (
   <div className="mb-6">
-  <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3">Your Companies</h2>
+  <div className="flex items-center justify-between mb-3">
+  <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wide">Your Companies</h2>
+  {companies.length > 3 && <Input placeholder="Search companies..." value={companySearch} onChange={e => setCompanySearch(e.target.value)} className="w-48 text-xs" />}
+  </div>
   <div className="space-y-2">
-  {companies.map(c => (
+  {companies.filter(c => !companySearch || c.name.toLowerCase().includes(companySearch.toLowerCase())).map(c => (
   <div key={c.id} className="w-full bg-white rounded-xl border border-indigo-100 p-4 flex items-center justify-between hover:border-indigo-300 hover:shadow-md transition-all">
-  <a href={"#company-" + c.id} onClick={(e) => { e.preventDefault(); if (e.ctrlKey || e.metaKey) { window.open(window.location.origin + "/#dashboard", "_blank"); return; } onSelectCompany(c, c.memberRole); }}
-  className="flex items-center gap-3 flex-1 min-w-0 text-left">
+  <div onClick={() => onSelectCompany(c, c.memberRole)} className="flex items-center gap-3 flex-1 min-w-0 text-left cursor-pointer">
   <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg shrink-0">
   {c.name[0]}
   </div>
@@ -13262,10 +13268,10 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   <div className="font-semibold text-slate-800 truncate">{c.name}</div>
   <div className="text-xs text-slate-400">{c.type} · {c.memberRole}</div>
   </div>
-  </a>
+  </div>
   <div className="flex items-center gap-2 shrink-0 ml-3">
-  <a href={"#company-" + c.id} onClick={(e) => { e.preventDefault(); if (e.ctrlKey || e.metaKey) { window.open(window.location.origin + "/#dashboard", "_blank"); return; } onSelectCompany(c, c.memberRole); }} className="text-indigo-600 text-sm font-medium hover:underline">Open →</a>
-  {c.memberRole === "admin" && <button onClick={(e) => { e.stopPropagation(); deleteCompany(c); }} disabled={deleting === c.id} className="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors disabled:opacity-50">{deleting === c.id ? "..." : "Delete"}</button>}
+  <a href={window.location.origin + "/#dashboard"} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.stopPropagation(); }} className="text-indigo-600 text-xs font-medium hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>New Tab</a>
+  {c.memberRole === "admin" && <button onClick={(e) => { e.stopPropagation(); deleteCompany(c); }} disabled={deleting === c.id} className="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors disabled:opacity-50">{deleting === c.id ? "Deleting..." : "Delete"}</button>}
   </div>
   </div>
   ))}
