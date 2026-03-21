@@ -6036,9 +6036,8 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   async function updateAccount(acct) {
   const { id } = acct;
   const { error } = await supabase.from("acct_accounts").update({
-  name: acct.name, type: acct.type, subtype: acct.subtype, 
-  is_active: acct.is_active, description: acct.description || "",
-  parent_id: acct.parent_id || null
+  name: acct.name, type: acct.type, subtype: acct.subtype,
+  is_active: acct.is_active, description: acct.description || ""
   }).eq("company_id", companyId).eq("id", id);
   if (error) { showToast("Error updating account: " + error.message, "error"); return; }
   fetchAll();
