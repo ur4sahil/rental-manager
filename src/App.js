@@ -161,8 +161,8 @@ async function checkRPCHealth(companyId) {
 }
 
 // Sanitize error messages for user display — prevents leaking internal DB details to users
-// ✅ DONE: Replaced all browser alert() calls with showToast() non-blocking notifications
-// ✅ DONE: Replaced all window.confirm() calls with showConfirm() modal confirmations
+// ✅ DONE: Replaced all browser alerts with showToast() non-blocking notifications
+// ✅ DONE: Replaced all native confirms with showConfirm() modal confirmations
 function userError(msg) {
   if (!msg) return "An unexpected error occurred. Please try again.";
   // Strip Supabase internal details

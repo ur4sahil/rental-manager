@@ -379,8 +379,13 @@ async function testFullLifecycle() {
 
 async function testDocumentBuilder() {
   console.log('\n📝 DOCUMENT BUILDER');
+  // Get a company_id for testing
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const testCompanyId = companies?.[0]?.id || 'sandbox-llc';
+
   // Template CRUD
   const { data: tmpl, error: tmplErr } = await supabase.from('doc_templates').insert({
+    company_id: testCompanyId,
     name: 'Test Template', category: 'general', description: 'Automated test',
     body: '<p>Dear {{tenant_name}},</p><p>Property: {{property_address}}</p>',
     fields: [
@@ -400,7 +405,7 @@ async function testDocumentBuilder() {
     // Generated document CRUD
     const rendered = fetched.body.replace('{{tenant_name}}', 'Alice').replace('{{property_address}}', '123 Main St');
     const { data: doc, error: docErr } = await supabase.from('doc_generated').insert({
-      template_id: tmpl.id, name: 'Test Letter — Alice',
+      company_id: testCompanyId, template_id: tmpl.id, name: 'Test Letter — Alice',
       field_values: { tenant_name: 'Alice', property_address: '123 Main St' },
       rendered_body: rendered, status: 'draft',
       property_address: '123 Main St', tenant_name: 'Alice',

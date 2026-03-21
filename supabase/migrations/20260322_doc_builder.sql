@@ -5,7 +5,7 @@
 -- Templates: reusable document templates with merge fields
 CREATE TABLE IF NOT EXISTS doc_templates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  company_id TEXT NOT NULL,
   name TEXT NOT NULL,
   category TEXT NOT NULL DEFAULT 'general',
   description TEXT DEFAULT '',
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS doc_templates (
 -- Generated documents: instances created from templates
 CREATE TABLE IF NOT EXISTS doc_generated (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  company_id TEXT NOT NULL,
   template_id UUID REFERENCES doc_templates(id) ON DELETE SET NULL,
   name TEXT NOT NULL,
   -- Snapshot of field values used to generate this document
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS doc_generated (
   -- Status: draft, final, sent
   status TEXT DEFAULT 'draft',
   -- Optional linkage
-  property_id UUID,
+  property_id TEXT,
   property_address TEXT,
   tenant_name TEXT,
   -- Recipients for email delivery
