@@ -13638,7 +13638,7 @@ function AppInner() {
 
   if (screen === "landing") return <LandingPage onGetStarted={(mode) => { setLoginMode(mode); setScreen("login"); }} />;
   if (screen === "login") return <LoginPage onLogin={() => {}} onBack={() => setScreen("landing")} initialMode={loginMode} />;
-  if (screen === "company_select") return <CompanySelector currentUser={currentUser} onSelectCompany={handleSelectCompany} onLogout={handleLogout} />;
+  if (screen === "company_select") return <CompanySelector currentUser={currentUser} onSelectCompany={handleSelectCompany} onLogout={handleLogout} showToast={showToast} />;
 
   if (!activeCompany?.id || !roleLoaded) {
   return (
