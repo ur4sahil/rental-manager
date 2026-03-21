@@ -1829,7 +1829,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, showToa
   <div className="px-6 py-4">
   <div className="flex gap-2 flex-wrap">
   {!isReadOnly(selectedProperty) && <button onClick={() => { setEditingProperty(selectedProperty); setForm({ address_line_1: selectedProperty.address_line_1 || selectedProperty.address || "", address_line_2: selectedProperty.address_line_2 || "", city: selectedProperty.city || "", state: selectedProperty.state || "", zip: selectedProperty.zip || "", type: selectedProperty.type, status: selectedProperty.status, rent: selectedProperty.rent || "", security_deposit: selectedProperty.security_deposit || "", tenant: selectedProperty.tenant || "", tenant_email: selectedProperty._tenantEmail || "", tenant_phone: selectedProperty._tenantPhone || "", lease_start: selectedProperty.lease_start || "", lease_end: selectedProperty.lease_end || "", notes: selectedProperty.notes || "" }); setShowForm(true); setSelectedProperty(null); }} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">Edit Property</button>}
-  <button onClick={() => { setPage("documents"); setSelectedProperty(null); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-2xl hover:bg-slate-100">Upload Document</button>
+  <button onClick={() => { setPage("doc_builder"); setSelectedProperty(null); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-2xl hover:bg-slate-100">Upload Document</button>
   <button onClick={() => { setPage("maintenance"); setSelectedProperty(null); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-2xl hover:bg-slate-100">New Work Order</button>
   </div>
   </div>
@@ -1894,7 +1894,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, showToa
   ))}
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={() => { setPage("documents"); setShowDocChecklist(null); }} className="bg-amber-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-amber-700">Upload Documents Now</button>
+  <button onClick={() => { setPage("doc_builder"); setShowDocChecklist(null); }} className="bg-amber-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-amber-700">Upload Documents Now</button>
   <button onClick={async () => { if (isAdmin || await showConfirm({ message: "Skip document upload? This will require admin approval later." })) setShowDocChecklist(null); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Skip for Now</button>
   </div>
   </div>
@@ -2819,7 +2819,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ))}
   </div>
   )}
-  <button onClick={() => { setPage("documents"); setSelectedTenant(null); setActivePanel(null); }} className="mt-3 bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">Upload Documents</button>
+  <button onClick={() => { setPage("doc_builder"); setSelectedTenant(null); setActivePanel(null); }} className="mt-3 bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">Upload Documents</button>
   </div>
   )}
 
@@ -2914,7 +2914,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ))}
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={() => { setPage("documents"); setShowTenantDocPrompt(null); }} className="bg-amber-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-amber-700">Upload Documents Now</button>
+  <button onClick={() => { setPage("doc_builder"); setShowTenantDocPrompt(null); }} className="bg-amber-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-amber-700">Upload Documents Now</button>
   {isAdmin ? (
   <button onClick={() => setShowTenantDocPrompt(null)} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Admin: Skip for Now</button>
   ) : (
@@ -9304,8 +9304,8 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
 
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
-  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","owners","notifications","audittrail","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
-  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","notifications","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
+  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","owners","notifications","audittrail","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
+  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","notifications","doc_builder","leases","inspections","vendors","moveout","evictions"] },
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
   tenant: { label: "Tenant", color: "bg-indigo-50/300", pages: ["tenant_portal"] },
@@ -9322,8 +9322,7 @@ const ALL_NAV = [
   { id: "utilities", label: "Utilities", icon: "bolt" },
   { id: "hoa", label: "HOA Payments", icon: "holiday_village" },
   { id: "accounting", label: "Accounting", icon: "account_balance" },
-  { id: "documents", label: "Documents", icon: "folder" },
-  { id: "doc_builder", label: "Doc Builder", icon: "draw" },
+  { id: "doc_builder", label: "Documents", icon: "folder" },
   { id: "inspections", label: "Inspections", icon: "checklist" },
   { id: "vendors", label: "Vendors", icon: "engineering" },
   { id: "autopay", label: "Autopay", icon: "autorenew" },
@@ -12752,7 +12751,7 @@ const pageComponents = {
   maintenance: Maintenance,
   utilities: Utilities,
   accounting: Accounting,
-  documents: Documents,
+  // documents page removed — docs managed via property/tenant tabs + doc_builder
   inspections: Inspections,
   autopay: Autopay,
   hoa: HOAPayments,
