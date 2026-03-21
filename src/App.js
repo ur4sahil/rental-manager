@@ -12990,7 +12990,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   setPendingRequests(pending);
   if (active.length > 0) {
   const companyIds = active.map(m => m.company_id);
-  const { data: companyData } = await supabase.from("companies").select("*").in("id", companyIds);
+  const { data: companyData } = await supabase.from("companies").select("*").in("id", companyIds).is("archived_at", null);
   // Attach role to each company
   const withRoles = (companyData || []).map(c => {
   const membership = active.find(m => m.company_id === c.id);
@@ -13085,6 +13085,44 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   fetchCompanies();
   }
 
+  const [deleting, setDeleting] = useState(null); // company id being deleted
+
+  async function deleteCompany(company) {
+  if (deleting) return;
+  // Check if company has data
+  const [props, tenants, payments] = await Promise.all([
+  supabase.from("properties").select("id", { count: "exact", head: true }).eq("company_id", company.id),
+  supabase.from("tenants").select("id", { count: "exact", head: true }).eq("company_id", company.id),
+  supabase.from("payments").select("id", { count: "exact", head: true }).eq("company_id", company.id),
+  ]);
+  const totalRecords = (props.count || 0) + (tenants.count || 0) + (payments.count || 0);
+  const isEmpty = totalRecords === 0;
+
+  if (isEmpty) {
+  // Empty company — hard delete with warning
+  if (!await showConfirm({ message: '⚠️ PERMANENTLY DELETE "' + company.name + '"?\n\nThis company has no data and will be deleted immediately. This cannot be undone.', variant: "danger", confirmText: "Delete Permanently" })) return;
+  setDeleting(company.id);
+  // Delete membership, app_users, accounting setup, then company
+  await supabase.from("company_members").delete().eq("company_id", company.id);
+  await supabase.from("app_users").delete().eq("company_id", company.id);
+  await supabase.from("acct_accounts").delete().eq("company_id", company.id);
+  await supabase.from("acct_classes").delete().eq("company_id", company.id);
+  await supabase.from("notification_settings").delete().eq("company_id", company.id);
+  await supabase.from("companies").delete().eq("id", company.id);
+  showToast('"' + company.name + '" permanently deleted.', "success");
+  } else {
+  // Company with data — archive for 180 days
+  if (!await showConfirm({ message: '⚠️ ARCHIVE "' + company.name + '"?\n\nThis company has ' + totalRecords + ' records (' + (props.count || 0) + ' properties, ' + (tenants.count || 0) + ' tenants, ' + (payments.count || 0) + ' payments).\n\nIt will be moved to the master archive and automatically purged after 180 days. During this period, contact support to restore it.\n\nThis action cannot be easily undone.', variant: "danger", confirmText: "Archive Company" })) return;
+  setDeleting(company.id);
+  await supabase.from("companies").update({ archived_at: new Date().toISOString(), archived_by: currentUser?.email }).eq("id", company.id);
+  // Deactivate all memberships
+  await supabase.from("company_members").update({ status: "removed" }).eq("company_id", company.id);
+  showToast('"' + company.name + '" archived. Will be purged after 180 days.', "success");
+  }
+  setDeleting(null);
+  fetchCompanies();
+  }
+
   if (loading) return <div className="flex items-center justify-center h-screen bg-indigo-50/30"><Spinner /></div>;
 
   return (
@@ -13101,19 +13139,22 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3">Your Companies</h2>
   <div className="space-y-2">
   {companies.map(c => (
-  <a key={c.id} href={"#company-" + c.id} onClick={(e) => { e.preventDefault(); if (e.ctrlKey || e.metaKey) { window.open(window.location.origin + "/#dashboard", "_blank"); return; } onSelectCompany(c, c.memberRole); }}
-  className="w-full bg-white rounded-xl border border-indigo-100 p-4 flex items-center justify-between hover:border-indigo-300 hover:shadow-md transition-all text-left block">
-  <div className="flex items-center gap-3">
-  <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg">
+  <div key={c.id} className="w-full bg-white rounded-xl border border-indigo-100 p-4 flex items-center justify-between hover:border-indigo-300 hover:shadow-md transition-all">
+  <a href={"#company-" + c.id} onClick={(e) => { e.preventDefault(); if (e.ctrlKey || e.metaKey) { window.open(window.location.origin + "/#dashboard", "_blank"); return; } onSelectCompany(c, c.memberRole); }}
+  className="flex items-center gap-3 flex-1 min-w-0 text-left">
+  <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg shrink-0">
   {c.name[0]}
   </div>
-  <div>
-  <div className="font-semibold text-slate-800">{c.name}</div>
+  <div className="min-w-0">
+  <div className="font-semibold text-slate-800 truncate">{c.name}</div>
   <div className="text-xs text-slate-400">{c.type} · {c.memberRole}</div>
   </div>
-  </div>
-  <span className="text-indigo-600 text-sm font-medium">Open →</span>
   </a>
+  <div className="flex items-center gap-2 shrink-0 ml-3">
+  <a href={"#company-" + c.id} onClick={(e) => { e.preventDefault(); if (e.ctrlKey || e.metaKey) { window.open(window.location.origin + "/#dashboard", "_blank"); return; } onSelectCompany(c, c.memberRole); }} className="text-indigo-600 text-sm font-medium hover:underline">Open →</a>
+  {c.memberRole === "admin" && <button onClick={(e) => { e.stopPropagation(); deleteCompany(c); }} disabled={deleting === c.id} className="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors disabled:opacity-50">{deleting === c.id ? "..." : "Delete"}</button>}
+  </div>
+  </div>
   ))}
   </div>
   </div>
