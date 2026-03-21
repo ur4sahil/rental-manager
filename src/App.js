@@ -1506,6 +1506,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (!existingLease) {
   await supabase.from("leases").insert([{ company_id: companyId, tenant_name: form.tenant.trim(), tenant_id: tenantId || null, property: compositeAddress, start_date: form.lease_start, end_date: form.lease_end, rent_amount: Number(form.rent), security_deposit: Number(form.security_deposit) || 0, status: "active", payment_due_day: 1, rent_escalation_pct: 3, escalation_frequency: "annual" }]);
   }
+  // Immediately post rent charges for this lease
+  autoPostRentCharges(companyId).catch(e => console.warn("Auto rent post after property save:", e.message));
   }
   }
   // #12: Sync security deposit to active lease when editing property
@@ -2406,6 +2408,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (!existingLease) {
   await supabase.from("leases").insert([{ company_id: companyId, tenant_name: form.name.trim(), tenant_id: newTenant?.id || null, property: form.property, start_date: form.lease_start, end_date: form.lease_end, rent_amount: Number(form.rent), status: "active", payment_due_day: 1, rent_escalation_pct: 3, escalation_frequency: "annual" }]);
   }
+  // Immediately post rent charges for this new lease (don't wait for next login)
+  autoPostRentCharges(companyId).catch(e => console.warn("Auto rent post after tenant add:", e.message));
   }
   if (editingTenant) {
   // Cascade name change to all related tables
