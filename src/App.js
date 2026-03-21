@@ -11382,8 +11382,16 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   // Template editor
   const [editingTemplate, setEditingTemplate] = useState(null);
-  const [templateForm, setTemplateForm] = useState({ name: "", category: "general", description: "", body: "", fields: [], field_config: {} });
+  const [templateForm, setTemplateForm] = useState({ name: "", category: "general", description: "", body: "", fields: [], field_config: {}, template_type: "html", pdf_storage_path: "", pdf_page_count: 0, pdf_field_placements: [] });
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
+
+  // PDF overlay state
+  const [pdfPages, setPdfPages] = useState([]); // array of { canvas, width, height } refs
+  const [pdfDoc, setPdfDoc] = useState(null);
+  const [pdfScale, setPdfScale] = useState(1.5);
+  const [placingField, setPlacingField] = useState(null); // field name being placed
+  const [draggingPlacement, setDraggingPlacement] = useState(null); // { index, startX, startY, origX, origY }
+  const pdfContainerRef = useRef();
 
   // Send modal
   const [sendModal, setSendModal] = useState(null);
@@ -11462,6 +11470,146 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   if (!val || typeof val !== "object") return "";
   const parts = [val.line1, val.line2, [val.city, val.state].filter(Boolean).join(", ") + (val.zip ? " " + val.zip : "")].filter(Boolean);
   return parts.join("\n");
+  }
+
+  // ---- PDF utilities ----
+  async function loadPdfFromBytes(bytes) {
+  const pdfjsLib = await import("pdfjs-dist");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  setPdfDoc(pdf);
+  return pdf;
+  }
+
+  async function renderPdfPages(pdf, scale, container) {
+  if (!container) return;
+  container.innerHTML = "";
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+  const page = await pdf.getPage(i);
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement("canvas");
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  canvas.className = "block";
+  const ctx = canvas.getContext("2d");
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  pages.push({ pageNum: i, width: viewport.width, height: viewport.height, canvas });
+  }
+  setPdfPages(pages);
+  return pages;
+  }
+
+  async function autoDetectFields(pdf) {
+  const detected = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+  const page = await pdf.getPage(i);
+  const viewport = page.getViewport({ scale: 1 }); // use scale 1 for coordinate mapping
+  const content = await page.getTextContent();
+  for (const item of content.items) {
+  const text = item.str || "";
+  const tx = item.transform[4];
+  const ty = item.transform[5];
+  // Convert PDF coords (origin bottom-left) to percentages (origin top-left)
+  const xPct = (tx / viewport.width) * 100;
+  const yPct = ((viewport.height - ty) / viewport.height) * 100;
+  // Check patterns
+  let fieldName = null;
+  let matchType = null;
+  const mergeMatch = text.match(/\{\{(\w+)\}\}/);
+  const bracketMatch = text.match(/\[([A-Za-z][A-Za-z0-9_ ]+)\]/);
+  const underscoreMatch = text.match(/_{4,}/);
+  if (mergeMatch) { fieldName = mergeMatch[1]; matchType = "merge"; }
+  else if (bracketMatch) { fieldName = bracketMatch[1].toLowerCase().replace(/[^a-z0-9]+/g, "_"); matchType = "bracket"; }
+  else if (underscoreMatch) {
+  // Try to infer name from text before underscores
+  const before = text.split(/_{4,}/)[0].trim().replace(/[^a-zA-Z0-9]+$/, "");
+  fieldName = before ? before.toLowerCase().replace(/[^a-z0-9]+/g, "_") : "field_" + detected.length;
+  matchType = "underscore";
+  }
+  if (fieldName) {
+  detected.push({
+  field_name: fieldName,
+  page: i,
+  x: Math.max(0, xPct),
+  y: Math.max(0, yPct - 1.5),
+  width: Math.min(30, (item.width || 100) / viewport.width * 100 + 5),
+  height: 2.5,
+  font_size: 12,
+  auto_detected: true,
+  match_type: matchType,
+  });
+  }
+  }
+  }
+  return detected;
+  }
+
+  async function handlePdfUpload(file) {
+  if (!file) return;
+  showToast("Uploading PDF...", "info");
+  const fileName = companyId + "/templates/" + shortId() + "_" + sanitizeFileName(file.name);
+  const { error: uploadError } = await supabase.storage.from("documents").upload(fileName, file, { cacheControl: "3600", upsert: false });
+  if (uploadError) { showToast("Upload failed: " + uploadError.message, "error"); return; }
+
+  const bytes = await file.arrayBuffer();
+  const pdf = await loadPdfFromBytes(new Uint8Array(bytes));
+  const pages = await renderPdfPages(pdf, pdfScale, pdfContainerRef.current);
+
+  // Auto-detect fields
+  const detected = await autoDetectFields(pdf);
+  const newFields = [];
+  const existingNames = new Set(templateForm.fields.map(f => f.name));
+  for (const d of detected) {
+  if (!existingNames.has(d.field_name)) {
+  newFields.push({ name: d.field_name, label: d.field_name.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()), type: "text", required: false, section: "Auto-Detected", options: [], default_value: "", prefill_from: "" });
+  existingNames.add(d.field_name);
+  }
+  }
+
+  setTemplateForm(prev => ({
+  ...prev,
+  pdf_storage_path: fileName,
+  pdf_page_count: pdf.numPages,
+  pdf_field_placements: [...prev.pdf_field_placements, ...detected],
+  fields: [...prev.fields, ...newFields],
+  }));
+  showToast(pdf.numPages + " pages loaded" + (detected.length > 0 ? ", " + detected.length + " fields auto-detected" : ""), "success");
+  }
+
+  async function loadPdfForPreview(storagePath) {
+  if (!storagePath) return;
+  const url = await getSignedUrl("documents", storagePath);
+  if (!url) return;
+  const resp = await fetch(url);
+  const bytes = new Uint8Array(await resp.arrayBuffer());
+  const pdf = await loadPdfFromBytes(bytes);
+  return pdf;
+  }
+
+  function addPlacement(fieldName, page, xPct, yPct) {
+  setTemplateForm(prev => ({
+  ...prev,
+  pdf_field_placements: [...prev.pdf_field_placements, {
+  field_name: fieldName, page, x: xPct, y: yPct, width: 25, height: 2.5, font_size: 12
+  }],
+  }));
+  setPlacingField(null);
+  }
+
+  function updatePlacement(index, updates) {
+  setTemplateForm(prev => {
+  const placements = [...prev.pdf_field_placements];
+  placements[index] = { ...placements[index], ...updates };
+  return { ...prev, pdf_field_placements: placements };
+  });
+  }
+
+  function removePlacement(index) {
+  setTemplateForm(prev => ({
+  ...prev,
+  pdf_field_placements: prev.pdf_field_placements.filter((_, i) => i !== index),
+  }));
   }
 
   const CATEGORIES = ["notices", "leases", "maintenance", "general"];
@@ -11567,6 +11715,12 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   setFieldValues(recalcFields(applyPrefill(template, data), fc));
   } else {
   setFieldValues(recalcFields(applyDefaults(template), fc));
+  }
+  // Load PDF for overlay templates
+  if (template.template_type === "pdf_overlay" && template.pdf_storage_path) {
+  setPdfPages([]);
+  const pdf = await loadPdfForPreview(template.pdf_storage_path);
+  if (pdf && pdfContainerRef.current) await renderPdfPages(pdf, pdfScale, pdfContainerRef.current);
   }
   setStep("fill");
   }
@@ -11843,6 +11997,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="flex-1 min-w-0">
   <h2 className="text-lg font-manrope font-bold text-slate-800 truncate">{editingTemplate ? "Edit Template" : "New Template"}{templateForm.name ? ": " + templateForm.name : ""}</h2>
   </div>
+  <div className="flex bg-slate-100 rounded-xl p-0.5">
+  <button onClick={() => setTemplateForm(prev => ({ ...prev, template_type: "html" }))} className={"px-3 py-1.5 text-xs font-medium rounded-lg transition-colors " + (templateForm.template_type === "html" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-500 hover:text-slate-700")}>HTML</button>
+  <button onClick={() => setTemplateForm(prev => ({ ...prev, template_type: "pdf_overlay" }))} className={"px-3 py-1.5 text-xs font-medium rounded-lg transition-colors " + (templateForm.template_type === "pdf_overlay" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-500 hover:text-slate-700")}>PDF Overlay</button>
+  </div>
   <button onClick={saveTemplate} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-indigo-700 font-semibold">{editingTemplate ? "Update Template" : "Create Template"}</button>
   <span className="text-xs text-slate-300 ml-2">Esc to close</span>
   </div>
@@ -11975,8 +12133,112 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {/* Drag handle */}
   <div onMouseDown={startDrag} className="w-1.5 bg-indigo-100 hover:bg-indigo-300 cursor-col-resize shrink-0 transition-colors" />
 
-  {/* Right: Body editor + preview */}
+  {/* Right pane */}
   <div style={{ width: (100 - splitPercent) + "%" }} className="overflow-y-auto p-6 space-y-4">
+  {templateForm.template_type === "pdf_overlay" ? (
+  <>
+  {/* PDF Upload + Viewer */}
+  {!templateForm.pdf_storage_path ? (
+  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-8 text-center">
+  <div className="text-4xl mb-3">📄</div>
+  <h3 className="font-manrope font-bold text-slate-700 mb-2">Upload a PDF Template</h3>
+  <p className="text-sm text-slate-400 mb-4">Upload a flat PDF. Blank fields will be auto-detected.</p>
+  <label className="inline-flex items-center gap-2 bg-indigo-600 text-white text-sm px-5 py-2.5 rounded-2xl hover:bg-indigo-700 cursor-pointer font-semibold">
+  <span className="material-icons-outlined text-lg">upload_file</span>Choose PDF
+  <input type="file" accept=".pdf" className="hidden" onChange={e => handlePdfUpload(e.target.files[0])} />
+  </label>
+  </div>
+  ) : (
+  <>
+  {/* PDF toolbar */}
+  <div className="bg-white rounded-2xl shadow-card border border-indigo-50 px-4 py-2 flex items-center gap-3">
+  <span className="text-xs text-slate-500">{templateForm.pdf_page_count} pages</span>
+  <span className="text-xs text-slate-300">|</span>
+  <span className="text-xs text-slate-500">{templateForm.pdf_field_placements.length} placements</span>
+  <span className="text-xs text-slate-300">|</span>
+  {placingField ? (
+  <span className="text-xs text-emerald-600 font-semibold">Click on PDF to place: {placingField} <button onClick={() => setPlacingField(null)} className="text-red-400 ml-1">✕ Cancel</button></span>
+  ) : (
+  <select onChange={e => { if (e.target.value) setPlacingField(e.target.value); e.target.value = ""; }} className="text-xs border border-indigo-100 rounded-lg px-2 py-1">
+  <option value="">+ Place field on PDF...</option>
+  {templateForm.fields.map(f => <option key={f.name} value={f.name}>{f.label || f.name}</option>)}
+  </select>
+  )}
+  <button onClick={async () => {
+  if (!pdfDoc) return;
+  const detected = await autoDetectFields(pdfDoc);
+  const newFields = [];
+  const existingNames = new Set(templateForm.fields.map(f => f.name));
+  for (const d of detected) {
+  if (!existingNames.has(d.field_name)) {
+  newFields.push({ name: d.field_name, label: d.field_name.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()), type: "text", required: false, section: "Auto-Detected", options: [], default_value: "", prefill_from: "" });
+  existingNames.add(d.field_name);
+  }
+  }
+  setTemplateForm(prev => ({
+  ...prev,
+  pdf_field_placements: [...prev.pdf_field_placements, ...detected],
+  fields: [...prev.fields, ...newFields],
+  }));
+  showToast(detected.length + " fields detected", "info");
+  }} className="text-xs text-amber-600 hover:text-amber-800 ml-auto">Re-detect</button>
+  <label className="text-xs text-slate-500 hover:text-slate-700 cursor-pointer">
+  Replace PDF
+  <input type="file" accept=".pdf" className="hidden" onChange={e => handlePdfUpload(e.target.files[0])} />
+  </label>
+  </div>
+
+  {/* PDF pages with placement overlays */}
+  <div ref={pdfContainerRef} className="space-y-4">
+  {pdfPages.map((pg, pageIdx) => {
+  const pageNum = pg.pageNum;
+  const pagePlacements = templateForm.pdf_field_placements.map((p, i) => ({ ...p, _idx: i })).filter(p => p.page === pageNum);
+  return (
+  <div key={pageNum} className="relative bg-white rounded-xl shadow-card border border-indigo-50 overflow-hidden" style={{ width: pg.width + "px" }}>
+  <div className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded z-10">Page {pageNum}</div>
+  <canvas ref={el => { if (el && el !== pg.canvas) { el.width = pg.canvas.width; el.height = pg.canvas.height; el.getContext("2d").drawImage(pg.canvas, 0, 0); } }} width={pg.width} height={pg.height} className="block" />
+  {/* Overlay for click-to-place */}
+  <div className="absolute inset-0" style={{ cursor: placingField ? "crosshair" : "default" }}
+  onClick={e => {
+  if (!placingField) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  const xPct = ((e.clientX - rect.left) / rect.width) * 100;
+  const yPct = ((e.clientY - rect.top) / rect.height) * 100;
+  addPlacement(placingField, pageNum, xPct, yPct);
+  }}>
+  {/* Render placements */}
+  {pagePlacements.map(p => (
+  <div key={p._idx} className={"absolute border-2 rounded " + (p.auto_detected ? "border-amber-400 bg-amber-100/40" : "border-indigo-400 bg-indigo-100/40")}
+  style={{ left: p.x + "%", top: p.y + "%", width: p.width + "%", height: p.height + "%", cursor: "move" }}
+  onMouseDown={e => {
+  e.stopPropagation();
+  setDraggingPlacement({ index: p._idx, startX: e.clientX, startY: e.clientY, origX: p.x, origY: p.y, pgWidth: pg.width, pgHeight: pg.height });
+  const onMove = (ev) => {
+  const dx = ((ev.clientX - e.clientX) / pg.width) * 100;
+  const dy = ((ev.clientY - e.clientY) / pg.height) * 100;
+  updatePlacement(p._idx, { x: Math.max(0, Math.min(90, p.x + dx)), y: Math.max(0, Math.min(95, p.y + dy)) });
+  };
+  const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); setDraggingPlacement(null); };
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("mouseup", onUp);
+  }}>
+  <div className="flex items-center justify-between px-1">
+  <span className="text-[9px] font-mono font-semibold truncate" style={{ color: p.auto_detected ? "#92400e" : "#3730a3" }}>{p.field_name}</span>
+  <button onClick={e => { e.stopPropagation(); removePlacement(p._idx); }} className="text-red-400 hover:text-red-600 text-xs leading-none">✕</button>
+  </div>
+  </div>
+  ))}
+  </div>
+  </div>
+  );
+  })}
+  </div>
+  </>
+  )}
+  </>
+  ) : (
+  <>
+  {/* HTML body editor + preview (existing) */}
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5 flex flex-col">
   <div className="flex items-center justify-between mb-2">
   <h3 className="font-manrope font-bold text-slate-700">Document Body (HTML + Merge Fields)</h3>
@@ -11994,6 +12256,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <h3 className="font-manrope font-bold text-slate-700 mb-2">Preview</h3>
   <div className="prose prose-sm max-w-none border border-indigo-50 rounded-xl p-6 bg-white min-h-64" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }} dangerouslySetInnerHTML={{ __html: renderMergedBody(templateForm.body, {}, templateForm.field_config) }} />
   </div>
+  </>
+  )}
   </div>
   </div>
   </div>
@@ -12122,11 +12386,35 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   {/* Right: Live preview */}
   <div style={{ width: (100 - splitPercent) + "%" }} className="overflow-y-auto p-6">
+  {selectedTemplate.template_type === "pdf_overlay" ? (
+  <div ref={pdfContainerRef} className="space-y-4">
+  {pdfPages.map(pg => {
+  const pagePlacements = (selectedTemplate.pdf_field_placements || []).filter(p => p.page === pg.pageNum);
+  return (
+  <div key={pg.pageNum} className="relative bg-white rounded-xl shadow-card border border-indigo-50 overflow-hidden" style={{ width: pg.width + "px" }}>
+  <div className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded z-10">Page {pg.pageNum}</div>
+  <canvas ref={el => { if (el && el !== pg.canvas) { el.width = pg.canvas.width; el.height = pg.canvas.height; el.getContext("2d").drawImage(pg.canvas, 0, 0); } }} width={pg.width} height={pg.height} className="block" />
+  <div className="absolute inset-0">
+  {pagePlacements.map((p, i) => {
+  const val = fieldValues[p.field_name];
+  const displayVal = val && typeof val === "object" ? formatAddressBlock(val) : (val || "");
+  return displayVal ? (
+  <div key={i} className="absolute px-1 overflow-hidden" style={{ left: p.x + "%", top: p.y + "%", width: p.width + "%", height: p.height + "%", fontSize: (p.font_size || 12) + "px", fontFamily: "Helvetica, Arial, sans-serif", color: "#1a1a1a", lineHeight: "1.2", whiteSpace: "nowrap" }}>{String(displayVal)}</div>
+  ) : null;
+  })}
+  </div>
+  </div>
+  );
+  })}
+  {pdfPages.length === 0 && <div className="text-center py-12 text-slate-400">Loading PDF preview...</div>}
+  </div>
+  ) : (
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 text-sm mb-3">Live Preview</h3>
   <div className="prose prose-sm max-w-none border border-indigo-50 rounded-xl p-6 bg-white" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }}
   dangerouslySetInnerHTML={{ __html: renderMergedBody(selectedTemplate.body, fieldValues, fc) }} />
   </div>
+  )}
   </div>
   </div>
   </div>
@@ -12163,9 +12451,33 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="flex-1 flex overflow-hidden">
   {/* Left: Document preview */}
   <div style={{ width: splitPercent + "%" }} className="overflow-y-auto p-6 flex justify-center">
+  {selectedTemplate.template_type === "pdf_overlay" ? (
+  <div ref={pdfContainerRef} className="space-y-4">
+  {pdfPages.map(pg => {
+  const pagePlacements = (selectedTemplate.pdf_field_placements || []).filter(p => p.page === pg.pageNum);
+  return (
+  <div key={pg.pageNum} className="relative bg-white rounded-xl shadow-card border border-indigo-50 overflow-hidden" style={{ width: pg.width + "px" }}>
+  <div className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded z-10">Page {pg.pageNum}</div>
+  <canvas ref={el => { if (el && el !== pg.canvas) { el.width = pg.canvas.width; el.height = pg.canvas.height; el.getContext("2d").drawImage(pg.canvas, 0, 0); } }} width={pg.width} height={pg.height} className="block" />
+  <div className="absolute inset-0">
+  {pagePlacements.map((p, i) => {
+  const val = fieldValues[p.field_name];
+  const displayVal = val && typeof val === "object" ? formatAddressBlock(val) : (val || "");
+  return displayVal ? (
+  <div key={i} className="absolute px-1 overflow-hidden" style={{ left: p.x + "%", top: p.y + "%", width: p.width + "%", height: p.height + "%", fontSize: (p.font_size || 12) + "px", fontFamily: "Helvetica, Arial, sans-serif", color: "#1a1a1a", lineHeight: "1.2", whiteSpace: "nowrap" }}>{String(displayVal)}</div>
+  ) : null;
+  })}
+  </div>
+  </div>
+  );
+  })}
+  {pdfPages.length === 0 && <div className="text-center py-12 text-slate-400">Loading PDF preview...</div>}
+  </div>
+  ) : (
   <div ref={previewRef} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-10 w-full max-w-[8.5in]" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7", color: "#1a1a1a" }}>
   <div dangerouslySetInnerHTML={{ __html: rendered }} />
   </div>
+  )}
   </div>
 
   {/* Drag handle */}
@@ -12291,7 +12603,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {tab === "templates" && (
   <div>
   <div className="flex justify-end mb-4">
-  <button onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", category: "general", description: "", body: "", fields: [], field_config: {} }); setShowTemplateEditor(true); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Template</button>
+  <button onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", category: "general", description: "", body: "", fields: [], field_config: {}, template_type: "html", pdf_storage_path: "", pdf_page_count: 0, pdf_field_placements: [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Template</button>
   </div>
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
   {templates.map(t => (
@@ -12304,9 +12616,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {t.is_system && <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">System</span>}
   </div>
   <p className="text-xs text-slate-400 mt-2">{t.description}</p>
-  <div className="text-xs text-slate-500 mt-2">{(t.fields || []).length} fields</div>
+  <div className="text-xs text-slate-500 mt-2">{(t.fields || []).length} fields{t.template_type === "pdf_overlay" ? " · PDF" : ""}</div>
   <div className="mt-3 flex gap-2">
-  <button onClick={() => { setEditingTemplate(t); setTemplateForm({ name: t.name, category: t.category, description: t.description || "", body: t.body || "", fields: t.fields || [], field_config: t.field_config || {} }); setShowTemplateEditor(true); }} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
+  <button onClick={async () => { setEditingTemplate(t); setTemplateForm({ name: t.name, category: t.category, description: t.description || "", body: t.body || "", fields: t.fields || [], field_config: t.field_config || {}, template_type: t.template_type || "html", pdf_storage_path: t.pdf_storage_path || "", pdf_page_count: t.pdf_page_count || 0, pdf_field_placements: t.pdf_field_placements || [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); if (t.template_type === "pdf_overlay" && t.pdf_storage_path) { setTimeout(async () => { const pdf = await loadPdfForPreview(t.pdf_storage_path); if (pdf) await renderPdfPages(pdf, pdfScale, pdfContainerRef.current); }, 100); } }} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
   <button onClick={() => { setSelectedTemplate(t); setMode("blank"); setFieldValues(applyDefaults(t)); setStep("fill"); setTab("create"); }} className="text-xs text-emerald-600 border border-emerald-200 px-3 py-1 rounded-lg hover:bg-emerald-50">Use</button>
   <button onClick={() => deleteTemplate(t)} className="text-xs text-red-400 hover:text-red-600 ml-auto">Delete</button>
   </div>
