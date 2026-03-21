@@ -709,6 +709,19 @@ function PropertyDropdown({ value, onChange, className = "", required = false, l
   );
 }
 
+function TenantSelect({ value, onChange, className = "", companyId }) {
+  const [tenants, setTenants] = useState([]);
+  useEffect(() => {
+  supabase.from("tenants").select("id, name, property").eq("company_id", companyId).is("archived_at", null).order("name").then(({ data }) => setTenants(data || []));
+  }, [companyId]);
+  return (
+  <select value={value || ""} onChange={e => { const sel = tenants.find(t => t.name === e.target.value); onChange(e.target.value, sel); }} className={`border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full ${className}`}>
+  <option value="">Select tenant...</option>
+  {tenants.map(t => <option key={t.id} value={t.name}>{t.name}{t.property ? " — " + t.property : ""}</option>)}
+  </select>
+  );
+}
+
 // ARCHITECTURE NOTE: Property relationships are keyed by address strings (mutable).
 // This is a known technical debt. The proper fix is to use property_id (integer FK)
 // everywhere. A rename_property_v2 RPC handles cascading address changes across
@@ -2669,8 +2682,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="text-xs text-slate-400">{e.date}</div>
   </div>
   <div className="text-right">
-  <div className={`text-sm font-bold ${e.amount > 0 ? "text-red-500" : "text-green-600"}`}>
-  {e.amount > 0 ? `+${formatCurrency(e.amount)}` : `-${formatCurrency(Math.abs(e.amount))}`}
+  <div className={`text-sm font-bold ${e.type === "payment" || e.type === "credit" ? "text-green-600" : "text-red-500"}`}>
+  {e.type === "payment" || e.type === "credit" ? "+" + formatCurrency(Math.abs(e.amount)) : "-" + formatCurrency(Math.abs(e.amount))}
   </div>
   <div className="text-xs text-slate-400">Bal: ${e.balance}</div>
   </div>
@@ -2840,7 +2853,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {ledger.slice(0, 20).map((e, i) => (
   <div key={i} className="flex items-center justify-between py-2 border-b border-indigo-50/50 text-sm">
   <div><div className="font-medium text-slate-700">{e.description}</div><div className="text-xs text-slate-400">{e.date}</div></div>
-  <div className={"font-semibold " + (e.type === "charge" || e.type === "late_fee" ? "text-red-500" : "text-green-600")}>{e.type === "charge" || e.type === "late_fee" ? "+" : "-"}{formatCurrency(Math.abs(e.amount))}</div>
+  <div className={"font-semibold " + (e.type === "payment" || e.type === "credit" ? "text-green-600" : "text-red-500")}>{e.type === "payment" || e.type === "credit" ? "+" : "-"}{formatCurrency(Math.abs(e.amount))}</div>
   </div>
   ))}
   </div>
@@ -3443,7 +3456,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-slate-700 mb-3">New Payment</h3>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant *</label><Input placeholder="Jane Doe" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant *</label><TenantSelect value={form.tenant} onChange={(name, t) => setForm({ ...form, tenant: name, property: t?.property || form.property })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($) *</label><Input placeholder="1500.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Date</label><Input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
@@ -10191,7 +10204,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="flex justify-between">
   <div><div className="text-sm font-medium text-slate-800">{e.description}</div><div className="text-xs text-slate-400">{e.date}</div></div>
   <div className="text-right">
-  <div className={"text-sm font-bold " + (e.amount > 0 ? "text-red-500" : "text-green-600")}>{e.amount > 0 ? "+$" + e.amount : "-$" + Math.abs(e.amount)}</div>
+  <div className={"text-sm font-bold " + (e.type === "payment" || e.type === "credit" ? "text-green-600" : "text-red-500")}>{e.type === "payment" || e.type === "credit" ? "+" + formatCurrency(Math.abs(e.amount)) : "-" + formatCurrency(Math.abs(e.amount))}</div>
   <div className="text-xs text-slate-400">Bal: ${e.balance}</div>
   </div>
   </div>
