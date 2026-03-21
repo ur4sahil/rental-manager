@@ -9300,8 +9300,8 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
 
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
-  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","owners","notifications","audittrail","documents","leases","autopay","inspections","vendors","moveout","evictions"] },
-  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","notifications","documents","leases","inspections","vendors","moveout","evictions"] },
+  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","owners","notifications","audittrail","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
+  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","notifications","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
   tenant: { label: "Tenant", color: "bg-indigo-50/300", pages: ["tenant_portal"] },
@@ -9319,6 +9319,7 @@ const ALL_NAV = [
   { id: "hoa", label: "HOA Payments", icon: "holiday_village" },
   { id: "accounting", label: "Accounting", icon: "account_balance" },
   { id: "documents", label: "Documents", icon: "folder" },
+  { id: "doc_builder", label: "Doc Builder", icon: "draw" },
   { id: "inspections", label: "Inspections", icon: "checklist" },
   { id: "vendors", label: "Vendors", icon: "engineering" },
   { id: "autopay", label: "Autopay", icon: "autorenew" },
@@ -11360,6 +11361,782 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   );
 }
 
+// ============ DOCUMENT BUILDER ============
+function DocumentBuilder({ addNotification, userProfile, userRole, companyId, activeCompany, showToast, showConfirm }) {
+  const [tab, setTab] = useState("create"); // create | templates | history
+  const [templates, setTemplates] = useState([]);
+  const [generatedDocs, setGeneratedDocs] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Create document flow
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [mode, setMode] = useState(null); // null | "blank" | "prefill"
+  const [prefillProperty, setPrefillProperty] = useState(null);
+  const [fieldValues, setFieldValues] = useState({});
+  const [step, setStep] = useState("pick"); // pick | fill | preview
+  const [prefillData, setPrefillData] = useState({});
+
+  // Template editor
+  const [editingTemplate, setEditingTemplate] = useState(null);
+  const [templateForm, setTemplateForm] = useState({ name: "", category: "general", description: "", body: "", fields: [] });
+  const [showTemplateEditor, setShowTemplateEditor] = useState(false);
+
+  // Send modal
+  const [sendModal, setSendModal] = useState(null);
+  const [sendTo, setSendTo] = useState({ self: false, tenant: false, custom: "" });
+  const [sending, setSending] = useState(false);
+
+  const previewRef = useRef();
+
+  const CATEGORIES = ["notices", "leases", "maintenance", "general"];
+
+  useEffect(() => { fetchAll(); }, [companyId]);
+
+  async function fetchAll() {
+    setLoading(true);
+    // Fetch company templates
+    const { data: compTemplates } = await supabase.from("doc_templates").select("*").eq("company_id", companyId).eq("is_active", true).order("name");
+    // Fetch system templates to clone if needed
+    const { data: sysTemplates } = await supabase.from("doc_templates").select("*").eq("company_id", "00000000-0000-0000-0000-000000000000").eq("is_active", true);
+    let all = compTemplates || [];
+    // Auto-clone system templates on first use
+    if (all.length === 0 && sysTemplates && sysTemplates.length > 0) {
+      const clones = sysTemplates.map(t => ({
+        company_id: companyId, name: t.name, category: t.category, description: t.description,
+        body: t.body, fields: t.fields, is_system: true, created_by: userProfile?.email,
+      }));
+      const { data: inserted } = await supabase.from("doc_templates").insert(clones).select();
+      all = inserted || [];
+    }
+    setTemplates(all);
+    // Fetch generated documents
+    const { data: docs } = await supabase.from("doc_generated").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(200);
+    setGeneratedDocs(docs || []);
+    setLoading(false);
+  }
+
+  // ---- Prefill logic ----
+  async function loadPrefillData(propertyAddress) {
+    const result = {};
+    // Property
+    const { data: prop } = await supabase.from("properties").select("*").eq("company_id", companyId).eq("address", propertyAddress).maybeSingle();
+    if (prop) {
+      result["property.address"] = buildAddress(prop) || prop.address;
+      result["property.unit"] = prop.unit || "";
+      result["property.type"] = prop.type || "";
+      result["property.bedrooms"] = prop.bedrooms || "";
+      result["property.bathrooms"] = prop.bathrooms || "";
+      result["property.rent"] = prop.rent || "";
+    }
+    // Tenant
+    const { data: tenant } = await supabase.from("tenants").select("*").eq("company_id", companyId).eq("property", propertyAddress).is("archived_at", null).maybeSingle();
+    if (tenant) {
+      result["tenant.name"] = tenant.name || "";
+      result["tenant.email"] = tenant.email || "";
+      result["tenant.phone"] = tenant.phone || "";
+      result["tenant.balance"] = formatCurrency(tenant.balance || 0);
+      result["tenant.security_deposit"] = formatCurrency(tenant.security_deposit || 0);
+      result["tenant.status"] = tenant.status || "";
+    }
+    // Lease
+    const { data: lease } = await supabase.from("leases").select("*").eq("company_id", companyId).eq("property", propertyAddress).eq("status", "active").maybeSingle();
+    if (lease) {
+      result["lease.start_date"] = lease.start_date || "";
+      result["lease.end_date"] = lease.end_date || "";
+      result["lease.rent_amount"] = formatCurrency(lease.rent_amount || 0);
+      result["lease.security_deposit"] = formatCurrency(lease.security_deposit || 0);
+    }
+    // Context
+    result["today"] = formatLocalDate(new Date());
+    result["user.name"] = userProfile?.name || "";
+    result["user.email"] = userProfile?.email || "";
+    result["company.name"] = activeCompany?.name || "";
+    setPrefillData(result);
+    return result;
+  }
+
+  function applyPrefill(template, data) {
+    const vals = {};
+    (template.fields || []).forEach(f => {
+      if (f.prefill_from && data[f.prefill_from]) {
+        vals[f.name] = data[f.prefill_from];
+      } else if (f.default_value) {
+        vals[f.name] = f.default_value;
+      } else {
+        vals[f.name] = "";
+      }
+    });
+    return vals;
+  }
+
+  function applyDefaults(template) {
+    const vals = {};
+    (template.fields || []).forEach(f => {
+      if (f.prefill_from === "today") vals[f.name] = formatLocalDate(new Date());
+      else if (f.prefill_from === "user.name") vals[f.name] = userProfile?.name || "";
+      else if (f.prefill_from === "user.email") vals[f.name] = userProfile?.email || "";
+      else if (f.prefill_from === "company.name") vals[f.name] = activeCompany?.name || "";
+      else if (f.default_value) vals[f.name] = f.default_value;
+      else vals[f.name] = "";
+    });
+    return vals;
+  }
+
+  async function startDocument(template, docMode) {
+    setSelectedTemplate(template);
+    setMode(docMode);
+    if (docMode === "prefill" && prefillProperty) {
+      const data = await loadPrefillData(prefillProperty);
+      setFieldValues(applyPrefill(template, data));
+    } else {
+      setFieldValues(applyDefaults(template));
+    }
+    setStep("fill");
+  }
+
+  // ---- Merge + render ----
+  function renderMergedBody(body, values) {
+    return (body || "").replace(/\{\{(\w+)\}\}/g, (match, fieldName) => {
+      const val = values[fieldName];
+      return val !== undefined && val !== "" ? escapeHtml(String(val)) : '<span style="color:#ef4444;background:#fef2f2;padding:0 4px;border-radius:4px;">' + match + '</span>';
+    });
+  }
+
+  // ---- Validation ----
+  function validateFields(template, values) {
+    const errors = [];
+    (template.fields || []).forEach(f => {
+      if (f.required && (!values[f.name] || String(values[f.name]).trim() === "")) {
+        errors.push(f.label + " is required");
+      }
+    });
+    return errors;
+  }
+
+  // ---- Save generated document ----
+  async function saveDocument(status = "draft") {
+    const errors = validateFields(selectedTemplate, fieldValues);
+    if (errors.length > 0) { showToast(errors[0], "error"); return null; }
+    const rendered = renderMergedBody(selectedTemplate.body, fieldValues);
+    const docName = selectedTemplate.name + " — " + (fieldValues.tenant_name || fieldValues.recipient_name || "Document") + " " + formatLocalDate(new Date());
+    const payload = {
+      company_id: companyId, template_id: selectedTemplate.id, name: docName,
+      field_values: fieldValues, rendered_body: rendered, status,
+      property_address: fieldValues.property_address || "",
+      tenant_name: fieldValues.tenant_name || fieldValues.recipient_name || "",
+      created_by: userProfile?.email,
+    };
+    const { data, error } = await supabase.from("doc_generated").insert([payload]).select().maybeSingle();
+    if (error) { showToast("Error saving document: " + error.message, "error"); return null; }
+    showToast("Document saved", "success");
+    addNotification("📄", "Document created: " + docName);
+    logAudit("create", "doc_builder", "Generated: " + docName, data?.id, userProfile?.email, userRole, companyId);
+    fetchAll();
+    return data;
+  }
+
+  // ---- Export: PDF ----
+  async function exportPDF(doc) {
+    const html2pdf = (await import("html2pdf.js")).default;
+    const container = document.createElement("div");
+    container.innerHTML = '<div style="font-family:Georgia,serif;font-size:13px;line-height:1.6;color:#1a1a1a;padding:40px;max-width:700px;margin:0 auto;">' + (doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues)) + '</div>';
+    document.body.appendChild(container);
+    const filename = (doc?.name || selectedTemplate?.name || "document").replace(/[^a-zA-Z0-9_-]/g, "_") + ".pdf";
+    await html2pdf().set({ margin: [0.5, 0.6, 0.5, 0.6], filename, image: { type: "jpeg", quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: "in", format: "letter" } }).from(container).save();
+    document.body.removeChild(container);
+    showToast("PDF downloaded", "success");
+  }
+
+  // ---- Export: DOCX ----
+  async function exportDOCX(doc) {
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = await import("docx");
+    const { saveAs } = await import("file-saver");
+    const body = doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues);
+    // Parse HTML into docx paragraphs
+    const temp = document.createElement("div");
+    temp.innerHTML = body;
+    const paragraphs = [];
+    function processNode(node) {
+      if (node.nodeType === 3) {
+        const text = node.textContent.trim();
+        if (text) paragraphs.push(new Paragraph({ children: [new TextRun(text)] }));
+        return;
+      }
+      if (node.nodeType !== 1) return;
+      const tag = node.tagName?.toLowerCase();
+      if (tag === "h1") {
+        paragraphs.push(new Paragraph({ children: [new TextRun({ text: node.textContent, bold: true, size: 32 })], heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER, spacing: { after: 200 } }));
+      } else if (tag === "h2") {
+        paragraphs.push(new Paragraph({ children: [new TextRun({ text: node.textContent, bold: true, size: 26 })], heading: HeadingLevel.HEADING_2, spacing: { after: 150 } }));
+      } else if (tag === "hr") {
+        paragraphs.push(new Paragraph({ children: [new TextRun({ text: "─".repeat(60), color: "999999", size: 16 })], spacing: { before: 100, after: 100 } }));
+      } else if (tag === "br") {
+        paragraphs.push(new Paragraph({ children: [] }));
+      } else if (tag === "li") {
+        paragraphs.push(new Paragraph({ children: [new TextRun("• " + node.textContent)], indent: { left: 400 } }));
+      } else if (tag === "ul" || tag === "ol") {
+        Array.from(node.children).forEach(processNode);
+      } else if (tag === "table") {
+        // Render table rows as text pairs
+        node.querySelectorAll("tr").forEach(row => {
+          const cells = Array.from(row.querySelectorAll("td,th")).map(c => c.textContent.trim());
+          if (cells.length >= 2) {
+            paragraphs.push(new Paragraph({ children: [new TextRun({ text: cells[0] + ": ", bold: true }), new TextRun(cells.slice(1).join(" "))] }));
+          } else if (cells.length === 1) {
+            paragraphs.push(new Paragraph({ children: [new TextRun(cells[0])] }));
+          }
+        });
+      } else if (tag === "p" || tag === "div") {
+        const runs = [];
+        node.childNodes.forEach(child => {
+          if (child.nodeType === 3) {
+            runs.push(new TextRun(child.textContent));
+          } else if (child.tagName?.toLowerCase() === "strong" || child.tagName?.toLowerCase() === "b") {
+            runs.push(new TextRun({ text: child.textContent, bold: true }));
+          } else if (child.tagName?.toLowerCase() === "em" || child.tagName?.toLowerCase() === "i") {
+            runs.push(new TextRun({ text: child.textContent, italics: true }));
+          } else if (child.tagName?.toLowerCase() === "br") {
+            runs.push(new TextRun({ text: "", break: 1 }));
+          } else {
+            runs.push(new TextRun(child.textContent));
+          }
+        });
+        if (runs.length > 0) paragraphs.push(new Paragraph({ children: runs, spacing: { after: 120 } }));
+      } else {
+        // Recurse for unknown tags
+        Array.from(node.childNodes).forEach(processNode);
+      }
+    }
+    Array.from(temp.childNodes).forEach(processNode);
+    if (paragraphs.length === 0) paragraphs.push(new Paragraph({ children: [new TextRun(temp.textContent)] }));
+    const docx = new Document({ sections: [{ children: paragraphs }] });
+    const blob = await Packer.toBlob(docx);
+    const filename = (doc?.name || selectedTemplate?.name || "document").replace(/[^a-zA-Z0-9_-]/g, "_") + ".docx";
+    saveAs(blob, filename);
+    showToast("DOCX downloaded", "success");
+  }
+
+  // ---- Export: TXT ----
+  function exportTXT(doc) {
+    const body = doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues);
+    const temp = document.createElement("div");
+    temp.innerHTML = body;
+    const text = temp.innerText || temp.textContent;
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = (doc?.name || selectedTemplate?.name || "document").replace(/[^a-zA-Z0-9_-]/g, "_") + ".txt";
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("TXT downloaded", "success");
+  }
+
+  // ---- Email ----
+  async function sendEmail(doc) {
+    setSending(true);
+    const recipients = [];
+    if (sendTo.self && userProfile?.email) recipients.push(userProfile.email);
+    if (sendTo.tenant && fieldValues.tenant_name) {
+      // Look up tenant email
+      const { data: t } = await supabase.from("tenants").select("email").eq("company_id", companyId).ilike("name", fieldValues.tenant_name).is("archived_at", null).maybeSingle();
+      if (t?.email) recipients.push(t.email);
+      else { showToast("Could not find email for " + fieldValues.tenant_name, "warning"); }
+    }
+    if (sendTo.custom) {
+      sendTo.custom.split(",").map(e => e.trim()).filter(e => e.includes("@")).forEach(e => recipients.push(e));
+    }
+    if (recipients.length === 0) { showToast("No recipients specified", "error"); setSending(false); return; }
+
+    const rendered = doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues);
+    const docName = doc?.name || selectedTemplate?.name || "Document";
+
+    for (const email of recipients) {
+      try {
+        const { error } = await supabase.functions.invoke("send-email", {
+          body: { to: email, subject: docName, html: '<div style="font-family:Georgia,serif;font-size:14px;line-height:1.6;color:#1a1a1a;max-width:700px;margin:0 auto;">' + rendered + '</div>' },
+        });
+        if (error) showToast("Failed to email " + email + ": " + error.message, "error");
+      } catch (e) { showToast("Email error: " + e.message, "error"); }
+    }
+
+    // Update doc status
+    if (doc?.id) {
+      await supabase.from("doc_generated").update({ status: "sent", sent_at: new Date().toISOString(), recipients: recipients.map(r => ({ email: r, sent_at: new Date().toISOString() })) }).eq("id", doc.id);
+    }
+
+    showToast("Sent to " + recipients.length + " recipient(s)", "success");
+    addNotification("📧", "Document emailed: " + docName);
+    logAudit("send", "doc_builder", "Emailed " + docName + " to " + recipients.join(", "), doc?.id, userProfile?.email, userRole, companyId);
+    setSendModal(null);
+    setSending(false);
+    fetchAll();
+  }
+
+  // ---- Template CRUD ----
+  async function saveTemplate() {
+    if (!templateForm.name.trim()) { showToast("Template name is required", "error"); return; }
+    if (!templateForm.body.trim()) { showToast("Template body is required", "error"); return; }
+    const payload = { ...templateForm, company_id: companyId, updated_at: new Date().toISOString() };
+    if (editingTemplate) {
+      const { error } = await supabase.from("doc_templates").update(payload).eq("id", editingTemplate.id).eq("company_id", companyId);
+      if (error) { showToast("Error: " + error.message, "error"); return; }
+      showToast("Template updated", "success");
+    } else {
+      payload.created_by = userProfile?.email;
+      const { error } = await supabase.from("doc_templates").insert([payload]);
+      if (error) { showToast("Error: " + error.message, "error"); return; }
+      showToast("Template created", "success");
+    }
+    setShowTemplateEditor(false);
+    setEditingTemplate(null);
+    fetchAll();
+  }
+
+  async function deleteTemplate(t) {
+    if (!await showConfirm({ message: 'Delete template "' + t.name + '"?', variant: "danger", confirmText: "Delete" })) return;
+    await supabase.from("doc_templates").update({ is_active: false }).eq("id", t.id);
+    showToast("Template deleted", "success");
+    fetchAll();
+  }
+
+  async function deleteGeneratedDoc(d) {
+    if (!await showConfirm({ message: "Delete this generated document?", variant: "danger", confirmText: "Delete" })) return;
+    await supabase.from("doc_generated").delete().eq("id", d.id);
+    showToast("Document deleted", "success");
+    fetchAll();
+  }
+
+  // ---- Reset flow ----
+  function resetFlow() {
+    setSelectedTemplate(null);
+    setMode(null);
+    setPrefillProperty(null);
+    setFieldValues({});
+    setStep("pick");
+    setPrefillData({});
+  }
+
+  // ---- Field editor helpers ----
+  function addField() {
+    setTemplateForm(prev => ({ ...prev, fields: [...prev.fields, { name: "", label: "", type: "text", required: false, section: "", options: [], default_value: "", prefill_from: "" }] }));
+  }
+  function updateField(idx, key, val) {
+    setTemplateForm(prev => {
+      const fields = [...prev.fields];
+      fields[idx] = { ...fields[idx], [key]: val };
+      if (key === "label" && !fields[idx].name) fields[idx].name = val.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+      return { ...prev, fields };
+    });
+  }
+  function removeField(idx) {
+    setTemplateForm(prev => ({ ...prev, fields: prev.fields.filter((_, i) => i !== idx) }));
+  }
+
+  // Insert merge field into body
+  function insertMergeField(fieldName) {
+    setTemplateForm(prev => ({ ...prev, body: prev.body + "{{" + fieldName + "}}" }));
+  }
+
+  if (loading) return <Spinner />;
+
+  // ============ TEMPLATE EDITOR MODAL ============
+  if (showTemplateEditor) {
+    const sections = [...new Set(templateForm.fields.map(f => f.section).filter(Boolean))];
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-2xl font-manrope font-bold text-slate-800">{editingTemplate ? "Edit Template" : "New Template"}</h2>
+          <button onClick={() => { setShowTemplateEditor(false); setEditingTemplate(null); }} className="text-sm text-slate-500 hover:text-slate-700">Cancel</button>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left: Template config */}
+          <div className="space-y-4">
+            <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+              <h3 className="font-manrope font-bold text-slate-700 mb-3">Template Details</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-400 block mb-1">Name *</label>
+                  <input value={templateForm.name} onChange={e => setTemplateForm({...templateForm, name: e.target.value})} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" placeholder="e.g. Pet Addendum" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-400 block mb-1">Category</label>
+                  <select value={templateForm.category} onChange={e => setTemplateForm({...templateForm, category: e.target.value})} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
+                    {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="mt-3">
+                <label className="text-xs font-medium text-slate-400 block mb-1">Description</label>
+                <input value={templateForm.description} onChange={e => setTemplateForm({...templateForm, description: e.target.value})} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" placeholder="Brief description" />
+              </div>
+            </div>
+
+            {/* Fields */}
+            <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-manrope font-bold text-slate-700">Form Fields ({templateForm.fields.length})</h3>
+                <button onClick={addField} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700">+ Add Field</button>
+              </div>
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {templateForm.fields.map((f, i) => (
+                  <div key={i} className="border border-indigo-50 rounded-xl p-3 bg-indigo-50/20">
+                    <div className="grid grid-cols-3 gap-2 mb-2">
+                      <input value={f.label} onChange={e => updateField(i, "label", e.target.value)} placeholder="Label" className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs w-full" />
+                      <select value={f.type} onChange={e => updateField(i, "type", e.target.value)} className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs">
+                        {["text","textarea","number","currency","date","checkbox","select","signature_placeholder"].map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                      <input value={f.section || ""} onChange={e => updateField(i, "section", e.target.value)} placeholder="Section" className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs w-full" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <input value={f.prefill_from || ""} onChange={e => updateField(i, "prefill_from", e.target.value)} placeholder="Prefill from" className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs" />
+                      <input value={f.default_value || ""} onChange={e => updateField(i, "default_value", e.target.value)} placeholder="Default value" className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs" />
+                      <div className="flex items-center gap-2">
+                        <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={f.required} onChange={e => updateField(i, "required", e.target.checked)} className="accent-indigo-600" />Required</label>
+                        <button onClick={() => insertMergeField(f.name || f.label.toLowerCase().replace(/[^a-z0-9]+/g, "_"))} className="text-xs text-indigo-600 hover:underline" title="Insert into body">{"{{}}"}</button>
+                        <button onClick={() => removeField(i)} className="text-xs text-red-400 hover:text-red-600 ml-auto">✕</button>
+                      </div>
+                    </div>
+                    {f.type === "select" && (
+                      <input value={(f.options || []).join(", ")} onChange={e => updateField(i, "options", e.target.value.split(",").map(s => s.trim()))} placeholder="Options (comma-separated)" className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs w-full mt-2" />
+                    )}
+                    <div className="text-xs text-slate-400 mt-1">Merge tag: <code className="bg-slate-100 px-1 rounded">{"{{" + (f.name || "field_name") + "}}"}</code></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Body editor + preview */}
+          <div className="space-y-4">
+            <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-manrope font-bold text-slate-700">Document Body (HTML + Merge Fields)</h3>
+                {templateForm.fields.length > 0 && (
+                  <div className="flex gap-1 flex-wrap">
+                    {templateForm.fields.filter(f => f.name).map(f => (
+                      <button key={f.name} onClick={() => insertMergeField(f.name)} className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full hover:bg-indigo-200">{"{{}}" + f.label}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <textarea value={templateForm.body} onChange={e => setTemplateForm({...templateForm, body: e.target.value})} className="border border-indigo-100 rounded-2xl px-3 py-2 text-xs w-full font-mono" rows={18} placeholder='<h1>Document Title</h1>\n<p>Dear {{tenant_name}},</p>\n<p>Your rent at {{property_address}} is...</p>' />
+            </div>
+            <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+              <h3 className="font-manrope font-bold text-slate-700 mb-2">Preview</h3>
+              <div className="prose prose-sm max-w-none border border-indigo-50 rounded-xl p-4 bg-white min-h-32" dangerouslySetInnerHTML={{ __html: renderMergedBody(templateForm.body, {}) }} />
+            </div>
+            <button onClick={saveTemplate} className="w-full bg-indigo-600 text-white py-2.5 rounded-2xl font-semibold hover:bg-indigo-700">{editingTemplate ? "Update Template" : "Create Template"}</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ============ DOCUMENT CREATION FLOW ============
+  if (step === "fill" && selectedTemplate) {
+    const sections = [...new Set((selectedTemplate.fields || []).map(f => f.section).filter(Boolean))];
+    const unsectioned = (selectedTemplate.fields || []).filter(f => !f.section);
+    const renderField = (f) => {
+      const val = fieldValues[f.name] || "";
+      const base = "border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full focus:border-indigo-300 focus:outline-none";
+      if (f.type === "textarea") return <textarea value={val} onChange={e => setFieldValues({...fieldValues, [f.name]: e.target.value})} className={base} rows={3} />;
+      if (f.type === "select") return (
+        <select value={val} onChange={e => setFieldValues({...fieldValues, [f.name]: e.target.value})} className={base}>
+          <option value="">Select...</option>
+          {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      );
+      if (f.type === "checkbox") return (
+        <label className="flex items-center gap-2"><input type="checkbox" checked={!!val} onChange={e => setFieldValues({...fieldValues, [f.name]: e.target.checked})} className="accent-indigo-600" />{f.label}</label>
+      );
+      if (f.type === "signature_placeholder") return <div className="border-b-2 border-slate-300 py-4 text-xs text-slate-400 italic">Signature placeholder — will be available after e-sign integration</div>;
+      const inputType = f.type === "date" ? "date" : f.type === "number" ? "number" : f.type === "currency" ? "text" : "text";
+      return <input type={inputType} value={val} onChange={e => setFieldValues({...fieldValues, [f.name]: e.target.value})} className={base} placeholder={f.type === "currency" ? "$0.00" : ""} />;
+    };
+
+    return (
+      <div>
+        <div className="flex items-center gap-3 mb-5">
+          <button onClick={resetFlow} className="text-slate-400 hover:text-slate-600"><span className="material-icons-outlined">arrow_back</span></button>
+          <div>
+            <h2 className="text-xl font-manrope font-bold text-slate-800">{selectedTemplate.name}</h2>
+            <p className="text-xs text-slate-400">{mode === "prefill" ? "Prefilled from " + (prefillProperty || "property") : "Blank mode"} · Fill the form, then preview</p>
+          </div>
+          <button onClick={() => {
+            const errors = validateFields(selectedTemplate, fieldValues);
+            if (errors.length > 0) { showToast(errors[0], "error"); return; }
+            setStep("preview");
+          }} className="ml-auto bg-indigo-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-indigo-700 font-semibold">Preview →</button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Form */}
+          <div className="space-y-4">
+            {sections.map(section => (
+              <div key={section} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+                <h3 className="font-manrope font-bold text-slate-700 text-sm mb-3 uppercase tracking-wide">{section}</h3>
+                <div className="space-y-3">
+                  {(selectedTemplate.fields || []).filter(f => f.section === section).map(f => (
+                    <div key={f.name}>
+                      {f.type !== "checkbox" && <label className="text-xs font-medium text-slate-500 block mb-1">{f.label} {f.required && "*"}</label>}
+                      {renderField(f)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {unsectioned.length > 0 && (
+              <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+                <div className="space-y-3">
+                  {unsectioned.map(f => (
+                    <div key={f.name}>
+                      {f.type !== "checkbox" && <label className="text-xs font-medium text-slate-500 block mb-1">{f.label} {f.required && "*"}</label>}
+                      {renderField(f)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Live preview */}
+          <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5 sticky top-4">
+            <h3 className="font-manrope font-bold text-slate-700 text-sm mb-3">Live Preview</h3>
+            <div className="border border-indigo-50 rounded-xl p-5 bg-white prose prose-sm max-w-none min-h-64 overflow-y-auto max-h-[70vh]" style={{ fontFamily: "Georgia, serif", fontSize: "13px", lineHeight: "1.6" }}
+              dangerouslySetInnerHTML={{ __html: renderMergedBody(selectedTemplate.body, fieldValues) }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ============ PREVIEW + EXPORT STEP ============
+  if (step === "preview" && selectedTemplate) {
+    const rendered = renderMergedBody(selectedTemplate.body, fieldValues);
+    return (
+      <div>
+        <div className="flex items-center gap-3 mb-5">
+          <button onClick={() => setStep("fill")} className="text-slate-400 hover:text-slate-600"><span className="material-icons-outlined">arrow_back</span></button>
+          <div>
+            <h2 className="text-xl font-manrope font-bold text-slate-800">Document Preview</h2>
+            <p className="text-xs text-slate-400">Review the final document, then export or send</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Document preview */}
+          <div className="lg:col-span-2">
+            <div ref={previewRef} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-8" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7", color: "#1a1a1a" }}>
+              <div dangerouslySetInnerHTML={{ __html: rendered }} />
+            </div>
+          </div>
+
+          {/* Actions sidebar */}
+          <div className="space-y-4">
+            <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+              <h3 className="font-manrope font-bold text-slate-700 mb-3">Export</h3>
+              <div className="space-y-2">
+                <button onClick={() => exportPDF()} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-2xl hover:bg-red-100">
+                  <span className="material-icons-outlined text-lg">picture_as_pdf</span>Download PDF
+                </button>
+                <button onClick={() => exportDOCX()} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-2xl hover:bg-blue-100">
+                  <span className="material-icons-outlined text-lg">article</span>Download DOCX
+                </button>
+                <button onClick={() => exportTXT()} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-2xl hover:bg-slate-100">
+                  <span className="material-icons-outlined text-lg">text_snippet</span>Download TXT
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+              <h3 className="font-manrope font-bold text-slate-700 mb-3">Send via Email</h3>
+              <div className="space-y-2 mb-3">
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.self} onChange={e => setSendTo({...sendTo, self: e.target.checked})} className="accent-indigo-600" />Email to myself ({userProfile?.email})</label>
+                {fieldValues.tenant_name && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.tenant} onChange={e => setSendTo({...sendTo, tenant: e.target.checked})} className="accent-indigo-600" />Email to tenant ({fieldValues.tenant_name})</label>}
+                <div>
+                  <label className="text-xs font-medium text-slate-400 block mb-1">Custom recipients (comma-separated)</label>
+                  <input value={sendTo.custom} onChange={e => setSendTo({...sendTo, custom: e.target.value})} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" placeholder="email@example.com" />
+                </div>
+              </div>
+              <button onClick={async () => {
+                const doc = await saveDocument("sent");
+                if (doc) await sendEmail(doc);
+              }} disabled={sending} className="w-full bg-emerald-600 text-white py-2.5 rounded-2xl font-semibold hover:bg-emerald-700 disabled:opacity-50">
+                {sending ? "Sending..." : "Send Email"}
+              </button>
+            </div>
+
+            <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+              <h3 className="font-manrope font-bold text-slate-700 mb-3">Save</h3>
+              <div className="space-y-2">
+                <button onClick={async () => { await saveDocument("draft"); resetFlow(); }} className="w-full bg-indigo-600 text-white py-2.5 rounded-2xl font-semibold hover:bg-indigo-700">Save as Draft</button>
+                <button onClick={async () => { await saveDocument("final"); resetFlow(); }} className="w-full bg-slate-100 text-slate-700 py-2.5 rounded-2xl font-semibold hover:bg-slate-200">Finalize</button>
+              </div>
+            </div>
+
+            <button onClick={() => setStep("fill")} className="w-full text-sm text-slate-500 hover:text-slate-700">← Back to edit</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ============ MAIN VIEW: TABS ============
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-2xl font-manrope font-bold text-slate-800">Document Builder</h2>
+        <div className="flex gap-1">
+          {[["create","Create"],["templates","Templates"],["history","History"]].map(([id,label]) => (
+            <button key={id} onClick={() => setTab(id)} className={"px-4 py-2 text-sm font-medium rounded-2xl " + (tab === id ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* ---- CREATE TAB ---- */}
+      {tab === "create" && (
+        <div>
+          {/* Mode selection */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <button onClick={() => setMode("blank")} className={"rounded-3xl border-2 p-6 text-left transition-all " + (mode === "blank" ? "border-indigo-600 bg-indigo-50" : "border-indigo-100 bg-white hover:border-indigo-300")}>
+              <div className="flex items-center gap-3 mb-2">
+                <span className="w-10 h-10 rounded-2xl bg-indigo-100 flex items-center justify-center"><span className="material-icons-outlined text-indigo-600">edit_note</span></span>
+                <h3 className="font-manrope font-bold text-slate-800">Blank Mode</h3>
+              </div>
+              <p className="text-sm text-slate-400">Start with an empty form. Fill everything out manually.</p>
+            </button>
+            <div className={"rounded-3xl border-2 p-6 transition-all " + (mode === "prefill" ? "border-emerald-600 bg-emerald-50" : "border-indigo-100 bg-white")}>
+              <button onClick={() => setMode("prefill")} className="w-full text-left">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="w-10 h-10 rounded-2xl bg-emerald-100 flex items-center justify-center"><span className="material-icons-outlined text-emerald-600">auto_fix_high</span></span>
+                  <h3 className="font-manrope font-bold text-slate-800">Prefill from Property</h3>
+                </div>
+                <p className="text-sm text-slate-400">Select a property to auto-fill tenant, lease, and property data.</p>
+              </button>
+              {mode === "prefill" && (
+                <div className="mt-3">
+                  <PropertyDropdown value={prefillProperty} onChange={(addr) => setPrefillProperty(addr)} companyId={companyId} label="Select Property" required />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Template selection */}
+          {mode && (
+            <div>
+              <h3 className="font-manrope font-bold text-slate-700 mb-3">Choose a Template</h3>
+              {CATEGORIES.map(cat => {
+                const catTemplates = templates.filter(t => t.category === cat);
+                if (catTemplates.length === 0) return null;
+                return (
+                  <div key={cat} className="mb-4">
+                    <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">{cat}</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {catTemplates.map(t => (
+                        <button key={t.id} onClick={() => startDocument(t, mode)} disabled={mode === "prefill" && !prefillProperty}
+                          className="bg-white rounded-2xl border border-indigo-50 p-4 text-left hover:border-indigo-300 hover:shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                          <div className="font-semibold text-slate-800 text-sm">{t.name}</div>
+                          <div className="text-xs text-slate-400 mt-1">{t.description}</div>
+                          <div className="text-xs text-indigo-600 mt-2">{(t.fields || []).length} fields</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ---- TEMPLATES TAB ---- */}
+      {tab === "templates" && (
+        <div>
+          <div className="flex justify-end mb-4">
+            <button onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", category: "general", description: "", body: "", fields: [] }); setShowTemplateEditor(true); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Template</button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {templates.map(t => (
+              <div key={t.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="font-manrope font-bold text-slate-800">{t.name}</div>
+                    <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">{t.category}</span>
+                  </div>
+                  {t.is_system && <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">System</span>}
+                </div>
+                <p className="text-xs text-slate-400 mt-2">{t.description}</p>
+                <div className="text-xs text-slate-500 mt-2">{(t.fields || []).length} fields</div>
+                <div className="mt-3 flex gap-2">
+                  <button onClick={() => { setEditingTemplate(t); setTemplateForm({ name: t.name, category: t.category, description: t.description || "", body: t.body || "", fields: t.fields || [] }); setShowTemplateEditor(true); }} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
+                  <button onClick={() => { setSelectedTemplate(t); setMode("blank"); setFieldValues(applyDefaults(t)); setStep("fill"); setTab("create"); }} className="text-xs text-emerald-600 border border-emerald-200 px-3 py-1 rounded-lg hover:bg-emerald-50">Use</button>
+                  <button onClick={() => deleteTemplate(t)} className="text-xs text-red-400 hover:text-red-600 ml-auto">Delete</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ---- HISTORY TAB ---- */}
+      {tab === "history" && (
+        <div>
+          {generatedDocs.length === 0 ? (
+            <div className="text-center py-16 text-slate-400">
+              <span className="material-icons-outlined text-4xl mb-2">folder_open</span>
+              <p className="text-sm">No documents generated yet</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {generatedDocs.map(d => (
+                <div key={d.id} className="bg-white rounded-2xl border border-indigo-50 shadow-sm p-4 flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-slate-800 text-sm">{d.name}</div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (d.status === "sent" ? "bg-emerald-50 text-emerald-700" : d.status === "final" ? "bg-blue-50 text-blue-700" : "bg-slate-50 text-slate-500")}>{d.status}</span>
+                      {d.tenant_name && <span className="text-xs text-slate-400">{d.tenant_name}</span>}
+                      {d.property_address && <span className="text-xs text-slate-400">· {d.property_address}</span>}
+                      <span className="text-xs text-slate-400">· {new Date(d.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => exportPDF(d)} className="text-xs text-red-600 border border-red-200 px-2 py-1 rounded-lg hover:bg-red-50" title="PDF">PDF</button>
+                    <button onClick={() => exportDOCX(d)} className="text-xs text-blue-600 border border-blue-200 px-2 py-1 rounded-lg hover:bg-blue-50" title="DOCX">DOCX</button>
+                    <button onClick={() => exportTXT(d)} className="text-xs text-slate-500 border border-slate-200 px-2 py-1 rounded-lg hover:bg-slate-50" title="TXT">TXT</button>
+                    <button onClick={() => {
+                      setSendModal(d);
+                      setSendTo({ self: false, tenant: false, custom: "" });
+                    }} className="text-xs text-emerald-600 border border-emerald-200 px-2 py-1 rounded-lg hover:bg-emerald-50">Email</button>
+                    <button onClick={() => deleteGeneratedDoc(d)} className="text-xs text-red-400 hover:text-red-600">✕</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Send modal for history items */}
+          {sendModal && (
+            <Modal title={"Send: " + sendModal.name} onClose={() => setSendModal(null)}>
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.self} onChange={e => setSendTo({...sendTo, self: e.target.checked})} className="accent-indigo-600" />Email to myself</label>
+                {sendModal.tenant_name && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.tenant} onChange={e => setSendTo({...sendTo, tenant: e.target.checked})} className="accent-indigo-600" />Email to tenant ({sendModal.tenant_name})</label>}
+                <div>
+                  <label className="text-xs font-medium text-slate-400 block mb-1">Custom recipients</label>
+                  <input value={sendTo.custom} onChange={e => setSendTo({...sendTo, custom: e.target.value})} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" placeholder="email@example.com, other@example.com" />
+                </div>
+                <button onClick={() => sendEmail(sendModal)} disabled={sending} className="w-full bg-emerald-600 text-white py-2.5 rounded-2xl font-semibold hover:bg-emerald-700 disabled:opacity-50">
+                  {sending ? "Sending..." : "Send"}
+                </button>
+              </div>
+            </Modal>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const pageComponents = {
   dashboard: Dashboard,
   properties: Properties,
@@ -11380,6 +12157,7 @@ const pageComponents = {
   roles: RoleManagement,
   moveout: MoveOutWizard,
   evictions: EvictionWorkflow,
+  doc_builder: DocumentBuilder,
   tenant_portal: TenantPortal,
   owner_portal: OwnerPortal,
 };
