@@ -69,15 +69,7 @@ async function guarded(key, fn) {
   try { await fn(); } finally { guardRelease(key); }
 }
 
-async function safeLedgerInsert(entry) {
-  const { error } = await supabase.from("ledger_entries").insert([entry]);
-  if (error) {
-  console.error("LEDGER ENTRY FAILED:", error.message, entry);
-  // Alert user so they know balance and ledger may be out of sync
-  showToast("Warning: Ledger entry failed to save for " + (entry.tenant || "unknown") + ": " + error.message + ". Balance may be out of sync — please check the tenant ledger.", "error");
-  }
-  return !error;
-}
+// safeLedgerInsert is defined inside AppInner (needs showToast access)
 
 // ============ COMPANY-SCOPED SUPABASE HELPERS ============
 // Use these instead of raw supabase.from() to automatically filter by company_id
@@ -2513,47 +2505,36 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const amount = newCharge.type === "payment" || newCharge.type === "credit"
   ? -Math.abs(Number(newCharge.amount))
   : Math.abs(Number(newCharge.amount));
-  const currentBalance = ledger.length > 0 ? ledger[0].balance : 0;
-  const newBalance = currentBalance + amount;
-  const ledgerOk = await safeLedgerInsert({ company_id: companyId,
-  tenant: selectedTenant.name,
-  property: selectedTenant.property,
-  date: formatLocalDate(new Date()),
-  description: newCharge.description,
-  amount,
-  type: newCharge.type,
-  balance: 0,
-  });
-  if (!ledgerOk) { showToast("Failed to create ledger entry. Please try again.", "error"); return; }
-  // Atomic balance update (prevents drift from concurrent writes)
-  try {
-  const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: amount });
-  if (balErr) { showToast("Balance update failed: " + balErr.message, "error"); }
-  } catch (e) { showToast("Balance update failed: " + e.message, "error"); }
-  // Post accounting JE for manual charges/credits
-  if (Math.abs(amount) > 0) {
+  const today = formatLocalDate(new Date());
   const classId = await getPropertyClassId(selectedTenant.property, companyId);
+  const ledgerData = { tenant: selectedTenant.name, property: selectedTenant.property, date: today, description: newCharge.description, amount, type: newCharge.type, balance: 0 };
+  const balData = { tenantId: selectedTenant.id, amount };
+  // JE lines depend on charge type
+  let jeLines;
+  let jeDesc;
   if (newCharge.type === "charge") {
-  const _jeOk = await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "Manual charge — " + selectedTenant.name + " — " + newCharge.description, reference: "MANUAL-" + shortId(), property: selectedTenant.property || "",
-  lines: [
+  jeDesc = "Manual charge — " + selectedTenant.name + " — " + newCharge.description;
+  jeLines = [
   { account_id: "1100", account_name: "Accounts Receivable", debit: Math.abs(amount), credit: 0, class_id: classId, memo: selectedTenant.name + ": " + newCharge.description },
   { account_id: "4100", account_name: "Other Income", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
-  ]
-  });
-  if (!_jeOk) { showToast("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
-  
-  } else if (newCharge.type === "payment" || newCharge.type === "credit") {
-  const _jeOk = await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "Manual " + newCharge.type + " — " + selectedTenant.name + " — " + newCharge.description, reference: "MANUAL-" + shortId(), property: selectedTenant.property || "",
-  lines: [
+  ];
+  } else {
+  jeDesc = "Manual " + newCharge.type + " — " + selectedTenant.name + " — " + newCharge.description;
+  jeLines = [
   { account_id: "1000", account_name: "Checking Account", debit: Math.abs(amount), credit: 0, class_id: classId, memo: selectedTenant.name + ": " + newCharge.description },
   { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: Math.abs(amount), class_id: classId, memo: newCharge.description },
-  ]
+  ];
+  }
+  // Unified: JE first → ledger → balance (all gated on JE success)
+  const result = await postAccountingTransaction({
+  date: today, description: jeDesc, reference: "MANUAL-" + shortId(), property: selectedTenant.property || "",
+  lines: jeLines,
+  ledgerEntry: ledgerData,
+  balanceUpdate: balData,
   });
-  if (!_jeOk) { showToast("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
-  
-  }
-  }
-  setSelectedTenant({ ...selectedTenant, balance: newBalance });
+  if (!result.jeId) return; // toast already shown by postAccountingTransaction
+  const currentBalance = ledger.length > 0 ? ledger[0].balance : 0;
+  setSelectedTenant({ ...selectedTenant, balance: currentBalance + amount });
   setNewCharge({ description: "", amount: "", type: "charge" });
   openLedger(selectedTenant);
   fetchTenants();
@@ -6250,8 +6231,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   const rent = safeNum(lease.rent_amount);
   if (rent <= 0) continue;
   const classId = await getPropertyClassId(lease.property, companyId);
-  const _jeOk = await autoPostJournalEntry({
-  companyId,
+  const result = await postAccountingTransaction({
   date: today,
   description: `Rent accrual ${month} — ${lease.tenant_name} — ${lease.property}`,
   reference: `ACCR-${month}-${lease.id}`,
@@ -6259,20 +6239,11 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   lines: [
   { account_id: "1100", account_name: "Accounts Receivable", debit: rent, credit: 0, class_id: classId, memo: `${lease.tenant_name} rent due` },
   { account_id: "4000", account_name: "Rental Income", debit: 0, credit: rent, class_id: classId, memo: `${lease.tenant_name} — ${lease.property}` },
-  ]
+  ],
+  ledgerEntry: { tenant: lease.tenant_name, property: lease.property, date: today, description: `Rent accrual — ${month}`, amount: rent, type: "charge", balance: 0 },
+  balanceUpdate: lease.tenant_id ? { tenantId: lease.tenant_id, amount: rent } : null,
   });
-  if (!_jeOk) { showToast("Accounting entry failed. The transaction was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
-  
-  // Update tenant balance (they now owe this amount)
-  if (lease.tenant_id) {
-  const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: rent });
-  if (balErr) showToast("Balance update failed: " + balErr.message + ". Please verify the tenant balance.", "error");
-  }
-  // Create ledger entry
-  await safeLedgerInsert({ company_id: companyId,
-  tenant: lease.tenant_name, property: lease.property, date: today,
-  description: `Rent accrual — ${month}`, amount: rent, type: "charge", balance: 0,
-  });
+  if (!result.jeId) continue; // skip this lease, toast already shown
   count++;
   }
   showToast("Accrued rent for " + count + " active leases for " + month, "success");
@@ -9590,44 +9561,30 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   const month = today.slice(0, 7);
   let hasAccrual = false;
   hasAccrual = await checkAccrualExists(companyId, month, s.tenant);
-  if (hasAccrual) {
-  const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Autopay received — " + s.tenant + " — " + s.property + " (settling AR)", reference: "APAY-" + shortId(), property: s.property,
-  lines: [
+  // Look up tenant for balance update
+  const { data: tenantRow } = await supabase.from("tenants").select("id, balance, email").eq("name", s.tenant).eq("company_id", companyId).maybeSingle();
+  const jeLines = hasAccrual
+  ? [
   { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay " + s.method + " from " + s.tenant },
   { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement — " + s.tenant },
   ]
-  });
-  if (!_jeOk) { showToast("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
-  
-  } else {
-  const _jeOk = await autoPostJournalEntry({ companyId, date: today, description: "Autopay — " + s.tenant + " — " + s.property, reference: "APAY-" + shortId(), property: s.property,
-  lines: [
+  : [
   { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay " + s.method + " from " + s.tenant },
   { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: s.tenant + " — " + s.property },
-  ]
+  ];
+  const jeDesc = hasAccrual ? "Autopay received — " + s.tenant + " — " + s.property + " (settling AR)" : "Autopay — " + s.tenant + " — " + s.property;
+  // Unified: JE → ledger → balance (gated on JE success)
+  const result = await postAccountingTransaction({
+  date: today, description: jeDesc, reference: "APAY-" + shortId(), property: s.property,
+  lines: jeLines,
+  ledgerEntry: { tenant: s.tenant, property: s.property, date: today, description: "Autopay payment (" + s.method + ")", amount: -amt, type: "payment", balance: 0 },
+  balanceUpdate: tenantRow ? { tenantId: tenantRow.id, amount: -amt } : null,
   });
-  if (!_jeOk) { showToast("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
-  
-  }
+  if (!result.jeId) { s._processing = false; fetchData(); return; } // toast already shown
   logAudit("create", "payments", "Autopay: $" + s.amount + " from " + s.tenant + " at " + s.property, "", userProfile?.email, userRole, companyId);
   addNotification("\ud83d\udcb3", "Autopay $" + s.amount + " processed for " + s.tenant);
-
-  // Update tenant balance and create ledger entry
-  const { data: tenantRow } = await supabase.from("tenants").select("id, balance, email").eq("name", s.tenant).eq("company_id", companyId).maybeSingle();
-  if (tenantRow) {
-  try {
-  const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -amt });
-  if (balErr) showToast("Balance update failed: " + balErr.message + ". Please verify the tenant balance.", "error");
-  } catch (e) { console.warn("Autopay balance RPC error:", e.message); }
-  await safeLedgerInsert({ company_id: companyId,
-  tenant: s.tenant, property: s.property,
-  date: today, description: "Autopay payment (" + s.method + ")",
-  amount: -amt, type: "payment", balance: 0,
-  });
-  // Queue payment receipt notification (#16)
-  if (tenantRow.email) {
+  if (tenantRow?.email) {
   queueNotification("payment_received", tenantRow.email, { tenant: s.tenant, amount: amt, date: today, property: s.property, method: s.method }, companyId);
-  }
   }
 
   // Auto-create owner distribution for autopay rent (#3)
@@ -9810,36 +9767,27 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   }
   const tenant = tenants.find(t => t.name === payment.tenant);
   const feeAmount = rule.fee_type === "flat" ? rule.fee_amount : Math.round((tenant?.rent || payment.amount) * rule.fee_amount / 100);
-  if (tenant) {
-  const newBalance = safeNum(tenant.balance) + feeAmount;
-  await safeLedgerInsert({ company_id: companyId, tenant: payment.tenant, property: payment.property, date: formatLocalDate(new Date()), description: `Late fee — ${payment.daysLate} days overdue`, amount: feeAmount, type: "late_fee", balance: 0 });
-  // Atomic balance update (prevents drift from concurrent writes)
-  try {
-  const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenant.id, p_amount_change: feeAmount });
-  if (balErr) showToast("Balance update failed: " + balErr.message + ". Please verify the tenant balance.", "error");
-  } catch (e) { console.warn("Late fee balance RPC error:", e.message); }
-  }
-  addNotification("⚠️", `Late fee ${formatCurrency(feeAmount)} applied to ${payment.tenant}`);
-  logAudit("create", "late_fees", `Late fee ${formatCurrency(feeAmount)} applied to ${payment.tenant} (${payment.daysLate} days overdue)`, tenant?.id || "", userProfile?.email, userRole, companyId);
-  // Queue notification to tenant
-  if (tenant?.email) queueNotification("late_fee_applied", tenant.email, { tenant: payment.tenant, amount: feeAmount, daysLate: payment.daysLate, property: payment.property }, companyId);
-  // AUTO-POST TO ACCOUNTING: DR Accounts Receivable, CR Late Fee Income
+  const today = formatLocalDate(new Date());
   const classId = await getPropertyClassId(payment.property, companyId);
+  // Unified: JE first → ledger → balance (all gated on JE success)
   if (feeAmount > 0) {
-  const _jeOk = await autoPostJournalEntry({
-  companyId,
-  date: formatLocalDate(new Date()),
+  const result = await postAccountingTransaction({
+  date: today,
   description: "Late fee - " + payment.tenant + " - " + payment.property,
   reference: "LATE-" + shortId(),
   property: payment.property,
   lines: [
   { account_id: "1100", account_name: "Accounts Receivable", debit: feeAmount, credit: 0, class_id: classId, memo: "Late fee: " + payment.tenant },
   { account_id: "4010", account_name: "Late Fee Income", debit: 0, credit: feeAmount, class_id: classId, memo: payment.daysLate + " days overdue" },
-  ]
+  ],
+  ledgerEntry: { tenant: payment.tenant, property: payment.property, date: today, description: `Late fee — ${payment.daysLate} days overdue`, amount: feeAmount, type: "late_fee", balance: 0 },
+  balanceUpdate: tenant ? { tenantId: tenant.id, amount: feeAmount } : null,
   });
-  if (!_jeOk) { showToast("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
-  
+  if (!result.jeId) { fetchData(); return; } // toast already shown
   }
+  addNotification("⚠️", `Late fee ${formatCurrency(feeAmount)} applied to ${payment.tenant}`);
+  logAudit("create", "late_fees", `Late fee ${formatCurrency(feeAmount)} applied to ${payment.tenant} (${payment.daysLate} days overdue)`, tenant?.id || "", userProfile?.email, userRole, companyId);
+  if (tenant?.email) queueNotification("late_fee_applied", tenant.email, { tenant: payment.tenant, amount: feeAmount, daysLate: payment.daysLate, property: payment.property }, companyId);
   fetchData();
   }
 
@@ -10828,31 +10776,29 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
 
   // 1. Process deposit return/deductions GL
   if (depositReturn > 0) {
-  await autoPostJournalEntry({ companyId: cid, date: moveOutDate, description: `Security deposit returned — ${tName}`, reference: `DEP-RTN-${shortId()}`, property: selectedLease.property,
+  const depResult = await postAccountingTransaction({ date: moveOutDate, description: `Security deposit returned — ${tName}`, reference: `DEP-RTN-${shortId()}`, property: selectedLease.property,
   lines: [
   { account_id: "2100", account_name: "Security Deposits Held", debit: depositReturn, credit: 0, class_id: classId, memo: `Deposit return — ${tName}` },
   { account_id: "1000", account_name: "Checking Account", debit: 0, credit: depositReturn, class_id: classId, memo: `Deposit refund to ${tName}` },
-  ]
-  });
+  ], requireJE: false });
+  if (!depResult.jeId) showToast("Warning: Deposit return GL entry failed — please post manually in Accounting.", "error");
   }
   if (totalDeductions > 0 && totalDeductions <= depositAmount) {
-  await autoPostJournalEntry({ companyId: cid, date: moveOutDate, description: `Deposit deductions — ${tName}`, reference: `DEP-DED-${shortId()}`, property: selectedLease.property,
+  const dedResult = await postAccountingTransaction({ date: moveOutDate, description: `Deposit deductions — ${tName}`, reference: `DEP-DED-${shortId()}`, property: selectedLease.property,
   lines: [
   { account_id: "2100", account_name: "Security Deposits Held", debit: totalDeductions, credit: 0, class_id: classId, memo: `Deductions: ${deductions.map(d => d.desc).join(", ")}` },
   { account_id: "4100", account_name: "Other Income", debit: 0, credit: totalDeductions, class_id: classId, memo: `Deposit forfeiture — ${tName}` },
-  ]
-  });
+  ], requireJE: false });
+  if (!dedResult.jeId) showToast("Warning: Deposit deduction GL entry failed — please post manually in Accounting.", "error");
   }
 
-  // 2. Handle outstanding AR
+  // 2. Handle outstanding AR (balance update gated on JE success)
   if (arAction === "waive" && outstandingBalance > 0) {
-  await autoPostJournalEntry({ companyId: cid, date: moveOutDate, description: `Bad debt write-off — ${tName}`, reference: `WOFF-${shortId()}`, property: selectedLease.property,
+  const woResult = await postAccountingTransaction({ date: moveOutDate, description: `Bad debt write-off — ${tName}`, reference: `WOFF-${shortId()}`, property: selectedLease.property,
   lines: [
   { account_id: "5300", account_name: "Bad Debt Expense", debit: outstandingBalance, credit: 0, class_id: classId, memo: `Write-off at move-out — ${tName}` },
   { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: outstandingBalance, class_id: classId, memo: `AR write-off — ${tName}` },
-  ]
-  });
-  try { await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: -outstandingBalance }); } catch (e) { console.warn("Balance write-off:", e.message); }
+  ], balanceUpdate: { tenantId: selectedTenant.id, amount: -outstandingBalance } });
   }
 
   // #7: Track completed steps for error recovery
@@ -11239,15 +11185,15 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   // Post legal costs to accounting if any
   if (safeNum(stageCost) > 0) {
   const classId = await getPropertyClassId(evCase.property, companyId);
-  await autoPostJournalEntry({
-  companyId, date: stageDate || formatLocalDate(new Date()),
+  const evResult = await postAccountingTransaction({
+  date: stageDate || formatLocalDate(new Date()),
   description: `Eviction cost — ${evCase.tenant_name} — ${nextStage.replace(/_/g, " ")}`,
   reference: `EVICT-${shortId()}`, property: evCase.property,
   lines: [
   { account_id: "5300", account_name: "Legal & Eviction Costs", debit: safeNum(stageCost), credit: 0, class_id: classId, memo: `${nextStage}: ${stageNote || "Eviction expense"}` },
   { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(stageCost), class_id: classId, memo: `Eviction: ${evCase.tenant_name}` },
-  ]
-  });
+  ], requireJE: false });
+  if (!evResult.jeId) showToast("Warning: Eviction cost GL entry failed — please post manually in Accounting.", "error");
   }
 
   addNotification("⚖️", `Eviction: ${evCase.tenant_name} → ${nextStage.replace(/_/g, " ")}`);
@@ -13540,6 +13486,37 @@ function AppInner() {
   setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }
   function removeToast(id) { setToasts(prev => prev.filter(t => t.id !== id)); }
+
+  async function safeLedgerInsert(entry) {
+  const { error } = await supabase.from("ledger_entries").insert([entry]);
+  if (error) {
+  console.error("LEDGER ENTRY FAILED:", error.message, entry);
+  showToast("Warning: Ledger entry failed to save for " + (entry.tenant || "unknown") + ": " + error.message + ". Balance may be out of sync — please check the tenant ledger.", "error");
+  }
+  return !error;
+  }
+
+  // Unified accounting transaction: JE → ledger → balance (in correct order, gated on JE success)
+  async function postAccountingTransaction({ date, description, reference, property, lines, status, ledgerEntry, balanceUpdate, requireJE = true, silent = false }) {
+  const result = { jeId: null, ledgerOk: false, balanceOk: false, error: null };
+  result.jeId = await autoPostJournalEntry({ date, description, reference, property, lines, status, companyId });
+  if (!result.jeId && requireJE) {
+  result.error = "Journal entry failed";
+  if (!silent) showToast("Accounting entry failed — please check the Accounting module.", "error");
+  return result;
+  }
+  if (ledgerEntry) {
+  result.ledgerOk = await safeLedgerInsert({ company_id: companyId, ...ledgerEntry });
+  }
+  if (balanceUpdate?.tenantId) {
+  try {
+  const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: balanceUpdate.tenantId, p_amount_change: balanceUpdate.amount });
+  result.balanceOk = !balErr;
+  if (balErr && !silent) showToast("Balance update failed: " + balErr.message, "error");
+  } catch (e) { result.error = e.message; }
+  }
+  return result;
+  }
 
   function showConfirm(config) {
   return new Promise(resolve => {
