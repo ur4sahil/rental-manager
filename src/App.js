@@ -1138,14 +1138,14 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   useEffect(() => {
   async function fetchData() {
   const [p, t, w, pay, u] = await Promise.all([
-  companyQuery("properties", companyId),
-  companyQuery("tenants", companyId),
-  companyQuery("work_orders", companyId),
-  companyQuery("payments", companyId),
-  companyQuery("utilities", companyId),
+  supabase.from("properties").select("*").eq("company_id", companyId).is("archived_at", null),
+  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null),
+  supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null),
+  supabase.from("payments").select("*").eq("company_id", companyId).is("archived_at", null),
+  supabase.from("utilities").select("*").eq("company_id", companyId).is("archived_at", null),
   ]);
   // Also fetch PM-managed properties from other companies
-  const { data: managedProps } = await supabase.from("properties").select("*").eq("pm_company_id", companyId).limit(500);
+  const { data: managedProps } = await supabase.from("properties").select("*").eq("pm_company_id", companyId).is("archived_at", null).limit(500);
   const allProps = (p.data || []).map(x => ({ ...x, _ownership: "owned" }));
   (managedProps || []).forEach(mp => { if (!allProps.find(x => x.id === mp.id)) allProps.push({ ...mp, _ownership: "managed", _readOnly: true }); });
   setProperties(allProps);
@@ -1184,8 +1184,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
 
   if (loading) return <Spinner />;
 
-  const activeProperties = properties.filter(p => !p.archived_at);
-  const occupied = activeProperties.filter(p => p.status === "occupied").length;
+  const occupied = properties.filter(p => p.status === "occupied").length;
   const dashMonth = formatLocalDate(new Date()).slice(0, 7);
   const totalRent = payments.filter(p => p.type === "rent" && p.status === "paid" && p.date?.startsWith(dashMonth)).reduce((s, p) => s + safeNum(p.amount), 0);
   const delinquent = tenants.filter(t => t.balance > 0).length;
@@ -1200,7 +1199,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   {/* Notifications accessible via bell icon in header */}
 
   <div className="grid grid-cols-2 gap-3 mb-4 md:grid-cols-4">
-  <StatCard onClick={() => setPage("properties")} label="Occupancy" value={`${occupied}/${activeProperties.length}`} sub={`${activeProperties.length ? Math.round(occupied / activeProperties.length * 100) : 0}% occupied`} color="text-green-600" />
+  <StatCard onClick={() => setPage("properties")} label="Occupancy" value={`${occupied}/${properties.length}`} sub={`${properties.length ? Math.round(occupied / properties.length * 100) : 0}% occupied`} color="text-green-600" />
   <StatCard onClick={() => setPage("accounting")} label="Revenue (Acctg)" value={`${formatCurrency(acctRevenue)}`} sub="from journal entries" color="text-blue-600" />
   <StatCard onClick={() => setPage("accounting")} label="Expenses (Acctg)" value={`${formatCurrency(acctExpenses)}`} sub="from journal entries" color="text-red-500" />
   <StatCard onClick={() => setPage("accounting")} label="Net Income" value={`$${(acctRevenue - acctExpenses).toLocaleString()}`} sub="revenue - expenses" color={acctRevenue - acctExpenses >= 0 ? "text-emerald-600" : "text-red-600"} />
@@ -4301,7 +4300,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   }
 
   async function fetchUtilities() {
-  const { data } = await supabase.from("utilities").select("*").eq("company_id", companyId).order("due", { ascending: true }).limit(500);
+  const { data } = await supabase.from("utilities").select("*").eq("company_id", companyId).is("archived_at", null).order("due", { ascending: true }).limit(500);
   setUtilities(data || []);
   setLoading(false);
   }
@@ -7331,7 +7330,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   const [v, inv, wo] = await Promise.all([
   supabase.from("vendors").select("*").eq("company_id", companyId).is("archived_at", null).order("name"),
   supabase.from("vendor_invoices").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
-  supabase.from("work_orders").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(100),
+  supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }).limit(100),
   ]);
   setVendors(v.data || []);
   setInvoices(inv.data || []);
@@ -7691,13 +7690,13 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   async function fetchData() {
   setLoading(true);
   const [o, p, s, d, pay, vi, u] = await Promise.all([
-  supabase.from("owners").select("*").eq("company_id", companyId).order("name"),
-  supabase.from("properties").select("*").eq("company_id", companyId),
+  supabase.from("owners").select("*").eq("company_id", companyId).is("archived_at", null).order("name"),
+  supabase.from("properties").select("*").eq("company_id", companyId).is("archived_at", null),
   supabase.from("owner_statements").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
   supabase.from("owner_distributions").select("*").eq("company_id", companyId).order("date", { ascending: false }),
   supabase.from("payments").select("*").eq("company_id", companyId).eq("status", "paid").is("archived_at", null),
-  supabase.from("vendor_invoices").select("*").eq("company_id", companyId).eq("status", "paid"),
-  supabase.from("utilities").select("*").eq("company_id", companyId).eq("status", "paid"),
+  supabase.from("vendor_invoices").select("*").eq("company_id", companyId).eq("status", "paid").is("archived_at", null),
+  supabase.from("utilities").select("*").eq("company_id", companyId).eq("status", "paid").is("archived_at", null),
   ]);
   setOwners(o.data || []);
   setProperties(p.data || []);
@@ -8998,7 +8997,7 @@ function OwnerMaintenanceView({ companyId, properties }) {
   async function load() {
   const addrs = properties.map(p => p.address);
   if (addrs.length === 0) { setLoading(false); return; }
-  const { data } = await supabase.from("work_orders").select("*").eq("company_id", companyId).in("property", addrs).order("created_at", { ascending: false }).limit(100);
+  const { data } = await supabase.from("work_orders").select("*").eq("company_id", companyId).in("property", addrs).is("archived_at", null).order("created_at", { ascending: false }).limit(100);
   setWorkOrders(data || []);
   setLoading(false);
   }
@@ -10005,7 +10004,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   supabase.from("ledger_entries").select("*").eq("company_id", companyId).eq("tenant", tenant.name).order("date", { ascending: false }),
   supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tenant.name).order("created_at", { ascending: true }),
   supabase.from("payments").select("*").eq("company_id", companyId).eq("tenant", tenant.name).is("archived_at", null).order("date", { ascending: false }),
-  supabase.from("work_orders").select("*").eq("company_id", companyId).eq("tenant", tenant.name).order("created_at", { ascending: false }),
+  supabase.from("work_orders").select("*").eq("company_id", companyId).eq("tenant", tenant.name).is("archived_at", null).order("created_at", { ascending: false }),
   supabase.from("documents").select("*").eq("company_id", companyId).eq("tenant", tenant.name).is("archived_at", null).order("uploaded_at", { ascending: false }),
   ]);
   setLedger(l.data || []);
@@ -10028,7 +10027,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   const [l, p, w, m] = await Promise.all([
   supabase.from("ledger_entries").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).order("date", { ascending: false }),
   supabase.from("payments").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).is("archived_at", null).order("date", { ascending: false }),
-  supabase.from("work_orders").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).order("created_at", { ascending: false }),
+  supabase.from("work_orders").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).is("archived_at", null).order("created_at", { ascending: false }),
   supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).order("created_at", { ascending: true }),
   ]);
   setLedger(l.data || []);
