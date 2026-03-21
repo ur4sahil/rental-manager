@@ -13503,7 +13503,7 @@ function PendingPMAssignments({ companyId, addNotification }) {
 }
 
 function AppInner() {
-  const [screen, setScreenRaw] = useState("landing");
+  const [screen, setScreenRaw] = useState("loading");
   const [page, setPageRaw] = useState("dashboard");
 
   function setPage(p) { setPageRaw(p); window.history.pushState({ page: p, screen: "app" }, "", "#" + p); }
@@ -13571,6 +13571,7 @@ function AppInner() {
   let autoSelectRan = false;
   supabase.auth.getSession().then(({ data: { session } }) => {
   if (session) { setCurrentUser(session.user); setScreen("company_select"); autoSelectRan = true; autoSelectCompany(session.user); }
+  else { setScreen("landing"); }
   });
   const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_event, session) => {
   if (session) {
@@ -13856,6 +13857,7 @@ function AppInner() {
   }
   }, [screen, activeCompany]);
 
+  if (screen === "loading") return <div className="flex items-center justify-center h-screen bg-indigo-50/30"><Spinner /></div>;
   if (screen === "landing") return <LandingPage onGetStarted={(mode) => { setLoginMode(mode); setScreen("login"); }} />;
   if (screen === "login") return <LoginPage onLogin={() => {}} onBack={() => setScreen("landing")} initialMode={loginMode} />;
   if (screen === "company_select") return <CompanySelector currentUser={currentUser} onSelectCompany={handleSelectCompany} onLogout={handleLogout} showToast={showToast} showConfirm={showConfirm} />;
