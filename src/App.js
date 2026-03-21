@@ -2401,8 +2401,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ? await supabase.from("tenants").update({ name: form.name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, move_in: form.lease_start || null, lease_end_date: form.lease_end || null, move_out: form.lease_end || null, rent: form.rent }).eq("id", editingTenant.id).eq("company_id", companyId)
   : await supabase.from("tenants").insert([{ company_id: companyId, name: form.name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, rent: form.rent, balance: 0, doc_status: "pending_docs" }]);
   if (error) { showToast("Error saving tenant: " + error.message, "error"); return; }
-  // #1: Auto-create lease when tenant added with dates/rent (mirrors Properties module)
-  if (!editingTenant && form.lease_start && form.lease_end && form.rent) {
+  // #1: Auto-create lease and update property when tenant added with dates/rent
+  if (!editingTenant && form.property) {
+  // Update property to occupied with tenant info
+  await supabase.from("properties").update({ status: "occupied", tenant: form.name.trim(), rent: Number(form.rent) || null, lease_start: form.lease_start || null, lease_end: form.lease_end || null }).eq("company_id", companyId).eq("address", form.property);
+  if (form.lease_start && form.lease_end && form.rent) {
   const { data: newTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.name.trim()).eq("property", form.property).is("archived_at", null).maybeSingle();
   const { data: existingLease } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("property", form.property).eq("status", "active").maybeSingle();
   if (!existingLease) {
@@ -2410,6 +2413,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
   // Immediately post rent charges for this new lease (don't wait for next login)
   autoPostRentCharges(companyId).catch(e => console.warn("Auto rent post after tenant add:", e.message));
+  }
   }
   if (editingTenant) {
   // Cascade name change to all related tables
