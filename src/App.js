@@ -2231,7 +2231,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
   const { error } = editingTenant
   ? await supabase.from("tenants").update({ name: form.name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, move_in: form.lease_start, move_out: form.lease_end, lease_end_date: form.lease_end, rent: form.rent }).eq("id", editingTenant.id).eq("company_id", companyId)
-  : await supabase.from("tenants").insert([{ ...form, email: normalizeEmail(form.email), balance: 0, company_id: companyId }]);
+  : await supabase.from("tenants").insert([{ company_id: companyId, name: form.name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, rent: form.rent, balance: 0 }]);
   if (error) { showToast("Error saving tenant: " + error.message, "error"); return; }
   if (editingTenant) {
   // Cascade name change to all related tables
