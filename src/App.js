@@ -450,8 +450,8 @@ async function resolveAccountId(bareCode, companyId) {
   if (_acctIdCache[cid]?.[bareCode]) return _acctIdCache[cid][bareCode];
   // Last resort: ensure the account exists by upserting it
   const acctName = _acctCodeToName[bareCode] || "Account " + bareCode;
-  const acctType = bareCode[0] === "1" ? "asset" : bareCode[0] === "2" ? "liability" : bareCode[0] === "4" ? "revenue" : "expense";
-  const subType = bareCode[0] === "1" ? "current_asset" : bareCode[0] === "2" ? "current_liability" : bareCode[0] === "4" ? "operating_revenue" : "operating_expense";
+  const acctType = bareCode[0] === "1" ? "Asset" : bareCode[0] === "2" ? "Liability" : bareCode[0] === "4" ? "Revenue" : "Expense";
+  const subType = bareCode[0] === "1" ? "Bank" : bareCode[0] === "2" ? "Other Current Liability" : bareCode[0] === "4" ? "Operating Revenue" : "Operating Expense";
   const { data: created } = await supabase.from("acct_accounts").upsert([{ id: bareCode, company_id: cid, name: acctName, type: acctType, sub_type: subType, is_active: true }], { onConflict: "id" }).select("id").maybeSingle();
   const resolvedId = created?.id || bareCode;
   _acctIdCache[cid][bareCode] = resolvedId;
@@ -1129,12 +1129,12 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   const { data: accounts } = await supabase.from("acct_accounts").select("id, type").eq("company_id", companyId);
   if (jeLines && accounts) {
   const acctMap = {};
-  accounts.forEach(a => { acctMap[a.id] = a.type; });
+  accounts.forEach(a => { acctMap[a.id] = (a.type || "").toLowerCase(); });
   let rev = 0, exp = 0;
   jeLines.forEach(l => {
   const type = acctMap[l.account_id];
-  if (type === "Revenue" || type === "Other Income") rev += safeNum(l.credit) - safeNum(l.debit);
-  if (type === "Expense" || type === "Cost of Goods Sold" || type === "Other Expense") exp += safeNum(l.debit) - safeNum(l.credit);
+  if (type === "revenue" || type === "other income" || type === "income") rev += safeNum(l.credit) - safeNum(l.debit);
+  if (type === "expense" || type === "cost of goods sold" || type === "other expense") exp += safeNum(l.debit) - safeNum(l.credit);
   });
   setAcctRevenue(rev);
   setAcctExpenses(exp);
@@ -5977,7 +5977,9 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   supabase.from("acct_journal_entries").select("*").eq("company_id", companyId).order("date", { ascending: false }),
   supabase.from("acct_classes").select("*").eq("company_id", companyId).order("name"),
   ]);
-  const accounts = acctsRes.data || [];
+  // Normalize account types to PascalCase (DB may have lowercase from older seeds)
+  const _typeNorm = { asset: "Asset", liability: "Liability", equity: "Equity", revenue: "Revenue", expense: "Expense", income: "Revenue", "other income": "Other Income", "other expense": "Other Expense", "cost of goods sold": "Cost of Goods Sold" };
+  const accounts = (acctsRes.data || []).map(a => ({ ...a, type: _typeNorm[(a.type || "").toLowerCase()] || a.type }));
   const jeHeaders = jesRes.data || [];
   const classes = clsRes.data || [];
 
@@ -13638,16 +13640,16 @@ function AppInner() {
 
   async function ensureDefaultAccounts(cid) {
   const defaults = [
-  { id: "1000", name: "Checking Account", type: "asset", sub_type: "current_asset", is_active: true },
-  { id: "1100", name: "Accounts Receivable", type: "asset", sub_type: "current_asset", is_active: true },
-  { id: "2100", name: "Security Deposits Held", type: "liability", sub_type: "current_liability", is_active: true },
-  { id: "2200", name: "Owner Distributions Payable", type: "liability", sub_type: "current_liability", is_active: true },
-  { id: "4000", name: "Rental Income", type: "revenue", sub_type: "operating_revenue", is_active: true },
-  { id: "4010", name: "Late Fee Income", type: "revenue", sub_type: "operating_revenue", is_active: true },
-  { id: "4100", name: "Other Income", type: "revenue", sub_type: "other_revenue", is_active: true },
-  { id: "4200", name: "Management Fee Income", type: "revenue", sub_type: "operating_revenue", is_active: true },
-  { id: "5300", name: "Repairs & Maintenance", type: "expense", sub_type: "operating_expense", is_active: true },
-  { id: "5400", name: "Utilities Expense", type: "expense", sub_type: "operating_expense", is_active: true },
+  { id: "1000", name: "Checking Account", type: "Asset", sub_type: "Bank", is_active: true },
+  { id: "1100", name: "Accounts Receivable", type: "Asset", sub_type: "Accounts Receivable", is_active: true },
+  { id: "2100", name: "Security Deposits Held", type: "Liability", sub_type: "Other Current Liability", is_active: true },
+  { id: "2200", name: "Owner Distributions Payable", type: "Liability", sub_type: "Other Current Liability", is_active: true },
+  { id: "4000", name: "Rental Income", type: "Revenue", sub_type: "Operating Revenue", is_active: true },
+  { id: "4010", name: "Late Fee Income", type: "Revenue", sub_type: "Operating Revenue", is_active: true },
+  { id: "4100", name: "Other Income", type: "Revenue", sub_type: "Other Revenue", is_active: true },
+  { id: "4200", name: "Management Fee Income", type: "Revenue", sub_type: "Operating Revenue", is_active: true },
+  { id: "5300", name: "Repairs & Maintenance", type: "Expense", sub_type: "Operating Expense", is_active: true },
+  { id: "5400", name: "Utilities Expense", type: "Expense", sub_type: "Operating Expense", is_active: true },
   ];
   const { data: existing } = await supabase.from("acct_accounts").select("id, name").eq("company_id", cid);
   const existingNames = new Set((existing || []).map(a => a.name));
