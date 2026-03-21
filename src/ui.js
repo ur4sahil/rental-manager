@@ -58,7 +58,14 @@ export function Card({ className = "", padding = "p-5", children, ...props }) {
 const INPUT_BASE = "border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full focus:border-indigo-300 focus:outline-none transition-colors";
 
 export function Input({ className = "", ...props }) {
-  return <input className={`${INPUT_BASE} ${className}`} {...props} />;
+  // Auto-apply sensible defaults by type
+  const defaults = {};
+  if (props.type === "date") { defaults.min = props.min || "2000-01-01"; defaults.max = props.max || "2099-12-31"; }
+  else if (props.type === "email") { defaults.maxLength = props.maxLength || 254; }
+  else if (props.type === "tel") { defaults.maxLength = props.maxLength || 14; }
+  else if (props.type === "number") { defaults.step = props.step || "any"; }
+  else if (props.type === "text" && !props.maxLength) { defaults.maxLength = 200; }
+  return <input className={`${INPUT_BASE} ${className}`} {...defaults} {...props} />;
 }
 
 // ---- SELECT ----
@@ -68,7 +75,7 @@ export function Select({ className = "", children, ...props }) {
 
 // ---- TEXTAREA ----
 export function Textarea({ className = "", rows = 3, ...props }) {
-  return <textarea className={`${INPUT_BASE} ${className}`} rows={rows} {...props} />;
+  return <textarea className={`${INPUT_BASE} ${className}`} rows={rows} maxLength={props.maxLength || 5000} {...props} />;
 }
 
 // ---- FORM FIELD (label + input wrapper) ----

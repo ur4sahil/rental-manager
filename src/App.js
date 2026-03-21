@@ -10083,7 +10083,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <label className="text-xs text-slate-400 mb-1 block">Payment Amount</label>
   <div className="relative">
   <span className="absolute left-3 top-2.5 text-slate-400">$</span>
-  <input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full border border-indigo-100 rounded-2xl pl-7 pr-3 py-2.5 text-lg font-mono" placeholder="0.00" />
+  <input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full border border-indigo-100 rounded-2xl pl-7 pr-3 py-2.5 text-lg font-mono" placeholder="0.00" min="0" max="999999.99" step="0.01" />
   </div>
   <div className="flex gap-2 mt-2">
   <button onClick={() => setPaymentAmount(String(tenantData.rent || 0))} className="text-xs bg-slate-100 text-slate-500 px-3 py-1 rounded-2xl hover:bg-slate-100">Full Rent (${safeNum(tenantData.rent)})</button>
@@ -12419,11 +12419,11 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const setAddr = (key, v) => updateVal(f.name, { ...addr, [key]: v });
   return (
   <div className="space-y-2">
-  <input type="text" value={addr.line1 || ""} onChange={e => setAddr("line1", e.target.value)} className={base} placeholder="Street address" />
-  <input type="text" value={addr.line2 || ""} onChange={e => setAddr("line2", e.target.value)} className={base} placeholder="Apt, suite, unit (optional)" />
+  <input type="text" value={addr.line1 || ""} onChange={e => setAddr("line1", e.target.value)} className={base} placeholder="Street address" maxLength={200} />
+  <input type="text" value={addr.line2 || ""} onChange={e => setAddr("line2", e.target.value)} className={base} placeholder="Apt, suite, unit (optional)" maxLength={100} />
   <div className="grid grid-cols-3 gap-2">
-  <input type="text" value={addr.city || ""} onChange={e => setAddr("city", e.target.value)} className={base} placeholder="City" />
-  <input type="text" value={addr.state || ""} onChange={e => setAddr("state", e.target.value)} className={base} placeholder="State" />
+  <input type="text" value={addr.city || ""} onChange={e => setAddr("city", e.target.value)} className={base} placeholder="City" maxLength={50} />
+  <input type="text" value={addr.state || ""} onChange={e => setAddr("state", e.target.value.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase())} className={base} placeholder="State" maxLength={2} />
   <input type="text" value={addr.zip || ""} onChange={e => setAddr("zip", e.target.value.replace(/\D/g, "").slice(0, 5))} className={base} placeholder="ZIP" maxLength={5} />
   </div>
   </div>
@@ -12443,7 +12443,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   );
   if (f.type === "signature_placeholder") return <div className="border-b-2 border-slate-300 py-4 text-xs text-slate-400 italic">Signature placeholder — will be available after e-sign integration</div>;
   const inputType = f.type === "date" ? "date" : f.type === "number" ? "number" : f.type === "currency" ? "text" : "text";
-  return <input type={inputType} value={val} onChange={e => updateVal(f.name, e.target.value)} className={base} placeholder={f.type === "currency" ? "$0.00" : ""} />;
+  const extraProps = inputType === "date" ? { min: "2000-01-01", max: "2099-12-31" } : inputType === "number" ? { step: "any" } : { maxLength: 200 };
+  return <input type={inputType} value={val} onChange={e => updateVal(f.name, e.target.value)} className={base} placeholder={f.type === "currency" ? "$0.00" : ""} {...extraProps} />;
   };
 
   const renderFieldRow = (f) => {
