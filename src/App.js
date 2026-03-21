@@ -375,7 +375,7 @@ async function autoOwnerDistribution(companyId, propertyAddress, paymentAmount, 
   .select("owner_id").eq("company_id", companyId).eq("address", propertyAddress).maybeSingle();
   if (!prop?.owner_id) { console.warn("autoOwnerDistribution: No owner assigned for property " + propertyAddress + " — skipping distribution"); return; }
   const { data: owner } = await supabase.from("owners")
-  .select("id, name, email, management_fee_pct").eq("id", prop.owner_id).maybeSingle();
+  .select("id, name, email, management_fee_pct").eq("company_id", companyId).eq("id", prop.owner_id).maybeSingle();
   if (!owner) return;
   const feePct = safeNum(owner.management_fee_pct || 10);
   const mgmtFee = Math.round(paymentAmount * (feePct / 100) * 100) / 100;
@@ -679,7 +679,7 @@ function ConfirmModal({ config, onConfirm, onCancel }) {
 function PropertyDropdown({ value, onChange, className = "", required = false, label = "Property", companyId }) {
   const [properties, setProperties] = useState([]);
   useEffect(() => {
-  supabase.from("properties").select("id, address, type, status").eq("company_id", companyId).order("address").then(({ data }) => setProperties(data || []));
+  supabase.from("properties").select("id, address, type, status").eq("company_id", companyId).is("archived_at", null).order("address").then(({ data }) => setProperties(data || []));
   }, [companyId]);
   return (
   <div>
@@ -705,7 +705,7 @@ function PropertyDropdown({ value, onChange, className = "", required = false, l
 function PropertySelect({ value, onChange, className = "", companyId }) {
   const [properties, setProperties] = useState([]);
   useEffect(() => {
-  supabase.from("properties").select("id, address, type").eq("company_id", companyId).order("address").then(({ data }) => setProperties(data || []));
+  supabase.from("properties").select("id, address, type").eq("company_id", companyId).is("archived_at", null).order("address").then(({ data }) => setProperties(data || []));
   }, [companyId]);
   return (
   <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel ? sel.id : null); }} className={`border border-indigo-100 rounded-2xl px-3 py-2 text-sm ${className}`}>
@@ -1222,7 +1222,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, showToa
   });
   // Enrich with tenant email/phone for edit forms
   if (allProps.length > 0) {
-  const { data: tenantData } = await supabase.from("tenants").select("name, email, phone, property").eq("company_id", companyId);
+  const { data: tenantData } = await supabase.from("tenants").select("name, email, phone, property").eq("company_id", companyId).is("archived_at", null);
   if (tenantData) {
   for (const p of allProps) {
   const t = tenantData.find(t => t.property === p.address && t.name === p.tenant);
@@ -1238,7 +1238,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, showToa
   setSelectedProperty(p);
   const { data: docs } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("created_at", { ascending: false }).limit(100);
   setPropertyDocs(docs || []);
-  const { data: wos } = await supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address).order("created_at", { ascending: false }).limit(100);
+  const { data: wos } = await supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("created_at", { ascending: false }).limit(100);
   setPropertyWorkOrders(wos || []);
   }
 
@@ -2145,7 +2145,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
 
   useEffect(() => {
   fetchTenants();
-  supabase.from("properties").select("*").eq("company_id", companyId)
+  supabase.from("properties").select("*").eq("company_id", companyId).is("archived_at", null)
   .then(({ data, error }) => { if (error) console.warn("Tenants property fetch:", error.message); setProperties(data || []); });
   }, [companyId]);
 
@@ -2247,7 +2247,6 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const { error: leaseErr } = await supabase.from("leases").update({ status: "terminated", archived_at: new Date().toISOString() }).eq("company_id", companyId).eq("tenant_name", name).eq("status", "active");
   if (leaseErr) console.warn("Failed to terminate leases:", leaseErr.message);
   // Archive autopay schedules for this tenant
-  await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", name);
   await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", name);
   addNotification("🗑️", `Tenant deleted: ${name}`);
   logAudit("delete", "tenants", `Deleted tenant: ${name} (property→vacant, lease terminated, autopay disabled)`, id, userProfile?.email, userRole, companyId);
@@ -3266,7 +3265,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   if (!await showConfirm({ message: `Warning: "${form.tenant}" is an archived tenant. Recording a payment for an archived tenant is unusual. Continue?` })) return;
   }
   // Duplicate detection: check for same tenant + amount + date in last 5 minutes
-  const { data: recentDup } = await supabase.from("payments").select("id").eq("company_id", companyId).eq("tenant", form.tenant).eq("amount", Number(form.amount)).eq("date", form.date).limit(1);
+  const { data: recentDup } = await supabase.from("payments").select("id").eq("company_id", companyId).eq("tenant", form.tenant).eq("amount", safeNum(form.amount)).eq("date", form.date).is("archived_at", null).limit(1);
   if (recentDup && recentDup.length > 0) {
   if (!await showConfirm({ message: "A payment for $" + form.amount + " from " + form.tenant + " on " + form.date + " already exists. Record another?" })) return;
   }
@@ -3635,7 +3634,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
 
   async function openPhotos(wo) {
   setViewingPhotos(wo);
-  const { data } = await supabase.from("work_order_photos").select("*").eq("work_order_id", wo.id).order("created_at", { ascending: false });
+  const { data } = await supabase.from("work_order_photos").select("*").eq("company_id", companyId).eq("work_order_id", wo.id).order("created_at", { ascending: false });
   // Resolve signed URLs for photos (handles both old public URLs and new file paths)
   const photos = await Promise.all((data || []).map(async (p) => {
   if (p.url && p.url.startsWith("http")) return p; // Old public URL — still works
@@ -4930,7 +4929,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   const [properties, setProperties] = useState([]);
   const [form, setForm] = useState({ date: acctToday(), description: "", reference: "", property: "", lines: [{ account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }, { account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }] });
 
-  useEffect(() => { let q = supabase.from("properties").select("address"); if (companyId) q = q.eq("company_id", companyId); q.then(r => setProperties((r.data || []).map(p => p.address))); }, [companyId]);
+  useEffect(() => { let q = supabase.from("properties").select("address"); if (companyId) q = q.eq("company_id", companyId).is("archived_at", null); q.then(r => setProperties((r.data || []).map(p => p.address))); }, [companyId]);
 
   const filtered = [...journalEntries].sort((a,b) => b.date.localeCompare(a.date))
   .filter(je => filterStatus === "all" || je.status === filterStatus)
@@ -5928,7 +5927,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   const { data: oldLines } = await supabase.from("acct_journal_lines").select("*").eq("journal_entry_id", id);
   await supabase.from("acct_journal_entries").update({ date: header.date, description: header.description, reference: header.reference || "", property: header.property || "", status: header.status }).eq("company_id", companyId).eq("id", id);
   // Replace lines
-  const { error: _err3930 } = await supabase.from("acct_journal_lines").delete().eq("journal_entry_id", id);
+  const { error: _err3930 } = await supabase.from("acct_journal_lines").delete().eq("journal_entry_id", id).eq("company_id", companyId);
   if (_err3930) console.warn("acct_journal_lines write failed:", _err3930.message);
   if (lines?.length > 0) {
   const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: id, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "" })));
@@ -6547,8 +6546,8 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   setLoading(true);
   const [l, t, p, tmpl] = await Promise.all([
   supabase.from("leases").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
-  supabase.from("tenants").select("*").eq("company_id", companyId),
-  supabase.from("properties").select("*").eq("company_id", companyId),
+  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null),
+  supabase.from("properties").select("*").eq("company_id", companyId).is("archived_at", null),
   supabase.from("lease_templates").select("*").eq("company_id", companyId).order("name"),
   ]);
   setLeases(l.data || []);
@@ -8159,7 +8158,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   const [s, l, t, le] = await Promise.all([
   supabase.from("notification_settings").select("*").eq("company_id", companyId).order("event_type"),
   supabase.from("notification_log").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(100),
-  supabase.from("tenants").select("*").eq("company_id", companyId),
+  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null),
   supabase.from("leases").select("*").eq("company_id", companyId).eq("status", "active"),
   ]);
   setSettings(s.data || []);
@@ -9345,7 +9344,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   try {
   const [s, t] = await Promise.all([
   supabase.from("autopay_schedules").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }),
-  supabase.from("tenants").select("*").eq("company_id", companyId),
+  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null),
   ]);
   setSchedules(s.data || []);
   setTenants(t.data || []);
@@ -9572,7 +9571,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   const [r, p, t, lRes] = await Promise.all([
   supabase.from("late_fee_rules").select("*").eq("company_id", companyId).is("archived_at", null),
   supabase.from("payments").select("*").eq("company_id", companyId).eq("status", "unpaid").is("archived_at", null),
-  supabase.from("tenants").select("*").eq("company_id", companyId),
+  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null),
   supabase.from("leases").select("tenant_name, payment_due_day, status").eq("company_id", companyId).eq("status", "active"),
   ]);
   const leases = lRes.data || [];
@@ -11474,7 +11473,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // ---- PDF utilities ----
   async function loadPdfFromBytes(bytes) {
   const pdfjsLib = await import("pdfjs-dist");
-  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+  try { pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString(); } catch { pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/" + pdfjsLib.version + "/pdf.worker.min.mjs"; }
   const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
   setPdfDoc(pdf);
   return pdf;
