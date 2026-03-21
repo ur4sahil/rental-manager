@@ -3120,8 +3120,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Status</label><select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
   {["active", "notice", "expired"].map(s => <option key={s}>{s}</option>)}
   </select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Move-in Date</label><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, move_in: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Move-out Date</label><Input type="date" value={form.lease_end} onChange={e => setForm({ ...form, move_out: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Move-in Date</label><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Move-out Date</label><Input type="date" value={form.lease_end} onChange={e => setForm({ ...form, lease_end: e.target.value })} /></div>
   </div>
   <div className="flex gap-2 mt-3">
   <button onClick={saveTenant} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
