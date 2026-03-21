@@ -13564,16 +13564,20 @@ function AppInner() {
   const [roleLoaded, setRoleLoaded] = useState(false);
   const [missingRPCs, setMissingRPCs] = useState([]);
 
+  // Capture ?company= param once at startup (before any replaceState clears it)
+  const [urlCompanyParam] = useState(() => new URLSearchParams(window.location.search).get("company"));
+
   useEffect(() => {
+  let autoSelectRan = false;
   supabase.auth.getSession().then(({ data: { session } }) => {
-  if (session) { setCurrentUser(session.user); setScreen("company_select"); autoSelectCompany(session.user); }
+  if (session) { setCurrentUser(session.user); setScreen("company_select"); autoSelectRan = true; autoSelectCompany(session.user); }
   });
   const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_event, session) => {
   if (session) {
   setCurrentUser(session.user);
   // Only redirect to company_select if we don't have a company yet
   setActiveCompany(prev => {
-  if (!prev) { setScreen("company_select"); autoSelectCompany(session.user); }
+  if (!prev && !autoSelectRan) { setScreen("company_select"); autoSelectCompany(session.user); }
   return prev;
   });
   } else {
@@ -13601,7 +13605,7 @@ function AppInner() {
   }
   if (!memberships || memberships.length === 0) { setScreen("company_select"); return; }
   // Check for ?company=UUID in URL — auto-select that company if user is a member
-  const urlCompanyId = new URLSearchParams(window.location.search).get("company");
+  const urlCompanyId = urlCompanyParam || new URLSearchParams(window.location.search).get("company");
   if (urlCompanyId) {
   const match = memberships.find(m => m.company_id === urlCompanyId);
   if (match) {
