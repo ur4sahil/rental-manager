@@ -1291,7 +1291,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (!form.address_line_1.trim()) { showToast("Address Line 1 is required.", "error"); return; }
   if (!form.city.trim()) { showToast("City is required.", "error"); return; }
   if (!form.state) { showToast("State is required.", "error"); return; }
-  if (!form.zip.trim()) { showToast("ZIP code is required.", "error"); return; }
+  if (!form.zip.trim() || !/^\d{5}$/.test(form.zip.trim())) { showToast("ZIP code must be exactly 5 digits.", "error"); return; }
   if (editingProperty && isReadOnly(editingProperty)) {
   showToast("This is a managed property. You can only view it, not edit.", "error");
   return;
@@ -1887,7 +1887,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">City *</label><Input placeholder="Greenbelt" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} required /></div>
   <div className="grid grid-cols-2 gap-2">
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">State *</label><select value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" required><option value="">--</option>{US_STATES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">ZIP *</label><Input placeholder="20770" value={form.zip} onChange={e => setForm({ ...form, zip: e.target.value.replace(/[^\d-]/g, "").slice(0, 10) })} required /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">ZIP *</label><Input placeholder="20770" value={form.zip} onChange={e => setForm({ ...form, zip: e.target.value.replace(/\D/g, "").slice(0, 5) })} maxLength={5} required /></div>
   </div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Type *</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full"><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status *</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full"><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option><option value="inactive">Inactive</option></select></div>
@@ -12407,7 +12407,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="grid grid-cols-3 gap-2">
   <input type="text" value={addr.city || ""} onChange={e => setAddr("city", e.target.value)} className={base} placeholder="City" />
   <input type="text" value={addr.state || ""} onChange={e => setAddr("state", e.target.value)} className={base} placeholder="State" />
-  <input type="text" value={addr.zip || ""} onChange={e => setAddr("zip", e.target.value)} className={base} placeholder="ZIP" />
+  <input type="text" value={addr.zip || ""} onChange={e => setAddr("zip", e.target.value.replace(/\D/g, "").slice(0, 5))} className={base} placeholder="ZIP" maxLength={5} />
   </div>
   </div>
   );
@@ -13587,7 +13587,7 @@ function AppInner() {
   async function loadInboxNotifications(cid) {
   const { data } = await supabase.from("notification_inbox").select("*")
   .eq("company_id", cid)
-  .or("recipient_email.eq." + (currentUser?.email || "none") + ",recipient_email.eq.")
+  .or("recipient_email.ilike." + (currentUser?.email || "none") + ",recipient_email.eq.")
   .order("created_at", { ascending: false }).limit(50);
   if (data) {
   setNotifications(data.map(n => ({
@@ -13726,7 +13726,7 @@ function AppInner() {
   if (!showNotifications && activeCompany?.id && unreadCount > 0) {
   supabase.from("notification_inbox").update({ read: true })
   .eq("company_id", activeCompany.id).eq("read", false)
-  .or("recipient_email.eq." + (currentUser?.email || "none") + ",recipient_email.eq.")
+  .ilike("recipient_email", currentUser?.email || "none")
   .then(() => {});
   setUnreadCount(0);
   setNotifications(prev => prev.map(n => ({ ...n, read: true })));
@@ -13751,11 +13751,11 @@ function AppInner() {
   <div className="px-4 py-6 text-center text-slate-400 text-sm">No notifications yet</div>
   ) : (
   notifications.map(n => (
-  <div key={n.id} className={"px-4 py-3 border-b border-indigo-50/50 hover:bg-indigo-50/30 flex items-start gap-2 transition-colors " + (!n.read ? "bg-indigo-50/40" : "")}>
-  <span className="text-lg">{n.icon}</span>
+  <div key={n.id || Math.random()} className={"px-4 py-3 border-b border-indigo-50/50 hover:bg-indigo-50/30 flex items-start gap-2 transition-colors " + (!n.read ? "bg-indigo-50/40" : "")}>
+  <span className="text-lg">{String(n.icon || "📌")}</span>
   <div className="flex-1">
-  <div className="text-sm text-slate-700">{n.message}</div>
-  <div className="text-xs text-slate-400 mt-0.5">{n.time}</div>
+  <div className="text-sm text-slate-700">{String(n.message || "")}</div>
+  <div className="text-xs text-slate-400 mt-0.5">{String(n.time || "")}{n.date ? " · " + String(n.date) : ""}</div>
   </div>
   </div>
   ))
