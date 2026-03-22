@@ -323,9 +323,10 @@ async function autoPostJournalEntry({ date, description, reference, property, li
   resolvedLines[i].account_id = await resolveAccountId(resolvedLines[i].account_id, cid);
   }
   }
-  // Step 1: Insert journal entry header
+  // Step 1: Insert journal entry header (auto-generate number)
+  const jeNumber = "JE-" + Date.now().toString(36).toUpperCase();
   const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
-  company_id: cid, date, description, reference: reference || "", property: property || "", status
+  company_id: cid, number: jeNumber, date, description, reference: reference || "", property: property || "", status
   }]).select("id").maybeSingle();
   if (jeErr || !jeRow) { console.error("Journal entry insert failed:", jeErr?.message); return null; }
   // Step 2: Insert journal entry lines (with company_id for RLS)

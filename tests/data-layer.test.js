@@ -56,7 +56,7 @@ async function testAccounting() {
   assert(coa && coa.length >= 10, 'Has all required accounts (' + (coa ? coa.length : 0) + ' found)');
   var required = ['1000','1100','2100','2200','4000','4010','4100','4200','5300','5400'];
   for (var i = 0; i < required.length; i++) {
-    assert(coa && coa.some(function(a) { return a.id === required[i]; }), 'Account ' + required[i] + ' exists');
+    assert(coa && coa.some(function(a) { return a.code === required[i] || a.id === required[i]; }), 'Account ' + required[i] + ' exists');
   }
   var { data: jeData, error: je } = await supabase.from('journal_entries').insert({ date: new Date().toISOString().slice(0, 10), account: 'Checking Account', description: 'Test JE - automated', debit: 100, credit: 0 }).select().single();
   assert(!je, 'Can insert journal entry');
@@ -224,6 +224,117 @@ async function testDeletePropertyWithOwner() {
       assert(!gone || gone.length === 0, 'Deleted property no longer exists');
     }
   }
+}
+
+async function testAccountingPipeline() {
+  console.log('\n📊 ACCOUNTING PIPELINE (JE → Ledger → Balance)');
+  const cid = 'sandbox-llc';
+  const today = new Date().toISOString().slice(0, 10);
+  const testRef = 'PIPE-TEST-' + Date.now();
+  const testTenant = 'Alice Johnson'; // seeded tenant
+  const testProperty = '100 Oak Street, Unit A'; // seeded property
+  const ids = {};
+
+  // 1. Resolve account UUIDs by code column
+  const { data: arAcct } = await supabase.from('acct_accounts').select('id').eq('company_id', cid).eq('code', '1100').maybeSingle();
+  const { data: revAcct } = await supabase.from('acct_accounts').select('id').eq('company_id', cid).eq('code', '4000').maybeSingle();
+  assert(arAcct?.id, 'Pipeline: resolved AR account UUID from code 1100');
+  assert(revAcct?.id, 'Pipeline: resolved Revenue account UUID from code 4000');
+
+  // 2. Insert JE header (rent charge: DR AR / CR Revenue)
+  const { data: jeRow, error: jeErr } = await supabase.from('acct_journal_entries').insert([{
+    company_id: cid, number: 'PIPE-' + Date.now(), date: today,
+    description: 'Pipeline test — rent charge — ' + testTenant,
+    reference: testRef, property: testProperty, status: 'posted'
+  }]).select('id').maybeSingle();
+  assert(!jeErr && jeRow?.id, 'Pipeline: JE header inserted');
+  ids.jeId = jeRow?.id;
+
+  // 3. Insert JE lines
+  if (ids.jeId) {
+    const { error: lineErr } = await supabase.from('acct_journal_lines').insert([
+      { journal_entry_id: ids.jeId, company_id: cid, account_id: arAcct?.id, account_name: 'Accounts Receivable', debit: 1500, credit: 0, memo: testTenant + ' rent' },
+      { journal_entry_id: ids.jeId, company_id: cid, account_id: revAcct?.id, account_name: 'Rental Income', debit: 0, credit: 1500, memo: testProperty },
+    ]);
+    assert(!lineErr, 'Pipeline: JE lines inserted with company_id');
+  }
+
+  // 4. Create ledger entry (mirrors what safeLedgerInsert does)
+  const { data: ledgerRow, error: ledgerErr } = await supabase.from('ledger_entries').insert([{
+    company_id: cid, tenant: testTenant, property: testProperty,
+    date: today, description: 'Pipeline test rent charge',
+    amount: 1500, type: 'charge', balance: 0,
+  }]).select('id').maybeSingle();
+  assert(!ledgerErr && ledgerRow?.id, 'Pipeline: ledger entry created for tenant');
+  ids.ledgerId = ledgerRow?.id;
+
+  // 5. Verify JE lines are retrievable and balanced
+  if (ids.jeId) {
+    const { data: lines } = await supabase.from('acct_journal_lines').select('*').eq('journal_entry_id', ids.jeId);
+    const dr = (lines || []).reduce((s, l) => s + (l.debit || 0), 0);
+    const cr = (lines || []).reduce((s, l) => s + (l.credit || 0), 0);
+    assert(lines?.length === 2, 'Pipeline: JE has 2 lines');
+    assert(Math.abs(dr - cr) < 0.01, 'Pipeline: JE is balanced (DR=$' + dr + ', CR=$' + cr + ')');
+    assert(lines?.[0]?.company_id === cid, 'Pipeline: JE lines have company_id');
+  }
+
+  // 6. Verify ledger entry is retrievable
+  if (ids.ledgerId) {
+    const { data: ledger } = await supabase.from('ledger_entries').select('*').eq('id', ids.ledgerId).maybeSingle();
+    assert(ledger?.tenant === testTenant, 'Pipeline: ledger entry has correct tenant');
+    assert(ledger?.amount === 1500, 'Pipeline: ledger entry has correct amount');
+    assert(ledger?.type === 'charge', 'Pipeline: ledger entry type is charge');
+  }
+
+  // 7. Simulate payment: insert payment JE (DR Checking / CR AR)
+  const { data: chkAcct } = await supabase.from('acct_accounts').select('id').eq('company_id', cid).eq('code', '1000').maybeSingle();
+  const payRef = 'PIPE-PAY-' + Date.now();
+  const { data: payJE, error: payJEErr } = await supabase.from('acct_journal_entries').insert([{
+    company_id: cid, number: 'PPAY-' + Date.now(), date: today,
+    description: 'Pipeline test — payment — ' + testTenant,
+    reference: payRef, property: testProperty, status: 'posted'
+  }]).select('id').maybeSingle();
+  assert(!payJEErr && payJE?.id, 'Pipeline: payment JE header inserted');
+  ids.payJeId = payJE?.id;
+
+  if (ids.payJeId && chkAcct?.id) {
+    const { error: payLineErr } = await supabase.from('acct_journal_lines').insert([
+      { journal_entry_id: ids.payJeId, company_id: cid, account_id: chkAcct.id, account_name: 'Checking Account', debit: 1500, credit: 0, memo: 'ACH from ' + testTenant },
+      { journal_entry_id: ids.payJeId, company_id: cid, account_id: arAcct?.id, account_name: 'Accounts Receivable', debit: 0, credit: 1500, memo: 'AR settlement' },
+    ]);
+    assert(!payLineErr, 'Pipeline: payment JE lines inserted');
+  }
+
+  // 8. Create payment ledger entry (negative = credit to tenant)
+  const { data: payLedger, error: payLedgerErr } = await supabase.from('ledger_entries').insert([{
+    company_id: cid, tenant: testTenant, property: testProperty,
+    date: today, description: 'Pipeline test payment (ACH)',
+    amount: -1500, type: 'payment', balance: 0,
+  }]).select('id').maybeSingle();
+  assert(!payLedgerErr && payLedger?.id, 'Pipeline: payment ledger entry created');
+  ids.payLedgerId = payLedger?.id;
+
+  // 9. Verify both charge and payment appear in tenant ledger
+  const { data: tenantLedger } = await supabase.from('ledger_entries').select('*')
+    .eq('company_id', cid).eq('tenant', testTenant)
+    .like('description', 'Pipeline test%').order('date', { ascending: false });
+  assert(tenantLedger?.length >= 2, 'Pipeline: tenant ledger has both charge and payment entries');
+  const netBalance = (tenantLedger || []).reduce((s, l) => s + (l.amount || 0), 0);
+  assert(Math.abs(netBalance) < 0.01, 'Pipeline: tenant ledger nets to $0 (charge + payment cancel out)');
+
+  // Cleanup
+  console.log('  🧹 Cleaning up pipeline test data...');
+  if (ids.payJeId) {
+    await supabase.from('acct_journal_lines').delete().eq('journal_entry_id', ids.payJeId);
+    await supabase.from('acct_journal_entries').delete().eq('id', ids.payJeId);
+  }
+  if (ids.jeId) {
+    await supabase.from('acct_journal_lines').delete().eq('journal_entry_id', ids.jeId);
+    await supabase.from('acct_journal_entries').delete().eq('id', ids.jeId);
+  }
+  if (ids.ledgerId) await supabase.from('ledger_entries').delete().eq('id', ids.ledgerId);
+  if (ids.payLedgerId) await supabase.from('ledger_entries').delete().eq('id', ids.payLedgerId);
+  assert(true, 'Pipeline: test data cleaned up');
 }
 
 async function testMismatchedJournalEntry() {
@@ -451,6 +562,7 @@ async function run() {
   await testDocumentBuilder();
   await testDeletePropertyWithOwner();
   await testMismatchedJournalEntry();
+  await testAccountingPipeline();
   await testAuditTrail();
   await testFullLifecycle();
   console.log('\n================================');

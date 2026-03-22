@@ -69,9 +69,13 @@ async function testColumnExistence() {
   const { data: jeLeg } = await supabase.from('journal_entries').select('id, date, account, description, debit, credit').limit(1);
   assert(jeLeg !== null, 'Legacy journal_entries has id, date, account, description, debit, credit');
 
-  // Acct journal lines
-  const { data: jl } = await supabase.from('acct_journal_lines').select('id, journal_entry_id, account_id, account_name, debit, credit, memo, class_id').limit(1);
-  assert(jl !== null, 'Journal lines has all required columns including class_id');
+  // Acct accounts — must have code column (UUID rewrite)
+  const { data: acctCode } = await supabase.from('acct_accounts').select('id, code, name, type, company_id').limit(1);
+  assert(acctCode !== null, 'acct_accounts has id (UUID), code, name, type, company_id columns');
+
+  // Acct journal lines — must have company_id (direct RLS)
+  const { data: jl } = await supabase.from('acct_journal_lines').select('id, journal_entry_id, account_id, account_name, debit, credit, memo, class_id, company_id').limit(1);
+  assert(jl !== null, 'Journal lines has all required columns including class_id and company_id');
 
   // Work orders columns
   const { data: wo } = await supabase.from('work_orders').select('id, company_id, property, issue, priority, status, tenant, assigned, cost').limit(1);
@@ -154,21 +158,19 @@ async function testRPCExistence() {
   });
   assert(!e4 || !e4.message.includes('does not exist'), 'RPC sign_lease exists');
 
-  // create_journal_entry
+  // create_journal_entry RPC was intentionally dropped (was broken — "Access denied")
+  // Verify it's either gone or still broken — either way, direct inserts are used now
   const { error: e5 } = await supabase.rpc('create_journal_entry', {
-    p_id: 'rpc-test-je',
     p_company_id: 'rpc-test',
-    p_number: 'RPC-TEST',
     p_date: new Date().toISOString().slice(0, 10),
     p_description: 'RPC test',
     p_reference: '',
     p_property: '',
     p_status: 'draft',
-    p_lines: [],
+    p_lines: '[]',
   });
-  assert(!e5 || !e5.message.includes('does not exist'), 'RPC create_journal_entry exists');
-  // Cleanup
-  await supabase.from('acct_journal_entries').delete().eq('id', 'rpc-test-je');
+  // Should either not exist (dropped) or fail with access denied (still broken but unused)
+  assert(e5 != null, 'RPC create_journal_entry is gone or broken (direct inserts used instead)');
 
   // rename_property_v2
   const { error: e6 } = await supabase.rpc('rename_property_v2', {
@@ -348,6 +350,51 @@ async function testStorageBuckets() {
 // ───────────────────────────────────────────
 // RUN ALL
 // ───────────────────────────────────────────
+// ───────────────────────────────────────────
+// 9. DIRECT JOURNAL ENTRY INSERT (no RPC)
+// ───────────────────────────────────────────
+async function testDirectJournalEntryInsert() {
+  console.log('\n📝 DIRECT JOURNAL ENTRY INSERT');
+  const cid = 'sandbox-llc';
+  const today = new Date().toISOString().slice(0, 10);
+  const testRef = 'TEST-DIRECT-JE-' + Date.now();
+
+  // Step 1: Get account UUIDs by code column
+  const { data: checkingAcct } = await supabase.from('acct_accounts').select('id, code').eq('company_id', cid).eq('code', '1000').maybeSingle();
+  const { data: arAcct } = await supabase.from('acct_accounts').select('id, code').eq('company_id', cid).eq('code', '1100').maybeSingle();
+  assert(checkingAcct?.id, 'Can resolve Checking (1000) account UUID by code column');
+  assert(arAcct?.id, 'Can resolve AR (1100) account UUID by code column');
+
+  // Step 2: Insert JE header directly (no RPC)
+  const { data: jeRow, error: jeErr } = await supabase.from('acct_journal_entries').insert([{
+    company_id: cid, number: 'TEST-' + Date.now(), date: today, description: 'Test direct JE insert',
+    reference: testRef, property: '', status: 'draft'
+  }]).select('id').maybeSingle();
+  assert(!jeErr && jeRow?.id, 'Can insert journal entry header directly (no RPC)');
+
+  if (jeRow?.id) {
+    // Step 3: Insert JE lines with company_id
+    const { error: lineErr } = await supabase.from('acct_journal_lines').insert([
+      { journal_entry_id: jeRow.id, company_id: cid, account_id: checkingAcct?.id, account_name: 'Checking Account', debit: 100, credit: 0, memo: 'test DR' },
+      { journal_entry_id: jeRow.id, company_id: cid, account_id: arAcct?.id, account_name: 'Accounts Receivable', debit: 0, credit: 100, memo: 'test CR' },
+    ]);
+    assert(!lineErr, 'Can insert journal entry lines with company_id (no RPC)' + (lineErr ? ': ' + lineErr.message : ''));
+
+    // Step 4: Verify lines are linked correctly
+    const { data: lines } = await supabase.from('acct_journal_lines').select('*').eq('journal_entry_id', jeRow.id);
+    assert(lines && lines.length === 2, 'Journal entry has 2 lines after insert (found ' + (lines?.length || 0) + ')');
+    assert(lines && lines.length > 0 && lines[0].company_id === cid, 'Journal lines have company_id set');
+    const totalDR = (lines || []).reduce((s, l) => s + (l.debit || 0), 0);
+    const totalCR = (lines || []).reduce((s, l) => s + (l.credit || 0), 0);
+    assert(Math.abs(totalDR - totalCR) < 0.01, 'Journal entry DR ($' + totalDR + ') = CR ($' + totalCR + ')');
+
+    // Cleanup
+    await supabase.from('acct_journal_lines').delete().eq('journal_entry_id', jeRow.id);
+    await supabase.from('acct_journal_entries').delete().eq('id', jeRow.id);
+    assert(true, 'Cleaned up test journal entry');
+  }
+}
+
 async function run() {
   console.log('🧪 Supabase Schema & RPC Validation Tests');
   console.log('==========================================');
@@ -359,6 +406,7 @@ async function run() {
   await testJournalEntryBalance();
   await testDataIntegrity();
   await testStorageBuckets();
+  await testDirectJournalEntryInsert();
   console.log('\n==========================================');
   console.log('✅ Passed: ' + pass);
   console.log('❌ Failed: ' + fail);
