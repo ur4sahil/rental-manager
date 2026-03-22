@@ -310,62 +310,57 @@ async function logAudit(action, module, details = "", recordId = "", userEmail =
 }
 
 // ============ UNIFIED AUTO-POSTING TO ACCOUNTING ============
+// Direct insert approach — no RPC. Posts JE header + lines in two steps.
+// All bare account codes (e.g., "1000") are resolved to UUIDs via resolveAccountId().
 async function autoPostJournalEntry({ date, description, reference, property, lines, status = "posted", companyId }) {
   try {
   if (!companyId) { console.error("autoPostJournalEntry: missing companyId — blocked"); return null; }
   const cid = companyId;
-  // Resolve bare account IDs — work on a COPY to avoid mutating caller's data
+  // Resolve bare account codes to UUIDs — work on a COPY to avoid mutating caller's data
   const resolvedLines = lines?.length > 0 ? lines.map(l => ({ ...l })) : [];
   for (let i = 0; i < resolvedLines.length; i++) {
   if (resolvedLines[i].account_id && /^\d{4}$/.test(resolvedLines[i].account_id)) {
   resolvedLines[i].account_id = await resolveAccountId(resolvedLines[i].account_id, cid);
   }
   }
-  // Try atomic server-side function first (fixes race condition + transactional)
-  try {
-  const { data: jeId, error: rpcErr } = await supabase.rpc("create_journal_entry", {
-  p_company_id: cid,
-  p_date: date,
-  p_description: description,
-  p_reference: reference || "",
-  p_property: property || "",
-  p_status: status,
-  p_lines: JSON.stringify(resolvedLines || []),
-  });
-  if (!rpcErr && jeId) return jeId;
-  // RPC failed — try client-side fallback insert
-  console.warn("JE RPC failed, trying client fallback:", rpcErr?.message);
-  } catch (e) {
-  console.warn("Journal entry RPC unavailable, trying client fallback:", e.message);
-  }
-  // Client-side fallback: insert JE header + lines directly
-  try {
+  // Step 1: Insert journal entry header
   const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
   company_id: cid, date, description, reference: reference || "", property: property || "", status
   }]).select("id").maybeSingle();
-  if (jeErr || !jeRow) { console.error("JE fallback insert failed:", jeErr?.message); return null; }
+  if (jeErr || !jeRow) { console.error("Journal entry insert failed:", jeErr?.message); return null; }
+  // Step 2: Insert journal entry lines (with company_id for RLS)
   if (resolvedLines.length > 0) {
-  await supabase.from("acct_journal_lines").insert(resolvedLines.map(l => ({
-  journal_entry_id: jeRow.id, account_id: l.account_id, account_name: l.account_name || "",
-  debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || ""
+  const { error: lineErr } = await supabase.from("acct_journal_lines").insert(resolvedLines.map(l => ({
+  journal_entry_id: jeRow.id, company_id: cid,
+  account_id: l.account_id, account_name: l.account_name || "",
+  debit: safeNum(l.debit), credit: safeNum(l.credit),
+  class_id: l.class_id || null, memo: l.memo || ""
   })));
+  if (lineErr) {
+  console.error("Journal lines insert failed:", lineErr.message);
+  // Clean up orphan header
+  await supabase.from("acct_journal_entries").delete().eq("id", jeRow.id);
+  return null;
+  }
   }
   return jeRow.id;
-  } catch (fallbackErr) { console.error("JE client fallback also failed:", fallbackErr.message); return null; }
-  } catch (e) { console.warn("Auto-post JE failed:", e); return null; }
+  } catch (e) { console.error("Auto-post JE failed:", e); return null; }
 }
 
-// Batch check if AR accrual exists for a tenant in a given month — avoids N+1 queries
+// Check if an AR accrual (rent charge) exists for a tenant in a given month
+// Used by smart AR settlement: if accrual exists, payment settles AR; else posts direct revenue
 async function checkAccrualExists(companyId, month, tenantName) {
-  const { data: accrualJEs } = await supabase.from("acct_journal_entries")
+  // Look for RENT-AUTO entries for this month that mention the tenant
+  const { data: rentJEs } = await supabase.from("acct_journal_entries")
   .select("id, reference").eq("company_id", companyId)
-  .like("reference", `ACCR-${month}%`).neq("status", "voided");
-  if (!accrualJEs || accrualJEs.length === 0) return false;
-  const jeIds = accrualJEs.map(je => je.id);
-  const { data: allLines } = await supabase.from("acct_journal_lines")
+  .or(`reference.like.RENT-AUTO-%${month}%,reference.like.ACCR-${month}%`)
+  .neq("status", "voided");
+  if (!rentJEs || rentJEs.length === 0) return false;
+  const jeIds = rentJEs.map(je => je.id);
+  const { data: lines } = await supabase.from("acct_journal_lines")
   .select("journal_entry_id, memo").in("journal_entry_id", jeIds);
-  if (!allLines) return false;
-  return allLines.some(l => l.memo && l.memo.includes(tenantName));
+  if (!lines) return false;
+  return lines.some(l => l.memo && l.memo.toLowerCase().includes(tenantName.toLowerCase()));
 }
 
 // ============ NOTIFICATION QUEUE ============
@@ -415,12 +410,13 @@ async function queueNotification(type, recipientEmail, data, companyId) {
 }
 
 // ============ OWNER DISTRIBUTION AUTOMATION ============
-// Auto-calculates management fee + owner net when rent is received
+// Auto-calculates management fee + owner net when rent is received.
+// Posts GL entry: DR Rental Income / CR Mgmt Fee Income + CR Owner Dist Payable
 async function autoOwnerDistribution(companyId, propertyAddress, paymentAmount, paymentDate, tenantName) {
   try {
   const { data: prop } = await supabase.from("properties")
   .select("owner_id").eq("company_id", companyId).eq("address", propertyAddress).maybeSingle();
-  if (!prop?.owner_id) { console.warn("autoOwnerDistribution: No owner assigned for property " + propertyAddress + " — skipping distribution"); return; }
+  if (!prop?.owner_id) return; // No owner assigned — skip silently
   const { data: owner } = await supabase.from("owners")
   .select("id, name, email, management_fee_pct").eq("company_id", companyId).eq("id", prop.owner_id).maybeSingle();
   if (!owner) return;
@@ -428,216 +424,174 @@ async function autoOwnerDistribution(companyId, propertyAddress, paymentAmount, 
   const mgmtFee = Math.round(paymentAmount * (feePct / 100) * 100) / 100;
   const ownerNet = Math.round((paymentAmount - mgmtFee) * 100) / 100;
   const classId = await getPropertyClassId(propertyAddress, companyId);
-  // Post GL: reclassify rental income → owner distribution payable + mgmt fee income
-  const _distJeOk = await autoPostJournalEntry({
+  const jeId = await autoPostJournalEntry({
   companyId, date: paymentDate,
   description: `Owner distribution accrual — ${owner.name} — ${tenantName}`,
-  reference: `ODIST-${shortId()}`,
-  property: propertyAddress,
+  reference: `ODIST-${shortId()}`, property: propertyAddress,
   lines: [
   { account_id: "4000", account_name: "Rental Income", debit: paymentAmount, credit: 0, class_id: classId, memo: `Reclassify to owner dist — ${tenantName}` },
   { account_id: "4200", account_name: "Management Fee Income", debit: 0, credit: mgmtFee, class_id: classId, memo: `Mgmt fee ${feePct}% — ${owner.name}` },
   { account_id: "2200", account_name: "Owner Distributions Payable", debit: 0, credit: ownerNet, class_id: classId, memo: `Net to ${owner.name}` },
   ]
   });
-  // Create owner statement line item — only if JE succeeded
-  if (!_distJeOk) { console.warn("Owner distribution JE failed — skipping distribution record to prevent accounting drift"); return; }
+  if (!jeId) { console.warn("Owner distribution JE failed — skipping distribution record"); return; }
   const month = paymentDate.slice(0, 7);
-  await supabase.from("owner_distributions").insert([{
+  const { error: distErr } = await supabase.from("owner_distributions").insert([{
   company_id: companyId, owner_id: owner.id, property: propertyAddress,
   period: month, type: "rent", gross_amount: paymentAmount,
   management_fee: mgmtFee, net_amount: ownerNet, status: "pending",
-  }]).then(({ error }) => { if (error) console.warn("Owner dist insert:", error.message); });
+  }]);
+  if (distErr) console.warn("Owner dist insert:", distErr.message);
   } catch (e) { console.warn("autoOwnerDistribution failed:", e.message); }
 }
 
+// Resolve property address to cost-center class ID (with caching)
+const _classIdCache = {};
 async function getPropertyClassId(propertyAddress, companyId) {
-  if (!propertyAddress) return null;
-  // Try properties.class_id first (reliable FK), fall back to name lookup
+  if (!propertyAddress || !companyId) return null;
+  const cacheKey = `${companyId}::${propertyAddress}`;
+  if (_classIdCache[cacheKey] !== undefined) return _classIdCache[cacheKey];
   const { data: prop } = await supabase.from("properties").select("class_id").eq("company_id", companyId).eq("address", propertyAddress).maybeSingle();
-  if (prop?.class_id) return prop.class_id;
+  if (prop?.class_id) { _classIdCache[cacheKey] = prop.class_id; return prop.class_id; }
   const { data } = await supabase.from("acct_classes").select("id").eq("name", propertyAddress).eq("company_id", companyId).limit(1);
-  return data?.[0]?.id || null;
+  const result = data?.[0]?.id || null;
+  _classIdCache[cacheKey] = result;
+  return result;
 }
 
-// Resolve bare account codes (1000, 1100, etc.) to actual DB IDs for this company
+// ============ ACCOUNT CODE RESOLUTION ============
+// Maps bare account codes ("1000") to UUID primary keys in acct_accounts.
+// Uses the `code` column (not the old text ID). Auto-creates missing accounts.
 const _acctIdCache = {};
 const _acctCodeToName = { "1000": "Checking Account", "1100": "Accounts Receivable", "2100": "Security Deposits Held", "2200": "Owner Distributions Payable", "4000": "Rental Income", "4010": "Late Fee Income", "4100": "Other Income", "4200": "Management Fee Income", "5300": "Repairs & Maintenance", "5400": "Utilities Expense" };
 async function resolveAccountId(bareCode, companyId) {
   if (!companyId) return bareCode;
   const cid = companyId;
-  // Key cache by company to prevent cross-company stale hits
   if (!_acctIdCache[cid]) _acctIdCache[cid] = {};
-  if (_acctIdCache[cid]?.[bareCode]) return _acctIdCache[cid][bareCode];
-  // Bulk-fetch all accounts for this company once and cache them all
-  const { data: allAccts } = await supabase.from("acct_accounts").select("id, name").eq("company_id", cid);
+  if (_acctIdCache[cid][bareCode]) return _acctIdCache[cid][bareCode];
+  // Bulk-fetch all accounts by code column and cache code → UUID mapping
+  const { data: allAccts } = await supabase.from("acct_accounts").select("id, code, name").eq("company_id", cid);
   if (allAccts && allAccts.length > 0) {
-  // Build lookup maps
   for (const a of allAccts) {
-  // Cache by exact ID match
-  if (/^\d{4}$/.test(a.id)) _acctIdCache[cid][a.id] = a.id;
-  // Cache by suffix (e.g., "co-abc12-1000" → cache under "1000")
-  const suffix = a.id.match(/(\d{4})$/);
-  if (suffix) _acctIdCache[cid][suffix[1]] = a.id;
-  // Cache by name → code mapping (e.g., "Checking Account" → its ID, mapped from code "1000")
+  if (a.code) _acctIdCache[cid][a.code] = a.id;
+  // Also cache by name for reverse lookups
   for (const [code, name] of Object.entries(_acctCodeToName)) {
-  if (a.name === name) _acctIdCache[cid][code] = a.id;
+  if (a.name === name && !_acctIdCache[cid][code]) _acctIdCache[cid][code] = a.id;
   }
   }
   }
-  if (_acctIdCache[cid]?.[bareCode]) return _acctIdCache[cid][bareCode];
-  // Last resort: ensure the account exists by upserting it
+  if (_acctIdCache[cid][bareCode]) return _acctIdCache[cid][bareCode];
+  // Auto-create missing account with UUID PK + code column
   const acctName = _acctCodeToName[bareCode] || "Account " + bareCode;
-  const acctType = bareCode[0] === "1" ? "Asset" : bareCode[0] === "2" ? "Liability" : bareCode[0] === "4" ? "Revenue" : "Expense";
+  const acctType = bareCode[0] === "1" ? "Asset" : bareCode[0] === "2" ? "Liability" : bareCode[0] === "3" ? "Equity" : bareCode[0] === "4" ? "Revenue" : "Expense";
   const subType = bareCode[0] === "1" ? "Bank" : bareCode[0] === "2" ? "Other Current Liability" : bareCode[0] === "4" ? "Operating Revenue" : "Operating Expense";
-  const { data: created } = await supabase.from("acct_accounts").upsert([{ id: bareCode, company_id: cid, name: acctName, type: acctType, sub_type: subType, is_active: true }], { onConflict: "id" }).select("id").maybeSingle();
+  const { data: created } = await supabase.from("acct_accounts").upsert([{
+  company_id: cid, code: bareCode, name: acctName, type: acctType, sub_type: subType, is_active: true
+  }], { onConflict: "company_id,code" }).select("id").maybeSingle();
   const resolvedId = created?.id || bareCode;
   _acctIdCache[cid][bareCode] = resolvedId;
   return resolvedId;
 }
 
 // ============ AUTOMATIC RENT CHARGE ENGINE ============
-// Runs on app load. For every active lease, posts monthly rent charges
-// (DR Accounts Receivable / CR Rental Income) for each month in the lease term
-// up to the current month. Idempotent — won't double-post.
-// DEFERRED: autoPostLateFees() — not in MVP scope.
-// When implemented, it should:
-// 1. Query late_fee_rules for each company
-// 2. Compare against unpaid rent charges past the grace period
-// 3. Auto-post late fee charges to tenant ledger + GL
-// 4. Run via pg_cron alongside autoPostRentCharges
-// Current state: late fees are added manually via the tenant ledger.
-// This is acceptable for launch — most small PMs apply late fees manually.
-
+// For every active lease, posts monthly rent charges (DR AR / CR Revenue)
+// for each month in the lease term up to the current month. Idempotent.
 async function autoPostRentCharges(companyId) {
-  if (!companyId) { console.error("autoPostRentCharges: missing companyId — blocked"); return; }
+  if (!companyId) { console.error("autoPostRentCharges: missing companyId"); return { posted: 0, failed: 0 }; }
   try {
   const cid = companyId;
   const today = new Date();
-  const currentMonth = formatLocalDate(today).slice(0, 7); // "2026-03"
-
-  // 1. Fetch all active leases and auto-expire any past end_date
-  const { data: leases } = await supabase.from("leases").select("*").eq("company_id", cid).eq("status", "active");
-  if (!leases || leases.length === 0) return;
-
   const todayStr = formatLocalDate(today);
+
+  // 1. Fetch active leases, auto-expire past end_date
+  const { data: leases } = await supabase.from("leases").select("*").eq("company_id", cid).eq("status", "active");
+  if (!leases || leases.length === 0) return { posted: 0, failed: 0 };
+
   const expiredLeases = leases.filter(l => l.end_date && l.end_date < todayStr);
-  if (expiredLeases.length > 0) {
   for (const el of expiredLeases) {
   await supabase.from("leases").update({ status: "expired" }).eq("id", el.id).eq("company_id", cid);
   }
-  logAudit("update", "leases", `Auto-expired ${expiredLeases.length} lease(s) past end date`, "", "system", "system", cid);
-  }
+  if (expiredLeases.length > 0) logAudit("update", "leases", `Auto-expired ${expiredLeases.length} lease(s)`, "", "system", "system", cid);
   const activeLeases = leases.filter(l => !expiredLeases.find(e => e.id === l.id));
-  if (activeLeases.length === 0) return;
+  if (activeLeases.length === 0) return { posted: 0, failed: 0 };
 
-  // 2. Fetch existing rent charge JEs to avoid duplicates
-  const { data: existingJEs } = await supabase.from("acct_journal_entries").select("reference").eq("company_id", cid)
-  .like("reference", "RENT-AUTO-%").neq("status", "voided");
+  // 2. Fetch existing refs to avoid duplicates
+  const { data: existingJEs } = await supabase.from("acct_journal_entries").select("reference")
+  .eq("company_id", cid).like("reference", "RENT-AUTO-%").neq("status", "voided");
   const postedRefs = new Set((existingJEs || []).map(j => j.reference));
 
-  let posted = 0;
-  let failed = 0;
-  const MAX_CHARGES_PER_RUN = 50; // Safety cap — prevents runaway posting
+  let posted = 0, failed = 0;
+  const MAX = 50;
 
   for (const lease of activeLeases) {
-  if (posted >= MAX_CHARGES_PER_RUN) {
-  console.warn("Rent charge cap reached (" + MAX_CHARGES_PER_RUN + "). Remaining charges will post on next run.");
-  break;
-  }
-  if (!lease.rent_amount || lease.rent_amount <= 0) continue;
-  if (!lease.start_date || !lease.end_date) continue;
+  if (posted >= MAX) break;
+  if (!lease.rent_amount || lease.rent_amount <= 0 || !lease.start_date || !lease.end_date) continue;
 
   const leaseStart = parseLocalDate(lease.start_date);
   const leaseEnd = parseLocalDate(lease.end_date);
-  const rent = safeNum(lease.rent_amount);
-  const classId = await getPropertyClassId(lease.property, companyId);
+  const baseRent = safeNum(lease.rent_amount);
+  const classId = await getPropertyClassId(lease.property, cid);
 
-  // Calculate rent with escalation for each year
-  function getRentForDate(date) {
-  if (!lease.rent_escalation_pct || lease.rent_escalation_pct <= 0) return rent;
-  const yearsElapsed = (date - leaseStart) / (365.25 * 86400000);
+  // Rent escalation calculator
+  const getRent = (date) => {
+  if (!lease.rent_escalation_pct || lease.rent_escalation_pct <= 0) return baseRent;
+  const yrs = (date - leaseStart) / (365.25 * 86400000);
   const freq = lease.escalation_frequency || "annual";
-  // Calculate periods elapsed based on frequency (capped at 50 to prevent overflow)
-  let periods;
-  if (freq === "quarterly") periods = Math.min(Math.floor(yearsElapsed * 4), 200);
-  else if (freq === "semi-annual") periods = Math.min(Math.floor(yearsElapsed * 2), 100);
-  else periods = Math.min(Math.floor(yearsElapsed), 50); // annual
-  return Math.round(rent * Math.pow(1 + lease.rent_escalation_pct / 100, periods) * 100) / 100;
-  }
+  const periods = freq === "quarterly" ? Math.min(Math.floor(yrs * 4), 200)
+  : freq === "semi-annual" ? Math.min(Math.floor(yrs * 2), 100)
+  : Math.min(Math.floor(yrs), 50);
+  return Math.round(baseRent * Math.pow(1 + lease.rent_escalation_pct / 100, periods) * 100) / 100;
+  };
 
-  // 3. Walk through each month in the lease term up to current month
+  // Walk each month from lease start to min(lease end, today)
   let cursor = new Date(leaseStart.getFullYear(), leaseStart.getMonth(), 1);
   const endCap = new Date(Math.min(leaseEnd.getTime(), today.getTime()));
 
-  while (cursor <= endCap) {
-  const monthStr = formatLocalDate(cursor).slice(0, 7); // "2025-06"
-  // Clamp payment_due_day to valid day for this month (avoids Feb 30 etc)
-  const year = cursor.getFullYear();
-  const month = cursor.getMonth() + 1; // 1-based month for Date constructor
-  const dueDay = Math.min(lease.payment_due_day || 1, new Date(year, month, 0).getDate());
+  while (cursor <= endCap && posted < MAX) {
+  const monthStr = formatLocalDate(cursor).slice(0, 7);
+  const dueDay = Math.min(lease.payment_due_day || 1, new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate());
   const chargeDate = monthStr + "-" + String(dueDay).padStart(2, "0");
   const ref = "RENT-AUTO-" + lease.id + "-" + monthStr;
 
-  // Skip if already posted
   if (!postedRefs.has(ref)) {
-  const monthRent = getRentForDate(cursor);
-  const jeResult = await autoPostJournalEntry({
-  companyId,
-  date: chargeDate,
+  const monthRent = getRent(cursor);
+  const jeId = await autoPostJournalEntry({
+  companyId: cid, date: chargeDate,
   description: "Rent charge — " + lease.tenant_name + " — " + lease.property + " — " + monthStr,
-  reference: ref,
-  property: lease.property,
+  reference: ref, property: lease.property,
   lines: [
   { account_id: "1100", account_name: "Accounts Receivable", debit: monthRent, credit: 0, class_id: classId, memo: lease.tenant_name + " rent " + monthStr },
   { account_id: "4000", account_name: "Rental Income", debit: 0, credit: monthRent, class_id: classId, memo: lease.property + " " + monthStr },
   ]
   });
-  if (!jeResult) { console.warn("Rent JE failed for", lease.tenant_name, monthStr, "— skipping balance update"); failed++; cursor.setMonth(cursor.getMonth() + 1); continue; }
+  if (!jeId) { failed++; cursor.setMonth(cursor.getMonth() + 1); continue; }
 
-  // Create ledger entry for this rent charge
+  // Ledger entry (single source of truth for tenant balance)
   await safeLedgerInsert({ company_id: cid,
   tenant: lease.tenant_name, tenant_id: lease.tenant_id || null, property: lease.property,
-  date: chargeDate, description: "Rent charge — " + monthStr,
-  amount: monthRent, type: "charge", balance: 0,
+  date: chargeDate, description: "Rent charge — " + monthStr, amount: monthRent, type: "charge", balance: 0,
   });
 
-  // Update tenant balance atomically (prevents drift)
-  if (lease.tenant_id) {
-  const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: monthRent });
+  // Update tenant balance
+  const tenantId = lease.tenant_id || (await supabase.from("tenants").select("id").eq("company_id", cid).ilike("name", lease.tenant_name).eq("property", lease.property).maybeSingle())?.data?.id;
+  if (tenantId) {
+  const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: monthRent });
   if (balErr) console.error("Balance update failed for " + lease.tenant_name + ": " + balErr.message);
-  } else {
-  // Try to find tenant by name and update balance
-  const { data: tenantRow } = await supabase.from("tenants").select("id").eq("company_id", cid).ilike("name", lease.tenant_name).eq("property", lease.property).maybeSingle();
-  if (tenantRow) {
-  const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: monthRent });
-  if (balErr) console.error("Balance update failed for " + lease.tenant_name + ": " + balErr.message);
-  }
   }
 
   posted++;
-  postedRefs.add(ref); // prevent re-posting within same run
+  postedRefs.add(ref);
   }
-
-  // Advance to next month
   cursor.setMonth(cursor.getMonth() + 1);
   }
   }
 
-  if (posted > 0) {
-  console.log("🏠 Auto-posted " + posted + " rent charge(s) to accounting");
-  logAudit("create", "accounting", "Auto-posted " + posted + " monthly rent charges from active leases", "", "system", "system", companyId);
-  }
-  if (failed > 0) console.warn("autoPostRentCharges:", failed, "charges failed");
+  if (posted > 0) logAudit("create", "accounting", "Auto-posted " + posted + " rent charges", "", "system", "system", cid);
   return { posted, failed };
-  } catch (e) {
-  console.warn("Auto rent charge posting failed:", e);
-  return { posted: 0, failed: -1 };
-  }
+  } catch (e) { console.error("autoPostRentCharges failed:", e); return { posted: 0, failed: -1 }; }
 }
 
 // ============ AUTO-POST RECURRING JOURNAL ENTRIES ============
-// Runs on company select. Posts active recurring entries that haven't been posted this month.
 async function autoPostRecurringEntries(companyId) {
   try {
   if (!companyId) return { posted: 0 };
@@ -648,10 +602,9 @@ async function autoPostRecurringEntries(companyId) {
   if (!entries || entries.length === 0) return { posted: 0 };
   let posted = 0;
   for (const entry of entries) {
-  // Skip if already posted this month
   if (entry.last_posted_date && entry.last_posted_date.slice(0, 7) === thisMonth) continue;
   const classId = entry.property ? await getPropertyClassId(entry.property, cid) : null;
-  const jeOk = await autoPostJournalEntry({
+  const jeId = await autoPostJournalEntry({
   companyId: cid, date: today,
   description: entry.description || "Recurring entry",
   reference: "RECUR-" + (entry.id || shortId()).toString().slice(0, 8) + "-" + thisMonth,
@@ -661,19 +614,15 @@ async function autoPostRecurringEntries(companyId) {
   { account_id: entry.credit_account_id, account_name: entry.credit_account_name || "", debit: 0, credit: safeNum(entry.amount), class_id: classId, memo: entry.description },
   ]
   });
-  if (jeOk) {
+  if (jeId) {
   await supabase.from("recurring_journal_entries").update({ last_posted_date: today, next_post_date: null }).eq("id", entry.id).eq("company_id", cid);
-  // If linked to a tenant, update their balance
   if (entry.tenant_id && entry.debit_account_id === "1100") {
   await supabase.rpc("update_tenant_balance", { p_tenant_id: entry.tenant_id, p_amount_change: safeNum(entry.amount) }).catch(e => console.warn("Recurring balance update:", e.message));
   }
   posted++;
   }
   }
-  if (posted > 0) {
-  console.log("📋 Auto-posted " + posted + " recurring journal entry(ies)");
-  logAudit("create", "accounting", "Auto-posted " + posted + " recurring journal entries", "", "system", "system", companyId);
-  }
+  if (posted > 0) logAudit("create", "accounting", "Auto-posted " + posted + " recurring entries", "", "system", "system", cid);
   return { posted };
   } catch (e) { console.warn("Auto recurring entries failed:", e); return { posted: 0 }; }
 }
@@ -5157,14 +5106,14 @@ const nextJENumber = (journalEntries) => {
   return `JE-${String((nums.length > 0 ? Math.max(...nums) : 0) + 1).padStart(4,"0")}`;
 };
 
-const nextAccountId = (accounts, type) => {
+const nextAccountCode = (accounts, type) => {
   const ranges = { Asset:{s:1000,e:1999}, Liability:{s:2000,e:2999}, Equity:{s:3000,e:3999}, Revenue:{s:4000,e:4999}, "Cost of Goods Sold":{s:5000,e:5099}, Expense:{s:5000,e:6999}, "Other Income":{s:7000,e:7999}, "Other Expense":{s:8000,e:8999} };
   const r = ranges[type] || {s:9000,e:9999};
-  // Extract bare numeric part from IDs (handles both "1000" and "co-abc12-1000")
-  const extractNum = (id) => { const m = String(id).match(/(\d{4,})$/); return m ? parseInt(m[1]) : NaN; };
-  const existing = accounts.map(a => extractNum(a.id)).filter(n => !isNaN(n) && n >= r.s && n <= r.e);
+  const existing = accounts.map(a => parseInt(a.code || "0")).filter(n => !isNaN(n) && n >= r.s && n <= r.e);
   return String((existing.length > 0 ? Math.max(...existing) : r.s - 10) + 10);
 };
+// Backward compat alias
+const nextAccountId = nextAccountCode;
 
 const getPeriodDates = (period) => {
   const now = new Date(), y = now.getFullYear(), m = now.getMonth();
@@ -5238,8 +5187,8 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   const finalSubtype = form.subtype === "__custom__" ? form.customSubtype.trim() : form.subtype;
   if (!finalType) { showToast("Please enter an account type.", "error"); return; }
   if (modal === "add") {
-  const newId = nextAccountId(accounts, finalType);
-  await onAdd({ id: newId, name: form.name, type: finalType, subtype: finalSubtype || "", description: form.description, balance: 0, is_active: true });
+  const newCode = nextAccountCode(accounts, finalType);
+  await onAdd({ code: newCode, name: form.name, type: finalType, subtype: finalSubtype || "", description: form.description, balance: 0, is_active: true });
   } else {
   await onUpdate({ ...modal, name: form.name, type: finalType, subtype: finalSubtype || "", description: form.description });
   }
@@ -5280,7 +5229,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   <tbody>
   {accts.map(a => (
   <tr key={a.id} className="border-t border-indigo-50/50 hover:bg-blue-50/30 cursor-pointer" onClick={() => openEdit(a)}>
-  <td className="px-4 py-2 font-mono text-xs text-slate-400">{a.id}</td>
+  <td className="px-4 py-2 font-mono text-xs text-slate-400">{a.code || a.id}</td>
   <td className={`px-4 py-2 font-medium ${!a.is_active ? "text-slate-400 line-through" : "text-slate-800"}`}>{a.name}</td>
   <td className="px-4 py-2 text-xs text-slate-400">{a.subtype}</td>
   <td className={`px-4 py-2 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(a.computedBalance, true)}</td>
@@ -5401,7 +5350,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   <tbody>
   {form.lines.map((line, i) => (
   <tr key={i} className="border-b border-indigo-50/50">
-  <td className="px-2 py-1.5"><select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.id} - {a.name}</option>)}</optgroup>)}</select></td>
+  <td className="px-2 py-1.5"><select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || a.id} - {a.name}</option>)}</optgroup>)}</select></td>
   <td className="px-2 py-1.5"><select value={line.class_id || ""} onChange={e => setLine(i,"class_id",e.target.value||null)} className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></td>
   <td className="px-2 py-1.5"><Input value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="bg-white" /></td>
   <td className="px-2 py-1.5"><Input type="number" step="0.01" min="0" value={line.debit} onChange={e => { setLine(i,"debit",e.target.value); if(e.target.value) setLine(i,"credit",""); }} placeholder="0.00" className="text-right bg-white font-mono" /></td>
@@ -5802,7 +5751,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
   <div className="flex items-center gap-3 mb-4">
   <span className="text-sm text-slate-500">Account:</span>
   <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} className="bg-white min-w-56">
-  {ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.id} - {a.name}</option>)}</optgroup>)}
+  {ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || a.id} - {a.name}</option>)}</optgroup>)}
   </select>
   </div>
   {glAccount && (
@@ -6033,7 +5982,7 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
   {bankAccounts.map(a=>(
   <button key={a.id} onClick={()=>setBankAccountId(a.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left mb-2 ${bankAccountId===a.id?"border-slate-800 bg-slate-50":"border-indigo-100 hover:border-indigo-300"}`}>
   <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${bankAccountId===a.id?"bg-slate-800 text-white":"bg-slate-100 text-slate-400"}`}>🏦</div>
-  <div className="flex-1"><p className="text-sm font-semibold text-slate-800">{a.name}</p><p className="text-xs text-slate-400">#{a.id} · {a.subtype}</p></div>
+  <div className="flex-1"><p className="text-sm font-semibold text-slate-800">{a.name}</p><p className="text-xs text-slate-400">#{a.code || a.id} · {a.subtype}</p></div>
   {bankAccountId===a.id&&<span className="text-slate-800">✓</span>}
   </button>
   ))}
@@ -6099,7 +6048,7 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
   <div className="grid grid-cols-4 gap-2">
   <select value={newRule.matchType} onChange={e=>setNewRule(r=>({...r,matchType:e.target.value}))} className="border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs"><option value="contains">Contains</option><option value="startsWith">Starts With</option><option value="equals">Equals</option><option value="regex">Regex</option></select>
   <Input value={newRule.matchValue} onChange={e=>setNewRule(r=>({...r,matchValue:e.target.value}))} placeholder="Match text..." className="text-xs" />
-  <select value={newRule.accountId} onChange={e=>setNewRule(r=>({...r,accountId:e.target.value}))} className="border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs"><option value="">Account...</option>{accounts.filter(a=>a.is_active&&!["Bank"].includes(a.subtype)).map(a=><option key={a.id} value={a.id}>{a.id}-{a.name}</option>)}</select>
+  <select value={newRule.accountId} onChange={e=>setNewRule(r=>({...r,accountId:e.target.value}))} className="border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs"><option value="">Account...</option>{accounts.filter(a=>a.is_active&&!["Bank"].includes(a.subtype)).map(a=><option key={a.id} value={a.id}>{a.code || a.id}-{a.name}</option>)}</select>
   <button onClick={addRule} className="bg-violet-600 text-white text-xs px-3 py-1.5 rounded-lg">+ Add</button>
   </div>
   </div>
@@ -6122,7 +6071,7 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
   {tx.status!=="skipped"&&tx.status!=="duplicate"&&(
   <div className="flex gap-2 mt-2">
   <select value={tx.accountId||""} onChange={e=>{const a=accounts.find(a=>a.id===e.target.value);setTx(ri,{accountId:e.target.value,accountName:a?.name||""});}} className={`border rounded-lg px-2 py-1 text-xs ${tx.status==="approved"&&!tx.accountId?"border-amber-300":"border-indigo-100"}`}>
-  <option value="">— Assign account —</option>{ACCOUNT_TYPES.map(type=><optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active&&a.id!==wizardData.bankAccountId).map(a=><option key={a.id} value={a.id}>{a.id}–{a.name}</option>)}</optgroup>)}
+  <option value="">— Assign account —</option>{ACCOUNT_TYPES.map(type=><optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active&&a.id!==wizardData.bankAccountId).map(a=><option key={a.id} value={a.id}>{a.code || a.id}–{a.name}</option>)}</optgroup>)}
   </select>
   <select value={tx.classId||""} onChange={e=>setTx(ri,{classId:e.target.value})} className="border border-indigo-100 rounded-2xl px-2 py-1 text-xs"><option value="">No class</option>{classes.filter(c=>c.is_active).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
   </div>
@@ -6197,7 +6146,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   setLoading(true);
   try {
   const [acctsRes, jesRes, clsRes] = await Promise.all([
-  supabase.from("acct_accounts").select("*").eq("company_id", companyId).order("id"),
+  supabase.from("acct_accounts").select("*").eq("company_id", companyId).order("code"),
   supabase.from("acct_journal_entries").select("*").eq("company_id", companyId).order("date", { ascending: false }),
   supabase.from("acct_classes").select("*").eq("company_id", companyId).order("name"),
   ]);
@@ -6284,36 +6233,26 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   if (!guardSubmit("addJournalEntry")) return;
   try {
   const { lines, ...header } = data;
-  // Try atomic RPC first
-  try {
-  const { data: jeId, error: rpcErr } = await supabase.rpc("create_journal_entry", {
-  p_company_id: companyId,
-  p_date: header.date,
-  p_description: header.description,
-  p_reference: header.reference || "",
-  p_property: header.property || "",
-  p_status: header.status || "draft",
-  p_lines: JSON.stringify(lines || []),
-  });
-  if (!rpcErr && jeId) { fetchAll(); return; }
-  console.warn("addJE RPC fallback:", rpcErr?.message);
-  } catch (e) { console.warn("addJE RPC not available:", e.message); }
-  // Fallback: client-side with cleanup
-  // Validate DR/CR balance before inserting
+  // Validate DR/CR balance
   if (lines?.length > 0) {
   const v = validateJE(lines);
   if (!v.isValid) { showToast("Journal entry is out of balance by $" + v.difference.toFixed(2) + ". Debits must equal credits.", "error"); return; }
   }
   const number = nextJENumber(journalEntries);
-  const jeId = generateId("je");
-  const { error: headerErr } = await supabase.from("acct_journal_entries").insert([{ company_id: companyId, id: jeId, number, date: header.date, description: header.description, reference: header.reference || "", property: header.property || "", status: header.status || "draft" }]);
-  if (headerErr) { showToast("Error creating journal entry: " + headerErr.message, "error"); return; }
+  // Direct insert — no RPC
+  const { data: jeRow, error: headerErr } = await supabase.from("acct_journal_entries").insert([{
+  company_id: companyId, number, date: header.date, description: header.description,
+  reference: header.reference || "", property: header.property || "", status: header.status || "draft"
+  }]).select("id").maybeSingle();
+  if (headerErr || !jeRow) { showToast("Error creating journal entry: " + (headerErr?.message || "No ID returned"), "error"); return; }
   if (lines?.length > 0) {
-  const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: jeId, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "" })));
+  const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({
+  journal_entry_id: jeRow.id, company_id: companyId,
+  account_id: l.account_id, account_name: l.account_name,
+  debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || ""
+  })));
   if (linesErr) {
-  console.warn("JE lines failed, cleaning up:", linesErr.message);
-  const { error: _err3909 } = await supabase.from("acct_journal_entries").delete().eq("company_id", companyId).eq("id", jeId);
-  if (_err3909) console.warn("acct_journal_entries write failed:", _err3909.message);
+  await supabase.from("acct_journal_entries").delete().eq("id", jeRow.id);
   showToast("Error creating journal entry lines: " + linesErr.message, "error");
   return;
   }
@@ -6337,12 +6276,11 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   const { error: _err3930 } = await supabase.from("acct_journal_lines").delete().eq("journal_entry_id", id).eq("company_id", companyId);
   if (_err3930) console.warn("acct_journal_lines write failed:", _err3930.message);
   if (lines?.length > 0) {
-  const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: id, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "" })));
+  const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "" })));
   if (linesErr) {
-  // Restore old lines
   console.warn("Update lines failed, restoring:", linesErr.message);
   if (oldLines?.length > 0) {
-  await supabase.from("acct_journal_lines").insert(oldLines.map(l => ({ journal_entry_id: id, account_id: l.account_id, account_name: l.account_name, debit: l.debit, credit: l.credit, class_id: l.class_id, memo: l.memo })));
+  await supabase.from("acct_journal_lines").insert(oldLines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: l.debit, credit: l.credit, class_id: l.class_id, memo: l.memo })));
   }
   showToast("Error updating journal lines: " + linesErr.message, "error");
   fetchAll();
@@ -8310,9 +8248,10 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
   const { data: allLines } = cJeIds.length > 0
   ? await supabase.from("acct_journal_lines").select("debit, credit, account_id").eq("account_name", "Checking Account").in("journal_entry_id", cJeIds)
   : { data: [] };
-  // Also include lines matched by account ID (handles renamed accounts)
-  const { data: idLines } = cJeIds.length > 0
-  ? await supabase.from("acct_journal_lines").select("debit, credit, account_id").like("account_id", "%-1000").in("journal_entry_id", cJeIds)
+  // Also include lines matched by checking account UUID (in case account was renamed)
+  const checkingAcctId = await resolveAccountId("1000", companyId);
+  const { data: idLines } = (cJeIds.length > 0 && checkingAcctId)
+  ? await supabase.from("acct_journal_lines").select("debit, credit, account_id").eq("account_id", checkingAcctId).in("journal_entry_id", cJeIds)
   : { data: [] };
   const allCheckingLines = [...(allLines || [])];
   (idLines || []).forEach(l => { if (!allCheckingLines.find(x => x === l)) allCheckingLines.push(l); });
@@ -14207,26 +14146,24 @@ function AppInner() {
 
   async function ensureDefaultAccounts(cid) {
   const defaults = [
-  { id: "1000", name: "Checking Account", type: "Asset", sub_type: "Bank", is_active: true },
-  { id: "1100", name: "Accounts Receivable", type: "Asset", sub_type: "Accounts Receivable", is_active: true },
-  { id: "2100", name: "Security Deposits Held", type: "Liability", sub_type: "Other Current Liability", is_active: true },
-  { id: "2200", name: "Owner Distributions Payable", type: "Liability", sub_type: "Other Current Liability", is_active: true },
-  { id: "4000", name: "Rental Income", type: "Revenue", sub_type: "Operating Revenue", is_active: true },
-  { id: "4010", name: "Late Fee Income", type: "Revenue", sub_type: "Operating Revenue", is_active: true },
-  { id: "4100", name: "Other Income", type: "Revenue", sub_type: "Other Revenue", is_active: true },
-  { id: "4200", name: "Management Fee Income", type: "Revenue", sub_type: "Operating Revenue", is_active: true },
-  { id: "5300", name: "Repairs & Maintenance", type: "Expense", sub_type: "Operating Expense", is_active: true },
-  { id: "5400", name: "Utilities Expense", type: "Expense", sub_type: "Operating Expense", is_active: true },
+  { code: "1000", name: "Checking Account", type: "Asset", sub_type: "Bank", is_active: true },
+  { code: "1100", name: "Accounts Receivable", type: "Asset", sub_type: "Accounts Receivable", is_active: true },
+  { code: "2100", name: "Security Deposits Held", type: "Liability", sub_type: "Other Current Liability", is_active: true },
+  { code: "2200", name: "Owner Distributions Payable", type: "Liability", sub_type: "Other Current Liability", is_active: true },
+  { code: "4000", name: "Rental Income", type: "Revenue", sub_type: "Operating Revenue", is_active: true },
+  { code: "4010", name: "Late Fee Income", type: "Revenue", sub_type: "Operating Revenue", is_active: true },
+  { code: "4100", name: "Other Income", type: "Revenue", sub_type: "Other Revenue", is_active: true },
+  { code: "4200", name: "Management Fee Income", type: "Revenue", sub_type: "Operating Revenue", is_active: true },
+  { code: "5300", name: "Repairs & Maintenance", type: "Expense", sub_type: "Operating Expense", is_active: true },
+  { code: "5400", name: "Utilities Expense", type: "Expense", sub_type: "Operating Expense", is_active: true },
   ];
-  const { data: existing } = await supabase.from("acct_accounts").select("id, name").eq("company_id", cid);
+  const { data: existing } = await supabase.from("acct_accounts").select("id, code, name").eq("company_id", cid);
   const existingNames = new Set((existing || []).map(a => a.name));
   const missing = defaults.filter(a => !existingNames.has(a.name));
-  if (missing.length === 0) return; // all required accounts exist
+  if (missing.length === 0) return;
   const rows = missing.map(a => ({ ...a, company_id: cid }));
-  await supabase.from("acct_accounts").upsert(rows, { onConflict: "id" });
-  // Clear account ID cache so new accounts are picked up
+  await supabase.from("acct_accounts").upsert(rows, { onConflict: "company_id,code" });
   delete _acctIdCache[cid];
-  console.log("Seeded", missing.length, "missing accounts for company", cid);
   }
 
   function handleSelectCompany(company, role) {

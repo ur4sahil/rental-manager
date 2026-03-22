@@ -73,22 +73,25 @@ serve(async (req) => {
         const rent = lease.rent_amount || 0;
         if (rent <= 0) continue;
 
-        // Post journal entry: DR AR, CR Rental Income
-        const jeId = `je-rent-${companyId.slice(-6)}-${Date.now().toString(36)}`;
-        await supabase.rpc("create_journal_entry", {
-          p_id: jeId,
-          p_company_id: companyId,
-          p_number: `RENT-${Date.now().toString(36).toUpperCase()}`,
-          p_date: today,
-          p_description: `Rent charge — ${lease.tenant_name} — ${lease.property}`,
-          p_reference: ref,
-          p_property: lease.property || "",
-          p_status: "posted",
-          p_lines: JSON.stringify([
-            { account_id: `${companyId}-1100`, account_name: "Accounts Receivable", debit: rent, credit: 0, memo: lease.tenant_name },
-            { account_id: `${companyId}-4000`, account_name: "Rental Income", debit: 0, credit: rent, memo: `${lease.tenant_name} — ${lease.property}` },
-          ]),
-        });
+        // Post journal entry: DR AR, CR Rental Income (direct insert — no RPC)
+        // Resolve account UUIDs by code column
+        const { data: arAcct } = await supabase.from("acct_accounts").select("id").eq("company_id", companyId).eq("code", "1100").maybeSingle();
+        const { data: revAcct } = await supabase.from("acct_accounts").select("id").eq("company_id", companyId).eq("code", "4000").maybeSingle();
+        const arId = arAcct?.id || null;
+        const revId = revAcct?.id || null;
+
+        const { data: jeRow } = await supabase.from("acct_journal_entries").insert([{
+          company_id: companyId, date: today,
+          description: `Rent charge — ${lease.tenant_name} — ${lease.property}`,
+          reference: ref, property: lease.property || "", status: "posted",
+        }]).select("id").maybeSingle();
+
+        if (jeRow?.id) {
+          await supabase.from("acct_journal_lines").insert([
+            { journal_entry_id: jeRow.id, company_id: companyId, account_id: arId, account_name: "Accounts Receivable", debit: rent, credit: 0, memo: lease.tenant_name },
+            { journal_entry_id: jeRow.id, company_id: companyId, account_id: revId, account_name: "Rental Income", debit: 0, credit: rent, memo: `${lease.tenant_name} — ${lease.property}` },
+          ]);
+        }
 
         // Create ledger entry
         await supabase.from("ledger_entries").insert({

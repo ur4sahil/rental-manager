@@ -95,22 +95,21 @@ serve(async (req) => {
             p_company_id: companyId,
           });
 
-          // Post journal entry: DR Checking, CR AR
-          const jeId = `je-stripe-${session.id.slice(-8)}`;
-          await supabase.rpc("create_journal_entry", {
-            p_id: jeId,
-            p_company_id: companyId,
-            p_number: `STR-${Date.now().toString(36).toUpperCase()}`,
-            p_date: new Date().toISOString().slice(0, 10),
-            p_description: `Stripe payment — ${session.metadata?.tenantName} — ${property}`,
-            p_reference: `STRIPE-${session.id.slice(-12)}`,
-            p_property: property || "",
-            p_status: "posted",
-            p_lines: JSON.stringify([
-              { account_id: `${companyId}-1000`, account_name: "Checking Account", debit: amount, credit: 0, memo: `Stripe ${session.id.slice(-8)}` },
-              { account_id: `${companyId}-1100`, account_name: "Accounts Receivable", debit: 0, credit: amount, memo: session.metadata?.tenantName || "" },
-            ]),
-          });
+          // Post journal entry: DR Checking, CR AR (direct insert — no RPC)
+          const { data: chkAcct } = await supabase.from("acct_accounts").select("id").eq("company_id", companyId).eq("code", "1000").maybeSingle();
+          const { data: arAcct } = await supabase.from("acct_accounts").select("id").eq("company_id", companyId).eq("code", "1100").maybeSingle();
+          const payDate = new Date().toISOString().slice(0, 10);
+          const { data: stripeJE } = await supabase.from("acct_journal_entries").insert([{
+            company_id: companyId, date: payDate,
+            description: `Stripe payment — ${session.metadata?.tenantName} — ${property}`,
+            reference: `STRIPE-${session.id.slice(-12)}`, property: property || "", status: "posted",
+          }]).select("id").maybeSingle();
+          if (stripeJE?.id) {
+            await supabase.from("acct_journal_lines").insert([
+              { journal_entry_id: stripeJE.id, company_id: companyId, account_id: chkAcct?.id || null, account_name: "Checking Account", debit: amount, credit: 0, memo: `Stripe ${session.id.slice(-8)}` },
+              { journal_entry_id: stripeJE.id, company_id: companyId, account_id: arAcct?.id || null, account_name: "Accounts Receivable", debit: 0, credit: amount, memo: session.metadata?.tenantName || "" },
+            ]);
+          }
 
           // Create ledger entry
           await supabase.from("ledger_entries").insert({
