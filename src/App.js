@@ -1543,8 +1543,26 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (!existingLease) {
   await supabase.from("leases").insert([{ company_id: companyId, tenant_name: form.tenant.trim(), tenant_id: tenantId || null, property: compositeAddress, start_date: form.lease_start, end_date: form.lease_end, rent_amount: Number(form.rent), security_deposit: Number(form.security_deposit) || 0, status: "active", payment_due_day: 1, rent_escalation_pct: 3, escalation_frequency: "annual" }]);
   }
-  // Immediately post rent charges for this lease
-  autoPostRentCharges(companyId).catch(e => console.warn("Auto rent post after property save:", e.message));
+  // Post security deposit JE if deposit amount provided
+  const dep = Number(form.security_deposit) || 0;
+  if (dep > 0) {
+  const classId = await getPropertyClassId(compositeAddress, companyId);
+  const _depOk = await autoPostJournalEntry({ companyId, date: form.lease_start, description: "Security deposit received — " + form.tenant.trim() + " — " + compositeAddress, reference: "DEP-" + shortId(), property: compositeAddress,
+  lines: [
+  { account_id: "1000", account_name: "Checking Account", debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.tenant.trim() },
+  { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant.trim() + " — " + compositeAddress },
+  ]
+  });
+  if (_depOk && tenantId) {
+  await safeLedgerInsert({ company_id: companyId, tenant: form.tenant.trim(), property: compositeAddress, date: form.lease_start, description: "Security deposit collected", amount: dep, type: "deposit", balance: 0 });
+  }
+  if (!_depOk) showToast("Security deposit accounting entry failed. Please check the accounting module.", "error");
+  }
+  // Post rent charges for this lease (awaited so errors surface)
+  try {
+  const result = await autoPostRentCharges(companyId);
+  if (result?.posted > 0) showToast("Posted " + result.posted + " rent charge(s) to accounting", "success");
+  } catch (e) { console.warn("Auto rent post after property save:", e.message); }
   }
   }
   // #12: Sync security deposit to active lease when editing property
@@ -2446,10 +2464,28 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const { data: newTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.name.trim()).eq("property", form.property).is("archived_at", null).maybeSingle();
   const { data: existingLease } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("property", form.property).eq("status", "active").maybeSingle();
   if (!existingLease) {
-  await supabase.from("leases").insert([{ company_id: companyId, tenant_name: form.name.trim(), tenant_id: newTenant?.id || null, property: form.property, start_date: form.lease_start, end_date: form.lease_end, rent_amount: Number(form.rent), status: "active", payment_due_day: 1, rent_escalation_pct: 3, escalation_frequency: "annual" }]);
+  await supabase.from("leases").insert([{ company_id: companyId, tenant_name: form.name.trim(), tenant_id: newTenant?.id || null, property: form.property, start_date: form.lease_start, end_date: form.lease_end, rent_amount: Number(form.rent), security_deposit: Number(form.security_deposit) || 0, status: "active", payment_due_day: 1, rent_escalation_pct: 3, escalation_frequency: "annual" }]);
   }
-  // Immediately post rent charges for this new lease (don't wait for next login)
-  autoPostRentCharges(companyId).catch(e => console.warn("Auto rent post after tenant add:", e.message));
+  // Post security deposit JE if provided
+  const dep = Number(form.security_deposit) || 0;
+  if (dep > 0 && newTenant?.id) {
+  const classId = await getPropertyClassId(form.property, companyId);
+  const _depOk = await autoPostJournalEntry({ companyId, date: form.lease_start, description: "Security deposit received — " + form.name.trim() + " — " + form.property, reference: "DEP-" + shortId(), property: form.property,
+  lines: [
+  { account_id: "1000", account_name: "Checking Account", debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.name.trim() },
+  { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.name.trim() + " — " + form.property },
+  ]
+  });
+  if (_depOk) {
+  await safeLedgerInsert({ company_id: companyId, tenant: form.name.trim(), property: form.property, date: form.lease_start, description: "Security deposit collected", amount: dep, type: "deposit", balance: 0 });
+  }
+  if (!_depOk) showToast("Security deposit accounting entry failed. Please check the accounting module.", "error");
+  }
+  // Post rent charges for this new lease (awaited so errors surface)
+  try {
+  const result = await autoPostRentCharges(companyId);
+  if (result?.posted > 0) showToast("Posted " + result.posted + " rent charge(s) to accounting", "success");
+  } catch (e) { console.warn("Auto rent post after tenant add:", e.message); }
   }
   }
   if (editingTenant) {
@@ -2488,7 +2524,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
   setShowForm(false);
   setEditingTenant(null);
-  setForm({ name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "" });
+  setForm({ name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "", security_deposit: "" });
   fetchTenants();
   } finally { guardRelease("saveTenant"); }
   }
@@ -3416,9 +3452,16 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Status</label><select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
   {["active", "notice", "expired"].map(s => <option key={s}>{s}</option>)}
   </select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Move-in Date</label><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Move-out Date</label><Input type="date" value={form.lease_end} onChange={e => setForm({ ...form, lease_end: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Start / Move-in</label><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease End / Move-out</label><Input type="date" value={form.lease_end} onChange={e => setForm({ ...form, lease_end: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Security Deposit ($)</label><Input placeholder="0" value={form.security_deposit || ""} onChange={e => setForm({ ...form, security_deposit: e.target.value })} /></div>
   </div>
+  {form.lease_start && form.lease_end && form.rent && (
+  <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 mt-2 text-xs text-indigo-700">
+  A lease will be auto-created and rent charges posted to accounting.
+  {Number(form.security_deposit) > 0 && " Security deposit will also be recorded."}
+  </div>
+  )}
   <div className="flex gap-2 mt-3">
   <button onClick={saveTenant} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
   <button onClick={() => { setShowForm(false); setEditingTenant(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
@@ -6969,7 +7012,8 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   if (result?.failed > 0) addNotification("⚠️", result.failed + " charge(s) failed");
   }
   } else {
-  await autoPostRentCharges(companyId);
+  const result = await autoPostRentCharges(companyId);
+  if (result?.posted > 0) showToast("Posted " + result.posted + " rent charge(s) to accounting", "success");
   }
   }
   logAudit(editingLease ? "update" : "create", "leases", (editingLease ? "Updated" : "Created") + " lease: " + form.tenant_name + " at " + form.property, editingLease?.id || "", userProfile?.email, userRole, companyId);
