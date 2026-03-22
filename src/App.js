@@ -13285,6 +13285,178 @@ function AuditTrail({ companyId }) {
   );
 }
 
+// ============ USER PROFILE PAGE ============
+function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
+  const [displayName, setDisplayName] = useState(currentUser?.user_metadata?.name || currentUser?.email?.split("@")[0] || "");
+  const [phone, setPhone] = useState(currentUser?.user_metadata?.phone || "");
+  const [avatarUrl, setAvatarUrl] = useState(currentUser?.user_metadata?.avatar_url || "");
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteText, setDeleteText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [darkMode, setDarkMode] = useState(localStorage.getItem("theme") === "dark");
+
+  async function saveProfile() {
+  setSaving(true);
+  const { error } = await supabase.auth.updateUser({ data: { name: displayName.trim(), phone: phone.trim(), avatar_url: avatarUrl } });
+  if (error) showToast("Failed to update profile: " + error.message, "error");
+  else showToast("Profile updated!", "success");
+  setSaving(false);
+  }
+
+  async function sendPasswordReset() {
+  const { error } = await supabase.auth.resetPasswordForEmail(currentUser?.email, { redirectTo: window.location.origin });
+  if (error) showToast("Failed to send reset email: " + error.message, "error");
+  else { setResetSent(true); showToast("Password reset link sent to " + currentUser?.email, "success"); }
+  }
+
+  async function uploadAvatar(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) { showToast("Image must be under 2MB.", "error"); return; }
+  setUploading(true);
+  const ext = file.name.split(".").pop();
+  const path = `avatars/${currentUser.id}.${ext}`;
+  const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+  if (error) { showToast("Upload failed: " + error.message, "error"); setUploading(false); return; }
+  const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
+  const publicUrl = urlData?.publicUrl + "?t=" + Date.now();
+  setAvatarUrl(publicUrl);
+  await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
+  showToast("Avatar updated!", "success");
+  setUploading(false);
+  }
+
+  async function deleteAccount() {
+  if (deleteText !== "DELETE") return;
+  setDeleting(true);
+  // Remove all company memberships
+  const { data: memberships } = await supabase.from("company_members").select("company_id").ilike("user_email", currentUser?.email);
+  if (memberships) {
+  for (const m of memberships) {
+  await supabase.from("company_members").update({ status: "removed" }).eq("company_id", m.company_id).ilike("user_email", currentUser?.email);
+  }
+  }
+  // Sign out (actual auth account deletion requires admin API — flag for manual cleanup)
+  await supabase.from("app_users").update({ status: "deleted", deleted_at: new Date().toISOString() }).ilike("email", currentUser?.email);
+  showToast("Account deactivated. You will be signed out.", "info");
+  setTimeout(async () => { await supabase.auth.signOut(); }, 1500);
+  }
+
+  function toggleDarkMode() {
+  const next = !darkMode;
+  setDarkMode(next);
+  localStorage.setItem("theme", next ? "dark" : "light");
+  document.documentElement.classList.toggle("dark", next);
+  }
+
+  return (
+  <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-white flex items-center justify-center p-4">
+  <div className="w-full max-w-lg">
+  <button onClick={onBack} className="flex items-center gap-1 text-sm text-indigo-600 hover:underline mb-6">
+  <span className="material-icons-outlined text-sm">arrow_back</span> Back to Companies
+  </button>
+
+  <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-6 mb-4">
+  <h2 className="text-xl font-manrope font-bold text-slate-800 mb-5">Profile</h2>
+
+  {/* Avatar */}
+  <div className="flex items-center gap-4 mb-6">
+  <div className="relative">
+  {avatarUrl ? (
+  <img src={avatarUrl} alt="Avatar" className="w-16 h-16 rounded-full object-cover border-2 border-indigo-100" />
+  ) : (
+  <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-2xl">
+  {displayName?.[0]?.toUpperCase() || "U"}
+  </div>
+  )}
+  <label className="absolute -bottom-1 -right-1 w-7 h-7 bg-indigo-600 text-white rounded-full flex items-center justify-center cursor-pointer hover:bg-indigo-700 transition-colors">
+  <span className="material-icons-outlined text-sm">photo_camera</span>
+  <input type="file" accept="image/*" onChange={uploadAvatar} className="hidden" />
+  </label>
+  </div>
+  <div>
+  <div className="font-semibold text-slate-800">{displayName || "User"}</div>
+  <div className="text-xs text-slate-400">{currentUser?.email}</div>
+  {uploading && <div className="text-xs text-indigo-500 mt-1">Uploading...</div>}
+  </div>
+  </div>
+
+  {/* Name & Phone */}
+  <div className="space-y-3 mb-5">
+  <div>
+  <label className="text-xs font-medium text-slate-500 block mb-1">Display Name</label>
+  <Input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Your name" />
+  </div>
+  <div>
+  <label className="text-xs font-medium text-slate-500 block mb-1">Phone Number</label>
+  <Input value={phone} onChange={e => setPhone(formatPhoneInput(e.target.value))} placeholder="(555) 123-4567" maxLength={14} />
+  </div>
+  <div>
+  <label className="text-xs font-medium text-slate-500 block mb-1">Email</label>
+  <Input value={currentUser?.email || ""} disabled className="bg-slate-50 text-slate-400" />
+  </div>
+  </div>
+
+  <button onClick={saveProfile} disabled={saving} className="w-full bg-indigo-600 text-white py-2.5 rounded-xl font-semibold text-sm hover:bg-indigo-700 disabled:opacity-50 mb-3">
+  {saving ? "Saving..." : "Save Changes"}
+  </button>
+  </div>
+
+  {/* Password Reset */}
+  <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-6 mb-4">
+  <h3 className="font-semibold text-slate-800 mb-2">Password</h3>
+  <p className="text-xs text-slate-400 mb-3">We'll send a password reset link to your email.</p>
+  <button onClick={sendPasswordReset} disabled={resetSent} className="bg-slate-100 text-slate-700 text-sm px-4 py-2 rounded-xl hover:bg-slate-200 disabled:opacity-50 font-medium">
+  {resetSent ? "Reset Link Sent" : "Send Password Reset Email"}
+  </button>
+  </div>
+
+  {/* Preferences */}
+  <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-6 mb-4">
+  <h3 className="font-semibold text-slate-800 mb-3">Preferences</h3>
+  <div className="flex items-center justify-between py-2">
+  <div>
+  <div className="text-sm text-slate-700">Dark Mode</div>
+  <div className="text-xs text-slate-400">Switch between light and dark theme</div>
+  </div>
+  <button onClick={toggleDarkMode} className={"relative w-10 h-5 rounded-full transition-colors " + (darkMode ? "bg-indigo-600" : "bg-slate-300")}>
+  <span className={"absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow " + (darkMode ? "left-5" : "left-0.5")} />
+  </button>
+  </div>
+  </div>
+
+  {/* 2FA */}
+  <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-6 mb-4">
+  <h3 className="font-semibold text-slate-800 mb-2">Two-Factor Authentication</h3>
+  <p className="text-xs text-slate-400 mb-3">Add an extra layer of security to your account.</p>
+  <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-400 text-center">Coming Soon</div>
+  </div>
+
+  {/* Delete Account */}
+  <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-6">
+  <h3 className="font-semibold text-red-600 mb-2">Delete Account</h3>
+  <p className="text-xs text-slate-400 mb-3">This will deactivate your account and remove you from all companies. This action cannot be undone.</p>
+  {!showDeleteConfirm ? (
+  <button onClick={() => setShowDeleteConfirm(true)} className="text-sm text-red-500 border border-red-200 px-4 py-2 rounded-xl hover:bg-red-50 font-medium">Delete My Account</button>
+  ) : (
+  <div className="space-y-3">
+  <p className="text-sm text-red-600 font-medium">Type "DELETE" to confirm:</p>
+  <Input value={deleteText} onChange={e => setDeleteText(e.target.value.toUpperCase())} placeholder="Type DELETE" className="border-red-200" />
+  <div className="flex gap-2">
+  <button onClick={deleteAccount} disabled={deleteText !== "DELETE" || deleting} className="bg-red-600 text-white text-sm px-4 py-2 rounded-xl hover:bg-red-700 disabled:opacity-50 font-medium">{deleting ? "Deleting..." : "Permanently Delete"}</button>
+  <button onClick={() => { setShowDeleteConfirm(false); setDeleteText(""); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-xl">Cancel</button>
+  </div>
+  </div>
+  )}
+  </div>
+  </div>
+  </div>
+  );
+}
+
 // ============ COMPANY SELECTOR ============
 function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, showConfirm }) {
   const [companies, setCompanies] = useState([]);
@@ -13292,6 +13464,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState({ name: "", type: "LLC", company_role: "management", address: "", phone: "", email: "" });
   const [joinCode, setJoinCode] = useState("");
@@ -13452,8 +13625,20 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
 
   if (loading) return <div className="flex items-center justify-center h-screen bg-indigo-50/30"><Spinner /></div>;
 
+  if (showProfile) return <UserProfile currentUser={currentUser} onBack={() => setShowProfile(false)} showToast={showToast} showConfirm={showConfirm} />;
+
   return (
   <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-white flex items-center justify-center p-4">
+  {/* Profile icon — top right */}
+  <div className="fixed top-4 right-4 z-50">
+  <button onClick={() => setShowProfile(true)} className="w-10 h-10 rounded-full bg-white border border-indigo-100 shadow-sm flex items-center justify-center hover:bg-indigo-50 transition-colors" title="Profile">
+  {currentUser?.user_metadata?.avatar_url ? (
+  <img src={currentUser.user_metadata.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover" />
+  ) : (
+  <span className="text-indigo-600 font-bold text-sm">{(currentUser?.user_metadata?.name || currentUser?.email || "U")[0].toUpperCase()}</span>
+  )}
+  </button>
+  </div>
   <div className="w-full max-w-2xl">
   <div className="text-center mb-8">
   <div className="text-3xl font-bold text-indigo-700 mb-1">🏡 PropManager</div>
