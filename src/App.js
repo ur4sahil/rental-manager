@@ -1780,7 +1780,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   async function deleteProperty(id, address) {
   if (!guardSubmit("deleteProperty")) return;
   try {
-  if (!isAdmin) { showToast("Only admins can archive properties.", "error"); return; }
+  if (!isAdmin) { showToast("Only admins can delete properties.", "error"); return; }
   const targetProp = properties.find(p => String(p.id) === String(id));
   if (targetProp && targetProp.company_id !== companyId) {
   showToast("This property belongs to another company and cannot be archived here.", "error");
@@ -1798,68 +1798,74 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   document.getElementById("__deleteCancel").onclick = () => { reasonEl.remove(); resolve(); };
   });
   if (!deleteReason) return; // User cancelled
-  // Step 2: Gather related data
-  const { data: propertyTenants } = await supabase.from("tenants").select("id, name, balance").eq("company_id", companyId).eq("property", address).is("archived_at", null);
-  // Step 3: Delete journal entry lines FIRST (FK dependency), then entries
+  // Step 2: Gather related data before deletion
+  const { data: propertyTenants } = await supabase.from("tenants").select("id, name").eq("company_id", companyId).eq("property", address).is("archived_at", null);
+  const tenantNames = (propertyTenants || []).map(t => t.name);
+  const tenantIds = (propertyTenants || []).map(t => t.id);
+  const archiveBy = userProfile?.email || "admin";
+
+  // ── HARD DELETE: Remove everything. Order matters (FK dependencies). ──
+
+  // 1. Journal entry lines (must go before JE headers due to FK)
   const { data: propJEs } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).eq("property", address);
   const jeIds = (propJEs || []).map(je => je.id);
-  if (jeIds.length > 0) {
-  // Delete lines for all JEs at this property
   for (const jeId of jeIds) {
   await supabase.from("acct_journal_lines").delete().eq("journal_entry_id", jeId);
   }
-  // Delete the JE headers
-  await supabase.from("acct_journal_entries").delete().eq("company_id", companyId).eq("property", address);
+  // 2. Journal entry headers
+  if (jeIds.length > 0) await supabase.from("acct_journal_entries").delete().eq("company_id", companyId).eq("property", address);
+
+  // 3. Ledger entries for all tenants at this property
+  for (const name of tenantNames) {
+  await supabase.from("ledger_entries").delete().eq("company_id", companyId).eq("tenant", name).eq("property", address);
   }
-  // Step 4: Delete ledger entries for tenants at this property
-  if (propertyTenants?.length > 0) {
-  for (const t of propertyTenants) {
-  await supabase.from("ledger_entries").delete().eq("company_id", companyId).eq("tenant", t.name).eq("property", address);
-  // Reset tenant balance to 0 (entries are gone)
-  await supabase.from("tenants").update({ balance: 0 }).eq("id", t.id).eq("company_id", companyId);
+
+  // 4. Tenant AR sub-accounts (hard delete)
+  for (const tid of tenantIds) {
+  await supabase.from("acct_accounts").delete().eq("company_id", companyId).eq("tenant_id", tid);
   }
-  }
-  // Step 5: Delete tenant AR sub-accounts
-  if (propertyTenants?.length > 0) {
-  for (const t of propertyTenants) {
-  await supabase.from("acct_accounts").delete().eq("company_id", companyId).eq("tenant_id", t.id);
-  }
-  }
-  // Step 6: Delete accounting class (remove from class tracking entirely)
-  const { data: archProp } = await supabase.from("properties").select("class_id").eq("id", id).eq("company_id", companyId).maybeSingle();
-  if (archProp?.class_id) await supabase.from("acct_classes").delete().eq("company_id", companyId).eq("id", archProp.class_id);
+
+  // 5. Accounting class (hard delete — gone from class tracking)
+  const { data: delProp } = await supabase.from("properties").select("class_id").eq("id", id).eq("company_id", companyId).maybeSingle();
+  if (delProp?.class_id) await supabase.from("acct_classes").delete().eq("company_id", companyId).eq("id", delProp.class_id);
   else await supabase.from("acct_classes").delete().eq("company_id", companyId).eq("name", address);
-  // Step 7: Archive all related operational data
-  const archiveTs = new Date().toISOString();
-  const archiveBy = userProfile?.email || "admin";
-  const archiveUpdate = { archived_at: archiveTs, archived_by: archiveBy };
-  await supabase.from("work_orders").update(archiveUpdate).eq("company_id", companyId).eq("property", address).is("archived_at", null);
-  await supabase.from("utilities").update(archiveUpdate).eq("company_id", companyId).eq("property", address).is("archived_at", null);
-  await supabase.from("documents").update(archiveUpdate).eq("company_id", companyId).eq("property", address).is("archived_at", null);
-  await supabase.from("vendor_invoices").update(archiveUpdate).eq("company_id", companyId).eq("property", address).is("archived_at", null);
-  await supabase.from("hoa_payments").update(archiveUpdate).eq("company_id", companyId).eq("property", address).is("archived_at", null);
-  await supabase.from("inspections").update(archiveUpdate).eq("company_id", companyId).eq("property", address).is("archived_at", null);
-  await supabase.from("payments").update(archiveUpdate).eq("company_id", companyId).eq("property", address).is("archived_at", null);
-  // Step 8: Terminate leases, disable autopay
-  await supabase.from("leases").update({ status: "terminated" }).eq("company_id", companyId).eq("property", address).eq("status", "active");
-  await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("property", address);
-  // Step 9: Archive tenants
-  if (propertyTenants?.length > 0) {
-  for (const t of propertyTenants) {
-  await supabase.from("tenants").update({ ...archiveUpdate, lease_status: "inactive" }).eq("id", t.id).eq("company_id", companyId);
+
+  // 6. Recurring journal entries for this property
+  await supabase.from("recurring_journal_entries").delete().eq("company_id", companyId).eq("property", address);
+
+  // 7. Operational data (hard delete — not archive)
+  await supabase.from("work_orders").delete().eq("company_id", companyId).eq("property", address);
+  await supabase.from("utilities").delete().eq("company_id", companyId).eq("property", address);
+  await supabase.from("documents").delete().eq("company_id", companyId).eq("property", address);
+  await supabase.from("vendor_invoices").delete().eq("company_id", companyId).eq("property", address);
+  await supabase.from("hoa_payments").delete().eq("company_id", companyId).eq("property", address);
+  await supabase.from("inspections").delete().eq("company_id", companyId).eq("property", address);
+  await supabase.from("payments").delete().eq("company_id", companyId).eq("property", address);
+  await supabase.from("messages").delete().eq("company_id", companyId).eq("property", address);
+
+  // 8. Leases and autopay (hard delete)
+  await supabase.from("lease_signatures").delete().eq("company_id", companyId).in("lease_id", (await supabase.from("leases").select("id").eq("company_id", companyId).eq("property", address)).data?.map(l => l.id) || []);
+  await supabase.from("leases").delete().eq("company_id", companyId).eq("property", address);
+  await supabase.from("autopay_schedules").delete().eq("company_id", companyId).eq("property", address);
+
+  // 9. Tenants (hard delete — no balance, no record)
+  for (const tid of tenantIds) {
+  await supabase.from("tenants").delete().eq("id", tid).eq("company_id", companyId);
   }
-  }
-  // Step 10: Archive the property itself
-  const { error: archiveErr } = await supabase.rpc("archive_property", {
-  p_company_id: companyId, p_property_id: String(id), p_address: address, p_archive_tenant: true, p_user_email: archiveBy
-  });
-  if (archiveErr) {
-  await supabase.from("properties").update(archiveUpdate).eq("id", id).eq("company_id", companyId);
-  }
-  // Step 11: Audit trail with reason
-  logAudit("delete", "properties", `DELETED property: ${address}\nReason: ${deleteReason}\nCascade: ${jeIds.length} journal entries deleted, ${(propertyTenants || []).length} tenant(s) archived, all related data removed`, id, archiveBy, userRole, companyId);
-  addNotification("🗑️", `Property deleted: ${address}`);
-  showToast("Property and all related data deleted. Reason logged to audit trail.", "success");
+
+  // 10. Property itself (hard delete)
+  await supabase.from("properties").delete().eq("id", id).eq("company_id", companyId);
+
+  // 11. Audit trail — the ONLY record that remains
+  logAudit("delete", "properties",
+  `PERMANENTLY DELETED property: ${address}\nReason: ${deleteReason}\nDeleted: ${jeIds.length} journal entries, ${tenantNames.length} tenant(s) [${tenantNames.join(", ")}], all leases, work orders, utilities, documents, payments, inspections, HOA, accounting class`,
+  id, archiveBy, userRole, companyId);
+  addNotification("🗑️", `Property permanently deleted: ${address}`);
+  showToast("Property and all related data permanently deleted. Audit trail recorded.", "success");
+  // Clear caches
+  delete _classIdCache[`${companyId}::${address}`];
+  delete _acctIdCache[companyId];
+  delete _tenantArCache[`${companyId}::${tenantNames[0]}`];
   fetchProperties();
   } finally { guardRelease("deleteProperty"); }
   }
