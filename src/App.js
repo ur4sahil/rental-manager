@@ -1133,6 +1133,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
 
   const [acctRevenue, setAcctRevenue] = useState(0);
   const [acctExpenses, setAcctExpenses] = useState(0);
+  const [pendingApprovals, setPendingApprovals] = useState([]);
 
 
   useEffect(() => {
@@ -1157,6 +1158,19 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   const fourteenDays = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
   const { data: hoaData } = await supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("status", "unpaid").is("archived_at", null).lte("due_date", fourteenDays).order("due_date", { ascending: true });
   setHoaDue(hoaData || []);
+  // Fetch all pending admin approvals
+  const approvals = [];
+  try {
+  const [propReqs, docExceptions, memberReqs] = await Promise.all([
+  supabase.from("property_change_requests").select("id, address, request_type, requested_by").eq("company_id", companyId).eq("status", "pending"),
+  supabase.from("doc_exception_requests").select("id, tenant_name").eq("company_id", companyId).eq("status", "pending"),
+  supabase.from("company_members").select("id, user_email").eq("company_id", companyId).eq("status", "pending"),
+  ]);
+  (propReqs.data || []).forEach(r => approvals.push({ icon: "🏠", text: (r.request_type === "add" ? "New property: " : "Edit: ") + r.address + " — by " + r.requested_by, link: "properties" }));
+  (docExceptions.data || []).forEach(r => approvals.push({ icon: "📄", text: "Doc exception: " + r.tenant_name, link: "tenants" }));
+  (memberReqs.data || []).forEach(r => approvals.push({ icon: "👤", text: "Join request: " + r.user_email, link: "roles" }));
+  } catch (e) { console.warn("Approval fetch:", e); }
+  setPendingApprovals(approvals);
   // Pull financials from accounting module (journal entries are the GL source of truth,
   // but dashboard stats also reference payments/tenants tables for quick metrics)
   try {
@@ -1210,6 +1224,23 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   <StatCard onClick={() => setPage("maintenance")} label="Open Work Orders" value={openWO} sub={`${workOrders.filter(w => w.priority === "emergency").length} emergency`} color="text-orange-500" />
   <StatCard onClick={() => setPage("utilities")} label="Pending Utilities" value={utilities.filter(u => u.status === "pending").length} sub="awaiting payment" color="text-yellow-600" />
   </div>
+  {/* Admin Approvals */}
+  {pendingApprovals.length > 0 && (
+  <div className="bg-amber-50 rounded-3xl shadow-card border border-amber-200 p-5 mb-6">
+  <div className="flex items-center justify-between mb-3">
+  <h3 className="font-manrope font-bold text-amber-800">Awaiting Approval ({pendingApprovals.length})</h3>
+  </div>
+  <div className="space-y-2 max-h-48 overflow-y-auto">
+  {pendingApprovals.map((a, i) => (
+  <div key={i} onClick={() => setPage(a.link)} className="flex items-center gap-3 bg-white rounded-xl px-3 py-2.5 cursor-pointer hover:bg-amber-50 transition-colors border border-amber-100">
+  <span className="text-lg">{a.icon}</span>
+  <span className="text-sm text-slate-700 flex-1">{a.text}</span>
+  <span className="text-xs text-amber-500 font-semibold">Review</span>
+  </div>
+  ))}
+  </div>
+  </div>
+  )}
   {/* Pending Tasks */}
   {(() => {
   const pendingDocs = tenants.filter(t => t.doc_status === "pending_docs" && !t.archived_at);
