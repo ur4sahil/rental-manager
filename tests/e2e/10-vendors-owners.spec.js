@@ -69,7 +69,7 @@ test.describe('Vendors Module', () => {
 
   test('vendor cards show star ratings', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const hasStar = await page.locator('text=★, text=⭐').first().isVisible().catch(() => false)
+    const hasStar = await page.locator('text=/★|⭐/').first().isVisible().catch(() => false)
       || await page.locator('[class*="yellow"], [class*="amber"]').first().isVisible().catch(() => false);
   });
 

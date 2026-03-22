@@ -116,17 +116,19 @@ test.describe('Authentication', () => {
 
   test('Tenant signup form shows invite code field', async ({ page }) => {
     await page.goto('/');
-    // Click "Enter Invite Code" link for tenants
-    const tenantLink = page.locator('text=Invite Code').first();
-    if (await tenantLink.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await tenantLink.click();
+    // Click tenant signup button ("Enter Invite Code →" or "Tenant")
+    const tenantBtn = page.locator('button:has-text("Tenant"), button:has-text("Enter Invite Code")').first();
+    if (await tenantBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await tenantBtn.click();
       await page.waitForTimeout(1000);
       // Should show email/password + invite code input
       await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 5000 });
-      // Look for any text input that could be the invite code
-      const inputs = page.locator('input[type="text"]');
+      // Look for invite code label
+      await expect(page.locator('label:has-text("Invite Code")')).toBeVisible({ timeout: 3000 });
+      // Should have at least 3 inputs total (name, email, password) + invite code
+      const inputs = page.locator('input');
       const count = await inputs.count();
-      expect(count).toBeGreaterThanOrEqual(1);
+      expect(count).toBeGreaterThanOrEqual(4);
     }
   });
 

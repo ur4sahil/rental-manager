@@ -11,7 +11,7 @@ test.describe('Leases Module', () => {
   });
 
   test('heading visible', async ({ page }) => {
-    await expect(page.locator('text=Lease Management, text=Leases').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text=/Lease Management|Leases/').first()).toBeVisible({ timeout: 5000 });
   });
 
   test('stat cards show active leases, expiring, deposits, avg rent', async ({ page }) => {

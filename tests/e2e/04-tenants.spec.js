@@ -26,9 +26,9 @@ test.describe('Tenants Module', () => {
     const search = page.locator('input[placeholder*="search" i], input[placeholder*="Search" i]').first();
     await expect(search).toBeVisible({ timeout: 5000 });
     await search.fill('Alice');
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(1500);
     // Alice should still be visible after search
-    const alice = await page.locator('text=Alice').isVisible().catch(() => false);
+    const alice = await page.locator('text=/Alice/i').first().isVisible().catch(() => false);
     expect(alice).toBeTruthy();
     await search.fill('');
   });

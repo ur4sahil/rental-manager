@@ -25,7 +25,7 @@ test.describe('Accounting Module', () => {
     const tabs = ['Chart of Accounts', 'Journal Entries', 'Recurring',
       'Bank Import', 'Reconcile', 'Class Tracking', 'Reports', 'Overview'];
     for (const tab of tabs) {
-      const tabEl = page.locator(`button:has-text("${tab}"), text=${tab}`).first();
+      const tabEl = page.locator(`button:has-text("${tab}")`).first();
       if (await tabEl.isVisible({ timeout: 2000 }).catch(() => false)) {
         await tabEl.click();
         await page.waitForTimeout(1000);
@@ -147,7 +147,7 @@ test.describe('Accounting Module', () => {
   test('P&L report shows income and expenses', async ({ page }) => {
     await page.locator('text=Reports').first().click();
     await page.waitForTimeout(1000);
-    const plBtn = page.locator('button:has-text("Profit"), text=Profit').first();
+    const plBtn = page.locator('button:has-text("Profit")').first();
     if (await plBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await plBtn.click();
       await page.waitForTimeout(1500);
@@ -182,7 +182,7 @@ test.describe('Accounting Module', () => {
 
   // ── Recurring JEs ──
   test('recurring entries tab shows entries or empty state', async ({ page }) => {
-    const recurBtn = page.locator('button:has-text("Recurring"), text=Recurring').first();
+    const recurBtn = page.locator('button:has-text("Recurring")').first();
     if (await recurBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await recurBtn.click();
       await page.waitForTimeout(1500);

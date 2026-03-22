@@ -27,7 +27,7 @@ test.describe('Documents Module', () => {
   test('document type filter tabs exist', async ({ page }) => {
     const types = ['Lease', 'Inspection', 'Maintenance', 'Financial'];
     for (const t of types) {
-      const tab = page.locator(`button:has-text("${t}"), text=${t}`).first();
+      const tab = page.locator(`button:has-text("${t}")`).first();
       if (await tab.isVisible({ timeout: 2000 }).catch(() => false)) {
         await tab.click();
         await page.waitForTimeout(500);

@@ -19,7 +19,7 @@ test.describe('Notifications Module', () => {
   test('has settings, log, and rent roll tabs', async ({ page }) => {
     const tabs = ['Settings', 'Log', 'Rent Roll'];
     for (const tab of tabs) {
-      const el = page.locator(`button:has-text("${tab}"), text=${tab}`).first();
+      const el = page.locator(`button:has-text("${tab}")`).first();
       const vis = await el.isVisible({ timeout: 3000 }).catch(() => false);
     }
   });
@@ -36,7 +36,7 @@ test.describe('Notifications Module', () => {
   });
 
   test('send log tab shows delivery history', async ({ page }) => {
-    const logTab = page.locator('button:has-text("Log"), text=Log').first();
+    const logTab = page.locator('button:has-text("Log")').first();
     if (await logTab.isVisible({ timeout: 2000 }).catch(() => false)) {
       await logTab.click();
       await page.waitForTimeout(1000);
@@ -44,7 +44,7 @@ test.describe('Notifications Module', () => {
   });
 
   test('rent roll tab shows active tenant data', async ({ page }) => {
-    const rrTab = page.locator('button:has-text("Rent Roll"), text=Rent Roll').first();
+    const rrTab = page.locator('button:has-text("Rent Roll")').first();
     if (await rrTab.isVisible({ timeout: 2000 }).catch(() => false)) {
       await rrTab.click();
       await page.waitForTimeout(1000);
@@ -55,7 +55,7 @@ test.describe('Notifications Module', () => {
   });
 
   test('rent roll shows totals in footer', async ({ page }) => {
-    const rrTab = page.locator('button:has-text("Rent Roll"), text=Rent Roll').first();
+    const rrTab = page.locator('button:has-text("Rent Roll")').first();
     if (await rrTab.isVisible({ timeout: 2000 }).catch(() => false)) {
       await rrTab.click();
       await page.waitForTimeout(1000);

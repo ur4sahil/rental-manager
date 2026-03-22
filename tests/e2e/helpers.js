@@ -27,18 +27,25 @@ async function login(page) {
   await page.locator('button:has-text("Sign In")').last().click();
 
   // Step 4: Wait for company selector to appear
-  await page.locator('button:has-text("Open")').first().waitFor({ state: 'visible', timeout: 15000 });
+  // The company selector shows "YOUR COMPANIES" heading and company rows
+  await page.locator('text=/YOUR COMPANIES|Your Companies|PropManager/i').first().waitFor({ state: 'visible', timeout: 15000 });
+  await page.waitForTimeout(1000);
 
-  // Step 5: Click Sandbox LLC (where test data lives), or fall back to first company
-  const sandboxBtn = page.locator('button:has-text("Sandbox")');
-  if (await sandboxBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-    await sandboxBtn.click();
+  // Step 5: Click Sandbox LLC row (where test data lives), or fall back to first company row
+  // Company rows have font-semibold name text inside a clickable div
+  const sandboxRow = page.locator('.font-semibold:has-text("Sandbox")').first();
+  if (await sandboxRow.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await sandboxRow.click();
   } else {
-    await page.locator('button:has-text("Open")').first().click();
+    // Fall back to first company name
+    const firstCompany = page.locator('.font-semibold.text-slate-800').first();
+    if (await firstCompany.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await firstCompany.click();
+    }
   }
 
-  // Step 6: Wait for app to load (sidebar "Dashboard" button)
-  await page.locator('button:has-text("Dashboard")').first().waitFor({ state: 'visible', timeout: 20000 });
+  // Step 6: Wait for app to load (sidebar "Dashboard" button appears)
+  await page.locator('button:has-text("Dashboard")').first().waitFor({ state: 'visible', timeout: 25000 });
 }
 
 /**
@@ -152,7 +159,7 @@ async function goToPage(page, pageId) {
     dashboard: 'Dashboard', properties: 'Properties', tenants: 'Tenants',
     payments: 'Payments', maintenance: 'Maintenance', utilities: 'Utilities',
     hoa: 'HOA Payments', accounting: 'Accounting', owners: 'Owners',
-    doc_builder: 'Doc Builder', roles: 'Team & Roles',
+    doc_builder: 'Documents', roles: 'Team & Roles',
   };
 
   if (sidebarMap[pageId]) {

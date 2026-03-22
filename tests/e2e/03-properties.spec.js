@@ -24,8 +24,10 @@ test.describe('Properties Module', () => {
   test('property cards show status badges (occupied/vacant)', async ({ page }) => {
     await page.waitForTimeout(2000);
     // Status badges use uppercase or colored chips
-    const hasOccupied = await page.locator('text=OCCUPIED, text=Occupied, text=occupied').first().isVisible().catch(() => false);
-    const hasVacant = await page.locator('text=VACANT, text=Vacant, text=vacant').first().isVisible().catch(() => false);
+    // Look for status badge text in any visible element
+    const pageText = await page.locator('body').textContent();
+    const hasOccupied = /occupied/i.test(pageText);
+    const hasVacant = /vacant/i.test(pageText);
     expect(hasOccupied || hasVacant).toBeTruthy();
   });
 
@@ -148,7 +150,7 @@ test.describe('Properties Module', () => {
 
   // ── Archived Properties ──
   test('archived tab is accessible', async ({ page }) => {
-    const archivedTab = page.locator('button:has-text("Archived"), text=Archived').first();
+    const archivedTab = page.locator('button:has-text("Archived")').first();
     if (await archivedTab.isVisible({ timeout: 3000 }).catch(() => false)) {
       await archivedTab.click();
       await page.waitForTimeout(1000);

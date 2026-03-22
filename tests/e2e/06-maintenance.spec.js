@@ -49,7 +49,7 @@ test.describe('Maintenance Module', () => {
   test('work order status badges visible (open/in_progress/completed)', async ({ page }) => {
     await page.waitForTimeout(1500);
     const hasOpen = await page.locator('text=open').first().isVisible().catch(() => false);
-    const hasInProg = await page.locator('text=in_progress, text=In Progress').first().isVisible().catch(() => false);
+    const hasInProg = await page.locator('text=/in.progress/i').first().isVisible().catch(() => false);
     const hasCompleted = await page.locator('text=completed').first().isVisible().catch(() => false);
     expect(hasOpen || hasInProg || hasCompleted).toBeTruthy();
   });
