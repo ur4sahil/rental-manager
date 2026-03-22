@@ -36,6 +36,49 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+// Global error tracking — captures unhandled errors and promise rejections
+// Logs to audit_trail so production crashes are visible in the admin panel
+(function initErrorTracking() {
+  const errorLog = [];
+  const MAX_ERRORS = 50; // prevent infinite loops from flooding
+  function logError(source, message, stack) {
+    if (errorLog.length >= MAX_ERRORS) return;
+    errorLog.push({ source, message, time: new Date().toISOString() });
+    // Attempt to log to audit_trail (best-effort, won't throw)
+    try {
+      const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
+      const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
+      if (supabaseUrl && supabaseKey) {
+        fetch(`${supabaseUrl}/rest/v1/audit_trail`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Prefer": "return=minimal",
+          },
+          body: JSON.stringify({
+            action: "error",
+            module: "frontend",
+            details: `[${source}] ${message}`.slice(0, 500),
+            user_email: "system",
+            user_role: "system",
+          }),
+        }).catch(() => {}); // silently fail
+      }
+    } catch (_) { /* ignore */ }
+    // Also log to console for local dev
+    console.error(`[ErrorTracking/${source}]`, message, stack || "");
+  }
+  window.onerror = (msg, src, line, col, err) => {
+    logError("window.onerror", `${msg} at ${src}:${line}:${col}`, err?.stack);
+  };
+  window.addEventListener("unhandledrejection", (e) => {
+    const msg = e.reason?.message || e.reason || "Unknown promise rejection";
+    logError("unhandledrejection", String(msg).slice(0, 500), e.reason?.stack);
+  });
+})();
+
 // Safe number conversion - prevents NaN from breaking calculations
 const safeNum = (val) => { const n = Number(val); return (isNaN(n) || !isFinite(n)) ? 0 : n; };
 // Parse "YYYY-MM-DD" as LOCAL date (not UTC) to avoid timezone day-shift
@@ -3505,12 +3548,24 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   const [payDateFrom, setPayDateFrom] = useState("");
   const [payDateTo, setPayDateTo] = useState("");
   const [selectedPayments, setSelectedPayments] = useState(new Set());
+  const [payPage, setPayPage] = useState(0);
+  const [payTotalCount, setPayTotalCount] = useState(0);
+  const PAY_PAGE_SIZE = 100;
 
-  useEffect(() => { fetchPayments(); }, [companyId]);
+  useEffect(() => { fetchPayments(); }, [companyId, payPage, payFilterStatus, payFilterType, payFilterMethod, payDateFrom, payDateTo, paySearch]);
 
   async function fetchPayments() {
-  const { data } = await supabase.from("payments").select("*").eq("company_id", companyId).is("archived_at", null).order("date", { ascending: false }).limit(500);
+  setLoading(true);
+  let query = supabase.from("payments").select("*", { count: "exact" }).eq("company_id", companyId).is("archived_at", null);
+  if (payFilterStatus !== "all") query = query.eq("status", payFilterStatus);
+  if (payFilterType !== "all") query = query.eq("type", payFilterType);
+  if (payFilterMethod !== "all") query = query.eq("method", payFilterMethod);
+  if (payDateFrom) query = query.gte("date", payDateFrom);
+  if (payDateTo) query = query.lte("date", payDateTo);
+  if (paySearch) query = query.or(`tenant.ilike.%${paySearch}%,property.ilike.%${paySearch}%`);
+  const { data, count } = await query.order("date", { ascending: false }).range(payPage * PAY_PAGE_SIZE, (payPage + 1) * PAY_PAGE_SIZE - 1);
   setPayments(data || []);
+  setPayTotalCount(count || 0);
   setLoading(false);
   }
 
@@ -3747,21 +3802,20 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   )}
 
   {(() => {
-  const fp = payments.filter(p => {
-  if (payFilterStatus !== "all" && p.status !== payFilterStatus) return false;
-  if (payFilterType !== "all" && p.type !== payFilterType) return false;
-  if (payFilterMethod !== "all" && p.method !== payFilterMethod) return false;
-  if (payDateFrom && p.date < payDateFrom) return false;
-  if (payDateTo && p.date > payDateTo) return false;
-  if (paySearch) {
-  const q = paySearch.toLowerCase();
-  if (!p.tenant?.toLowerCase().includes(q) && !p.property?.toLowerCase().includes(q)) return false;
-  }
-  return true;
-  });
+  const fp = payments;
+  const payTotalPages = Math.ceil(payTotalCount / PAY_PAGE_SIZE);
   return (
+  <>
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden">
-  <div className="px-4 py-2 text-xs text-slate-400 border-b border-indigo-50">{fp.length} of {payments.length} payments</div>
+  <div className="px-4 py-2 text-xs text-slate-400 border-b border-indigo-50 flex items-center justify-between">
+  <span>{payTotalCount} payments{payTotalPages > 1 ? ` — Page ${payPage + 1} of ${payTotalPages}` : ""}</span>
+  {payTotalPages > 1 && (
+  <div className="flex gap-1">
+  <button onClick={() => setPayPage(Math.max(0, payPage - 1))} disabled={payPage === 0} className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded-lg disabled:opacity-30">← Prev</button>
+  <button onClick={() => setPayPage(Math.min(payTotalPages - 1, payPage + 1))} disabled={payPage >= payTotalPages - 1} className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded-lg disabled:opacity-30">Next →</button>
+  </div>
+  )}
+  </div>
   <table className="w-full text-sm">
   <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
   <tr>
@@ -3787,6 +3841,16 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   </table>
   {fp.length === 0 && <div className="text-center py-8 text-slate-400 text-sm">No payments match filters</div>}
   </div>
+  {payTotalPages > 1 && (
+  <div className="flex items-center justify-between mt-3">
+  <span className="text-xs text-slate-400">Page {payPage + 1} of {payTotalPages} ({payTotalCount} records)</span>
+  <div className="flex gap-1">
+  <button onClick={() => setPayPage(Math.max(0, payPage - 1))} disabled={payPage === 0} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg disabled:opacity-30">← Prev</button>
+  <button onClick={() => setPayPage(Math.min(payTotalPages - 1, payPage + 1))} disabled={payPage >= payTotalPages - 1} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg disabled:opacity-30">Next →</button>
+  </div>
+  </div>
+  )}
+  </>
   );
   })()}
   </>)}
@@ -13162,29 +13226,44 @@ function AuditTrail({ companyId }) {
   const [filterAction, setFilterAction] = useState("all");
   const [filterUser, setFilterUser] = useState("");
   const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
   const PAGE_SIZE = 50;
 
-  useEffect(() => { fetchLogs(); }, [companyId]);
+  useEffect(() => { fetchLogs(); }, [companyId, page, filterModule, filterAction, filterUser]);
 
   async function fetchLogs() {
   setLoading(true);
-  const { data } = await supabase.from("audit_trail").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(500);
+  let query = supabase.from("audit_trail").select("*", { count: "exact" }).eq("company_id", companyId);
+  if (filterModule !== "all") query = query.eq("module", filterModule);
+  if (filterAction !== "all") query = query.eq("action", filterAction);
+  if (filterUser) query = query.ilike("user_email", `%${filterUser}%`);
+  const { data, count } = await query.order("created_at", { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
   setLogs(data || []);
+  setTotalCount(count || 0);
   setLoading(false);
   }
 
-  const modules = [...new Set(logs.map(l => l.module))].sort();
-  const actions = [...new Set(logs.map(l => l.action))].sort();
-  const users = [...new Set(logs.map(l => l.user_email))].sort();
+  // Fetch distinct filter values once
+  const [filterOptions, setFilterOptions] = useState({ modules: [], actions: [], users: [] });
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("audit_trail").select("module, action, user_email").eq("company_id", companyId).limit(1000);
+      if (data) {
+        setFilterOptions({
+          modules: [...new Set(data.map(l => l.module))].sort(),
+          actions: [...new Set(data.map(l => l.action))].sort(),
+          users: [...new Set(data.map(l => l.user_email))].sort(),
+        });
+      }
+    })();
+  }, [companyId]);
 
-  const filtered = logs.filter(l =>
-  (filterModule === "all" || l.module === filterModule) &&
-  (filterAction === "all" || l.action === filterAction) &&
-  (!filterUser || l.user_email.toLowerCase().includes(filterUser.toLowerCase()))
-  );
+  const modules = filterOptions.modules;
+  const actions = filterOptions.actions;
+  const users = filterOptions.users;
 
-  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const paged = logs;
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const actionColors = {
   create: "bg-emerald-100 text-emerald-700",
@@ -13225,7 +13304,7 @@ function AuditTrail({ companyId }) {
   {/* Stats */}
   <div className="grid grid-cols-4 gap-3 mb-4">
   <div className="bg-white rounded-3xl border border-indigo-50 p-3 text-center">
-  <p className="text-lg font-manrope font-bold text-slate-800">{filtered.length}</p>
+  <p className="text-lg font-manrope font-bold text-slate-800">{totalCount}</p>
   <p className="text-xs text-slate-400">Total Actions</p>
   </div>
   <div className="bg-white rounded-3xl border border-indigo-50 p-3 text-center">
@@ -13274,7 +13353,7 @@ function AuditTrail({ companyId }) {
   {/* Pagination */}
   {totalPages > 1 && (
   <div className="flex items-center justify-between mt-3">
-  <span className="text-xs text-slate-400">Page {page + 1} of {totalPages} ({filtered.length} records)</span>
+  <span className="text-xs text-slate-400">Page {page + 1} of {totalPages} ({totalCount} records)</span>
   <div className="flex gap-1">
   <button onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg disabled:opacity-30">← Prev</button>
   <button onClick={() => setPage(Math.min(totalPages - 1, page + 1))} disabled={page >= totalPages - 1} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg disabled:opacity-30">Next →</button>
@@ -14029,6 +14108,26 @@ function AppInner() {
   return () => { if (authSub) authSub.unsubscribe(); };
   }, []);
 
+  // Inactivity timeout — auto-logout after 30 minutes of no user interaction
+  useEffect(() => {
+    if (!currentUser) return;
+    const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+    let timer = setTimeout(handleIdleLogout, IDLE_TIMEOUT);
+    function resetTimer() {
+      clearTimeout(timer);
+      timer = setTimeout(handleIdleLogout, IDLE_TIMEOUT);
+    }
+    function handleIdleLogout() {
+      supabase.auth.signOut();
+    }
+    const events = ["mousedown", "keydown", "touchstart", "scroll"];
+    events.forEach(e => window.addEventListener(e, resetTimer, { passive: true }));
+    return () => {
+      clearTimeout(timer);
+      events.forEach(e => window.removeEventListener(e, resetTimer));
+    };
+  }, [currentUser]);
+
   // Auto-select company ONLY for tenant/owner roles — everyone else sees the company selector
   async function autoSelectCompany(user) {
   if (!user?.email) return;
@@ -14328,9 +14427,9 @@ function AppInner() {
   // Owner-admins (created their own company) get full app access
   // Only force owner_portal for owners invited into a PM's company
   const effectiveRole = userRole || companyRole || "office_assistant";
-  const effectivePage = effectiveRole === "tenant" ? "tenant_portal" : (effectiveRole === "owner" && companyRole !== "admin") ? "owner_portal" : page;
-  const Page = pageComponents[effectivePage] || Dashboard;
   const safePage = allowedPages.includes(page) ? page : allowedPages[0];
+  const effectivePage = effectiveRole === "tenant" ? "tenant_portal" : (effectiveRole === "owner" && companyRole !== "admin") ? "owner_portal" : safePage;
+  const Page = pageComponents[effectivePage] || Dashboard;
 
   return (
   <div className="flex h-screen bg-[#fcf8ff] font-inter overflow-hidden">

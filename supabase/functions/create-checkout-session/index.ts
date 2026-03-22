@@ -4,6 +4,25 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+// --- Rate Limiter (per-IP, sliding window) ---
+const rateLimitMap = new Map<string, number[]>();
+const RATE_LIMIT = 10;       // max requests
+const RATE_WINDOW = 60_000;  // per 60 seconds
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const hits = (rateLimitMap.get(ip) || []).filter(t => now - t < RATE_WINDOW);
+  if (hits.length >= RATE_LIMIT) return false;
+  hits.push(now);
+  rateLimitMap.set(ip, hits);
+  // Cleanup old IPs every 1000 entries
+  if (rateLimitMap.size > 1000) {
+    for (const [k, v] of rateLimitMap) {
+      if (v.every(t => now - t > RATE_WINDOW)) rateLimitMap.delete(k);
+    }
+  }
+  return true;
+}
+
 const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY") || "";
 
 serve(async (req) => {
@@ -21,6 +40,15 @@ serve(async (req) => {
 
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
+  }
+
+  // Rate limit check
+  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  if (!checkRateLimit(clientIp)) {
+    return new Response(JSON.stringify({ error: "Too many requests" }), {
+      status: 429,
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Retry-After": "60" },
+    });
   }
 
   try {

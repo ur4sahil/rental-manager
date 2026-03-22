@@ -22,3 +22,9 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/auto-rent-charges/deno.json"
 entrypoint = "./functions/auto-rent-charges/index.ts"
+
+[functions.health-check]
+enabled = true
+verify_jwt = false
+import_map = "./functions/health-check/deno.json"
+entrypoint = "./functions/health-check/index.ts"

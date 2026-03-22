@@ -9,10 +9,36 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// --- Rate Limiter (per-IP, sliding window) ---
+const rateLimitMap = new Map<string, number[]>();
+const RATE_LIMIT = 5;        // max requests (cron-only)
+const RATE_WINDOW = 60_000;  // per 60 seconds
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const hits = (rateLimitMap.get(ip) || []).filter(t => now - t < RATE_WINDOW);
+  if (hits.length >= RATE_LIMIT) return false;
+  hits.push(now);
+  rateLimitMap.set(ip, hits);
+  if (rateLimitMap.size > 1000) {
+    for (const [k, v] of rateLimitMap) {
+      if (v.every(t => now - t > RATE_WINDOW)) rateLimitMap.delete(k);
+    }
+  }
+  return true;
+}
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
 serve(async (req) => {
+  // Rate limit check
+  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  if (!checkRateLimit(clientIp)) {
+    return new Response(JSON.stringify({ error: "Too many requests" }), {
+      status: 429, headers: { "Content-Type": "application/json", "Retry-After": "60" },
+    });
+  }
+
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
   const today = new Date().toISOString().slice(0, 10);
   const currentMonth = today.slice(0, 7);

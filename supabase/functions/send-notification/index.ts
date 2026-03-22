@@ -13,7 +13,33 @@ const VAPID_PUBLIC_KEY = Deno.env.get("VAPID_PUBLIC_KEY") || "";
 const VAPID_PRIVATE_KEY = Deno.env.get("VAPID_PRIVATE_KEY") || "";
 const VAPID_SUBJECT = Deno.env.get("VAPID_SUBJECT") || "mailto:admin@propmanager.app";
 
+// --- Rate Limiter (per-IP, sliding window) ---
+const rateLimitMap = new Map<string, number[]>();
+const RATE_LIMIT = 5;        // max requests (cron-only, shouldn't be called often)
+const RATE_WINDOW = 60_000;  // per 60 seconds
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const hits = (rateLimitMap.get(ip) || []).filter(t => now - t < RATE_WINDOW);
+  if (hits.length >= RATE_LIMIT) return false;
+  hits.push(now);
+  rateLimitMap.set(ip, hits);
+  if (rateLimitMap.size > 1000) {
+    for (const [k, v] of rateLimitMap) {
+      if (v.every(t => now - t > RATE_WINDOW)) rateLimitMap.delete(k);
+    }
+  }
+  return true;
+}
+
 serve(async (req) => {
+  // Rate limit check
+  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  if (!checkRateLimit(clientIp)) {
+    return new Response(JSON.stringify({ error: "Too many requests" }), {
+      status: 429, headers: { "Content-Type": "application/json", "Retry-After": "60" },
+    });
+  }
+
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     
