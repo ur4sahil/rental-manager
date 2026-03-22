@@ -1516,9 +1516,19 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const { error } = editingProperty
   ? await supabase.from("properties").update({ address: compositeAddress, address_line_1: form.address_line_1, address_line_2: form.address_line_2, city: form.city, state: form.state, zip: form.zip, type: form.type, status: form.status, rent: form.status === "occupied" ? form.rent : null, security_deposit: form.status === "occupied" ? form.security_deposit : null, tenant: form.status === "occupied" ? form.tenant : "", lease_start: form.status === "occupied" ? form.lease_start : null, lease_end: form.status === "occupied" ? form.lease_end : null, notes: form.notes }).eq("id", editingProperty.id).eq("company_id", companyId)
   : await supabase.from("properties").insert([{ address: compositeAddress, address_line_1: form.address_line_1, address_line_2: form.address_line_2, city: form.city, state: form.state, zip: form.zip, type: form.type, status: form.status, rent: form.status === "occupied" ? form.rent : null, security_deposit: form.status === "occupied" ? form.security_deposit : null, tenant: form.status === "occupied" ? form.tenant : "", lease_start: form.status === "occupied" ? form.lease_start : null, lease_end: form.status === "occupied" ? form.lease_end : null, notes: form.notes, company_id: companyId }]);
-  if (error) { showToast(userError(error.message), "error"); return; }
-  // Track whether to show doc checklist (shown AFTER form closes to prevent re-save loop)
-  const _showDocChecklistAfterSave = form.status === "occupied" && !editingProperty;
+  if (error) {
+  // Better error message for duplicate address
+  if (error.message?.includes("idx_properties_unique_address") || error.message?.includes("duplicate")) {
+  showToast("A property with this exact address already exists in your company. Please check your existing properties.", "error");
+  } else {
+  showToast(userError(error.message), "error");
+  }
+  return;
+  }
+  // Track tenant info for post-save doc prompt
+  const _isNewOccupied = form.status === "occupied" && form.tenant.trim();
+  const _savedTenantName = form.tenant.trim();
+  const _savedAddress = compositeAddress;
   // Auto-create tenant on tenant page when property becomes occupied
   if (form.status === "occupied" && form.tenant.trim()) {
   const { data: existingTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.tenant.trim()).eq("property", compositeAddress).maybeSingle();
@@ -1626,13 +1636,13 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }
   setShowForm(false);
   setEditingProperty(null);
-  const savedTenant = form.tenant;
-  const savedAddress = compositeAddress;
   setForm({ address_line_1: "", address_line_2: "", city: "", state: "", zip: "", type: "Single Family", status: "vacant", rent: "", security_deposit: "", tenant: "", tenant_email: "", tenant_phone: "", lease_start: "", lease_end: "", notes: "" });
   fetchProperties();
-  // Show doc checklist AFTER form is closed (prevents re-save loop)
-  if (_showDocChecklistAfterSave) {
-  setShowDocChecklist({ name: savedTenant, property: savedAddress, isNew: true });
+  // Show doc upload prompt for occupied properties (form is now closed)
+  if (_isNewOccupied) {
+  setShowDocChecklist({ name: _savedTenantName, property: _savedAddress, isNew: true });
+  } else {
+  showToast("Property saved successfully", "success");
   }
   } finally { guardRelease("saveProperty"); }
   }
@@ -2146,23 +2156,29 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
 
   {showDocChecklist && (
-  <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 mb-4">
-  <div className="flex items-center justify-between mb-3">
-  <div className="text-sm font-bold text-amber-800">📋 Required Documents for {showDocChecklist.name}</div>
-  <button onClick={() => setShowDocChecklist(null)} className="text-amber-400 hover:text-amber-600">✕</button>
+  <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6">
+  <div className="text-center mb-4">
+  <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+  <span className="material-icons-outlined text-emerald-600 text-2xl">check_circle</span>
   </div>
-  <p className="text-xs text-amber-600 mb-3">The following documents are required for lease compliance. Please upload them in the Documents section.</p>
-  <div className="space-y-2">
+  <h3 className="text-lg font-manrope font-bold text-slate-800">Property Saved Successfully</h3>
+  <p className="text-sm text-slate-400 mt-1">Tenant <strong>{showDocChecklist.name}</strong> has been created at <strong>{showDocChecklist.property?.split(",")[0]}</strong></p>
+  </div>
+  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+  <div className="text-sm font-semibold text-amber-800 mb-2">Required Documents</div>
+  <div className="space-y-1.5">
   {["Signed Lease Agreement", "Government-Issued ID", "Renters Insurance Certificate", "Proof of Utility Transfer"].map(doc => (
-  <div key={doc} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-amber-100">
-  <span className="text-amber-400">☐</span>
-  <span className="text-sm text-slate-700">{doc}</span>
+  <div key={doc} className="flex items-center gap-2 text-xs text-slate-600">
+  <span className="text-amber-400">☐</span>{doc}
   </div>
   ))}
   </div>
-  <div className="flex gap-2 mt-3">
-  <button onClick={() => { setShowDocUpload({ property: showDocChecklist.property, tenant: showDocChecklist.name }); setShowDocChecklist(null); }} className="bg-amber-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-amber-700">Upload Documents Now</button>
-  <button onClick={async () => { if (isAdmin || await showConfirm({ message: "Skip document upload? This will require admin approval later." })) setShowDocChecklist(null); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Skip for Now</button>
+  </div>
+  <div className="flex gap-3">
+  <button onClick={() => { setShowDocUpload({ property: showDocChecklist.property, tenant: showDocChecklist.name }); setShowDocChecklist(null); }} className="flex-1 bg-indigo-600 text-white text-sm py-2.5 rounded-xl font-semibold hover:bg-indigo-700">Upload Documents</button>
+  <button onClick={() => { setShowDocChecklist(null); showToast("You can upload documents later from the Documents section", "info"); }} className="flex-1 bg-slate-100 text-slate-600 text-sm py-2.5 rounded-xl font-semibold hover:bg-slate-200">Save Without Documents</button>
+  </div>
   </div>
   </div>
   )}
@@ -2455,7 +2471,14 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const { error } = editingTenant
   ? await supabase.from("tenants").update({ name: form.name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, move_in: form.lease_start || null, lease_end_date: form.lease_end || null, move_out: form.lease_end || null, rent: form.rent }).eq("id", editingTenant.id).eq("company_id", companyId)
   : await supabase.from("tenants").insert([{ company_id: companyId, name: form.name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, rent: form.rent, balance: 0, doc_status: "pending_docs" }]);
-  if (error) { showToast("Error saving tenant: " + error.message, "error"); return; }
+  if (error) {
+  if (error.message?.includes("idx_tenants_unique_name_property") || error.message?.includes("duplicate")) {
+  showToast("A tenant named \"" + form.name.trim() + "\" already exists at this property. Please check your existing tenants.", "error");
+  } else {
+  showToast("Error saving tenant: " + userError(error.message), "error");
+  }
+  return;
+  }
   // #1: Auto-create lease and update property when tenant added with dates/rent
   if (!editingTenant && form.property) {
   // Update property to occupied with tenant info
