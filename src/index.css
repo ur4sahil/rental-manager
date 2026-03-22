@@ -11,3 +11,16 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* Prevent dropdowns and selects from overflowing on mobile */
+select {
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
+/* Constrain absolute-positioned dropdowns to viewport on mobile */
+@media (max-width: 640px) {
+  .absolute {
+    max-width: calc(100vw - 1rem);
+  }
+}

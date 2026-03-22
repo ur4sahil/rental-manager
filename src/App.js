@@ -1957,12 +1957,12 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   )}
 
-  <div className="flex flex-col md:flex-row gap-3 mb-4">
-  <Input placeholder="Search properties..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1" />
-  <select value={filter} onChange={e => setFilter(e.target.value)} >
+  <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-3 mb-4">
+  <Input placeholder="Search properties..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 min-w-0" />
+  <select value={filter} onChange={e => setFilter(e.target.value)} className="w-full sm:w-auto" >
   <option value="all">All Status</option><option value="occupied">Occupied</option><option value="vacant">Vacant</option><option value="maintenance">Maintenance</option>
   </select>
-  <select value={filterType} onChange={e => setFilterType(e.target.value)} >
+  <select value={filterType} onChange={e => setFilterType(e.target.value)} className="w-full sm:w-auto" >
   <option value="all">All Types</option>
   {propertyTypes.map(t => <option key={t} value={t}>{t}</option>)}
   </select>
@@ -1994,7 +1994,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="relative">
   <button onClick={() => setShowColPicker(!showColPicker)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-xs text-slate-400 hover:bg-indigo-50/30">⚙️ Columns</button>
   {showColPicker && (
-  <div className="absolute right-0 top-10 bg-white border border-indigo-100 rounded-3xl shadow-lg p-3 z-50 w-48">
+  <div className="absolute right-0 top-10 bg-white border border-indigo-100 rounded-3xl shadow-lg p-3 z-50 w-48 max-w-[calc(100vw-2rem)]">
   {allCols.map(c => (
   <label key={c.id} className="flex items-center gap-2 py-1 text-xs text-slate-700 cursor-pointer">
   <input type="checkbox" checked={visibleCols.includes(c.id)} onChange={() => setVisibleCols(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id])} className="rounded" />
@@ -3293,7 +3293,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   {/* Filters */}
   <div className="flex flex-wrap gap-2 mb-4">
-  <Input placeholder="Search name, email, phone, property..." value={tenantSearch || ""} onChange={e => setTenantSearch(e.target.value)} className="flex-1 min-w-48" />
+  <Input placeholder="Search name, email, phone, property..." value={tenantSearch || ""} onChange={e => setTenantSearch(e.target.value)} className="flex-1 min-w-0 sm:min-w-48" />
   <select value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} >
   <option value="all">All Status</option><option value="active">Active</option><option value="notice">Notice</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
   </select>
@@ -3814,7 +3814,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
 
   {/* Filters */}
   <div className="flex flex-wrap gap-2 mb-4">
-  <Input placeholder="Search tenant or property..." value={paySearch} onChange={e => setPaySearch(e.target.value)} className="flex-1 min-w-40" />
+  <Input placeholder="Search tenant or property..." value={paySearch} onChange={e => setPaySearch(e.target.value)} className="flex-1 min-w-0 sm:min-w-40" />
   <select value={payFilterStatus} onChange={e => setPayFilterStatus(e.target.value)} >
   <option value="all">All Status</option><option value="paid">Paid</option><option value="unpaid">Unpaid</option><option value="partial">Partial</option>
   </select>
@@ -4190,7 +4190,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <button key={s} onClick={() => setFilter(s)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === s ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{s.replace("_", " ")}</button>
   ))}
   <div className="flex-1" />
-  <Input placeholder="Search issue, property, tenant..." value={woSearch} onChange={e => setWoSearch(e.target.value)} className="min-w-40" />
+  <Input placeholder="Search issue, property, tenant..." value={woSearch} onChange={e => setWoSearch(e.target.value)} className="flex-1 min-w-0 sm:min-w-40" />
   <select value={woFilterProp} onChange={e => setWoFilterProp(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm">
   <option value="all">All Properties</option>
   {[...new Set(workOrders.map(w => w.property).filter(Boolean))].sort().map(p => <option key={p} value={p}>{p.length > 30 ? p.slice(0, 30) + "..." : p}</option>)}
@@ -4609,7 +4609,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {/* Toolbar */}
   <div className="flex flex-col md:flex-row gap-3 mb-4">
   <div className="mr-auto"></div>
-  <Input placeholder="Search..." value={utilSearch} onChange={e => setUtilSearch(e.target.value)} className="w-40" />
+  <Input placeholder="Search..." value={utilSearch} onChange={e => setUtilSearch(e.target.value)} className="w-full sm:w-40" />
   <select value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} >
   <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
   </select>
@@ -14549,7 +14549,7 @@ function AppInner() {
   )}
   </button>
   {showNotifications && (
-  <div className="absolute right-0 top-12 w-80 bg-white rounded-3xl shadow-card border border-indigo-50 z-50">
+  <div className="absolute right-0 top-12 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-3xl shadow-card border border-indigo-50 z-50">
   <div className="px-4 py-3 border-b border-indigo-50 flex justify-between items-center">
   <span className="font-manrope font-bold text-slate-700 text-sm">Notifications</span>
   <div className="flex gap-2">
