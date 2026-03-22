@@ -462,36 +462,79 @@ async function getPropertyClassId(propertyAddress, companyId) {
 
 // ============ ACCOUNT CODE RESOLUTION ============
 // Maps bare account codes ("1000") to UUID primary keys in acct_accounts.
-// Uses the `code` column (not the old text ID). Auto-creates missing accounts.
+// Uses the `code` column. Falls back to name matching. Auto-creates missing accounts.
 const _acctIdCache = {};
 const _acctCodeToName = { "1000": "Checking Account", "1100": "Accounts Receivable", "2100": "Security Deposits Held", "2200": "Owner Distributions Payable", "4000": "Rental Income", "4010": "Late Fee Income", "4100": "Other Income", "4200": "Management Fee Income", "5300": "Repairs & Maintenance", "5400": "Utilities Expense" };
 async function resolveAccountId(bareCode, companyId) {
-  if (!companyId) return bareCode;
+  if (!companyId) return null;
   const cid = companyId;
   if (!_acctIdCache[cid]) _acctIdCache[cid] = {};
   if (_acctIdCache[cid][bareCode]) return _acctIdCache[cid][bareCode];
-  // Bulk-fetch all accounts by code column and cache code → UUID mapping
+  // Bulk-fetch all accounts and cache by code, name, and old suffix patterns
   const { data: allAccts } = await supabase.from("acct_accounts").select("id, code, name").eq("company_id", cid);
   if (allAccts && allAccts.length > 0) {
   for (const a of allAccts) {
+  // Cache by code column (primary lookup)
   if (a.code) _acctIdCache[cid][a.code] = a.id;
-  // Also cache by name for reverse lookups
+  // Cache by name → standard code (fallback for migrated accounts)
   for (const [code, name] of Object.entries(_acctCodeToName)) {
   if (a.name === name && !_acctIdCache[cid][code]) _acctIdCache[cid][code] = a.id;
+  }
+  // Cache by old compound suffix (e.g., "co-abc-1000" → cache under "1000")
+  if (a.code) {
+  const suffix = a.code.match(/(\d{4,})$/);
+  if (suffix && !_acctIdCache[cid][suffix[1]]) _acctIdCache[cid][suffix[1]] = a.id;
   }
   }
   }
   if (_acctIdCache[cid][bareCode]) return _acctIdCache[cid][bareCode];
-  // Auto-create missing account with UUID PK + code column
+  // Auto-create missing account with UUID PK + bare code
   const acctName = _acctCodeToName[bareCode] || "Account " + bareCode;
   const acctType = bareCode[0] === "1" ? "Asset" : bareCode[0] === "2" ? "Liability" : bareCode[0] === "3" ? "Equity" : bareCode[0] === "4" ? "Revenue" : "Expense";
   const subType = bareCode[0] === "1" ? "Bank" : bareCode[0] === "2" ? "Other Current Liability" : bareCode[0] === "4" ? "Operating Revenue" : "Operating Expense";
-  const { data: created } = await supabase.from("acct_accounts").upsert([{
+  const { data: created, error: createErr } = await supabase.from("acct_accounts").upsert([{
   company_id: cid, code: bareCode, name: acctName, type: acctType, sub_type: subType, is_active: true
   }], { onConflict: "company_id,code" }).select("id").maybeSingle();
-  const resolvedId = created?.id || bareCode;
-  _acctIdCache[cid][bareCode] = resolvedId;
+  if (createErr) console.warn("resolveAccountId: auto-create failed for", bareCode, createErr.message);
+  const resolvedId = created?.id || null;
+  if (resolvedId) _acctIdCache[cid][bareCode] = resolvedId;
   return resolvedId;
+}
+
+// ============ TENANT AR SUB-ACCOUNT ============
+// Creates or retrieves a per-tenant AR sub-account (e.g., "1100-001 AR - Alice Johnson")
+// linked to the parent 1100 Accounts Receivable account.
+const _tenantArCache = {};
+async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
+  if (!companyId || !tenantName) return await resolveAccountId("1100", companyId);
+  const cacheKey = `${companyId}::${tenantName}`;
+  if (_tenantArCache[cacheKey]) return _tenantArCache[cacheKey];
+  // Check if tenant AR sub-account already exists
+  let query = supabase.from("acct_accounts").select("id, code").eq("company_id", companyId).eq("type", "Asset").ilike("name", `AR - ${tenantName}`);
+  if (tenantId) query = query.eq("tenant_id", tenantId);
+  const { data: existing } = await query.maybeSingle();
+  if (existing?.id) {
+  _tenantArCache[cacheKey] = existing.id;
+  return existing.id;
+  }
+  // Get parent AR account UUID
+  const parentArId = await resolveAccountId("1100", companyId);
+  // Generate next sub-account code: 1100-001, 1100-002, etc.
+  const { data: subAccts } = await supabase.from("acct_accounts").select("code").eq("company_id", companyId).like("code", "1100-%").order("code", { ascending: false }).limit(1);
+  const lastSeq = subAccts?.[0]?.code ? parseInt(subAccts[0].code.split("-")[1]) || 0 : 0;
+  const newCode = "1100-" + String(lastSeq + 1).padStart(3, "0");
+  // Create the sub-account
+  const { data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([{
+  company_id: companyId, code: newCode, name: "AR - " + tenantName,
+  type: "Asset", sub_type: "Accounts Receivable", is_active: true,
+  parent_id: parentArId, tenant_id: tenantId || null,
+  }]).select("id").maybeSingle();
+  if (createErr) {
+  console.warn("Failed to create tenant AR sub-account:", createErr.message);
+  return parentArId; // Fall back to parent AR
+  }
+  _tenantArCache[cacheKey] = newAcct?.id || parentArId;
+  return _tenantArCache[cacheKey];
 }
 
 // ============ AUTOMATIC RENT CHARGE ENGINE ============
@@ -556,13 +599,16 @@ async function autoPostRentCharges(companyId) {
 
   if (!postedRefs.has(ref)) {
   const monthRent = getRent(cursor);
+  // Use tenant-specific AR sub-account (e.g., "1100-001 AR - Alice Johnson")
+  const tenantArId = await getOrCreateTenantAR(cid, lease.tenant_name, lease.tenant_id);
+  const revenueId = await resolveAccountId("4000", cid);
   const jeId = await autoPostJournalEntry({
   companyId: cid, date: chargeDate,
   description: "Rent charge — " + lease.tenant_name + " — " + lease.property + " — " + monthStr,
   reference: ref, property: lease.property,
   lines: [
-  { account_id: "1100", account_name: "Accounts Receivable", debit: monthRent, credit: 0, class_id: classId, memo: lease.tenant_name + " rent " + monthStr },
-  { account_id: "4000", account_name: "Rental Income", debit: 0, credit: monthRent, class_id: classId, memo: lease.property + " " + monthStr },
+  { account_id: tenantArId, account_name: "AR - " + lease.tenant_name, debit: monthRent, credit: 0, class_id: classId, memo: lease.tenant_name + " rent " + monthStr },
+  { account_id: revenueId, account_name: "Rental Income", debit: 0, credit: monthRent, class_id: classId, memo: lease.property + " " + monthStr },
   ]
   });
   if (!jeId) { failed++; cursor.setMonth(cursor.getMonth() + 1); continue; }
