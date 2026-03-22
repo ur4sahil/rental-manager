@@ -1684,7 +1684,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   showToast("This property belongs to another company and cannot be archived here.", "error");
   return;
   }
-  if (!await showConfirm({ message: `Delete property "${address}"?\n\nThis will hide it from the active list. You can restore within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
+  if (!await showConfirm({ message: `Delete property "${address}"?\n\nThis will archive the property and all related data:\n• Work orders, utilities, documents\n• Inspections, vendor invoices, HOA payments\n• Active leases will be terminated\n• Draft journal entries will be voided\n• Posted journal entries are preserved for audit\n\nYou can restore within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
   // #17: Check if tenants have outstanding balance before archive
   const { data: propertyTenants } = await supabase.from("tenants").select("id, name, balance").eq("company_id", companyId).eq("property", address).is("archived_at", null);
   const tenantsWithBalance = (propertyTenants || []).filter(t => safeNum(t.balance) > 0);
@@ -1718,11 +1718,35 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("property", address);
   }
   addNotification("📦", `Property archived: ${address}`);
-  // Deactivate the accounting class for this property
+  // ── CASCADE ARCHIVE: Archive all related data for this property ──
+  const archiveTs = new Date().toISOString();
+  const archiveBy = userProfile?.email || "admin";
+  const archiveUpdate = { archived_at: archiveTs, archived_by: archiveBy };
+  // 1. Deactivate accounting class
   const { data: archProp } = await supabase.from("properties").select("class_id").eq("id", id).eq("company_id", companyId).maybeSingle();
   if (archProp?.class_id) await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("id", archProp.class_id);
   else await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("name", address);
-  logAudit("archive", "properties", `Archived property: ${address}` + (archiveTenant ? " (with tenant)" : ""), id, userProfile?.email, userRole, companyId);
+  // 2. Archive work orders
+  await supabase.from("work_orders").update(archiveUpdate).eq("company_id", companyId).eq("property", address).is("archived_at", null);
+  // 3. Archive utilities
+  await supabase.from("utilities").update(archiveUpdate).eq("company_id", companyId).eq("property", address).is("archived_at", null);
+  // 4. Archive documents
+  await supabase.from("documents").update(archiveUpdate).eq("company_id", companyId).eq("property", address).is("archived_at", null);
+  // 5. Archive vendor invoices
+  await supabase.from("vendor_invoices").update(archiveUpdate).eq("company_id", companyId).eq("property", address).is("archived_at", null);
+  // 6. Deactivate tenant AR sub-accounts for this property's tenants
+  if (propertyTenants?.length > 0) {
+  for (const t of propertyTenants) {
+  await supabase.from("acct_accounts").update({ is_active: false }).eq("company_id", companyId).eq("tenant_id", t.id);
+  }
+  }
+  // 7. Void unposted (draft) journal entries for this property — posted entries are preserved for audit
+  await supabase.from("acct_journal_entries").update({ status: "voided" }).eq("company_id", companyId).eq("property", address).eq("status", "draft");
+  // 8. Archive HOA payments
+  await supabase.from("hoa_payments").update(archiveUpdate).eq("company_id", companyId).eq("property", address).is("archived_at", null);
+  // 9. Archive inspections
+  await supabase.from("inspections").update(archiveUpdate).eq("company_id", companyId).eq("property", address).is("archived_at", null);
+  logAudit("archive", "properties", `Archived property: ${address} (cascaded to tenants, work orders, utilities, docs, invoices, inspections)` + (archiveTenant ? " (with tenants)" : ""), id, archiveBy, userRole, companyId);
   fetchProperties();
   } finally { guardRelease("deleteProperty"); }
   }
