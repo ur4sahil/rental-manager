@@ -1133,7 +1133,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
 
   const [acctRevenue, setAcctRevenue] = useState(0);
   const [acctExpenses, setAcctExpenses] = useState(0);
-  const [pendingApprovals, setPendingApprovals] = useState([]);
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
 
 
   useEffect(() => {
@@ -1158,19 +1158,15 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   const fourteenDays = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
   const { data: hoaData } = await supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("status", "unpaid").is("archived_at", null).lte("due_date", fourteenDays).order("due_date", { ascending: true });
   setHoaDue(hoaData || []);
-  // Fetch all pending admin approvals
-  const approvals = [];
+  // Count pending approvals (lightweight — full data loaded on Tasks page)
   try {
   const [propReqs, docExceptions, memberReqs] = await Promise.all([
-  supabase.from("property_change_requests").select("id, address, request_type, requested_by").eq("company_id", companyId).eq("status", "pending"),
-  supabase.from("doc_exception_requests").select("id, tenant_name").eq("company_id", companyId).eq("status", "pending"),
-  supabase.from("company_members").select("id, user_email").eq("company_id", companyId).eq("status", "pending"),
+  supabase.from("property_change_requests").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "pending"),
+  supabase.from("doc_exception_requests").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "pending"),
+  supabase.from("company_members").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "pending"),
   ]);
-  (propReqs.data || []).forEach(r => approvals.push({ icon: "🏠", text: (r.request_type === "add" ? "New property: " : "Edit: ") + r.address + " — by " + r.requested_by, link: "properties" }));
-  (docExceptions.data || []).forEach(r => approvals.push({ icon: "📄", text: "Doc exception: " + r.tenant_name, link: "tenants" }));
-  (memberReqs.data || []).forEach(r => approvals.push({ icon: "👤", text: "Join request: " + r.user_email, link: "roles" }));
-  } catch (e) { console.warn("Approval fetch:", e); }
-  setPendingApprovals(approvals);
+  setPendingApprovalCount((propReqs.count || 0) + (docExceptions.count || 0) + (memberReqs.count || 0));
+  } catch (e) { console.warn("Approval count:", e); }
   // Pull financials from accounting module (journal entries are the GL source of truth,
   // but dashboard stats also reference payments/tenants tables for quick metrics)
   try {
@@ -1224,56 +1220,23 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   <StatCard onClick={() => setPage("maintenance")} label="Open Work Orders" value={openWO} sub={`${workOrders.filter(w => w.priority === "emergency").length} emergency`} color="text-orange-500" />
   <StatCard onClick={() => setPage("utilities")} label="Pending Utilities" value={utilities.filter(u => u.status === "pending").length} sub="awaiting payment" color="text-yellow-600" />
   </div>
-  {/* Admin Approvals */}
-  {pendingApprovals.length > 0 && (
-  <div className="bg-amber-50 rounded-3xl shadow-card border border-amber-200 p-5 mb-6">
-  <div className="flex items-center justify-between mb-3">
-  <h3 className="font-manrope font-bold text-amber-800">Awaiting Approval ({pendingApprovals.length})</h3>
-  </div>
-  <div className="space-y-2 max-h-48 overflow-y-auto">
-  {pendingApprovals.map((a, i) => (
-  <div key={i} onClick={() => setPage(a.link)} className="flex items-center gap-3 bg-white rounded-xl px-3 py-2.5 cursor-pointer hover:bg-amber-50 transition-colors border border-amber-100">
-  <span className="text-lg">{a.icon}</span>
-  <span className="text-sm text-slate-700 flex-1">{a.text}</span>
-  <span className="text-xs text-amber-500 font-semibold">Review</span>
-  </div>
-  ))}
-  </div>
-  </div>
-  )}
-  {/* Pending Tasks */}
+  {/* Tasks & Approvals summary — click to go to full page */}
   {(() => {
-  const pendingDocs = tenants.filter(t => t.doc_status === "pending_docs" && !t.archived_at);
-  const delinquentTenants = tenants.filter(t => t.balance > 0 && !t.archived_at);
-  const emergencyWO = workOrders.filter(w => w.priority === "emergency" && w.status !== "completed");
-  const expiringLeases = tenants.filter(t => {
-  const end = t.lease_end_date || t.move_out;
-  if (!end) return false;
-  const days = Math.ceil((parseLocalDate(end) - new Date()) / 86400000);
-  return days > 0 && days <= 30;
-  });
-  const tasks = [
-  ...pendingDocs.map(t => ({ icon: "📄", text: t.name + " — documents pending upload", type: "docs", link: "tenants" })),
-  ...delinquentTenants.map(t => ({ icon: "💰", text: t.name + " — balance due " + formatCurrency(t.balance), type: "balance", link: "tenants" })),
-  ...emergencyWO.map(w => ({ icon: "🚨", text: (w.property || "Property") + " — " + w.issue, type: "emergency", link: "maintenance" })),
-  ...expiringLeases.map(t => ({ icon: "📅", text: t.name + " — lease expires " + (t.lease_end_date || t.move_out), type: "lease", link: "tenants" })),
-  ...hoaDue.map(h => ({ icon: "🏘️", text: (h.property || "HOA") + " — " + formatCurrency(h.amount) + " due " + h.due_date, type: "hoa", link: "hoa" })),
-  ];
-  return tasks.length > 0 ? (
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5 mb-6">
-  <div className="flex items-center justify-between mb-3">
-  <h3 className="font-manrope font-bold text-slate-700">Pending Tasks ({tasks.length})</h3>
+  const taskCount = tenants.filter(t => t.doc_status === "pending_docs").length
+  + tenants.filter(t => t.balance > 0).length
+  + workOrders.filter(w => w.priority === "emergency" && w.status !== "completed").length
+  + tenants.filter(t => { const end = t.lease_end_date || t.move_out; if (!end) return false; const days = Math.ceil((parseLocalDate(end) - new Date()) / 86400000); return days > 0 && days <= 30; }).length
+  + hoaDue.length + pendingApprovalCount;
+  return taskCount > 0 ? (
+  <div onClick={() => setPage("tasks")} className="bg-amber-50 rounded-3xl shadow-card border border-amber-200 p-4 mb-6 cursor-pointer hover:bg-amber-100 transition-colors flex items-center justify-between">
+  <div className="flex items-center gap-3">
+  <div className="w-10 h-10 bg-amber-200 text-amber-800 rounded-full flex items-center justify-center font-bold text-lg">{taskCount}</div>
+  <div>
+  <div className="font-manrope font-bold text-amber-800">Tasks & Approvals</div>
+  <div className="text-xs text-amber-600">{pendingApprovalCount > 0 ? pendingApprovalCount + " awaiting approval · " : ""}{taskCount - pendingApprovalCount} pending tasks</div>
   </div>
-  <div className="space-y-2 max-h-64 overflow-y-auto">
-  {tasks.slice(0, 15).map((task, i) => (
-  <div key={i} onClick={() => setPage(task.link)} className="flex items-center gap-3 bg-indigo-50/30 rounded-xl px-3 py-2.5 cursor-pointer hover:bg-indigo-50 transition-colors">
-  <span className="text-lg">{task.icon}</span>
-  <span className="text-sm text-slate-700 flex-1">{task.text}</span>
-  <span className="text-xs text-indigo-400">→</span>
   </div>
-  ))}
-  {tasks.length > 15 && <div className="text-xs text-slate-400 text-center pt-1">+{tasks.length - 15} more</div>}
-  </div>
+  <span className="material-icons-outlined text-amber-500">arrow_forward</span>
   </div>
   ) : null;
   })()}
@@ -9591,8 +9554,8 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
 
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
-  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","owners","notifications","audittrail","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
-  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","properties","tenants","payments","maintenance","utilities","hoa","accounting","notifications","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
+  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","accounting","owners","notifications","audittrail","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
+  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","accounting","notifications","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
   tenant: { label: "Tenant", color: "bg-indigo-50/300", pages: ["tenant_portal"] },
@@ -9601,6 +9564,7 @@ const ROLES = {
 
 const ALL_NAV = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard" },
+  { id: "tasks", label: "Tasks & Approvals", icon: "assignment" },
   { id: "properties", label: "Properties", icon: "apartment" },
   { id: "tenants", label: "Tenants", icon: "people" },
   { id: "payments", label: "Payments", icon: "payments" },
@@ -13012,8 +12976,161 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   );
 }
 
+// ============ TASKS & APPROVALS PAGE ============
+function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userProfile, userRole, addNotification }) {
+  const [loading, setLoading] = useState(true);
+  const [approvals, setApprovals] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [activeTab, setActiveTab] = useState("all");
+
+  useEffect(() => { fetchAll(); }, [companyId]);
+
+  async function fetchAll() {
+  setLoading(true);
+  const allApprovals = [];
+  const allTasks = [];
+  try {
+  const [propReqs, docExceptions, memberReqs, tenants, workOrders, leases, hoaDue] = await Promise.all([
+  supabase.from("property_change_requests").select("*").eq("company_id", companyId).eq("status", "pending").order("requested_at", { ascending: false }),
+  supabase.from("doc_exception_requests").select("*").eq("company_id", companyId).eq("status", "pending").order("created_at", { ascending: false }),
+  supabase.from("company_members").select("*").eq("company_id", companyId).eq("status", "pending").order("created_at", { ascending: false }),
+  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null),
+  supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null),
+  supabase.from("leases").select("*").eq("company_id", companyId).eq("status", "active"),
+  supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("status", "unpaid").is("archived_at", null),
+  ]);
+  // Approvals
+  (propReqs.data || []).forEach(r => allApprovals.push({ id: "prop-" + r.id, type: "property", icon: "🏠", title: (r.request_type === "add" ? "New Property" : "Edit Property") + ": " + r.address, subtitle: "Requested by " + r.requested_by + " · " + new Date(r.requested_at).toLocaleDateString(), data: r, link: "properties" }));
+  (docExceptions.data || []).forEach(r => allApprovals.push({ id: "doc-" + r.id, type: "document", icon: "📄", title: "Document Exception: " + r.tenant_name, subtitle: (r.reason || "No reason provided") + " · " + new Date(r.created_at).toLocaleDateString(), data: r, link: "tenants" }));
+  (memberReqs.data || []).forEach(r => allApprovals.push({ id: "member-" + r.id, type: "member", icon: "👤", title: "Join Request: " + r.user_email, subtitle: "Role: " + (r.role || "pending") + " · " + new Date(r.created_at).toLocaleDateString(), data: r, link: "roles" }));
+  // Tasks
+  const t = tenants.data || [];
+  const wo = workOrders.data || [];
+  const hoa = hoaDue.data || [];
+  t.filter(x => x.doc_status === "pending_docs").forEach(x => allTasks.push({ icon: "📄", title: x.name + " — documents pending", subtitle: x.property, link: "tenants", priority: "medium" }));
+  t.filter(x => safeNum(x.balance) > 0).forEach(x => allTasks.push({ icon: "💰", title: x.name + " — balance due " + formatCurrency(x.balance), subtitle: x.property, link: "tenants", priority: safeNum(x.balance) > 1000 ? "high" : "medium" }));
+  wo.filter(x => x.priority === "emergency" && x.status !== "completed").forEach(x => allTasks.push({ icon: "🚨", title: (x.property || "Property") + " — " + x.issue, subtitle: "Emergency · " + x.status, link: "maintenance", priority: "high" }));
+  t.filter(x => { const end = x.lease_end_date || x.move_out; if (!end) return false; const days = Math.ceil((parseLocalDate(end) - new Date()) / 86400000); return days > 0 && days <= 30; }).forEach(x => allTasks.push({ icon: "📅", title: x.name + " — lease expires " + (x.lease_end_date || x.move_out), subtitle: x.property, link: "tenants", priority: "high" }));
+  hoa.forEach(x => { const daysLeft = Math.ceil((new Date(x.due_date).getTime() - Date.now()) / 86400000); allTasks.push({ icon: "🏘️", title: (x.hoa_name || x.property || "HOA") + " — " + formatCurrency(x.amount) + " due " + x.due_date, subtitle: x.property, link: "hoa", priority: daysLeft <= 3 ? "high" : "medium" }); });
+  } catch (e) { console.warn("Tasks fetch:", e); }
+  setApprovals(allApprovals);
+  setTasks(allTasks);
+  setLoading(false);
+  }
+
+  async function handleApproval(item, action) {
+  if (action === "approve") {
+  if (item.type === "document") {
+  await supabase.from("doc_exception_requests").update({ status: "approved", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() }).eq("id", item.data.id);
+  await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", item.data.tenant_name).is("archived_at", null);
+  showToast("Document exception approved for " + item.data.tenant_name, "success");
+  logAudit("approve", "tenants", "Document exception approved for " + item.data.tenant_name, "", userProfile?.email, userRole, companyId);
+  } else if (item.type === "member") {
+  try {
+  const { error } = await supabase.rpc("approve_member_request", { p_member_id: item.data.id });
+  if (error) throw error;
+  showToast("Approved join request for " + item.data.user_email, "success");
+  } catch (e) {
+  await supabase.from("company_members").update({ status: "active" }).eq("id", item.data.id).eq("company_id", companyId);
+  showToast("Approved " + item.data.user_email, "success");
+  }
+  } else if (item.type === "property") {
+  showToast("Navigate to Properties to review this request.", "info");
+  setPage("properties");
+  return;
+  }
+  } else {
+  if (item.type === "document") {
+  await supabase.from("doc_exception_requests").update({ status: "rejected", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() }).eq("id", item.data.id);
+  showToast("Document exception rejected.", "info");
+  } else if (item.type === "member") {
+  await supabase.from("company_members").update({ status: "rejected" }).eq("id", item.data.id).eq("company_id", companyId);
+  showToast("Rejected join request for " + item.data.user_email, "info");
+  } else if (item.type === "property") {
+  await supabase.from("property_change_requests").update({ status: "rejected", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() }).eq("id", item.data.id).eq("company_id", companyId);
+  showToast("Property request rejected.", "info");
+  }
+  }
+  fetchAll();
+  }
+
+  if (loading) return <Spinner />;
+
+  const filtered = activeTab === "approvals" ? [] : activeTab === "tasks" ? [] : [...approvals.map(a => ({ ...a, _kind: "approval" })), ...tasks.map(t => ({ ...t, _kind: "task" }))];
+  const showApprovals = activeTab === "all" || activeTab === "approvals";
+  const showTasks = activeTab === "all" || activeTab === "tasks";
+
+  return (
+  <div>
+  <div className="flex items-center justify-between mb-5">
+  <h2 className="text-2xl font-manrope font-bold text-slate-800">Tasks & Approvals</h2>
+  <button onClick={fetchAll} className="text-xs text-indigo-600 hover:underline">Refresh</button>
+  </div>
+
+  <div className="flex gap-2 mb-5">
+  {[["all", "All (" + (approvals.length + tasks.length) + ")"], ["approvals", "Approvals (" + approvals.length + ")"], ["tasks", "Tasks (" + tasks.length + ")"]].map(([id, label]) => (
+  <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium rounded-xl " + (activeTab === id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
+  ))}
+  </div>
+
+  {/* Approvals Section */}
+  {showApprovals && approvals.length > 0 && (
+  <div className="mb-6">
+  {activeTab === "all" && <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">Awaiting Approval</h3>}
+  <div className="space-y-3">
+  {approvals.map(a => (
+  <div key={a.id} className="bg-white rounded-xl border border-amber-200 p-4 flex items-center justify-between">
+  <div className="flex items-center gap-3 flex-1 min-w-0">
+  <span className="text-2xl">{a.icon}</span>
+  <div className="min-w-0">
+  <div className="font-semibold text-slate-800 truncate">{a.title}</div>
+  <div className="text-xs text-slate-400">{a.subtitle}</div>
+  </div>
+  </div>
+  <div className="flex gap-2 shrink-0 ml-3">
+  <button onClick={() => handleApproval(a, "approve")} className="text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 font-medium">Approve</button>
+  <button onClick={() => handleApproval(a, "reject")} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100 font-medium">Reject</button>
+  </div>
+  </div>
+  ))}
+  </div>
+  </div>
+  )}
+
+  {/* Tasks Section */}
+  {showTasks && tasks.length > 0 && (
+  <div className="mb-6">
+  {activeTab === "all" && <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">Pending Tasks</h3>}
+  <div className="space-y-2">
+  {tasks.map((t, i) => (
+  <div key={i} onClick={() => setPage(t.link)} className="bg-white rounded-xl border border-indigo-50 p-4 flex items-center gap-3 cursor-pointer hover:border-indigo-200 hover:shadow-sm transition-all">
+  <span className="text-xl">{t.icon}</span>
+  <div className="flex-1 min-w-0">
+  <div className="text-sm font-semibold text-slate-800 truncate">{t.title}</div>
+  <div className="text-xs text-slate-400">{t.subtitle}</div>
+  </div>
+  <span className={"text-xs px-2 py-0.5 rounded-full font-bold " + (t.priority === "high" ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-700")}>{t.priority}</span>
+  <span className="material-icons-outlined text-slate-300 text-sm">arrow_forward</span>
+  </div>
+  ))}
+  </div>
+  </div>
+  )}
+
+  {approvals.length === 0 && tasks.length === 0 && (
+  <div className="text-center py-16">
+  <span className="material-icons-outlined text-5xl text-slate-200 mb-3">task_alt</span>
+  <div className="text-lg font-semibold text-slate-400">All caught up!</div>
+  <div className="text-sm text-slate-300">No pending tasks or approvals</div>
+  </div>
+  )}
+  </div>
+  );
+}
+
 const pageComponents = {
   dashboard: Dashboard,
+  tasks: TasksAndApprovals,
   properties: Properties,
   tenants: Tenants,
   payments: Payments,
