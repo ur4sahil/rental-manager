@@ -54,7 +54,7 @@ CREATE INDEX IF NOT EXISTS idx_notif_queue_status ON notification_queue(status, 
 
 -- Company Members (role lookups)
 CREATE INDEX IF NOT EXISTS idx_company_members_user ON company_members(auth_user_id, status);
-CREATE INDEX IF NOT EXISTS idx_company_members_email ON company_members(email, status);
+CREATE INDEX IF NOT EXISTS idx_company_members_email ON company_members(user_email, status);
 
 -- Autopay Schedules
 CREATE INDEX IF NOT EXISTS idx_autopay_company ON autopay_schedules(company_id);
