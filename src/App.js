@@ -98,8 +98,8 @@ function guardSubmit(key, recordId) {
   const guardKey = recordId ? key + ":" + recordId : key;
   if (_submitGuards[guardKey]) return false;
   _submitGuards[guardKey] = true;
-  // Fallback: release after 8s if not manually released
-  setTimeout(() => { _submitGuards[guardKey] = false; }, 8000);
+  // Fallback: release after 30s if not manually released (accounting operations can take 10-15s)
+  setTimeout(() => { _submitGuards[guardKey] = false; }, 30000);
   return true;
 }
 function guardRelease(key, recordId) {
@@ -2132,7 +2132,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="Any additional notes" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={saveProperty} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">{isAdmin ? "Save" : "Submit"}</button>
+  <button onClick={saveProperty} disabled={_submitGuards["saveProperty"]} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">{_submitGuards["saveProperty"] ? "Saving..." : (isAdmin ? "Save" : "Submit")}</button>
   <button onClick={() => { setShowForm(false); setEditingProperty(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
@@ -3463,7 +3463,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   )}
   <div className="flex gap-2 mt-3">
-  <button onClick={saveTenant} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
+  <button onClick={saveTenant} disabled={_submitGuards["saveTenant"]} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">{_submitGuards["saveTenant"] ? "Saving..." : "Save"}</button>
   <button onClick={() => { setShowForm(false); setEditingTenant(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
