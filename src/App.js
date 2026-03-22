@@ -1517,10 +1517,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   ? await supabase.from("properties").update({ address: compositeAddress, address_line_1: form.address_line_1, address_line_2: form.address_line_2, city: form.city, state: form.state, zip: form.zip, type: form.type, status: form.status, rent: form.status === "occupied" ? form.rent : null, security_deposit: form.status === "occupied" ? form.security_deposit : null, tenant: form.status === "occupied" ? form.tenant : "", lease_start: form.status === "occupied" ? form.lease_start : null, lease_end: form.status === "occupied" ? form.lease_end : null, notes: form.notes }).eq("id", editingProperty.id).eq("company_id", companyId)
   : await supabase.from("properties").insert([{ address: compositeAddress, address_line_1: form.address_line_1, address_line_2: form.address_line_2, city: form.city, state: form.state, zip: form.zip, type: form.type, status: form.status, rent: form.status === "occupied" ? form.rent : null, security_deposit: form.status === "occupied" ? form.security_deposit : null, tenant: form.status === "occupied" ? form.tenant : "", lease_start: form.status === "occupied" ? form.lease_start : null, lease_end: form.status === "occupied" ? form.lease_end : null, notes: form.notes, company_id: companyId }]);
   if (error) { showToast(userError(error.message), "error"); return; }
-  // Show document checklist for occupied properties
-  if (form.status === "occupied") {
-  setShowDocChecklist({ name: form.tenant, property: compositeAddress, isNew: !editingProperty });
-  }
+  // Track whether to show doc checklist (shown AFTER form closes to prevent re-save loop)
+  const _showDocChecklistAfterSave = form.status === "occupied" && !editingProperty;
   // Auto-create tenant on tenant page when property becomes occupied
   if (form.status === "occupied" && form.tenant.trim()) {
   const { data: existingTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.tenant.trim()).eq("property", compositeAddress).maybeSingle();
@@ -1628,8 +1626,14 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }
   setShowForm(false);
   setEditingProperty(null);
+  const savedTenant = form.tenant;
+  const savedAddress = compositeAddress;
   setForm({ address_line_1: "", address_line_2: "", city: "", state: "", zip: "", type: "Single Family", status: "vacant", rent: "", security_deposit: "", tenant: "", tenant_email: "", tenant_phone: "", lease_start: "", lease_end: "", notes: "" });
   fetchProperties();
+  // Show doc checklist AFTER form is closed (prevents re-save loop)
+  if (_showDocChecklistAfterSave) {
+  setShowDocChecklist({ name: savedTenant, property: savedAddress, isNew: true });
+  }
   } finally { guardRelease("saveProperty"); }
   }
 
