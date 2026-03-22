@@ -849,6 +849,105 @@ function PropertySelect({ value, onChange, className = "", companyId }) {
 }
 
 // ============ INLINE DOCUMENT UPLOAD MODAL ============
+// ============ RECURRING RENT ENTRY SETUP MODAL ============
+// Shown after creating a tenant/property with lease dates. Creates a recurring JE for future rent.
+function RecurringEntryModal({ entry, companyId, showToast, onComplete }) {
+  const [freq, setFreq] = useState("monthly");
+  const [dayOfMonth, setDayOfMonth] = useState(1);
+  const [amount, setAmount] = useState(entry?.rent || 0);
+  const [saving, setSaving] = useState(false);
+
+  // Calculate next post date (1st of next month)
+  const today = new Date();
+  const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  const nextPostDate = formatLocalDate(nextMonth);
+
+  async function handleCreate() {
+  if (saving) return;
+  setSaving(true);
+  try {
+  // Get or create tenant AR sub-account
+  const tenantArId = await getOrCreateTenantAR(companyId, entry.tenantName, entry.tenantId);
+  const revenueId = await resolveAccountId("4000", companyId);
+  // Get the AR sub-account code for display
+  const { data: arAcct } = await supabase.from("acct_accounts").select("code").eq("id", tenantArId).maybeSingle();
+  const { error } = await supabase.from("recurring_journal_entries").insert([{
+  company_id: companyId,
+  description: "Monthly rent — " + entry.tenantName + " — " + entry.property?.split(",")[0],
+  frequency: freq,
+  day_of_month: dayOfMonth,
+  amount: Number(amount),
+  tenant_name: entry.tenantName,
+  tenant_id: entry.tenantId || null,
+  property: entry.property || "",
+  debit_account_id: arAcct?.code || "1100",
+  debit_account_name: "AR - " + entry.tenantName,
+  credit_account_id: "4000",
+  credit_account_name: "Rental Income",
+  status: "active",
+  next_post_date: nextPostDate,
+  created_by: "",
+  }]);
+  if (error) {
+  showToast("Failed to create recurring entry: " + error.message, "error");
+  setSaving(false);
+  return;
+  }
+  showToast("Recurring rent entry created for " + entry.tenantName + " — $" + Number(amount).toLocaleString() + "/" + freq, "success");
+  onComplete();
+  } catch (e) {
+  showToast("Error: " + e.message, "error");
+  setSaving(false);
+  }
+  }
+
+  if (!entry) return null;
+  return (
+  <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6">
+  <div className="text-center mb-4">
+  <div className="w-14 h-14 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+  <span className="material-icons-outlined text-indigo-600 text-2xl">autorenew</span>
+  </div>
+  <h3 className="text-lg font-manrope font-bold text-slate-800">Set Up Recurring Rent</h3>
+  <p className="text-sm text-slate-400 mt-1">Schedule automatic rent charges for <strong>{entry.tenantName}</strong></p>
+  </div>
+  <div className="space-y-3">
+  <div className="bg-indigo-50 rounded-xl p-3">
+  <div className="flex justify-between text-sm"><span className="text-slate-500">Property</span><span className="font-medium text-slate-800">{entry.property?.split(",")[0]}</span></div>
+  <div className="flex justify-between text-sm mt-1"><span className="text-slate-500">Lease Period</span><span className="font-medium text-slate-800">{entry.leaseStart} → {entry.leaseEnd}</span></div>
+  </div>
+  <div>
+  <label className="text-xs font-medium text-slate-500 block mb-1">Monthly Rent Amount ($)</label>
+  <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full border border-indigo-100 rounded-xl px-3 py-2 text-sm" />
+  </div>
+  <div className="grid grid-cols-2 gap-3">
+  <div>
+  <label className="text-xs font-medium text-slate-500 block mb-1">Frequency</label>
+  <select value={freq} onChange={e => setFreq(e.target.value)} className="w-full border border-indigo-100 rounded-xl px-3 py-2 text-sm">
+  <option value="monthly">Monthly</option>
+  <option value="quarterly">Quarterly</option>
+  </select>
+  </div>
+  <div>
+  <label className="text-xs font-medium text-slate-500 block mb-1">Day of Month</label>
+  <input type="number" min="1" max="28" value={dayOfMonth} onChange={e => setDayOfMonth(Math.min(28, Math.max(1, Number(e.target.value))))} className="w-full border border-indigo-100 rounded-xl px-3 py-2 text-sm" />
+  </div>
+  </div>
+  <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-500">
+  <div className="flex justify-between"><span>Debit</span><span className="font-medium">AR - {entry.tenantName}</span></div>
+  <div className="flex justify-between mt-1"><span>Credit</span><span className="font-medium">4000 Rental Income</span></div>
+  <div className="flex justify-between mt-1"><span>Next charge</span><span className="font-medium">{nextPostDate}</span></div>
+  </div>
+  </div>
+  <button onClick={handleCreate} disabled={saving || !amount || Number(amount) <= 0} className="w-full bg-indigo-600 text-white text-sm py-2.5 rounded-xl font-semibold hover:bg-indigo-700 mt-4 disabled:opacity-50">
+  {saving ? "Creating..." : "Create Recurring Entry"}
+  </button>
+  </div>
+  </div>
+  );
+}
+
 function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUploaded, isTenantUpload }) {
   const [form, setForm] = useState({ name: "", type: "Lease", tenant_visible: !!isTenantUpload });
   const [uploading, setUploading] = useState(false);
@@ -1392,6 +1491,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const [reviewNotes, setReviewNotes] = useState({});
 
   const isAdmin = userRole === "admin";
+  const [pendingRecurringEntry, setPendingRecurringEntry] = useState(null); // { tenantName, tenantId, property, rent, leaseStart, leaseEnd }
 
   useEffect(() => { fetchProperties(); fetchChangeRequests(); fetchArchivedProperties(); }, [companyId]);
 
@@ -1567,6 +1667,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const result = await autoPostRentCharges(companyId);
   if (result?.posted > 0) showToast("Posted " + result.posted + " rent charge(s) to accounting", "success");
   } catch (e) { console.warn("Auto rent post after property save:", e.message); }
+  // Queue recurring entry popup (will show after form closes)
+  setPendingRecurringEntry({ tenantName: form.tenant.trim(), tenantId: tenantId || null, property: compositeAddress, rent: Number(form.rent), leaseStart: form.lease_start, leaseEnd: form.lease_end });
   }
   }
   // #12: Sync security deposit to active lease when editing property
@@ -2412,6 +2514,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   </>)}
   {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedProperty) { supabase.from("documents").select("*").eq("company_id", companyId).eq("property", selectedProperty.address).is("archived_at", null).order("created_at", { ascending: false }).limit(100).then(({ data }) => setPropertyDocs(data || [])); } }} />}
+  {pendingRecurringEntry && <RecurringEntryModal entry={pendingRecurringEntry} companyId={companyId} showToast={showToast} onComplete={() => setPendingRecurringEntry(null)} />}
   </div>
   );
 }
@@ -2419,6 +2522,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 // ============ TENANTS ============
 function Tenants({ addNotification, userProfile, userRole, companyId, setPage, initialTab, showToast, showConfirm }) {
   const isAdmin = userRole === "admin";
+  const [pendingRecurringEntry, setPendingRecurringEntry] = useState(null);
   function exportTenants() {
   const exportData = tenants.filter(t => !t.archived_at);
   exportToCSV(exportData, [
@@ -2544,6 +2648,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const result = await autoPostRentCharges(companyId);
   if (result?.posted > 0) showToast("Posted " + result.posted + " rent charge(s) to accounting", "success");
   } catch (e) { console.warn("Auto rent post after tenant add:", e.message); }
+  // Queue recurring entry popup
+  setPendingRecurringEntry({ tenantName: form.name.trim(), tenantId: newTenant?.id || null, property: form.property, rent: Number(form.rent), leaseStart: form.lease_start, leaseEnd: form.lease_end });
   }
   }
   if (editingTenant) {
@@ -3631,6 +3737,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   })()}
   </>)}
   {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedTenant) { supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", selectedTenant.name).is("archived_at", null).order("created_at", { ascending: false }).limit(50).then(({ data }) => setTenantDocs(data || [])); } }} />}
+  {pendingRecurringEntry && <RecurringEntryModal entry={pendingRecurringEntry} companyId={companyId} showToast={showToast} onComplete={() => setPendingRecurringEntry(null)} />}
   </div>
   );
 }
