@@ -517,9 +517,9 @@ async function resolveAccountId(bareCode, companyId) {
   const acctName = _acctCodeToName[bareCode] || "Account " + bareCode;
   const acctType = bareCode[0] === "1" ? "Asset" : bareCode[0] === "2" ? "Liability" : bareCode[0] === "3" ? "Equity" : bareCode[0] === "4" ? "Revenue" : "Expense";
   const subType = bareCode[0] === "1" ? "Bank" : bareCode[0] === "2" ? "Other Current Liability" : bareCode[0] === "4" ? "Operating Revenue" : "Operating Expense";
-  const { data: created, error: createErr } = await supabase.from("acct_accounts").upsert([{
-  company_id: cid, code: bareCode, name: acctName, type: acctType, is_active: true
-  }], { onConflict: "company_id,code" }).select("id").maybeSingle();
+  const { data: created, error: createErr } = await supabase.from("acct_accounts").insert([{
+  company_id: cid, code: bareCode, name: acctName, type: acctType, is_active: true, old_text_id: cid + "-" + bareCode
+  }]).select("id").maybeSingle();
   if (createErr) console.warn("resolveAccountId: auto-create failed for", bareCode, createErr.message);
   const resolvedId = created?.id || null;
   if (resolvedId) _acctIdCache[cid][bareCode] = resolvedId;
@@ -547,28 +547,22 @@ async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   const { data: subAccts } = await supabase.from("acct_accounts").select("code").eq("company_id", companyId).like("code", "1100-%").order("code", { ascending: false }).limit(1);
   const lastSeq = subAccts?.[0]?.code ? parseInt(subAccts[0].code.split("-")[1]) || 0 : 0;
   const newCode = "1100-" + String(lastSeq + 1).padStart(3, "0");
-  // Try insert with all fields, then minimal, then upsert as last resort
+  // Insert with old_text_id (required NOT NULL column)
+  const oldTextId = companyId + "-" + newCode;
   let newAcct = null;
   let createErr = null;
   // Attempt 1: full payload
   ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([{
   company_id: companyId, code: newCode, name: "AR - " + tenantName,
-  type: "Asset", is_active: true,
+  type: "Asset", is_active: true, old_text_id: oldTextId,
   parent_id: parentArId || null, tenant_id: tenantId || null,
   }]).select("id").maybeSingle());
   // Attempt 2: without optional columns
   if (createErr) {
   ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([{
   company_id: companyId, code: newCode, name: "AR - " + tenantName,
-  type: "Asset", is_active: true,
+  type: "Asset", is_active: true, old_text_id: oldTextId,
   }]).select("id").maybeSingle());
-  }
-  // Attempt 3: upsert on company_id+code (handles duplicate code conflicts)
-  if (createErr) {
-  ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").upsert([{
-  company_id: companyId, code: newCode, name: "AR - " + tenantName,
-  type: "Asset", is_active: true,
-  }], { onConflict: "company_id,code" }).select("id").maybeSingle());
   }
   if (createErr || !newAcct?.id) {
   console.warn("AR sub-account creation failed after 3 attempts:", createErr?.message);
@@ -7008,15 +7002,10 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   { code: "5300", name: "Repairs & Maintenance", type: "Expense", is_active: true },
   { code: "5400", name: "Utilities Expense", type: "Expense", is_active: true },
   ];
-  // Insert one by one to handle any schema issues gracefully
   for (const acct of defaults) {
-  const { error: insErr } = await supabase.from("acct_accounts").insert([{ ...acct, company_id: companyId }]);
-  if (insErr) {
-  console.warn("Default account insert failed for " + acct.code + ":", insErr.message);
-  // Try with just the bare minimum columns
-  const { error: minErr } = await supabase.from("acct_accounts").insert([{ company_id: companyId, code: acct.code, name: acct.name, type: acct.type }]);
-  if (minErr) console.error("Default account STILL failed for " + acct.code + ":", minErr.message);
-  }
+  const oldTextId = companyId + "-" + acct.code;
+  const { error: insErr } = await supabase.from("acct_accounts").insert([{ ...acct, company_id: companyId, old_text_id: oldTextId }]);
+  if (insErr) console.warn("Default account insert failed for " + acct.code + ":", insErr.message);
   }
   const { data: freshAccts, error: fetchErr } = await supabase.from("acct_accounts").select("*").eq("company_id", companyId).order("code");
   console.log("Default accounts created. Re-fetched:", freshAccts?.length || 0, "accounts. Error:", fetchErr?.message || "none");
@@ -7112,7 +7101,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   async function addAccount(acct) {
   if (!guardSubmit("addAccount")) return;
   try {
-  const { error } = await supabase.from("acct_accounts").insert([{ ...acct, company_id: companyId }]);
+  const { error } = await supabase.from("acct_accounts").insert([{ ...acct, company_id: companyId, old_text_id: companyId + "-" + (acct.code || shortId()) }]);
   if (error) { showToast("Error creating account: " + error.message, "error"); return; }
   fetchAll();
   } finally { guardRelease("addAccount"); }
@@ -14709,7 +14698,9 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   { code: "5300", name: "Repairs & Maintenance", type: "Expense", is_active: true },
   { code: "5400", name: "Utilities Expense", type: "Expense", is_active: true },
   ];
-  await supabase.from("acct_accounts").upsert(defaultAccounts.map(a => ({ ...a, company_id: companyId })), { onConflict: "company_id,code" });
+  for (const acct of defaultAccounts) {
+  await supabase.from("acct_accounts").insert([{ ...acct, company_id: companyId, old_text_id: companyId + "-" + acct.code }]);
+  }
   companyCreated = true;
   } catch (fallbackErr) {
   showToast("Failed to create company: " + userError(fallbackErr.message), "error");
@@ -15269,8 +15260,11 @@ function AppInner() {
   const existingNames = new Set((existing || []).map(a => a.name));
   const missing = defaults.filter(a => !existingNames.has(a.name));
   if (missing.length === 0) return;
-  const rows = missing.map(a => ({ ...a, company_id: cid }));
-  await supabase.from("acct_accounts").upsert(rows, { onConflict: "company_id,code" });
+  const rows = missing.map(a => ({ ...a, company_id: cid, old_text_id: cid + "-" + a.code }));
+  for (const row of rows) {
+  const { error } = await supabase.from("acct_accounts").insert([row]);
+  if (error) console.warn("ensureDefaultAccounts insert failed for " + row.code + ":", error.message);
+  }
   delete _acctIdCache[cid];
   }
 
