@@ -14641,12 +14641,18 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   }]);
   if (compErr) throw new Error("Company insert: " + compErr.message);
   // Add creator as admin member
+  const { data: { user: authUser } } = await supabase.auth.getUser();
   const { error: memErr } = await supabase.from("company_members").insert([{
   company_id: companyId, user_email: normalizeEmail(currentUser?.email),
+  user_id: authUser?.id || null,
   role: "admin", status: "active",
   name: currentUser?.email?.split("@")[0] || "",
   }]);
-  if (memErr) console.warn("Membership insert failed:", memErr.message);
+  if (memErr) {
+  // If membership insert fails, company exists but user can't access it — delete the orphan
+  await supabase.from("companies").delete().eq("id", companyId);
+  throw new Error("Membership setup failed: " + memErr.message + ". This may be an RLS issue — the create_company_atomic RPC needs to be deployed.");
+  }
   // Create default chart of accounts
   const defaultAccounts = [
   { code: "1000", name: "Checking Account", type: "Asset", sub_type: "Bank", is_active: true },
