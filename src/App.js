@@ -5612,8 +5612,23 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   return true;
   });
 
+  // Build hierarchy: group by type, then nest sub-accounts under parents
   const grouped = {};
   filtered.forEach(a => { if (!grouped[a.type]) grouped[a.type] = []; grouped[a.type].push(a); });
+  // Sort accounts within each type: parents first (no dash in code), then sub-accounts
+  Object.keys(grouped).forEach(type => {
+  const parentAccts = grouped[type].filter(a => !a.parent_id && !(a.code || "").includes("-"));
+  const subAccts = grouped[type].filter(a => a.parent_id || (a.code || "").includes("-"));
+  // Build ordered list: parent followed by its sub-accounts
+  const ordered = [];
+  parentAccts.forEach(parent => {
+  ordered.push(parent);
+  subAccts.filter(s => s.parent_id === parent.id || (s.code || "").startsWith((parent.code || "") + "-")).forEach(sub => ordered.push({ ...sub, _isSubAccount: true }));
+  });
+  // Add any orphan sub-accounts not matched to a parent
+  subAccts.filter(s => !ordered.find(o => o.id === s.id)).forEach(s => ordered.push({ ...s, _isSubAccount: true }));
+  grouped[type] = ordered;
+  });
 
   const openAdd = () => { setForm({ name:"", type:"Asset", subtype:"Bank", description:"", customType:"", customSubtype:"" }); setModal("add"); };
   const openEdit = (a) => { setForm({ name: a.name, type: a.type, subtype: a.subtype, description: a.description || "", customType:"", customSubtype:"" }); setModal(a); };
@@ -5665,10 +5680,10 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   <thead className="text-xs text-slate-400 uppercase bg-indigo-50/30"><tr><th className="px-4 py-2 text-left">Number</th><th className="px-4 py-2 text-left">Name</th><th className="px-4 py-2 text-left">Subtype</th><th className="px-4 py-2 text-right">Balance</th><th className="px-4 py-2 w-20">Actions</th></tr></thead>
   <tbody>
   {accts.map(a => (
-  <tr key={a.id} className="border-t border-indigo-50/50 hover:bg-blue-50/30 cursor-pointer" onClick={() => openEdit(a)}>
-  <td className="px-4 py-2 font-mono text-xs text-slate-400">{a.code || a.id}</td>
-  <td className={`px-4 py-2 font-medium ${!a.is_active ? "text-slate-400 line-through" : "text-slate-800"}`}>{a.name}</td>
-  <td className="px-4 py-2 text-xs text-slate-400">{a.subtype}</td>
+  <tr key={a.id} className={`border-t border-indigo-50/50 hover:bg-blue-50/30 cursor-pointer ${a._isSubAccount ? "bg-slate-50/40" : ""}`} onClick={() => openEdit(a)}>
+  <td className={`py-2 font-mono text-xs text-slate-400 ${a._isSubAccount ? "pl-8 pr-4" : "px-4"}`}>{a._isSubAccount ? "└ " : ""}{a.code || a.id}</td>
+  <td className={`px-4 py-2 ${a._isSubAccount ? "text-sm text-slate-600" : "font-medium"} ${!a.is_active ? "text-slate-400 line-through" : a._isSubAccount ? "" : "text-slate-800"}`}>{a.name}</td>
+  <td className="px-4 py-2 text-xs text-slate-400">{a.sub_type || a.subtype}</td>
   <td className={`px-4 py-2 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(a.computedBalance, true)}</td>
   <td className="px-4 py-2 text-center flex items-center gap-2 justify-center">
   <button onClick={e => { e.stopPropagation(); onOpenLedger && onOpenLedger([a.id], a.name + " (" + (a.code || "") + ")"); }} className="text-indigo-500 hover:text-indigo-700 text-xs hover:underline">Ledger</button>
