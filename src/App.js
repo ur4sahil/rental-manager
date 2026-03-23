@@ -1656,9 +1656,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       type: u.type,
       account_number: u.account_number.trim(),
       amount: 0,
-      due_date: String(u.due_date),
-      responsibility: u.responsibility,
-      status: "active"
+      due: String(u.due_date),
+      responsibility: u.responsibility === "owner_pays" ? "owner" : "tenant",
+      status: "pending"
     }));
     const { error } = await supabase.from("utilities").insert(rows);
     if (error) throw new Error("Failed to save utilities: " + error.message);
@@ -1672,13 +1672,12 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     const { error } = await supabase.from("hoa_payments").insert([{
       company_id: companyId,
       property: wizardData.address,
-      property_id: wizardData.propertyId,
       hoa_name: hoa.hoa_name.trim(),
       amount: Number(hoa.amount),
-      due_date: hoa.due_date,
+      due_date: hoa.due_date || formatLocalDate(new Date()),
       frequency: hoa.frequency,
       notes: hoa.notes.trim(),
-      status: "active"
+      status: "pending"
     }]);
     if (error) throw new Error("Failed to save HOA: " + error.message);
     return true;
@@ -1691,7 +1690,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     const loanRow = {
       company_id: companyId,
       property: wizardData.address,
-      property_id: wizardData.propertyId,
+      property_id: String(wizardData.propertyId || ""),
       lender_name: loan.lender_name.trim(),
       loan_type: loan.loan_type,
       original_amount: Number(loan.original_amount) || 0,
@@ -1743,7 +1742,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     const { error } = await supabase.from("property_insurance").insert([{
       company_id: companyId,
       property: wizardData.address,
-      property_id: wizardData.propertyId,
+      property_id: String(wizardData.propertyId || ""),
       provider: insurance.provider.trim(),
       policy_number: insurance.policy_number.trim(),
       premium_amount: Number(insurance.premium_amount),
@@ -6719,21 +6718,19 @@ const getGeneralLedger = (accountId, accounts, journalEntries) => {
 const getClassReport = (accounts, journalEntries, classes, startDate, endDate) => {
   const acctMap = {}; accounts.forEach(a => { acctMap[a.id] = a; });
   const classData = {};
-  let debugLinesProcessed = 0, debugLinesWithClass = 0, debugLinesWithAcct = 0;
   for (const je of journalEntries) {
   if (je.status !== "posted" || je.date < startDate || je.date > endDate) continue;
   for (const l of (je.lines || [])) {
-  debugLinesProcessed++;
+
   if (!l.class_id) continue;
-  debugLinesWithClass++;
+
   if (!classData[l.class_id]) classData[l.class_id] = { revenue: 0, expenses: 0 };
   const acct = acctMap[l.account_id]; if (!acct) continue;
-  debugLinesWithAcct++;
+
   if (["Revenue","Other Income"].includes(acct.type)) classData[l.class_id].revenue += safeNum(l.credit) - safeNum(l.debit);
   if (["Expense","Cost of Goods Sold","Other Expense"].includes(acct.type)) classData[l.class_id].expenses += safeNum(l.debit) - safeNum(l.credit);
   }
   }
-  console.log("getClassReport DEBUG:", { linesProcessed: debugLinesProcessed, withClass: debugLinesWithClass, withAcct: debugLinesWithAcct, classDataKeys: Object.keys(classData).length, classesCount: classes.length, startDate, endDate, jeCount: journalEntries.length });
   return classes.map(cls => {
   const d = classData[cls.id] || { revenue: 0, expenses: 0 };
   return { ...cls, revenue: d.revenue, expenses: d.expenses, netIncome: d.revenue - d.expenses };
