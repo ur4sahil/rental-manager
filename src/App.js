@@ -1671,15 +1671,21 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   async function saveUtilities() {
     const validRows = utilities.filter(u => u.provider.trim());
     if (validRows.length === 0) return true; // nothing to save
-    const rows = validRows.map(u => ({
+    const rows = validRows.map(u => {
+      // Build a proper date from the day-of-month (use current month)
+      const now = new Date();
+      const day = Math.min(28, Math.max(1, Number(u.due_date) || 1));
+      const dueDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      return {
       company_id: companyId,
       property: wizardData.address,
       provider: u.provider.trim(),
       amount: 0,
-      due: String(u.due_date),
+      due: dueDate,
       responsibility: u.responsibility === "owner_pays" ? "owner" : "tenant",
       status: "pending"
-    }));
+      };
+    });
     const { error } = await supabase.from("utilities").insert(rows);
     if (error) throw new Error("Failed to save utilities: " + error.message);
     return true;
