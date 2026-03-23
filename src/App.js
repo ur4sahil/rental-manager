@@ -370,13 +370,18 @@ async function autoPostJournalEntry({ date, description, reference, property, li
   resolvedLines[i].account_id = await resolveAccountId(resolvedLines[i].account_id, cid);
   }
   }
-  // Step 1: Insert journal entry header (auto-generate sequential number)
+  // Step 1: Insert journal entry header (collision-safe sequential number)
+  let jeRow = null, jeErr = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
   const { data: lastJE } = await supabase.from("acct_journal_entries").select("number").eq("company_id", cid).order("created_at", { ascending: false }).limit(1).maybeSingle();
   const lastNum = lastJE?.number ? parseInt(lastJE.number.replace(/\D/g, "")) || 0 : 0;
-  const jeNumber = "JE-" + String(lastNum + 1).padStart(4, "0");
-  const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
+  const jeNumber = "JE-" + String(lastNum + 1 + attempt).padStart(4, "0");
+  ({ data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
   company_id: cid, number: jeNumber, date, description, reference: reference || "", property: property || "", status
-  }]).select("id").maybeSingle();
+  }]).select("id").maybeSingle());
+  if (!jeErr && jeRow) break; // success
+  if (jeErr && !jeErr.message?.includes("unique")) break; // non-duplicate error, don't retry
+  }
   if (jeErr || !jeRow) { console.error("Journal entry insert failed:", jeErr?.message); return null; }
   // Step 2: Insert journal entry lines (with company_id for RLS)
   if (resolvedLines.length > 0) {
