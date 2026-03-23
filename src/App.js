@@ -6719,16 +6719,21 @@ const getGeneralLedger = (accountId, accounts, journalEntries) => {
 const getClassReport = (accounts, journalEntries, classes, startDate, endDate) => {
   const acctMap = {}; accounts.forEach(a => { acctMap[a.id] = a; });
   const classData = {};
+  let debugLinesProcessed = 0, debugLinesWithClass = 0, debugLinesWithAcct = 0;
   for (const je of journalEntries) {
   if (je.status !== "posted" || je.date < startDate || je.date > endDate) continue;
   for (const l of (je.lines || [])) {
+  debugLinesProcessed++;
   if (!l.class_id) continue;
+  debugLinesWithClass++;
   if (!classData[l.class_id]) classData[l.class_id] = { revenue: 0, expenses: 0 };
   const acct = acctMap[l.account_id]; if (!acct) continue;
+  debugLinesWithAcct++;
   if (["Revenue","Other Income"].includes(acct.type)) classData[l.class_id].revenue += safeNum(l.credit) - safeNum(l.debit);
   if (["Expense","Cost of Goods Sold","Other Expense"].includes(acct.type)) classData[l.class_id].expenses += safeNum(l.debit) - safeNum(l.credit);
   }
   }
+  console.log("getClassReport DEBUG:", { linesProcessed: debugLinesProcessed, withClass: debugLinesWithClass, withAcct: debugLinesWithAcct, classDataKeys: Object.keys(classData).length, classesCount: classes.length, startDate, endDate, jeCount: journalEntries.length });
   return classes.map(cls => {
   const d = classData[cls.id] || { revenue: 0, expenses: 0 };
   return { ...cls, revenue: d.revenue, expenses: d.expenses, netIncome: d.revenue - d.expenses };
