@@ -1653,8 +1653,6 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       company_id: companyId,
       property: wizardData.address,
       provider: u.provider.trim(),
-      type: u.type,
-      account_number: u.account_number.trim(),
       amount: 0,
       due: String(u.due_date),
       responsibility: u.responsibility === "owner_pays" ? "owner" : "tenant",
@@ -7282,6 +7280,17 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   const totalRev = activeReport.reduce((s,c) => s + c.revenue, 0);
   const totalExp = activeReport.reduce((s,c) => s + c.expenses, 0);
   const totalNet = activeReport.reduce((s,c) => s + c.netIncome, 0);
+  // Debug: log to console if data looks wrong
+  if (classes.length > 0 && journalEntries.length > 0 && totalRev === 0 && totalExp === 0) {
+  const jesWithLines = journalEntries.filter(j => j.lines && j.lines.length > 0);
+  const linesWithClass = journalEntries.flatMap(j => (j.lines||[])).filter(l => l.class_id);
+  console.warn("ClassTracking DEBUG: " + classes.length + " classes, " + journalEntries.length + " JEs (" + jesWithLines.length + " have lines), " + linesWithClass.length + " lines with class_id, period=" + start + "→" + end + ", accounts=" + accounts.length);
+  if (linesWithClass.length > 0) {
+  const sample = linesWithClass[0];
+  const acct = accounts.find(a => a.id === sample.account_id);
+  console.warn("ClassTracking sample line: class_id=" + sample.class_id + " account_id=" + sample.account_id + " acct_found=" + (acct ? acct.type : "NOT FOUND") + " debit=" + sample.debit + " credit=" + sample.credit);
+  }
+  }
 
   const openAdd = () => { setForm({ name:"", description:"", color:"#3B82F6" }); setModal("add"); };
   const openEdit = (cls) => { setForm({ name: cls.name, description: cls.description || "", color: cls.color || "#3B82F6" }); setModal({ mode:"edit", cls }); };
