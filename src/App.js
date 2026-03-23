@@ -279,6 +279,17 @@ function escapeHtml(str) {
   if (!str) return "";
   return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
 }
+// Sanitize user input for Supabase PostgREST filter strings (.or, .ilike, .like)
+// Escapes characters that have special meaning in PostgREST filter syntax
+function escapeFilterValue(val) {
+  if (!val) return "";
+  return String(val).replace(/[%_,.*()\\]/g, c => "\\" + c);
+}
+// Sanitize HTML for safe insertion into document.write() contexts
+function sanitizeForPrint(str) {
+  if (!str) return "";
+  return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
 function requireCompanyId(companyId, context = "") {
   if (!companyId) {
   const msg = "CRITICAL: Missing companyId" + (context ? " in " + context : "") + " — operation blocked";
@@ -354,7 +365,7 @@ async function checkAccrualExists(companyId, month, tenantName) {
   // Look for RENT-AUTO entries for this month that mention the tenant
   const { data: rentJEs } = await supabase.from("acct_journal_entries")
   .select("id, reference").eq("company_id", companyId)
-  .or(`reference.like.RENT-AUTO-%${month}%,reference.like.ACCR-${month}%`)
+  .or(`reference.like.RENT-AUTO-%${escapeFilterValue(month)}%,reference.like.ACCR-${escapeFilterValue(month)}%`)
   .neq("status", "voided");
   if (!rentJEs || rentJEs.length === 0) return false;
   const jeIds = rentJEs.map(je => je.id);
@@ -510,7 +521,7 @@ async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   const cacheKey = `${companyId}::${tenantName}`;
   if (_tenantArCache[cacheKey]) return _tenantArCache[cacheKey];
   // Check if tenant AR sub-account already exists
-  let query = supabase.from("acct_accounts").select("id, code").eq("company_id", companyId).eq("type", "Asset").ilike("name", `AR - ${tenantName}`);
+  let query = supabase.from("acct_accounts").select("id, code").eq("company_id", companyId).eq("type", "Asset").ilike("name", `AR - ${escapeFilterValue(tenantName)}`);
   if (tenantId) query = query.eq("tenant_id", tenantId);
   const { data: existing } = await query.maybeSingle();
   if (existing?.id) {
@@ -870,7 +881,7 @@ function RecurringEntryModal({ entry, companyId, showToast, onComplete }) {
   const tenantArId = await getOrCreateTenantAR(companyId, entry.tenantName, entry.tenantId);
   const revenueId = await resolveAccountId("4000", companyId);
   // Get the AR sub-account code for display
-  const { data: arAcct } = await supabase.from("acct_accounts").select("code").eq("id", tenantArId).maybeSingle();
+  const { data: arAcct } = await supabase.from("acct_accounts").select("code").eq("company_id", companyId).eq("id", tenantArId).maybeSingle();
   const { error } = await supabase.from("recurring_journal_entries").insert([{
   company_id: companyId,
   description: "Monthly rent — " + entry.tenantName + " — " + entry.property?.split(",")[0],
@@ -940,9 +951,12 @@ function RecurringEntryModal({ entry, companyId, showToast, onComplete }) {
   <div className="flex justify-between mt-1"><span>Next charge</span><span className="font-medium">{nextPostDate}</span></div>
   </div>
   </div>
-  <button onClick={handleCreate} disabled={saving || !amount || Number(amount) <= 0} className="w-full bg-indigo-600 text-white text-sm py-2.5 rounded-xl font-semibold hover:bg-indigo-700 mt-4 disabled:opacity-50">
+  <div className="flex gap-3 mt-4">
+  <button onClick={handleCreate} disabled={saving || !amount || Number(amount) <= 0} className="flex-1 bg-indigo-600 text-white text-sm py-2.5 rounded-xl font-semibold hover:bg-indigo-700 disabled:opacity-50">
   {saving ? "Creating..." : "Create Recurring Entry"}
   </button>
+  <button onClick={onComplete} className="flex-1 bg-slate-100 text-slate-600 text-sm py-2.5 rounded-xl font-semibold hover:bg-slate-200">Skip for Now</button>
+  </div>
   </div>
   </div>
   );
@@ -957,6 +971,11 @@ function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUpl
   const file = fileRef.current?.files?.[0];
   if (!file) { showToast("Please select a file", "error"); return; }
   if (!form.name.trim()) { showToast("Document name is required", "error"); return; }
+  // Validate file type and size
+  const ALLOWED_DOC_TYPES = ["application/pdf","image/jpeg","image/png","image/gif","image/webp","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","text/plain","text/csv"];
+  const ALLOWED_DOC_EXTENSIONS = /\.(pdf|jpg|jpeg|png|gif|webp|doc|docx|xls|xlsx|txt|csv)$/i;
+  if (!ALLOWED_DOC_TYPES.includes(file.type) && !ALLOWED_DOC_EXTENSIONS.test(file.name)) { showToast("File type not allowed. Accepted: PDF, images, Word, Excel, text files.", "error"); return; }
+  if (file.size > 25 * 1024 * 1024) { showToast("File must be under 25MB.", "error"); return; }
   setUploading(true);
   const fileName = companyId + "/" + shortId() + "_" + sanitizeFileName(file.name);
   const { error: uploadErr } = await supabase.storage.from("documents").upload(fileName, file, { cacheControl: "3600", upsert: false });
@@ -994,7 +1013,7 @@ function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUpl
   </div>
   <div>
   <label className="text-xs font-medium text-slate-400 block mb-1">File *</label>
-  <input ref={fileRef} type="file" className="text-sm" />
+  <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv" className="text-sm" />
   </div>
   {!isTenantUpload && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} className="accent-indigo-600" />Visible to tenant</label>}
   <button onClick={handleUpload} disabled={uploading} className="w-full bg-indigo-600 text-white py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 disabled:opacity-50">{uploading ? "Uploading..." : "Upload"}</button>
@@ -1605,6 +1624,10 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }
   // Build composite address for backward compatibility
   const compositeAddress = [form.address_line_1, form.address_line_2, form.city, form.state + " " + form.zip].filter(Boolean).join(", ");
+  // Track tenant info for post-save doc prompt (declared outside if/else so accessible in post-save UI code)
+  const _isNewOccupied = form.status === "occupied" && form.tenant.trim();
+  const _savedTenantName = form.tenant.trim();
+  const _savedAddress = compositeAddress;
 
   if (isAdmin) {
   // Guard: block edits to managed (cross-company) properties
@@ -1625,10 +1648,6 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }
   return;
   }
-  // Track tenant info for post-save doc prompt
-  const _isNewOccupied = form.status === "occupied" && form.tenant.trim();
-  const _savedTenantName = form.tenant.trim();
-  const _savedAddress = compositeAddress;
   // Auto-create tenant on tenant page when property becomes occupied
   if (form.status === "occupied" && form.tenant.trim()) {
   const { data: existingTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.tenant.trim()).eq("property", compositeAddress).maybeSingle();
@@ -2302,7 +2321,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center"><div className="text-lg font-bold text-indigo-600">${properties.reduce((s, p) => s + safeNum(p.rent), 0).toLocaleString()}</div><div className="text-xs text-slate-400">Total Rent</div></div>
   </div>
 
-  {showDocChecklist && (
+  {showDocChecklist && !pendingRecurringEntry && (
   <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
   <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6">
   <div className="text-center mb-4">
@@ -3780,7 +3799,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   if (payFilterMethod !== "all") query = query.eq("method", payFilterMethod);
   if (payDateFrom) query = query.gte("date", payDateFrom);
   if (payDateTo) query = query.lte("date", payDateTo);
-  if (paySearch) query = query.or(`tenant.ilike.%${paySearch}%,property.ilike.%${paySearch}%`);
+  if (paySearch) { const esc = escapeFilterValue(paySearch); query = query.or(`tenant.ilike.%${esc}%,property.ilike.%${esc}%`); }
   const { data, count } = await query.order("date", { ascending: false }).range(payPage * PAY_PAGE_SIZE, (payPage + 1) * PAY_PAGE_SIZE - 1);
   setPayments(data || []);
   setPayTotalCount(count || 0);
@@ -3862,7 +3881,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   if (!isLateFee) {
   hasAccrual = await checkAccrualExists(companyId, month, form.tenant);
   } else {
-  const { data: lateJEs } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).ilike("description", `%Late fee%${form.tenant}%`);
+  const { data: lateJEs } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).ilike("description", `%Late fee%${escapeFilterValue(form.tenant)}%`);
   if (lateJEs && lateJEs.length > 0) hasAccrual = true;
   }
   // Post GL entry FIRST — only update tenant balance if GL succeeds
@@ -4232,6 +4251,8 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   const file = photoRef.current?.files?.[0];
   if (!file || !viewingPhotos) return;
   if (file.size > 10 * 1024 * 1024) { showToast("Photo must be under 10MB.", "error"); setUploadingPhoto(false); return; }
+  const ALLOWED_PHOTO_TYPES = ["image/jpeg","image/png","image/gif","image/webp","image/heic","image/heif"];
+  if (!ALLOWED_PHOTO_TYPES.includes(file.type) && !/\.(jpg|jpeg|png|gif|webp|heic|heif)$/i.test(file.name)) { showToast("Only image files are allowed (JPG, PNG, GIF, WebP, HEIC).", "error"); return; }
   setUploadingPhoto(true);
   const fileName = `wo_${viewingPhotos.id}_${shortId()}_${sanitizeFileName(file.name)}`;
   const { error: uploadError } = await supabase.storage.from("maintenance-photos").upload(fileName, file);
@@ -4484,20 +4505,28 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   // Encrypt credentials client-side before sending
   // In production, this should be done server-side via Edge Function
   // For now, we use a simple encoding (NOT production-grade encryption)
-  const iv = Array.from(crypto.getRandomValues(new Uint8Array(12))).map(b => b.toString(16).padStart(2, "0")).join("");
   const providerInfo = providers.find(p => p.id === accountForm.provider);
+  // AES-256-GCM encryption for credentials using Web Crypto API
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, "0")).join("");
+  // Derive a key from companyId (deterministic per company — not perfect but far better than Base64)
+  // For production, move encryption to a Supabase Edge Function with a server-managed key
+  const keyMaterial = await crypto.subtle.importKey("raw", new TextEncoder().encode((companyId + "_propmanager_cred_key").slice(0, 32).padEnd(32, "0")), { name: "AES-GCM" }, false, ["encrypt"]);
+  async function encryptField(plaintext) {
+  if (!plaintext) return "";
+  const encoded = new TextEncoder().encode(plaintext);
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, keyMaterial, encoded);
+  return btoa(String.fromCharCode(...new Uint8Array(ciphertext)));
+  }
   const payload = {
   company_id: companyId,
   property: accountForm.property,
   provider: accountForm.provider,
   provider_display: providerInfo?.display_name || accountForm.provider,
   account_number: accountForm.account_number,
-  // SECURITY: Credentials are encoded before storage. In production, use a Supabase Edge Function
-  // with server-side AES-256-GCM encryption. The current encoding prevents casual viewing but 
-  // is NOT cryptographically secure. Deploy the encrypt-credentials Edge Function for production use.
-  username_encrypted: btoa(unescape(encodeURIComponent(accountForm.username))),
-  password_encrypted: btoa(unescape(encodeURIComponent(accountForm.password))),
-  encryption_iv: iv,
+  username_encrypted: await encryptField(accountForm.username),
+  password_encrypted: await encryptField(accountForm.password),
+  encryption_iv: ivHex,
   login_url: providerInfo?.login_url || "",
   account_type: accountForm.account_type,
   check_frequency: accountForm.check_frequency,
@@ -6802,6 +6831,11 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   try {
   const file = fileRef.current?.files?.[0];
   if (!file || !form.name) return;
+  // Validate file type and size
+  const ALLOWED_DOC_TYPES = ["application/pdf","image/jpeg","image/png","image/gif","image/webp","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","text/plain","text/csv"];
+  const ALLOWED_DOC_EXTENSIONS = /\.(pdf|jpg|jpeg|png|gif|webp|doc|docx|xls|xlsx|txt|csv)$/i;
+  if (!ALLOWED_DOC_TYPES.includes(file.type) && !ALLOWED_DOC_EXTENSIONS.test(file.name)) { showToast("File type not allowed. Accepted: PDF, images, Word, Excel, text files.", "error"); return; }
+  if (file.size > 25 * 1024 * 1024) { showToast("File must be under 25MB.", "error"); return; }
   setUploading(true);
   const fileName = `${companyId}/${shortId()}_${sanitizeFileName(file.name)}`;
   const { error: uploadError } = await supabase.storage.from("documents").upload(fileName, file, {
@@ -9569,7 +9603,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="text-xs text-slate-400">{viewStatement.owner_name} · Generated {new Date(viewStatement.created_at).toLocaleDateString()}</div>
   </div>
   <div className="flex items-center gap-2">
-  <button onClick={() => { const w = window.open("", "_blank", "noopener,noreferrer"); w.document.write("<pre>" + JSON.stringify(viewStatement, null, 2) + "</pre>"); w.document.title = "Statement " + viewStatement.period; setTimeout(() => w.print(), 300); }} className="text-xs text-indigo-600 border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50"><span className="material-icons-outlined text-xs align-middle">print</span></button>
+  <button onClick={() => { const w = window.open("", "_blank", "noopener,noreferrer"); w.document.write("<pre>" + escapeHtml(JSON.stringify(viewStatement, null, 2)) + "</pre>"); w.document.title = "Statement " + sanitizeForPrint(viewStatement.period); setTimeout(() => w.print(), 300); }} className="text-xs text-indigo-600 border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50"><span className="material-icons-outlined text-xs align-middle">print</span></button>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewStatement.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{viewStatement.status}</span>
   </div>
   </div>
@@ -11604,6 +11638,10 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   const deadline = formatLocalDate(deadlineDate);
   const balanceOwed = evCase.balance_owed || 0;
 
+  // Sanitize all user-supplied values before inserting into HTML
+  const safeTenant = sanitizeForPrint(evCase.tenant_name || "[TENANT NAME]");
+  const safeProperty = sanitizeForPrint(evCase.property || "[PROPERTY ADDRESS]");
+  const safeNotes = sanitizeForPrint(evCase.notes || "[Describe the violation]");
   const html = `<!DOCTYPE html><html><head><style>
   body { font-family: 'Times New Roman', serif; max-width: 700px; margin: 40px auto; padding: 20px; line-height: 1.6; color: #111; }
   h1 { text-align: center; font-size: 22px; border-bottom: 2px solid #333; padding-bottom: 10px; }
@@ -11612,24 +11650,24 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   .signature-line { border-bottom: 1px solid #333; width: 250px; display: inline-block; margin-top: 40px; }
   @media print { body { margin: 0.5in; } }
   </style></head><body>
-  <h1>NOTICE TO ${(noticeTypeLabel[evCase.notice_type] || "QUIT").toUpperCase()}</h1>
+  <h1>NOTICE TO ${sanitizeForPrint((noticeTypeLabel[evCase.notice_type] || "QUIT").toUpperCase())}</h1>
   <p><strong>State of ${state === "MD" ? "Maryland" : state === "VA" ? "Virginia" : "District of Columbia"}</strong></p>
-  <p><strong>Date Served:</strong> ${serveDate}</p>
-  <p><strong>To:</strong> ${evCase.tenant_name || "[TENANT NAME]"}</p>
-  <p><strong>Property Address:</strong> ${evCase.property || "[PROPERTY ADDRESS]"}</p>
+  <p><strong>Date Served:</strong> ${sanitizeForPrint(serveDate)}</p>
+  <p><strong>To:</strong> ${safeTenant}</p>
+  <p><strong>Property Address:</strong> ${safeProperty}</p>
   <hr>
   <p>You are hereby notified that you are required to ${evCase.notice_type === "pay_or_quit"
   ? `pay the total outstanding rent of <strong>$${balanceOwed.toLocaleString()}</strong> or vacate the premises`
   : evCase.notice_type === "cure_or_quit"
   ? `cure the following lease violation or vacate the premises`
   : `vacate the premises unconditionally`}
-  within <strong>${days} days</strong> of the date of this notice (by <strong>${deadline}</strong>).</p>
+  within <strong>${days} days</strong> of the date of this notice (by <strong>${sanitizeForPrint(deadline)}</strong>).</p>
   ${evCase.notice_type === "pay_or_quit" ? `<h2>Amount Due</h2><table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse;width:100%">
   <tr><td>Rent Owed</td><td style="text-align:right">$${balanceOwed.toLocaleString()}</td></tr>
   <tr><td>Late Fees</td><td style="text-align:right">$${(evCase.late_fees || 0).toLocaleString()}</td></tr>
   <tr style="font-weight:bold"><td>Total</td><td style="text-align:right">$${(balanceOwed + (evCase.late_fees || 0)).toLocaleString()}</td></tr>
   </table>` : ""}
-  ${evCase.reason === "lease_violation" ? `<h2>Lease Violation</h2><p>${evCase.notes || "[Describe the violation]"}</p>` : ""}
+  ${evCase.reason === "lease_violation" ? `<h2>Lease Violation</h2><p>${safeNotes}</p>` : ""}
   <h2>Legal Notice</h2>
   <p>If you fail to comply with this notice within the time specified, the landlord may commence legal proceedings to recover possession of the premises and any amounts owed, pursuant to ${state === "MD" ? "Maryland Real Property Code § 8-401" : state === "VA" ? "Virginia Code § 55.1-1245" : "D.C. Code § 42-3505.01"}.</p>
   <p>Payment may be made to the landlord at the above property address or by contacting the property management office.</p>
@@ -12346,8 +12384,20 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }
 
   // ---- Merge + render ----
+  // Sanitize template body: allow only safe HTML tags, strip scripts/events
+  function sanitizeTemplateHtml(html) {
+  if (!html) return "";
+  // Strip <script>, <iframe>, <object>, <embed>, <link>, <meta>, <base> tags entirely
+  let safe = html.replace(/<\s*(script|iframe|object|embed|link|meta|base|form)\b[^>]*>[\s\S]*?<\/\s*\1\s*>/gi, "");
+  safe = safe.replace(/<\s*(script|iframe|object|embed|link|meta|base|form)\b[^>]*\/?>/gi, "");
+  // Strip event handlers (on*)
+  safe = safe.replace(/\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]*)/gi, "");
+  // Strip javascript: and data: URLs in attributes
+  safe = safe.replace(/(href|src|action)\s*=\s*["']?\s*(javascript|data|vbscript)\s*:/gi, "$1=\"#\"");
+  return safe;
+  }
   function renderMergedBody(body, values, fieldConfig) {
-  return (body || "").replace(/\{\{(\w+)\}\}/g, (match, fieldName) => {
+  return sanitizeTemplateHtml((body || "").replace(/\{\{(\w+)\}\}/g, (match, fieldName) => {
   // Hide merge tags for conditionally hidden fields
   if (fieldConfig && !isFieldVisible(fieldName, values, fieldConfig)) return "";
   const val = values[fieldName];
@@ -12357,7 +12407,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   return formatted ? escapeHtml(formatted).replace(/\n/g, "<br/>") : '<span style="color:#ef4444;background:#fef2f2;padding:0 4px;border-radius:4px;">' + match + '</span>';
   }
   return val !== undefined && val !== "" ? escapeHtml(String(val)) : '<span style="color:#ef4444;background:#fef2f2;padding:0 4px;border-radius:4px;">' + match + '</span>';
-  });
+  }));
   }
 
   // ---- Validation ----
@@ -13561,7 +13611,7 @@ function AuditTrail({ companyId }) {
   let query = supabase.from("audit_trail").select("*", { count: "exact" }).eq("company_id", companyId);
   if (filterModule !== "all") query = query.eq("module", filterModule);
   if (filterAction !== "all") query = query.eq("action", filterAction);
-  if (filterUser) query = query.ilike("user_email", `%${filterUser}%`);
+  if (filterUser) query = query.ilike("user_email", `%${escapeFilterValue(filterUser)}%`);
   const { data, count } = await query.order("created_at", { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
   setLogs(data || []);
   setTotalCount(count || 0);
