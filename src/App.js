@@ -2541,6 +2541,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }
 
   async function saveProperty() {
+  window.alert("DEBUG: saveProperty called. Guard locked=" + !!_submitGuards["saveProperty"]);
   // Validate BEFORE acquiring guard lock (so failed validation doesn't lock the button)
   if (!form.address_line_1.trim()) { showToast("Address Line 1 is required.", "error"); return; }
   if (!form.city.trim()) { showToast("City is required.", "error"); return; }
