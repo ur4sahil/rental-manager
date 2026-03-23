@@ -7070,6 +7070,8 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   const [modal, setModal] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
   const [searchProperty, setSearchProperty] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [properties, setProperties] = useState([]);
   const [form, setForm] = useState({ date: acctToday(), description: "", reference: "", property: "", lines: [{ account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }, { account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }] });
 
@@ -7085,7 +7087,9 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
 
   const filtered = [...journalEntries].sort((a,b) => b.date.localeCompare(a.date))
   .filter(je => filterStatus === "all" || je.status === filterStatus)
-  .filter(je => !searchProperty || (je.property || "").toLowerCase().includes(searchProperty.toLowerCase()));
+  .filter(je => !searchProperty || (je.property || "").toLowerCase().includes(searchProperty.toLowerCase()))
+  .filter(je => !dateFrom || je.date >= dateFrom)
+  .filter(je => !dateTo || je.date <= dateTo);
   const counts = { all: journalEntries.length, posted: journalEntries.filter(j=>j.status==="posted").length, draft: journalEntries.filter(j=>j.status==="draft").length, voided: journalEntries.filter(j=>j.status==="voided").length };
 
   // Get unique properties from existing JEs for the filter dropdown
@@ -7181,10 +7185,14 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   {[{k:"all",l:`All (${counts.all})`},{k:"posted",l:`Posted (${counts.posted})`},{k:"draft",l:`Drafts (${counts.draft})`},{k:"voided",l:`Voided (${counts.voided})`}].map(f => (
   <button key={f.k} onClick={() => setFilterStatus(f.k)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${filterStatus === f.k ? "bg-green-600 text-white border-green-600" : "bg-white text-slate-500 border-slate-200 hover:border-green-300"}`}>{f.l}</button>
   ))}
-  <select value={searchProperty} onChange={e => setSearchProperty(e.target.value)} className="text-xs px-3 py-1.5 rounded-xl border border-indigo-100 bg-white text-slate-500 ml-auto">
+  <select value={searchProperty} onChange={e => setSearchProperty(e.target.value)} className="text-xs px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-500 ml-auto">
   <option value="">All Properties</option>
-  {jeProperties.map(p => <option key={p} value={p}>{p}</option>)}
+  {jeProperties.map(p => <option key={p} value={p}>{p.split(",")[0]}</option>)}
   </select>
+  <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-500" title="From date" />
+  <span className="text-xs text-slate-400">to</span>
+  <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-500" title="To date" />
+  {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-red-400 hover:text-red-600">Clear</button>}
   </div>
   <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
   <table className="w-full text-sm">
