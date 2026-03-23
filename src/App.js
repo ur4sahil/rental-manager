@@ -1729,8 +1729,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       premium_frequency: insurance.premium_frequency,
       coverage_amount: Number(insurance.coverage_amount) || 0,
       expiration_date: insurance.expiration_date || null,
-      notes: insurance.notes.trim(),
-      status: "active"
+      notes: insurance.notes.trim()
     }]);
     if (error) throw new Error("Failed to save insurance: " + error.message);
     return true;
