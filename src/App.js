@@ -17012,9 +17012,12 @@ function AppInner() {
   <span className="font-manrope font-extrabold text-lg tracking-tight text-indigo-900">Estate Logic</span>
   </div>
   {activeCompany && (
-  <div className="flex items-center gap-1.5 mt-2">
-  <span className="w-5 h-5 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold">{activeCompany.name[0]}</span>
-  <span className="text-xs text-slate-500 truncate max-w-32 font-medium">{activeCompany.name}</span>
+  <div className="flex items-center justify-between mt-2">
+  <div className="flex items-center gap-1.5 min-w-0">
+  <span className="w-5 h-5 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold shrink-0">{activeCompany.name[0]}</span>
+  <span className="text-xs text-slate-500 truncate font-medium">{activeCompany.name}</span>
+  </div>
+  <button onClick={() => { setSidebarOpen(false); switchCompany(); }} className="text-slate-400 hover:text-indigo-600 shrink-0 ml-1" title="Switch Company"><span className="material-icons-outlined text-sm">swap_horiz</span></button>
   </div>
   )}
   </div>
@@ -17037,9 +17040,7 @@ function AppInner() {
   <div className={`text-xs font-medium ${ROLES[userRole]?.color?.replace("bg-", "text-") || "text-indigo-600"}`}>{ROLES[userRole]?.label}</div>
   </div>
   </div>
-  <button onClick={() => { setSidebarOpen(false); switchCompany(); }} className="text-slate-400 hover:text-indigo-500 transition-colors" title="Switch Company"><span className="material-icons-outlined text-lg">swap_horiz</span></button>
-  <button onClick={() => { setPage("audittrail"); setSidebarOpen(false); }} className="text-slate-400 hover:text-indigo-500 transition-colors" title="Audit Trail"><span className="material-icons-outlined text-lg">history</span></button>
-  <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 transition-colors"><span className="material-icons-outlined text-lg">logout</span></button>
+  <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 transition-colors" title="Logout"><span className="material-icons-outlined text-lg">logout</span></button>
   </div>
   </div>
   </div>
