@@ -2961,6 +2961,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
   return;
   }
+  // DEBUG: verify this code version is deployed
+  window.alert("DEBUG saveTenant v2: DB save succeeded. editingTenant=" + (editingTenant ? "EDITING" : "NEW"));
   // Close form immediately and show processing spinner for post-save operations
   const _isNew = !editingTenant;
   const _name = form.name.trim();
