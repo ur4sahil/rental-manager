@@ -5628,8 +5628,8 @@ function AcctModal({ isOpen, onClose, title, children, size = "md" }) {
   const sizes = { sm:"max-w-md", md:"max-w-xl", lg:"max-w-3xl", xl:"max-w-5xl" };
   return (
   <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:"rgba(0,0,0,0.5)" }} onClick={e => e.target === e.currentTarget && onClose()}>
-  <div className={`bg-white rounded-3xl shadow-card border border-indigo-50 w-full ${sizes[size]} flex flex-col`} style={{ maxHeight:"90vh" }}>
-  <div className="flex items-center justify-between px-6 py-4 border-b border-indigo-50 shrink-0">
+  <div className={`bg-white rounded-xl shadow-sm border border-slate-200 w-full ${sizes[size]} flex flex-col`} style={{ maxHeight:"90vh" }}>
+  <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
   <h2 className="text-lg font-manrope font-bold text-slate-900">{title}</h2>
   <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:bg-indigo-50/50 transition-colors"><span className="material-icons-outlined text-lg">close</span></button>
   </div>
@@ -5713,33 +5713,33 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   </div>
   <div className="flex gap-2">
   <button onClick={() => setShowInactive(!showInactive)} className={`text-xs px-3 py-1.5 rounded-lg border ${showInactive ? "bg-indigo-50 border-indigo-200" : "border-indigo-100 text-slate-400"}`}>{showInactive ? "Hide Inactive" : "Show Inactive"}</button>
-  <button onClick={openAdd} className="bg-slate-800 text-white text-xs px-4 py-2 rounded-lg hover:bg-slate-700">+ New Account</button>
+  <button onClick={openAdd} className="bg-green-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-green-700">+ New Account</button>
   </div>
   </div>
   <div className="flex flex-wrap gap-2 mb-4">
   {["All", ...typeOrder.filter((t, i, a) => a.indexOf(t) === i)].map(t => (
-  <button key={t} onClick={() => setFilter(t)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${filter === t ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-400 border-indigo-100 hover:border-indigo-300"}`}>{t}</button>
+  <button key={t} onClick={() => setFilter(t)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${filter === t ? "bg-green-600 text-white border-green-600" : "bg-white text-slate-500 border-slate-200 hover:border-green-300"}`}>{t}</button>
   ))}
   </div>
   {typeOrder.filter((t, i, a) => a.indexOf(t) === i).map(type => {
   const accts = grouped[type];
   if (!accts?.length) return null;
   return (
-  <div key={type} className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden mb-3">
-  <div className="px-4 py-2 bg-indigo-50/30 flex items-center justify-between">
+  <div key={type} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-3">
+  <div className="px-5 py-3 bg-slate-50 flex items-center justify-between">
   <div className="flex items-center gap-2"><AcctTypeBadge type={type} /><span className="text-xs text-slate-400">{accts.length} accounts</span></div>
   <span className="font-mono text-xs font-semibold text-slate-500">{acctFmt(accts.filter(a=>a.is_active).reduce((s,a)=>s+a.computedBalance,0))}</span>
   </div>
   <table className="w-full text-sm">
-  <thead className="text-xs text-slate-400 uppercase bg-indigo-50/30"><tr><th className="px-4 py-2 text-left">Number</th><th className="px-4 py-2 text-left">Name</th><th className="px-4 py-2 text-left">Subtype</th><th className="px-4 py-2 text-right">Balance</th><th className="px-4 py-2 w-20">Actions</th></tr></thead>
+  <thead className="text-xs text-slate-500 uppercase tracking-wider bg-slate-50 font-semibold"><tr><th className="px-5 py-3 text-left">Number</th><th className="px-5 py-3 text-left">Name</th><th className="px-5 py-3 text-left">Subtype</th><th className="px-5 py-3 text-right">Balance</th><th className="px-5 py-3 w-20">Actions</th></tr></thead>
   <tbody>
   {accts.map(a => (
-  <tr key={a.id} className={`border-t border-indigo-50/50 hover:bg-blue-50/30 cursor-pointer ${a._isSubAccount ? "bg-slate-50/40" : ""}`} onClick={() => onOpenLedger && onOpenLedger([a.id], (a.code ? a.code + " " : "") + a.name)}>
-  <td className={`py-2 font-mono text-xs text-slate-400 ${a._isSubAccount ? "pl-8 pr-4" : "px-4"}`}>{a._isSubAccount ? "└ " : ""}{a.code || "—"}</td>
-  <td className={`px-4 py-2 ${a._isSubAccount ? "text-sm text-slate-600" : "font-medium"} ${!a.is_active ? "text-slate-400 line-through" : a._isSubAccount ? "" : "text-slate-800"}`}>{a.name}</td>
-  <td className="px-4 py-2 text-xs text-slate-400">{a.sub_type || a.subtype}</td>
-  <td className={`px-4 py-2 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(a.computedBalance, true)}</td>
-  <td className="px-4 py-2 text-center flex items-center gap-2 justify-center">
+  <tr key={a.id} className={`border-t border-slate-100 hover:bg-green-50/40 transition-colors cursor-pointer ${a._isSubAccount ? "bg-slate-50/40" : ""}`} onClick={() => onOpenLedger && onOpenLedger([a.id], (a.code ? a.code + " " : "") + a.name)}>
+  <td className={`py-3 font-mono text-xs text-slate-400 ${a._isSubAccount ? "pl-8 pr-5" : "px-5"}`}>{a._isSubAccount ? "└ " : ""}{a.code || "—"}</td>
+  <td className={`px-5 py-3 ${a._isSubAccount ? "text-sm text-slate-600" : "font-medium"} ${!a.is_active ? "text-slate-400 line-through" : a._isSubAccount ? "" : "text-slate-800"}`}>{a.name}</td>
+  <td className="px-5 py-3 text-xs text-slate-400">{a.sub_type || a.subtype}</td>
+  <td className={`px-5 py-3 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(a.computedBalance, true)}</td>
+  <td className="px-5 py-3 text-center flex items-center gap-2 justify-center">
   <button onClick={e => { e.stopPropagation(); openEdit(a); }} className="text-slate-400 hover:text-indigo-600 text-xs" title="Edit account"><span className="material-icons-outlined text-sm">edit</span></button>
   <button onClick={e => { e.stopPropagation(); onToggle(a.id, a.is_active); }} className="text-slate-400 hover:text-slate-700 text-xs">{a.is_active ? "🟢" : "⚪"}</button>
   </td>
@@ -5775,7 +5775,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   <div><label className="text-xs font-medium text-slate-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
   <div className="flex justify-end gap-2 pt-2">
   <button onClick={() => setModal(null)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
-  <button onClick={saveAccount} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-slate-700">{modal === "add" ? "Create" : "Save"}</button>
+  <button onClick={saveAccount} className="bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700">{modal === "add" ? "Create" : "Save"}</button>
   </div>
   </div>
   </AcctModal>
@@ -5853,10 +5853,10 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   </div>
   <div className="rounded-xl border border-indigo-100 overflow-x-auto">
   <table className="w-full text-sm">
-  <thead><tr className="bg-indigo-50/30 border-b border-indigo-100"><th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 w-48">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-400 w-32">Class</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-400">Memo</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-400 w-28">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-400 w-28">Credit</th><th className="px-3 py-2 w-8" /></tr></thead>
+  <thead><tr className="bg-slate-50 border-b border-slate-200"><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 w-48">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 w-32">Class</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Memo</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500 w-28">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500 w-28">Credit</th><th className="px-3 py-2 w-8" /></tr></thead>
   <tbody>
   {form.lines.map((line, i) => (
-  <tr key={i} className="border-b border-indigo-50/50">
+  <tr key={i} className="border-b border-slate-100">
   <td className="px-2 py-1.5"><select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}</select></td>
   <td className="px-2 py-1.5"><select value={line.class_id || ""} onChange={e => setLine(i,"class_id",e.target.value||null)} className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></td>
   <td className="px-2 py-1.5"><Input value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="bg-white" /></td>
@@ -5866,7 +5866,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   </tr>
   ))}
   </tbody>
-  <tfoot><tr className="bg-indigo-50/30 border-t border-indigo-100"><td colSpan={3} className="px-3 py-2 text-xs font-semibold text-slate-500 text-right">Totals</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-emerald-700":"text-red-600"}`}>{acctFmt(totalDebit)}</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-emerald-700":"text-red-600"}`}>{acctFmt(totalCredit)}</td><td /></tr></tfoot>
+  <tfoot><tr className="bg-slate-50 border-t border-slate-200"><td colSpan={3} className="px-3 py-2 text-xs font-semibold text-slate-500 text-right">Totals</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-emerald-700":"text-red-600"}`}>{acctFmt(totalDebit)}</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-emerald-700":"text-red-600"}`}>{acctFmt(totalCredit)}</td><td /></tr></tfoot>
   </table>
   </div>
   {!validation.isValid && totalDebit > 0 && totalCredit > 0 && <div className="text-xs text-red-600 bg-red-50 rounded-2xl px-3 py-2">⚠ Out of balance by {acctFmt(validation.difference)}</div>}
@@ -5885,36 +5885,36 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   <div className="space-y-4">
   <div className="flex items-center justify-between mb-4">
   <div><h3 className="text-lg font-semibold text-slate-900">Journal Entries</h3><p className="text-sm text-slate-400">Record and manage financial transactions</p></div>
-  <button onClick={openAdd} className="bg-slate-800 text-white text-xs px-4 py-2 rounded-lg hover:bg-slate-700">+ New Entry</button>
+  <button onClick={openAdd} className="bg-green-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-green-700">+ New Entry</button>
   </div>
   <div className="flex gap-2 mb-4">
   {[{k:"all",l:`All (${counts.all})`},{k:"posted",l:`Posted (${counts.posted})`},{k:"draft",l:`Drafts (${counts.draft})`},{k:"voided",l:`Voided (${counts.voided})`}].map(f => (
-  <button key={f.k} onClick={() => setFilterStatus(f.k)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${filterStatus === f.k ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-400 border-indigo-100"}`}>{f.l}</button>
+  <button key={f.k} onClick={() => setFilterStatus(f.k)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${filterStatus === f.k ? "bg-green-600 text-white border-green-600" : "bg-white text-slate-500 border-slate-200 hover:border-green-300"}`}>{f.l}</button>
   ))}
   <select value={searchProperty} onChange={e => setSearchProperty(e.target.value)} className="text-xs px-3 py-1.5 rounded-xl border border-indigo-100 bg-white text-slate-500 ml-auto">
   <option value="">All Properties</option>
   {jeProperties.map(p => <option key={p} value={p}>{p}</option>)}
   </select>
   </div>
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden">
+  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
   <table className="w-full text-sm">
-  <thead className="text-xs text-slate-400 uppercase bg-indigo-50/30"><tr><th className="px-4 py-2 text-left">Entry #</th><th className="px-4 py-2 text-left">Date</th><th className="px-4 py-2 text-left">Property</th><th className="px-4 py-2 text-left">Description</th><th className="px-4 py-2 text-left">Ref</th><th className="px-4 py-2 text-left">Status</th><th className="px-4 py-2 text-right">Amount</th><th className="px-4 py-2">Actions</th></tr></thead>
+  <thead className="text-xs text-slate-500 uppercase tracking-wider bg-slate-50 font-semibold"><tr><th className="px-5 py-3 text-left">Entry #</th><th className="px-5 py-3 text-left">Date</th><th className="px-5 py-3 text-left">Property</th><th className="px-5 py-3 text-left">Description</th><th className="px-5 py-3 text-left">Ref</th><th className="px-5 py-3 text-left">Status</th><th className="px-5 py-3 text-right">Amount</th><th className="px-5 py-3">Actions</th></tr></thead>
   <tbody>
   {filtered.map(je => {
   const total = (je.lines || []).reduce((s,l) => s + safeNum(l.debit), 0);
   return (
-  <tr key={je.id} className="border-t border-indigo-50/50 hover:bg-blue-50/30 cursor-pointer" onClick={() => openView(je)}>
-  <td className="px-4 py-2 font-mono text-xs font-semibold text-slate-700">{je.number}</td>
-  <td className="px-4 py-2 text-slate-500">{acctFmtDate(je.date)}</td>
-  <td className="px-4 py-2 text-xs text-slate-500">{je.property || "—"}</td>
-  <td className="px-4 py-2 font-medium text-slate-800">{je.description}</td>
-  <td className="px-4 py-2 text-xs text-slate-400">{je.reference || "—"}</td>
-  <td className="px-4 py-2"><AcctStatusBadge status={je.status} /></td>
-  <td className="px-4 py-2 text-right font-mono text-sm font-semibold">{acctFmt(total)}</td>
-  <td className="px-4 py-2 text-center">
+  <tr key={je.id} className="border-t border-slate-100 hover:bg-green-50/40 transition-colors cursor-pointer" onClick={() => openView(je)}>
+  <td className="px-5 py-3 font-mono text-xs font-semibold text-slate-700">{je.number}</td>
+  <td className="px-5 py-3 text-slate-500">{acctFmtDate(je.date)}</td>
+  <td className="px-5 py-3 text-xs text-slate-500">{je.property || "—"}</td>
+  <td className="px-5 py-3 font-medium text-slate-800">{je.description}</td>
+  <td className="px-5 py-3 text-xs text-slate-400">{je.reference || "—"}</td>
+  <td className="px-5 py-3"><AcctStatusBadge status={je.status} /></td>
+  <td className="px-5 py-3 text-right font-mono text-sm font-semibold">{acctFmt(total)}</td>
+  <td className="px-5 py-3 text-center">
   <div className="flex gap-1 justify-center" onClick={e => e.stopPropagation()}>
-  {je.status === "draft" && <button onClick={() => onPost(je.id)} className="text-xs text-emerald-600 hover:underline">Post</button>}
-  {je.status === "posted" && <button onClick={() => onVoid(je.id)} className="text-xs text-red-500 hover:underline">Void</button>}
+  {je.status === "draft" && <button onClick={() => onPost(je.id)} className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-100 text-xs">Post</button>}
+  {je.status === "posted" && <button onClick={() => onVoid(je.id)} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-100 text-xs">Void</button>}
   {je.status !== "voided" && <button onClick={() => openEdit(je)} className="text-xs text-indigo-600 hover:underline">Edit</button>}
   </div>
   </td>
@@ -5933,21 +5933,21 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   {modal?.mode === "view" && (
   <AcctModal isOpen={true} onClose={() => setModal(null)} title={`Journal Entry: ${modal.je.number}`} size="xl">
   <div className="space-y-4">
-  <div className="grid grid-cols-3 gap-3 bg-indigo-50/30 rounded-3xl p-4">
+  <div className="grid grid-cols-3 gap-3 bg-slate-50 rounded-xl p-4">
   <div><p className="text-xs text-slate-400">Entry #</p><p className="font-mono font-semibold">{modal.je.number}</p></div>
   <div><p className="text-xs text-slate-400">Date</p><p className="font-semibold">{acctFmtDate(modal.je.date)}</p></div>
   <div><p className="text-xs text-slate-400">Property</p><p className="font-semibold">{modal.je.property || "—"}</p></div>
   <div className="col-span-2"><p className="text-xs text-slate-400">Description</p><p className="font-semibold">{modal.je.description}</p></div>
   <div><p className="text-xs text-slate-400">Status</p><AcctStatusBadge status={modal.je.status} /></div>
   </div>
-  <table className="w-full text-sm rounded-xl border border-indigo-100 overflow-hidden">
-  <thead><tr className="bg-indigo-50/30"><th className="px-4 py-2 text-left text-xs font-semibold text-slate-400">Account</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-400">Class</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-400">Memo</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-400">Debit</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-400">Credit</th></tr></thead>
+  <table className="w-full text-sm rounded-xl border border-slate-200 overflow-hidden">
+  <thead><tr className="bg-slate-50"><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Account</th><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Class</th><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Memo</th><th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Debit</th><th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Credit</th></tr></thead>
   <tbody>
   {(modal.je.lines || []).map((l,i) => {
   const cls = classes.find(c => c.id === l.class_id);
   return (
-  <tr key={i} className="border-t border-indigo-50/50">
-  <td className="px-4 py-2">{(() => { const acct = accounts.find(a => a.id === l.account_id); const code = acct?.code || ""; const name = l.account_name || acct?.name || "Unknown Account"; return <>{code && <span className="font-mono text-xs text-slate-400 mr-1">{code}</span>}{name}</>; })()}</td>
+  <tr key={i} className="border-t border-slate-100">
+  <td className="px-5 py-3">{(() => { const acct = accounts.find(a => a.id === l.account_id); const code = acct?.code || ""; const name = l.account_name || acct?.name || "Unknown Account"; return <>{code && <span className="font-mono text-xs text-slate-400 mr-1">{code}</span>}{name}</>; })()}</td>
   <td className="px-4 py-2 text-xs">{cls ? <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background:cls.color}} />{cls.name}</span> : "—"}</td>
   <td className="px-4 py-2 text-xs text-slate-400">{l.memo || "—"}</td>
   <td className="px-4 py-2 text-right font-mono">{safeNum(l.debit) > 0 ? acctFmt(l.debit) : ""}</td>
@@ -5958,8 +5958,8 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   </tbody>
   </table>
   <div className="flex gap-2">
-  {modal.je.status === "draft" && <button onClick={() => { onPost(modal.je.id); setModal(null); }} className="bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-lg">Post</button>}
-  {modal.je.status === "posted" && <button onClick={() => { onVoid(modal.je.id); setModal(null); }} className="bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg">Void</button>}
+  {modal.je.status === "draft" && <button onClick={() => { onPost(modal.je.id); setModal(null); }} className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-100 text-xs">Post</button>}
+  {modal.je.status === "posted" && <button onClick={() => { onVoid(modal.je.id); setModal(null); }} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-100 text-xs">Void</button>}
   {modal.je.status !== "voided" && <button onClick={() => openEdit(modal.je)} className="bg-slate-200 text-slate-700 text-xs px-3 py-1.5 rounded-lg">Edit</button>}
   </div>
   </div>
@@ -6000,28 +6000,28 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   <div className="space-y-4">
   <div className="flex items-center justify-between mb-4">
   <div><h3 className="text-lg font-semibold text-slate-900">Class Tracking</h3><p className="text-sm text-slate-400">Track by unit, property, or department</p></div>
-  <button onClick={openAdd} className="bg-slate-800 text-white text-xs px-4 py-2 rounded-lg hover:bg-slate-700">+ New Class</button>
+  <button onClick={openAdd} className="bg-green-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-green-700">+ New Class</button>
   </div>
   <div className="flex flex-wrap gap-2 mb-4">
-  {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${period === p ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-400 border-indigo-100"}`}>{p}</button>)}
+  {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${period === p ? "bg-green-600 text-white border-green-600" : "bg-white text-slate-500 border-slate-200 hover:border-green-300"}`}>{p}</button>)}
   </div>
   <div className="grid grid-cols-3 gap-3 mb-4">
-  <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-4"><p className="text-xs text-emerald-600 font-medium">Revenue</p><p className="text-xl font-bold text-emerald-800 font-mono mt-1">{acctFmt(totalRev)}</p></div>
-  <div className="bg-red-50 border border-red-100 rounded-3xl p-4"><p className="text-xs text-red-600 font-medium">Expenses</p><p className="text-xl font-bold text-red-800 font-mono mt-1">{acctFmt(totalExp)}</p></div>
-  <div className={`border rounded-3xl p-4 ${totalNet >= 0 ? "bg-blue-50 border-blue-100" : "bg-orange-50 border-orange-100"}`}><p className={`text-xs font-medium ${totalNet >= 0 ? "text-blue-600" : "text-orange-600"}`}>Net Income</p><p className={`text-xl font-bold font-mono mt-1 ${totalNet >= 0 ? "text-blue-800" : "text-orange-800"}`}>{acctFmt(totalNet, true)}</p></div>
+  <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4"><p className="text-xs text-emerald-600 font-medium">Revenue</p><p className="text-xl font-bold text-emerald-800 font-mono mt-1">{acctFmt(totalRev)}</p></div>
+  <div className="bg-red-50 border border-red-100 rounded-xl p-4"><p className="text-xs text-red-600 font-medium">Expenses</p><p className="text-xl font-bold text-red-800 font-mono mt-1">{acctFmt(totalExp)}</p></div>
+  <div className={`border rounded-xl p-4 ${totalNet >= 0 ? "bg-blue-50 border-blue-100" : "bg-orange-50 border-orange-100"}`}><p className={`text-xs font-medium ${totalNet >= 0 ? "text-blue-600" : "text-orange-600"}`}>Net Income</p><p className={`text-xl font-bold font-mono mt-1 ${totalNet >= 0 ? "text-blue-800" : "text-orange-800"}`}>{acctFmt(totalNet, true)}</p></div>
   </div>
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden">
+  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
   <table className="w-full text-sm">
-  <thead className="text-xs text-slate-400 uppercase bg-indigo-50/30"><tr><th className="px-4 py-2 text-left">Class</th><th className="px-4 py-2 text-left">Description</th><th className="px-4 py-2 text-right">Revenue</th><th className="px-4 py-2 text-right">Expenses</th><th className="px-4 py-2 text-right">Net Income</th><th className="px-4 py-2 w-16" /></tr></thead>
+  <thead className="text-xs text-slate-500 uppercase tracking-wider bg-slate-50 font-semibold"><tr><th className="px-5 py-3 text-left">Class</th><th className="px-5 py-3 text-left">Description</th><th className="px-5 py-3 text-right">Revenue</th><th className="px-5 py-3 text-right">Expenses</th><th className="px-5 py-3 text-right">Net Income</th><th className="px-5 py-3 w-16" /></tr></thead>
   <tbody>
   {classReport.map(c => (
-  <tr key={c.id} className="border-t border-indigo-50/50 hover:bg-blue-50/30">
-  <td className="px-4 py-2"><div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{background:c.color}} /><span className={`font-medium ${!c.is_active?"text-slate-400 line-through":"text-slate-800"}`}>{c.name}</span></div></td>
-  <td className="px-4 py-2 text-xs text-slate-400">{c.description}</td>
-  <td className="px-4 py-2 text-right font-mono text-sm text-emerald-700">{c.revenue > 0 ? acctFmt(c.revenue) : "—"}</td>
-  <td className="px-4 py-2 text-right font-mono text-sm text-red-600">{c.expenses > 0 ? acctFmt(c.expenses) : "—"}</td>
-  <td className={`px-4 py-2 text-right font-mono text-sm font-bold ${c.netIncome >= 0 ? "text-blue-700" : "text-red-700"}`}>{acctFmt(c.netIncome, true)}</td>
-  <td className="px-4 py-2 flex gap-1"><button onClick={() => openEdit(c)} className="text-xs text-indigo-600 hover:underline">Edit</button><button onClick={() => onToggle(c.id, c.is_active)} className="text-xs">{c.is_active ? "🟢" : "⚪"}</button></td>
+  <tr key={c.id} className="border-t border-slate-100 hover:bg-green-50/40 transition-colors">
+  <td className="px-5 py-3"><div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{background:c.color}} /><span className={`font-medium ${!c.is_active?"text-slate-400 line-through":"text-slate-800"}`}>{c.name}</span></div></td>
+  <td className="px-5 py-3 text-xs text-slate-400">{c.description}</td>
+  <td className="px-5 py-3 text-right font-mono text-sm text-emerald-700">{c.revenue > 0 ? acctFmt(c.revenue) : "—"}</td>
+  <td className="px-5 py-3 text-right font-mono text-sm text-red-600">{c.expenses > 0 ? acctFmt(c.expenses) : "—"}</td>
+  <td className={`px-5 py-3 text-right font-mono text-sm font-bold ${c.netIncome >= 0 ? "text-blue-700" : "text-red-700"}`}>{acctFmt(c.netIncome, true)}</td>
+  <td className="px-5 py-3 flex gap-1"><button onClick={() => openEdit(c)} className="text-xs text-indigo-600 hover:underline">Edit</button><button onClick={() => onToggle(c.id, c.is_active)} className="text-xs">{c.is_active ? "🟢" : "⚪"}</button></td>
   </tr>
   ))}
   </tbody>
@@ -6034,7 +6034,7 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   <div><label className="text-xs font-medium text-slate-500 block mb-2">Color</label><div className="flex gap-2 flex-wrap">{COLORS.map(c => <button key={c} type="button" onClick={() => setForm({...form,color:c})} className={`w-7 h-7 rounded-full border-2 ${form.color===c?"border-gray-800 scale-110":"border-transparent"}`} style={{background:c}} />)}</div></div>
   <div className="flex justify-end gap-2 pt-2">
   <button onClick={() => setModal(null)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
-  <button onClick={saveClass} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg">{modal === "add" ? "Create" : "Save"}</button>
+  <button onClick={saveClass} className="bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700">{modal === "add" ? "Create" : "Save"}</button>
   </div>
   </div>
   </AcctModal>
@@ -6056,7 +6056,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, onOpenLed
 
   const PeriodPicker = () => (
   <div className="flex flex-wrap items-center gap-2 mb-4">
-  {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${period === p ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-400 border-indigo-100"}`}>{p}</button>)}
+  {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${period === p ? "bg-green-600 text-white border-green-600" : "bg-white text-slate-500 border-slate-200 hover:border-green-300"}`}>{p}</button>)}
   {period === "Custom" && <><Input type="date" value={customDates.start} onChange={e => setCustomDates(d=>({...d,start:e.target.value}))} className="text-xs" /><span className="text-slate-400 text-xs">to</span><Input type="date" value={customDates.end} onChange={e => setCustomDates(d=>({...d,end:e.target.value}))} /></>}
   </div>
   );
@@ -6081,9 +6081,9 @@ function AcctReports({ accounts, journalEntries, classes, companyName, onOpenLed
   <div><h3 className="text-lg font-semibold text-slate-900">Financial Reports</h3><p className="text-sm text-slate-400">P&L, Balance Sheet, Trial Balance, General Ledger</p></div>
   <button onClick={() => window.print()} className="bg-slate-100 text-slate-500 text-xs px-3 py-1.5 rounded-2xl hover:bg-slate-100">🖨️ Print</button>
   </div>
-  <div className="flex gap-1 border-b border-indigo-50 mb-4 flex-wrap">
+  <div className="flex gap-1 border-b border-slate-200 mb-4 flex-wrap">
   {[{id:"pl",l:"Profit & Loss"},{id:"bs",l:"Balance Sheet"},{id:"ar",l:"AR Aging"},{id:"tb",l:"Trial Balance"},{id:"gl",l:"General Ledger"}].map(t => (
-  <button key={t.id} onClick={() => setActiveReport(t.id)} className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px ${activeReport===t.id ? "border-slate-800 text-slate-800" : "border-transparent text-slate-400 hover:text-slate-500"}`}>{t.l}</button>
+  <button key={t.id} onClick={() => setActiveReport(t.id)} className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px ${activeReport===t.id ? "border-green-600 text-green-700" : "border-transparent text-slate-400 hover:text-slate-500"}`}>{t.l}</button>
   ))}
   </div>
 
@@ -6093,11 +6093,11 @@ function AcctReports({ accounts, journalEntries, classes, companyName, onOpenLed
   <PeriodPicker />
   <div className="flex gap-2 mb-4"><select value={classFilter} onChange={e => setClassFilter(e.target.value)} className="border border-indigo-100 rounded-xl px-3 py-1.5 text-sm bg-white"><option value="">All Classes</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
   <div className="grid grid-cols-3 gap-3 mb-4">
-  <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-4"><p className="text-xs text-emerald-600">Total Revenue</p><p className="text-xl font-bold text-emerald-800 font-mono mt-1">{acctFmt(plData.totalRevenue)}</p></div>
-  <div className="bg-red-50 border border-red-100 rounded-3xl p-4"><p className="text-xs text-red-600">Total Expenses</p><p className="text-xl font-bold text-red-800 font-mono mt-1">{acctFmt(plData.totalExpenses)}</p></div>
-  <div className={`border rounded-3xl p-4 ${plData.netIncome>=0?"bg-blue-50 border-blue-100":"bg-orange-50 border-orange-100"}`}><p className={`text-xs ${plData.netIncome>=0?"text-blue-600":"text-orange-600"}`}>Net Income</p><p className={`text-xl font-bold font-mono mt-1 ${plData.netIncome>=0?"text-blue-800":"text-orange-800"}`}>{acctFmt(plData.netIncome, true)}</p></div>
+  <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4"><p className="text-xs text-emerald-600">Total Revenue</p><p className="text-xl font-bold text-emerald-800 font-mono mt-1">{acctFmt(plData.totalRevenue)}</p></div>
+  <div className="bg-red-50 border border-red-100 rounded-xl p-4"><p className="text-xs text-red-600">Total Expenses</p><p className="text-xl font-bold text-red-800 font-mono mt-1">{acctFmt(plData.totalExpenses)}</p></div>
+  <div className={`border rounded-xl p-4 ${plData.netIncome>=0?"bg-blue-50 border-blue-100":"bg-orange-50 border-orange-100"}`}><p className={`text-xs ${plData.netIncome>=0?"text-blue-600":"text-orange-600"}`}>Net Income</p><p className={`text-xl font-bold font-mono mt-1 ${plData.netIncome>=0?"text-blue-800":"text-orange-800"}`}>{acctFmt(plData.netIncome, true)}</p></div>
   </div>
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+  <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
   <div className="text-center mb-4"><p className="text-xs text-slate-400 uppercase tracking-widest">Profit & Loss Statement</p><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-sm text-slate-400">{acctFmtDate(start)} — {acctFmtDate(end)}</p></div>
   <div className="border-t pt-3"><p className="text-sm font-bold text-slate-800 uppercase mb-2">Income</p>{plData.revenue.map(a => <div key={a.id} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded cursor-pointer group"><span className="text-sm text-slate-700 group-hover:text-indigo-600">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount)}</span></div>)}<div onClick={() => onOpenLedger && onOpenLedger(plData.revenue.map(a=>a.id), "Total Income")} className="flex justify-between py-2 border-t-2 border-indigo-200 mt-2 font-bold cursor-pointer hover:bg-emerald-50/50 rounded"><span>Total Income</span><span className="font-mono text-emerald-700">{acctFmt(plData.totalRevenue)}</span></div></div>
   <div className="border-t pt-3 mt-3"><p className="text-sm font-bold text-slate-800 uppercase mb-2">Expenses</p>{plData.expenses.map(a => <div key={a.id} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded cursor-pointer group"><span className="text-sm text-slate-700 group-hover:text-indigo-600">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount)}</span></div>)}<div onClick={() => onOpenLedger && onOpenLedger(plData.expenses.map(a=>a.id), "Total Expenses")} className="flex justify-between py-2 border-t-2 border-indigo-200 mt-2 font-bold cursor-pointer hover:bg-red-50/50 rounded"><span>Total Expenses</span><span className="font-mono text-red-600">{acctFmt(plData.totalExpenses)}</span></div></div>
@@ -6111,7 +6111,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, onOpenLed
   <div>
   <div className="flex items-center gap-3 mb-4"><span className="text-sm text-slate-500">As of:</span><Input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} />{bsBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl">✓ Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-xl">⚠ Out of Balance</span>}</div>
   <div className="grid grid-cols-2 gap-4">
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+  <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
   <p className="text-base font-black text-slate-900 mb-3">ASSETS</p>
   {bsData.assets.filter(a=>a.amount!==0).map(a => (
   <div key={a.id}>
@@ -6138,7 +6138,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, onOpenLed
   ))}
   <div onClick={() => onOpenLedger && onOpenLedger(bsData.assets.filter(a=>a.amount!==0).map(a=>a.id), "All Assets")} className="flex justify-between py-3 border-t-4 border-gray-800 bg-blue-50 px-2 rounded-xl mt-3 font-black cursor-pointer hover:bg-blue-100/50"><span>TOTAL ASSETS</span><span className="font-mono text-blue-700">{acctFmt(bsData.totalAssets)}</span></div>
   </div>
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+  <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
   <p className="text-base font-black text-slate-900 mb-3">LIABILITIES & EQUITY</p>
   <p className="text-xs font-bold text-slate-400 uppercase mt-2 mb-1">Liabilities</p>
   {bsData.liabilities.filter(a=>a.amount!==0).map(a => <div key={a.id} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded cursor-pointer group"><span className="text-sm text-slate-700 group-hover:text-indigo-600">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount, true)}</span></div>)}
@@ -6173,31 +6173,31 @@ function AcctReports({ accounts, journalEntries, classes, companyName, onOpenLed
   </div>
 
   {/* Total AR */}
-  <div className="bg-indigo-50 rounded-3xl p-4 mb-5 flex justify-between items-center">
+  <div className="bg-indigo-50 rounded-xl p-4 mb-5 flex justify-between items-center">
   <div><span className="text-sm font-bold text-indigo-800">Total Accounts Receivable</span><span className="text-xs text-indigo-500 ml-2">(Account 1100)</span></div>
   <span className="text-xl font-black font-mono text-indigo-800">{acctFmt((bsData.arAging?.current || 0) + (bsData.arAging?.days30 || 0) + (bsData.arAging?.days60 || 0) + (bsData.arAging?.days90 || 0) + (bsData.arAging?.over90 || 0))}</span>
   </div>
 
   {/* Per-Tenant Aging Table */}
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden">
-  <div className="px-5 py-3 bg-indigo-50/30 border-b border-indigo-50">
+  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+  <div className="px-5 py-3 bg-slate-50 border-b border-slate-200">
   <h4 className="text-sm font-bold text-slate-800">AR Aging by Tenant</h4>
   </div>
   <table className="w-full text-sm">
   <thead>
-  <tr className="border-b border-indigo-50 text-xs text-slate-400 uppercase">
-  <th className="px-4 py-2 text-left">Tenant</th>
-  <th className="px-3 py-2 text-right">Current</th>
-  <th className="px-3 py-2 text-right">31-60</th>
-  <th className="px-3 py-2 text-right">61-90</th>
-  <th className="px-3 py-2 text-right">91-120</th>
-  <th className="px-3 py-2 text-right">120+</th>
-  <th className="px-4 py-2 text-right font-bold">Total</th>
+  <tr className="border-b border-slate-100 text-xs text-slate-500 uppercase tracking-wider font-semibold bg-slate-50">
+  <th className="px-5 py-3 text-left">Tenant</th>
+  <th className="px-3 py-3 text-right">Current</th>
+  <th className="px-3 py-3 text-right">31-60</th>
+  <th className="px-3 py-3 text-right">61-90</th>
+  <th className="px-3 py-3 text-right">91-120</th>
+  <th className="px-3 py-3 text-right">120+</th>
+  <th className="px-5 py-3 text-right font-bold">Total</th>
   </tr>
   </thead>
   <tbody>
   {Object.entries(bsData.arAgingByTenant || {}).filter(([,v]) => v.total > 0.01).sort((a, b) => b[1].total - a[1].total).map(([tenant, aging], i) => (
-  <tr key={i} className="border-b border-indigo-50/50 hover:bg-indigo-50/30">
+  <tr key={i} className="border-b border-slate-100 hover:bg-green-50/40 transition-colors">
   <td className="px-4 py-2 font-medium text-slate-800">{tenant}</td>
   <td className="px-3 py-2 text-right font-mono text-xs">{aging.current > 0 ? acctFmt(aging.current) : "—"}</td>
   <td className="px-3 py-2 text-right font-mono text-xs text-yellow-700">{aging.days30 > 0 ? acctFmt(aging.days30) : "—"}</td>
@@ -6216,8 +6216,8 @@ function AcctReports({ accounts, journalEntries, classes, companyName, onOpenLed
 
   {/* Tenant Sub-Ledger (Net Balances) */}
   {bsData.arByTenant?.length > 0 && (
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden mt-4">
-  <div className="px-5 py-3 bg-indigo-50/30 border-b border-indigo-50">
+  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mt-4">
+  <div className="px-5 py-3 bg-slate-50 border-b border-slate-200">
   <h4 className="text-sm font-bold text-slate-800">Tenant Sub-Ledger (Net AR Balance)</h4>
   <p className="text-xs text-slate-400">Charges minus payments per tenant — rolls up to master AR on Balance Sheet</p>
   </div>
@@ -6242,11 +6242,11 @@ function AcctReports({ accounts, journalEntries, classes, companyName, onOpenLed
   {activeReport === "tb" && (
   <div>
   <div className="flex items-center gap-3 mb-4"><span className="text-sm text-slate-500">As of:</span><Input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} />{tbBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl">✓ Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-xl">⚠ Out of Balance by {acctFmt(Math.abs(tbTotalDebit - tbTotalCredit))}</span>}</div>
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden">
+  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
   <table className="w-full text-sm">
-  <thead className="bg-indigo-50/30"><tr><th className="px-4 py-3 text-left text-xs font-semibold text-slate-400">#</th><th className="px-4 py-3 text-left text-xs font-semibold text-slate-400">Account</th><th className="px-4 py-3 text-left text-xs font-semibold text-slate-400">Type</th><th className="px-4 py-3 text-right text-xs font-semibold text-slate-400">Debit</th><th className="px-4 py-3 text-right text-xs font-semibold text-slate-400">Credit</th></tr></thead>
-  <tbody>{tbData.map(a => <tr key={a.id} className="border-t border-indigo-50/50"><td className="px-4 py-2 font-mono text-xs text-slate-400">{a.id}</td><td className="px-4 py-2 text-slate-700 font-medium">{a.name}</td><td className="px-4 py-2 text-xs text-slate-400">{a.type}</td><td className="px-4 py-2 text-right font-mono">{a.debitBalance > 0 ? acctFmt(a.debitBalance) : ""}</td><td className="px-4 py-2 text-right font-mono">{a.creditBalance > 0 ? acctFmt(a.creditBalance) : ""}</td></tr>)}</tbody>
-  <tfoot><tr className="border-t-2 border-gray-800 bg-indigo-50/30"><td colSpan={3} className="px-4 py-3 text-right font-bold">TOTALS</td><td className={`px-4 py-3 text-right font-mono font-black ${tbBalanced?"text-emerald-700":"text-red-600"}`}>{acctFmt(tbTotalDebit)}</td><td className={`px-4 py-3 text-right font-mono font-black ${tbBalanced?"text-emerald-700":"text-red-600"}`}>{acctFmt(tbTotalCredit)}</td></tr></tfoot>
+  <thead className="bg-slate-50"><tr><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">#</th><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Account</th><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Type</th><th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Debit</th><th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Credit</th></tr></thead>
+  <tbody>{tbData.map(a => <tr key={a.id} className="border-t border-slate-100 hover:bg-green-50/40 transition-colors"><td className="px-5 py-3 font-mono text-xs text-slate-400">{a.id}</td><td className="px-5 py-3 text-slate-700 font-medium">{a.name}</td><td className="px-5 py-3 text-xs text-slate-400">{a.type}</td><td className="px-5 py-3 text-right font-mono">{a.debitBalance > 0 ? acctFmt(a.debitBalance) : ""}</td><td className="px-5 py-3 text-right font-mono">{a.creditBalance > 0 ? acctFmt(a.creditBalance) : ""}</td></tr>)}</tbody>
+  <tfoot><tr className="border-t-2 border-gray-800 bg-slate-50"><td colSpan={3} className="px-5 py-3 text-right font-bold">TOTALS</td><td className={`px-4 py-3 text-right font-mono font-black ${tbBalanced?"text-emerald-700":"text-red-600"}`}>{acctFmt(tbTotalDebit)}</td><td className={`px-4 py-3 text-right font-mono font-black ${tbBalanced?"text-emerald-700":"text-red-600"}`}>{acctFmt(tbTotalCredit)}</td></tr></tfoot>
   </table>
   </div>
   </div>
@@ -6262,12 +6262,12 @@ function AcctReports({ accounts, journalEntries, classes, companyName, onOpenLed
   </select>
   </div>
   {glAccount && (
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+  <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
   <div className="flex justify-between mb-4"><div><h4 className="font-semibold text-slate-800">{glAccount.name}</h4><p className="text-xs text-slate-400">#{glAccount.id} · {glAccount.type} — {glAccount.subtype}</p></div>{glLines.length > 0 && <div className="text-right"><p className="text-xs text-slate-400">Ending Balance</p><p className="font-mono font-bold">{acctFmt(glLines[glLines.length-1].balance, true)}</p></div>}</div>
-  <table className="w-full text-sm rounded-xl border border-indigo-50 overflow-hidden">
-  <thead className="bg-indigo-50/30"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-400">Date</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-400">Entry</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-400">Description</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-400">Memo</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-400">Debit</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-400">Credit</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-400">Balance</th></tr></thead>
+  <table className="w-full text-sm rounded-xl border border-slate-200 overflow-hidden">
+  <thead className="bg-slate-50"><tr><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Date</th><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Entry</th><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Description</th><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Memo</th><th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Debit</th><th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Credit</th><th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Balance</th></tr></thead>
   <tbody>
-  {glLines.length === 0 ? <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">No transactions</td></tr> : glLines.map((l,i) => <tr key={i} className="border-t border-indigo-50/50"><td className="px-4 py-2 text-xs text-slate-400">{acctFmtDate(l.date)}</td><td className="px-4 py-2 font-mono text-xs text-slate-400">{l.jeId}</td><td className="px-4 py-2 text-slate-700">{l.description}</td><td className="px-4 py-2 text-xs text-slate-400">{l.memo || "—"}</td><td className="px-4 py-2 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td><td className="px-4 py-2 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td><td className={`px-4 py-2 text-right font-mono font-semibold ${l.balance<0?"text-red-600":"text-slate-800"}`}>{acctFmt(l.balance, true)}</td></tr>)}
+  {glLines.length === 0 ? <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-400">No transactions</td></tr> : glLines.map((l,i) => <tr key={i} className="border-t border-slate-100 hover:bg-green-50/40 transition-colors"><td className="px-5 py-3 text-xs text-slate-400">{acctFmtDate(l.date)}</td><td className="px-5 py-3 font-mono text-xs text-slate-400">{l.jeId}</td><td className="px-5 py-3 text-slate-700">{l.description}</td><td className="px-5 py-3 text-xs text-slate-400">{l.memo || "—"}</td><td className="px-5 py-3 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td><td className="px-5 py-3 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td><td className={`px-5 py-3 text-right font-mono font-semibold ${l.balance<0?"text-red-600":"text-slate-800"}`}>{acctFmt(l.balance, true)}</td></tr>)}
   </tbody>
   </table>
   </div>
@@ -6921,57 +6921,181 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   const bsData = getBalanceSheetData(acctAccounts, journalEntries, ytdEnd);
   const pendingCount = journalEntries.filter(j => j.status === "draft").length;
 
+  const acctSidebarItems = [
+  { section: "OVERVIEW", items: [{ id: "overview", label: "Dashboard", icon: "dashboard" }] },
+  { section: "TRANSACTIONS", items: [
+    { id: "coa", label: "Chart of Accounts", icon: "account_balance" },
+    { id: "journal", label: "Journal Entries", icon: "receipt_long", badge: pendingCount },
+    { id: "recurring", label: "Recurring Entries", icon: "autorenew" },
+  ]},
+  { section: "BANKING", items: [
+    { id: "bankimport", label: "Bank Import", icon: "upload_file" },
+    { id: "reconcile", label: "Reconcile", icon: "account_balance_wallet" },
+  ]},
+  { section: "ANALYSIS", items: [
+    { id: "classes", label: "Class Tracking", icon: "category" },
+    { id: "reports", label: "Reports", icon: "assessment" },
+  ]},
+  ];
+
   return (
-  <div>
-  <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-5">Accounting & Financials</h2>
-  <div className="flex gap-2 mb-5 border-b border-indigo-50 overflow-x-auto">
-  {[["overview","Overview"],["coa","Chart of Accounts"],["journal","Journal Entries"],["recurring","🔄 Recurring"],["bankimport","Bank Import"],["reconcile","Reconcile"],["classes","Class Tracking"],["reports","Reports"]].map(([id,label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-700"}`}>
-  {label}
-  {id === "journal" && pendingCount > 0 && <span className="ml-1.5 bg-amber-100 text-amber-700 text-xs px-1.5 py-0.5 rounded-full">{pendingCount}</span>}
-  </button>
+  <div className="flex gap-0 -mx-4 md:-mx-6 -mt-2">
+  {/* Left Sidebar Nav — desktop */}
+  <div className="hidden md:block w-56 shrink-0 border-r border-slate-200 bg-white min-h-[calc(100vh-180px)] py-4 px-2">
+  {acctSidebarItems.map(group => (
+  <div key={group.section}>
+    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold px-3 mt-4 mb-1">{group.section}</p>
+    {group.items.map(item => (
+      <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === item.id ? "bg-green-50 text-green-700 border-l-3 border-green-600" : "text-slate-600 hover:bg-slate-50"}`}>
+        <span className="material-icons-outlined text-lg">{item.icon}</span>
+        <span className="truncate">{item.label}</span>
+        {item.badge > 0 && <span className="ml-auto bg-amber-100 text-amber-700 text-xs px-1.5 py-0.5 rounded-full">{item.badge}</span>}
+      </button>
+    ))}
+  </div>
   ))}
   </div>
 
+  {/* Mobile horizontal tab bar */}
+  <div className="md:hidden flex gap-2 px-4 py-2 border-b border-slate-200 overflow-x-auto w-full bg-white">
+  {acctSidebarItems.flatMap(g => g.items).map(item => (
+    <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${activeTab === item.id ? "bg-green-50 text-green-700" : "text-slate-500 hover:bg-slate-50"}`}>
+      <span className="material-icons-outlined text-base">{item.icon}</span>
+      {item.label}
+      {item.badge > 0 && <span className="ml-1 bg-amber-100 text-amber-700 text-xs px-1.5 py-0.5 rounded-full">{item.badge}</span>}
+    </button>
+  ))}
+  </div>
+
+  {/* Content Area */}
+  <div className="flex-1 min-w-0 px-4 md:px-6 py-2">
+
   {activeTab === "overview" && (
   <div>
-  <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
-  <StatCard label="Total Revenue" value={acctFmt(plData.totalRevenue)} color="text-green-600" sub="Year to date" />
-  <StatCard label="Total Expenses" value={acctFmt(plData.totalExpenses)} color="text-red-500" sub="Year to date" />
-  <StatCard label="Net Income" value={acctFmt(plData.netIncome)} color={plData.netIncome >= 0 ? "text-blue-700" : "text-red-600"} sub="Year to date" />
-  <StatCard label="Total Assets" value={acctFmt(bsData.totalAssets)} color="text-purple-700" sub="Balance sheet" />
+  {/* QuickBooks-style metric cards */}
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-md transition-shadow">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm font-medium text-slate-500">Total Revenue</span>
+        <span className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
+          <span className="material-icons-outlined text-emerald-600 text-xl">trending_up</span>
+        </span>
+      </div>
+      <p className="text-2xl font-bold text-slate-900 font-mono">{acctFmt(plData.totalRevenue)}</p>
+      <p className="text-xs text-slate-400 mt-1">Year to date</p>
+    </div>
+    <div className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-md transition-shadow">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm font-medium text-slate-500">Total Expenses</span>
+        <span className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
+          <span className="material-icons-outlined text-red-600 text-xl">trending_down</span>
+        </span>
+      </div>
+      <p className="text-2xl font-bold text-slate-900 font-mono">{acctFmt(plData.totalExpenses)}</p>
+      <p className="text-xs text-slate-400 mt-1">Year to date</p>
+    </div>
+    <div className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-md transition-shadow">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm font-medium text-slate-500">Net Income</span>
+        <span className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+          <span className="material-icons-outlined text-blue-600 text-xl">account_balance</span>
+        </span>
+      </div>
+      <p className={`text-2xl font-bold font-mono ${plData.netIncome >= 0 ? "text-slate-900" : "text-red-600"}`}>{acctFmt(plData.netIncome)}</p>
+      <p className="text-xs text-slate-400 mt-1">Year to date</p>
+    </div>
+    <div className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-md transition-shadow">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm font-medium text-slate-500">Total Assets</span>
+        <span className="w-10 h-10 rounded-lg bg-violet-50 flex items-center justify-center">
+          <span className="material-icons-outlined text-violet-600 text-xl">business</span>
+        </span>
+      </div>
+      <p className="text-2xl font-bold text-slate-900 font-mono">{acctFmt(bsData.totalAssets)}</p>
+      <p className="text-xs text-slate-400 mt-1">Balance sheet</p>
+    </div>
   </div>
-  {/* Rent accruals are now auto-posted on login and after lease creation */}
-  {pendingCount > 0 && <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 mb-4 text-sm text-amber-700">⏳ {pendingCount} draft journal {pendingCount === 1 ? "entry" : "entries"} awaiting review</div>}
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4 mb-4">
-  <h3 className="font-semibold text-slate-700 mb-3">Recent Journal Entries</h3>
-  {journalEntries.slice(0, 5).map(je => {
-  const total = (je.lines || []).reduce((s,l) => s + safeNum(l.debit), 0);
-  return (
-  <div key={je.id} className="flex items-center justify-between py-2 border-b border-indigo-50/50 last:border-0">
-  <div className="flex items-center gap-3">
-  <span className={`w-2 h-2 rounded-full ${je.status==="posted"?"bg-emerald-400":je.status==="draft"?"bg-amber-400":"bg-slate-300"}`} />
-  <div><p className="text-sm font-medium text-slate-700">{je.description}</p><p className="text-xs text-slate-400">{je.number} · {je.date}</p></div>
+
+  {/* Quick Actions */}
+  <div className="flex gap-3 mb-6 overflow-x-auto">
+    <button onClick={() => setActiveTab("journal")} className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-green-300 hover:shadow-sm transition-all whitespace-nowrap">
+      <span className="material-icons-outlined text-green-600 text-lg">add_circle</span>
+      New Journal Entry
+    </button>
+    <button onClick={() => setActiveTab("recurring")} className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-green-300 hover:shadow-sm transition-all whitespace-nowrap">
+      <span className="material-icons-outlined text-green-600 text-lg">autorenew</span>
+      Recurring Entries
+    </button>
+    <button onClick={() => setActiveTab("reports")} className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-green-300 hover:shadow-sm transition-all whitespace-nowrap">
+      <span className="material-icons-outlined text-green-600 text-lg">assessment</span>
+      Run Reports
+    </button>
   </div>
-  <span className="font-mono text-sm font-semibold text-slate-700">{acctFmt(total)}</span>
-  </div>
-  );
-  })}
-  {journalEntries.length === 0 && <p className="text-sm text-slate-400 text-center py-4">No journal entries yet. Start by creating one in the Journal Entries tab.</p>}
-  </div>
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
-  <h3 className="font-semibold text-slate-700 mb-3">Account Summary</h3>
-  <div className="grid grid-cols-2 gap-3">
-  {["Asset","Liability","Equity","Revenue","Expense"].map(type => {
-  const total = calcAllBalances(acctAccounts, journalEntries).filter(a => a.type === type && a.is_active).reduce((s,a) => s + a.computedBalance, 0);
-  return (
-  <div key={type} className="flex justify-between items-center py-2 px-3 bg-indigo-50/30 rounded-lg">
-  <span className="text-sm text-slate-500">{type}</span>
-  <span className={`font-mono text-sm font-semibold ${total < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(total, true)}</span>
-  </div>
-  );
-  })}
-  </div>
+
+  {/* Two-column layout: Recent Entries + Summary */}
+  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    {/* Left: Recent Transactions (2/3) */}
+    <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+        <h3 className="font-semibold text-slate-800">Recent Journal Entries</h3>
+        <button onClick={() => setActiveTab("journal")} className="text-xs text-green-600 hover:underline">View All</button>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {journalEntries.slice(0, 8).map(je => {
+        const total = (je.lines || []).reduce((s,l) => s + safeNum(l.debit), 0);
+        return (
+          <div key={je.id} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors">
+            <div className="flex items-center gap-3">
+              <span className={`w-2.5 h-2.5 rounded-full ${je.status==="posted"?"bg-emerald-400":je.status==="draft"?"bg-amber-400":"bg-slate-300"}`} />
+              <div>
+                <p className="text-sm text-slate-700">{je.description}</p>
+                <p className="text-xs text-slate-400">{je.number} · {je.date}{je.property ? " · " + je.property.split(",")[0] : ""}</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="font-mono text-sm font-semibold text-slate-800">{acctFmt(total)}</span>
+              <div className="mt-0.5"><AcctStatusBadge status={je.status} /></div>
+            </div>
+          </div>
+        );
+        })}
+        {journalEntries.length === 0 && <p className="text-sm text-slate-400 text-center py-8">No journal entries yet</p>}
+      </div>
+    </div>
+
+    {/* Right: Account Summary + Pending (1/3) */}
+    <div className="space-y-4">
+      {pendingCount > 0 && (
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="material-icons-outlined text-amber-600 text-lg">pending_actions</span>
+          <span className="font-semibold text-amber-800 text-sm">Pending Actions</span>
+        </div>
+        <p className="text-sm text-amber-700">{pendingCount} draft journal {pendingCount === 1 ? "entry" : "entries"} awaiting review</p>
+        <button onClick={() => setActiveTab("journal")} className="text-xs text-amber-700 font-semibold hover:underline mt-2">Review Now →</button>
+      </div>
+      )}
+      <div className="bg-white rounded-xl border border-slate-200">
+        <div className="px-5 py-4 border-b border-slate-100">
+          <h3 className="font-semibold text-slate-800">Account Summary</h3>
+        </div>
+        <div className="p-4 space-y-2">
+          {["Asset","Liability","Equity","Revenue","Expense"].map(type => {
+          const total = calcAllBalances(acctAccounts, journalEntries).filter(a => a.type === type && a.is_active).reduce((s,a) => s + a.computedBalance, 0);
+          const colors = { Asset: "bg-blue-500", Liability: "bg-red-500", Equity: "bg-violet-500", Revenue: "bg-emerald-500", Expense: "bg-orange-500" };
+          return (
+            <div key={type} className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-slate-50">
+              <div className="flex items-center gap-2.5">
+                <span className={`w-2.5 h-2.5 rounded-full ${colors[type]}`} />
+                <span className="text-sm text-slate-700">{type}</span>
+              </div>
+              <span className={`font-mono text-sm font-semibold ${total < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(total, true)}</span>
+            </div>
+          );
+          })}
+        </div>
+      </div>
+    </div>
   </div>
   </div>
   )}
@@ -6985,6 +7109,8 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {/* Account Ledger Drill-Down */}
   {ledgerView && <AccountLedgerView accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => setLedgerView(null)} onViewJE={(jeId) => { setLedgerView(null); setActiveTab("journal"); }} />}
+
+  </div>
   </div>
   );
 }
