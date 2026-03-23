@@ -472,22 +472,39 @@ async function autoOwnerDistribution(companyId, propertyAddress, paymentAmount, 
 }
 
 // Resolve property address to cost-center class ID (with caching)
+// Strategy: properties.class_id is the source of truth. If null, create the class and store it.
 const _classIdCache = {};
 async function getPropertyClassId(propertyAddress, companyId) {
   if (!propertyAddress || !companyId) return null;
   const cacheKey = `${companyId}::${propertyAddress}`;
   if (_classIdCache[cacheKey] !== undefined) return _classIdCache[cacheKey];
-  const { data: prop } = await supabase.from("properties").select("class_id").eq("company_id", companyId).eq("address", propertyAddress).maybeSingle();
-  if (prop?.class_id) { _classIdCache[cacheKey] = prop.class_id; return prop.class_id; }
-  // Exact name match
-  const { data } = await supabase.from("acct_classes").select("id").eq("name", propertyAddress).eq("company_id", companyId).limit(1);
-  if (data?.[0]?.id) { _classIdCache[cacheKey] = data[0].id; return data[0].id; }
-  // Fuzzy: match by first address part (handles slight variations like "Dr" vs "Drive")
-  const addrStart = propertyAddress.split(",")[0].trim();
-  const { data: fuzzy } = await supabase.from("acct_classes").select("id, name").eq("company_id", companyId).ilike("name", addrStart + "%").limit(1);
-  const result = fuzzy?.[0]?.id || null;
-  _classIdCache[cacheKey] = result;
-  return result;
+  // 1. Look up property's stored class_id (authoritative)
+  const { data: prop } = await supabase.from("properties").select("id, class_id").eq("company_id", companyId).eq("address", propertyAddress).maybeSingle();
+  if (prop?.class_id) {
+  // Verify the class still exists
+  const { data: cls } = await supabase.from("acct_classes").select("id").eq("id", prop.class_id).maybeSingle();
+  if (cls?.id) { _classIdCache[cacheKey] = cls.id; return cls.id; }
+  }
+  // 2. class_id is null or stale — find or create the class by exact name match
+  const { data: exactMatch } = await supabase.from("acct_classes").select("id").eq("name", propertyAddress).eq("company_id", companyId).maybeSingle();
+  if (exactMatch?.id) {
+  // Update property to store this class_id for future lookups
+  if (prop?.id) await supabase.from("properties").update({ class_id: exactMatch.id }).eq("id", prop.id).eq("company_id", companyId);
+  _classIdCache[cacheKey] = exactMatch.id;
+  return exactMatch.id;
+  }
+  // 3. No class exists — create one and store on property
+  const { data: newClass } = await supabase.from("acct_classes").insert([{
+  name: propertyAddress, description: "Auto-created for " + propertyAddress.split(",")[0],
+  color: pickColor(propertyAddress), is_active: true, company_id: companyId,
+  }]).select("id").maybeSingle();
+  if (newClass?.id) {
+  if (prop?.id) await supabase.from("properties").update({ class_id: newClass.id }).eq("id", prop.id).eq("company_id", companyId);
+  _classIdCache[cacheKey] = newClass.id;
+  return newClass.id;
+  }
+  _classIdCache[cacheKey] = null;
+  return null;
 }
 
 // ============ ACCOUNT CODE RESOLUTION ============
@@ -8020,11 +8037,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   await supabase.from("acct_classes").upsert(newClasses, { onConflict: "company_id,name" });
   // Re-fetch classes after sync
   const { data: updatedClasses } = await supabase.from("acct_classes").select("*").eq("company_id", companyId).order("name");
-  setAcctClasses(updatedClasses || []);
-  setAcctAccounts(accounts);
-  setJournalEntries(jeHeaders);
-  setLoading(false);
-  return;
+  if (updatedClasses) classes.splice(0, classes.length, ...updatedClasses);
   }
   }
   } // end _propClassesSynced guard
@@ -8043,37 +8056,21 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   if (missing.length > 0) {
   // Re-fetch accounts to include newly created sub-accounts
   const { data: refreshedAccts } = await supabase.from("acct_accounts").select("*").eq("company_id", companyId).order("code");
-  const refreshed = (refreshedAccts || []).map(a => ({ ...a, type: _typeNorm[(a.type || "").toLowerCase()] || a.type }));
-  setAcctAccounts(refreshed);
-  setJournalEntries(jeHeaders);
-  setAcctClasses(classes);
-  setLoading(false);
-  return;
+  if (refreshedAccts) accounts = refreshedAccts.map(a => ({ ...a, type: _typeNorm[(a.type || "").toLowerCase()] || a.type }));
   }
   }
   }
 
-  // Backfill: patch missing class_id on JE lines by matching je.property → acct_classes.name
-  if (!window._classIdBackfilled || window._classIdBackfilledFor !== companyId) {
-  window._classIdBackfilled = true;
-  window._classIdBackfilledFor = companyId;
-  const classNameMap = {};
-  classes.forEach(c => { classNameMap[c.name.toLowerCase().trim()] = c.id; });
+  // Backfill: patch missing class_id on JE lines using authoritative property→class_id lookup
+  // No fuzzy matching — uses getPropertyClassId which goes through properties.class_id
+  {
   let patched = 0;
   for (const je of jeHeaders) {
   if (!je.property || !je.lines) continue;
   const nullLines = je.lines.filter(l => !l.class_id);
   if (nullLines.length === 0) continue;
-  // Try exact match first, then fuzzy (first part of address)
-  const propLower = je.property.toLowerCase().trim();
-  let classId = classNameMap[propLower];
-  if (!classId) {
-  // Fuzzy: match by first address component (e.g., "13435 Marble Rock" matches "13435 Marble Rock Drive, Suite #281")
-  const propStart = propLower.split(",")[0].trim();
-  for (const [name, id] of Object.entries(classNameMap)) {
-  if (name.startsWith(propStart) || propStart.startsWith(name.split(",")[0].trim())) { classId = id; break; }
-  }
-  }
+  // Use the authoritative lookup: property address → properties.class_id
+  const classId = await getPropertyClassId(je.property, companyId);
   if (classId) {
   for (const l of nullLines) {
   await supabase.from("acct_journal_lines").update({ class_id: classId }).eq("id", l.id);
@@ -8082,7 +8079,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   }
   }
   }
-  if (patched > 0) console.log("Backfilled class_id on " + patched + " JE lines");
+  if (patched > 0) console.log("Backfilled class_id on " + patched + " JE lines via property→class_id");
   }
 
   // Backfill: renumber old JEs with hash-style numbers (JE-MN2L16YX → JE-0001)
