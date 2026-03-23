@@ -13492,15 +13492,19 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", cid).eq("tenant", tName);
   completedSteps.push("autopay_disabled");
 
-  // 5. Update tenant status
-  const { error: tenantErr } = await supabase.from("tenants").update({ lease_status: "inactive", move_out: moveOutDate }).eq("id", selectedTenant.id).eq("company_id", cid);
-  if (tenantErr) throw new Error("Tenant update failed: " + tenantErr.message + ". Completed: " + completedSteps.join(", "));
-  completedSteps.push("tenant_inactive");
+  // 5. Archive tenant (moves to Historical Tenants on property page)
+  const { error: tenantErr } = await supabase.from("tenants").update({ lease_status: "inactive", move_out: moveOutDate, archived_at: new Date().toISOString(), archived_by: userProfile?.email || "system" }).eq("id", selectedTenant.id).eq("company_id", cid);
+  if (tenantErr) throw new Error("Tenant archive failed: " + tenantErr.message + ". Completed: " + completedSteps.join(", "));
+  completedSteps.push("tenant_archived");
 
-  // 6. Update property to vacant (#22: use empty string consistently)
+  // 6. Update property to vacant
   const { error: propErr } = await supabase.from("properties").update({ status: "vacant", tenant: "", lease_end: null }).eq("company_id", cid).eq("address", selectedLease.property);
   if (propErr) throw new Error("Property update failed: " + propErr.message + ". Completed: " + completedSteps.join(", "));
   completedSteps.push("property_vacant");
+
+  // 7. Deactivate recurring entries for this property/tenant
+  await supabase.from("recurring_journal_entries").update({ status: "inactive", archived_at: new Date().toISOString() }).eq("company_id", cid).eq("property", selectedLease.property).eq("status", "active");
+  completedSteps.push("recurring_deactivated");
   } catch (stepErr) {
   showToast("Move-out partially completed. " + stepErr.message + "\n\nPlease manually verify and fix any inconsistent state.", "error");
   console.error("Move-out partial failure:", stepErr, "Completed steps:", completedSteps);
