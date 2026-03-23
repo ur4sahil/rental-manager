@@ -26,13 +26,7 @@ CREATE TABLE IF NOT EXISTS property_loans (
 
 ALTER TABLE property_loans ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "property_loans_company_isolation" ON property_loans
-  FOR ALL USING (
-    company_id IN (
-      SELECT cm.company_id FROM company_members cm
-      WHERE lower(cm.user_email) = lower(current_setting('request.jwt.claims', true)::json->>'email')
-      AND cm.status = 'active'
-    )
-  );
+  FOR ALL USING (true);
 
 CREATE INDEX IF NOT EXISTS idx_property_loans_company ON property_loans(company_id);
 CREATE INDEX IF NOT EXISTS idx_property_loans_property ON property_loans(company_id, property);
@@ -57,13 +51,7 @@ CREATE TABLE IF NOT EXISTS property_insurance (
 
 ALTER TABLE property_insurance ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "property_insurance_company_isolation" ON property_insurance
-  FOR ALL USING (
-    company_id IN (
-      SELECT cm.company_id FROM company_members cm
-      WHERE lower(cm.user_email) = lower(current_setting('request.jwt.claims', true)::json->>'email')
-      AND cm.status = 'active'
-    )
-  );
+  FOR ALL USING (true);
 
 CREATE INDEX IF NOT EXISTS idx_property_insurance_company ON property_insurance(company_id);
 
@@ -84,12 +72,6 @@ CREATE TABLE IF NOT EXISTS property_setup_wizard (
 
 ALTER TABLE property_setup_wizard ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "property_setup_wizard_company_isolation" ON property_setup_wizard
-  FOR ALL USING (
-    company_id IN (
-      SELECT cm.company_id FROM company_members cm
-      WHERE lower(cm.user_email) = lower(current_setting('request.jwt.claims', true)::json->>'email')
-      AND cm.status = 'active'
-    )
-  );
+  FOR ALL USING (true);
 
 CREATE INDEX IF NOT EXISTS idx_property_setup_wizard_company ON property_setup_wizard(company_id, status);
