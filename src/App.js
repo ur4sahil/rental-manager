@@ -1616,10 +1616,35 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   async function openPropertyDetail(p) {
   setSelectedProperty(p);
   setPropertyDetailTab("overview");
-  const { data: docs } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100);
-  setPropertyDocs(docs || []);
-  const { data: wos } = await supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("created_at", { ascending: false }).limit(100);
-  setPropertyWorkOrders(wos || []);
+  setHistoricalTenantDetail(null);
+  const [docsRes, wosRes, archivedTenantsRes, terminatedLeasesRes] = await Promise.all([
+  supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100),
+  supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("created_at", { ascending: false }).limit(100),
+  supabase.from("tenants").select("*").eq("company_id", companyId).eq("property", p.address).not("archived_at", "is", null).order("archived_at", { ascending: false }),
+  supabase.from("leases").select("*").eq("company_id", companyId).eq("property", p.address).in("status", ["terminated", "expired"]).order("end_date", { ascending: false }),
+  ]);
+  setPropertyDocs(docsRes.data || []);
+  setPropertyWorkOrders(wosRes.data || []);
+  // Combine archived tenants + terminated lease tenants, deduplicate by name
+  const archivedTenants = archivedTenantsRes.data || [];
+  const terminatedLeases = terminatedLeasesRes.data || [];
+  const tenantMap = {};
+  archivedTenants.forEach(t => { tenantMap[t.name.toLowerCase()] = { ...t, _leases: [] }; });
+  terminatedLeases.forEach(l => {
+  const key = (l.tenant_name || "").toLowerCase();
+  if (!tenantMap[key]) {
+  tenantMap[key] = { name: l.tenant_name, property: p.address, company_id: companyId, lease_status: "inactive", _leases: [] };
+  }
+  tenantMap[key]._leases.push(l);
+  });
+  // Attach leases to archived tenants
+  archivedTenants.forEach(t => {
+  const key = t.name.toLowerCase();
+  if (tenantMap[key] && tenantMap[key]._leases.length === 0) {
+  tenantMap[key]._leases = terminatedLeases.filter(l => (l.tenant_name || "").toLowerCase() === key);
+  }
+  });
+  setHistoricalTenants(Object.values(tenantMap));
   }
 
   async function fetchChangeRequests() {
@@ -2103,7 +2128,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [propertyDetailTab, setPropertyDetailTab] = useState("overview");
   const [propertyDocs, setPropertyDocs] = useState([]);
-  const [propertyWorkOrders, setPropertyWorkOrders] = useState([]); // property/tenant that needs docs
+  const [propertyWorkOrders, setPropertyWorkOrders] = useState([]);
+  const [historicalTenants, setHistoricalTenants] = useState([]);
+  const [historicalTenantDetail, setHistoricalTenantDetail] = useState(null); // { tenant, ledger, docs, messages, leases, activeTab }
   const [pmCode, setPmCode] = useState("");
   const allCols = [
   { id: "address", label: "Address" }, { id: "type", label: "Type" }, { id: "status", label: "Status" },
@@ -2300,8 +2327,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   {/* Tab Navigation */}
   <div className="flex border-b border-slate-200 px-6 overflow-x-auto">
-  {[["overview","Overview"],["documents","Documents"],["workorders","Work Orders"],["actions","Actions"]].map(([id, label]) => (
-  <button key={id} onClick={() => setPropertyDetailTab(id)} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + (propertyDetailTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}{id === "documents" ? ` (${propertyDocs.length})` : id === "workorders" ? ` (${propertyWorkOrders.length})` : ""}</button>
+  {[["overview","Overview"],["documents","Documents"],["workorders","Work Orders"],["actions","Actions"],["history","Historical Tenants"]].map(([id, label]) => (
+  <button key={id} onClick={() => { setPropertyDetailTab(id); if (id === "history") setHistoricalTenantDetail(null); }} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + (propertyDetailTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}{id === "documents" ? ` (${propertyDocs.length})` : id === "workorders" ? ` (${propertyWorkOrders.length})` : id === "history" ? ` (${historicalTenants.length})` : ""}</button>
   ))}
   </div>
 
@@ -2395,6 +2422,162 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   </div>
   )}
+
+  {/* Historical Tenants Tab */}
+  {propertyDetailTab === "history" && !historicalTenantDetail && (
+  <div className="px-6 py-4 flex-1">
+  <div className="text-sm font-semibold text-slate-700 mb-3">Previous Tenants</div>
+  {historicalTenants.length === 0 ? (
+  <div className="text-center py-8">
+  <span className="material-icons-outlined text-4xl text-slate-300 mb-2">history</span>
+  <div className="text-sm text-slate-400">No previous tenants at this property</div>
+  </div>
+  ) : (
+  <div className="space-y-3">
+  {historicalTenants.map((t, i) => {
+  const lease = t._leases?.[0];
+  return (
+  <div key={t.id || i} onClick={async () => {
+  // Fetch full detail for this historical tenant
+  const [ledgerRes, docsRes, msgsRes] = await Promise.all([
+  t.id ? supabase.from("ledger_entries").select("*").eq("company_id", companyId).eq("tenant", t.name).order("date", { ascending: false }).limit(200) : Promise.resolve({ data: [] }),
+  supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", t.name).order("uploaded_at", { ascending: false }).limit(100),
+  supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", t.name).order("created_at", { ascending: true }).limit(100),
+  ]);
+  setHistoricalTenantDetail({ tenant: t, ledger: ledgerRes.data || [], docs: docsRes.data || [], messages: msgsRes.data || [], leases: t._leases || [], activeTab: "overview" });
+  }} className="bg-white border border-slate-200 rounded-xl p-4 cursor-pointer hover:border-indigo-300 hover:shadow-sm transition-all">
+  <div className="flex items-center justify-between mb-2">
+  <div className="flex items-center gap-3">
+  <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold">{t.name?.[0]}</div>
+  <div>
+  <div className="font-semibold text-slate-800">{t.name}</div>
+  <div className="text-xs text-slate-400">{t.email || ""}{t.phone ? " · " + t.phone : ""}</div>
+  </div>
+  </div>
+  <span className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded-full">{lease?.status || t.lease_status || "archived"}</span>
+  </div>
+  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+  <div><span className="text-slate-400 block">Move In</span><span className="font-medium text-slate-700">{lease?.start_date || t.lease_start || t.move_in || "—"}</span></div>
+  <div><span className="text-slate-400 block">Move Out</span><span className="font-medium text-slate-700">{lease?.end_date || t.move_out || "—"}</span></div>
+  <div><span className="text-slate-400 block">Rent</span><span className="font-medium text-slate-700">{lease?.rent_amount ? formatCurrency(lease.rent_amount) : t.rent ? formatCurrency(t.rent) : "—"}</span></div>
+  <div><span className="text-slate-400 block">Deposit</span><span className="font-medium text-slate-700">{lease?.security_deposit ? formatCurrency(lease.security_deposit) : "—"}{lease?.deposit_status ? " · " + lease.deposit_status : ""}</span></div>
+  </div>
+  {t.archived_at && <div className="text-xs text-slate-400 mt-2">Archived {new Date(t.archived_at).toLocaleDateString()}{t.archived_by ? " by " + t.archived_by : ""}</div>}
+  </div>
+  );
+  })}
+  </div>
+  )}
+  </div>
+  )}
+
+  {/* Historical Tenant Detail View */}
+  {propertyDetailTab === "history" && historicalTenantDetail && (
+  <div className="px-6 py-4 flex-1">
+  <button onClick={() => setHistoricalTenantDetail(null)} className="text-xs text-indigo-600 hover:underline mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">arrow_back</span>Back to Previous Tenants</button>
+  <div className="flex items-center gap-3 mb-4">
+  <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-lg">{historicalTenantDetail.tenant.name?.[0]}</div>
+  <div>
+  <div className="font-bold text-slate-800 text-lg">{historicalTenantDetail.tenant.name}</div>
+  <div className="text-xs text-slate-400">{historicalTenantDetail.tenant.email || ""}{historicalTenantDetail.tenant.phone ? " · " + historicalTenantDetail.tenant.phone : ""}</div>
+  </div>
+  </div>
+  {/* Sub-tabs */}
+  <div className="flex border-b border-slate-200 mb-4">
+  {[["overview","Overview"],["ledger","Ledger"],["docs","Documents"],["messages","Messages"]].map(([id, label]) => (
+  <button key={id} onClick={() => setHistoricalTenantDetail(prev => ({ ...prev, activeTab: id }))} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap " + (historicalTenantDetail.activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}{id === "ledger" ? ` (${historicalTenantDetail.ledger.length})` : id === "docs" ? ` (${historicalTenantDetail.docs.length})` : ""}</button>
+  ))}
+  </div>
+
+  {/* Overview */}
+  {historicalTenantDetail.activeTab === "overview" && (
+  <div>
+  {historicalTenantDetail.leases.length > 0 && (
+  <div className="mb-4">
+  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Lease History</div>
+  {historicalTenantDetail.leases.map((l, i) => (
+  <div key={l.id || i} className="bg-slate-50 rounded-lg p-3 mb-2">
+  <div className="grid grid-cols-2 gap-2 text-xs">
+  <div><span className="text-slate-400 block">Period</span><span className="font-medium text-slate-700">{l.start_date || "—"} → {l.end_date || "—"}</span></div>
+  <div><span className="text-slate-400 block">Status</span><span className="font-medium text-slate-700 capitalize">{l.status}</span></div>
+  <div><span className="text-slate-400 block">Rent</span><span className="font-medium text-slate-700">{l.rent_amount ? formatCurrency(l.rent_amount) : "—"}</span></div>
+  <div><span className="text-slate-400 block">Security Deposit</span><span className="font-medium text-slate-700">{l.security_deposit ? formatCurrency(l.security_deposit) : "—"}{l.deposit_status ? " · " + l.deposit_status : ""}</span></div>
+  {l.deposit_returned > 0 && <div><span className="text-slate-400 block">Deposit Returned</span><span className="font-medium text-green-600">{formatCurrency(l.deposit_returned)}</span></div>}
+  {l.deposit_deductions && <div className="col-span-2"><span className="text-slate-400 block">Deductions</span><span className="font-medium text-slate-700">{l.deposit_deductions}</span></div>}
+  </div>
+  </div>
+  ))}
+  </div>
+  )}
+  <div className="grid grid-cols-2 gap-3 text-xs">
+  <div><span className="text-slate-400 block">Final Balance</span><span className={"font-semibold " + (safeNum(historicalTenantDetail.tenant.balance) > 0 ? "text-red-500" : "text-green-600")}>{historicalTenantDetail.tenant.balance != null ? formatCurrency(Math.abs(safeNum(historicalTenantDetail.tenant.balance))) + (safeNum(historicalTenantDetail.tenant.balance) > 0 ? " owed" : " settled") : "—"}</span></div>
+  <div><span className="text-slate-400 block">Move Out</span><span className="font-medium text-slate-700">{historicalTenantDetail.tenant.move_out || "—"}</span></div>
+  </div>
+  </div>
+  )}
+
+  {/* Ledger */}
+  {historicalTenantDetail.activeTab === "ledger" && (
+  <div>
+  {historicalTenantDetail.ledger.length === 0 ? <div className="text-center py-6 text-slate-400 text-sm">No transaction history</div> : (
+  <div className="space-y-1">
+  {historicalTenantDetail.ledger.map((e, i) => (
+  <div key={i} className="flex items-center justify-between py-2.5 border-b border-slate-100 text-sm">
+  <div>
+  <div className="font-medium text-slate-700">{e.description}</div>
+  <div className="text-xs text-slate-400">{e.date}{e.type ? " · " + e.type : ""}</div>
+  </div>
+  <div className="text-right">
+  <div className={"font-semibold font-mono " + (e.amount < 0 ? "text-green-600" : "text-red-500")}>{e.amount < 0 ? "+" : "-"}{formatCurrency(Math.abs(e.amount))}</div>
+  {e.balance != null && <div className="text-xs text-slate-400">Bal: {formatCurrency(e.balance)}</div>}
+  </div>
+  </div>
+  ))}
+  </div>
+  )}
+  </div>
+  )}
+
+  {/* Documents */}
+  {historicalTenantDetail.activeTab === "docs" && (
+  <div>
+  {historicalTenantDetail.docs.length === 0 ? <div className="text-center py-6 text-slate-400 text-sm">No documents</div> : (
+  <div className="space-y-2">
+  {historicalTenantDetail.docs.map(d => (
+  <div key={d.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3 hover:bg-slate-100 transition-colors">
+  <div className="flex items-center gap-3">
+  <span className="material-icons-outlined text-slate-400 text-lg">{d.type === "Lease" ? "description" : d.type === "ID" ? "badge" : d.type === "Insurance" ? "verified_user" : "insert_drive_file"}</span>
+  <div>
+  <div className="text-sm font-medium text-slate-700">{d.name}</div>
+  <div className="text-xs text-slate-400">{d.type} · {d.uploaded_at?.slice(0, 10)}</div>
+  </div>
+  </div>
+  <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-indigo-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</button>
+  </div>
+  ))}
+  </div>
+  )}
+  </div>
+  )}
+
+  {/* Messages */}
+  {historicalTenantDetail.activeTab === "messages" && (
+  <div>
+  {historicalTenantDetail.messages.length === 0 ? <div className="text-center py-6 text-slate-400 text-sm">No messages</div> : (
+  <div className="space-y-2 max-h-64 overflow-y-auto">
+  {historicalTenantDetail.messages.map((m, i) => (
+  <div key={i} className={"rounded-xl px-3 py-2 max-w-[85%] text-sm " + (m.sender === "admin" ? "bg-indigo-50 text-indigo-800 ml-auto" : "bg-slate-100 text-slate-700")}>
+  <div>{m.message}</div>
+  <div className="text-xs text-slate-400 mt-1">{m.sender} · {m.created_at?.slice(0, 16).replace("T", " ")}</div>
+  </div>
+  ))}
+  </div>
+  )}
+  </div>
+  )}
+  </div>
+  )}
+
   </div>
   </div>
   )}
