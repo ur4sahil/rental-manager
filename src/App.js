@@ -6990,9 +6990,28 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   ]);
   // Normalize account types to PascalCase (DB may have lowercase from older seeds)
   const _typeNorm = { asset: "Asset", liability: "Liability", equity: "Equity", revenue: "Revenue", expense: "Expense", income: "Revenue", "other income": "Other Income", "other expense": "Other Expense", "cost of goods sold": "Cost of Goods Sold" };
-  const accounts = (acctsRes.data || []).map(a => ({ ...a, type: _typeNorm[(a.type || "").toLowerCase()] || a.type }));
+  let accounts = (acctsRes.data || []).map(a => ({ ...a, type: _typeNorm[(a.type || "").toLowerCase()] || a.type }));
   const jeHeaders = jesRes.data || [];
   const classes = clsRes.data || [];
+
+  // Ensure default chart of accounts exists (creates if missing)
+  if (accounts.length === 0) {
+  const defaults = [
+  { code: "1000", name: "Checking Account", type: "Asset", is_active: true },
+  { code: "1100", name: "Accounts Receivable", type: "Asset", is_active: true },
+  { code: "2100", name: "Security Deposits Held", type: "Liability", is_active: true },
+  { code: "2200", name: "Owner Distributions Payable", type: "Liability", is_active: true },
+  { code: "4000", name: "Rental Income", type: "Revenue", is_active: true },
+  { code: "4010", name: "Late Fee Income", type: "Revenue", is_active: true },
+  { code: "4100", name: "Other Income", type: "Revenue", is_active: true },
+  { code: "4200", name: "Management Fee Income", type: "Revenue", is_active: true },
+  { code: "5300", name: "Repairs & Maintenance", type: "Expense", is_active: true },
+  { code: "5400", name: "Utilities Expense", type: "Expense", is_active: true },
+  ];
+  await supabase.from("acct_accounts").upsert(defaults.map(a => ({ ...a, company_id: companyId })), { onConflict: "company_id,code" });
+  const { data: freshAccts } = await supabase.from("acct_accounts").select("*").eq("company_id", companyId).order("code");
+  accounts = (freshAccts || []).map(a => ({ ...a, type: _typeNorm[(a.type || "").toLowerCase()] || a.type }));
+  }
 
   // Fetch all journal lines for this company's JEs and attach to entries
   if (jeHeaders.length > 0) {
@@ -7012,7 +7031,6 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   const missing = allProps.filter(p => !existingNames.has(p.address));
   if (missing.length > 0) {
   const newClasses = missing.map(p => ({
-  id: `PROP-${p.id}`,
   name: p.address,
   description: `${p.type || "Property"} · ${formatCurrency(p.rent || 0)}/mo`,
   color: pickColor(p.address),
