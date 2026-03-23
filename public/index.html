@@ -56,6 +56,10 @@
       ::-webkit-scrollbar { width: 6px; }
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+      /* Hide number input spinners/tickers globally */
+      input[type="number"]::-webkit-inner-spin-button,
+      input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+      input[type="number"] { -moz-appearance: textbox; }
     </style>
   </head>
   <body>
