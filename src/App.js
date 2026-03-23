@@ -1641,6 +1641,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
           setCompletedSteps(savedCompleted);
           // Restore form data if available
           if (existing.wizard_data) {
+            try {
             const wd = typeof existing.wizard_data === "string" ? JSON.parse(existing.wizard_data) : existing.wizard_data;
             if (wd.propForm) setPropForm(wd.propForm);
             if (wd.tenantForm) setTenantForm(wd.tenantForm);
@@ -1651,6 +1652,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             if (wd.loan) setLoan(wd.loan);
             if (wd.insurance) setInsurance(wd.insurance);
             if (wd.recurring) setRecurring(wd.recurring);
+            } catch (e) { console.warn("Wizard data restore failed:", e.message); }
           }
           return;
         }
@@ -1844,6 +1846,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   }
 
   async function savePropertyDetails() {
+    if (!companyId) throw new Error("No company selected");
     if (!propForm.address_line_1.trim()) throw new Error("Address Line 1 is required");
     if (!propForm.city.trim()) throw new Error("City is required");
     if (!propForm.state) throw new Error("State is required");
@@ -1885,6 +1888,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   }
 
   async function saveTenantLease() {
+    if (!companyId) throw new Error("No company selected");
     if (!tenantForm.tenant.trim()) throw new Error("Tenant name is required");
     if (!tenantForm.tenant_email.trim() || !tenantForm.tenant_email.includes("@")) throw new Error("Valid email required");
     if (!tenantForm.tenant_phone.trim()) throw new Error("Phone required");
@@ -8324,8 +8328,9 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   }
 
   // Backfill: patch missing class_id on JE lines using authoritative property→class_id lookup
-  // No fuzzy matching — uses getPropertyClassId which goes through properties.class_id
-  {
+  if (!window._classIdBackfilled || window._classIdBackfilledFor !== companyId) {
+  window._classIdBackfilled = true;
+  window._classIdBackfilledFor = companyId;
   let patched = 0;
   for (const je of jeHeaders) {
   if (!je.property || !je.lines) continue;
@@ -16725,10 +16730,19 @@ function AppInner() {
   }
 
   function handleSelectCompany(company, role) {
-  // Clear previous company's cached data
+  // Clear previous company's cached data (including global caches)
   setNotifications([]);
   setUnreadCount(0);
   setMissingRPCs([]);
+  // Clear global caches to prevent cross-company data leaks
+  Object.keys(_classIdCache).forEach(k => delete _classIdCache[k]);
+  Object.keys(_acctIdCache).forEach(k => delete _acctIdCache[k]);
+  Object.keys(_tenantArCache).forEach(k => delete _tenantArCache[k]);
+  // Reset window-level backfill flags
+  window._propClassesSynced = false;
+  window._tenantArBackfilled = false;
+  window._jeRenumbered = false;
+  window._classIdBackfilled = false;
   setActiveCompany(company);
   checkRPCHealth(company.id).then(m => setMissingRPCs(m)).catch(() => {});
   loadInboxNotifications(company.id);
