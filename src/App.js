@@ -5701,13 +5701,13 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   <thead className="text-xs text-slate-400 uppercase bg-indigo-50/30"><tr><th className="px-4 py-2 text-left">Number</th><th className="px-4 py-2 text-left">Name</th><th className="px-4 py-2 text-left">Subtype</th><th className="px-4 py-2 text-right">Balance</th><th className="px-4 py-2 w-20">Actions</th></tr></thead>
   <tbody>
   {accts.map(a => (
-  <tr key={a.id} className={`border-t border-indigo-50/50 hover:bg-blue-50/30 cursor-pointer ${a._isSubAccount ? "bg-slate-50/40" : ""}`} onClick={() => openEdit(a)}>
+  <tr key={a.id} className={`border-t border-indigo-50/50 hover:bg-blue-50/30 cursor-pointer ${a._isSubAccount ? "bg-slate-50/40" : ""}`} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name + " (" + (a.code || "") + ")")}>
   <td className={`py-2 font-mono text-xs text-slate-400 ${a._isSubAccount ? "pl-8 pr-4" : "px-4"}`}>{a._isSubAccount ? "└ " : ""}{a.code || a.id}</td>
   <td className={`px-4 py-2 ${a._isSubAccount ? "text-sm text-slate-600" : "font-medium"} ${!a.is_active ? "text-slate-400 line-through" : a._isSubAccount ? "" : "text-slate-800"}`}>{a.name}</td>
   <td className="px-4 py-2 text-xs text-slate-400">{a.sub_type || a.subtype}</td>
   <td className={`px-4 py-2 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(a.computedBalance, true)}</td>
   <td className="px-4 py-2 text-center flex items-center gap-2 justify-center">
-  <button onClick={e => { e.stopPropagation(); onOpenLedger && onOpenLedger([a.id], a.name + " (" + (a.code || "") + ")"); }} className="text-indigo-500 hover:text-indigo-700 text-xs hover:underline">Ledger</button>
+  <button onClick={e => { e.stopPropagation(); openEdit(a); }} className="text-slate-400 hover:text-indigo-600 text-xs" title="Edit account"><span className="material-icons-outlined text-sm">edit</span></button>
   <button onClick={e => { e.stopPropagation(); onToggle(a.id, a.is_active); }} className="text-slate-400 hover:text-slate-700 text-xs">{a.is_active ? "🟢" : "⚪"}</button>
   </td>
   </tr>
