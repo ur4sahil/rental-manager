@@ -47,18 +47,26 @@ test.describe('Loans Module', () => {
   test('loan type dropdown has correct options', async ({ page }) => {
     test.setTimeout(30000);
     const addBtn = page.locator('button:has-text("Add"), button:has-text("New Loan")').first();
-    if (await addBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await addBtn.click();
-      await page.waitForTimeout(1000);
-      const typeSelect = page.locator('select').filter({ hasText: /Conventional|FHA|VA/ }).first();
-      const hasType = await typeSelect.isVisible({ timeout: 3000 }).catch(() => false);
-      if (hasType) {
-        const options = await typeSelect.locator('option').allTextContents();
-        expect(options).toContain('Conventional');
-        expect(options).toContain('FHA');
-        expect(options).toContain('VA');
+    if (!await addBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      test.skip(true, 'Add button not found');
+      return;
+    }
+    await addBtn.click();
+    await page.waitForTimeout(1500);
+    // Find any select that contains loan type options
+    const allSelects = page.locator('select');
+    const count = await allSelects.count();
+    let found = false;
+    for (let i = 0; i < count; i++) {
+      const options = await allSelects.nth(i).locator('option').allTextContents();
+      if (options.some(o => o.includes('Conventional'))) {
+        expect(options.join(',')).toContain('FHA');
+        expect(options.join(',')).toContain('VA');
+        found = true;
+        break;
       }
     }
+    expect(found, 'Should find a select with loan type options').toBeTruthy();
   });
 
   test('loans page is accessible from sidebar navigation', async ({ page }) => {
