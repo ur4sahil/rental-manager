@@ -1558,9 +1558,36 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   const [wizardId, setWizardId] = useState("");
   const [completedSteps, setCompletedSteps] = useState(new Set());
 
+  // Property details (Step 1)
+  const [propForm, setPropForm] = useState(() => {
+    if (wizardData.propertyId && wizardData.address) {
+      const parts = (wizardData.address || "").split(", ");
+      return {
+        address_line_1: parts[0] || "", address_line_2: "", city: parts.length >= 3 ? parts[parts.length - 2] : "",
+        state: parts.length >= 2 ? (parts[parts.length - 1] || "").split(" ")[0] || "" : "",
+        zip: parts.length >= 2 ? (parts[parts.length - 1] || "").split(" ")[1] || "" : "",
+        type: "Single Family", status: wizardData.isOccupied ? "occupied" : "vacant", notes: ""
+      };
+    }
+    return { address_line_1: "", address_line_2: "", city: "", state: "", zip: "", type: "Single Family", status: "vacant", notes: "" };
+  });
+  // Tenant & lease details (Step 2, only if occupied)
+  const [tenantForm, setTenantForm] = useState(() => {
+    if (wizardData.propertyId && wizardData.tenant) {
+      return {
+        tenant: wizardData.tenant || "", tenant_email: "", tenant_phone: "",
+        rent: wizardData.rent || "", security_deposit: wizardData.securityDeposit || "",
+        lease_start: wizardData.leaseStart || "", lease_end: wizardData.leaseEnd || ""
+      };
+    }
+    return { tenant: "", tenant_email: "", tenant_phone: "", rent: "", security_deposit: "", lease_start: "", lease_end: "" };
+  });
+  const [savedPropertyId, setSavedPropertyId] = useState(wizardData.propertyId || null);
+  const [savedAddress, setSavedAddress] = useState(wizardData.address || "");
+
   // Step-specific form states
   const [utilities, setUtilities] = useState([
-    { provider: "", type: "Electric", account_number: "", due_date: 1, responsibility: wizardData.isOccupied ? "tenant_pays" : "owner_pays" }
+    { provider: "", type: "Electric", account_number: "", due_date: 1, responsibility: propForm.status === "occupied" ? "tenant_pays" : "owner_pays" }
   ]);
   const [hoa, setHoa] = useState({ enabled: false, hoa_name: "", amount: "", due_date: 1, frequency: "Monthly", notes: "" });
   const [loan, setLoan] = useState({ enabled: false, lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: { taxes: false, insurance: false, pmi: false }, loan_start_date: "", maturity_date: "", account_number: "", notes: "", setup_recurring: false });
@@ -1571,12 +1598,14 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   // File upload refs
   const fileInputRef = useRef();
 
-  // Build steps array dynamically based on isOccupied
+  // Build steps array dynamically based on status
   const steps = (() => {
-    const s = ["utilities", "hoa"];
+    const s = ["property_details"];
+    if (propForm.status === "occupied") s.push("tenant_lease");
+    s.push("utilities", "hoa");
     if (userRole === "admin" || userRole === "owner") s.push("loan");
     s.push("documents", "insurance");
-    if (wizardData.isOccupied) s.push("recurring_rent");
+    if (propForm.status === "occupied") s.push("recurring_rent");
     s.push("review");
     return s;
   })();
@@ -1585,6 +1614,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
 
   // Step labels for display
   const stepLabels = {
+    property_details: "Property Details",
+    tenant_lease: "Tenant & Lease",
     utilities: "Utilities",
     hoa: "HOA",
     loan: "Loan",
@@ -1600,7 +1631,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       try {
         // Check for existing in-progress wizard for this property
         const { data: existing } = await supabase.from("property_setup_wizard").select("*")
-          .eq("company_id", companyId).eq("property_address", wizardData.address).eq("status", "in_progress").maybeSingle();
+          .eq("company_id", companyId).eq("property_address", savedAddress || wizardData.address || "NEW").eq("status", "in_progress").maybeSingle();
         if (existing) {
           setWizardId(existing.id);
           // Restore progress
@@ -1611,6 +1642,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
           // Restore form data if available
           if (existing.wizard_data) {
             const wd = typeof existing.wizard_data === "string" ? JSON.parse(existing.wizard_data) : existing.wizard_data;
+            if (wd.propForm) setPropForm(wd.propForm);
+            if (wd.tenantForm) setTenantForm(wd.tenantForm);
+            if (wd.savedPropertyId) setSavedPropertyId(wd.savedPropertyId);
+            if (wd.savedAddress) setSavedAddress(wd.savedAddress);
             if (wd.utilities) setUtilities(wd.utilities);
             if (wd.hoa) setHoa(wd.hoa);
             if (wd.loan) setLoan(wd.loan);
@@ -1622,12 +1657,12 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         // Create new wizard entry
         const { data: created, error } = await supabase.from("property_setup_wizard").insert([{
           company_id: companyId,
-          property_id: String(wizardData.propertyId || ""),
-          property_address: wizardData.address,
+          property_id: String(savedPropertyId || wizardData.propertyId || ""),
+          property_address: savedAddress || wizardData.address || "NEW",
           status: "in_progress",
           current_step: 1,
           completed_steps: [],
-          wizard_data: {},
+          wizard_data: { propForm, tenantForm },
         }]).select("id").maybeSingle();
         if (error) console.warn("Wizard persistence init failed:", error.message);
         if (created?.id) setWizardId(created.id);
@@ -1646,7 +1681,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       await supabase.from("property_setup_wizard").update({
         current_step: nextStep,
         completed_steps: Array.from(newCompletedSteps),
-        wizard_data: { utilities, hoa, loan, insurance, recurring },
+        wizard_data: { propForm, tenantForm, savedPropertyId, savedAddress, utilities, hoa, loan, insurance, recurring },
         updated_at: new Date().toISOString()
       }).eq("id", wizardId);
     } catch (e) {
@@ -1678,7 +1713,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       const dueDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       return {
       company_id: companyId,
-      property: wizardData.address,
+      property: savedAddress,
       provider: u.provider.trim(),
       amount: 0,
       due: dueDate,
@@ -1697,7 +1732,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     if (!hoa.amount || Number(hoa.amount) <= 0) throw new Error("HOA amount is required");
     const { error } = await supabase.from("hoa_payments").insert([{
       company_id: companyId,
-      property: wizardData.address,
+      property: savedAddress,
       hoa_name: hoa.hoa_name.trim(),
       amount: Number(hoa.amount),
       due_date: hoa.due_date || formatLocalDate(new Date()),
@@ -1715,8 +1750,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     if (!loan.monthly_payment || Number(loan.monthly_payment) <= 0) throw new Error("Monthly payment is required");
     const loanRow = {
       company_id: companyId,
-      property: wizardData.address,
-      property_id: String(wizardData.propertyId || ""),
+      property: savedAddress,
+      property_id: String(savedPropertyId || ""),
       lender_name: loan.lender_name.trim(),
       loan_type: loan.loan_type,
       original_amount: Number(loan.original_amount) || 0,
@@ -1743,11 +1778,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       const checkingAcctId = await resolveAccountId("1000", companyId);
       const { error: recErr } = await supabase.from("recurring_journal_entries").insert([{
         company_id: companyId,
-        description: "Mortgage payment — " + loan.lender_name + " — " + wizardData.address.split(",")[0],
+        description: "Mortgage payment — " + loan.lender_name + " — " + savedAddress.split(",")[0],
         frequency: "monthly",
         day_of_month: 1,
         amount: Number(loan.monthly_payment),
-        property: wizardData.address,
+        property: savedAddress,
         debit_account_id: mortgageAcctId,
         debit_account_name: "Mortgage/Loan Payment",
         credit_account_id: checkingAcctId,
@@ -1767,8 +1802,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     if (!insurance.premium_amount || Number(insurance.premium_amount) <= 0) throw new Error("Premium amount is required");
     const { error } = await supabase.from("property_insurance").insert([{
       company_id: companyId,
-      property: wizardData.address,
-      property_id: String(wizardData.propertyId || ""),
+      property: savedAddress,
+      property_id: String(savedPropertyId || ""),
       provider: insurance.provider.trim(),
       policy_number: insurance.policy_number.trim(),
       premium_amount: Number(insurance.premium_amount),
@@ -1783,21 +1818,21 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
 
   async function saveRecurringRent() {
     if (!recurring.amount || Number(recurring.amount) <= 0) throw new Error("Rent amount is required");
-    const tenantArId = await getOrCreateTenantAR(companyId, wizardData.tenant, null);
+    const tenantArId = await getOrCreateTenantAR(companyId, tenantForm.tenant, null);
     const revenueId = await resolveAccountId("4000", companyId);
     const today = new Date();
     const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
     const nextPostDate = formatLocalDate(nextMonth);
     const { error } = await supabase.from("recurring_journal_entries").insert([{
       company_id: companyId,
-      description: "Monthly rent — " + wizardData.tenant + " — " + wizardData.address.split(",")[0],
+      description: "Monthly rent — " + tenantForm.tenant + " — " + savedAddress.split(",")[0],
       frequency: recurring.frequency,
       day_of_month: recurring.day_of_month,
       amount: Number(recurring.amount),
-      tenant_name: wizardData.tenant,
-      property: wizardData.address,
+      tenant_name: tenantForm.tenant,
+      property: savedAddress,
       debit_account_id: tenantArId,
-      debit_account_name: "AR - " + wizardData.tenant,
+      debit_account_name: "AR - " + tenantForm.tenant,
       credit_account_id: revenueId,
       credit_account_name: "Rental Income",
       status: "active",
@@ -1808,8 +1843,88 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     return true;
   }
 
+  async function savePropertyDetails() {
+    if (!propForm.address_line_1.trim()) throw new Error("Address Line 1 is required");
+    if (!propForm.city.trim()) throw new Error("City is required");
+    if (!propForm.state) throw new Error("State is required");
+    if (!propForm.zip.trim() || !/^\d{5}$/.test(propForm.zip.trim())) throw new Error("ZIP must be 5 digits");
+    const compositeAddress = [propForm.address_line_1, propForm.address_line_2, propForm.city, propForm.state + " " + propForm.zip].filter(Boolean).join(", ");
+    // Check duplicate
+    if (!savedPropertyId) {
+      const { data: dup } = await supabase.from("properties").select("id").eq("company_id", companyId).eq("address", compositeAddress).is("archived_at", null).maybeSingle();
+      if (dup) throw new Error("A property with this address already exists");
+    }
+    // Insert or update
+    if (savedPropertyId) {
+      await supabase.from("properties").update({ address: compositeAddress, address_line_1: propForm.address_line_1, address_line_2: propForm.address_line_2, city: propForm.city, state: propForm.state, zip: propForm.zip, type: propForm.type, status: propForm.status, notes: propForm.notes }).eq("id", savedPropertyId).eq("company_id", companyId);
+    } else {
+      const { data: newProp, error: propErr } = await supabase.from("properties").insert([{ address: compositeAddress, address_line_1: propForm.address_line_1, address_line_2: propForm.address_line_2, city: propForm.city, state: propForm.state, zip: propForm.zip, type: propForm.type, status: propForm.status, notes: propForm.notes, company_id: companyId }]).select("id").maybeSingle();
+      if (propErr) throw new Error("Failed to save property: " + propErr.message);
+      setSavedPropertyId(newProp?.id || null);
+      // Create accounting class
+      const classId = crypto.randomUUID();
+      await supabase.from("acct_classes").upsert([{ id: classId, name: compositeAddress, description: propForm.type + " · " + formatCurrency(0) + "/mo", color: pickColor(compositeAddress), is_active: true, company_id: companyId }], { onConflict: "company_id,name" });
+      if (newProp?.id) await supabase.from("properties").update({ class_id: classId }).eq("id", newProp.id).eq("company_id", companyId);
+    }
+    setSavedAddress(compositeAddress);
+    // Update wizard persistence address
+    if (wizardId) {
+      await supabase.from("property_setup_wizard").update({ property_address: compositeAddress, property_id: String(savedPropertyId || "") }).eq("id", wizardId).catch(() => {});
+    }
+    showToast("Property saved", "success");
+    return true;
+  }
+
+  async function saveTenantLease() {
+    if (!tenantForm.tenant.trim()) throw new Error("Tenant name is required");
+    if (!tenantForm.tenant_email.trim() || !tenantForm.tenant_email.includes("@")) throw new Error("Valid email required");
+    if (!tenantForm.tenant_phone.trim()) throw new Error("Phone required");
+    if (!tenantForm.rent || Number(tenantForm.rent) <= 0) throw new Error("Rent required");
+    if (!tenantForm.lease_start || !tenantForm.lease_end) throw new Error("Lease dates required");
+    const addr = savedAddress;
+    // Update property with tenant info
+    await supabase.from("properties").update({ status: "occupied", tenant: tenantForm.tenant.trim(), rent: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, tenant_email: tenantForm.tenant_email, tenant_phone: tenantForm.tenant_phone, lease_start: tenantForm.lease_start, lease_end: tenantForm.lease_end }).eq("id", savedPropertyId).eq("company_id", companyId);
+    // Create/find tenant
+    const { data: existingTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", tenantForm.tenant.trim()).eq("property", addr).is("archived_at", null).maybeSingle();
+    let tenantId = existingTenant?.id;
+    if (!existingTenant) {
+      const { data: newT } = await supabase.from("tenants").insert([{ company_id: companyId, name: tenantForm.tenant.trim(), email: tenantForm.tenant_email.toLowerCase(), phone: tenantForm.tenant_phone, property: addr, rent: Number(tenantForm.rent), lease_status: "active", lease_start: tenantForm.lease_start, lease_end_date: tenantForm.lease_end, move_in: tenantForm.lease_start, balance: 0 }]).select("id").maybeSingle();
+      tenantId = newT?.id;
+    }
+    // Create AR sub-account
+    if (tenantId) await getOrCreateTenantAR(companyId, tenantForm.tenant.trim(), tenantId);
+    // Create lease
+    if (tenantForm.lease_start && tenantForm.lease_end) {
+      const { data: existLease } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("property", addr).eq("status", "active").maybeSingle();
+      if (!existLease) {
+        await supabase.from("leases").insert([{ company_id: companyId, tenant_name: tenantForm.tenant.trim(), tenant_id: tenantId, property: addr, start_date: tenantForm.lease_start, end_date: tenantForm.lease_end, rent_amount: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, status: "active", payment_due_day: 1 }]);
+      }
+    }
+    // Post security deposit JE
+    const dep = Number(tenantForm.security_deposit) || 0;
+    if (dep > 0 && tenantId) {
+      const classId = await getPropertyClassId(addr, companyId);
+      const tenantArId = await getOrCreateTenantAR(companyId, tenantForm.tenant.trim(), tenantId);
+      await autoPostJournalEntry({ companyId, date: tenantForm.lease_start, description: "Security deposit received — " + tenantForm.tenant.trim() + " — " + addr, reference: "DEP-" + shortId(), property: addr,
+        lines: [
+          { account_id: tenantArId, account_name: "AR - " + tenantForm.tenant.trim(), debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + tenantForm.tenant.trim() },
+          { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: tenantForm.tenant.trim() + " — " + addr },
+        ]
+      });
+      await safeLedgerInsert({ company_id: companyId, tenant: tenantForm.tenant.trim(), tenant_id: tenantId, property: addr, date: tenantForm.lease_start, description: "Security deposit collected", amount: dep, type: "deposit", balance: 0 });
+    }
+    // Pre-fill recurring rent amount
+    setRecurring(prev => ({ ...prev, amount: Number(tenantForm.rent) || prev.amount }));
+    // Auto-post rent charges (fire and forget)
+    autoPostRentCharges(companyId).catch(() => {});
+    showToast("Tenant & lease saved", "success");
+    return true;
+  }
+
   async function saveCurrentStep() {
     switch (currentStepId) {
+      case "property_details": return await savePropertyDetails();
+      case "tenant_lease": return await saveTenantLease();
       case "utilities": return await saveUtilities();
       case "hoa": return await saveHoa();
       case "loan": return await saveLoan();
@@ -1855,7 +1970,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     setSaving(true);
     try {
       await persistStatus("completed");
-      showToast("Property setup complete for " + wizardData.address.split(",")[0], "success");
+      showToast("Property setup complete for " + (savedAddress || "New Property").split(",")[0], "success");
       onComplete();
     } catch (e) {
       showToast("Error completing wizard: " + e.message, "error");
@@ -1895,8 +2010,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
           name: file.name.replace(/\.[^/.]+$/, ""),
           file_name: fileName,
           url: fileName,
-          property: wizardData.address,
-          tenant: wizardData.isOccupied ? (wizardData.tenant || "") : "",
+          property: savedAddress,
+          tenant: propForm.status === "occupied" ? (tenantForm.tenant || "") : "",
           type: "Other",
           tenant_visible: false,
           uploaded_at: new Date().toISOString()
@@ -1915,7 +2030,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
 
   // ---- Utility row helpers ----
   function addUtilityRow() {
-    setUtilities(prev => [...prev, { provider: "", type: "Electric", account_number: "", due_date: 1, responsibility: wizardData.isOccupied ? "tenant_pays" : "owner_pays" }]);
+    setUtilities(prev => [...prev, { provider: "", type: "Electric", account_number: "", due_date: 1, responsibility: propForm.status === "occupied" ? "tenant_pays" : "owner_pays" }]);
   }
   function removeUtilityRow(idx) {
     setUtilities(prev => prev.filter((_, i) => i !== idx));
@@ -1927,6 +2042,119 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   // ---- Step rendering ----
   function renderStep() {
     switch (currentStepId) {
+      case "property_details":
+        return (
+          <div>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-green-600 text-2xl">home</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-manrope font-bold text-slate-800">Property Details</h3>
+                <p className="text-sm text-slate-400">Enter the property address and basic info</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Address Line 1 *</label>
+                <input type="text" value={propForm.address_line_1} onChange={e => setPropForm({ ...propForm, address_line_1: e.target.value })} placeholder="123 Main Street" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Address Line 2</label>
+                <input type="text" value={propForm.address_line_2} onChange={e => setPropForm({ ...propForm, address_line_2: e.target.value })} placeholder="Apt, Suite, Unit (optional)" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-500 block mb-1">City *</label>
+                  <input type="text" value={propForm.city} onChange={e => setPropForm({ ...propForm, city: e.target.value })} placeholder="City" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-500 block mb-1">State *</label>
+                  <select value={propForm.state} onChange={e => setPropForm({ ...propForm, state: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                    <option value="">Select</option>
+                    {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-500 block mb-1">ZIP *</label>
+                  <input type="text" value={propForm.zip} onChange={e => setPropForm({ ...propForm, zip: e.target.value.replace(/\D/g, "").slice(0, 5) })} placeholder="00000" maxLength={5} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-500 block mb-1">Property Type</label>
+                  <select value={propForm.type} onChange={e => setPropForm({ ...propForm, type: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                    {["Single Family", "Multi-Family", "Apartment", "Townhouse", "Commercial"].map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-500 block mb-1">Status</label>
+                  <select value={propForm.status} onChange={e => setPropForm({ ...propForm, status: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                    <option value="vacant">Vacant</option>
+                    <option value="occupied">Occupied</option>
+                    <option value="maintenance">Maintenance</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Notes</label>
+                <textarea value={propForm.notes} onChange={e => setPropForm({ ...propForm, notes: e.target.value })} rows={2} placeholder="Optional notes about this property..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+              </div>
+            </div>
+          </div>
+        );
+
+      case "tenant_lease":
+        return (
+          <div>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-cyan-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-cyan-600 text-2xl">person</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-manrope font-bold text-slate-800">Tenant & Lease</h3>
+                <p className="text-sm text-slate-400">Enter tenant information and lease terms</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Tenant Name *</label>
+                <input type="text" value={tenantForm.tenant} onChange={e => setTenantForm({ ...tenantForm, tenant: e.target.value })} placeholder="Full name" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-500 block mb-1">Email *</label>
+                  <input type="email" value={tenantForm.tenant_email} onChange={e => setTenantForm({ ...tenantForm, tenant_email: e.target.value })} placeholder="tenant@email.com" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-500 block mb-1">Phone *</label>
+                  <input type="tel" value={tenantForm.tenant_phone} onChange={e => setTenantForm({ ...tenantForm, tenant_phone: formatPhoneInput(e.target.value) })} placeholder="(555) 123-4567" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-500 block mb-1">Monthly Rent ($) *</label>
+                  <input type="number" value={tenantForm.rent} onChange={e => setTenantForm({ ...tenantForm, rent: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-500 block mb-1">Security Deposit ($)</label>
+                  <input type="number" value={tenantForm.security_deposit} onChange={e => setTenantForm({ ...tenantForm, security_deposit: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-500 block mb-1">Lease Start *</label>
+                  <input type="date" value={tenantForm.lease_start} onChange={e => setTenantForm({ ...tenantForm, lease_start: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-500 block mb-1">Lease End *</label>
+                  <input type="date" value={tenantForm.lease_end} onChange={e => setTenantForm({ ...tenantForm, lease_end: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
       case "utilities":
         return (
           <div>
@@ -1969,7 +2197,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                     </div>
                     <div>
                       <label className="text-xs font-medium text-slate-500 block mb-1">Responsibility</label>
-                      <select value={u.responsibility} onChange={e => updateUtility(idx, "responsibility", e.target.value)} disabled={!wizardData.isOccupied} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm disabled:opacity-50">
+                      <select value={u.responsibility} onChange={e => updateUtility(idx, "responsibility", e.target.value)} disabled={propForm.status !== "occupied"} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm disabled:opacity-50">
                         <option value="owner_pays">Owner Pays</option>
                         <option value="tenant_pays">Tenant Pays</option>
                       </select>
@@ -2154,7 +2382,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
               </div>
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
-              {wizardData.isOccupied ? (
+              {propForm.status === "occupied" ? (
                 <div className="space-y-2">
                   <p className="text-sm text-slate-600 font-medium">Recommended documents for occupied property:</p>
                   <div className="space-y-1.5">
@@ -2207,10 +2435,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
               <div className="bg-indigo-50 rounded-xl p-3 space-y-1">
-                <div className="flex justify-between text-sm"><span className="text-slate-500">Tenant</span><span className="font-medium text-slate-800">{wizardData.tenant}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-slate-500">Property</span><span className="font-medium text-slate-800">{wizardData.address.split(",")[0]}</span></div>
-                {wizardData.leaseStart && wizardData.leaseEnd && (
-                  <div className="flex justify-between text-sm"><span className="text-slate-500">Lease</span><span className="font-medium text-slate-800">{wizardData.leaseStart} - {wizardData.leaseEnd}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-slate-500">Tenant</span><span className="font-medium text-slate-800">{tenantForm.tenant}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-slate-500">Property</span><span className="font-medium text-slate-800">{savedAddress.split(",")[0]}</span></div>
+                {tenantForm.lease_start && tenantForm.lease_end && (
+                  <div className="flex justify-between text-sm"><span className="text-slate-500">Lease</span><span className="font-medium text-slate-800">{tenantForm.lease_start} - {tenantForm.lease_end}</span></div>
                 )}
               </div>
               <div>
@@ -2231,7 +2459,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 </div>
               </div>
               <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-500">
-                <div className="flex justify-between"><span>Debit</span><span className="font-medium">AR - {wizardData.tenant}</span></div>
+                <div className="flex justify-between"><span>Debit</span><span className="font-medium">AR - {tenantForm.tenant}</span></div>
                 <div className="flex justify-between mt-1"><span>Credit</span><span className="font-medium">4000 Rental Income</span></div>
               </div>
             </div>
@@ -2316,11 +2544,52 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
               </div>
             </div>
             <div className="space-y-3">
+              {/* Property Details summary */}
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-semibold text-slate-700">Property Details</span>
+                  <div className="flex items-center gap-2">
+                    {completedSteps.has("property_details") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    <button onClick={() => setStep(steps.indexOf("property_details") + 1)} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-slate-200 transition-colors">Edit</button>
+                  </div>
+                </div>
+                {completedSteps.has("property_details") ? (
+                  <div className="text-xs text-slate-500 space-y-0.5">
+                    <div>{savedAddress}</div>
+                    <div>{propForm.type} — {propForm.status}</div>
+                    {propForm.notes && <div className="text-slate-400 italic">{propForm.notes}</div>}
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Tenant & Lease summary */}
+              {propForm.status === "occupied" && (
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-slate-700">Tenant & Lease</span>
+                    <div className="flex items-center gap-2">
+                      {completedSteps.has("tenant_lease") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                      <button onClick={() => setStep(steps.indexOf("tenant_lease") + 1)} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-slate-200 transition-colors">Edit</button>
+                    </div>
+                  </div>
+                  {completedSteps.has("tenant_lease") ? (
+                    <div className="text-xs text-slate-500 space-y-0.5">
+                      <div>{tenantForm.tenant} — {tenantForm.tenant_email}</div>
+                      <div>Rent: ${Number(tenantForm.rent || 0).toLocaleString()}/mo — Deposit: ${Number(tenantForm.security_deposit || 0).toLocaleString()}</div>
+                      <div>Lease: {tenantForm.lease_start} to {tenantForm.lease_end}</div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
               {/* Utilities summary */}
               <div className="bg-white rounded-xl border border-slate-200 p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold text-slate-700">Utilities</span>
-                  {completedSteps.has("utilities") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                  <div className="flex items-center gap-2">
+                    {completedSteps.has("utilities") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    <button onClick={() => setStep(steps.indexOf("utilities") + 1)} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-slate-200 transition-colors">Edit</button>
+                  </div>
                 </div>
                 {completedSteps.has("utilities") && utilities.filter(u => u.provider.trim()).length > 0 ? (
                   <div className="text-xs text-slate-500 space-y-0.5">
@@ -2335,7 +2604,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
               <div className="bg-white rounded-xl border border-slate-200 p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold text-slate-700">HOA</span>
-                  {completedSteps.has("hoa") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                  <div className="flex items-center gap-2">
+                    {completedSteps.has("hoa") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    <button onClick={() => setStep(steps.indexOf("hoa") + 1)} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-slate-200 transition-colors">Edit</button>
+                  </div>
                 </div>
                 {completedSteps.has("hoa") && hoa.enabled ? (
                   <div className="text-xs text-slate-500">{hoa.hoa_name} — ${Number(hoa.amount || 0).toLocaleString()} {hoa.frequency}</div>
@@ -2347,7 +2619,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <div className="bg-white rounded-xl border border-slate-200 p-4">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-semibold text-slate-700">Loan / Mortgage</span>
-                    {completedSteps.has("loan") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    <div className="flex items-center gap-2">
+                      {completedSteps.has("loan") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                      <button onClick={() => setStep(steps.indexOf("loan") + 1)} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-slate-200 transition-colors">Edit</button>
+                    </div>
                   </div>
                   {completedSteps.has("loan") && loan.enabled ? (
                     <div className="text-xs text-slate-500">
@@ -2363,7 +2638,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
               <div className="bg-white rounded-xl border border-slate-200 p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold text-slate-700">Documents</span>
-                  {uploadedDocs.length > 0 ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">{uploadedDocs.length} uploaded</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                  <div className="flex items-center gap-2">
+                    {uploadedDocs.length > 0 ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">{uploadedDocs.length} uploaded</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    <button onClick={() => setStep(steps.indexOf("documents") + 1)} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-slate-200 transition-colors">Edit</button>
+                  </div>
                 </div>
                 {uploadedDocs.length > 0 && (
                   <div className="text-xs text-slate-500 space-y-0.5">
@@ -2376,7 +2654,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
               <div className="bg-white rounded-xl border border-slate-200 p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold text-slate-700">Insurance</span>
-                  {completedSteps.has("insurance") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                  <div className="flex items-center gap-2">
+                    {completedSteps.has("insurance") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    <button onClick={() => setStep(steps.indexOf("insurance") + 1)} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-slate-200 transition-colors">Edit</button>
+                  </div>
                 </div>
                 {completedSteps.has("insurance") && insurance.enabled ? (
                   <div className="text-xs text-slate-500">
@@ -2388,15 +2669,18 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
               </div>
 
               {/* Recurring rent summary */}
-              {wizardData.isOccupied && (
+              {propForm.status === "occupied" && (
                 <div className="bg-white rounded-xl border border-slate-200 p-4">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-semibold text-slate-700">Recurring Rent</span>
-                    {completedSteps.has("recurring_rent") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    <div className="flex items-center gap-2">
+                      {completedSteps.has("recurring_rent") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                      <button onClick={() => setStep(steps.indexOf("recurring_rent") + 1)} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-slate-200 transition-colors">Edit</button>
+                    </div>
                   </div>
                   {completedSteps.has("recurring_rent") ? (
                     <div className="text-xs text-slate-500">
-                      <div>{wizardData.tenant} — ${Number(recurring.amount || 0).toLocaleString()}/{recurring.frequency}</div>
+                      <div>{tenantForm.tenant} — ${Number(recurring.amount || 0).toLocaleString()}/{recurring.frequency}</div>
                       <div>Charges on day {recurring.day_of_month} of each month</div>
                     </div>
                   ) : null}
@@ -2417,7 +2701,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-manrope font-bold text-slate-800">Property Setup</h2>
-          <p className="text-sm text-slate-400">{wizardData.address}</p>
+          <p className="text-sm text-slate-400">{savedAddress || "New Property"}</p>
         </div>
         <div className="flex items-center gap-4">
           <span className="text-sm text-slate-500">Step {step} of {totalSteps}</span>
@@ -2582,6 +2866,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }
 
   async function saveProperty() {
+  if (!editingProperty) { showToast("Use the Property Setup Wizard to add new properties.", "info"); return; }
   // Validate BEFORE acquiring guard lock (so failed validation doesn't lock the button)
   if (!form.address_line_1.trim()) { showToast("Address Line 1 is required.", "error"); return; }
   if (!form.city.trim()) { showToast("City is required.", "error"); return; }
@@ -2764,23 +3049,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   fetchProperties();
   // Show doc upload prompt for occupied properties (form is now closed)
   setSavingProperty(false);
-  // Launch Property Setup Wizard for new properties
-  if (!editingProperty) {
-  // Get the property ID for the wizard
-  const { data: savedProp } = await supabase.from("properties").select("id").eq("company_id", companyId).eq("address", compositeAddress).maybeSingle();
-  setShowPropertyWizard({
-    propertyId: savedProp?.id || null,
-    address: compositeAddress,
-    isOccupied: form.status === "occupied",
-    tenant: form.tenant.trim(),
-    rent: Number(form.rent),
-    leaseStart: form.lease_start,
-    leaseEnd: form.lease_end,
-    securityDeposit: Number(form.security_deposit) || 0,
-  });
-  } else {
   showToast("Property updated successfully", "success");
-  }
   } catch (e) {
   console.error("saveProperty error:", e);
   setSavingProperty(false);
@@ -3239,7 +3508,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
   </div>
   )}
-  <button onClick={() => { setEditingProperty(null); setForm({ address_line_1: "", address_line_2: "", city: "", state: "", zip: "", type: "Single Family", status: "vacant", rent: "", security_deposit: "", tenant: "", tenant_email: "", tenant_phone: "", lease_start: "", lease_end: "", notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700 whitespace-nowrap">
+  <button onClick={() => { setShowPropertyWizard({ propertyId: null, address: "", isOccupied: false, tenant: "", rent: 0, isNew: true }); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700 whitespace-nowrap">
   {isAdmin ? "+ Add" : "+ Request"}
   </button>
   </div>
@@ -3552,7 +3821,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   )}
 
-  {showForm && (
+  {showForm && editingProperty && (
   <div className="bg-white p-4 rounded-xl border border-indigo-50 shadow-sm mb-4">
   <h3 className="text-sm font-semibold text-slate-700 mb-3">{editingProperty ? "Edit Property" : "Add Property"}</h3>
   {!isAdmin && <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 mb-3">Submitted for admin approval.</p>}
@@ -4864,7 +5133,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ))}
   </div>
   <button onClick={exportTenants} className="text-sm text-indigo-600 border border-indigo-200 px-3 py-2 rounded-2xl hover:bg-indigo-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
-  <button onClick={() => { setEditingTenant(null); setForm({ name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700 whitespace-nowrap">+ Add</button>
+  {/* Tenants are added through the Property Setup Wizard */}
   </div>
   </div>
   {/* Filters */}
@@ -5016,7 +5285,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </Modal>
   )}
 
-  {showForm && (
+  {showForm && editingTenant && (
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-slate-700 mb-3">{editingTenant ? "Edit Tenant" : "New Tenant"}</h3>
   <div className="grid grid-cols-2 gap-3">
