@@ -1915,7 +1915,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     }
     setSavedAddress(compositeAddress);
     if (wizardId) {
-      await supabase.from("property_setup_wizard").update({ property_address: compositeAddress, property_id: String(savedPropertyId || "") }).eq("id", wizardId).catch(() => {});
+      await supabase.from("property_setup_wizard").update({ property_address: compositeAddress, property_id: String(savedPropertyId || "") }).eq("id", wizardId);
     }
     showToast("Property saved", "success");
     return true;
