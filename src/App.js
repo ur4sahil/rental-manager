@@ -1681,6 +1681,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   } else {
   await supabase.from("tenants").update({ email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", rent: Number(form.rent) || 0, lease_status: "active", lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null }).eq("id", existingTenant.id).eq("company_id", companyId);
   }
+  // Create tenant AR sub-account (e.g., 1100-001 AR - Alice Johnson)
+  await getOrCreateTenantAR(companyId, form.tenant.trim(), tenantId);
   // Auto-create lease record if dates are provided and no active lease exists
   if (form.lease_start && form.lease_end && form.rent) {
   const { data: existingLease } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("property", compositeAddress).eq("status", "active").maybeSingle();
@@ -2686,6 +2688,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   showToast("Error saving tenant: " + userError(error.message), "error");
   }
   return;
+  }
+  // Create tenant AR sub-account for new tenants
+  if (!editingTenant) {
+  const { data: insertedTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.name.trim()).eq("property", form.property).is("archived_at", null).maybeSingle();
+  await getOrCreateTenantAR(companyId, form.name.trim(), insertedTenant?.id || null);
   }
   // #1: Auto-create lease and update property when tenant added with dates/rent
   if (!editingTenant && form.property) {
@@ -3940,6 +3947,9 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   return;
   }
   // AUTO-POST TO ACCOUNTING: Smart posting - settle AR if accrual exists, else direct revenue
+  // Ensure tenant AR sub-account exists (creates if missing)
+  const { data: payTenantRow } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.tenant.trim()).is("archived_at", null).maybeSingle();
+  if (payTenantRow?.id) await getOrCreateTenantAR(companyId, form.tenant.trim(), payTenantRow.id);
   const classId = await getPropertyClassId(form.property, companyId);
   const amt = Number(form.amount);
   const isLateFee = form.type === "late_fee";
@@ -6667,6 +6677,30 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   }
   }
   } // end _propClassesSynced guard
+
+  // Backfill: create AR sub-accounts for active tenants missing them (runs once)
+  if (!window._tenantArBackfilled || window._tenantArBackfilledFor !== companyId) {
+  window._tenantArBackfilled = true;
+  window._tenantArBackfilledFor = companyId;
+  const { data: activeTenants } = await supabase.from("tenants").select("id, name").eq("company_id", companyId).eq("lease_status", "active").is("archived_at", null);
+  if (activeTenants && activeTenants.length > 0) {
+  const existingArNames = new Set(accounts.filter(a => (a.code || "").startsWith("1100-")).map(a => (a.name || "").toLowerCase()));
+  const missing = activeTenants.filter(t => !existingArNames.has("ar - " + (t.name || "").toLowerCase()));
+  for (const t of missing) {
+  await getOrCreateTenantAR(companyId, t.name, t.id);
+  }
+  if (missing.length > 0) {
+  // Re-fetch accounts to include newly created sub-accounts
+  const { data: refreshedAccts } = await supabase.from("acct_accounts").select("*").eq("company_id", companyId).order("code");
+  const refreshed = (refreshedAccts || []).map(a => ({ ...a, type: _typeNorm[(a.type || "").toLowerCase()] || a.type }));
+  setAcctAccounts(refreshed);
+  setJournalEntries(jeHeaders);
+  setAcctClasses(classes);
+  setLoading(false);
+  return;
+  }
+  }
+  }
 
   setAcctAccounts(accounts);
   setJournalEntries(jeHeaders);
