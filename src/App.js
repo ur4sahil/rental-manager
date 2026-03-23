@@ -14647,8 +14647,20 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   name: currentUser?.email?.split("@")[0] || "",
   }]);
   if (memErr) console.warn("Membership insert failed:", memErr.message);
-  // Ensure default chart of accounts
-  await ensureDefaultAccounts(companyId);
+  // Create default chart of accounts
+  const defaultAccounts = [
+  { code: "1000", name: "Checking Account", type: "Asset", sub_type: "Bank", is_active: true },
+  { code: "1100", name: "Accounts Receivable", type: "Asset", sub_type: "Accounts Receivable", is_active: true },
+  { code: "2100", name: "Security Deposits Held", type: "Liability", sub_type: "Other Current Liability", is_active: true },
+  { code: "2200", name: "Owner Distributions Payable", type: "Liability", sub_type: "Other Current Liability", is_active: true },
+  { code: "4000", name: "Rental Income", type: "Revenue", sub_type: "Operating Revenue", is_active: true },
+  { code: "4010", name: "Late Fee Income", type: "Revenue", sub_type: "Operating Revenue", is_active: true },
+  { code: "4100", name: "Other Income", type: "Revenue", sub_type: "Other Revenue", is_active: true },
+  { code: "4200", name: "Management Fee Income", type: "Revenue", sub_type: "Operating Revenue", is_active: true },
+  { code: "5300", name: "Repairs & Maintenance", type: "Expense", sub_type: "Operating Expense", is_active: true },
+  { code: "5400", name: "Utilities Expense", type: "Expense", sub_type: "Operating Expense", is_active: true },
+  ];
+  await supabase.from("acct_accounts").upsert(defaultAccounts.map(a => ({ ...a, company_id: companyId })), { onConflict: "company_id,code" });
   companyCreated = true;
   } catch (fallbackErr) {
   showToast("Failed to create company: " + userError(fallbackErr.message), "error");
