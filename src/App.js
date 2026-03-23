@@ -1542,6 +1542,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const [filter, setFilter] = useState("all");
   const [showForm, setShowForm] = useState(false);
   const [editingProperty, setEditingProperty] = useState(null);
+  const [savingProperty, setSavingProperty] = useState(false);
   const [timelineProperty, setTimelineProperty] = useState(null);
   const [timelineData, setTimelineData] = useState([]);
   const [form, setForm] = useState({ address_line_1: "", address_line_2: "", city: "", state: "", zip: "", type: "Single Family", status: "vacant", rent: "", security_deposit: "", tenant: "", tenant_email: "", tenant_phone: "", lease_start: "", lease_end: "", notes: "" });
@@ -1690,6 +1691,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }
   return;
   }
+  if (_isNewOccupied) setSavingProperty(true);
   // Auto-create tenant on tenant page when property becomes occupied
   if (form.status === "occupied" && form.tenant.trim()) {
   const { data: existingTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.tenant.trim()).eq("property", compositeAddress).maybeSingle();
@@ -1805,6 +1807,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   setForm({ address_line_1: "", address_line_2: "", city: "", state: "", zip: "", type: "Single Family", status: "vacant", rent: "", security_deposit: "", tenant: "", tenant_email: "", tenant_phone: "", lease_start: "", lease_end: "", notes: "" });
   fetchProperties();
   // Show doc upload prompt for occupied properties (form is now closed)
+  setSavingProperty(false);
   if (_isNewOccupied) {
   setShowDocChecklist({ name: _savedTenantName, property: _savedAddress, isNew: true });
   } else {
@@ -1812,6 +1815,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }
   } catch (e) {
   console.error("saveProperty error:", e);
+  setSavingProperty(false);
   showToast("Property was saved but a post-save operation failed: " + (e.message || e) + ". Please check the property list.", "error");
   // Still close form and refresh since the DB save succeeded (error is in post-save operations)
   setShowForm(false);
@@ -2658,6 +2662,15 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   </>)}
   {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedProperty) { supabase.from("documents").select("*").eq("company_id", companyId).eq("property", selectedProperty.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100).then(({ data }) => { setPropertyDocs(data || []); setPropertyDetailTab("documents"); }); } }} />}
+  {savingProperty && (
+  <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60] flex items-center justify-center">
+  <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
+  <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+  <div className="text-sm font-medium text-slate-700">Setting up property...</div>
+  <div className="text-xs text-slate-400">Creating tenant, lease & posting entries</div>
+  </div>
+  </div>
+  )}
   {pendingRecurringEntry && <RecurringEntryModal entry={pendingRecurringEntry} companyId={companyId} showToast={showToast} onComplete={() => setPendingRecurringEntry(null)} />}
   </div>
   );
@@ -2686,6 +2699,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingTenant, setEditingTenant] = useState(null);
+  const [savingTenant, setSavingTenant] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState(null);
   const [activePanel, setActivePanel] = useState(null);
   const [ledger, setLedger] = useState([]);
@@ -2762,44 +2776,52 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
   return;
   }
-  // Create tenant AR sub-account for new tenants
-  if (!editingTenant) {
-  const { data: insertedTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.name.trim()).eq("property", form.property).is("archived_at", null).maybeSingle();
-  await getOrCreateTenantAR(companyId, form.name.trim(), insertedTenant?.id || null);
-  }
-  // #1: Auto-create lease and update property when tenant added with dates/rent
-  if (!editingTenant && form.property) {
-  // Update property to occupied with tenant info
-  await supabase.from("properties").update({ status: "occupied", tenant: form.name.trim(), rent: Number(form.rent) || null, lease_start: form.lease_start || null, lease_end: form.lease_end || null }).eq("company_id", companyId).eq("address", form.property);
-  if (form.lease_start && form.lease_end && form.rent) {
-  const { data: newTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.name.trim()).eq("property", form.property).is("archived_at", null).maybeSingle();
-  const { data: existingLease } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("property", form.property).eq("status", "active").maybeSingle();
+  // Close form immediately and show processing spinner for post-save operations
+  const _isNew = !editingTenant;
+  const _name = form.name.trim();
+  const _property = form.property;
+  const _rent = Number(form.rent);
+  const _leaseStart = form.lease_start;
+  const _leaseEnd = form.lease_end;
+  const _secDep = Number(form.security_deposit) || 0;
+  setShowForm(false);
+  setEditingTenant(null);
+  setForm({ name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "", security_deposit: "" });
+  if (_isNew && _property && _leaseStart && _leaseEnd && _rent) setSavingTenant(true);
+  // Post-save operations (run while spinner shows)
+  if (_isNew) {
+  const { data: insertedTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", _name).eq("property", _property).is("archived_at", null).maybeSingle();
+  const tenantId = insertedTenant?.id || null;
+  // Create AR sub-account + update property + create lease in parallel where possible
+  const [, ,] = await Promise.all([
+  getOrCreateTenantAR(companyId, _name, tenantId),
+  _property ? supabase.from("properties").update({ status: "occupied", tenant: _name, rent: _rent || null, lease_start: _leaseStart || null, lease_end: _leaseEnd || null }).eq("company_id", companyId).eq("address", _property) : Promise.resolve(),
+  Promise.resolve(), // placeholder
+  ]);
+  if (_property && _leaseStart && _leaseEnd && _rent) {
+  const { data: existingLease } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("property", _property).eq("status", "active").maybeSingle();
   if (!existingLease) {
-  await supabase.from("leases").insert([{ company_id: companyId, tenant_name: form.name.trim(), tenant_id: newTenant?.id || null, property: form.property, start_date: form.lease_start, end_date: form.lease_end, rent_amount: Number(form.rent), security_deposit: Number(form.security_deposit) || 0, status: "active", payment_due_day: 1, rent_escalation_pct: 3, escalation_frequency: "annual" }]);
+  await supabase.from("leases").insert([{ company_id: companyId, tenant_name: _name, tenant_id: tenantId, property: _property, start_date: _leaseStart, end_date: _leaseEnd, rent_amount: _rent, security_deposit: _secDep, status: "active", payment_due_day: 1, rent_escalation_pct: 3, escalation_frequency: "annual" }]);
   }
-  // Post security deposit JE if provided
-  const dep = Number(form.security_deposit) || 0;
-  if (dep > 0 && newTenant?.id) {
-  const classId = await getPropertyClassId(form.property, companyId);
-  const tenantArId = await getOrCreateTenantAR(companyId, form.name.trim(), newTenant.id);
-  const _depOk = await autoPostJournalEntry({ companyId, date: form.lease_start, description: "Security deposit received — " + form.name.trim() + " — " + form.property, reference: "DEP-" + shortId(), property: form.property,
+  // Security deposit + rent charges in parallel
+  if (_secDep > 0 && tenantId) {
+  const [classId, tenantArId] = await Promise.all([getPropertyClassId(_property, companyId), getOrCreateTenantAR(companyId, _name, tenantId)]);
+  const _depOk = await autoPostJournalEntry({ companyId, date: _leaseStart, description: "Security deposit received — " + _name + " — " + _property, reference: "DEP-" + shortId(), property: _property,
   lines: [
-  { account_id: tenantArId, account_name: "AR - " + form.name.trim(), debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.name.trim() },
-  { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.name.trim() + " — " + form.property },
+  { account_id: tenantArId, account_name: "AR - " + _name, debit: _secDep, credit: 0, class_id: classId, memo: "Security deposit from " + _name },
+  { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: _secDep, class_id: classId, memo: _name + " — " + _property },
   ]
   });
-  if (_depOk) {
-  await safeLedgerInsert({ company_id: companyId, tenant: form.name.trim(), property: form.property, date: form.lease_start, description: "Security deposit collected", amount: dep, type: "deposit", balance: 0 });
+  if (_depOk) await safeLedgerInsert({ company_id: companyId, tenant: _name, property: _property, date: _leaseStart, description: "Security deposit collected", amount: _secDep, type: "deposit", balance: 0 });
+  if (!_depOk) showToast("Security deposit accounting entry failed.", "error");
   }
-  if (!_depOk) showToast("Security deposit accounting entry failed. Please check the accounting module.", "error");
-  }
-  // Post rent charges for this new lease (awaited so errors surface)
-  try {
-  const result = await autoPostRentCharges(companyId);
-  if (result?.posted > 0) showToast("Posted " + result.posted + " rent charge(s) to accounting", "success");
-  } catch (e) { console.warn("Auto rent post after tenant add:", e.message); }
+  // Rent charges — fire and forget (don't block the popup)
+  autoPostRentCharges(companyId).then(result => { if (result?.posted > 0) showToast("Posted " + result.posted + " rent charge(s)", "success"); }).catch(() => {});
+  setSavingTenant(false);
   // Queue recurring entry popup
-  setPendingRecurringEntry({ tenantName: form.name.trim(), tenantId: newTenant?.id || null, property: form.property, rent: Number(form.rent), leaseStart: form.lease_start, leaseEnd: form.lease_end });
+  setPendingRecurringEntry({ tenantName: _name, tenantId: tenantId, property: _property, rent: _rent, leaseStart: _leaseStart, leaseEnd: _leaseEnd });
+  } else {
+  setSavingTenant(false);
   }
   }
   if (editingTenant) {
@@ -2827,22 +2849,18 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ]);
   }
   }
-  addNotification("👤", `Tenant updated: ${form.name}`);
-  logAudit("update", "tenants", `Updated tenant: ${form.name}`, editingTenant?.id, userProfile?.email, userRole, companyId);
+  addNotification("👤", `Tenant updated: ${_name}`);
+  logAudit("update", "tenants", `Updated tenant: ${_name}`, "", userProfile?.email, userRole, companyId);
   } else {
-  addNotification("👤", `New tenant added: ${form.name}`);
-  // Prompt for required documents
-  // Show document requirements panel
-  setShowTenantDocPrompt(form.name);
-  logAudit("create", "tenants", `Added tenant: ${form.name} at ${form.property}`, "", userProfile?.email, userRole, companyId);
+  addNotification("👤", `New tenant added: ${_name}`);
+  setShowTenantDocPrompt(_name);
+  logAudit("create", "tenants", `Added tenant: ${_name} at ${_property}`, "", userProfile?.email, userRole, companyId);
   }
-  setShowForm(false);
-  setEditingTenant(null);
-  setForm({ name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "", security_deposit: "" });
   fetchTenants();
-  showToast(editingTenant ? "Tenant updated successfully" : "Tenant added successfully", "success");
+  showToast(_isNew ? "Tenant added successfully" : "Tenant updated successfully", "success");
   } catch (e) {
   console.error("saveTenant error:", e);
+  setSavingTenant(false);
   showToast("Tenant was saved but a post-save operation failed: " + (e.message || e) + ". Please check the tenant list.", "error");
   setShowForm(false);
   setEditingTenant(null);
@@ -3938,6 +3956,15 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   })()}
   </>)}
   {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedTenant) fetchTenantDocs(selectedTenant); }} />}
+  {savingTenant && (
+  <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60] flex items-center justify-center">
+  <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
+  <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+  <div className="text-sm font-medium text-slate-700">Setting up tenant...</div>
+  <div className="text-xs text-slate-400">Creating accounts, lease & posting entries</div>
+  </div>
+  </div>
+  )}
   {pendingRecurringEntry && <RecurringEntryModal entry={pendingRecurringEntry} companyId={companyId} showToast={showToast} onComplete={() => setPendingRecurringEntry(null)} />}
   </div>
   );
@@ -10395,7 +10422,7 @@ const ALL_NAV = [
   { id: "utilities", label: "Utilities", icon: "bolt" },
   { id: "hoa", label: "HOA Payments", icon: "holiday_village" },
   { id: "accounting", label: "Accounting", icon: "account_balance" },
-  { id: "doc_builder", label: "Documents", icon: "folder" },
+  { id: "doc_builder", label: "Document Builder", icon: "description" },
   { id: "inspections", label: "Inspections", icon: "checklist" },
   { id: "vendors", label: "Vendors", icon: "engineering" },
   { id: "autopay", label: "Autopay", icon: "autorenew" },
