@@ -5355,6 +5355,118 @@ const getPeriodDates = (period) => {
 
 const PERIODS = ["This Month","Last Month","This Quarter","This Year","Last Year","Custom"];
 
+// ============ ACCOUNT LEDGER VIEW ============
+// Full-screen drill-down showing every JE line for one or more accounts.
+// Clickable from COA, P&L, Balance Sheet, Trial Balance, JE lines, Dashboard.
+function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClose, onViewJE }) {
+  const [period, setPeriod] = useState("This Year");
+  const [customDates, setCustomDates] = useState({ start: `${new Date().getFullYear()}-01-01`, end: `${new Date().getFullYear()}-12-31` });
+  const [propertyFilter, setPropertyFilter] = useState("");
+  const { start, end } = period === "Custom" ? customDates : getPeriodDates(period);
+
+  // Build ledger lines for all selected accounts
+  const ids = Array.isArray(accountIds) ? accountIds : [accountIds];
+  const acctMap = {}; accounts.forEach(a => { acctMap[a.id] = a; });
+  const acctNames = ids.map(id => acctMap[id]?.name || "Unknown").join(", ");
+  const acctCodes = ids.map(id => acctMap[id]?.code || "").filter(Boolean).join(", ");
+
+  // Determine normal balance direction for running total
+  const primaryType = acctMap[ids[0]]?.type || "Asset";
+  const nb = getNormalBalance(primaryType);
+
+  let running = 0;
+  const allLines = [];
+  const sortedJEs = journalEntries.filter(je => je.status === "posted").sort((a, b) => a.date.localeCompare(b.date) || (a.id || "").localeCompare(b.id || ""));
+  for (const je of sortedJEs) {
+  if (je.date < start || je.date > end) continue;
+  if (propertyFilter && je.property !== propertyFilter) continue;
+  for (const l of (je.lines || [])) {
+  if (!ids.includes(l.account_id)) continue;
+  const dr = safeNum(l.debit);
+  const cr = safeNum(l.credit);
+  running += nb === "debit" ? dr - cr : cr - dr;
+  allLines.push({ date: je.date, number: je.number, jeId: je.id, description: je.description, reference: je.reference, property: je.property, memo: l.memo, accountName: acctMap[l.account_id]?.name || "", debit: dr, credit: cr, balance: running });
+  }
+  }
+
+  // Properties for filter dropdown
+  const properties = [...new Set(journalEntries.filter(je => je.property).map(je => je.property))].sort();
+
+  function exportCSV() {
+  const rows = [["Date", "JE #", "Description", "Reference", "Property", "Memo", "Debit", "Credit", "Balance"]];
+  allLines.forEach(l => rows.push([l.date, l.number, l.description, l.reference, l.property, l.memo, l.debit.toFixed(2), l.credit.toFixed(2), l.balance.toFixed(2)]));
+  const csv = rows.map(r => r.map(c => '"' + String(c || "").replace(/"/g, '""') + '"').join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = `ledger_${acctCodes || "combined"}_${start}_${end}.csv`; a.click();
+  URL.revokeObjectURL(url);
+  }
+
+  return (
+  <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+  {/* Header */}
+  <div className="flex items-center justify-between px-6 py-4 border-b border-indigo-50">
+  <div>
+  <h3 className="text-lg font-manrope font-bold text-slate-800">{title || acctNames}</h3>
+  {acctCodes && <p className="text-xs text-slate-400">Account {acctCodes} · {allLines.length} entries</p>}
+  </div>
+  <div className="flex items-center gap-2">
+  <button onClick={exportCSV} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-xl hover:bg-slate-200">Export CSV</button>
+  <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
+  </div>
+  </div>
+  {/* Filters */}
+  <div className="flex flex-wrap items-center gap-2 px-6 py-3 border-b border-indigo-50 bg-slate-50/50">
+  {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${period === p ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-400 border-indigo-100"}`}>{p}</button>)}
+  {period === "Custom" && <><Input type="date" value={customDates.start} onChange={e => setCustomDates(d => ({...d, start: e.target.value}))} className="text-xs w-auto" /><span className="text-xs text-slate-400">to</span><Input type="date" value={customDates.end} onChange={e => setCustomDates(d => ({...d, end: e.target.value}))} className="text-xs w-auto" /></>}
+  {properties.length > 1 && <select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)} className="text-xs border border-indigo-100 rounded-xl px-2 py-1.5 bg-white"><option value="">All Properties</option>{properties.map(p => <option key={p} value={p}>{p.split(",")[0]}</option>)}</select>}
+  </div>
+  {/* Summary bar */}
+  <div className="flex items-center gap-6 px-6 py-2 border-b border-indigo-50 text-xs text-slate-500">
+  <span>Total Debits: <strong className="text-slate-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.debit, 0))}</strong></span>
+  <span>Total Credits: <strong className="text-slate-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.credit, 0))}</strong></span>
+  <span>Ending Balance: <strong className={`font-mono ${running >= 0 ? "text-slate-800" : "text-red-600"}`}>{acctFmt(running, true)}</strong></span>
+  </div>
+  {/* Table */}
+  <div className="flex-1 overflow-auto">
+  <table className="w-full text-sm">
+  <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase sticky top-0">
+  <tr>
+  <th className="px-4 py-2.5 text-left">Date</th>
+  <th className="px-3 py-2.5 text-left">JE #</th>
+  <th className="px-3 py-2.5 text-left">Description</th>
+  <th className="px-3 py-2.5 text-left">Ref</th>
+  {ids.length > 1 && <th className="px-3 py-2.5 text-left">Account</th>}
+  <th className="px-3 py-2.5 text-left">Property</th>
+  <th className="px-3 py-2.5 text-right">Debit</th>
+  <th className="px-3 py-2.5 text-right">Credit</th>
+  <th className="px-3 py-2.5 text-right">Balance</th>
+  </tr>
+  </thead>
+  <tbody>
+  {allLines.map((l, i) => (
+  <tr key={i} className="border-t border-indigo-50/50 hover:bg-indigo-50/20">
+  <td className="px-4 py-2 text-xs text-slate-500 whitespace-nowrap">{l.date}</td>
+  <td className="px-3 py-2"><button onClick={() => onViewJE && onViewJE(l.jeId)} className="text-xs text-indigo-600 hover:underline font-mono">{l.number || "—"}</button></td>
+  <td className="px-3 py-2 text-slate-700 text-xs max-w-xs truncate" title={l.description + (l.memo ? " | " + l.memo : "")}>{l.description}{l.memo && <span className="text-slate-400 ml-1">({l.memo})</span>}</td>
+  <td className="px-3 py-2 text-xs text-slate-400 font-mono">{l.reference || "—"}</td>
+  {ids.length > 1 && <td className="px-3 py-2 text-xs text-slate-500">{l.accountName}</td>}
+  <td className="px-3 py-2 text-xs text-slate-400">{l.property?.split(",")[0] || "—"}</td>
+  <td className="px-3 py-2 text-right font-mono text-xs">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>
+  <td className="px-3 py-2 text-right font-mono text-xs">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>
+  <td className={`px-3 py-2 text-right font-mono text-xs font-semibold ${l.balance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(l.balance, true)}</td>
+  </tr>
+  ))}
+  {allLines.length === 0 && <tr><td colSpan={ids.length > 1 ? 9 : 8} className="px-4 py-8 text-center text-slate-400">No transactions found for this period</td></tr>}
+  </tbody>
+  </table>
+  </div>
+  </div>
+  </div>
+  );
+}
+
 // --- Accounting Sub-Components ---
 
 function AcctModal({ isOpen, onClose, title, children, size = "md" }) {
@@ -5385,7 +5497,7 @@ function AcctStatusBadge({ status }) {
 }
 
 // --- Chart of Accounts Sub-Page ---
-function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onToggle }) {
+function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onToggle, onOpenLedger }) {
   const [modal, setModal] = useState(null);
   const [filter, setFilter] = useState("All");
   const [showInactive, setShowInactive] = useState(false);
@@ -5459,7 +5571,8 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   <td className={`px-4 py-2 font-medium ${!a.is_active ? "text-slate-400 line-through" : "text-slate-800"}`}>{a.name}</td>
   <td className="px-4 py-2 text-xs text-slate-400">{a.subtype}</td>
   <td className={`px-4 py-2 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(a.computedBalance, true)}</td>
-  <td className="px-4 py-2 text-center">
+  <td className="px-4 py-2 text-center flex items-center gap-2 justify-center">
+  <button onClick={e => { e.stopPropagation(); onOpenLedger && onOpenLedger([a.id], a.name + " (" + (a.code || "") + ")"); }} className="text-indigo-500 hover:text-indigo-700 text-xs hover:underline">Ledger</button>
   <button onClick={e => { e.stopPropagation(); onToggle(a.id, a.is_active); }} className="text-slate-400 hover:text-slate-700 text-xs">{a.is_active ? "🟢" : "⚪"}</button>
   </td>
   </tr>
@@ -5503,7 +5616,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
 }
 
 // --- Journal Entries Sub-Page ---
-function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate, onPost, onVoid, companyId }) {
+function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate, onPost, onVoid, companyId, onOpenLedger }) {
   const [modal, setModal] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
   const [searchProperty, setSearchProperty] = useState("");
@@ -5689,7 +5802,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
 }
 
 // --- Class Tracking Sub-Page ---
-function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate, onToggle }) {
+function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate, onToggle, onOpenLedger }) {
   const [modal, setModal] = useState(null);
   const [period, setPeriod] = useState("This Year");
   const [form, setForm] = useState({ name:"", description:"", color:"#3B82F6" });
@@ -5762,7 +5875,7 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
 }
 
 // --- Reports Sub-Page ---
-function AcctReports({ accounts, journalEntries, classes, companyName }) {
+function AcctReports({ accounts, journalEntries, classes, companyName, onOpenLedger }) {
   const [activeReport, setActiveReport] = useState("pl");
   const [period, setPeriod] = useState("This Year");
   const [customDates, setCustomDates] = useState({ start: `${new Date().getFullYear()}-01-01`, end: `${new Date().getFullYear()}-12-31` });
@@ -5818,8 +5931,8 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
   </div>
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
   <div className="text-center mb-4"><p className="text-xs text-slate-400 uppercase tracking-widest">Profit & Loss Statement</p><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-sm text-slate-400">{acctFmtDate(start)} — {acctFmtDate(end)}</p></div>
-  <div className="border-t pt-3"><p className="text-sm font-bold text-slate-800 uppercase mb-2">Income</p>{plData.revenue.map(a => <div key={a.id} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded"><span className="text-sm text-slate-700">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount)}</span></div>)}<div className="flex justify-between py-2 border-t-2 border-indigo-200 mt-2 font-bold"><span>Total Income</span><span className="font-mono text-emerald-700">{acctFmt(plData.totalRevenue)}</span></div></div>
-  <div className="border-t pt-3 mt-3"><p className="text-sm font-bold text-slate-800 uppercase mb-2">Expenses</p>{plData.expenses.map(a => <div key={a.id} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded"><span className="text-sm text-slate-700">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount)}</span></div>)}<div className="flex justify-between py-2 border-t-2 border-indigo-200 mt-2 font-bold"><span>Total Expenses</span><span className="font-mono text-red-600">{acctFmt(plData.totalExpenses)}</span></div></div>
+  <div className="border-t pt-3"><p className="text-sm font-bold text-slate-800 uppercase mb-2">Income</p>{plData.revenue.map(a => <div key={a.id} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded cursor-pointer group"><span className="text-sm text-slate-700 group-hover:text-indigo-600">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount)}</span></div>)}<div onClick={() => onOpenLedger && onOpenLedger(plData.revenue.map(a=>a.id), "Total Income")} className="flex justify-between py-2 border-t-2 border-indigo-200 mt-2 font-bold cursor-pointer hover:bg-emerald-50/50 rounded"><span>Total Income</span><span className="font-mono text-emerald-700">{acctFmt(plData.totalRevenue)}</span></div></div>
+  <div className="border-t pt-3 mt-3"><p className="text-sm font-bold text-slate-800 uppercase mb-2">Expenses</p>{plData.expenses.map(a => <div key={a.id} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded cursor-pointer group"><span className="text-sm text-slate-700 group-hover:text-indigo-600">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount)}</span></div>)}<div onClick={() => onOpenLedger && onOpenLedger(plData.expenses.map(a=>a.id), "Total Expenses")} className="flex justify-between py-2 border-t-2 border-indigo-200 mt-2 font-bold cursor-pointer hover:bg-red-50/50 rounded"><span>Total Expenses</span><span className="font-mono text-red-600">{acctFmt(plData.totalExpenses)}</span></div></div>
   <div className={`flex justify-between py-3 mt-3 border-t-4 border-gray-800 px-2 rounded-b-xl font-black ${plData.netIncome>=0?"bg-emerald-50":"bg-red-50"}`}><span>Net Income</span><span className={`font-mono ${plData.netIncome>=0?"text-emerald-700":"text-red-700"}`}>{acctFmt(plData.netIncome, true)}</span></div>
   </div>
   </div>
@@ -5834,8 +5947,8 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
   <p className="text-base font-black text-slate-900 mb-3">ASSETS</p>
   {bsData.assets.filter(a=>a.amount!==0).map(a => (
   <div key={a.id}>
-  <div className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded cursor-pointer" onClick={() => a.id === "1100" && setShowARSub(!showARSub)}>
-  <span className="text-sm text-slate-700">{a.name}{a.id === "1100" && bsData.arByTenant?.length > 0 && <span className="text-xs text-indigo-500 ml-1">{showARSub ? "▾" : "▸"} {bsData.arByTenant.length} tenants</span>}</span>
+  <div className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded cursor-pointer group" onClick={() => { if (a.name === "Accounts Receivable") setShowARSub(!showARSub); else onOpenLedger && onOpenLedger([a.id], a.name); }}>
+  <span className="text-sm text-slate-700 group-hover:text-indigo-600">{a.name}{a.name === "Accounts Receivable" && bsData.arByTenant?.length > 0 && <span className="text-xs text-indigo-500 ml-1">{showARSub ? "▾" : "▸"} {bsData.arByTenant.length} tenants</span>}</span>
   <span className={`font-mono text-sm ${a.amount<0?"text-red-600":"text-slate-800"}`}>{acctFmt(a.amount, true)}</span>
   </div>
   {a.id === "1100" && showARSub && bsData.arByTenant?.length > 0 && (
@@ -5855,14 +5968,14 @@ function AcctReports({ accounts, journalEntries, classes, companyName }) {
   )}
   </div>
   ))}
-  <div className="flex justify-between py-3 border-t-4 border-gray-800 bg-blue-50 px-2 rounded-xl mt-3 font-black"><span>TOTAL ASSETS</span><span className="font-mono text-blue-700">{acctFmt(bsData.totalAssets)}</span></div>
+  <div onClick={() => onOpenLedger && onOpenLedger(bsData.assets.filter(a=>a.amount!==0).map(a=>a.id), "All Assets")} className="flex justify-between py-3 border-t-4 border-gray-800 bg-blue-50 px-2 rounded-xl mt-3 font-black cursor-pointer hover:bg-blue-100/50"><span>TOTAL ASSETS</span><span className="font-mono text-blue-700">{acctFmt(bsData.totalAssets)}</span></div>
   </div>
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
   <p className="text-base font-black text-slate-900 mb-3">LIABILITIES & EQUITY</p>
   <p className="text-xs font-bold text-slate-400 uppercase mt-2 mb-1">Liabilities</p>
-  {bsData.liabilities.filter(a=>a.amount!==0).map(a => <div key={a.id} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded"><span className="text-sm text-slate-700">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount, true)}</span></div>)}
+  {bsData.liabilities.filter(a=>a.amount!==0).map(a => <div key={a.id} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded cursor-pointer group"><span className="text-sm text-slate-700 group-hover:text-indigo-600">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount, true)}</span></div>)}
   <p className="text-xs font-bold text-slate-400 uppercase mt-3 mb-1">Equity</p>
-  {bsData.equity.filter(a=>a.amount!==0).map(a => <div key={a.id} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded"><span className="text-sm text-slate-700">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount, true)}</span></div>)}
+  {bsData.equity.filter(a=>a.amount!==0).map(a => <div key={a.id} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded cursor-pointer group"><span className="text-sm text-slate-700 group-hover:text-indigo-600">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount, true)}</span></div>)}
   {bsData.netIncome !== 0 && <div className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded"><span className="text-sm text-slate-700 italic">Net Income (Current)</span><span className="font-mono text-sm">{acctFmt(bsData.netIncome, true)}</span></div>}
   <div className="flex justify-between py-3 border-t-4 border-gray-800 bg-violet-50 px-2 rounded-xl mt-3 font-black"><span>TOTAL L + E</span><span className="font-mono text-violet-700">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</span></div>
   </div>
@@ -6364,6 +6477,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   const [acctClasses, setAcctClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
+  const [ledgerView, setLedgerView] = useState(null); // { accountIds: [], title: "" }
   const companyName = activeCompany?.name || "My Company";
 
   useEffect(() => { fetchAll(); }, [companyId]);
@@ -6653,12 +6767,14 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   )}
 
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} addNotification={addNotification} userProfile={userProfile} />}
-  {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} />}
-  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} />}
+  {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
+  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {activeTab === "bankimport" && <AcctBankImport accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAddJournalEntry={addJournalEntry} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} />}
-  {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} />}
-  {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} />}
+  {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
+  {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
+  {/* Account Ledger Drill-Down */}
+  {ledgerView && <AccountLedgerView accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => setLedgerView(null)} onViewJE={(jeId) => { setLedgerView(null); setActiveTab("journal"); }} />}
   </div>
   );
 }
