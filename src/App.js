@@ -5473,7 +5473,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   if (selectedPayments.size === 0) return;
   if (!await showConfirm({ message: "Delete " + selectedPayments.size + " selected payment(s)?\n\nThis cannot be undone.", variant: "danger", confirmText: "Delete" })) return;
   const ids = Array.from(selectedPayments);
-  const { error } = await supabase.from("payments").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).in("id", ids).eq("company_id", companyId);
+  const { error } = await supabase.from("payments").update({ archived_at: new Date().toISOString() }).in("id", ids).eq("company_id", companyId);
   if (error) { showToast("Error deleting payments: " + error.message, "error"); return; }
   showToast(ids.length + " payment(s) deleted", "success");
   setSelectedPayments(new Set());
