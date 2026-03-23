@@ -2550,8 +2550,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   showToast("This is a managed property. You can only view it, not edit.", "error");
   return;
   }
-  if (!guardSubmit("saveProperty")) return;
+  if (!guardSubmit("saveProperty")) { showToast("Save already in progress — please wait.", "warning"); return; }
   try {
+  console.log("DEBUG saveProperty: guard acquired, isAdmin=" + isAdmin + ", editing=" + !!editingProperty);
   // Check for duplicate address (new properties only — requires DB query, so after guard)
   if (!editingProperty) {
   const compositeCheck = [form.address_line_1, form.address_line_2, form.city, form.state, form.zip].filter(Boolean).join(", ");
@@ -2589,7 +2590,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   // Guard: block edits to managed (cross-company) properties
   if (editingProperty && editingProperty.company_id !== companyId) {
   showToast("This property belongs to another company and cannot be edited here.", "error");
-  return;
+  guardRelease("saveProperty"); return;
   }
   // Admin: direct save
   const { error } = editingProperty
