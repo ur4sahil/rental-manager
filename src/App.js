@@ -13933,9 +13933,9 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <div className="grid grid-cols-2 gap-3">
   <div className="col-span-2">
   <label className="text-xs font-medium text-slate-400 mb-1 block">Tenant *</label>
-  <select value={form.tenant_id} onChange={e => { const t = tenants.find(x => x.id === e.target.value); if (t) setForm({ ...form, tenant_id: t.id, tenant_name: t.name, property: t.property || "" }); }} >
+  <select value={form.tenant_id} onChange={e => { const t = tenants.find(x => String(x.id) === e.target.value); if (t) setForm({ ...form, tenant_id: t.id, tenant_name: t.name, property: t.property || "" }); }} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
   <option value="">Select tenant...</option>
-  {tenants.filter(t => t.lease_status === "active" || t.lease_status === "notice").map(t => <option key={t.id} value={t.id}>{t.name} — {t.property}{safeNum(t.balance) > 0 ? ` (owes ${formatCurrency(t.balance)})` : ""}</option>)}
+  {tenants.filter(t => !t.archived_at).map(t => <option key={t.id} value={t.id}>{t.name} — {t.property}{safeNum(t.balance) > 0 ? ` (owes ${formatCurrency(t.balance)})` : ""}</option>)}
   </select>
   </div>
   <div>
