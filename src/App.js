@@ -2552,7 +2552,6 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }
   if (!guardSubmit("saveProperty")) { showToast("Save already in progress — please wait.", "warning"); return; }
   try {
-  console.log("DEBUG saveProperty: guard acquired, isAdmin=" + isAdmin + ", editing=" + !!editingProperty);
   // Check for duplicate address (new properties only — requires DB query, so after guard)
   if (!editingProperty) {
   const compositeCheck = [form.address_line_1, form.address_line_2, form.city, form.state, form.zip].filter(Boolean).join(", ");
