@@ -1941,8 +1941,6 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       if (tErr) throw new Error("Failed to create tenant: " + tErr.message);
       tenantId = newT?.id;
     }
-    // Create AR sub-account
-    if (tenantId) await getOrCreateTenantAR(companyId, tenantForm.tenant.trim(), tenantId);
     // Create lease
     if (tenantForm.lease_start && tenantForm.lease_end) {
       const { data: existLease } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("property", addr).eq("status", "active").maybeSingle();
@@ -1951,25 +1949,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         if (leaseErr) throw new Error("Failed to create lease: " + leaseErr.message);
       }
     }
-    // Post security deposit JE
-    const dep = Number(tenantForm.security_deposit) || 0;
-    if (dep > 0 && tenantId) {
-      const classId = await getPropertyClassId(addr, companyId);
-      if (!classId) showToast("Warning: property class not found for accounting", "warning");
-      const tenantArId = await getOrCreateTenantAR(companyId, tenantForm.tenant.trim(), tenantId);
-      const depOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start, description: "Security deposit received — " + tenantForm.tenant.trim() + " — " + addr, reference: "DEP-" + shortId(), property: addr,
-        lines: [
-          { account_id: tenantArId, account_name: "AR - " + tenantForm.tenant.trim(), debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + tenantForm.tenant.trim() },
-          { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: tenantForm.tenant.trim() + " — " + addr },
-        ]
-      });
-      if (!depOk) showToast("Security deposit accounting entry failed", "error");
-      await safeLedgerInsert({ company_id: companyId, tenant: tenantForm.tenant.trim(), tenant_id: tenantId, property: addr, date: tenantForm.lease_start, description: "Security deposit collected", amount: dep, type: "deposit", balance: 0 });
-    }
     // Pre-fill recurring rent amount
     setRecurring(prev => ({ ...prev, amount: Number(tenantForm.rent) || prev.amount }));
-    // Auto-post rent charges (fire and forget)
-    autoPostRentCharges(companyId).catch(() => {});
     showToast("Tenant & lease saved", "success");
     return true;
   }
@@ -2022,11 +2003,38 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   async function handleComplete() {
     setSaving(true);
     try {
+      // Finalize accounting entries now that all setup is done
+      if (propForm.status === "occupied" && tenantForm.tenant.trim() && savedAddress) {
+      const addr = savedAddress;
+      const tName = tenantForm.tenant.trim();
+      // Find tenant ID
+      const { data: tRow } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", tName).eq("property", addr).is("archived_at", null).maybeSingle();
+      const tenantId = tRow?.id;
+      if (tenantId) {
+      // Create AR sub-account
+      await getOrCreateTenantAR(companyId, tName, tenantId);
+      // Post security deposit JE
+      const dep = Number(tenantForm.security_deposit) || 0;
+      if (dep > 0) {
+      const classId = await getPropertyClassId(addr, companyId);
+      const tenantArId = await getOrCreateTenantAR(companyId, tName, tenantId);
+      const depOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start, description: "Security deposit received — " + tName + " — " + addr, reference: "DEP-" + shortId(), property: addr,
+      lines: [
+      { account_id: tenantArId, account_name: "AR - " + tName, debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + tName },
+      { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: tName + " — " + addr },
+      ]
+      });
+      if (depOk) await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: addr, date: tenantForm.lease_start, description: "Security deposit collected", amount: dep, type: "deposit", balance: 0 });
+      }
+      // Auto-post rent charges
+      autoPostRentCharges(companyId).catch(() => {});
+      }
+      }
       await persistStatus("completed");
-      showToast("Property setup complete for " + (savedAddress || "New Property").split(",")[0], "success");
+      showToast("Property setup complete!", "success");
       onComplete();
     } catch (e) {
-      showToast("Error completing wizard: " + e.message, "error");
+      showToast("Error completing setup: " + e.message, "error");
     } finally {
       setSaving(false);
     }
