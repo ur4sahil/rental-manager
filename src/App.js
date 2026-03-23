@@ -489,7 +489,7 @@ async function getPropertyClassId(propertyAddress, companyId) {
 // Maps bare account codes ("1000") to UUID primary keys in acct_accounts.
 // Uses the `code` column. Falls back to name matching. Auto-creates missing accounts.
 const _acctIdCache = {};
-const _acctCodeToName = { "1000": "Checking Account", "1100": "Accounts Receivable", "2100": "Security Deposits Held", "2200": "Owner Distributions Payable", "4000": "Rental Income", "4010": "Late Fee Income", "4100": "Other Income", "4200": "Management Fee Income", "5300": "Repairs & Maintenance", "5400": "Utilities Expense" };
+const _acctCodeToName = { "1000": "Checking Account", "1100": "Accounts Receivable", "2100": "Security Deposits Held", "2200": "Owner Distributions Payable", "4000": "Rental Income", "4010": "Late Fee Income", "4100": "Other Income", "4200": "Management Fee Income", "5300": "Repairs & Maintenance", "5400": "Utilities Expense", "5600": "Mortgage/Loan Payment" };
 async function resolveAccountId(bareCode, companyId) {
   if (!companyId) return null;
   const cid = companyId;
@@ -1529,6 +1529,883 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   );
 }
 
+// ============ PROPERTY SETUP WIZARD ============
+function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, userRole, onComplete, onDismiss }) {
+  // wizardData: { propertyId, address, isOccupied, tenant, rent, leaseStart, leaseEnd, securityDeposit }
+  const [step, setStep] = useState(1);
+  const [saving, setSaving] = useState(false);
+  const [wizardId, setWizardId] = useState("");
+  const [completedSteps, setCompletedSteps] = useState(new Set());
+
+  // Step-specific form states
+  const [utilities, setUtilities] = useState([
+    { provider: "", type: "Electric", account_number: "", amount: "", due_date: 1, responsibility: wizardData.isOccupied ? "tenant_pays" : "owner_pays" }
+  ]);
+  const [hoa, setHoa] = useState({ enabled: false, hoa_name: "", amount: "", due_date: 1, frequency: "Monthly", notes: "" });
+  const [loan, setLoan] = useState({ enabled: false, lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: { taxes: false, insurance: false, pmi: false }, loan_start_date: "", maturity_date: "", account_number: "", notes: "", setup_recurring: false });
+  const [insurance, setInsurance] = useState({ enabled: false, provider: "", policy_number: "", premium_amount: "", premium_frequency: "annual", coverage_amount: "", expiration_date: "", notes: "" });
+  const [recurring, setRecurring] = useState({ frequency: "monthly", day_of_month: 1, amount: wizardData.rent || 0 });
+  const [uploadedDocs, setUploadedDocs] = useState([]);
+
+  // File upload refs
+  const fileInputRef = useRef();
+
+  // Build steps array dynamically based on isOccupied
+  const steps = (() => {
+    const s = ["utilities", "hoa"];
+    if (userRole === "admin" || userRole === "owner") s.push("loan");
+    s.push("documents", "insurance");
+    if (wizardData.isOccupied) s.push("recurring_rent");
+    s.push("review");
+    return s;
+  })();
+  const totalSteps = steps.length;
+  const currentStepId = steps[step - 1];
+
+  // Step labels for display
+  const stepLabels = {
+    utilities: "Utilities",
+    hoa: "HOA",
+    loan: "Loan",
+    documents: "Documents",
+    insurance: "Insurance",
+    recurring_rent: "Recurring Rent",
+    review: "Review"
+  };
+
+  // Wizard persistence — upsert on mount
+  useEffect(() => {
+    async function initWizard() {
+      try {
+        const id = companyId + "-wizard-" + wizardData.propertyId;
+        setWizardId(id);
+        const { error } = await supabase.from("property_setup_wizard").upsert([{
+          id: id,
+          company_id: companyId,
+          property_id: wizardData.propertyId,
+          property_address: wizardData.address,
+          status: "in_progress",
+          current_step: 1,
+          completed_steps: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }], { onConflict: "id" });
+        if (error) console.warn("Wizard persistence init failed:", error.message);
+      } catch (e) {
+        console.warn("Wizard persistence error:", e.message);
+      }
+    }
+    initWizard();
+    // eslint-disable-next-line
+  }, []);
+
+  // Persist step progress
+  async function persistProgress(nextStep, newCompletedSteps) {
+    try {
+      await supabase.from("property_setup_wizard").update({
+        current_step: nextStep,
+        completed_steps: Array.from(newCompletedSteps),
+        updated_at: new Date().toISOString()
+      }).eq("id", wizardId);
+    } catch (e) {
+      console.warn("Wizard progress save failed:", e.message);
+    }
+  }
+
+  // Persist wizard completion
+  async function persistStatus(status) {
+    try {
+      await supabase.from("property_setup_wizard").update({
+        status: status,
+        updated_at: new Date().toISOString()
+      }).eq("id", wizardId);
+    } catch (e) {
+      console.warn("Wizard status save failed:", e.message);
+    }
+  }
+
+  // ---- Save logic for each step ----
+
+  async function saveUtilities() {
+    const validRows = utilities.filter(u => u.provider.trim() && u.amount);
+    if (validRows.length === 0) return true; // nothing to save
+    const rows = validRows.map(u => ({
+      company_id: companyId,
+      property: wizardData.address,
+      provider: u.provider.trim(),
+      type: u.type,
+      account_number: u.account_number.trim(),
+      amount: Number(u.amount) || 0,
+      due_date: String(u.due_date),
+      responsibility: u.responsibility,
+      status: "active"
+    }));
+    const { error } = await supabase.from("utilities").insert(rows);
+    if (error) throw new Error("Failed to save utilities: " + error.message);
+    return true;
+  }
+
+  async function saveHoa() {
+    if (!hoa.enabled) return true;
+    if (!hoa.hoa_name.trim()) throw new Error("HOA name is required");
+    if (!hoa.amount || Number(hoa.amount) <= 0) throw new Error("HOA amount is required");
+    const { error } = await supabase.from("hoa_payments").insert([{
+      company_id: companyId,
+      property: wizardData.address,
+      property_id: wizardData.propertyId,
+      hoa_name: hoa.hoa_name.trim(),
+      amount: Number(hoa.amount),
+      due_date: hoa.due_date,
+      frequency: hoa.frequency,
+      notes: hoa.notes.trim(),
+      status: "active"
+    }]);
+    if (error) throw new Error("Failed to save HOA: " + error.message);
+    return true;
+  }
+
+  async function saveLoan() {
+    if (!loan.enabled) return true;
+    if (!loan.lender_name.trim()) throw new Error("Lender name is required");
+    if (!loan.monthly_payment || Number(loan.monthly_payment) <= 0) throw new Error("Monthly payment is required");
+    const loanRow = {
+      company_id: companyId,
+      property: wizardData.address,
+      property_id: wizardData.propertyId,
+      lender_name: loan.lender_name.trim(),
+      loan_type: loan.loan_type,
+      original_amount: Number(loan.original_amount) || 0,
+      current_balance: Number(loan.current_balance) || 0,
+      interest_rate: Number(loan.interest_rate) || 0,
+      monthly_payment: Number(loan.monthly_payment),
+      escrow_included: loan.escrow_included,
+      escrow_amount: loan.escrow_included ? (Number(loan.escrow_amount) || 0) : 0,
+      escrow_covers: loan.escrow_included ? loan.escrow_covers : {},
+      loan_start_date: loan.loan_start_date || null,
+      maturity_date: loan.maturity_date || null,
+      account_number: loan.account_number.trim(),
+      notes: loan.notes.trim(),
+      status: "active"
+    };
+    const { error } = await supabase.from("property_loans").insert([loanRow]);
+    if (error) throw new Error("Failed to save loan: " + error.message);
+    // If setup_recurring, create a recurring journal entry for the mortgage payment
+    if (loan.setup_recurring) {
+      const today = new Date();
+      const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+      const nextPostDate = formatLocalDate(nextMonth);
+      const { error: recErr } = await supabase.from("recurring_journal_entries").insert([{
+        company_id: companyId,
+        description: "Mortgage payment — " + loan.lender_name + " — " + wizardData.address.split(",")[0],
+        frequency: "monthly",
+        day_of_month: 1,
+        amount: Number(loan.monthly_payment),
+        property: wizardData.address,
+        debit_account_name: "Mortgage Expense",
+        credit_account_name: "Checking",
+        status: "active",
+        next_post_date: nextPostDate,
+        created_by: userProfile?.email || ""
+      }]);
+      if (recErr) console.warn("Recurring loan entry failed:", recErr.message);
+    }
+    return true;
+  }
+
+  async function saveInsurance() {
+    if (!insurance.enabled) return true;
+    if (!insurance.provider.trim()) throw new Error("Insurance provider is required");
+    if (!insurance.premium_amount || Number(insurance.premium_amount) <= 0) throw new Error("Premium amount is required");
+    const { error } = await supabase.from("property_insurance").insert([{
+      company_id: companyId,
+      property: wizardData.address,
+      property_id: wizardData.propertyId,
+      provider: insurance.provider.trim(),
+      policy_number: insurance.policy_number.trim(),
+      premium_amount: Number(insurance.premium_amount),
+      premium_frequency: insurance.premium_frequency,
+      coverage_amount: Number(insurance.coverage_amount) || 0,
+      expiration_date: insurance.expiration_date || null,
+      notes: insurance.notes.trim(),
+      status: "active"
+    }]);
+    if (error) throw new Error("Failed to save insurance: " + error.message);
+    return true;
+  }
+
+  async function saveRecurringRent() {
+    if (!recurring.amount || Number(recurring.amount) <= 0) throw new Error("Rent amount is required");
+    const tenantArId = await getOrCreateTenantAR(companyId, wizardData.tenant, null);
+    const revenueId = await resolveAccountId("4000", companyId);
+    const today = new Date();
+    const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const nextPostDate = formatLocalDate(nextMonth);
+    const { error } = await supabase.from("recurring_journal_entries").insert([{
+      company_id: companyId,
+      description: "Monthly rent — " + wizardData.tenant + " — " + wizardData.address.split(",")[0],
+      frequency: recurring.frequency,
+      day_of_month: recurring.day_of_month,
+      amount: Number(recurring.amount),
+      tenant_name: wizardData.tenant,
+      property: wizardData.address,
+      debit_account_id: tenantArId,
+      debit_account_name: "AR - " + wizardData.tenant,
+      credit_account_id: revenueId,
+      credit_account_name: "Rental Income",
+      status: "active",
+      next_post_date: nextPostDate,
+      created_by: userProfile?.email || ""
+    }]);
+    if (error) throw new Error("Failed to save recurring rent: " + error.message);
+    return true;
+  }
+
+  async function saveCurrentStep() {
+    switch (currentStepId) {
+      case "utilities": return await saveUtilities();
+      case "hoa": return await saveHoa();
+      case "loan": return await saveLoan();
+      case "insurance": return await saveInsurance();
+      case "recurring_rent": return await saveRecurringRent();
+      case "documents": return true; // docs are uploaded inline
+      case "review": return true;
+      default: return true;
+    }
+  }
+
+  // ---- Handler functions ----
+
+  async function handleNext() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await saveCurrentStep();
+      const newCompleted = new Set(completedSteps);
+      newCompleted.add(currentStepId);
+      setCompletedSteps(newCompleted);
+      const nextStep = step + 1;
+      setStep(nextStep);
+      await persistProgress(nextStep, newCompleted);
+    } catch (e) {
+      showToast(e.message, "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleBack() {
+    if (step > 1) setStep(step - 1);
+  }
+
+  async function handleSkip() {
+    const nextStep = step + 1;
+    setStep(nextStep);
+    await persistProgress(nextStep, completedSteps);
+  }
+
+  async function handleComplete() {
+    setSaving(true);
+    try {
+      await persistStatus("completed");
+      showToast("Property setup complete for " + wizardData.address.split(",")[0], "success");
+      onComplete();
+    } catch (e) {
+      showToast("Error completing wizard: " + e.message, "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDismiss() {
+    await persistStatus("dismissed");
+    onDismiss();
+  }
+
+  // ---- File upload handler ----
+  async function handleFileUpload(e) {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    const ALLOWED_DOC_TYPES = ["application/pdf","image/jpeg","image/png","image/gif","image/webp","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","text/plain","text/csv"];
+    const ALLOWED_DOC_EXTENSIONS = /\.(pdf|jpg|jpeg|png|gif|webp|doc|docx|xls|xlsx|txt|csv)$/i;
+    setSaving(true);
+    let uploaded = 0;
+    for (const file of files) {
+      if (!ALLOWED_DOC_TYPES.includes(file.type) && !ALLOWED_DOC_EXTENSIONS.test(file.name)) {
+        showToast("Skipped " + file.name + " — file type not allowed", "error");
+        continue;
+      }
+      if (file.size > 25 * 1024 * 1024) {
+        showToast("Skipped " + file.name + " — must be under 25MB", "error");
+        continue;
+      }
+      try {
+        const fileName = companyId + "/" + shortId() + "_" + sanitizeFileName(file.name);
+        const { error: uploadErr } = await supabase.storage.from("documents").upload(fileName, file, { cacheControl: "3600", upsert: false });
+        if (uploadErr) { showToast("Upload failed for " + file.name + ": " + uploadErr.message, "error"); continue; }
+        const { error: insertErr } = await supabase.from("documents").insert([{
+          company_id: companyId,
+          name: file.name.replace(/\.[^/.]+$/, ""),
+          file_name: fileName,
+          url: fileName,
+          property: wizardData.address,
+          tenant: wizardData.isOccupied ? (wizardData.tenant || "") : "",
+          type: "Other",
+          tenant_visible: false,
+          uploaded_at: new Date().toISOString()
+        }]);
+        if (insertErr) { showToast("File uploaded but record failed: " + insertErr.message, "error"); continue; }
+        setUploadedDocs(prev => [...prev, { name: file.name, fileName }]);
+        uploaded++;
+      } catch (err) {
+        showToast("Error uploading " + file.name + ": " + err.message, "error");
+      }
+    }
+    if (uploaded > 0) showToast(uploaded + " document" + (uploaded > 1 ? "s" : "") + " uploaded", "success");
+    setSaving(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  // ---- Utility row helpers ----
+  function addUtilityRow() {
+    setUtilities(prev => [...prev, { provider: "", type: "Electric", account_number: "", amount: "", due_date: 1, responsibility: wizardData.isOccupied ? "tenant_pays" : "owner_pays" }]);
+  }
+  function removeUtilityRow(idx) {
+    setUtilities(prev => prev.filter((_, i) => i !== idx));
+  }
+  function updateUtility(idx, field, value) {
+    setUtilities(prev => prev.map((u, i) => i === idx ? { ...u, [field]: value } : u));
+  }
+
+  // ---- Step rendering ----
+  function renderStep() {
+    switch (currentStepId) {
+      case "utilities":
+        return (
+          <div>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-blue-600 text-2xl">bolt</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-manrope font-bold text-slate-800">Utilities</h3>
+                <p className="text-sm text-slate-400">Set up utility accounts for this property</p>
+              </div>
+            </div>
+            <div className="space-y-4">
+              {utilities.map((u, idx) => (
+                <div key={idx} className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-slate-600">Utility #{idx + 1}</span>
+                    {utilities.length > 1 && (
+                      <button onClick={() => removeUtilityRow(idx)} className="text-red-400 hover:text-red-600 text-xs">Remove</button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Provider *</label>
+                      <input type="text" value={u.provider} onChange={e => updateUtility(idx, "provider", e.target.value)} placeholder="e.g. BGE, Pepco" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Type</label>
+                      <select value={u.type} onChange={e => updateUtility(idx, "type", e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                        {["Electric", "Gas", "Water-Sewer", "Trash", "Internet", "Other"].map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Account #</label>
+                      <input type="text" value={u.account_number} onChange={e => updateUtility(idx, "account_number", e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Amount ($)</label>
+                      <input type="number" value={u.amount} onChange={e => updateUtility(idx, "amount", e.target.value)} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Due Date (day)</label>
+                      <input type="number" min="1" max="28" value={u.due_date} onChange={e => updateUtility(idx, "due_date", Math.min(28, Math.max(1, Number(e.target.value))))} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Responsibility</label>
+                      <select value={u.responsibility} onChange={e => updateUtility(idx, "responsibility", e.target.value)} disabled={!wizardData.isOccupied} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm disabled:opacity-50">
+                        <option value="owner_pays">Owner Pays</option>
+                        <option value="tenant_pays">Tenant Pays</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <button onClick={addUtilityRow} className="w-full border-2 border-dashed border-slate-200 rounded-xl py-3 text-sm text-slate-400 hover:text-slate-600 hover:border-slate-300 transition-colors">
+                <span className="material-icons-outlined text-sm align-middle mr-1">add</span>Add Another Utility
+              </button>
+            </div>
+          </div>
+        );
+
+      case "hoa":
+        return (
+          <div>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-purple-600 text-2xl">account_balance</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-manrope font-bold text-slate-800">HOA</h3>
+                <p className="text-sm text-slate-400">Homeowners Association dues</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <div className={`w-10 h-6 rounded-full transition-colors ${hoa.enabled ? "bg-green-500" : "bg-slate-200"} relative`} onClick={() => setHoa({ ...hoa, enabled: !hoa.enabled })}>
+                  <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${hoa.enabled ? "translate-x-4.5 left-0.5" : "left-0.5"}`} />
+                </div>
+                <span className="text-sm font-medium text-slate-700">Does this property have an HOA?</span>
+              </label>
+              {hoa.enabled && (
+                <div className="space-y-3 pt-2">
+                  <div>
+                    <label className="text-xs font-medium text-slate-500 block mb-1">HOA Name *</label>
+                    <input type="text" value={hoa.hoa_name} onChange={e => setHoa({ ...hoa, hoa_name: e.target.value })} placeholder="e.g. Riverside HOA" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Amount ($) *</label>
+                      <input type="number" value={hoa.amount} onChange={e => setHoa({ ...hoa, amount: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Due Date (day)</label>
+                      <input type="number" min="1" max="28" value={hoa.due_date} onChange={e => setHoa({ ...hoa, due_date: Math.min(28, Math.max(1, Number(e.target.value))) })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-500 block mb-1">Frequency</label>
+                    <select value={hoa.frequency} onChange={e => setHoa({ ...hoa, frequency: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                      {["Monthly", "Quarterly", "Annual"].map(f => <option key={f} value={f}>{f}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-500 block mb-1">Notes</label>
+                    <textarea value={hoa.notes} onChange={e => setHoa({ ...hoa, notes: e.target.value })} rows={2} placeholder="Optional notes..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
+      case "loan":
+        return (
+          <div>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-amber-600 text-2xl">real_estate_agent</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-manrope font-bold text-slate-800">Loan / Mortgage</h3>
+                <p className="text-sm text-slate-400">Property financing details</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <div className={`w-10 h-6 rounded-full transition-colors ${loan.enabled ? "bg-green-500" : "bg-slate-200"} relative`} onClick={() => setLoan({ ...loan, enabled: !loan.enabled })}>
+                  <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${loan.enabled ? "translate-x-4.5 left-0.5" : "left-0.5"}`} />
+                </div>
+                <span className="text-sm font-medium text-slate-700">Does this property have a loan?</span>
+              </label>
+              {loan.enabled && (
+                <div className="space-y-3 pt-2">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Lender Name *</label>
+                      <input type="text" value={loan.lender_name} onChange={e => setLoan({ ...loan, lender_name: e.target.value })} placeholder="e.g. Wells Fargo" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Loan Type</label>
+                      <select value={loan.loan_type} onChange={e => setLoan({ ...loan, loan_type: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                        {["Conventional", "FHA", "VA", "USDA", "ARM", "Interest-Only", "HELOC", "Commercial", "Other"].map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Original Amount ($)</label>
+                      <input type="number" value={loan.original_amount} onChange={e => setLoan({ ...loan, original_amount: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Current Balance ($)</label>
+                      <input type="number" value={loan.current_balance} onChange={e => setLoan({ ...loan, current_balance: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Interest Rate (%)</label>
+                      <input type="number" step="0.01" value={loan.interest_rate} onChange={e => setLoan({ ...loan, interest_rate: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Monthly Payment ($) *</label>
+                      <input type="number" value={loan.monthly_payment} onChange={e => setLoan({ ...loan, monthly_payment: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3 space-y-3">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={loan.escrow_included} onChange={e => setLoan({ ...loan, escrow_included: e.target.checked })} className="accent-green-600" />
+                      <span className="font-medium text-slate-700">Escrow included in payment</span>
+                    </label>
+                    {loan.escrow_included && (
+                      <div className="space-y-2 pl-6">
+                        <div>
+                          <label className="text-xs font-medium text-slate-500 block mb-1">Escrow Amount ($)</label>
+                          <input type="number" value={loan.escrow_amount} onChange={e => setLoan({ ...loan, escrow_amount: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                          <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                            <input type="checkbox" checked={loan.escrow_covers.taxes} onChange={e => setLoan({ ...loan, escrow_covers: { ...loan.escrow_covers, taxes: e.target.checked } })} className="accent-green-600" />Taxes
+                          </label>
+                          <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                            <input type="checkbox" checked={loan.escrow_covers.insurance} onChange={e => setLoan({ ...loan, escrow_covers: { ...loan.escrow_covers, insurance: e.target.checked } })} className="accent-green-600" />Insurance
+                          </label>
+                          <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                            <input type="checkbox" checked={loan.escrow_covers.pmi} onChange={e => setLoan({ ...loan, escrow_covers: { ...loan.escrow_covers, pmi: e.target.checked } })} className="accent-green-600" />PMI
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Loan Start Date</label>
+                      <input type="date" value={loan.loan_start_date} onChange={e => setLoan({ ...loan, loan_start_date: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Maturity Date</label>
+                      <input type="date" value={loan.maturity_date} onChange={e => setLoan({ ...loan, maturity_date: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-500 block mb-1">Account Number</label>
+                    <input type="text" value={loan.account_number} onChange={e => setLoan({ ...loan, account_number: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-500 block mb-1">Notes</label>
+                    <textarea value={loan.notes} onChange={e => setLoan({ ...loan, notes: e.target.value })} rows={2} placeholder="Optional notes..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                  </div>
+                  <label className="flex items-center gap-2 text-sm pt-1">
+                    <input type="checkbox" checked={loan.setup_recurring} onChange={e => setLoan({ ...loan, setup_recurring: e.target.checked })} className="accent-green-600" />
+                    <span className="font-medium text-slate-700">Set up recurring mortgage payment</span>
+                  </label>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
+      case "documents":
+        return (
+          <div>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-emerald-600 text-2xl">description</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-manrope font-bold text-slate-800">Documents</h3>
+                <p className="text-sm text-slate-400">Upload property-related documents</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+              {wizardData.isOccupied ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-slate-600 font-medium">Recommended documents for occupied property:</p>
+                  <div className="space-y-1.5">
+                    {["Signed Lease", "Government ID", "Renters Insurance", "Proof of Utility Transfer"].map(doc => {
+                      const isUploaded = uploadedDocs.some(d => d.name.toLowerCase().includes(doc.toLowerCase().split(" ")[0]));
+                      return (
+                        <div key={doc} className="flex items-center gap-2 text-sm">
+                          <span className={`material-icons-outlined text-base ${isUploaded ? "text-green-500" : "text-slate-300"}`}>{isUploaded ? "check_circle" : "radio_button_unchecked"}</span>
+                          <span className={isUploaded ? "text-green-700 font-medium" : "text-slate-500"}>{doc}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">Upload property documents (deed, insurance, inspection reports, etc.)</p>
+              )}
+              <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 text-center hover:border-green-300 transition-colors cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                <span className="material-icons-outlined text-3xl text-slate-300 mb-2">cloud_upload</span>
+                <p className="text-sm text-slate-500">Click to upload files</p>
+                <p className="text-xs text-slate-400 mt-1">PDF, images, Word, Excel, text — up to 25MB each</p>
+                <input ref={fileInputRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv" onChange={handleFileUpload} className="hidden" />
+              </div>
+              {uploadedDocs.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-slate-500">Uploaded ({uploadedDocs.length}):</p>
+                  {uploadedDocs.map((doc, idx) => (
+                    <div key={idx} className="flex items-center gap-2 bg-green-50 rounded-lg px-3 py-2 text-sm">
+                      <span className="material-icons-outlined text-green-500 text-base">check_circle</span>
+                      <span className="text-green-800 font-medium truncate">{doc.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
+      case "recurring_rent":
+        return (
+          <div>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-indigo-600 text-2xl">autorenew</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-manrope font-bold text-slate-800">Recurring Rent</h3>
+                <p className="text-sm text-slate-400">Set up automatic rent charges</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+              <div className="bg-indigo-50 rounded-xl p-3 space-y-1">
+                <div className="flex justify-between text-sm"><span className="text-slate-500">Tenant</span><span className="font-medium text-slate-800">{wizardData.tenant}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-slate-500">Property</span><span className="font-medium text-slate-800">{wizardData.address.split(",")[0]}</span></div>
+                {wizardData.leaseStart && wizardData.leaseEnd && (
+                  <div className="flex justify-between text-sm"><span className="text-slate-500">Lease</span><span className="font-medium text-slate-800">{wizardData.leaseStart} - {wizardData.leaseEnd}</span></div>
+                )}
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Monthly Rent Amount ($) *</label>
+                <input type="number" value={recurring.amount} onChange={e => setRecurring({ ...recurring, amount: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-500 block mb-1">Frequency</label>
+                  <select value={recurring.frequency} onChange={e => setRecurring({ ...recurring, frequency: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                    <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-500 block mb-1">Day of Month</label>
+                  <input type="number" min="1" max="28" value={recurring.day_of_month} onChange={e => setRecurring({ ...recurring, day_of_month: Math.min(28, Math.max(1, Number(e.target.value))) })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-500">
+                <div className="flex justify-between"><span>Debit</span><span className="font-medium">AR - {wizardData.tenant}</span></div>
+                <div className="flex justify-between mt-1"><span>Credit</span><span className="font-medium">4000 Rental Income</span></div>
+              </div>
+            </div>
+          </div>
+        );
+
+      case "insurance":
+        return (
+          <div>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-rose-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-rose-600 text-2xl">shield</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-manrope font-bold text-slate-800">Insurance</h3>
+                <p className="text-sm text-slate-400">Property insurance coverage</p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <div className={`w-10 h-6 rounded-full transition-colors ${insurance.enabled ? "bg-green-500" : "bg-slate-200"} relative`} onClick={() => setInsurance({ ...insurance, enabled: !insurance.enabled })}>
+                  <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${insurance.enabled ? "translate-x-4.5 left-0.5" : "left-0.5"}`} />
+                </div>
+                <span className="text-sm font-medium text-slate-700">Does this property have insurance?</span>
+              </label>
+              {insurance.enabled && (
+                <div className="space-y-3 pt-2">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Provider *</label>
+                      <input type="text" value={insurance.provider} onChange={e => setInsurance({ ...insurance, provider: e.target.value })} placeholder="e.g. State Farm" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Policy Number</label>
+                      <input type="text" value={insurance.policy_number} onChange={e => setInsurance({ ...insurance, policy_number: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Premium Amount ($) *</label>
+                      <input type="number" value={insurance.premium_amount} onChange={e => setInsurance({ ...insurance, premium_amount: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Premium Frequency</label>
+                      <select value={insurance.premium_frequency} onChange={e => setInsurance({ ...insurance, premium_frequency: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                        <option value="monthly">Monthly</option>
+                        <option value="quarterly">Quarterly</option>
+                        <option value="annual">Annual</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Coverage Amount ($)</label>
+                      <input type="number" value={insurance.coverage_amount} onChange={e => setInsurance({ ...insurance, coverage_amount: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Expiration Date</label>
+                      <input type="date" value={insurance.expiration_date} onChange={e => setInsurance({ ...insurance, expiration_date: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-500 block mb-1">Notes</label>
+                    <textarea value={insurance.notes} onChange={e => setInsurance({ ...insurance, notes: e.target.value })} rows={2} placeholder="Optional notes..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
+      case "review":
+        return (
+          <div>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-green-600 text-2xl">checklist</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-manrope font-bold text-slate-800">Review</h3>
+                <p className="text-sm text-slate-400">Summary of your property setup</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {/* Utilities summary */}
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-semibold text-slate-700">Utilities</span>
+                  {completedSteps.has("utilities") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                </div>
+                {completedSteps.has("utilities") && utilities.filter(u => u.provider.trim()).length > 0 ? (
+                  <div className="text-xs text-slate-500 space-y-0.5">
+                    {utilities.filter(u => u.provider.trim()).map((u, i) => (
+                      <div key={i}>{u.type} — {u.provider} — ${Number(u.amount || 0).toLocaleString()}/mo ({u.responsibility === "owner_pays" ? "Owner" : "Tenant"})</div>
+                    ))}
+                  </div>
+                ) : completedSteps.has("utilities") ? <p className="text-xs text-slate-400">No utilities added</p> : null}
+              </div>
+
+              {/* HOA summary */}
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-semibold text-slate-700">HOA</span>
+                  {completedSteps.has("hoa") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                </div>
+                {completedSteps.has("hoa") && hoa.enabled ? (
+                  <div className="text-xs text-slate-500">{hoa.hoa_name} — ${Number(hoa.amount || 0).toLocaleString()} {hoa.frequency}</div>
+                ) : completedSteps.has("hoa") ? <p className="text-xs text-slate-400">No HOA</p> : null}
+              </div>
+
+              {/* Loan summary */}
+              {steps.includes("loan") && (
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-slate-700">Loan / Mortgage</span>
+                    {completedSteps.has("loan") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                  </div>
+                  {completedSteps.has("loan") && loan.enabled ? (
+                    <div className="text-xs text-slate-500">
+                      <div>{loan.lender_name} — {loan.loan_type}</div>
+                      <div>Payment: ${Number(loan.monthly_payment || 0).toLocaleString()}/mo {loan.escrow_included ? "(incl. escrow)" : ""}</div>
+                      {loan.setup_recurring && <div className="text-green-600 font-medium mt-0.5">Recurring payment set up</div>}
+                    </div>
+                  ) : completedSteps.has("loan") ? <p className="text-xs text-slate-400">No loan</p> : null}
+                </div>
+              )}
+
+              {/* Documents summary */}
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-semibold text-slate-700">Documents</span>
+                  {uploadedDocs.length > 0 ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">{uploadedDocs.length} uploaded</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                </div>
+                {uploadedDocs.length > 0 && (
+                  <div className="text-xs text-slate-500 space-y-0.5">
+                    {uploadedDocs.map((d, i) => <div key={i}>{d.name}</div>)}
+                  </div>
+                )}
+              </div>
+
+              {/* Insurance summary */}
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-semibold text-slate-700">Insurance</span>
+                  {completedSteps.has("insurance") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                </div>
+                {completedSteps.has("insurance") && insurance.enabled ? (
+                  <div className="text-xs text-slate-500">
+                    <div>{insurance.provider} — Policy #{insurance.policy_number || "N/A"}</div>
+                    <div>Premium: ${Number(insurance.premium_amount || 0).toLocaleString()} {insurance.premium_frequency}</div>
+                    {insurance.expiration_date && <div>Expires: {insurance.expiration_date}</div>}
+                  </div>
+                ) : completedSteps.has("insurance") ? <p className="text-xs text-slate-400">No insurance</p> : null}
+              </div>
+
+              {/* Recurring rent summary */}
+              {wizardData.isOccupied && (
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-slate-700">Recurring Rent</span>
+                    {completedSteps.has("recurring_rent") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                  </div>
+                  {completedSteps.has("recurring_rent") ? (
+                    <div className="text-xs text-slate-500">
+                      <div>{wizardData.tenant} — ${Number(recurring.amount || 0).toLocaleString()}/{recurring.frequency}</div>
+                      <div>Charges on day {recurring.day_of_month} of each month</div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] bg-[#fcf8ff] flex flex-col">
+      {/* Header */}
+      <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-manrope font-bold text-slate-800">Property Setup</h2>
+          <p className="text-sm text-slate-400">{wizardData.address}</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="text-sm text-slate-500">Step {step} of {totalSteps}</span>
+          <button onClick={handleDismiss} className="text-slate-400 hover:text-slate-600"><span className="material-icons-outlined">close</span></button>
+        </div>
+      </div>
+      {/* Progress bar */}
+      <div className="h-1 bg-slate-200"><div className="h-full bg-green-600 transition-all" style={{ width: (step / totalSteps * 100) + "%" }} /></div>
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6">
+        <div className="max-w-2xl mx-auto">
+          {renderStep()}
+        </div>
+      </div>
+      {/* Footer */}
+      <div className="bg-white border-t border-slate-200 px-6 py-4 flex items-center justify-between">
+        <button onClick={handleBack} disabled={step === 1} className="text-sm text-slate-500 hover:text-slate-700 disabled:opacity-30">&#8592; Back</button>
+        <div className="flex gap-3">
+          {currentStepId !== "review" && (
+            <button onClick={handleSkip} className="text-sm text-slate-400 hover:text-slate-600">Skip</button>
+          )}
+          {step < totalSteps ? (
+            <button onClick={handleNext} disabled={saving} className="bg-green-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50">{saving ? "Saving..." : "Next \u2192"}</button>
+          ) : (
+            <button onClick={handleComplete} disabled={saving} className="bg-green-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50">{saving ? "Completing..." : "Complete Setup \u2713"}</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ============ PROPERTIES (Admin-Controlled with Approval Workflow) ============
 function Properties({ addNotification, userRole, userProfile, companyId, setPage, showToast, showConfirm }) {
   function exportProperties() {
@@ -1796,6 +2673,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   supabase.from("eviction_cases").update({ property: compositeAddress }).eq("company_id", companyId).eq("property", oldAddr),
   supabase.from("ledger_entries").update({ property: compositeAddress }).eq("company_id", companyId).eq("property", oldAddr),
   supabase.from("messages").update({ property: compositeAddress }).eq("company_id", companyId).eq("property", oldAddr),
+  supabase.from("property_loans").update({ property: compositeAddress }).eq("company_id", companyId).eq("property", oldAddr),
+  supabase.from("property_insurance").update({ property: compositeAddress }).eq("company_id", companyId).eq("property", oldAddr),
+  supabase.from("property_setup_wizard").update({ property_address: compositeAddress }).eq("company_id", companyId).eq("property_address", oldAddr),
   ]);
   }
   }
@@ -1841,10 +2721,22 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   fetchProperties();
   // Show doc upload prompt for occupied properties (form is now closed)
   setSavingProperty(false);
-  if (_isNewOccupied) {
-  setShowDocChecklist({ name: _savedTenantName, property: _savedAddress, isNew: true });
+  // Launch Property Setup Wizard for new properties
+  if (!editingProperty) {
+  // Get the property ID for the wizard
+  const { data: savedProp } = await supabase.from("properties").select("id").eq("company_id", companyId).eq("address", compositeAddress).maybeSingle();
+  setShowPropertyWizard({
+    propertyId: savedProp?.id || null,
+    address: compositeAddress,
+    isOccupied: form.status === "occupied",
+    tenant: form.tenant.trim(),
+    rent: Number(form.rent),
+    leaseStart: form.lease_start,
+    leaseEnd: form.lease_end,
+    securityDeposit: Number(form.security_deposit) || 0,
+  });
   } else {
-  showToast("Property saved successfully", "success");
+  showToast("Property updated successfully", "success");
   }
   } catch (e) {
   console.error("saveProperty error:", e);
@@ -1953,6 +2845,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   await supabase.from("hoa_payments").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null);
   await supabase.from("inspections").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null);
   await supabase.from("payments").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null);
+  await supabase.from("property_loans").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null);
+  await supabase.from("property_insurance").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null);
+  await supabase.from("property_setup_wizard").update({ status: "dismissed", updated_at: new Date().toISOString() }).eq("company_id", companyId).eq("property_address", address).eq("status", "in_progress");
 
   // 7. Clear security deposit liabilities before terminating leases
   const { data: activeLeases } = await supabase.from("leases").select("id, tenant_name, security_deposit, deposit_status").eq("company_id", companyId).eq("property", address).eq("status", "active");
@@ -2133,6 +3028,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const [archivedProperties, setArchivedProperties] = useState([]); // { tenant, property, rent }
   const [showDocChecklist, setShowDocChecklist] = useState(null);
   const [showDocUpload, setShowDocUpload] = useState(null); // { property, tenant }
+  const [showPropertyWizard, setShowPropertyWizard] = useState(null);
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [propertyDetailTab, setPropertyDetailTab] = useState("overview");
   const [propertyDocs, setPropertyDocs] = useState([]);
@@ -2862,6 +3758,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   </div>
   )}
+  {showPropertyWizard && <PropertySetupWizard wizardData={showPropertyWizard} companyId={companyId} showToast={showToast} userProfile={userProfile} userRole={userRole} onComplete={() => { setShowPropertyWizard(null); fetchProperties(); showToast("Property setup complete!", "success"); }} onDismiss={() => { setShowPropertyWizard(null); fetchProperties(); }} />}
   {pendingRecurringEntry && <RecurringEntryModal entry={pendingRecurringEntry} companyId={companyId} showToast={showToast} onComplete={() => setPendingRecurringEntry(null)} />}
   </div>
   );
@@ -10492,6 +11389,187 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   );
 }
 
+// ============ LOANS ============
+function Loans({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
+  const [loans, setLoans] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingLoan, setEditingLoan] = useState(null);
+  const [form, setForm] = useState({ lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: "", loan_start_date: "", maturity_date: "", account_number: "", property: "", notes: "", status: "active" });
+  const [propertyFilter, setPropertyFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  useEffect(() => { fetchLoans(); }, [companyId]);
+
+  async function fetchLoans() {
+  const { data } = await supabase.from("property_loans").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false });
+  setLoans(data || []);
+  setLoading(false);
+  }
+
+  async function saveLoan() {
+  if (!guardSubmit("saveLoan")) return;
+  try {
+  if (!form.property || !form.lender_name || !form.original_amount) { showToast("Property, lender name, and original amount are required.", "error"); return; }
+  const payload = { ...form, original_amount: Number(form.original_amount), current_balance: Number(form.current_balance || form.original_amount), interest_rate: Number(form.interest_rate || 0), monthly_payment: Number(form.monthly_payment || 0), escrow_amount: form.escrow_included ? Number(form.escrow_amount || 0) : 0, escrow_covers: form.escrow_included ? form.escrow_covers : "" };
+  if (editingLoan) {
+  const { error: loanErr } = await supabase.from("property_loans").update({ lender_name: payload.lender_name, loan_type: payload.loan_type, original_amount: payload.original_amount, current_balance: payload.current_balance, interest_rate: payload.interest_rate, monthly_payment: payload.monthly_payment, escrow_included: payload.escrow_included, escrow_amount: payload.escrow_amount, escrow_covers: payload.escrow_covers, loan_start_date: payload.loan_start_date || null, maturity_date: payload.maturity_date || null, account_number: payload.account_number, property: payload.property, notes: payload.notes, status: payload.status }).eq("id", editingLoan.id).eq("company_id", companyId);
+  if (loanErr) { showToast("Error updating loan: " + loanErr.message, "error"); return; }
+  addNotification("🏦", `Loan updated: ${form.lender_name}`);
+  logAudit("update", "loans", `Loan updated: ${form.lender_name} ${formatCurrency(form.original_amount)}`, editingLoan.id, userProfile?.email, userRole, companyId);
+  } else {
+  const { error: loanErr } = await supabase.from("property_loans").insert([{ ...payload, company_id: companyId }]);
+  if (loanErr) { showToast("Error saving loan: " + loanErr.message, "error"); return; }
+  addNotification("🏦", `Loan added: ${form.lender_name} — ${formatCurrency(form.original_amount)}`);
+  logAudit("create", "loans", `Loan added: ${form.lender_name} ${formatCurrency(form.original_amount)} at ${form.property}`, "", userProfile?.email, userRole, companyId);
+  }
+  setShowForm(false);
+  setEditingLoan(null);
+  setForm({ lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: "", loan_start_date: "", maturity_date: "", account_number: "", property: "", notes: "", status: "active" });
+  fetchLoans();
+  } finally { guardRelease("saveLoan"); }
+  }
+
+  async function deleteLoan(id) {
+  if (!guardSubmit("deleteLoan")) return;
+  try {
+  if (!await showConfirm({ message: "Delete this loan?", variant: "danger", confirmText: "Delete" })) return;
+  await supabase.from("property_loans").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", id).eq("company_id", companyId);
+  logAudit("delete", "loans", "Archived loan", id, userProfile?.email, userRole, companyId);
+  fetchLoans();
+  } finally { guardRelease("deleteLoan"); }
+  }
+
+  async function recordPayment(loan) {
+  if (!guardSubmit("recordLoanPayment")) return;
+  try {
+  if (!await showConfirm({ message: `Record a payment of ${formatCurrency(loan.monthly_payment)} for ${loan.lender_name}?`, confirmText: "Record Payment" })) return;
+  const today = formatLocalDate(new Date());
+  const classId = await getPropertyClassId(loan.property, companyId);
+  const amt = safeNum(loan.monthly_payment);
+  if (amt <= 0) { showToast("Monthly payment amount must be greater than zero.", "error"); return; }
+  const _jeOk = await autoPostJournalEntry({
+  companyId,
+  date: today,
+  description: `Loan payment: ${loan.lender_name} — ${loan.property}`,
+  reference: `LOAN-${loan.id}`,
+  property: loan.property,
+  lines: [
+  { account_id: "5600", account_name: "Mortgage/Loan Payment", debit: amt, credit: 0, class_id: classId, memo: `Loan: ${loan.lender_name}` },
+  { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Loan: ${loan.lender_name}` },
+  ]
+  });
+  if (!_jeOk) { showToast("Accounting entry failed. Please check the accounting module.", "error"); }
+  // Update current balance
+  const newBalance = Math.max(0, safeNum(loan.current_balance) - amt);
+  await supabase.from("property_loans").update({ current_balance: newBalance }).eq("id", loan.id).eq("company_id", companyId);
+  addNotification("💰", `Loan payment recorded: ${loan.lender_name} ${formatCurrency(amt)}`);
+  logAudit("update", "loans", `Loan payment recorded: ${loan.lender_name} ${formatCurrency(amt)} at ${loan.property}`, loan.id, userProfile?.email, userRole, companyId);
+  fetchLoans();
+  } finally { guardRelease("recordLoanPayment"); }
+  }
+
+  if (loading) return <Spinner />;
+
+  const filtered = loans.filter(l =>
+  (propertyFilter === "all" || l.property === propertyFilter) &&
+  (statusFilter === "all" || l.status === statusFilter)
+  );
+
+  const activeLoans = loans.filter(l => l.status === "active");
+  const totalMonthly = activeLoans.reduce((s, l) => s + safeNum(l.monthly_payment), 0);
+  const totalBalance = activeLoans.reduce((s, l) => s + safeNum(l.current_balance), 0);
+  const uniqueProperties = [...new Set(loans.map(l => l.property).filter(Boolean))];
+
+  const emptyForm = { lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: "", loan_start_date: "", maturity_date: "", account_number: "", property: "", notes: "", status: "active" };
+
+  return (
+  <div>
+  <div className="flex flex-col md:flex-row gap-3 mb-4">
+  <h2 className="text-2xl font-manrope font-bold text-slate-800 mr-auto">Loans</h2>
+  <select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
+  <option value="all">All Properties</option>
+  {uniqueProperties.map(p => <option key={p} value={p}>{p}</option>)}
+  </select>
+  <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+  <option value="all">All Status</option><option value="active">Active</option><option value="paid_off">Paid Off</option>
+  </select>
+  <button onClick={() => { setEditingLoan(null); setForm(emptyForm); setShowForm(true); }} className="bg-green-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-green-700">+ Add Loan</button>
+  </div>
+
+  {/* Stats */}
+  <div className="flex gap-3 mb-4">
+  <div className="rounded-xl shadow-sm border border-slate-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-slate-800">{activeLoans.length}</div><div className="text-xs text-slate-400">Active Loans</div></div>
+  <div className="rounded-xl shadow-sm border border-slate-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{formatCurrency(totalMonthly)}</div><div className="text-xs text-slate-400">Total Monthly Payments</div></div>
+  <div className="rounded-xl shadow-sm border border-slate-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">{formatCurrency(totalBalance)}</div><div className="text-xs text-slate-400">Total Outstanding Balance</div></div>
+  </div>
+
+  {showForm && (
+  <Modal title={editingLoan ? "Edit Loan" : "New Loan"} onClose={() => { setShowForm(false); setEditingLoan(null); }}>
+  <div className="grid grid-cols-2 gap-3">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lender Name *</label><Input placeholder="e.g. Wells Fargo" value={form.lender_name} onChange={e => setForm({ ...form, lender_name: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Loan Type</label><select value={form.loan_type} onChange={e => setForm({ ...form, loan_type: e.target.value })} className="border border-slate-200 rounded-2xl px-3 py-2 text-sm w-full">
+  <option value="Conventional">Conventional</option><option value="FHA">FHA</option><option value="VA">VA</option><option value="DSCR">DSCR</option><option value="Hard Money">Hard Money</option><option value="HELOC">HELOC</option><option value="Other">Other</option>
+  </select></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Original Amount ($) *</label><Input placeholder="250000" type="number" value={form.original_amount} onChange={e => setForm({ ...form, original_amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Current Balance ($)</label><Input placeholder="230000" type="number" value={form.current_balance} onChange={e => setForm({ ...form, current_balance: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Interest Rate (%)</label><Input placeholder="6.5" type="number" step="0.01" value={form.interest_rate} onChange={e => setForm({ ...form, interest_rate: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Monthly Payment ($)</label><Input placeholder="1800" type="number" value={form.monthly_payment} onChange={e => setForm({ ...form, monthly_payment: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Account Number</label><Input placeholder="Loan account #" value={form.account_number} onChange={e => setForm({ ...form, account_number: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Loan Start Date</label><Input type="date" value={form.loan_start_date} onChange={e => setForm({ ...form, loan_start_date: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Maturity Date</label><Input type="date" value={form.maturity_date} onChange={e => setForm({ ...form, maturity_date: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-slate-200 rounded-2xl px-3 py-2 text-sm w-full">
+  <option value="active">Active</option><option value="paid_off">Paid Off</option>
+  </select></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
+  <div className="col-span-2">
+  <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.escrow_included} onChange={e => setForm({ ...form, escrow_included: e.target.checked })} className="rounded" /><span className="text-sm text-slate-600">Escrow Included</span></label>
+  </div>
+  {form.escrow_included && (
+  <>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Escrow Amount ($)</label><Input placeholder="350" type="number" value={form.escrow_amount} onChange={e => setForm({ ...form, escrow_amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Escrow Covers</label><Input placeholder="e.g. Taxes, Insurance" value={form.escrow_covers} onChange={e => setForm({ ...form, escrow_covers: e.target.value })} /></div>
+  </>
+  )}
+  </div>
+  <div className="flex gap-2 mt-4">
+  <button onClick={saveLoan} className="bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700">Save</button>
+  <button onClick={() => { setShowForm(false); setEditingLoan(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
+  </div>
+  </Modal>
+  )}
+
+  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+  <table className="w-full text-sm">
+  <thead className="bg-slate-50 text-xs text-slate-400 uppercase">
+  <tr><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Lender</th><th className="px-4 py-3 text-left">Type</th><th className="px-4 py-3 text-right">Rate</th><th className="px-4 py-3 text-right">Monthly Payment</th><th className="px-4 py-3 text-right">Balance</th><th className="px-4 py-3 text-left">Maturity</th><th className="px-4 py-3 text-right">Actions</th></tr>
+  </thead>
+  <tbody>
+  {filtered.map(l => (
+  <tr key={l.id} className="border-t border-slate-100 hover:bg-green-50/40">
+  <td className="px-4 py-2.5 text-slate-800">{l.property}</td>
+  <td className="px-4 py-2.5 font-medium text-slate-800">{l.lender_name}</td>
+  <td className="px-4 py-2.5 text-slate-500">{l.loan_type}</td>
+  <td className="px-4 py-2.5 text-right text-slate-600">{safeNum(l.interest_rate).toFixed(2)}%</td>
+  <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(l.monthly_payment)}</td>
+  <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(l.current_balance)}</td>
+  <td className="px-4 py-2.5 text-slate-400">{l.maturity_date || "—"}</td>
+  <td className="px-4 py-2.5 text-right whitespace-nowrap">
+  {l.status === "active" && <button onClick={() => recordPayment(l)} className="text-xs text-green-600 hover:underline mr-2">Record Payment</button>}
+  <button onClick={() => { setEditingLoan(l); setForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), escrow_covers: l.escrow_covers || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", property: l.property || "", notes: l.notes || "", status: l.status || "active" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>
+  <button onClick={() => deleteLoan(l.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+  </td>
+  </tr>
+  ))}
+  </tbody>
+  </table>
+  {filtered.length === 0 && <div className="text-center py-8 text-slate-400">No loans found</div>}
+  </div>
+  </div>
+  );
+}
+
 // ============ ARCHIVE (SOFT-DELETED ITEMS) ============
 // NOTE: Stale "invited" membership records (>30 days old, never accepted) should be
 // periodically cleaned up. Run: DELETE FROM company_members WHERE status = 'invited' 
@@ -10641,12 +11719,12 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
 
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
-  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","accounting","owners","notifications","audittrail","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
+  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","accounting","owners","notifications","audittrail","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
   office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","accounting","notifications","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
   tenant: { label: "Tenant", color: "bg-indigo-50/300", pages: ["tenant_portal"] },
-  owner: { label: "Owner", color: "bg-purple-600", pages: ["owner_portal"] },
+  owner: { label: "Owner", color: "bg-purple-600", pages: ["owner_portal","loans"] },
 };
 
 const ALL_NAV = [
@@ -10659,6 +11737,7 @@ const ALL_NAV = [
   { id: "leases", label: "Leases", icon: "description" },
   { id: "utilities", label: "Utilities", icon: "bolt" },
   { id: "hoa", label: "HOA Payments", icon: "holiday_village" },
+  { id: "loans", label: "Loans", icon: "account_balance_wallet" },
   { id: "accounting", label: "Accounting", icon: "account_balance" },
   { id: "doc_builder", label: "Document Builder", icon: "description" },
   { id: "inspections", label: "Inspections", icon: "checklist" },
@@ -14251,6 +15330,7 @@ const pageComponents = {
   inspections: Inspections,
   autopay: Autopay,
   hoa: HOAPayments,
+  loans: Loans,
   audittrail: AuditTrail,
   leases: LeaseManagement,
   vendors: VendorManagement,
