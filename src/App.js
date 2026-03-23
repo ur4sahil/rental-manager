@@ -432,6 +432,12 @@ async function autoOwnerDistribution(companyId, propertyAddress, paymentAmount, 
   const { data: owner } = await supabase.from("owners")
   .select("id, name, email, management_fee_pct").eq("company_id", companyId).eq("id", prop.owner_id).maybeSingle();
   if (!owner) return;
+  // Guard: only post distribution if a rent accrual (AR charge) exists for this period.
+  // If payment was posted as direct revenue (no accrual), the DR 4000 reversal would create
+  // a negative revenue balance — effectively double-counting income.
+  const month = paymentDate.slice(0, 7);
+  const hasAccrual = await checkAccrualExists(companyId, month, tenantName);
+  if (!hasAccrual) return; // No accrual to reclassify — distribution handled when payment was direct revenue
   const feePct = safeNum(owner.management_fee_pct || 10);
   const mgmtFee = Math.round(paymentAmount * (feePct / 100) * 100) / 100;
   const ownerNet = Math.round((paymentAmount - mgmtFee) * 100) / 100;
@@ -447,7 +453,6 @@ async function autoOwnerDistribution(companyId, propertyAddress, paymentAmount, 
   ]
   });
   if (!jeId) { console.warn("Owner distribution JE failed — skipping distribution record"); return; }
-  const month = paymentDate.slice(0, 7);
   const { error: distErr } = await supabase.from("owner_distributions").insert([{
   company_id: companyId, owner_id: owner.id, property: propertyAddress,
   period: month, type: "rent", gross_amount: paymentAmount,
@@ -772,7 +777,7 @@ function Spinner() {
 
 function Modal({ title, onClose, children }) {
   return (
-  <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center p-4">
+  <div className="fixed inset-0 bg-black bg-opacity-40 z-[60] flex items-center justify-center p-4">
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 w-full max-w-lg max-h-[90vh] overflow-y-auto">
   <div className="flex items-center justify-between px-6 py-4 border-b border-indigo-50 sticky top-0 bg-white rounded-t-3xl">
   <h3 className="font-manrope font-bold text-slate-800 text-lg">{title}</h3>
@@ -1816,6 +1821,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (!guardSubmit("deleteProperty")) return;
   try {
   if (!isAdmin) { showToast("Only admins can delete properties.", "error"); return; }
+  // Server-side role verification — don't rely solely on client-side isAdmin
+  const { data: roleCheck } = await supabase.from("company_members").select("role").eq("company_id", companyId).ilike("email", userProfile?.email || "").maybeSingle();
+  if (roleCheck?.role !== "admin") { showToast("Server verification failed: admin role required.", "error"); return; }
   const targetProp = properties.find(p => String(p.id) === String(id));
   if (targetProp && targetProp.company_id !== companyId) {
   showToast("This property belongs to another company and cannot be archived here.", "error");
@@ -2797,6 +2805,21 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (leaseErr) console.warn("Failed to terminate leases:", leaseErr.message);
   // Archive autopay schedules for this tenant
   await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", name);
+  // Settle outstanding AR on tenant sub-accounts (write off remaining balance)
+  const tenantBal = safeNum(tenantDetail?.balance);
+  if (tenantBal > 0 && id) {
+  const classId = tenantProperty ? await getPropertyClassId(tenantProperty, companyId) : null;
+  await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "AR write-off — tenant deleted — " + name, reference: "WOFF-" + shortId(), property: tenantProperty || "",
+  lines: [
+  { account_id: "5300", account_name: "Bad Debt Expense", debit: tenantBal, credit: 0, class_id: classId, memo: "Write-off at deletion — " + name },
+  { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: tenantBal, class_id: classId, memo: "AR write-off — " + name },
+  ]
+  });
+  // Zero out tenant balance
+  await supabase.rpc("update_tenant_balance", { p_tenant_id: id, p_amount_change: -tenantBal }).catch(e => console.warn("Balance zero-out:", e.message));
+  }
+  // Deactivate tenant AR sub-accounts
+  await supabase.from("acct_accounts").update({ is_active: false }).eq("company_id", companyId).eq("tenant_id", id);
   addNotification("🗑️", `Tenant deleted: ${name}`);
   logAudit("delete", "tenants", `Deleted tenant: ${name} (property→vacant, lease terminated, autopay disabled)`, id, userProfile?.email, userRole, companyId);
   fetchTenants();
@@ -2957,10 +2980,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   balanceUpdate: balData,
   });
   if (!result.jeId) return; // toast already shown by postAccountingTransaction
-  const currentBalance = ledger.length > 0 ? ledger[0].balance : 0;
-  setSelectedTenant({ ...selectedTenant, balance: currentBalance + amount });
+  // Fetch fresh tenant data to avoid stale closure state
+  const { data: freshTenant } = await supabase.from("tenants").select("*").eq("id", selectedTenant.id).eq("company_id", companyId).maybeSingle();
+  if (freshTenant) setSelectedTenant(freshTenant);
   setNewCharge({ description: "", amount: "", type: "charge" });
-  openLedger(selectedTenant);
+  openLedger(freshTenant || selectedTenant);
   fetchTenants();
   } finally { guardRelease("addLedgerEntry"); }
   }
@@ -7483,6 +7507,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   if (!await showConfirm({ message: "Return amount ($" + returned + ") exceeds the original deposit ($" + deposit + "). Continue?" })) return;
   }
   if (!depositForm.return_date) { showToast("Return date is required.", "error"); return; }
+  try {
   const status = returned >= deposit ? "returned" : returned > 0 ? "partial_return" : "forfeited";
   const { error: depErr } = await supabase.from("leases").update({ deposit_status: status, deposit_returned: returned, deposit_return_date: depositForm.return_date, deposit_deductions: depositForm.deductions }).eq("company_id", companyId).eq("id", lease.id);
   if (depErr) { showToast("Error processing deposit return: " + depErr.message, "error"); return; }
@@ -7533,6 +7558,10 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   if (depTenant?.email) queueNotification("deposit_returned", depTenant.email, { tenant: lease.tenant_name, returned, deducted, property: lease.property }, companyId);
   setShowDepositModal(null); setDepositForm({ amount_returned: "", deductions: "", return_date: formatLocalDate(new Date()) });
   fetchData();
+  } catch (e) {
+  showToast("Deposit return failed: " + e.message, "error");
+  setShowDepositModal(null); setDepositForm({ amount_returned: "", deductions: "", return_date: formatLocalDate(new Date()) });
+  }
   }
 
   async function saveTemplate() {
@@ -10463,7 +10492,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   useEffect(() => {
   async function fetchData() {
   const email = currentUser?.email;
-  if (!email) { setLoading(false); return; }
+  if (!email || !email.includes("@")) { setLoading(false); return; }
   const { data: tenant } = await supabase.from("tenants").select("*").eq("company_id", companyId).ilike("email", email).maybeSingle();
   if (!tenant) { setLoading(false); return; }
   setTenantData(tenant);
@@ -10477,7 +10506,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tenant.name).order("created_at", { ascending: true }),
   supabase.from("payments").select("*").eq("company_id", companyId).ilike("tenant", tenant.name).is("archived_at", null).order("date", { ascending: false }),
   supabase.from("work_orders").select("*").eq("company_id", companyId).eq("tenant", tenant.name).is("archived_at", null).order("created_at", { ascending: false }),
-  supabase.from("documents").select("*").eq("company_id", companyId).eq("tenant", tenant.name).is("archived_at", null).order("uploaded_at", { ascending: false }),
+  supabase.from("documents").select("*").eq("company_id", companyId).eq("tenant", tenant.name).eq("tenant_visible", true).is("archived_at", null).order("uploaded_at", { ascending: false }),
   ]);
   setLedger(l.data || []);
   setMessages(m.data || []);
@@ -11403,9 +11432,12 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   console.error("Move-out partial failure:", stepErr, "Completed steps:", completedSteps);
   }
 
-  // 7. Create ledger entries
+  // 7. Create ledger entries (fetch fresh balance for accurate ledger trail)
+  const { data: moTenantBal } = await supabase.from("tenants").select("balance").eq("id", selectedTenant.id).eq("company_id", cid).maybeSingle();
+  let moRunningBalance = safeNum(moTenantBal?.balance);
   if (depositReturn > 0) {
-  await safeLedgerInsert({ company_id: cid, tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: "Security deposit returned", amount: -depositReturn, type: "deposit_return", balance: 0 });
+  moRunningBalance -= depositReturn;
+  await safeLedgerInsert({ company_id: cid, tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: "Security deposit returned", amount: -depositReturn, type: "deposit_return", balance: moRunningBalance });
   }
 
   // 8. Save inspection checklist
