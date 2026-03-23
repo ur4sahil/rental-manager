@@ -535,9 +535,7 @@ async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   const cacheKey = `${companyId}::${tenantName}`;
   if (_tenantArCache[cacheKey]) return _tenantArCache[cacheKey];
   // Check if tenant AR sub-account already exists
-  const { data: existing, error: lookupErr } = await supabase.from("acct_accounts").select("id, code").eq("company_id", companyId).eq("type", "Asset").eq("name", "AR - " + tenantName).maybeSingle();
-  // DEBUG — remove after confirming fix
-  window.alert("DEBUG getOrCreateTenantAR:\nTenant: " + tenantName + "\nLookup found: " + JSON.stringify(existing) + "\nLookup error: " + (lookupErr?.message || "none"));
+  const { data: existing } = await supabase.from("acct_accounts").select("id, code").eq("company_id", companyId).eq("type", "Asset").eq("name", "AR - " + tenantName).maybeSingle();
   if (existing?.id) {
   _tenantArCache[cacheKey] = existing.id;
   return existing.id;
@@ -562,8 +560,6 @@ async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   const minPayload = { company_id: companyId, code: newCode, name: "AR - " + tenantName, type: "Asset", sub_type: "Accounts Receivable", is_active: true };
   ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([minPayload]).select("id").maybeSingle());
   }
-  // DEBUG — remove after confirming fix
-  window.alert("DEBUG AR insert result:\nCode: " + newCode + "\nInserted ID: " + (newAcct?.id || "NULL") + "\nError: " + (createErr?.message || "none") + "\nParent fallback: " + parentArId);
   if (createErr) {
   return parentArId; // Fall back to parent AR
   }
@@ -1795,7 +1791,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }
   // Auto-create accounting class for new properties
   if (!editingProperty) {
-  const classId = generateId("PROP");
+  const classId = crypto.randomUUID();
   const { data: newClass } = await supabase.from("acct_classes").upsert([{ id: classId, name: compositeAddress, description: `${form.type} · ${formatCurrency(form.rent)}/mo`, color: pickColor(compositeAddress || ""), is_active: true, company_id: companyId }], { onConflict: "company_id,name" }).select("id").maybeSingle();
   // #17: Store class_id on property for reliable lookups
   if (newClass?.id) await supabase.from("properties").update({ class_id: newClass.id }).eq("company_id", companyId).eq("address", compositeAddress);
@@ -2003,7 +1999,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const { error: apErr } = await supabase.from("properties").insert([{ company_id: companyId, address: req.address, type: req.type, status: req.property_status, rent: req.rent, tenant: req.tenant, lease_end: req.lease_end, notes: req.notes }]);
   if (apErr) { showToast("Error adding property: " + apErr.message, "error"); return; }
   // Auto-create accounting class for this property
-  const classId = generateId("PROP");
+  const classId = crypto.randomUUID();
   const { data: newClass, error: classErr } = await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · ${formatCurrency(req.rent)}/mo`, color: pickColor(req?.address || ""), is_active: true, company_id: companyId }], { onConflict: "company_id,name" }).select("id").maybeSingle();
   if (classErr) console.warn("Accounting class creation failed:", classErr.message);
   if (newClass?.id) await supabase.from("properties").update({ class_id: newClass.id }).eq("company_id", companyId).eq("address", req.address);
@@ -2961,8 +2957,6 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
   return;
   }
-  // DEBUG: verify this code version is deployed
-  window.alert("DEBUG saveTenant v2: DB save succeeded. editingTenant=" + (editingTenant ? "EDITING" : "NEW"));
   // Close form immediately and show processing spinner for post-save operations
   const _isNew = !editingTenant;
   const _name = form.name.trim();
@@ -6308,7 +6302,7 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   const saveClass = async () => {
   if (!form.name.trim()) return;
   if (modal === "add") {
-  await onAdd({ id: `CLS-${shortId().slice(0,8)}`, ...form, is_active: true });
+  await onAdd({ id: crypto.randomUUID(), ...form, is_active: true });
   } else {
   await onUpdate({ ...modal.cls, ...form });
   }
@@ -14607,7 +14601,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   setCreating(false);
   return;
   }
-  const companyId = "co-" + shortId() + shortId().slice(0, 4);
+  const companyId = crypto.randomUUID();
   // Generate unique 8-digit numeric company code
   // Generate unique company code with collision retry
   let companyCode;
