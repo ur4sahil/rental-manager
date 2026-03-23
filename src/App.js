@@ -479,8 +479,13 @@ async function getPropertyClassId(propertyAddress, companyId) {
   if (_classIdCache[cacheKey] !== undefined) return _classIdCache[cacheKey];
   const { data: prop } = await supabase.from("properties").select("class_id").eq("company_id", companyId).eq("address", propertyAddress).maybeSingle();
   if (prop?.class_id) { _classIdCache[cacheKey] = prop.class_id; return prop.class_id; }
+  // Exact name match
   const { data } = await supabase.from("acct_classes").select("id").eq("name", propertyAddress).eq("company_id", companyId).limit(1);
-  const result = data?.[0]?.id || null;
+  if (data?.[0]?.id) { _classIdCache[cacheKey] = data[0].id; return data[0].id; }
+  // Fuzzy: match by first address part (handles slight variations like "Dr" vs "Drive")
+  const addrStart = propertyAddress.split(",")[0].trim();
+  const { data: fuzzy } = await supabase.from("acct_classes").select("id, name").eq("company_id", companyId).ilike("name", addrStart + "%").limit(1);
+  const result = fuzzy?.[0]?.id || null;
   _classIdCache[cacheKey] = result;
   return result;
 }
@@ -7280,17 +7285,6 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   const totalRev = activeReport.reduce((s,c) => s + c.revenue, 0);
   const totalExp = activeReport.reduce((s,c) => s + c.expenses, 0);
   const totalNet = activeReport.reduce((s,c) => s + c.netIncome, 0);
-  // Debug: log to console if data looks wrong
-  if (classes.length > 0 && journalEntries.length > 0 && totalRev === 0 && totalExp === 0) {
-  const jesWithLines = journalEntries.filter(j => j.lines && j.lines.length > 0);
-  const linesWithClass = journalEntries.flatMap(j => (j.lines||[])).filter(l => l.class_id);
-  console.warn("ClassTracking DEBUG: " + classes.length + " classes, " + journalEntries.length + " JEs (" + jesWithLines.length + " have lines), " + linesWithClass.length + " lines with class_id, period=" + start + "→" + end + ", accounts=" + accounts.length);
-  if (linesWithClass.length > 0) {
-  const sample = linesWithClass[0];
-  const acct = accounts.find(a => a.id === sample.account_id);
-  console.warn("ClassTracking sample line: class_id=" + sample.class_id + " account_id=" + sample.account_id + " acct_found=" + (acct ? acct.type : "NOT FOUND") + " debit=" + sample.debit + " credit=" + sample.credit);
-  }
-  }
 
   const openAdd = () => { setForm({ name:"", description:"", color:"#3B82F6" }); setModal("add"); };
   const openEdit = (cls) => { setForm({ name: cls.name, description: cls.description || "", color: cls.color || "#3B82F6" }); setModal({ mode:"edit", cls }); };
@@ -8057,6 +8051,38 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   return;
   }
   }
+  }
+
+  // Backfill: patch missing class_id on JE lines by matching je.property → acct_classes.name
+  if (!window._classIdBackfilled || window._classIdBackfilledFor !== companyId) {
+  window._classIdBackfilled = true;
+  window._classIdBackfilledFor = companyId;
+  const classNameMap = {};
+  classes.forEach(c => { classNameMap[c.name.toLowerCase().trim()] = c.id; });
+  let patched = 0;
+  for (const je of jeHeaders) {
+  if (!je.property || !je.lines) continue;
+  const nullLines = je.lines.filter(l => !l.class_id);
+  if (nullLines.length === 0) continue;
+  // Try exact match first, then fuzzy (first part of address)
+  const propLower = je.property.toLowerCase().trim();
+  let classId = classNameMap[propLower];
+  if (!classId) {
+  // Fuzzy: match by first address component (e.g., "13435 Marble Rock" matches "13435 Marble Rock Drive, Suite #281")
+  const propStart = propLower.split(",")[0].trim();
+  for (const [name, id] of Object.entries(classNameMap)) {
+  if (name.startsWith(propStart) || propStart.startsWith(name.split(",")[0].trim())) { classId = id; break; }
+  }
+  }
+  if (classId) {
+  for (const l of nullLines) {
+  await supabase.from("acct_journal_lines").update({ class_id: classId }).eq("id", l.id);
+  l.class_id = classId;
+  patched++;
+  }
+  }
+  }
+  if (patched > 0) console.log("Backfilled class_id on " + patched + " JE lines");
   }
 
   // Backfill: renumber old JEs with hash-style numbers (JE-MN2L16YX → JE-0001)
