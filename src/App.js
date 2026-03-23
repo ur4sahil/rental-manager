@@ -531,12 +531,12 @@ async function resolveAccountId(bareCode, companyId) {
 // linked to the parent 1100 Accounts Receivable account.
 const _tenantArCache = {};
 async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
+  try {
   if (!companyId || !tenantName) return await resolveAccountId("1100", companyId);
   const cacheKey = `${companyId}::${tenantName}`;
-  if (_tenantArCache[cacheKey]) { window.alert("DEBUG AR: returned from cache for " + tenantName + " → " + _tenantArCache[cacheKey]); return _tenantArCache[cacheKey]; }
+  if (_tenantArCache[cacheKey]) return _tenantArCache[cacheKey];
   // Check if tenant AR sub-account already exists
-  const { data: existing, error: lookupErr } = await supabase.from("acct_accounts").select("id, code").eq("company_id", companyId).eq("type", "Asset").eq("name", "AR - " + tenantName).maybeSingle();
-  window.alert("DEBUG AR lookup:\nTenant: " + tenantName + "\nFound: " + JSON.stringify(existing) + "\nError: " + (lookupErr?.message || "none"));
+  const { data: existing } = await supabase.from("acct_accounts").select("id, code").eq("company_id", companyId).eq("type", "Asset").eq("name", "AR - " + tenantName).maybeSingle();
   if (existing?.id) {
   _tenantArCache[cacheKey] = existing.id;
   return existing.id;
@@ -547,27 +547,40 @@ async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   const { data: subAccts } = await supabase.from("acct_accounts").select("code").eq("company_id", companyId).like("code", "1100-%").order("code", { ascending: false }).limit(1);
   const lastSeq = subAccts?.[0]?.code ? parseInt(subAccts[0].code.split("-")[1]) || 0 : 0;
   const newCode = "1100-" + String(lastSeq + 1).padStart(3, "0");
-  // Create the sub-account — try with all fields first, retry without optional columns if it fails
-  const arPayload = {
+  // Try insert with all fields, then minimal, then upsert as last resort
+  let newAcct = null;
+  let createErr = null;
+  // Attempt 1: full payload
+  ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([{
   company_id: companyId, code: newCode, name: "AR - " + tenantName,
   type: "Asset", sub_type: "Accounts Receivable", is_active: true,
   parent_id: parentArId || null, tenant_id: tenantId || null,
-  };
-  let newAcct = null;
-  let createErr = null;
-  ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([arPayload]).select("id").maybeSingle());
-  // If insert failed, retry without optional columns
+  }]).select("id").maybeSingle());
+  // Attempt 2: without optional columns
   if (createErr) {
-  window.alert("DEBUG AR insert attempt 1 FAILED: " + createErr.message + "\nRetrying without parent_id/tenant_id...");
-  const minPayload = { company_id: companyId, code: newCode, name: "AR - " + tenantName, type: "Asset", sub_type: "Accounts Receivable", is_active: true };
-  ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([minPayload]).select("id").maybeSingle());
+  ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([{
+  company_id: companyId, code: newCode, name: "AR - " + tenantName,
+  type: "Asset", sub_type: "Accounts Receivable", is_active: true,
+  }]).select("id").maybeSingle());
   }
-  window.alert("DEBUG AR final result:\nCode: " + newCode + "\nID: " + (newAcct?.id || "NULL") + "\nError: " + (createErr?.message || "none") + "\nFallback parent: " + parentArId);
+  // Attempt 3: upsert on company_id+code (handles duplicate code conflicts)
   if (createErr) {
-  return parentArId; // Fall back to parent AR
+  ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").upsert([{
+  company_id: companyId, code: newCode, name: "AR - " + tenantName,
+  type: "Asset", sub_type: "Accounts Receivable", is_active: true,
+  }], { onConflict: "company_id,code" }).select("id").maybeSingle());
   }
-  _tenantArCache[cacheKey] = newAcct?.id || parentArId;
-  return _tenantArCache[cacheKey];
+  if (createErr || !newAcct?.id) {
+  console.warn("AR sub-account creation failed after 3 attempts:", createErr?.message);
+  _tenantArCache[cacheKey] = parentArId;
+  return parentArId;
+  }
+  _tenantArCache[cacheKey] = newAcct.id;
+  return newAcct.id;
+  } catch (e) {
+  console.warn("getOrCreateTenantAR error:", e.message);
+  return await resolveAccountId("1100", companyId);
+  }
 }
 
 // ============ AUTOMATIC RENT CHARGE ENGINE ============
