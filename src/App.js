@@ -518,7 +518,7 @@ async function resolveAccountId(bareCode, companyId) {
   const acctType = bareCode[0] === "1" ? "Asset" : bareCode[0] === "2" ? "Liability" : bareCode[0] === "3" ? "Equity" : bareCode[0] === "4" ? "Revenue" : "Expense";
   const subType = bareCode[0] === "1" ? "Bank" : bareCode[0] === "2" ? "Other Current Liability" : bareCode[0] === "4" ? "Operating Revenue" : "Operating Expense";
   const { data: created, error: createErr } = await supabase.from("acct_accounts").upsert([{
-  company_id: cid, code: bareCode, name: acctName, type: acctType, sub_type: subType, is_active: true
+  company_id: cid, code: bareCode, name: acctName, type: acctType, is_active: true
   }], { onConflict: "company_id,code" }).select("id").maybeSingle();
   if (createErr) console.warn("resolveAccountId: auto-create failed for", bareCode, createErr.message);
   const resolvedId = created?.id || null;
@@ -553,21 +553,21 @@ async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   // Attempt 1: full payload
   ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([{
   company_id: companyId, code: newCode, name: "AR - " + tenantName,
-  type: "Asset", sub_type: "Accounts Receivable", is_active: true,
+  type: "Asset", is_active: true,
   parent_id: parentArId || null, tenant_id: tenantId || null,
   }]).select("id").maybeSingle());
   // Attempt 2: without optional columns
   if (createErr) {
   ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([{
   company_id: companyId, code: newCode, name: "AR - " + tenantName,
-  type: "Asset", sub_type: "Accounts Receivable", is_active: true,
+  type: "Asset", is_active: true,
   }]).select("id").maybeSingle());
   }
   // Attempt 3: upsert on company_id+code (handles duplicate code conflicts)
   if (createErr) {
   ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").upsert([{
   company_id: companyId, code: newCode, name: "AR - " + tenantName,
-  type: "Asset", sub_type: "Accounts Receivable", is_active: true,
+  type: "Asset", is_active: true,
   }], { onConflict: "company_id,code" }).select("id").maybeSingle());
   }
   if (createErr || !newAcct?.id) {
@@ -6058,7 +6058,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   <tr key={a.id} className={`border-t border-slate-100 hover:bg-green-50/40 transition-colors cursor-pointer ${a._isSubAccount ? "bg-slate-50/40" : ""}`} onClick={() => onOpenLedger && onOpenLedger([a.id], (a.code ? a.code + " " : "") + a.name)}>
   <td className={`py-3 font-mono text-xs text-slate-400 ${a._isSubAccount ? "pl-8 pr-5" : "px-5"}`}>{a._isSubAccount ? "└ " : ""}{a.code || "—"}</td>
   <td className={`px-5 py-3 ${a._isSubAccount ? "text-sm text-slate-600" : "font-medium"} ${!a.is_active ? "text-slate-400 line-through" : a._isSubAccount ? "" : "text-slate-800"}`}>{a.name}</td>
-  <td className="px-5 py-3 text-xs text-slate-400">{a.sub_type || a.subtype}</td>
+  <td className="px-5 py-3 text-xs text-slate-400">{a.subtype || ""}</td>
   <td className={`px-5 py-3 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(a.computedBalance, true)}</td>
   <td className="px-5 py-3 text-center flex items-center gap-2 justify-center">
   <button onClick={e => { e.stopPropagation(); openEdit(a); }} className="text-slate-400 hover:text-indigo-600 text-xs" title="Edit account"><span className="material-icons-outlined text-sm">edit</span></button>
@@ -14669,16 +14669,16 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   }
   // Create default chart of accounts
   const defaultAccounts = [
-  { code: "1000", name: "Checking Account", type: "Asset", sub_type: "Bank", is_active: true },
-  { code: "1100", name: "Accounts Receivable", type: "Asset", sub_type: "Accounts Receivable", is_active: true },
-  { code: "2100", name: "Security Deposits Held", type: "Liability", sub_type: "Other Current Liability", is_active: true },
-  { code: "2200", name: "Owner Distributions Payable", type: "Liability", sub_type: "Other Current Liability", is_active: true },
-  { code: "4000", name: "Rental Income", type: "Revenue", sub_type: "Operating Revenue", is_active: true },
-  { code: "4010", name: "Late Fee Income", type: "Revenue", sub_type: "Operating Revenue", is_active: true },
-  { code: "4100", name: "Other Income", type: "Revenue", sub_type: "Other Revenue", is_active: true },
-  { code: "4200", name: "Management Fee Income", type: "Revenue", sub_type: "Operating Revenue", is_active: true },
-  { code: "5300", name: "Repairs & Maintenance", type: "Expense", sub_type: "Operating Expense", is_active: true },
-  { code: "5400", name: "Utilities Expense", type: "Expense", sub_type: "Operating Expense", is_active: true },
+  { code: "1000", name: "Checking Account", type: "Asset", is_active: true },
+  { code: "1100", name: "Accounts Receivable", type: "Asset", is_active: true },
+  { code: "2100", name: "Security Deposits Held", type: "Liability", is_active: true },
+  { code: "2200", name: "Owner Distributions Payable", type: "Liability", is_active: true },
+  { code: "4000", name: "Rental Income", type: "Revenue", is_active: true },
+  { code: "4010", name: "Late Fee Income", type: "Revenue", is_active: true },
+  { code: "4100", name: "Other Income", type: "Revenue", is_active: true },
+  { code: "4200", name: "Management Fee Income", type: "Revenue", is_active: true },
+  { code: "5300", name: "Repairs & Maintenance", type: "Expense", is_active: true },
+  { code: "5400", name: "Utilities Expense", type: "Expense", is_active: true },
   ];
   await supabase.from("acct_accounts").upsert(defaultAccounts.map(a => ({ ...a, company_id: companyId })), { onConflict: "company_id,code" });
   companyCreated = true;
@@ -15225,16 +15225,16 @@ function AppInner() {
 
   async function ensureDefaultAccounts(cid) {
   const defaults = [
-  { code: "1000", name: "Checking Account", type: "Asset", sub_type: "Bank", is_active: true },
-  { code: "1100", name: "Accounts Receivable", type: "Asset", sub_type: "Accounts Receivable", is_active: true },
-  { code: "2100", name: "Security Deposits Held", type: "Liability", sub_type: "Other Current Liability", is_active: true },
-  { code: "2200", name: "Owner Distributions Payable", type: "Liability", sub_type: "Other Current Liability", is_active: true },
-  { code: "4000", name: "Rental Income", type: "Revenue", sub_type: "Operating Revenue", is_active: true },
-  { code: "4010", name: "Late Fee Income", type: "Revenue", sub_type: "Operating Revenue", is_active: true },
-  { code: "4100", name: "Other Income", type: "Revenue", sub_type: "Other Revenue", is_active: true },
-  { code: "4200", name: "Management Fee Income", type: "Revenue", sub_type: "Operating Revenue", is_active: true },
-  { code: "5300", name: "Repairs & Maintenance", type: "Expense", sub_type: "Operating Expense", is_active: true },
-  { code: "5400", name: "Utilities Expense", type: "Expense", sub_type: "Operating Expense", is_active: true },
+  { code: "1000", name: "Checking Account", type: "Asset", is_active: true },
+  { code: "1100", name: "Accounts Receivable", type: "Asset", is_active: true },
+  { code: "2100", name: "Security Deposits Held", type: "Liability", is_active: true },
+  { code: "2200", name: "Owner Distributions Payable", type: "Liability", is_active: true },
+  { code: "4000", name: "Rental Income", type: "Revenue", is_active: true },
+  { code: "4010", name: "Late Fee Income", type: "Revenue", is_active: true },
+  { code: "4100", name: "Other Income", type: "Revenue", is_active: true },
+  { code: "4200", name: "Management Fee Income", type: "Revenue", is_active: true },
+  { code: "5300", name: "Repairs & Maintenance", type: "Expense", is_active: true },
+  { code: "5400", name: "Utilities Expense", type: "Expense", is_active: true },
   ];
   const { data: existing } = await supabase.from("acct_accounts").select("id, code, name").eq("company_id", cid);
   const existingNames = new Set((existing || []).map(a => a.name));
