@@ -1782,6 +1782,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   setEditingProperty(null);
   setForm({ address_line_1: "", address_line_2: "", city: "", state: "", zip: "", type: "Single Family", status: "vacant", rent: "", security_deposit: "", tenant: "", tenant_email: "", tenant_phone: "", lease_start: "", lease_end: "", notes: "" });
   fetchProperties();
+  // DEBUG: trace execution — remove after fixing
+  console.log("DEBUG saveProperty: reached post-save UI. _isNewOccupied=", _isNewOccupied);
+  window.alert("DEBUG: Property save reached UI feedback. isNewOccupied=" + _isNewOccupied);
   // Show doc upload prompt for occupied properties (form is now closed)
   if (_isNewOccupied) {
   setShowDocChecklist({ name: _savedTenantName, property: _savedAddress, isNew: true });
@@ -1790,6 +1793,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }
   } catch (e) {
   console.error("saveProperty error:", e);
+  window.alert("DEBUG: saveProperty CAUGHT ERROR: " + (e.message || e));
   showToast("Property was saved but a post-save operation failed: " + (e.message || e) + ". Please check the property list.", "error");
   // Still close form and refresh since the DB save succeeded (error is in post-save operations)
   setShowForm(false);
