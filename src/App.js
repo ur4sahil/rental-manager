@@ -1611,6 +1611,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   async function openPropertyDetail(p) {
   setSelectedProperty(p);
+  setPropertyDetailTab("overview");
   const { data: docs } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("created_at", { ascending: false }).limit(100);
   setPropertyDocs(docs || []);
   const { data: wos } = await supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("created_at", { ascending: false }).limit(100);
@@ -2092,6 +2093,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const [showDocChecklist, setShowDocChecklist] = useState(null);
   const [showDocUpload, setShowDocUpload] = useState(null); // { property, tenant }
   const [selectedProperty, setSelectedProperty] = useState(null);
+  const [propertyDetailTab, setPropertyDetailTab] = useState("overview");
   const [propertyDocs, setPropertyDocs] = useState([]);
   const [propertyWorkOrders, setPropertyWorkOrders] = useState([]); // property/tenant that needs docs
   const [pmCode, setPmCode] = useState("");
@@ -2288,9 +2290,16 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   )}
 
-  {/* Property Details */}
-  <div className="px-6 py-4 border-b border-indigo-50">
-  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Details</div>
+  {/* Tab Navigation */}
+  <div className="flex border-b border-slate-200 px-6 overflow-x-auto">
+  {[["overview","Overview"],["documents","Documents"],["workorders","Work Orders"],["actions","Actions"]].map(([id, label]) => (
+  <button key={id} onClick={() => setPropertyDetailTab(id)} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + (propertyDetailTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}{id === "documents" ? ` (${propertyDocs.length})` : id === "workorders" ? ` (${propertyWorkOrders.length})` : ""}</button>
+  ))}
+  </div>
+
+  {/* Overview Tab */}
+  {propertyDetailTab === "overview" && (
+  <div className="px-6 py-4">
   <div className="grid grid-cols-2 gap-3 text-sm">
   <div><span className="text-slate-400 text-xs block">Security Deposit</span><span className="font-semibold text-slate-700">{selectedProperty.security_deposit ? "$" + safeNum(selectedProperty.security_deposit).toLocaleString() : "—"}</span></div>
   <div><span className="text-slate-400 text-xs block">Lease Start</span><span className="font-semibold text-slate-700">{selectedProperty.lease_start || "—"}</span></div>
@@ -2298,50 +2307,75 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {selectedProperty.notes && <div className="col-span-2"><span className="text-slate-400 text-xs block">Notes</span><span className="text-slate-500">{selectedProperty.notes}</span></div>}
   </div>
   </div>
+  )}
 
-  {/* Documents */}
-  <div className="px-6 py-4 border-b border-indigo-50">
-  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Documents ({propertyDocs.length})</div>
+  {/* Documents Tab */}
+  {propertyDetailTab === "documents" && (
+  <div className="px-6 py-4 flex-1">
+  <div className="flex items-center justify-between mb-3">
+  <div className="text-sm font-semibold text-slate-700">Documents</div>
+  <button onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700 flex items-center gap-1"><span className="material-icons-outlined text-sm">upload</span>Upload</button>
+  </div>
   {propertyDocs.length === 0 ? (
-  <div className="text-sm text-slate-400">No documents uploaded</div>
+  <div className="text-center py-8">
+  <span className="material-icons-outlined text-4xl text-slate-300 mb-2">folder_open</span>
+  <div className="text-sm text-slate-400">No documents uploaded yet</div>
+  <button onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })} className="mt-3 text-xs text-indigo-600 hover:underline">Upload your first document</button>
+  </div>
   ) : (
-  <div className="space-y-1">
-  {propertyDocs.slice(0, 5).map(d => (
-  <div key={d.id} className="flex items-center justify-between bg-indigo-50/30 rounded-lg px-3 py-2">
-  <div className="text-sm text-slate-700">{d.name}</div>
-  <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-indigo-600 hover:underline">View</button>
+  <div className="space-y-2">
+  {propertyDocs.map(d => (
+  <div key={d.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3 hover:bg-slate-100 transition-colors">
+  <div className="flex items-center gap-3">
+  <span className="material-icons-outlined text-slate-400 text-lg">{d.type === "Lease" ? "description" : d.type === "ID" ? "badge" : d.type === "Insurance" ? "verified_user" : d.type === "Inspection" ? "search" : "insert_drive_file"}</span>
+  <div>
+  <div className="text-sm font-medium text-slate-700">{d.name}</div>
+  <div className="text-xs text-slate-400">{d.type} · {d.uploaded_at?.slice(0, 10)}{d.tenant ? " · " + d.tenant : ""}</div>
+  </div>
+  </div>
+  <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-indigo-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</button>
   </div>
   ))}
-  {propertyDocs.length > 5 && <div className="text-xs text-slate-400">+ {propertyDocs.length - 5} more</div>}
   </div>
   )}
   </div>
+  )}
 
-  {/* Work Orders */}
-  <div className="px-6 py-4 border-b border-indigo-50">
-  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Work Orders ({propertyWorkOrders.length})</div>
+  {/* Work Orders Tab */}
+  {propertyDetailTab === "workorders" && (
+  <div className="px-6 py-4">
+  <div className="flex items-center justify-between mb-3">
+  <div className="text-sm font-semibold text-slate-700">Work Orders</div>
+  <button onClick={() => { setPage("maintenance"); setSelectedProperty(null); }} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700 flex items-center gap-1"><span className="material-icons-outlined text-sm">add</span>New</button>
+  </div>
   {propertyWorkOrders.length === 0 ? (
+  <div className="text-center py-8">
+  <span className="material-icons-outlined text-4xl text-slate-300 mb-2">build</span>
   <div className="text-sm text-slate-400">No work orders</div>
+  </div>
   ) : (
-  <div className="space-y-1">
-  {propertyWorkOrders.slice(0, 5).map(w => (
-  <div key={w.id} className="flex items-center justify-between bg-indigo-50/30 rounded-lg px-3 py-2">
-  <div><div className="text-sm text-slate-700">{w.issue}</div><div className="text-xs text-slate-400">{w.status} · {w.priority}</div></div>
+  <div className="space-y-2">
+  {propertyWorkOrders.map(w => (
+  <div key={w.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3">
+  <div><div className="text-sm font-medium text-slate-700">{w.issue}</div><div className="text-xs text-slate-400">{w.priority} · {w.created_at?.slice(0, 10)}</div></div>
   <Badge status={w.status} />
   </div>
   ))}
   </div>
   )}
   </div>
+  )}
 
-  {/* Actions */}
+  {/* Actions Tab */}
+  {propertyDetailTab === "actions" && (
   <div className="px-6 py-4">
-  <div className="flex gap-2 flex-wrap">
-  {!isReadOnly(selectedProperty) && <button onClick={() => { setEditingProperty(selectedProperty); setForm({ address_line_1: selectedProperty.address_line_1 || selectedProperty.address || "", address_line_2: selectedProperty.address_line_2 || "", city: selectedProperty.city || "", state: selectedProperty.state || "", zip: selectedProperty.zip || "", type: selectedProperty.type, status: selectedProperty.status, rent: selectedProperty.rent || "", security_deposit: selectedProperty.security_deposit || "", tenant: selectedProperty.tenant || "", tenant_email: selectedProperty._tenantEmail || "", tenant_phone: selectedProperty._tenantPhone || "", lease_start: selectedProperty.lease_start || "", lease_end: selectedProperty.lease_end || "", notes: selectedProperty.notes || "" }); setShowForm(true); setSelectedProperty(null); }} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">Edit Property</button>}
-  <button onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-2xl hover:bg-slate-200">Upload Document</button>
-  <button onClick={() => { setPage("maintenance"); setSelectedProperty(null); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-2xl hover:bg-slate-100">New Work Order</button>
+  <div className="space-y-2">
+  {!isReadOnly(selectedProperty) && <button onClick={() => { setEditingProperty(selectedProperty); setForm({ address_line_1: selectedProperty.address_line_1 || selectedProperty.address || "", address_line_2: selectedProperty.address_line_2 || "", city: selectedProperty.city || "", state: selectedProperty.state || "", zip: selectedProperty.zip || "", type: selectedProperty.type, status: selectedProperty.status, rent: selectedProperty.rent || "", security_deposit: selectedProperty.security_deposit || "", tenant: selectedProperty.tenant || "", tenant_email: selectedProperty._tenantEmail || "", tenant_phone: selectedProperty._tenantPhone || "", lease_start: selectedProperty.lease_start || "", lease_end: selectedProperty.lease_end || "", notes: selectedProperty.notes || "" }); setShowForm(true); setSelectedProperty(null); }} className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors"><span className="material-icons-outlined text-indigo-600">edit</span>Edit Property</button>}
+  <button onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })} className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors"><span className="material-icons-outlined text-indigo-600">upload_file</span>Upload Document</button>
+  <button onClick={() => { setPage("maintenance"); setSelectedProperty(null); }} className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors"><span className="material-icons-outlined text-indigo-600">build</span>New Work Order</button>
   </div>
   </div>
+  )}
   </div>
   </div>
   )}
@@ -2608,7 +2642,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
 
   </>)}
-  {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedProperty) { supabase.from("documents").select("*").eq("company_id", companyId).eq("property", selectedProperty.address).is("archived_at", null).order("created_at", { ascending: false }).limit(100).then(({ data }) => setPropertyDocs(data || [])); } }} />}
+  {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedProperty) { supabase.from("documents").select("*").eq("company_id", companyId).eq("property", selectedProperty.address).is("archived_at", null).order("created_at", { ascending: false }).limit(100).then(({ data }) => { setPropertyDocs(data || []); setPropertyDetailTab("documents"); }); } }} />}
   {pendingRecurringEntry && <RecurringEntryModal entry={pendingRecurringEntry} companyId={companyId} showToast={showToast} onComplete={() => setPendingRecurringEntry(null)} />}
   </div>
   );
