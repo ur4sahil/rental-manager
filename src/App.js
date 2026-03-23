@@ -534,9 +534,10 @@ async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   if (!companyId || !tenantName) return await resolveAccountId("1100", companyId);
   const cacheKey = `${companyId}::${tenantName}`;
   if (_tenantArCache[cacheKey]) return _tenantArCache[cacheKey];
-  // Check if tenant AR sub-account already exists (match by name only — tenant_id may not be set)
-  // Use exact match (eq) instead of ilike with escaping — tenant names don't need wildcard matching
-  const { data: existing } = await supabase.from("acct_accounts").select("id, code").eq("company_id", companyId).eq("type", "Asset").eq("name", "AR - " + tenantName).maybeSingle();
+  // Check if tenant AR sub-account already exists
+  const { data: existing, error: lookupErr } = await supabase.from("acct_accounts").select("id, code").eq("company_id", companyId).eq("type", "Asset").eq("name", "AR - " + tenantName).maybeSingle();
+  // DEBUG — remove after confirming fix
+  window.alert("DEBUG getOrCreateTenantAR:\nTenant: " + tenantName + "\nLookup found: " + JSON.stringify(existing) + "\nLookup error: " + (lookupErr?.message || "none"));
   if (existing?.id) {
   _tenantArCache[cacheKey] = existing.id;
   return existing.id;
@@ -558,12 +559,12 @@ async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([arPayload]).select("id").maybeSingle());
   // If insert failed (maybe tenant_id or parent_id column doesn't exist), retry without those fields
   if (createErr) {
-  console.warn("AR sub-account insert failed, retrying without optional fields:", createErr.message);
   const minPayload = { company_id: companyId, code: newCode, name: "AR - " + tenantName, type: "Asset", sub_type: "Accounts Receivable", is_active: true };
   ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([minPayload]).select("id").maybeSingle());
   }
+  // DEBUG — remove after confirming fix
+  window.alert("DEBUG AR insert result:\nCode: " + newCode + "\nInserted ID: " + (newAcct?.id || "NULL") + "\nError: " + (createErr?.message || "none") + "\nParent fallback: " + parentArId);
   if (createErr) {
-  console.warn("Failed to create tenant AR sub-account:", createErr.message);
   return parentArId; // Fall back to parent AR
   }
   _tenantArCache[cacheKey] = newAcct?.id || parentArId;
