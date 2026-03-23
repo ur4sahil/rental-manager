@@ -7008,9 +7008,20 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   { code: "5300", name: "Repairs & Maintenance", type: "Expense", is_active: true },
   { code: "5400", name: "Utilities Expense", type: "Expense", is_active: true },
   ];
-  await supabase.from("acct_accounts").upsert(defaults.map(a => ({ ...a, company_id: companyId })), { onConflict: "company_id,code" });
-  const { data: freshAccts } = await supabase.from("acct_accounts").select("*").eq("company_id", companyId).order("code");
+  // Insert one by one to handle any schema issues gracefully
+  for (const acct of defaults) {
+  const { error: insErr } = await supabase.from("acct_accounts").insert([{ ...acct, company_id: companyId }]);
+  if (insErr) {
+  console.warn("Default account insert failed for " + acct.code + ":", insErr.message);
+  // Try with just the bare minimum columns
+  const { error: minErr } = await supabase.from("acct_accounts").insert([{ company_id: companyId, code: acct.code, name: acct.name, type: acct.type }]);
+  if (minErr) console.error("Default account STILL failed for " + acct.code + ":", minErr.message);
+  }
+  }
+  const { data: freshAccts, error: fetchErr } = await supabase.from("acct_accounts").select("*").eq("company_id", companyId).order("code");
+  console.log("Default accounts created. Re-fetched:", freshAccts?.length || 0, "accounts. Error:", fetchErr?.message || "none");
   accounts = (freshAccts || []).map(a => ({ ...a, type: _typeNorm[(a.type || "").toLowerCase()] || a.type }));
+  if (accounts.length === 0) showToast("Failed to create default accounts. Check browser console for details.", "error");
   }
 
   // Fetch all journal lines for this company's JEs and attach to entries
