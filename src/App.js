@@ -5502,33 +5502,54 @@ function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClos
   }
 
   return (
-  <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
-  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+  <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60] flex items-end sm:items-center justify-center sm:p-4">
+  <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-5xl h-[95vh] sm:max-h-[90vh] flex flex-col">
   {/* Header */}
-  <div className="flex items-center justify-between px-6 py-4 border-b border-indigo-50">
-  <div>
-  <h3 className="text-lg font-manrope font-bold text-slate-800">{title || acctNames}</h3>
+  <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-indigo-50">
+  <div className="min-w-0 flex-1">
+  <h3 className="text-base sm:text-lg font-manrope font-bold text-slate-800 truncate">{title || acctNames}</h3>
   {acctCodes && <p className="text-xs text-slate-400">Account {acctCodes} · {allLines.length} entries</p>}
   </div>
-  <div className="flex items-center gap-2">
-  <button onClick={exportCSV} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-xl hover:bg-slate-200">Export CSV</button>
-  <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
+  <div className="flex items-center gap-2 shrink-0 ml-2">
+  <button onClick={exportCSV} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-xl hover:bg-slate-200 hidden sm:block">Export CSV</button>
+  <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100"><span className="material-icons-outlined text-lg">close</span></button>
   </div>
   </div>
   {/* Filters */}
-  <div className="flex flex-wrap items-center gap-2 px-6 py-3 border-b border-indigo-50 bg-slate-50/50">
-  {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-xl border font-medium ${period === p ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-400 border-indigo-100"}`}>{p}</button>)}
+  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 px-4 sm:px-6 py-2 sm:py-3 border-b border-indigo-50 bg-slate-50/50 overflow-x-auto">
+  {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border font-medium whitespace-nowrap ${period === p ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-400 border-indigo-100"}`}>{p}</button>)}
   {period === "Custom" && <><Input type="date" value={customDates.start} onChange={e => setCustomDates(d => ({...d, start: e.target.value}))} className="text-xs w-auto" /><span className="text-xs text-slate-400">to</span><Input type="date" value={customDates.end} onChange={e => setCustomDates(d => ({...d, end: e.target.value}))} className="text-xs w-auto" /></>}
   {properties.length > 1 && <select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)} className="text-xs border border-indigo-100 rounded-xl px-2 py-1.5 bg-white"><option value="">All Properties</option>{properties.map(p => <option key={p} value={p}>{p.split(",")[0]}</option>)}</select>}
   </div>
   {/* Summary bar */}
-  <div className="flex items-center gap-6 px-6 py-2 border-b border-indigo-50 text-xs text-slate-500">
-  <span>Total Debits: <strong className="text-slate-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.debit, 0))}</strong></span>
-  <span>Total Credits: <strong className="text-slate-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.credit, 0))}</strong></span>
-  <span>Ending Balance: <strong className={`font-mono ${running >= 0 ? "text-slate-800" : "text-red-600"}`}>{acctFmt(running, true)}</strong></span>
+  <div className="flex flex-wrap items-center gap-3 sm:gap-6 px-4 sm:px-6 py-2 border-b border-indigo-50 text-xs text-slate-500">
+  <span>DR: <strong className="text-slate-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.debit, 0))}</strong></span>
+  <span>CR: <strong className="text-slate-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.credit, 0))}</strong></span>
+  <span>Bal: <strong className={`font-mono ${running >= 0 ? "text-slate-800" : "text-red-600"}`}>{acctFmt(running, true)}</strong></span>
+  <button onClick={exportCSV} className="text-xs text-indigo-600 hover:underline sm:hidden ml-auto">Export</button>
   </div>
-  {/* Table */}
-  <div className="flex-1 overflow-auto">
+  {/* Mobile: Card view */}
+  <div className="flex-1 overflow-auto sm:hidden">
+  {allLines.length === 0 && <div className="px-4 py-8 text-center text-slate-400">No transactions found for this period</div>}
+  {allLines.map((l, i) => (
+  <div key={i} className="border-b border-indigo-50/50 px-4 py-3">
+  <div className="flex justify-between items-start mb-1">
+  <div className="text-xs text-slate-500">{l.date}</div>
+  <div className={`font-mono text-sm font-semibold ${l.balance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(l.balance, true)}</div>
+  </div>
+  <div className="text-sm text-slate-700 mb-1 leading-tight">{l.description}</div>
+  {l.memo && <div className="text-xs text-slate-400 mb-1">{l.memo}</div>}
+  <div className="flex items-center gap-3 text-xs">
+  {l.debit > 0 && <span className="text-emerald-600">DR {acctFmt(l.debit)}</span>}
+  {l.credit > 0 && <span className="text-red-500">CR {acctFmt(l.credit)}</span>}
+  {l.property && <span className="text-slate-400">{l.property.split(",")[0]}</span>}
+  <button onClick={() => onViewJE && onViewJE(l.jeId)} className="text-indigo-600 hover:underline font-mono ml-auto">{l.number || "—"}</button>
+  </div>
+  </div>
+  ))}
+  </div>
+  {/* Desktop: Table view */}
+  <div className="flex-1 overflow-auto hidden sm:block">
   <table className="w-full text-sm">
   <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase sticky top-0">
   <tr>
