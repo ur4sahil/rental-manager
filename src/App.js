@@ -14644,7 +14644,6 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   const { data: { user: authUser } } = await supabase.auth.getUser();
   const { error: memErr } = await supabase.from("company_members").insert([{
   company_id: companyId, user_email: normalizeEmail(currentUser?.email),
-  user_id: authUser?.id || null,
   role: "admin", status: "active",
   }]);
   if (memErr) {
