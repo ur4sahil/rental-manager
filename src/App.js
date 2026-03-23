@@ -1788,6 +1788,13 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   } else {
   showToast("Property saved successfully", "success");
   }
+  } catch (e) {
+  console.error("saveProperty error:", e);
+  showToast("Property was saved but a post-save operation failed: " + (e.message || e) + ". Please check the property list.", "error");
+  // Still close form and refresh since the DB save succeeded (error is in post-save operations)
+  setShowForm(false);
+  setEditingProperty(null);
+  fetchProperties();
   } finally { guardRelease("saveProperty"); }
   }
 
@@ -2765,6 +2772,13 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   setShowForm(false);
   setEditingTenant(null);
   setForm({ name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "", security_deposit: "" });
+  fetchTenants();
+  showToast(editingTenant ? "Tenant updated successfully" : "Tenant added successfully", "success");
+  } catch (e) {
+  console.error("saveTenant error:", e);
+  showToast("Tenant was saved but a post-save operation failed: " + (e.message || e) + ". Please check the tenant list.", "error");
+  setShowForm(false);
+  setEditingTenant(null);
   fetchTenants();
   } finally { guardRelease("saveTenant"); }
   }
