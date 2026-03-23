@@ -549,13 +549,17 @@ async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   const lastSeq = subAccts?.[0]?.code ? parseInt(subAccts[0].code.split("-")[1]) || 0 : 0;
   const newCode = "1100-" + String(lastSeq + 1).padStart(3, "0");
   // Create the sub-account
-  const { data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([{
+  const arPayload = {
   company_id: companyId, code: newCode, name: "AR - " + tenantName,
   type: "Asset", sub_type: "Accounts Receivable", is_active: true,
-  parent_id: parentArId, tenant_id: tenantId || null,
-  }]).select("id").maybeSingle();
+  };
+  // Only include parent_id/tenant_id if they look like valid UUIDs (some schemas use integer PKs)
+  const _isUUID = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+  if (parentArId && _isUUID(String(parentArId))) arPayload.parent_id = parentArId;
+  if (tenantId && _isUUID(String(tenantId))) arPayload.tenant_id = tenantId;
+  const { data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([arPayload]).select("id").maybeSingle();
   if (createErr) {
-  console.warn("Failed to create tenant AR sub-account:", createErr.message);
+  console.warn("Failed to create tenant AR sub-account:", createErr.message, arPayload);
   return parentArId; // Fall back to parent AR
   }
   _tenantArCache[cacheKey] = newAcct?.id || parentArId;
@@ -912,14 +916,15 @@ function RecurringEntryModal({ entry, companyId, showToast, onComplete }) {
   const revenueId = await resolveAccountId("4000", companyId);
   // Get the AR sub-account code for display
   const { data: arAcct } = await supabase.from("acct_accounts").select("code").eq("company_id", companyId).eq("id", tenantArId).maybeSingle();
-  const { error } = await supabase.from("recurring_journal_entries").insert([{
+  // Validate UUIDs before insert — skip fields that aren't valid UUIDs
+  const isUUID = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+  const payload = {
   company_id: companyId,
   description: "Monthly rent — " + entry.tenantName + " — " + entry.property?.split(",")[0],
   frequency: freq,
   day_of_month: dayOfMonth,
   amount: Number(amount),
   tenant_name: entry.tenantName,
-  tenant_id: entry.tenantId || null,
   property: entry.property || "",
   debit_account_id: tenantArId,
   debit_account_name: "AR - " + entry.tenantName,
@@ -928,7 +933,10 @@ function RecurringEntryModal({ entry, companyId, showToast, onComplete }) {
   status: "active",
   next_post_date: nextPostDate,
   created_by: "",
-  }]);
+  };
+  // Only include tenant_id if it's a valid UUID (some DBs use integer PKs)
+  if (entry.tenantId && isUUID(String(entry.tenantId))) payload.tenant_id = entry.tenantId;
+  const { error } = await supabase.from("recurring_journal_entries").insert([payload]);
   if (error) {
   showToast("Failed to create recurring entry: " + error.message, "error");
   setSaving(false);
@@ -5565,7 +5573,7 @@ function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClos
   <div className="flex-1 overflow-auto sm:hidden">
   {allLines.length === 0 && <div className="px-4 py-8 text-center text-slate-400">No transactions found for this period</div>}
   {allLines.map((l, i) => (
-  <div key={i} className="border-b border-indigo-50/50 px-4 py-3">
+  <div key={i} className="border-b border-slate-100 px-4 py-3 cursor-pointer hover:bg-green-50/40 transition-colors active:bg-green-50" onClick={() => onViewJE && onViewJE(l.jeId)}>
   <div className="flex justify-between items-start mb-1">
   <div className="text-xs text-slate-500">{l.date}</div>
   <div className={`font-mono text-sm font-semibold ${l.balance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(l.balance, true)}</div>
@@ -5576,7 +5584,7 @@ function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClos
   {l.debit > 0 && <span className="text-emerald-600">DR {acctFmt(l.debit)}</span>}
   {l.credit > 0 && <span className="text-red-500">CR {acctFmt(l.credit)}</span>}
   {l.property && <span className="text-slate-400">{l.property.split(",")[0]}</span>}
-  <button onClick={() => onViewJE && onViewJE(l.jeId)} className="text-indigo-600 hover:underline font-mono ml-auto">{l.number || "—"}</button>
+  <span className="text-green-600 font-mono ml-auto">{l.number || "—"}</span>
   </div>
   </div>
   ))}
@@ -5599,9 +5607,9 @@ function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClos
   </thead>
   <tbody>
   {allLines.map((l, i) => (
-  <tr key={i} className="border-t border-indigo-50/50 hover:bg-indigo-50/20">
+  <tr key={i} className="border-t border-slate-100 hover:bg-green-50/40 transition-colors cursor-pointer" onClick={() => onViewJE && onViewJE(l.jeId)}>
   <td className="px-4 py-2 text-xs text-slate-500 whitespace-nowrap">{l.date}</td>
-  <td className="px-3 py-2"><button onClick={() => onViewJE && onViewJE(l.jeId)} className="text-xs text-indigo-600 hover:underline font-mono">{l.number || "—"}</button></td>
+  <td className="px-3 py-2 text-xs text-green-600 font-mono">{l.number || "—"}</td>
   <td className="px-3 py-2 text-slate-700 text-xs max-w-xs truncate" title={l.description + (l.memo ? " | " + l.memo : "")}>{l.description}{l.memo && <span className="text-slate-400 ml-1">({l.memo})</span>}</td>
   <td className="px-3 py-2 text-xs text-slate-400 font-mono">{l.reference || "—"}</td>
   {ids.length > 1 && <td className="px-3 py-2 text-xs text-slate-500">{l.accountName}</td>}
@@ -5784,7 +5792,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
 }
 
 // --- Journal Entries Sub-Page ---
-function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate, onPost, onVoid, companyId, onOpenLedger }) {
+function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate, onPost, onVoid, companyId, onOpenLedger, initialViewJEId }) {
   const [modal, setModal] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
   const [searchProperty, setSearchProperty] = useState("");
@@ -5792,6 +5800,14 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   const [form, setForm] = useState({ date: acctToday(), description: "", reference: "", property: "", lines: [{ account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }, { account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }] });
 
   useEffect(() => { let q = supabase.from("properties").select("address"); if (companyId) q = q.eq("company_id", companyId).is("archived_at", null); q.then(r => setProperties((r.data || []).map(p => p.address))); }, [companyId]);
+
+  // Auto-open a specific JE when navigating from ledger drill-down
+  useEffect(() => {
+  if (initialViewJEId && journalEntries.length > 0) {
+  const je = journalEntries.find(j => j.id === initialViewJEId);
+  if (je) setModal({ mode: "view", je });
+  }
+  }, [initialViewJEId, journalEntries.length]);
 
   const filtered = [...journalEntries].sort((a,b) => b.date.localeCompare(a.date))
   .filter(je => filterStatus === "all" || je.status === filterStatus)
@@ -6646,6 +6662,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
   const [ledgerView, setLedgerView] = useState(null); // { accountIds: [], title: "" }
+  const [viewJEId, setViewJEId] = useState(null); // JE ID to auto-open in journal tab
   const companyName = activeCompany?.name || "My Company";
 
   useEffect(() => { fetchAll(); }, [companyId]);
@@ -7102,13 +7119,13 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
 
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} addNotification={addNotification} userProfile={userProfile} />}
   {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
-  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
+  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} />}
   {activeTab === "bankimport" && <AcctBankImport accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAddJournalEntry={addJournalEntry} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {/* Account Ledger Drill-Down */}
-  {ledgerView && <AccountLedgerView accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => setLedgerView(null)} onViewJE={(jeId) => { setLedgerView(null); setActiveTab("journal"); }} />}
+  {ledgerView && <AccountLedgerView accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => setLedgerView(null)} onViewJE={(jeId) => { setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
 
   </div>
   </div>
