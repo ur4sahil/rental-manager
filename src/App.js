@@ -341,8 +341,10 @@ async function autoPostJournalEntry({ date, description, reference, property, li
   resolvedLines[i].account_id = await resolveAccountId(resolvedLines[i].account_id, cid);
   }
   }
-  // Step 1: Insert journal entry header (auto-generate number)
-  const jeNumber = "JE-" + Date.now().toString(36).toUpperCase();
+  // Step 1: Insert journal entry header (auto-generate sequential number)
+  const { data: lastJE } = await supabase.from("acct_journal_entries").select("number").eq("company_id", cid).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const lastNum = lastJE?.number ? parseInt(lastJE.number.replace(/\D/g, "")) || 0 : 0;
+  const jeNumber = "JE-" + String(lastNum + 1).padStart(4, "0");
   const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
   company_id: cid, number: jeNumber, date, description, reference: reference || "", property: property || "", status
   }]).select("id").maybeSingle();
@@ -5733,7 +5735,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   <tbody>
   {accts.map(a => (
   <tr key={a.id} className={`border-t border-indigo-50/50 hover:bg-blue-50/30 cursor-pointer ${a._isSubAccount ? "bg-slate-50/40" : ""}`} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name + " (" + (a.code || "") + ")")}>
-  <td className={`py-2 font-mono text-xs text-slate-400 ${a._isSubAccount ? "pl-8 pr-4" : "px-4"}`}>{a._isSubAccount ? "└ " : ""}{a.code || a.id}</td>
+  <td className={`py-2 font-mono text-xs text-slate-400 ${a._isSubAccount ? "pl-8 pr-4" : "px-4"}`}>{a._isSubAccount ? "└ " : ""}{a.code || "—"}</td>
   <td className={`px-4 py-2 ${a._isSubAccount ? "text-sm text-slate-600" : "font-medium"} ${!a.is_active ? "text-slate-400 line-through" : a._isSubAccount ? "" : "text-slate-800"}`}>{a.name}</td>
   <td className="px-4 py-2 text-xs text-slate-400">{a.sub_type || a.subtype}</td>
   <td className={`px-4 py-2 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(a.computedBalance, true)}</td>
@@ -5945,7 +5947,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   const cls = classes.find(c => c.id === l.class_id);
   return (
   <tr key={i} className="border-t border-indigo-50/50">
-  <td className="px-4 py-2"><span className="font-mono text-xs text-slate-400 mr-1">{l.account_id}</span> {l.account_name}</td>
+  <td className="px-4 py-2">{(() => { const acct = accounts.find(a => a.id === l.account_id); return <><span className="font-mono text-xs text-slate-400 mr-1">{acct?.code || ""}</span> {l.account_name || acct?.name || ""}</>; })()}</td>
   <td className="px-4 py-2 text-xs">{cls ? <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background:cls.color}} />{cls.name}</span> : "—"}</td>
   <td className="px-4 py-2 text-xs text-slate-400">{l.memo || "—"}</td>
   <td className="px-4 py-2 text-right font-mono">{safeNum(l.debit) > 0 ? acctFmt(l.debit) : ""}</td>
