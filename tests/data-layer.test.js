@@ -540,6 +540,196 @@ async function testDocumentBuilder() {
   }
 }
 
+async function testLoans() {
+  console.log('\n🏦 LOANS');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  assert(!!cid, 'Loans: company exists for testing');
+
+  // Insert a loan
+  const { data: loan, error: loanErr } = await supabase.from('property_loans').insert({
+    company_id: cid, property: 'TEST-LOAN-PROP', lender_name: 'Test Bank',
+    loan_type: 'conventional', original_amount: 300000, current_balance: 280000,
+    interest_rate: 6.5, monthly_payment: 1900, escrow_included: true,
+    escrow_amount: 400, escrow_covers: JSON.stringify(['Property Tax', 'Insurance']),
+    loan_start_date: '2024-01-01', maturity_date: '2054-01-01',
+    account_number: 'LOAN-TEST-001', status: 'active'
+  }).select().single();
+  assert(!loanErr && loan, 'Loans: can insert loan');
+
+  // Verify fetch
+  if (loan) {
+    const { data: fetched } = await supabase.from('property_loans').select('*').eq('id', loan.id).single();
+    assert(fetched && fetched.lender_name === 'Test Bank', 'Loans: can fetch loan by ID');
+    assert(fetched && fetched.current_balance === 280000, 'Loans: balance stored correctly');
+    assert(fetched && fetched.escrow_included === true, 'Loans: escrow flag stored');
+
+    // Update balance (simulate payment)
+    const { error: upErr } = await supabase.from('property_loans').update({ current_balance: 278100 }).eq('id', loan.id);
+    assert(!upErr, 'Loans: can update balance');
+
+    // Soft-delete
+    const { error: delErr } = await supabase.from('property_loans').update({ archived_at: new Date().toISOString(), archived_by: 'test' }).eq('id', loan.id);
+    assert(!delErr, 'Loans: can soft-delete');
+
+    // Verify soft-delete filters
+    const { data: active } = await supabase.from('property_loans').select('id').eq('id', loan.id).is('archived_at', null);
+    assert(!active || active.length === 0, 'Loans: soft-deleted loan hidden from active query');
+
+    // Hard cleanup
+    await supabase.from('property_loans').delete().eq('id', loan.id);
+  }
+}
+
+async function testInsurance() {
+  console.log('\n🛡️  INSURANCE');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+
+  const { data: ins, error: insErr } = await supabase.from('property_insurance').insert({
+    company_id: cid, property: 'TEST-INS-PROP', provider: 'State Farm',
+    policy_number: 'POL-TEST-001', premium_amount: 1200,
+    premium_frequency: 'annual', coverage_amount: 500000,
+    expiration_date: '2027-03-01', notes: 'Test policy'
+  }).select().single();
+  assert(!insErr && ins, 'Insurance: can insert policy');
+
+  if (ins) {
+    const { data: fetched } = await supabase.from('property_insurance').select('*').eq('id', ins.id).single();
+    assert(fetched && fetched.provider === 'State Farm', 'Insurance: provider stored correctly');
+    assert(fetched && fetched.premium_amount === 1200, 'Insurance: premium stored correctly');
+    assert(fetched && fetched.coverage_amount === 500000, 'Insurance: coverage stored correctly');
+
+    // Cleanup
+    await supabase.from('property_insurance').delete().eq('id', ins.id);
+  }
+}
+
+async function testWizardProgress() {
+  console.log('\n🧙 WIZARD PROGRESS');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+
+  // Create wizard entry
+  const { data: wiz, error: wizErr } = await supabase.from('property_setup_wizard').insert({
+    company_id: cid, property_address: 'TEST-WIZARD-PROP',
+    current_step: 1, completed_steps: JSON.stringify([]),
+    wizard_data: JSON.stringify({ test: true }), status: 'in_progress'
+  }).select().single();
+  assert(!wizErr && wiz, 'Wizard: can create wizard progress');
+
+  if (wiz) {
+    // Update progress
+    const { error: upErr } = await supabase.from('property_setup_wizard').update({
+      current_step: 3, completed_steps: JSON.stringify(['utilities', 'hoa']),
+      updated_at: new Date().toISOString()
+    }).eq('id', wiz.id);
+    assert(!upErr, 'Wizard: can update progress');
+
+    // Verify
+    const { data: fetched } = await supabase.from('property_setup_wizard').select('*').eq('id', wiz.id).single();
+    assert(fetched && fetched.current_step === 3, 'Wizard: step updated correctly');
+    assert(fetched && fetched.status === 'in_progress', 'Wizard: status is in_progress');
+
+    // Complete
+    const { error: compErr } = await supabase.from('property_setup_wizard').update({
+      status: 'completed', completed_at: new Date().toISOString()
+    }).eq('id', wiz.id);
+    assert(!compErr, 'Wizard: can mark as completed');
+
+    // Query in-progress (should not find completed)
+    const { data: inProg } = await supabase.from('property_setup_wizard').select('id')
+      .eq('company_id', cid).eq('status', 'in_progress').eq('property_address', 'TEST-WIZARD-PROP');
+    assert(!inProg || inProg.length === 0, 'Wizard: completed wizard not in in_progress query');
+
+    // Cleanup
+    await supabase.from('property_setup_wizard').delete().eq('id', wiz.id);
+  }
+}
+
+async function testARSubAccountCreation() {
+  console.log('\n📋 AR SUB-ACCOUNT CREATION');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  if (!cid) { assert(false, 'AR Sub: no company found'); return; }
+
+  const testName = 'TEST-AR-TENANT-' + Date.now();
+
+  // Insert an AR sub-account manually (simulating getOrCreateTenantAR)
+  const { data: parent } = await supabase.from('acct_accounts').select('id').eq('company_id', cid).eq('code', '1100').maybeSingle();
+  assert(!!parent, 'AR Sub: parent 1100 account exists');
+
+  const { data: subAcct, error: subErr } = await supabase.from('acct_accounts').insert({
+    company_id: cid, code: '1100-999', name: 'AR - ' + testName,
+    type: 'Asset', is_active: true, old_text_id: cid + '-1100-999'
+  }).select().single();
+  assert(!subErr && subAcct, 'AR Sub: can create sub-account with old_text_id');
+
+  if (subAcct) {
+    // Verify it appears alongside parent
+    const { data: allAR } = await supabase.from('acct_accounts').select('id, code, name')
+      .eq('company_id', cid).eq('type', 'Asset').like('code', '1100%');
+    assert(allAR && allAR.length >= 2, 'AR Sub: both parent and sub-account queryable');
+    assert(allAR && allAR.some(a => a.code === '1100-999'), 'AR Sub: sub-account found by code pattern');
+
+    // Verify exact name match lookup (as getOrCreateTenantAR does)
+    const { data: found } = await supabase.from('acct_accounts').select('id, code')
+      .eq('company_id', cid).eq('type', 'Asset').eq('name', 'AR - ' + testName).maybeSingle();
+    assert(found && found.id === subAcct.id, 'AR Sub: exact name lookup finds sub-account');
+
+    // Cleanup
+    await supabase.from('acct_accounts').delete().eq('id', subAcct.id);
+  }
+}
+
+async function testPropertyDeleteCascadeNewTables() {
+  console.log('\n🗑️  DELETE CASCADE — NEW TABLES');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  if (!cid) { assert(false, 'Cascade: no company found'); return; }
+
+  const addr = 'TEST-CASCADE-' + Date.now();
+  const ids = {};
+
+  // Create property
+  const { data: prop } = await supabase.from('properties').insert({ company_id: cid, address: addr, status: 'vacant', type: 'Test' }).select().single();
+  if (prop) ids.property = prop.id;
+
+  // Create related records in new tables
+  const { data: loan } = await supabase.from('property_loans').insert({ company_id: cid, property: addr, lender_name: 'Cascade Bank', original_amount: 100000, current_balance: 90000, monthly_payment: 800, status: 'active' }).select().single();
+  if (loan) ids.loan = loan.id;
+
+  const { data: ins } = await supabase.from('property_insurance').insert({ company_id: cid, property: addr, provider: 'Cascade Insurance', premium_amount: 100 }).select().single();
+  if (ins) ids.insurance = ins.id;
+
+  const { data: wiz } = await supabase.from('property_setup_wizard').insert({ company_id: cid, property_address: addr, status: 'in_progress', current_step: 1 }).select().single();
+  if (wiz) ids.wizard = wiz.id;
+
+  assert(ids.loan && ids.insurance && ids.wizard, 'Cascade: all related records created');
+
+  // Simulate soft-delete cascade (what deleteProperty does)
+  const arch = { archived_at: new Date().toISOString(), archived_by: 'test' };
+  await supabase.from('property_loans').update(arch).eq('company_id', cid).eq('property', addr).is('archived_at', null);
+  await supabase.from('property_insurance').update(arch).eq('company_id', cid).eq('property', addr).is('archived_at', null);
+  await supabase.from('property_setup_wizard').update({ status: 'dismissed' }).eq('company_id', cid).eq('property_address', addr).eq('status', 'in_progress');
+
+  // Verify cascade
+  const { data: activeLoan } = await supabase.from('property_loans').select('id').eq('id', ids.loan).is('archived_at', null);
+  assert(!activeLoan || activeLoan.length === 0, 'Cascade: loan archived');
+
+  const { data: activeIns } = await supabase.from('property_insurance').select('id').eq('id', ids.insurance).is('archived_at', null);
+  assert(!activeIns || activeIns.length === 0, 'Cascade: insurance archived');
+
+  const { data: activeWiz } = await supabase.from('property_setup_wizard').select('status').eq('id', ids.wizard).single();
+  assert(activeWiz && activeWiz.status === 'dismissed', 'Cascade: wizard dismissed');
+
+  // Hard cleanup
+  if (ids.loan) await supabase.from('property_loans').delete().eq('id', ids.loan);
+  if (ids.insurance) await supabase.from('property_insurance').delete().eq('id', ids.insurance);
+  if (ids.wizard) await supabase.from('property_setup_wizard').delete().eq('id', ids.wizard);
+  if (ids.property) await supabase.from('properties').delete().eq('id', ids.property);
+}
+
 async function run() {
   console.log('🧪 PropManager Data Layer Tests');
   console.log('================================');
@@ -565,6 +755,11 @@ async function run() {
   await testAccountingPipeline();
   await testAuditTrail();
   await testFullLifecycle();
+  await testLoans();
+  await testInsurance();
+  await testWizardProgress();
+  await testARSubAccountCreation();
+  await testPropertyDeleteCascadeNewTables();
   console.log('\n================================');
   console.log('✅ Passed: ' + pass);
   console.log('❌ Failed: ' + fail);

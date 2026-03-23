@@ -32,6 +32,7 @@ async function testTableExistence() {
     'push_subscriptions', 'pm_assignment_requests',
     'property_change_requests', 'recurring_journal_entries',
     'doc_templates', 'doc_generated',
+    'property_loans', 'property_insurance', 'property_setup_wizard',
   ];
   for (const table of requiredTables) {
     const { error } = await supabase.from(table).select('*').limit(0);
