@@ -535,7 +535,8 @@ async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   const cacheKey = `${companyId}::${tenantName}`;
   if (_tenantArCache[cacheKey]) return _tenantArCache[cacheKey];
   // Check if tenant AR sub-account already exists (match by name only — tenant_id may not be set)
-  const { data: existing } = await supabase.from("acct_accounts").select("id, code").eq("company_id", companyId).eq("type", "Asset").ilike("name", `AR - ${escapeFilterValue(tenantName)}`).maybeSingle();
+  // Use exact match (eq) instead of ilike with escaping — tenant names don't need wildcard matching
+  const { data: existing } = await supabase.from("acct_accounts").select("id, code").eq("company_id", companyId).eq("type", "Asset").eq("name", "AR - " + tenantName).maybeSingle();
   if (existing?.id) {
   _tenantArCache[cacheKey] = existing.id;
   return existing.id;
@@ -1749,7 +1750,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   ]
   });
   if (_depOk && tenantId) {
-  await safeLedgerInsert({ company_id: companyId, tenant: form.tenant.trim(), property: compositeAddress, date: form.lease_start, description: "Security deposit collected", amount: dep, type: "deposit", balance: 0 });
+  await safeLedgerInsert({ company_id: companyId, tenant: form.tenant.trim(), tenant_id: tenantId, property: compositeAddress, date: form.lease_start, description: "Security deposit collected", amount: dep, type: "deposit", balance: 0 });
   }
   if (!_depOk) showToast("Security deposit accounting entry failed. Please check the accounting module.", "error");
   }
@@ -2995,7 +2996,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: _secDep, class_id: classId, memo: _name + " — " + _property },
   ]
   });
-  if (_depOk) await safeLedgerInsert({ company_id: companyId, tenant: _name, property: _property, date: _leaseStart, description: "Security deposit collected", amount: _secDep, type: "deposit", balance: 0 });
+  if (_depOk) await safeLedgerInsert({ company_id: companyId, tenant: _name, tenant_id: tenantId, property: _property, date: _leaseStart, description: "Security deposit collected", amount: _secDep, type: "deposit", balance: 0 });
   if (!_depOk) showToast("Security deposit accounting entry failed.", "error");
   }
   // Rent charges — fire and forget (don't block the popup)
@@ -3192,12 +3193,22 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   setSelectedTenant(tenant);
   setActivePanel("detail");
   fetchTenantDocs(tenant);
-  // Use tenant_id for reliable lookups, fall back to name+property
-  let ledgerQuery = supabase.from("ledger_entries").select("*").eq("company_id", companyId);
-  if (tenant.id) ledgerQuery = ledgerQuery.eq("tenant_id", tenant.id);
-  else ledgerQuery = ledgerQuery.eq("tenant", tenant.name).eq("property", tenant.property || "");
-  const { data } = await ledgerQuery.order("date", { ascending: false }).limit(200);
-  setLedger(data || []);
+  // Query by BOTH tenant_id and tenant name to catch entries created before tenant_id existed
+  // (e.g., security deposit entries created during property save before tenant record)
+  let data = [];
+  if (tenant.id) {
+  const { data: byId } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId).eq("tenant_id", tenant.id).order("date", { ascending: false }).limit(200);
+  const { data: byName } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId).ilike("tenant", tenant.name).is("tenant_id", null).order("date", { ascending: false }).limit(200);
+  // Merge and deduplicate by id, sort by date desc
+  const merged = {};
+  (byId || []).forEach(e => { merged[e.id] = e; });
+  (byName || []).forEach(e => { if (!merged[e.id]) merged[e.id] = e; });
+  data = Object.values(merged).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  } else {
+  const { data: byName } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId).ilike("tenant", tenant.name).order("date", { ascending: false }).limit(200);
+  data = byName || [];
+  }
+  setLedger(data);
   }
 
   async function openMessages(tenant) {
@@ -5611,16 +5622,29 @@ const calcAllBalances = (accounts, journalEntries) => {
 const getPLData = (accounts, journalEntries, startDate, endDate, classId = null) => {
   const revTypes = ["Revenue","Other Income"];
   const expTypes = ["Expense","Cost of Goods Sold","Other Expense"];
-  const { index, classIndex } = buildBalanceIndex(journalEntries, je => je.date >= startDate && je.date <= endDate);
-  const getBalance = (aid, atype) => {
   if (classId) {
-  const entry = classIndex[aid + "_" + classId];
-  if (!entry) return 0;
-  const nb = getNormalBalance(atype);
-  return nb === "debit" ? entry.debit - entry.credit : entry.credit - entry.debit;
+  // Class-filtered P&L: rebuild index from scratch using only lines matching the class
+  // This correctly handles JEs where some lines have the class and others don't
+  const filteredIndex = {};
+  for (const je of journalEntries) {
+  if (je.status !== "posted" || je.date < startDate || je.date > endDate) continue;
+  for (const l of (je.lines || [])) {
+  if (l.class_id !== classId) continue; // Only include lines for this class
+  const aid = l.account_id;
+  if (!filteredIndex[aid]) filteredIndex[aid] = { debit: 0, credit: 0 };
+  filteredIndex[aid].debit += safeNum(l.debit);
+  filteredIndex[aid].credit += safeNum(l.credit);
   }
-  return balanceFromIndex(index, aid, atype);
-  };
+  }
+  const getBalance = (aid, atype) => balanceFromIndex(filteredIndex, aid, atype);
+  const revenue = accounts.filter(a => revTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: getBalance(a.id, a.type) })).filter(a => a.amount !== 0);
+  const expenses = accounts.filter(a => expTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: getBalance(a.id, a.type) })).filter(a => a.amount !== 0);
+  const totalRevenue = revenue.reduce((s, a) => s + a.amount, 0);
+  const totalExpenses = expenses.reduce((s, a) => s + a.amount, 0);
+  return { revenue, expenses, totalRevenue, totalExpenses, netIncome: totalRevenue - totalExpenses };
+  }
+  const { index } = buildBalanceIndex(journalEntries, je => je.date >= startDate && je.date <= endDate);
+  const getBalance = (aid, atype) => balanceFromIndex(index, aid, atype);
   const revenue = accounts.filter(a => revTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: getBalance(a.id, a.type) })).filter(a => a.amount !== 0);
   const expenses = accounts.filter(a => expTypes.includes(a.type) && a.is_active).map(a => ({ ...a, amount: getBalance(a.id, a.type) })).filter(a => a.amount !== 0);
   const totalRevenue = revenue.reduce((s, a) => s + a.amount, 0);
