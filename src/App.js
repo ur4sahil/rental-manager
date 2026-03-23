@@ -14646,7 +14646,6 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   company_id: companyId, user_email: normalizeEmail(currentUser?.email),
   user_id: authUser?.id || null,
   role: "admin", status: "active",
-  name: currentUser?.email?.split("@")[0] || "",
   }]);
   if (memErr) {
   // If membership insert fails, company exists but user can't access it — delete the orphan
