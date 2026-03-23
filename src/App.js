@@ -533,9 +533,10 @@ const _tenantArCache = {};
 async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   if (!companyId || !tenantName) return await resolveAccountId("1100", companyId);
   const cacheKey = `${companyId}::${tenantName}`;
-  if (_tenantArCache[cacheKey]) return _tenantArCache[cacheKey];
+  if (_tenantArCache[cacheKey]) { window.alert("DEBUG AR: returned from cache for " + tenantName + " → " + _tenantArCache[cacheKey]); return _tenantArCache[cacheKey]; }
   // Check if tenant AR sub-account already exists
-  const { data: existing } = await supabase.from("acct_accounts").select("id, code").eq("company_id", companyId).eq("type", "Asset").eq("name", "AR - " + tenantName).maybeSingle();
+  const { data: existing, error: lookupErr } = await supabase.from("acct_accounts").select("id, code").eq("company_id", companyId).eq("type", "Asset").eq("name", "AR - " + tenantName).maybeSingle();
+  window.alert("DEBUG AR lookup:\nTenant: " + tenantName + "\nFound: " + JSON.stringify(existing) + "\nError: " + (lookupErr?.message || "none"));
   if (existing?.id) {
   _tenantArCache[cacheKey] = existing.id;
   return existing.id;
@@ -555,11 +556,13 @@ async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   let newAcct = null;
   let createErr = null;
   ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([arPayload]).select("id").maybeSingle());
-  // If insert failed (maybe tenant_id or parent_id column doesn't exist), retry without those fields
+  // If insert failed, retry without optional columns
   if (createErr) {
+  window.alert("DEBUG AR insert attempt 1 FAILED: " + createErr.message + "\nRetrying without parent_id/tenant_id...");
   const minPayload = { company_id: companyId, code: newCode, name: "AR - " + tenantName, type: "Asset", sub_type: "Accounts Receivable", is_active: true };
   ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([minPayload]).select("id").maybeSingle());
   }
+  window.alert("DEBUG AR final result:\nCode: " + newCode + "\nID: " + (newAcct?.id || "NULL") + "\nError: " + (createErr?.message || "none") + "\nFallback parent: " + parentArId);
   if (createErr) {
   return parentArId; // Fall back to parent AR
   }
