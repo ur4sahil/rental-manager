@@ -5734,7 +5734,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   <thead className="text-xs text-slate-400 uppercase bg-indigo-50/30"><tr><th className="px-4 py-2 text-left">Number</th><th className="px-4 py-2 text-left">Name</th><th className="px-4 py-2 text-left">Subtype</th><th className="px-4 py-2 text-right">Balance</th><th className="px-4 py-2 w-20">Actions</th></tr></thead>
   <tbody>
   {accts.map(a => (
-  <tr key={a.id} className={`border-t border-indigo-50/50 hover:bg-blue-50/30 cursor-pointer ${a._isSubAccount ? "bg-slate-50/40" : ""}`} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name + " (" + (a.code || "") + ")")}>
+  <tr key={a.id} className={`border-t border-indigo-50/50 hover:bg-blue-50/30 cursor-pointer ${a._isSubAccount ? "bg-slate-50/40" : ""}`} onClick={() => onOpenLedger && onOpenLedger([a.id], (a.code ? a.code + " " : "") + a.name)}>
   <td className={`py-2 font-mono text-xs text-slate-400 ${a._isSubAccount ? "pl-8 pr-4" : "px-4"}`}>{a._isSubAccount ? "└ " : ""}{a.code || "—"}</td>
   <td className={`px-4 py-2 ${a._isSubAccount ? "text-sm text-slate-600" : "font-medium"} ${!a.is_active ? "text-slate-400 line-through" : a._isSubAccount ? "" : "text-slate-800"}`}>{a.name}</td>
   <td className="px-4 py-2 text-xs text-slate-400">{a.sub_type || a.subtype}</td>
@@ -5857,7 +5857,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   <tbody>
   {form.lines.map((line, i) => (
   <tr key={i} className="border-b border-indigo-50/50">
-  <td className="px-2 py-1.5"><select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || a.id} - {a.name}</option>)}</optgroup>)}</select></td>
+  <td className="px-2 py-1.5"><select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}</select></td>
   <td className="px-2 py-1.5"><select value={line.class_id || ""} onChange={e => setLine(i,"class_id",e.target.value||null)} className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></td>
   <td className="px-2 py-1.5"><Input value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="bg-white" /></td>
   <td className="px-2 py-1.5"><Input type="number" step="0.01" min="0" value={line.debit} onChange={e => { setLine(i,"debit",e.target.value); if(e.target.value) setLine(i,"credit",""); }} placeholder="0.00" className="text-right bg-white font-mono" /></td>
@@ -5947,7 +5947,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   const cls = classes.find(c => c.id === l.class_id);
   return (
   <tr key={i} className="border-t border-indigo-50/50">
-  <td className="px-4 py-2">{(() => { const acct = accounts.find(a => a.id === l.account_id); return <><span className="font-mono text-xs text-slate-400 mr-1">{acct?.code || ""}</span> {l.account_name || acct?.name || ""}</>; })()}</td>
+  <td className="px-4 py-2">{(() => { const acct = accounts.find(a => a.id === l.account_id); const code = acct?.code || ""; const name = l.account_name || acct?.name || "Unknown Account"; return <>{code && <span className="font-mono text-xs text-slate-400 mr-1">{code}</span>}{name}</>; })()}</td>
   <td className="px-4 py-2 text-xs">{cls ? <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background:cls.color}} />{cls.name}</span> : "—"}</td>
   <td className="px-4 py-2 text-xs text-slate-400">{l.memo || "—"}</td>
   <td className="px-4 py-2 text-right font-mono">{safeNum(l.debit) > 0 ? acctFmt(l.debit) : ""}</td>
@@ -6258,7 +6258,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, onOpenLed
   <div className="flex items-center gap-3 mb-4">
   <span className="text-sm text-slate-500">Account:</span>
   <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} className="bg-white min-w-56">
-  {ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || a.id} - {a.name}</option>)}</optgroup>)}
+  {ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}
   </select>
   </div>
   {glAccount && (
@@ -6721,6 +6721,24 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   setAcctClasses(classes);
   setLoading(false);
   return;
+  }
+  }
+  }
+
+  // Backfill: renumber old JEs with hash-style numbers (JE-MN2L16YX → JE-0001)
+  if (!window._jeRenumbered || window._jeRenumberedFor !== companyId) {
+  window._jeRenumbered = true;
+  window._jeRenumberedFor = companyId;
+  const oldFormatJEs = jeHeaders.filter(je => je.number && !/^JE-\d{4,}$/.test(je.number)).sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.created_at || "").localeCompare(b.created_at || ""));
+  if (oldFormatJEs.length > 0) {
+  // Find the highest existing sequential number
+  const seqNums = jeHeaders.map(je => { const m = (je.number || "").match(/^JE-(\d+)$/); return m ? parseInt(m[1]) : 0; });
+  let nextNum = Math.max(0, ...seqNums) + 1;
+  for (const je of oldFormatJEs) {
+  const newNumber = "JE-" + String(nextNum).padStart(4, "0");
+  await supabase.from("acct_journal_entries").update({ number: newNumber }).eq("id", je.id).eq("company_id", companyId);
+  je.number = newNumber;
+  nextNum++;
   }
   }
   }
