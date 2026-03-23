@@ -534,10 +534,8 @@ async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   if (!companyId || !tenantName) return await resolveAccountId("1100", companyId);
   const cacheKey = `${companyId}::${tenantName}`;
   if (_tenantArCache[cacheKey]) return _tenantArCache[cacheKey];
-  // Check if tenant AR sub-account already exists
-  let query = supabase.from("acct_accounts").select("id, code").eq("company_id", companyId).eq("type", "Asset").ilike("name", `AR - ${escapeFilterValue(tenantName)}`);
-  if (tenantId) query = query.eq("tenant_id", tenantId);
-  const { data: existing } = await query.maybeSingle();
+  // Check if tenant AR sub-account already exists (match by name only — tenant_id may not be set)
+  const { data: existing } = await supabase.from("acct_accounts").select("id, code").eq("company_id", companyId).eq("type", "Asset").ilike("name", `AR - ${escapeFilterValue(tenantName)}`).maybeSingle();
   if (existing?.id) {
   _tenantArCache[cacheKey] = existing.id;
   return existing.id;
@@ -548,18 +546,23 @@ async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   const { data: subAccts } = await supabase.from("acct_accounts").select("code").eq("company_id", companyId).like("code", "1100-%").order("code", { ascending: false }).limit(1);
   const lastSeq = subAccts?.[0]?.code ? parseInt(subAccts[0].code.split("-")[1]) || 0 : 0;
   const newCode = "1100-" + String(lastSeq + 1).padStart(3, "0");
-  // Create the sub-account
+  // Create the sub-account — try with all fields first, retry without optional columns if it fails
   const arPayload = {
   company_id: companyId, code: newCode, name: "AR - " + tenantName,
   type: "Asset", sub_type: "Accounts Receivable", is_active: true,
+  parent_id: parentArId || null, tenant_id: tenantId || null,
   };
-  // Only include parent_id/tenant_id if they look like valid UUIDs (some schemas use integer PKs)
-  const _isUUID = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-  if (parentArId && _isUUID(String(parentArId))) arPayload.parent_id = parentArId;
-  if (tenantId && _isUUID(String(tenantId))) arPayload.tenant_id = tenantId;
-  const { data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([arPayload]).select("id").maybeSingle();
+  let newAcct = null;
+  let createErr = null;
+  ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([arPayload]).select("id").maybeSingle());
+  // If insert failed (maybe tenant_id or parent_id column doesn't exist), retry without those fields
   if (createErr) {
-  console.warn("Failed to create tenant AR sub-account:", createErr.message, arPayload);
+  console.warn("AR sub-account insert failed, retrying without optional fields:", createErr.message);
+  const minPayload = { company_id: companyId, code: newCode, name: "AR - " + tenantName, type: "Asset", sub_type: "Accounts Receivable", is_active: true };
+  ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([minPayload]).select("id").maybeSingle());
+  }
+  if (createErr) {
+  console.warn("Failed to create tenant AR sub-account:", createErr.message);
   return parentArId; // Fall back to parent AR
   }
   _tenantArCache[cacheKey] = newAcct?.id || parentArId;
@@ -1612,7 +1615,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   async function openPropertyDetail(p) {
   setSelectedProperty(p);
   setPropertyDetailTab("overview");
-  const { data: docs } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("created_at", { ascending: false }).limit(100);
+  const { data: docs } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100);
   setPropertyDocs(docs || []);
   const { data: wos } = await supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("created_at", { ascending: false }).limit(100);
   setPropertyWorkOrders(wos || []);
@@ -1711,9 +1714,10 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const dep = Number(form.security_deposit) || 0;
   if (dep > 0) {
   const classId = await getPropertyClassId(compositeAddress, companyId);
+  const tenantArId = await getOrCreateTenantAR(companyId, form.tenant.trim(), tenantId);
   const _depOk = await autoPostJournalEntry({ companyId, date: form.lease_start, description: "Security deposit received — " + form.tenant.trim() + " — " + compositeAddress, reference: "DEP-" + shortId(), property: compositeAddress,
   lines: [
-  { account_id: "1000", account_name: "Checking Account", debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.tenant.trim() },
+  { account_id: tenantArId, account_name: "AR - " + form.tenant.trim(), debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.tenant.trim() },
   { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.tenant.trim() + " — " + compositeAddress },
   ]
   });
@@ -2642,7 +2646,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
 
   </>)}
-  {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedProperty) { supabase.from("documents").select("*").eq("company_id", companyId).eq("property", selectedProperty.address).is("archived_at", null).order("created_at", { ascending: false }).limit(100).then(({ data }) => { setPropertyDocs(data || []); setPropertyDetailTab("documents"); }); } }} />}
+  {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedProperty) { supabase.from("documents").select("*").eq("company_id", companyId).eq("property", selectedProperty.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100).then(({ data }) => { setPropertyDocs(data || []); setPropertyDetailTab("documents"); }); } }} />}
   {pendingRecurringEntry && <RecurringEntryModal entry={pendingRecurringEntry} companyId={companyId} showToast={showToast} onComplete={() => setPendingRecurringEntry(null)} />}
   </div>
   );
@@ -2766,9 +2770,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const dep = Number(form.security_deposit) || 0;
   if (dep > 0 && newTenant?.id) {
   const classId = await getPropertyClassId(form.property, companyId);
+  const tenantArId = await getOrCreateTenantAR(companyId, form.name.trim(), newTenant.id);
   const _depOk = await autoPostJournalEntry({ companyId, date: form.lease_start, description: "Security deposit received — " + form.name.trim() + " — " + form.property, reference: "DEP-" + shortId(), property: form.property,
   lines: [
-  { account_id: "1000", account_name: "Checking Account", debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.name.trim() },
+  { account_id: tenantArId, account_name: "AR - " + form.name.trim(), debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + form.name.trim() },
   { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: form.name.trim() + " — " + form.property },
   ]
   });
@@ -2967,7 +2972,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
 
   async function fetchTenantDocs(tenant) {
-  const { data } = await supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", tenant.name).is("archived_at", null).order("created_at", { ascending: false }).limit(50);
+  const { data } = await supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", tenant.name).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(50);
   setTenantDocs(data || []);
   }
 
