@@ -516,7 +516,6 @@ async function resolveAccountId(bareCode, companyId) {
   // Auto-create missing account with UUID PK + bare code
   const acctName = _acctCodeToName[bareCode] || "Account " + bareCode;
   const acctType = bareCode[0] === "1" ? "Asset" : bareCode[0] === "2" ? "Liability" : bareCode[0] === "3" ? "Equity" : bareCode[0] === "4" ? "Revenue" : "Expense";
-  const subType = bareCode[0] === "1" ? "Bank" : bareCode[0] === "2" ? "Other Current Liability" : bareCode[0] === "4" ? "Operating Revenue" : "Operating Expense";
   const { data: created, error: createErr } = await supabase.from("acct_accounts").insert([{
   company_id: cid, code: bareCode, name: acctName, type: acctType, is_active: true, old_text_id: cid + "-" + bareCode
   }]).select("id").maybeSingle();
@@ -1694,6 +1693,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       const today = new Date();
       const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
       const nextPostDate = formatLocalDate(nextMonth);
+      const mortgageAcctId = await resolveAccountId("5600", companyId);
+      const checkingAcctId = await resolveAccountId("1000", companyId);
       const { error: recErr } = await supabase.from("recurring_journal_entries").insert([{
         company_id: companyId,
         description: "Mortgage payment — " + loan.lender_name + " — " + wizardData.address.split(",")[0],
@@ -1701,13 +1702,15 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         day_of_month: 1,
         amount: Number(loan.monthly_payment),
         property: wizardData.address,
-        debit_account_name: "Mortgage Expense",
-        credit_account_name: "Checking",
+        debit_account_id: mortgageAcctId,
+        debit_account_name: "Mortgage/Loan Payment",
+        credit_account_id: checkingAcctId,
+        credit_account_name: "Checking Account",
         status: "active",
         next_post_date: nextPostDate,
         created_by: userProfile?.email || ""
       }]);
-      if (recErr) console.warn("Recurring loan entry failed:", recErr.message);
+      if (recErr) throw new Error("Recurring mortgage entry failed: " + recErr.message);
     }
     return true;
   }
@@ -2643,8 +2646,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const result = await autoPostRentCharges(companyId);
   if (result?.posted > 0) showToast("Posted " + result.posted + " rent charge(s) to accounting", "success");
   } catch (e) { console.warn("Auto rent post after property save:", e.message); }
-  // Queue recurring entry popup (will show after form closes)
-  setPendingRecurringEntry({ tenantName: form.tenant.trim(), tenantId: tenantId || null, property: compositeAddress, rent: Number(form.rent), leaseStart: form.lease_start, leaseEnd: form.lease_end });
+  // Recurring rent is now handled by PropertySetupWizard (Step 5)
   }
   }
   // #12: Sync security deposit to active lease when editing property
@@ -3758,7 +3760,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   </div>
   )}
-  {showPropertyWizard && <PropertySetupWizard wizardData={showPropertyWizard} companyId={companyId} showToast={showToast} userProfile={userProfile} userRole={userRole} onComplete={() => { setShowPropertyWizard(null); fetchProperties(); showToast("Property setup complete!", "success"); }} onDismiss={() => { setShowPropertyWizard(null); fetchProperties(); }} />}
+  {showPropertyWizard && <PropertySetupWizard wizardData={showPropertyWizard} companyId={companyId} showToast={showToast} userProfile={userProfile} userRole={userRole} onComplete={() => { setShowPropertyWizard(null); setPendingRecurringEntry(null); fetchProperties(); showToast("Property setup complete!", "success"); }} onDismiss={() => { setShowPropertyWizard(null); setPendingRecurringEntry(null); fetchProperties(); }} />}
   {pendingRecurringEntry && <RecurringEntryModal entry={pendingRecurringEntry} companyId={companyId} showToast={showToast} onComplete={() => setPendingRecurringEntry(null)} />}
   </div>
   );
@@ -11434,7 +11436,8 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   if (!guardSubmit("deleteLoan")) return;
   try {
   if (!await showConfirm({ message: "Delete this loan?", variant: "danger", confirmText: "Delete" })) return;
-  await supabase.from("property_loans").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", id).eq("company_id", companyId);
+  const { error: delErr } = await supabase.from("property_loans").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", id).eq("company_id", companyId);
+  if (delErr) { showToast("Error deleting loan: " + delErr.message, "error"); return; }
   logAudit("delete", "loans", "Archived loan", id, userProfile?.email, userRole, companyId);
   fetchLoans();
   } finally { guardRelease("deleteLoan"); }
@@ -11459,10 +11462,11 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Loan: ${loan.lender_name}` },
   ]
   });
-  if (!_jeOk) { showToast("Accounting entry failed. Please check the accounting module.", "error"); }
-  // Update current balance
+  if (!_jeOk) { showToast("Accounting entry failed. Balance NOT updated.", "error"); return; }
+  // Update current balance only if JE succeeded
   const newBalance = Math.max(0, safeNum(loan.current_balance) - amt);
-  await supabase.from("property_loans").update({ current_balance: newBalance }).eq("id", loan.id).eq("company_id", companyId);
+  const { error: balErr } = await supabase.from("property_loans").update({ current_balance: newBalance }).eq("id", loan.id).eq("company_id", companyId);
+  if (balErr) { showToast("Balance update failed: " + balErr.message, "error"); return; }
   addNotification("💰", `Loan payment recorded: ${loan.lender_name} ${formatCurrency(amt)}`);
   logAudit("update", "loans", `Loan payment recorded: ${loan.lender_name} ${formatCurrency(amt)} at ${loan.property}`, loan.id, userProfile?.email, userRole, companyId);
   fetchLoans();
