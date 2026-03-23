@@ -3377,7 +3377,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* Tab navigation */}
   <div className="flex border-b border-indigo-50 px-6 overflow-x-auto">
   {[["ledger","Ledger"],["documents","Documents"],["messages","Messages"],["actions","Actions"]].map(([id, label]) => (
-  <button key={id} onClick={() => setActivePanel(id)} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + ((activePanel === id || (id === "ledger" && activePanel === "detail")) ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}</button>
+  <button key={id} onClick={() => { setActivePanel(id); if (id === "documents" && selectedTenant) fetchTenantDocs(selectedTenant); if (id === "ledger" && selectedTenant) openLedger(selectedTenant); if (id === "messages" && selectedTenant) openMessages(selectedTenant); }} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + ((activePanel === id || (id === "ledger" && activePanel === "detail")) ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}</button>
   ))}
   </div>
 
@@ -3871,7 +3871,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </>;
   })()}
   </>)}
-  {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedTenant) { supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", selectedTenant.name).is("archived_at", null).order("created_at", { ascending: false }).limit(50).then(({ data }) => setTenantDocs(data || [])); } }} />}
+  {showDocUpload && <DocUploadModal onClose={() => setShowDocUpload(null)} companyId={companyId} property={showDocUpload.property} tenant={showDocUpload.tenant} showToast={showToast} onUploaded={() => { if (selectedTenant) fetchTenantDocs(selectedTenant); }} />}
   {pendingRecurringEntry && <RecurringEntryModal entry={pendingRecurringEntry} companyId={companyId} showToast={showToast} onComplete={() => setPendingRecurringEntry(null)} />}
   </div>
   );
