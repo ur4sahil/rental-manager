@@ -1849,25 +1849,34 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     if (!propForm.state) throw new Error("State is required");
     if (!propForm.zip.trim() || !/^\d{5}$/.test(propForm.zip.trim())) throw new Error("ZIP must be 5 digits");
     const compositeAddress = [propForm.address_line_1, propForm.address_line_2, propForm.city, propForm.state + " " + propForm.zip].filter(Boolean).join(", ");
-    // Check duplicate
-    if (!savedPropertyId) {
-      const { data: dup } = await supabase.from("properties").select("id").eq("company_id", companyId).eq("address", compositeAddress).is("archived_at", null).maybeSingle();
-      if (dup) throw new Error("A property with this address already exists");
+    // Always check duplicate (even on edit if address changed)
+    const { data: dup } = await supabase.from("properties").select("id").eq("company_id", companyId).eq("address", compositeAddress).is("archived_at", null).maybeSingle();
+    if (dup && String(dup.id) !== String(savedPropertyId)) throw new Error("A property with this address already exists");
+    // Non-admin: submit change request instead of direct save
+    if (userRole !== "admin") {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error: reqErr } = await supabase.from("property_change_requests").insert([{
+        company_id: companyId, request_type: savedPropertyId ? "edit" : "add",
+        property_id: savedPropertyId || null, requested_by: user?.email || "unknown",
+        address: compositeAddress, type: propForm.type, property_status: propForm.status, notes: propForm.notes,
+      }]);
+      if (reqErr) throw new Error("Failed to submit request: " + reqErr.message);
+      showToast("Change request submitted for admin approval", "success");
+      return true;
     }
-    // Insert or update
+    // Admin: direct save
     if (savedPropertyId) {
-      await supabase.from("properties").update({ address: compositeAddress, address_line_1: propForm.address_line_1, address_line_2: propForm.address_line_2, city: propForm.city, state: propForm.state, zip: propForm.zip, type: propForm.type, status: propForm.status, notes: propForm.notes }).eq("id", savedPropertyId).eq("company_id", companyId);
+      const { error: upErr } = await supabase.from("properties").update({ address: compositeAddress, address_line_1: propForm.address_line_1, address_line_2: propForm.address_line_2, city: propForm.city, state: propForm.state, zip: propForm.zip, type: propForm.type, status: propForm.status, notes: propForm.notes }).eq("id", savedPropertyId).eq("company_id", companyId);
+      if (upErr) throw new Error("Failed to update property: " + upErr.message);
     } else {
       const { data: newProp, error: propErr } = await supabase.from("properties").insert([{ address: compositeAddress, address_line_1: propForm.address_line_1, address_line_2: propForm.address_line_2, city: propForm.city, state: propForm.state, zip: propForm.zip, type: propForm.type, status: propForm.status, notes: propForm.notes, company_id: companyId }]).select("id").maybeSingle();
       if (propErr) throw new Error("Failed to save property: " + propErr.message);
       setSavedPropertyId(newProp?.id || null);
       // Create accounting class
-      const classId = crypto.randomUUID();
-      await supabase.from("acct_classes").upsert([{ id: classId, name: compositeAddress, description: propForm.type + " · " + formatCurrency(0) + "/mo", color: pickColor(compositeAddress), is_active: true, company_id: companyId }], { onConflict: "company_id,name" });
-      if (newProp?.id) await supabase.from("properties").update({ class_id: classId }).eq("id", newProp.id).eq("company_id", companyId);
+      const { data: newClass } = await supabase.from("acct_classes").upsert([{ name: compositeAddress, description: propForm.type + " · " + formatCurrency(0) + "/mo", color: pickColor(compositeAddress), is_active: true, company_id: companyId }], { onConflict: "company_id,name" }).select("id").maybeSingle();
+      if (newClass?.id && newProp?.id) await supabase.from("properties").update({ class_id: newClass.id }).eq("id", newProp.id).eq("company_id", companyId);
     }
     setSavedAddress(compositeAddress);
-    // Update wizard persistence address
     if (wizardId) {
       await supabase.from("property_setup_wizard").update({ property_address: compositeAddress, property_id: String(savedPropertyId || "") }).eq("id", wizardId).catch(() => {});
     }
@@ -1881,14 +1890,17 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     if (!tenantForm.tenant_phone.trim()) throw new Error("Phone required");
     if (!tenantForm.rent || Number(tenantForm.rent) <= 0) throw new Error("Rent required");
     if (!tenantForm.lease_start || !tenantForm.lease_end) throw new Error("Lease dates required");
+    if (!savedPropertyId) throw new Error("Property must be saved first (complete Step 1)");
     const addr = savedAddress;
     // Update property with tenant info
-    await supabase.from("properties").update({ status: "occupied", tenant: tenantForm.tenant.trim(), rent: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, tenant_email: tenantForm.tenant_email, tenant_phone: tenantForm.tenant_phone, lease_start: tenantForm.lease_start, lease_end: tenantForm.lease_end }).eq("id", savedPropertyId).eq("company_id", companyId);
-    // Create/find tenant
+    const { error: propUpErr } = await supabase.from("properties").update({ status: "occupied", tenant: tenantForm.tenant.trim(), rent: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, lease_start: tenantForm.lease_start, lease_end: tenantForm.lease_end }).eq("id", savedPropertyId).eq("company_id", companyId);
+    if (propUpErr) throw new Error("Failed to update property: " + propUpErr.message);
+    // Create/find tenant (ilike prevents case duplicates)
     const { data: existingTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", tenantForm.tenant.trim()).eq("property", addr).is("archived_at", null).maybeSingle();
     let tenantId = existingTenant?.id;
     if (!existingTenant) {
-      const { data: newT } = await supabase.from("tenants").insert([{ company_id: companyId, name: tenantForm.tenant.trim(), email: tenantForm.tenant_email.toLowerCase(), phone: tenantForm.tenant_phone, property: addr, rent: Number(tenantForm.rent), lease_status: "active", lease_start: tenantForm.lease_start, lease_end_date: tenantForm.lease_end, move_in: tenantForm.lease_start, balance: 0 }]).select("id").maybeSingle();
+      const { data: newT, error: tErr } = await supabase.from("tenants").insert([{ company_id: companyId, name: tenantForm.tenant.trim(), email: tenantForm.tenant_email.toLowerCase(), phone: tenantForm.tenant_phone, property: addr, rent: Number(tenantForm.rent), lease_status: "active", lease_start: tenantForm.lease_start, lease_end_date: tenantForm.lease_end, move_in: tenantForm.lease_start, balance: 0 }]).select("id").maybeSingle();
+      if (tErr) throw new Error("Failed to create tenant: " + tErr.message);
       tenantId = newT?.id;
     }
     // Create AR sub-account
@@ -1897,20 +1909,23 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     if (tenantForm.lease_start && tenantForm.lease_end) {
       const { data: existLease } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("property", addr).eq("status", "active").maybeSingle();
       if (!existLease) {
-        await supabase.from("leases").insert([{ company_id: companyId, tenant_name: tenantForm.tenant.trim(), tenant_id: tenantId, property: addr, start_date: tenantForm.lease_start, end_date: tenantForm.lease_end, rent_amount: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, status: "active", payment_due_day: 1 }]);
+        const { error: leaseErr } = await supabase.from("leases").insert([{ company_id: companyId, tenant_name: tenantForm.tenant.trim(), tenant_id: tenantId, property: addr, start_date: tenantForm.lease_start, end_date: tenantForm.lease_end, rent_amount: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, status: "active", payment_due_day: 1 }]);
+        if (leaseErr) throw new Error("Failed to create lease: " + leaseErr.message);
       }
     }
     // Post security deposit JE
     const dep = Number(tenantForm.security_deposit) || 0;
     if (dep > 0 && tenantId) {
       const classId = await getPropertyClassId(addr, companyId);
+      if (!classId) showToast("Warning: property class not found for accounting", "warning");
       const tenantArId = await getOrCreateTenantAR(companyId, tenantForm.tenant.trim(), tenantId);
-      await autoPostJournalEntry({ companyId, date: tenantForm.lease_start, description: "Security deposit received — " + tenantForm.tenant.trim() + " — " + addr, reference: "DEP-" + shortId(), property: addr,
+      const depOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start, description: "Security deposit received — " + tenantForm.tenant.trim() + " — " + addr, reference: "DEP-" + shortId(), property: addr,
         lines: [
           { account_id: tenantArId, account_name: "AR - " + tenantForm.tenant.trim(), debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + tenantForm.tenant.trim() },
           { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: tenantForm.tenant.trim() + " — " + addr },
         ]
       });
+      if (!depOk) showToast("Security deposit accounting entry failed", "error");
       await safeLedgerInsert({ company_id: companyId, tenant: tenantForm.tenant.trim(), tenant_id: tenantId, property: addr, date: tenantForm.lease_start, description: "Security deposit collected", amount: dep, type: "deposit", balance: 0 });
     }
     // Pre-fill recurring rent amount
@@ -3890,34 +3905,6 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center"><div className="text-lg font-bold text-amber-600">{properties.filter(p => p.status === "vacant").length}</div><div className="text-xs text-slate-400">Vacant</div></div>
   <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center"><div className="text-lg font-bold text-indigo-600">${properties.reduce((s, p) => s + safeNum(p.rent), 0).toLocaleString()}</div><div className="text-xs text-slate-400">Total Rent</div></div>
   </div>
-
-  {showDocChecklist && !pendingRecurringEntry && (
-  <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-  <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6">
-  <div className="text-center mb-4">
-  <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
-  <span className="material-icons-outlined text-emerald-600 text-2xl">check_circle</span>
-  </div>
-  <h3 className="text-lg font-manrope font-bold text-slate-800">Property Saved Successfully</h3>
-  <p className="text-sm text-slate-400 mt-1">Tenant <strong>{showDocChecklist.name}</strong> has been created at <strong>{showDocChecklist.property?.split(",")[0]}</strong></p>
-  </div>
-  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
-  <div className="text-sm font-semibold text-amber-800 mb-2">Required Documents</div>
-  <div className="space-y-1.5">
-  {["Signed Lease Agreement", "Government-Issued ID", "Renters Insurance Certificate", "Proof of Utility Transfer"].map(doc => (
-  <div key={doc} className="flex items-center gap-2 text-xs text-slate-600">
-  <span className="text-amber-400">☐</span>{doc}
-  </div>
-  ))}
-  </div>
-  </div>
-  <div className="flex gap-3">
-  <button onClick={() => { setShowDocUpload({ property: showDocChecklist.property, tenant: showDocChecklist.name }); setShowDocChecklist(null); }} className="flex-1 bg-indigo-600 text-white text-sm py-2.5 rounded-xl font-semibold hover:bg-indigo-700">Upload Documents</button>
-  <button onClick={() => { setShowDocChecklist(null); showToast("You can upload documents later from the Documents section", "info"); }} className="flex-1 bg-slate-100 text-slate-600 text-sm py-2.5 rounded-xl font-semibold hover:bg-slate-200">Save Without Documents</button>
-  </div>
-  </div>
-  </div>
-  )}
 
   {viewMode === "card" && (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
