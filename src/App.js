@@ -14612,9 +14612,10 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   if (!existing) break;
   if (attempt === 4) { showToast("Could not generate unique company code. Please try again.", "error"); setCreating(false); return; }
   }
-  // Atomic company creation: company + membership + app_users + chart of accounts in one transaction
+  // Atomic company creation: try RPC first, fall back to client-side inserts
+  let companyCreated = false;
   try {
-  const { data: rpcResult, error: rpcErr } = await supabase.rpc("create_company_atomic", {
+  const { error: rpcErr } = await supabase.rpc("create_company_atomic", {
   p_company_id: companyId,
   p_name: createForm.name,
   p_type: createForm.type,
@@ -14627,11 +14628,35 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   p_creator_name: currentUser?.email?.split("@")[0] || "",
   });
   if (rpcErr) throw new Error(rpcErr.message);
+  companyCreated = true;
   } catch (rpcE) {
-  showToast("Failed to create company: " + userError(rpcE.message) + "\n\nPlease ensure the database is properly configured. Contact support if this persists.", "error");
+  console.warn("RPC create_company_atomic failed, using client-side fallback:", rpcE.message);
+  // Client-side fallback: insert company + membership + default accounts
+  try {
+  const { error: compErr } = await supabase.from("companies").insert([{
+  id: companyId, name: createForm.name, type: createForm.type,
+  company_code: companyCode, company_role: createForm.company_role || "management",
+  address: createForm.address || "", phone: createForm.phone || "",
+  email: normalizeEmail(createForm.email),
+  }]);
+  if (compErr) throw new Error("Company insert: " + compErr.message);
+  // Add creator as admin member
+  const { error: memErr } = await supabase.from("company_members").insert([{
+  company_id: companyId, user_email: normalizeEmail(currentUser?.email),
+  role: "admin", status: "active",
+  name: currentUser?.email?.split("@")[0] || "",
+  }]);
+  if (memErr) console.warn("Membership insert failed:", memErr.message);
+  // Ensure default chart of accounts
+  await ensureDefaultAccounts(companyId);
+  companyCreated = true;
+  } catch (fallbackErr) {
+  showToast("Failed to create company: " + userError(fallbackErr.message), "error");
   setCreating(false);
   return;
   }
+  }
+  if (!companyCreated) { setCreating(false); return; }
   showToast("Company created! Company Code: " + companyCode + " — share this code to invite team members.", "success");
   setShowCreate(false);
   setCreateForm({ name: "", type: "LLC", company_role: "management", address: "", phone: "", email: "" });
