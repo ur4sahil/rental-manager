@@ -1538,7 +1538,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
 
   // Step-specific form states
   const [utilities, setUtilities] = useState([
-    { provider: "", type: "Electric", account_number: "", amount: "", due_date: 1, responsibility: wizardData.isOccupied ? "tenant_pays" : "owner_pays" }
+    { provider: "", type: "Electric", account_number: "", due_date: 1, responsibility: wizardData.isOccupied ? "tenant_pays" : "owner_pays" }
   ]);
   const [hoa, setHoa] = useState({ enabled: false, hoa_name: "", amount: "", due_date: 1, frequency: "Monthly", notes: "" });
   const [loan, setLoan] = useState({ enabled: false, lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: { taxes: false, insurance: false, pmi: false }, loan_start_date: "", maturity_date: "", account_number: "", notes: "", setup_recurring: false });
@@ -1647,7 +1647,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   // ---- Save logic for each step ----
 
   async function saveUtilities() {
-    const validRows = utilities.filter(u => u.provider.trim() && u.amount);
+    const validRows = utilities.filter(u => u.provider.trim());
     if (validRows.length === 0) return true; // nothing to save
     const rows = validRows.map(u => ({
       company_id: companyId,
@@ -1655,7 +1655,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       provider: u.provider.trim(),
       type: u.type,
       account_number: u.account_number.trim(),
-      amount: Number(u.amount) || 0,
+      amount: 0,
       due_date: String(u.due_date),
       responsibility: u.responsibility,
       status: "active"
@@ -1890,7 +1890,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
 
   // ---- Utility row helpers ----
   function addUtilityRow() {
-    setUtilities(prev => [...prev, { provider: "", type: "Electric", account_number: "", amount: "", due_date: 1, responsibility: wizardData.isOccupied ? "tenant_pays" : "owner_pays" }]);
+    setUtilities(prev => [...prev, { provider: "", type: "Electric", account_number: "", due_date: 1, responsibility: wizardData.isOccupied ? "tenant_pays" : "owner_pays" }]);
   }
   function removeUtilityRow(idx) {
     setUtilities(prev => prev.filter((_, i) => i !== idx));
@@ -1937,10 +1937,6 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                     <div>
                       <label className="text-xs font-medium text-slate-500 block mb-1">Account #</label>
                       <input type="text" value={u.account_number} onChange={e => updateUtility(idx, "account_number", e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Amount ($)</label>
-                      <input type="number" value={u.amount} onChange={e => updateUtility(idx, "amount", e.target.value)} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
                       <label className="text-xs font-medium text-slate-500 block mb-1">Due Date (day)</label>
