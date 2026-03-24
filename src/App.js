@@ -769,6 +769,14 @@ async function autoPostRecurringEntries(companyId) {
   const monthStr = formatLocalDate(cursor).slice(0, 7);
   const postDate = cursor <= today ? formatLocalDate(new Date(Math.min(cursor.getTime(), today.getTime()))) : todayStr;
   const ref = "RECUR-" + (entry.id || shortId()).toString().slice(0, 8) + "-" + monthStr;
+  // Skip if autoPostRentCharges already posted for this property+month (prevent doubles)
+  if (entry.property && (entry.debit_account_name || "").toLowerCase().includes("ar")) {
+  const { data: existingRent } = await supabase.from("acct_journal_entries").select("id").eq("company_id", cid).like("reference", "RENT-AUTO-%-" + monthStr).eq("property", entry.property).neq("status", "voided").limit(1);
+  if (existingRent && existingRent.length > 0) { cursor.setMonth(cursor.getMonth() + freqMonths); continue; }
+  }
+  // Also skip if this RECUR ref was already posted
+  const { data: existingRecur } = await supabase.from("acct_journal_entries").select("id").eq("company_id", cid).eq("reference", ref).neq("status", "voided").limit(1);
+  if (existingRecur && existingRecur.length > 0) { cursor.setMonth(cursor.getMonth() + freqMonths); continue; }
   const jeId = await autoPostJournalEntry({
   companyId: cid, date: postDate,
   description: entry.description || "Recurring entry",
