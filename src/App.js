@@ -12718,7 +12718,7 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
 
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
-  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","insurance","accounting","owners","notifications","audittrail","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
+  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","insurance","accounting","owners","notifications","admin","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
   office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","accounting","notifications","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
@@ -12744,7 +12744,6 @@ const ALL_NAV = [
   { id: "vendors", label: "Vendors", icon: "engineering" },
   { id: "owners", label: "Owners", icon: "person" },
   { id: "notifications", label: "Notifications", icon: "notifications_active" },
-  { id: "audittrail", label: "Audit Trail", icon: "history" },
 ];
 // Flat list of all nav IDs including children (for settings UI and allowedPages)
 const ALL_NAV_FLAT = ALL_NAV.flatMap(n => n.children ? [n, ...n.children] : [n]);
@@ -16371,12 +16370,11 @@ const pageComponents = {
   hoa: HOAPayments,
   loans: Loans,
   insurance: InsuranceTracker,
-  audittrail: AuditTrail,
+  admin: AdminPage,
   leases: LeaseManagement,
   vendors: VendorManagement,
   owners: OwnerManagement,
   notifications: EmailNotifications,
-  roles: RoleManagement,
   moveout: MoveOutWizard,
   evictions: EvictionWorkflow,
   doc_builder: DocumentBuilder,
@@ -16384,7 +16382,26 @@ const pageComponents = {
   owner_portal: OwnerPortal,
 };
 
-// ============ AUDIT TRAIL (Admin Panel) ============
+// ============ ADMIN PAGE (Audit Trail + Team & Roles) ============
+function AdminPage({ companyId, activeCompany, addNotification, userProfile, userRole, showToast, showConfirm, currentUser }) {
+  const [adminTab, setAdminTab] = useState("audittrail");
+  const isAdmin = userRole === "admin";
+  return (
+  <div>
+  <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-1">Admin</h2>
+  <p className="text-sm text-slate-400 mb-4">Manage team access and view activity logs</p>
+  <div className="flex gap-1 mb-4 border-b border-indigo-50">
+  {[["audittrail", "Audit Trail"], ...(isAdmin ? [["roles", "Team & Roles"]] : [])].map(([id, label]) => (
+  <button key={id} onClick={() => setAdminTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (adminTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}</button>
+  ))}
+  </div>
+  {adminTab === "audittrail" && <AuditTrail companyId={companyId} />}
+  {adminTab === "roles" && isAdmin && <RoleManagement companyId={companyId} activeCompany={activeCompany} addNotification={addNotification} userProfile={userProfile} userRole={userRole} showToast={showToast} showConfirm={showConfirm} currentUser={currentUser} />}
+  </div>
+  );
+}
+
+// ============ AUDIT TRAIL ============
 function AuditTrail({ companyId }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -17614,9 +17631,7 @@ function AppInner() {
   // Build nav based on confirmed role (roleLoaded is true at this point)
   const allowedPages = customAllowedPages || ROLES[userRole]?.pages || ROLES[companyRole]?.pages || ["dashboard"];
   const navItems = ALL_NAV.filter(n => allowedPages.includes(n.id) || (n.children && n.children.some(c => allowedPages.includes(c.id)))).map(n => n.children ? { ...n, children: n.children.filter(c => allowedPages.includes(c.id)) } : n);
-  const adminNav = (userRole === "admin" || companyRole === "admin")
-  ? [...navItems, { id: "roles", label: "Team & Roles", icon: "group" }]
-  : navItems;
+  const adminNav = navItems;
 
   // Owner-admins (created their own company) get full app access
   // Only force owner_portal for owners invited into a PM's company
@@ -17673,20 +17688,6 @@ function AppInner() {
   );
   })}
   </nav>
-  <div className="px-4 py-3 border-t border-indigo-50">
-  <div className="flex items-center justify-between">
-  <div className="flex items-center gap-2">
-  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${ROLES[userRole]?.color || "bg-indigo-600"}`}>
-  {userProfile?.name?.[0]?.toUpperCase() || "U"}
-  </div>
-  <div>
-  <div className="text-xs font-semibold text-slate-700 truncate max-w-24">{userProfile?.name || "User"}</div>
-  <div className={`text-xs font-medium ${ROLES[userRole]?.color?.replace("bg-", "text-") || "text-indigo-600"}`}>{ROLES[userRole]?.label}</div>
-  </div>
-  </div>
-  <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 transition-colors" title="Logout"><span className="material-icons-outlined text-lg">logout</span></button>
-  </div>
-  </div>
   </div>
 
   {/* Main Content */}
@@ -17697,9 +17698,11 @@ function AppInner() {
   <button onClick={switchCompany} className="hidden md:flex items-center gap-1.5 text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-2xl hover:bg-indigo-100 transition-colors font-semibold border border-indigo-100">
   <span className="material-icons-outlined text-sm">swap_horiz</span> Switch Company
   </button>
-  <span className={`hidden md:inline-block text-white text-xs px-2.5 py-1 rounded-full font-semibold uppercase tracking-wide ${ROLES[userRole]?.color || "bg-indigo-600"}`}>
-  {ROLES[userRole]?.label}
-  </span>
+  <button onClick={() => setPage("admin")} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-2xl hover:bg-indigo-50 transition-colors ${page === "admin" ? "bg-indigo-50" : ""}`} title="Admin Settings">
+  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${ROLES[userRole]?.color || "bg-indigo-600"}`}>{userProfile?.name?.[0]?.toUpperCase() || "U"}</div>
+  <span className={`hidden md:inline text-xs font-semibold uppercase tracking-wide ${ROLES[userRole]?.color?.replace("bg-", "text-") || "text-indigo-600"}`}>{ROLES[userRole]?.label}</span>
+  </button>
+  <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 transition-colors" title="Sign Out"><span className="material-icons-outlined text-lg">logout</span></button>
   <div className="relative">
   <button onClick={() => { 
   setShowNotifications(!showNotifications); 
