@@ -17289,7 +17289,10 @@ function PendingPMAssignments({ companyId, addNotification }) {
 
 function AppInner() {
   const [screen, setScreenRaw] = useState("loading");
-  const [page, setPageRaw] = useState("dashboard");
+  const [page, setPageRaw] = useState(() => {
+    const hash = window.location.hash.replace("#", "");
+    return hash || "dashboard";
+  });
 
   const [pageAction, setPageAction] = useState(null);
   function setPage(p, action) { setPageAction(action || null); setPageRaw(p); window.history.pushState({ page: p, screen: "app" }, "", "#" + p); }
@@ -17444,7 +17447,21 @@ function AppInner() {
   const { data: company } = await supabase.from("companies").select("*").eq("id", tenantMembership.company_id).maybeSingle();
   if (company) { handleSelectCompany(company, tenantMembership.role); return; }
   }
-  // Everyone else (PM, owner, staff) always sees the company selector
+  // Try to restore last used company from localStorage
+  const lastCompanyId = (() => { try { return localStorage.getItem("lastCompanyId"); } catch { return null; } })();
+  if (lastCompanyId) {
+    const lastMembership = memberships.find(m => m.company_id === lastCompanyId);
+    if (lastMembership) {
+      const { data: company } = await supabase.from("companies").select("*").eq("id", lastCompanyId).maybeSingle();
+      if (company) { handleSelectCompany(company, lastMembership.role); return; }
+    }
+  }
+  // If only one company, auto-select it
+  if (memberships.length === 1) {
+    const { data: company } = await supabase.from("companies").select("*").eq("id", memberships[0].company_id).maybeSingle();
+    if (company) { handleSelectCompany(company, memberships[0].role); return; }
+  }
+  // Multiple companies, no saved preference — show selector
   setScreen("company_select");
   }
 
@@ -17488,6 +17505,7 @@ function AppInner() {
   window._jeRenumbered = false;
   window._classIdBackfilled = false;
   setActiveCompany(company);
+  try { localStorage.setItem("lastCompanyId", company.id); } catch {}
   checkRPCHealth(company.id).then(m => setMissingRPCs(m)).catch(() => {});
   loadInboxNotifications(company.id);
   registerPushNotifications();
@@ -17508,7 +17526,9 @@ function AppInner() {
   setUserProfile({ name: currentUser?.email?.split("@")[0] || "User", email: currentUser?.email, role: role });
   fetchUserRoleForCompany(currentUser, company.id); // async — role updates via setState after fetch
   setScreen("app");
-  setPage("dashboard");
+  const hashPage = window.location.hash.replace("#", "");
+  if (hashPage && hashPage !== "app") setPageRaw(hashPage);
+  else setPage("dashboard");
   }
 
   async function fetchUserRoleForCompany(user, companyId) {
@@ -17664,6 +17684,7 @@ function AppInner() {
 
   async function handleLogout() {
   await supabase.auth.signOut();
+  try { localStorage.removeItem("lastCompanyId"); } catch {}
   setScreen("landing");
   setNotifications([]);
   setUnreadCount(0);
