@@ -1910,8 +1910,15 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       if (propErr) throw new Error("Failed to save property: " + propErr.message);
       setSavedPropertyId(newProp?.id || null);
       // Create accounting class
-      const { data: newClass } = await supabase.from("acct_classes").upsert([{ name: compositeAddress, description: propForm.type + " · " + formatCurrency(0) + "/mo", color: pickColor(compositeAddress), is_active: true, company_id: companyId }], { onConflict: "company_id,name" }).select("id").maybeSingle();
-      if (newClass?.id && newProp?.id) await supabase.from("properties").update({ class_id: newClass.id }).eq("id", newProp.id).eq("company_id", companyId);
+      const { data: newClass, error: clsErr } = await supabase.from("acct_classes").upsert([{ name: compositeAddress, description: propForm.type + " · " + formatCurrency(0) + "/mo", color: pickColor(compositeAddress), is_active: true, company_id: companyId }], { onConflict: "company_id,name" }).select("id").maybeSingle();
+      if (clsErr) {
+      // Upsert failed — try plain insert
+      const { data: insClass, error: insClsErr } = await supabase.from("acct_classes").insert([{ name: compositeAddress, description: propForm.type + " · " + formatCurrency(0) + "/mo", color: pickColor(compositeAddress), is_active: true, company_id: companyId }]).select("id").maybeSingle();
+      if (insClsErr) console.warn("Class creation failed:", insClsErr.message);
+      else if (insClass?.id && newProp?.id) await supabase.from("properties").update({ class_id: insClass.id }).eq("id", newProp.id).eq("company_id", companyId);
+      } else if (newClass?.id && newProp?.id) {
+      await supabase.from("properties").update({ class_id: newClass.id }).eq("id", newProp.id).eq("company_id", companyId);
+      }
     }
     setSavedAddress(compositeAddress);
     if (wizardId) {
