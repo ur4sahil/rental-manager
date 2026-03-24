@@ -231,6 +231,27 @@ async function checkRPCHealth(companyId) {
   }
 }
 
+// Format person name from parts: "Sahil A. Agarwal"
+function formatPersonName(first, mi, last) {
+  const parts = [];
+  if (first) parts.push(first.trim());
+  if (mi) parts.push(mi.trim().charAt(0).toUpperCase() + ".");
+  if (last) parts.push(last.trim());
+  return parts.join(" ") || "";
+}
+// Build name object for DB insert/update (sets name + first_name + middle_initial + last_name)
+function buildNameFields(first, mi, last) {
+  return { name: formatPersonName(first, mi, last), first_name: (first || "").trim(), middle_initial: (mi || "").trim().charAt(0).toUpperCase() || "", last_name: (last || "").trim() };
+}
+// Parse a single name string into parts (for backward compat)
+function parseNameParts(fullName) {
+  if (!fullName) return { first_name: "", middle_initial: "", last_name: "" };
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) return { first_name: parts[0], middle_initial: "", last_name: "" };
+  if (parts.length === 2) return { first_name: parts[0], middle_initial: "", last_name: parts[1] };
+  return { first_name: parts[0], middle_initial: parts[1].charAt(0), last_name: parts.slice(2).join(" ") };
+}
+
 // Sanitize error messages for user display — prevents leaking internal DB details to users
 // ✅ DONE: Replaced all browser alerts with showToast() non-blocking notifications
 // ✅ DONE: Replaced all native confirms with showConfirm() modal confirmations
@@ -1519,12 +1540,12 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   const [tenantForm, setTenantForm] = useState(() => {
     if (wizardData.propertyId && wizardData.tenant) {
       return {
-        tenant: wizardData.tenant || "", tenant_email: "", tenant_phone: "",
+        tenant: wizardData.tenant || "", tenant_first: wizardData.tenant_first || parseNameParts(wizardData.tenant || "").first_name, tenant_mi: wizardData.tenant_mi || parseNameParts(wizardData.tenant || "").middle_initial, tenant_last: wizardData.tenant_last || parseNameParts(wizardData.tenant || "").last_name, tenant_email: "", tenant_phone: "",
         rent: wizardData.rent || "", security_deposit: wizardData.securityDeposit || "",
         lease_start: wizardData.leaseStart || "", lease_end: wizardData.leaseEnd || ""
       };
     }
-    return { tenant: "", tenant_email: "", tenant_phone: "", rent: "", security_deposit: "", lease_start: "", lease_end: "" };
+    return { tenant: "", tenant_first: "", tenant_mi: "", tenant_last: "", tenant_email: "", tenant_phone: "", rent: "", security_deposit: "", lease_start: "", lease_end: "" };
   });
   const [savedPropertyId, setSavedPropertyId] = useState(wizardData.propertyId || null);
   const [savedAddress, setSavedAddress] = useState(wizardData.address || "");
@@ -1856,7 +1877,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     const { data: existingTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", tenantForm.tenant.trim()).eq("property", addr).is("archived_at", null).maybeSingle();
     let tenantId = existingTenant?.id;
     if (!existingTenant) {
-      const { data: newT, error: tErr } = await supabase.from("tenants").insert([{ company_id: companyId, name: tenantForm.tenant.trim(), email: tenantForm.tenant_email.toLowerCase(), phone: tenantForm.tenant_phone, property: addr, rent: Number(tenantForm.rent), lease_status: "active", lease_start: tenantForm.lease_start, lease_end_date: tenantForm.lease_end, move_in: tenantForm.lease_start, balance: 0 }]).select("id").maybeSingle();
+      const { data: newT, error: tErr } = await supabase.from("tenants").insert([{ company_id: companyId, name: tenantForm.tenant.trim(), first_name: tenantForm.tenant_first.trim(), middle_initial: tenantForm.tenant_mi.trim(), last_name: tenantForm.tenant_last.trim(), email: tenantForm.tenant_email.toLowerCase(), phone: tenantForm.tenant_phone, property: addr, rent: Number(tenantForm.rent), lease_status: "active", lease_start: tenantForm.lease_start, lease_end_date: tenantForm.lease_end, move_in: tenantForm.lease_start, balance: 0 }]).select("id").maybeSingle();
       if (tErr) throw new Error("Failed to create tenant: " + tErr.message);
       tenantId = newT?.id;
     }
@@ -2102,9 +2123,19 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
               </div>
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
-              <div>
-                <label className="text-xs font-medium text-slate-500 block mb-1">Tenant Name *</label>
-                <input type="text" value={tenantForm.tenant} onChange={e => setTenantForm({ ...tenantForm, tenant: e.target.value })} placeholder="Full name" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+              <div className="grid grid-cols-6 gap-3">
+                <div className="col-span-2">
+                  <label className="text-xs font-medium text-slate-500 block mb-1">First Name *</label>
+                  <input type="text" value={tenantForm.tenant_first} onChange={e => { const v = e.target.value; setTenantForm(f => ({ ...f, tenant_first: v, tenant: formatPersonName(v, f.tenant_mi, f.tenant_last) })); }} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" placeholder="First" />
+                </div>
+                <div className="col-span-1">
+                  <label className="text-xs font-medium text-slate-500 block mb-1">MI</label>
+                  <input type="text" maxLength={1} value={tenantForm.tenant_mi} onChange={e => { const v = e.target.value.toUpperCase(); setTenantForm(f => ({ ...f, tenant_mi: v, tenant: formatPersonName(f.tenant_first, v, f.tenant_last) })); }} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-center" placeholder="M" />
+                </div>
+                <div className="col-span-3">
+                  <label className="text-xs font-medium text-slate-500 block mb-1">Last Name *</label>
+                  <input type="text" value={tenantForm.tenant_last} onChange={e => { const v = e.target.value; setTenantForm(f => ({ ...f, tenant_last: v, tenant: formatPersonName(f.tenant_first, f.tenant_mi, v) })); }} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" placeholder="Last" />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -4151,7 +4182,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [newCharge, setNewCharge] = useState({ description: "", amount: "", type: "charge" });
-  const [form, setForm] = useState({ name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "" });
+  const [form, setForm] = useState({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "" });
   const [tenantView, setTenantView] = useState("card");
   const [tenantSearch, setTenantSearch] = useState("");
   const [tenantFilter, setTenantFilter] = useState("all");
@@ -4211,8 +4242,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
   // #3: Keep lease_start/move_in and lease_end_date/move_out in sync
   const { error } = editingTenant
-  ? await supabase.from("tenants").update({ name: form.name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, move_in: form.lease_start || null, lease_end_date: form.lease_end || null, move_out: form.lease_end || null, rent: form.rent }).eq("id", editingTenant.id).eq("company_id", companyId)
-  : await supabase.from("tenants").insert([{ company_id: companyId, name: form.name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, rent: form.rent, balance: 0, doc_status: "pending_docs" }]);
+  ? await supabase.from("tenants").update({ name: form.name, first_name: form.first_name, middle_initial: form.mi, last_name: form.last_name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, move_in: form.lease_start || null, lease_end_date: form.lease_end || null, move_out: form.lease_end || null, rent: form.rent }).eq("id", editingTenant.id).eq("company_id", companyId)
+  : await supabase.from("tenants").insert([{ company_id: companyId, name: form.name, first_name: form.first_name, middle_initial: form.mi, last_name: form.last_name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, rent: form.rent, balance: 0, doc_status: "pending_docs" }]);
   if (error) {
   if (error.message?.includes("idx_tenants_unique_name_property") || error.message?.includes("duplicate")) {
   showToast("A tenant named \"" + form.name.trim() + "\" already exists at this property. Please check your existing tenants.", "error");
@@ -4231,7 +4262,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const _secDep = Number(form.security_deposit) || 0;
   setShowForm(false);
   setEditingTenant(null);
-  setForm({ name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "", security_deposit: "" });
+  setForm({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "", security_deposit: "" });
   if (_isNew && _property && _leaseStart && _leaseEnd && _rent) setSavingTenant(true);
   // Post-save operations (run while spinner shows)
   if (_isNew) {
@@ -4441,7 +4472,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
 
   function startEdit(t) {
   setEditingTenant(t);
-  setForm({ name: t.name, email: t.email, phone: t.phone, property: t.property, lease_status: t.lease_status, lease_start: t.lease_start || t.move_in || "", lease_end: t.lease_end_date || t.move_out || "", rent: t.rent || "" });
+  setForm({ name: t.name, first_name: t.first_name || parseNameParts(t.name).first_name, mi: t.middle_initial || parseNameParts(t.name).middle_initial, last_name: t.last_name || parseNameParts(t.name).last_name, email: t.email, phone: t.phone, property: t.property, lease_status: t.lease_status, lease_start: t.lease_start || t.move_in || "", lease_end: t.lease_end_date || t.move_out || "", rent: t.rent || "" });
   setShowForm(true);
   }
 
@@ -5282,7 +5313,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-slate-700 mb-3">{editingTenant ? "Edit Tenant" : "New Tenant"}</h3>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Full Name *</label><Input placeholder="Jane Doe" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+  <div className="col-span-2 grid grid-cols-6 gap-3">
+    <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">First Name *</label><Input placeholder="First" value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} /></div>
+    <div className="col-span-1"><label className="text-xs font-medium text-slate-400 mb-1 block">MI</label><Input maxLength={1} placeholder="M" value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} className="text-center" /></div>
+    <div className="col-span-3"><label className="text-xs font-medium text-slate-400 mb-1 block">Last Name *</label><Input placeholder="Last" value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} /></div>
+  </div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Email</label><Input type="email" placeholder="tenant@email.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({ ...form, phone: formatPhoneInput(e.target.value) })} maxLength={14} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
@@ -10046,7 +10081,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   const specialties = ["General","Plumbing","Electrical","HVAC","Roofing","Painting","Landscaping","Carpentry","Appliance Repair","Cleaning","Pest Control","Locksmith","Flooring","Drywall","Windows","Other"];
 
   const [form, setForm] = useState({
-  name: "", company: "", email: "", phone: "", address: "",
+  name: "", first_name: "", mi: "", last_name: "", company: "", email: "", phone: "", address: "",
   specialty: "General", license_number: "", insurance_expiry: "",
   hourly_rate: "", flat_rate: "", notes: "", status: "active",
   });
@@ -10083,12 +10118,14 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   hourly_rate: Number(form.hourly_rate || 0),
   flat_rate: Number(form.flat_rate || 0),
   insurance_expiry: form.insurance_expiry || null,
+  middle_initial: form.mi,
   };
   let error;
   if (editingVendor) {
-  ({ error } = await supabase.from("vendors").update({ name: payload.name, company: payload.company, email: normalizeEmail(payload.email), phone: payload.phone, address: payload.address, specialty: payload.specialty, license_number: payload.license_number, insurance_expiry: payload.insurance_expiry, hourly_rate: payload.hourly_rate, flat_rate: payload.flat_rate, notes: payload.notes, status: payload.status }).eq("id", editingVendor.id).eq("company_id", companyId));
+  ({ error } = await supabase.from("vendors").update({ name: payload.name, first_name: payload.first_name, middle_initial: payload.middle_initial, last_name: payload.last_name, company: payload.company, email: normalizeEmail(payload.email), phone: payload.phone, address: payload.address, specialty: payload.specialty, license_number: payload.license_number, insurance_expiry: payload.insurance_expiry, hourly_rate: payload.hourly_rate, flat_rate: payload.flat_rate, notes: payload.notes, status: payload.status }).eq("id", editingVendor.id).eq("company_id", companyId));
   } else {
-  ({ error } = await supabase.from("vendors").insert([{ ...payload, email: normalizeEmail(payload.email), company_id: companyId }]));
+  const { mi: _mi, ...insertPayload } = payload;
+  ({ error } = await supabase.from("vendors").insert([{ ...insertPayload, email: normalizeEmail(payload.email), company_id: companyId }]));
   }
   if (error) { showToast("Error: " + error.message, "error"); return; }
   logAudit(editingVendor ? "update" : "create", "vendors", (editingVendor ? "Updated" : "Added") + " vendor: " + form.name, editingVendor?.id || "", userProfile?.email, userRole, companyId);
@@ -10100,12 +10137,13 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   function resetVendorForm() {
   setShowForm(false);
   setEditingVendor(null);
-  setForm({ name: "", company: "", email: "", phone: "", address: "", specialty: "General", license_number: "", insurance_expiry: "", hourly_rate: "", flat_rate: "", notes: "", status: "active" });
+  setForm({ name: "", first_name: "", mi: "", last_name: "", company: "", email: "", phone: "", address: "", specialty: "General", license_number: "", insurance_expiry: "", hourly_rate: "", flat_rate: "", notes: "", status: "active" });
   }
 
   function startEditVendor(v) {
   setEditingVendor(v);
-  setForm({ name: v.name, company: v.company || "", email: v.email || "", phone: v.phone || "", address: v.address || "", specialty: v.specialty || "General", license_number: v.license_number || "", insurance_expiry: v.insurance_expiry || "", hourly_rate: String(v.hourly_rate || ""), flat_rate: String(v.flat_rate || ""), notes: v.notes || "", status: v.status || "active" });
+  const parsed = parseNameParts(v.name);
+  setForm({ name: v.name, first_name: v.first_name || parsed.first_name, mi: v.middle_initial || parsed.middle_initial, last_name: v.last_name || parsed.last_name, company: v.company || "", email: v.email || "", phone: v.phone || "", address: v.address || "", specialty: v.specialty || "General", license_number: v.license_number || "", insurance_expiry: v.insurance_expiry || "", hourly_rate: String(v.hourly_rate || ""), flat_rate: String(v.flat_rate || ""), notes: v.notes || "", status: v.status || "active" });
   setShowForm(true);
   }
 
@@ -10249,7 +10287,11 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
   <h3 className="font-manrope font-semibold text-slate-800 mb-4">{editingVendor ? "Edit Vendor" : "Add New Vendor"}</h3>
   <div className="grid grid-cols-2 gap-3 mb-4">
-  <div><label className="text-xs text-slate-400 mb-1 block">Name *</label><Input value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="John Smith" /></div>
+  <div className="col-span-2"><div className="grid grid-cols-6 gap-3">
+  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">First Name *</label><Input value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" /></div>
+  <div className="col-span-1"><label className="text-xs font-medium text-slate-400 mb-1 block">MI</label><Input maxLength={1} value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} placeholder="M" className="text-center" /></div>
+  <div className="col-span-3"><label className="text-xs font-medium text-slate-400 mb-1 block">Last Name *</label><Input value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} placeholder="Last" /></div>
+  </div></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Company</label><Input value={form.company} onChange={e => setForm({...form, company: e.target.value})} placeholder="ABC Plumbing LLC" /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Email</label><Input type="email" placeholder="vendor@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} /></div>
@@ -10414,7 +10456,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   const [viewStatement, setViewStatement] = useState(null);
 
   const [form, setForm] = useState({
-  name: "", email: "", phone: "", address: "", company: "",
+  name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", address: "", company: "",
   tax_id: "", payment_method: "check", bank_name: "", bank_routing: "",
   bank_account: "", management_fee_pct: "10", notes: "", status: "active",
   });
@@ -10447,12 +10489,13 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   try {
   if (!form.name) { showToast("Owner name is required.", "error"); return; }
   if (isNaN(Number(form.management_fee_pct || 10)) || Number(form.management_fee_pct || 10) < 0 || Number(form.management_fee_pct || 10) > 100) { showToast("Management fee must be between 0% and 100%.", "error"); return; }
-  const payload = { ...form, management_fee_pct: Number(form.management_fee_pct || 10) };
+  const payload = { ...form, management_fee_pct: Number(form.management_fee_pct || 10), middle_initial: form.mi };
   let error;
   if (editingOwner) {
-  ({ error } = await supabase.from("owners").update({ name: payload.name, email: normalizeEmail(payload.email), phone: payload.phone, address: payload.address, company: payload.company, tax_id: payload.tax_id, payment_method: payload.payment_method, bank_name: payload.bank_name, bank_routing: payload.bank_routing, bank_account: payload.bank_account, management_fee_pct: payload.management_fee_pct, notes: payload.notes, status: payload.status }).eq("id", editingOwner.id).eq("company_id", companyId));
+  ({ error } = await supabase.from("owners").update({ name: payload.name, first_name: payload.first_name, middle_initial: payload.middle_initial, last_name: payload.last_name, email: normalizeEmail(payload.email), phone: payload.phone, address: payload.address, company: payload.company, tax_id: payload.tax_id, payment_method: payload.payment_method, bank_name: payload.bank_name, bank_routing: payload.bank_routing, bank_account: payload.bank_account, management_fee_pct: payload.management_fee_pct, notes: payload.notes, status: payload.status }).eq("id", editingOwner.id).eq("company_id", companyId));
   } else {
-  ({ error } = await supabase.from("owners").insert([{ ...payload, email: normalizeEmail(payload.email), company_id: companyId }]));
+  const { mi: _mi, ...insertPayload } = payload;
+  ({ error } = await supabase.from("owners").insert([{ ...insertPayload, email: normalizeEmail(payload.email), company_id: companyId }]));
   }
   if (error) { showToast("Error: " + error.message, "error"); return; }
   logAudit(editingOwner ? "update" : "create", "owners", (editingOwner ? "Updated" : "Added") + " owner: " + form.name, editingOwner?.id || "", userProfile?.email, userRole, companyId);
@@ -10462,12 +10505,13 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
 
   function resetForm() {
   setShowForm(false); setEditingOwner(null);
-  setForm({ name: "", email: "", phone: "", address: "", company: "", tax_id: "", payment_method: "check", bank_name: "", bank_routing: "", bank_account: "", management_fee_pct: "10", notes: "", status: "active" });
+  setForm({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", address: "", company: "", tax_id: "", payment_method: "check", bank_name: "", bank_routing: "", bank_account: "", management_fee_pct: "10", notes: "", status: "active" });
   }
 
   function startEdit(o) {
   setEditingOwner(o);
-  setForm({ name: o.name, email: o.email || "", phone: o.phone || "", address: o.address || "", company: o.company || "", tax_id: o.tax_id || "", payment_method: o.payment_method || "check", bank_name: o.bank_name || "", bank_routing: o.bank_routing || "", bank_account: o.bank_account || "", management_fee_pct: String(o.management_fee_pct || 10), notes: o.notes || "", status: o.status || "active" });
+  const parsed = parseNameParts(o.name);
+  setForm({ name: o.name, first_name: o.first_name || parsed.first_name, mi: o.middle_initial || parsed.middle_initial, last_name: o.last_name || parsed.last_name, email: o.email || "", phone: o.phone || "", address: o.address || "", company: o.company || "", tax_id: o.tax_id || "", payment_method: o.payment_method || "check", bank_name: o.bank_name || "", bank_routing: o.bank_routing || "", bank_account: o.bank_account || "", management_fee_pct: String(o.management_fee_pct || 10), notes: o.notes || "", status: o.status || "active" });
   setShowForm(true);
   }
 
@@ -10682,7 +10726,11 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
   <h3 className="font-manrope font-semibold text-slate-800 mb-4">{editingOwner ? "Edit Owner" : "Add New Owner"}</h3>
   <div className="grid grid-cols-2 gap-3 mb-4">
-  <div><label className="text-xs text-slate-400 mb-1 block">Name *</label><Input placeholder="John Smith" value={form.name} onChange={e => setForm({...form, name: e.target.value})} /></div>
+  <div className="col-span-2"><div className="grid grid-cols-6 gap-3">
+  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">First Name *</label><Input value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" /></div>
+  <div className="col-span-1"><label className="text-xs font-medium text-slate-400 mb-1 block">MI</label><Input maxLength={1} value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} placeholder="M" className="text-center" /></div>
+  <div className="col-span-3"><label className="text-xs font-medium text-slate-400 mb-1 block">Last Name *</label><Input value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} placeholder="Last" /></div>
+  </div></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Company</label><Input placeholder="Smith Properties LLC" value={form.company} onChange={e => setForm({...form, company: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Email</label><Input type="email" placeholder="vendor@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} /></div>
@@ -13556,7 +13604,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null); // user being edited
-  const [form, setForm] = useState({ email: "", role: "office_assistant", name: "" });
+  const [form, setForm] = useState({ email: "", role: "office_assistant", name: "", first_name: "", mi: "", last_name: "" });
   // customPages: which modules are toggled ON when adding/editing a user
   const [customPages, setCustomPages] = useState([]);
 
@@ -13585,14 +13633,15 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
 
   function startAdd() {
   setEditingUser(null);
-  setForm({ email: "", role: "office_assistant", name: "" });
+  setForm({ email: "", role: "office_assistant", name: "", first_name: "", mi: "", last_name: "" });
   setCustomPages([...ROLES["office_assistant"].pages]);
   setShowForm(true);
   }
 
   function startEdit(u) {
   setEditingUser(u);
-  setForm({ email: u.email, role: u.role, name: u.name });
+  const parsed = parseNameParts(u.name);
+  setForm({ email: u.email, role: u.role, name: u.name, first_name: u.first_name || parsed.first_name, mi: u.middle_initial || parsed.middle_initial, last_name: u.last_name || parsed.last_name });
   // Load their custom pages if saved, otherwise use role defaults
   const savedPages = u.custom_pages ? JSON.parse(u.custom_pages) : ROLES[u.role]?.pages || [];
   setCustomPages([...savedPages]);
@@ -13611,6 +13660,9 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   email: form.email,
   role: form.role,
   name: form.name,
+  first_name: form.first_name,
+  middle_initial: form.mi,
+  last_name: form.last_name,
   custom_pages: JSON.stringify(customPages),
   company_id: companyId,
   };
@@ -13655,7 +13707,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
 
   setShowForm(false);
   setEditingUser(null);
-  setForm({ email: "", role: "office_assistant", name: "" });
+  setForm({ email: "", role: "office_assistant", name: "", first_name: "", mi: "", last_name: "" });
   setCustomPages([]);
   fetchUsers();
   } finally { guardRelease("saveUser"); }
@@ -13745,12 +13797,11 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
 
   {/* Basic info */}
   <div className="grid grid-cols-2 gap-3 mb-4">
-  <input
-  placeholder="Full name"
-  value={form.name}
-  onChange={e => setForm({ ...form, name: e.target.value })}
-  className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm"
-  />
+  <div className="col-span-2"><div className="grid grid-cols-6 gap-3">
+  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">First Name *</label><input value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div className="col-span-1"><label className="text-xs font-medium text-slate-400 mb-1 block">MI</label><input maxLength={1} value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} placeholder="M" className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full text-center" /></div>
+  <div className="col-span-3"><label className="text-xs font-medium text-slate-400 mb-1 block">Last Name *</label><input value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} placeholder="Last" className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  </div></div>
   <input
   placeholder="Email address"
   value={form.email}
