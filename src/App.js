@@ -7425,12 +7425,13 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
 
   const JEFormUI = () => (
   <div className="space-y-4">
-  <div className="grid grid-cols-3 gap-3">
+  <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-slate-500">Date *</label><Input type="date" value={form.date} onChange={e => setForm({...form, date:e.target.value})} className="mt-1" /></div>
   <div><label className="text-xs font-medium text-slate-500">Reference</label><Input value={form.reference} onChange={e => setForm({...form, reference:e.target.value})} className="mt-1" placeholder="Invoice #, Check #..." /></div>
-  <div><label className="text-xs font-medium text-slate-500">Property *</label><select value={form.property} onChange={e => setForm({...form, property:e.target.value})} className={`w-full border rounded-lg px-3 py-2 text-sm mt-1 ${!form.property ? "border-red-300 bg-red-50" : "border-indigo-100"}`}><option value="">-- Select Property --</option>{properties.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-  <div className="col-span-3"><label className="text-xs font-medium text-slate-500">Description *</label><Input value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="mt-1" placeholder="What is this entry for?" /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-slate-500">Description *</label><Input value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="mt-1" placeholder="What is this entry for?" /></div>
   </div>
+  {/* Property is selected per-line via Class, not at header level */}
+  <input type="hidden" value={form.property} />
   <div className="flex items-center justify-between mb-2">
   <p className="text-xs font-semibold text-slate-500 uppercase">Journal Entry Lines</p>
   <button onClick={addLine} className="text-xs text-slate-600 hover:text-slate-800">+ Add Line</button>
@@ -7442,10 +7443,10 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   {form.lines.map((line, i) => (
   <tr key={i} className="border-b border-slate-100">
   <td className="px-2 py-1.5"><select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}</select></td>
-  <td className="px-2 py-1.5"><select value={line.class_id || ""} onChange={e => setLine(i,"class_id",e.target.value||null)} className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></td>
+  <td className="px-2 py-1.5"><select value={line.class_id || ""} onChange={e => { setLine(i,"class_id",e.target.value||null); const cls = classes.find(c=>c.id===e.target.value); if (cls && !form.property) setForm(f=>({...f, property: cls.name})); }} className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></td>
   <td className="px-2 py-1.5"><Input value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="bg-white" /></td>
-  <td className="px-2 py-1.5"><Input type="number" step="0.01" min="0" value={line.debit} onChange={e => { setLine(i,"debit",e.target.value); if(e.target.value) setLine(i,"credit",""); }} placeholder="0.00" className="text-right bg-white font-mono" /></td>
-  <td className="px-2 py-1.5"><Input type="number" step="0.01" min="0" value={line.credit} onChange={e => { setLine(i,"credit",e.target.value); if(e.target.value) setLine(i,"debit",""); }} placeholder="0.00" className="text-right bg-white font-mono" /></td>
+  <td className="px-2 py-1.5"><input type="text" inputMode="decimal" value={line.debit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setLine(i,"debit",v); if(v) setLine(i,"credit",""); }} placeholder="0.00" className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono focus:border-indigo-300 focus:outline-none" /></td>
+  <td className="px-2 py-1.5"><input type="text" inputMode="decimal" value={line.credit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setLine(i,"credit",v); if(v) setLine(i,"debit",""); }} placeholder="0.00" className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono focus:border-indigo-300 focus:outline-none" /></td>
   <td className="px-2 py-1.5"><button onClick={() => removeLine(i)} disabled={form.lines.length<=2} className="text-slate-300 hover:text-red-500 disabled:opacity-20">✕</button></td>
   </tr>
   ))}
@@ -7458,8 +7459,8 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   <div className="flex justify-between pt-2">
   <button onClick={() => setModal(null)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   <div className="flex gap-2">
-  <button onClick={() => saveEntry("draft")} disabled={!form.description || !form.property || !validation.isValid} className="bg-slate-200 text-slate-700 text-sm px-4 py-2 rounded-lg disabled:opacity-50">Save Draft</button>
-  <button onClick={() => saveEntry("posted")} disabled={!form.description || !form.property || !validation.isValid} className="bg-emerald-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50 hover:bg-emerald-700">Post Entry</button>
+  <button onClick={() => saveEntry("draft")} disabled={!form.description || !validation.isValid} className="bg-slate-200 text-slate-700 text-sm px-4 py-2 rounded-lg disabled:opacity-50">Save Draft</button>
+  <button onClick={() => saveEntry("posted")} disabled={!form.description || !validation.isValid} className="bg-emerald-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50 hover:bg-emerald-700">Post Entry</button>
   </div>
   </div>
   </div>
