@@ -8,7 +8,17 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
-serve(async () => {
+const CRON_SECRET = Deno.env.get("CRON_SECRET") || "";
+
+serve(async (req) => {
+  // Require auth for health check to prevent information leakage
+  const authHeader = req.headers.get("x-cron-secret") || req.headers.get("authorization")?.replace("Bearer ", "") || "";
+  if (CRON_SECRET && authHeader !== CRON_SECRET) {
+    return new Response(JSON.stringify({ status: "unauthorized" }), {
+      status: 401, headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const start = Date.now();
   const checks: Record<string, string> = {};
 

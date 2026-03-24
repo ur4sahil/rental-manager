@@ -3,6 +3,10 @@
 // Deploy: supabase functions deploy create-checkout-session
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
+const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
 // --- Rate Limiter (per-IP, sliding window) ---
 const rateLimitMap = new Map<string, number[]>();
@@ -60,6 +64,38 @@ serve(async (req) => {
 
     if (!STRIPE_SECRET_KEY) {
       return new Response(JSON.stringify({ error: "Stripe not configured" }), { status: 500 });
+    }
+
+    // Extract user email from JWT
+    const authHeader = req.headers.get("authorization") || "";
+    const token = authHeader.replace("Bearer ", "");
+    let userEmail = "";
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      userEmail = payload.email || "";
+    } catch { /* invalid token */ }
+
+    if (!userEmail) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+
+    // Verify caller belongs to claimed company
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const { data: membership } = await supabase.from("company_members")
+      .select("role, status")
+      .eq("company_id", companyId)
+      .ilike("user_email", userEmail)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (!membership) {
+      return new Response(JSON.stringify({ error: "Not a member of this company" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
     }
 
     // Create Stripe Checkout Session via API

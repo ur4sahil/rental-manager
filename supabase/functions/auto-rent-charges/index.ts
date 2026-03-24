@@ -132,21 +132,23 @@ serve(async (req) => {
         .eq("company_id", entry.company_id).eq("reference", ref).limit(1);
       if (existing && existing.length > 0) continue;
 
-      const jeId = `je-recur-${Date.now().toString(36)}`;
-      await supabase.rpc("create_journal_entry", {
-        p_id: jeId,
-        p_company_id: entry.company_id,
-        p_number: `REC-${Date.now().toString(36).toUpperCase()}`,
-        p_date: today,
-        p_description: entry.description || "Recurring charge",
-        p_reference: ref,
-        p_property: entry.property || "",
-        p_status: "posted",
-        p_lines: JSON.stringify([
-          { account_id: entry.debit_account_id, account_name: entry.debit_account_name || "", debit: entry.amount, credit: 0, memo: entry.tenant_name || "" },
-          { account_id: entry.credit_account_id, account_name: entry.credit_account_name || "", debit: 0, credit: entry.amount, memo: entry.tenant_name || "" },
-        ]),
-      });
+      const jeNumber = "JE-" + Date.now().toString(36).toUpperCase();
+      const { data: recJeRow } = await supabase.from("acct_journal_entries").insert([{
+        company_id: entry.company_id,
+        number: jeNumber,
+        date: today,
+        description: entry.description || "Recurring charge",
+        reference: ref,
+        property: entry.property || "",
+        status: "posted",
+      }]).select("id").maybeSingle();
+
+      if (recJeRow?.id) {
+        await supabase.from("acct_journal_lines").insert([
+          { journal_entry_id: recJeRow.id, company_id: entry.company_id, account_id: entry.debit_account_id, account_name: entry.debit_account_name || "", debit: entry.amount, credit: 0, memo: entry.tenant_name || "" },
+          { journal_entry_id: recJeRow.id, company_id: entry.company_id, account_id: entry.credit_account_id, account_name: entry.credit_account_name || "", debit: 0, credit: entry.amount, memo: entry.tenant_name || "" },
+        ]);
+      }
 
       // Calculate next post date
       const nextDate = new Date(entry.next_post_date || today);
@@ -171,11 +173,16 @@ serve(async (req) => {
       .eq("status", "unpaid").lte("due_date", sevenDaysOut).gte("due_date", today);
 
     for (const hoa of (hoaDue || [])) {
+      // Resolve admin email for this company
+      const { data: adminMember } = await supabase.from("company_members").select("email")
+        .eq("company_id", hoa.company_id).eq("role", "admin").limit(1).maybeSingle();
+      const adminEmail = adminMember?.email || "admin";
+
       // Queue notification
       await supabase.from("notification_queue").insert({
         company_id: hoa.company_id,
         type: "hoa_due",
-        recipient_email: "admin", // will be resolved by the notification processor
+        recipient_email: adminEmail,
         data: JSON.stringify({
           property: hoa.property, hoaName: hoa.hoa_name,
           amount: hoa.amount, dueDate: hoa.due_date,
@@ -218,10 +225,15 @@ serve(async (req) => {
         .like("data", `%${ref}%`).limit(1);
       if (existingNotif && existingNotif.length > 0) continue;
 
+      // Resolve admin email for this company
+      const { data: leaseAdminMember } = await supabase.from("company_members").select("email")
+        .eq("company_id", lease.company_id).eq("role", "admin").limit(1).maybeSingle();
+      const leaseAdminEmail = leaseAdminMember?.email || "admin";
+
       await supabase.from("notification_queue").insert({
         company_id: lease.company_id,
         type: "lease_expiry",
-        recipient_email: "admin",
+        recipient_email: leaseAdminEmail,
         data: JSON.stringify({
           tenant: lease.tenant_name, property: lease.property,
           date: lease.end_date, daysLeft, ref,

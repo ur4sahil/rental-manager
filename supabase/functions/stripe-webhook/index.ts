@@ -76,18 +76,33 @@ serve(async (req) => {
           break;
         }
 
-        // Find pending payment and mark as paid
-        const { data: pendingPayments } = await supabase
-          .from("payments")
+        // Find pending payment — first try exact match by Stripe session ID
+        const { data: exactMatch } = await supabase.from("payments")
           .select("*")
           .eq("company_id", companyId)
-          .eq("status", "pending_approval")
-          .eq("tenant", session.metadata?.tenantName || "")
-          .order("created_at", { ascending: false })
-          .limit(1);
+          .eq("stripe_session_id", session.id)
+          .maybeSingle();
 
-        if (pendingPayments && pendingPayments.length > 0) {
-          const payment = pendingPayments[0];
+        let pendingPayment = exactMatch;
+
+        if (!pendingPayment) {
+          // Fall back to tenant name match (backward compat for older records without stripe_session_id)
+          const { data: pendingPayments } = await supabase
+            .from("payments")
+            .select("*")
+            .eq("company_id", companyId)
+            .eq("status", "pending_approval")
+            .eq("tenant", session.metadata?.tenantName || "")
+            .order("created_at", { ascending: false })
+            .limit(1);
+
+          if (pendingPayments && pendingPayments.length > 0) {
+            pendingPayment = pendingPayments[0];
+          }
+        }
+
+        if (pendingPayment) {
+          const payment = pendingPayment;
           await supabase.from("payments").update({
             status: "paid",
             method: "stripe",
