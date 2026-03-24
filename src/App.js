@@ -12721,14 +12721,15 @@ const ROLES = {
 const ALL_NAV = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard" },
   { id: "tasks", label: "Tasks & Approvals", icon: "assignment" },
-  { id: "properties", label: "Properties", icon: "apartment" },
+  { id: "properties", label: "Properties", icon: "apartment", children: [
+    { id: "utilities", label: "Utilities", icon: "bolt" },
+    { id: "hoa", label: "HOA Payments", icon: "holiday_village" },
+    { id: "loans", label: "Loans", icon: "account_balance_wallet" },
+    { id: "insurance", label: "Insurance", icon: "verified_user" },
+  ]},
   { id: "tenants", label: "Tenants", icon: "people" },
   { id: "payments", label: "Payments", icon: "payments" },
   { id: "maintenance", label: "Maintenance", icon: "build" },
-  { id: "utilities", label: "Utilities", icon: "bolt" },
-  { id: "hoa", label: "HOA Payments", icon: "holiday_village" },
-  { id: "loans", label: "Loans", icon: "account_balance_wallet" },
-  { id: "insurance", label: "Insurance", icon: "verified_user" },
   { id: "accounting", label: "Accounting", icon: "account_balance" },
   { id: "doc_builder", label: "Document Builder", icon: "description" },
   { id: "inspections", label: "Inspections", icon: "checklist" },
@@ -12738,6 +12739,10 @@ const ALL_NAV = [
   { id: "notifications", label: "Notifications", icon: "notifications_active" },
   { id: "audittrail", label: "Audit Trail", icon: "history" },
 ];
+// Flat list of all nav IDs including children (for settings UI and allowedPages)
+const ALL_NAV_FLAT = ALL_NAV.flatMap(n => n.children ? [n, ...n.children] : [n]);
+// Child page IDs that live under a parent in sidebar
+const NAV_CHILD_IDS = new Set(ALL_NAV.flatMap(n => (n.children || []).map(c => c.id)));
 
 // ============ AUTOPAY / RECURRING RENT ============
 function Autopay({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
@@ -13861,7 +13866,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   <div className="text-sm font-semibold text-slate-700">Choose which modules this person can access</div>
   <div className="flex gap-2">
   <button
-  onClick={() => setCustomPages(ALL_NAV.map(n => n.id))}
+  onClick={() => setCustomPages(ALL_NAV_FLAT.map(n => n.id))}
   className="text-xs text-indigo-600 hover:underline"
   >Select all</button>
   <span className="text-slate-300">|</span>
@@ -13872,7 +13877,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   </div>
   </div>
   <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-  {ALL_NAV.map(nav => {
+  {ALL_NAV_FLAT.map(nav => {
   const isOn = customPages.includes(nav.id);
   return (
   <button
@@ -13951,7 +13956,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   {/* Show their current module access */}
   <div className="mt-3 flex flex-wrap gap-1">
   {effectivePages.map(p => {
-  const nav = ALL_NAV.find(n => n.id === p);
+  const nav = ALL_NAV_FLAT.find(n => n.id === p);
   return (
   <span key={p} className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-full">
   {nav ? `${nav.icon} ${nav.label}` : p}
@@ -17188,6 +17193,7 @@ function AppInner() {
   }, []);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [expandedNav, setExpandedNav] = useState(new Set());
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -17596,7 +17602,7 @@ function AppInner() {
 
   // Build nav based on confirmed role (roleLoaded is true at this point)
   const allowedPages = customAllowedPages || ROLES[userRole]?.pages || ROLES[companyRole]?.pages || ["dashboard"];
-  const navItems = ALL_NAV.filter(n => allowedPages.includes(n.id));
+  const navItems = ALL_NAV.filter(n => allowedPages.includes(n.id) || (n.children && n.children.some(c => allowedPages.includes(c.id)))).map(n => n.children ? { ...n, children: n.children.filter(c => allowedPages.includes(c.id)) } : n);
   const adminNav = (userRole === "admin" || companyRole === "admin")
   ? [...navItems, { id: "roles", label: "Team & Roles", icon: "group" }]
   : navItems;
@@ -17630,12 +17636,26 @@ function AppInner() {
   )}
   </div>
   <nav className="flex-1 py-3 px-2 overflow-y-auto">
-  {adminNav.map(n => (
-  <button key={n.id} onClick={() => { setPage(n.id); setSidebarOpen(false); }}
-  className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left transition-all rounded-2xl mb-0.5 ${page === n.id ? "bg-indigo-50 text-indigo-700 font-semibold" : "text-slate-500 hover:bg-indigo-50/50 hover:text-slate-700"}`}>
-  <span className="material-icons-outlined text-lg">{n.icon}</span>{n.label}
+  {adminNav.map(n => {
+  const childIds = (n.children || []).map(c => c.id);
+  const isParentActive = page === n.id || childIds.includes(page);
+  const isExpanded = isParentActive || expandedNav.has(n.id);
+  return (
+  <div key={n.id}>
+  <button onClick={() => { if (n.children) { setExpandedNav(s => { const next = new Set(s); if (next.has(n.id)) next.delete(n.id); else next.add(n.id); return next; }); } setPage(n.id); setSidebarOpen(false); }}
+  className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left transition-all rounded-2xl mb-0.5 ${isParentActive ? "bg-indigo-50 text-indigo-700 font-semibold" : "text-slate-500 hover:bg-indigo-50/50 hover:text-slate-700"}`}>
+  <span className="material-icons-outlined text-lg">{n.icon}</span><span className="flex-1">{n.label}</span>
+  {n.children && <span className={`material-icons-outlined text-sm text-slate-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}>expand_more</span>}
+  </button>
+  {n.children && isExpanded && n.children.map(c => (
+  <button key={c.id} onClick={() => { setPage(c.id); setSidebarOpen(false); }}
+  className={`w-full flex items-center gap-3 pl-9 pr-3 py-2 text-xs text-left transition-all rounded-xl mb-0.5 ${page === c.id ? "bg-indigo-50 text-indigo-700 font-semibold" : "text-slate-400 hover:bg-indigo-50/50 hover:text-slate-600"}`}>
+  <span className="material-icons-outlined text-base">{c.icon}</span>{c.label}
   </button>
   ))}
+  </div>
+  );
+  })}
   </nav>
   <div className="px-4 py-3 border-t border-indigo-50">
   <div className="flex items-center justify-between">
