@@ -17845,6 +17845,7 @@ function AppInner() {
   )}
   {userRole === "admin" && activeCompany && <PendingRequestsPanel companyId={activeCompany.id} addNotification={addNotification} />}
   {userRole === "admin" && activeCompany && <PendingPMAssignments companyId={activeCompany.id} addNotification={addNotification} />}
+  <ErrorBoundary key={effectivePage + "-" + activeCompany.id}>
   <Page
   key={activeCompany.id}
   addNotification={addNotification}
@@ -17859,6 +17860,7 @@ function AppInner() {
   showToast={showToast}
   showConfirm={showConfirm}
   />
+  </ErrorBoundary>
   </main>
   </div>
 
