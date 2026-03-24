@@ -5624,7 +5624,13 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   </div>
   </div>
 
-  {payTab === "autopay" && <Autopay addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
+  <div className="flex gap-1 mb-4 border-b border-indigo-50">
+  {[["payments", "Payments"], ["autopay", "Autopay & Recurring"]].map(([id, label]) => (
+  <button key={id} onClick={() => setPayTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (payTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}</button>
+  ))}
+  </div>
+
+  {payTab === "autopay" && <Autopay addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} showToast={showToast} showConfirm={showConfirm} />}
   {payTab === "payments" && (<>
   <div className="grid grid-cols-2 gap-3 mb-5">
   <StatCard label="Total Collected" value={formatCurrency(payments.reduce((s, p) => s + p.amount, 0))} color="text-green-600" sub="From journal entries" />
@@ -12736,7 +12742,6 @@ const ALL_NAV = [
   { id: "accounting", label: "Accounting", icon: "account_balance" },
   { id: "doc_builder", label: "Document Builder", icon: "description" },
   { id: "vendors", label: "Vendors", icon: "engineering" },
-  { id: "autopay", label: "Autopay", icon: "autorenew" },
   { id: "owners", label: "Owners", icon: "person" },
   { id: "notifications", label: "Notifications", icon: "notifications_active" },
   { id: "audittrail", label: "Audit Trail", icon: "history" },
@@ -16363,7 +16368,6 @@ const pageComponents = {
   accounting: Accounting,
   documents: Documents, // no sidebar entry, but accessible via "Upload Document" buttons in property/tenant views
   inspections: Inspections,
-  autopay: Autopay,
   hoa: HOAPayments,
   loans: Loans,
   insurance: InsuranceTracker,
