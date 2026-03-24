@@ -6670,6 +6670,7 @@ function ArchivedItems({ tableName, label, fields, companyId, addNotification, o
 // ============ RECURRING JOURNAL ENTRIES ============
 function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   const [entries, setEntries] = useState([]);
+  const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
@@ -6680,7 +6681,11 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   late_fee_enabled: true, grace_period_days: 5, late_fee_amount: 50,
   });
 
-  useEffect(() => { fetchEntries(); }, [companyId]);
+  useEffect(() => { fetchEntries(); fetchTenants(); }, [companyId]);
+  async function fetchTenants() {
+  const { data } = await supabase.from("tenants").select("id, name, property, rent").eq("company_id", companyId).is("archived_at", null).order("name");
+  setTenants(data || []);
+  }
 
   async function fetchEntries() {
   setLoading(true);
@@ -6737,9 +6742,9 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
 
   async function runNow() {
   if (!await showConfirm({ message: "Post all active recurring entries for this month now?" })) return;
-  const result = await autoPostRentCharges(companyId);
-  if (result?.posted > 0) addNotification("⚡", "Posted " + result.posted + " charge(s)");
-  else addNotification("ℹ️", "No new charges needed for this period");
+  const result = await autoPostRecurringEntries(companyId);
+  if (result?.posted > 0) { addNotification("⚡", "Posted " + result.posted + " entry(ies)"); showToast("Posted " + result.posted + " recurring entry(ies)", "success"); }
+  else showToast("No new entries to post this period", "info");
   fetchEntries();
   }
 
@@ -6767,7 +6772,7 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   <div className="col-span-2"><label className="text-xs text-gray-500 mb-1 block">Description *</label><Input value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Monthly rent — John Doe — 123 Main St" /></div>
   <div><label className="text-xs text-gray-500 mb-1 block">Amount *</label><Input type="number" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} /></div>
   <div><label className="text-xs text-gray-500 mb-1 block">Day of Month</label><Input type="number" min="1" max="28" value={form.day_of_month} onChange={e => setForm({...form, day_of_month: e.target.value})} /></div>
-  <div><label className="text-xs text-gray-500 mb-1 block">Tenant</label><Input value={form.tenant_name} onChange={e => setForm({...form, tenant_name: e.target.value})} /></div>
+  <div><label className="text-xs text-gray-500 mb-1 block">Tenant</label><select value={form.tenant_name} onChange={e => { const t = tenants.find(x => x.name === e.target.value); setForm({...form, tenant_name: e.target.value, property: t?.property || form.property, amount: t?.rent ? String(t.rent) : form.amount }); }} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm"><option value="">Select tenant...</option>{tenants.map(t => <option key={t.id} value={t.name}>{t.name} — {t.property?.split(",")[0]}</option>)}</select></div>
   <div><label className="text-xs text-gray-500 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
   <div><label className="text-xs text-gray-500 mb-1 block">Debit Account</label><Input value={form.debit_account_name} onChange={e => setForm({...form, debit_account_name: e.target.value})} /></div>
   <div><label className="text-xs text-gray-500 mb-1 block">Credit Account</label><Input value={form.credit_account_name} onChange={e => setForm({...form, credit_account_name: e.target.value})} /></div>
