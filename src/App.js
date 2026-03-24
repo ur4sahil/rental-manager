@@ -251,6 +251,12 @@ function parseNameParts(fullName) {
   if (parts.length === 2) return { first_name: parts[0], middle_initial: "", last_name: parts[1] };
   return { first_name: parts[0], middle_initial: parts[1].charAt(0), last_name: parts.slice(2).join(" ") };
 }
+// Format all tenants on a property as "John Smith / Jane Doe"
+function formatAllTenants(property) {
+  if (!property) return "";
+  const names = [property.tenant, property.tenant_2, property.tenant_3, property.tenant_4].filter(n => n && n.trim());
+  return names.join(" / ") || "";
+}
 
 // Sanitize error messages for user display — prevents leaking internal DB details to users
 // ✅ DONE: Replaced all browser alerts with showToast() non-blocking notifications
@@ -880,7 +886,7 @@ function TenantSelect({ value, onChange, className = "", companyId }) {
 function PropertySelect({ value, onChange, className = "", companyId }) {
   const [properties, setProperties] = useState([]);
   useEffect(() => {
-  supabase.from("properties").select("id, address, type, tenant, rent, status").eq("company_id", companyId).is("archived_at", null).order("address").then(({ data }) => setProperties(data || []));
+  supabase.from("properties").select("id, address, type, tenant, tenant_2, tenant_3, tenant_4, rent, status").eq("company_id", companyId).is("archived_at", null).order("address").then(({ data }) => setProperties(data || []));
   }, [companyId]);
   return (
   <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel || null); }} className={`border border-indigo-100 rounded-2xl px-3 py-2 text-sm ${className}`}>
@@ -1545,7 +1551,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         lease_start: wizardData.leaseStart || "", lease_end: wizardData.leaseEnd || ""
       };
     }
-    return { tenant: "", tenant_first: "", tenant_mi: "", tenant_last: "", tenant_email: "", tenant_phone: "", rent: "", security_deposit: "", lease_start: "", lease_end: "" };
+    return { tenant: "", tenant_first: "", tenant_mi: "", tenant_last: "", tenant_email: "", tenant_phone: "", tenant_2: "", tenant_2_email: "", tenant_2_phone: "", tenant_3: "", tenant_3_email: "", tenant_3_phone: "", tenant_4: "", tenant_4_email: "", tenant_4_phone: "", tenantCount: 1, rent: "", security_deposit: "", lease_start: "", lease_end: "" };
   });
   const [savedPropertyId, setSavedPropertyId] = useState(wizardData.propertyId || null);
   const [savedAddress, setSavedAddress] = useState(wizardData.address || "");
@@ -1871,7 +1877,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     if (!savedPropertyId) throw new Error("Property must be saved first (complete Step 1)");
     const addr = savedAddress;
     // Update property with tenant info
-    const { error: propUpErr } = await supabase.from("properties").update({ status: "occupied", tenant: tenantForm.tenant.trim(), rent: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, lease_start: tenantForm.lease_start, lease_end: tenantForm.lease_end }).eq("id", savedPropertyId).eq("company_id", companyId);
+    const { error: propUpErr } = await supabase.from("properties").update({ status: "occupied", tenant: tenantForm.tenant.trim(), tenant_2: tenantForm.tenant_2?.trim() || "", tenant_2_email: tenantForm.tenant_2_email?.trim() || "", tenant_2_phone: tenantForm.tenant_2_phone?.trim() || "", tenant_3: tenantForm.tenant_3?.trim() || "", tenant_3_email: tenantForm.tenant_3_email?.trim() || "", tenant_3_phone: tenantForm.tenant_3_phone?.trim() || "", tenant_4: tenantForm.tenant_4?.trim() || "", tenant_4_email: tenantForm.tenant_4_email?.trim() || "", tenant_4_phone: tenantForm.tenant_4_phone?.trim() || "", rent: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, lease_start: tenantForm.lease_start, lease_end: tenantForm.lease_end }).eq("id", savedPropertyId).eq("company_id", companyId);
     if (propUpErr) throw new Error("Failed to update property: " + propUpErr.message);
     // Create/find tenant (ilike prevents case duplicates)
     const { data: existingTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", tenantForm.tenant.trim()).eq("property", addr).is("archived_at", null).maybeSingle();
@@ -1885,7 +1891,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     if (tenantForm.lease_start && tenantForm.lease_end) {
       const { data: existLease } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("property", addr).eq("status", "active").maybeSingle();
       if (!existLease) {
-        const { error: leaseErr } = await supabase.from("leases").insert([{ company_id: companyId, tenant_name: tenantForm.tenant.trim(), tenant_id: tenantId, property: addr, start_date: tenantForm.lease_start, end_date: tenantForm.lease_end, rent_amount: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, status: "active", payment_due_day: 1 }]);
+        const { error: leaseErr } = await supabase.from("leases").insert([{ company_id: companyId, tenant_name: [tenantForm.tenant, tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4].filter(n => n?.trim()).join(" / "), tenant_id: tenantId, property: addr, start_date: tenantForm.lease_start, end_date: tenantForm.lease_end, rent_amount: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, status: "active", payment_due_day: 1 }]);
         if (leaseErr) throw new Error("Failed to create lease: " + leaseErr.message);
       }
     }
@@ -2147,6 +2153,39 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <input type="tel" value={tenantForm.tenant_phone} onChange={e => setTenantForm({ ...tenantForm, tenant_phone: formatPhoneInput(e.target.value) })} placeholder="(555) 123-4567" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
               </div>
+              {/* Additional tenants */}
+              {tenantForm.tenantCount < 4 && (
+                <button type="button" onClick={() => setTenantForm(f => ({ ...f, tenantCount: f.tenantCount + 1 }))} className="text-sm text-indigo-600 hover:underline flex items-center gap-1 mt-2">
+                  <span className="material-icons-outlined text-sm">person_add</span>
+                  + Add Tenant {tenantForm.tenantCount + 1}
+                </button>
+              )}
+              {[2, 3, 4].filter(n => n <= tenantForm.tenantCount).map(n => (
+                <div key={n} className="border-t border-slate-200 pt-4 mt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-slate-600">Tenant {n}</span>
+                    <button type="button" onClick={() => {
+                      const updates = { tenantCount: tenantForm.tenantCount - 1 };
+                      updates["tenant_" + n] = ""; updates["tenant_" + n + "_email"] = ""; updates["tenant_" + n + "_phone"] = "";
+                      setTenantForm(f => ({ ...f, ...updates }));
+                    }} className="text-xs text-red-400 hover:text-red-600">Remove</button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="col-span-3">
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Full Name</label>
+                      <input type="text" value={tenantForm["tenant_" + n] || ""} onChange={e => setTenantForm(f => ({ ...f, ["tenant_" + n]: e.target.value }))} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" placeholder="Full name" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Email</label>
+                      <input type="email" value={tenantForm["tenant_" + n + "_email"] || ""} onChange={e => setTenantForm(f => ({ ...f, ["tenant_" + n + "_email"]: e.target.value }))} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" placeholder="Email" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-xs font-medium text-slate-500 block mb-1">Phone</label>
+                      <input type="tel" value={tenantForm["tenant_" + n + "_phone"] || ""} onChange={e => setTenantForm(f => ({ ...f, ["tenant_" + n + "_phone"]: e.target.value }))} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" placeholder="Phone" />
+                    </div>
+                  </div>
+                </div>
+              ))}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-slate-500 block mb-1">Monthly Rent ($) *</label>
@@ -3590,14 +3629,41 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {/* Tenant Info */}
   {selectedProperty.tenant && (
   <div className="px-6 py-4 border-b border-indigo-50">
-  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Current Tenant</div>
+  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Current Tenant{(selectedProperty.tenant_2 || selectedProperty.tenant_3 || selectedProperty.tenant_4) ? "s" : ""}</div>
   <div className="flex items-center gap-3">
   <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">{selectedProperty.tenant?.[0]}</div>
   <div>
-  <div className="font-semibold text-slate-800">{selectedProperty.tenant}</div>
+  <div className="font-semibold text-slate-800">{formatAllTenants(selectedProperty)}</div>
   <div className="text-xs text-slate-400">{selectedProperty._tenantEmail || ""} · {selectedProperty._tenantPhone || ""}</div>
   </div>
   </div>
+  {selectedProperty.tenant_2 && (
+  <div className="flex items-center gap-3 mt-2">
+  <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-500 font-bold text-sm">{selectedProperty.tenant_2?.[0]}</div>
+  <div>
+  <div className="font-medium text-slate-700 text-sm">{selectedProperty.tenant_2}</div>
+  <div className="text-xs text-slate-400">{selectedProperty.tenant_2_email || ""} · {selectedProperty.tenant_2_phone || ""}</div>
+  </div>
+  </div>
+  )}
+  {selectedProperty.tenant_3 && (
+  <div className="flex items-center gap-3 mt-2">
+  <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-500 font-bold text-sm">{selectedProperty.tenant_3?.[0]}</div>
+  <div>
+  <div className="font-medium text-slate-700 text-sm">{selectedProperty.tenant_3}</div>
+  <div className="text-xs text-slate-400">{selectedProperty.tenant_3_email || ""} · {selectedProperty.tenant_3_phone || ""}</div>
+  </div>
+  </div>
+  )}
+  {selectedProperty.tenant_4 && (
+  <div className="flex items-center gap-3 mt-2">
+  <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-500 font-bold text-sm">{selectedProperty.tenant_4?.[0]}</div>
+  <div>
+  <div className="font-medium text-slate-700 text-sm">{selectedProperty.tenant_4}</div>
+  <div className="text-xs text-slate-400">{selectedProperty.tenant_4_email || ""} · {selectedProperty.tenant_4_phone || ""}</div>
+  </div>
+  </div>
+  )}
   </div>
   )}
 
@@ -3959,7 +4025,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   <div className="text-sm text-slate-500 space-y-1">
   <div className="flex justify-between"><span>Rent:</span><span className="font-semibold">${safeNum(p.rent).toLocaleString()}</span></div>
-  {p.tenant && <div className="flex justify-between"><span>Tenant:</span><span>{p.tenant}</span></div>}
+  {p.tenant && <div className="flex justify-between"><span>Tenant:</span><span>{formatAllTenants(p)}</span></div>}
   {p.lease_end && <div className="flex justify-between"><span>Lease End:</span><span>{p.lease_end}</span></div>}
   </div>
   {isReadOnly(p) && <div className="mt-2 text-xs text-purple-600 bg-purple-50 rounded-lg px-2 py-1">🔒 Managed property — view only</div>}
@@ -4001,7 +4067,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {visibleCols.includes("type") && <td className="px-4 py-2.5 text-slate-500">{p.type}</td>}
   {visibleCols.includes("status") && <td className="px-4 py-2.5"><Badge status={p.status} label={p.status} /></td>}
   {visibleCols.includes("rent") && <td className="px-4 py-2.5 text-right font-semibold">${safeNum(p.rent).toLocaleString()}</td>}
-  {visibleCols.includes("tenant") && <td className="px-4 py-2.5 text-slate-500">{p.tenant || "—"}</td>}
+  {visibleCols.includes("tenant") && <td className="px-4 py-2.5 text-slate-500">{formatAllTenants(p) || "—"}</td>}
   {visibleCols.includes("lease_end") && <td className="px-4 py-2.5 text-slate-400">{p.lease_end || "—"}</td>}
   {visibleCols.includes("owner_name") && <td className="px-4 py-2.5 text-slate-500">{p.owner_name || "—"}</td>}
   {visibleCols.includes("notes") && <td className="px-4 py-2.5 text-xs text-slate-400 max-w-32 truncate">{p.notes || "—"}</td>}
