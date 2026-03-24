@@ -254,7 +254,7 @@ function parseNameParts(fullName) {
 // Format all tenants on a property as "John Smith / Jane Doe"
 function formatAllTenants(property) {
   if (!property) return "";
-  const names = [property.tenant, property.tenant_2, property.tenant_3, property.tenant_4].filter(n => n && n.trim());
+  const names = [property.tenant, property.tenant_2, property.tenant_3, property.tenant_4, property.tenant_5].filter(n => n && n.trim());
   return names.join(" / ") || "";
 }
 
@@ -1568,7 +1568,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         lease_start: wizardData.leaseStart || "", lease_end: wizardData.leaseEnd || ""
       };
     }
-    return { tenant: "", tenant_first: "", tenant_mi: "", tenant_last: "", tenant_email: "", tenant_phone: "", tenant_2: "", tenant_2_email: "", tenant_2_phone: "", tenant_3: "", tenant_3_email: "", tenant_3_phone: "", tenant_4: "", tenant_4_email: "", tenant_4_phone: "", tenantCount: 1, rent: "", security_deposit: "", lease_start: "", lease_end: "" };
+    return { tenant: "", tenant_first: "", tenant_mi: "", tenant_last: "", tenant_email: "", tenant_phone: "", tenant_2: "", tenant_2_email: "", tenant_2_phone: "", tenant_3: "", tenant_3_email: "", tenant_3_phone: "", tenant_4: "", tenant_4_email: "", tenant_4_phone: "", tenant_5: "", tenant_5_email: "", tenant_5_phone: "", tenantCount: 1, rent: "", security_deposit: "", lease_start: "", lease_end: "" };
   });
   const [savedPropertyId, setSavedPropertyId] = useState(wizardData.propertyId || null);
   const [savedAddress, setSavedAddress] = useState(wizardData.address || "");
@@ -1947,7 +1947,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     if (!savedPropertyId) throw new Error("Property must be saved first (complete Step 1)");
     const addr = savedAddress;
     // Update property with tenant info
-    const { error: propUpErr } = await supabase.from("properties").update({ status: "occupied", tenant: tenantForm.tenant.trim(), tenant_2: tenantForm.tenant_2?.trim() || "", tenant_2_email: tenantForm.tenant_2_email?.trim() || "", tenant_2_phone: tenantForm.tenant_2_phone?.trim() || "", tenant_3: tenantForm.tenant_3?.trim() || "", tenant_3_email: tenantForm.tenant_3_email?.trim() || "", tenant_3_phone: tenantForm.tenant_3_phone?.trim() || "", tenant_4: tenantForm.tenant_4?.trim() || "", tenant_4_email: tenantForm.tenant_4_email?.trim() || "", tenant_4_phone: tenantForm.tenant_4_phone?.trim() || "", rent: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, lease_start: tenantForm.lease_start, lease_end: tenantForm.lease_end }).eq("id", savedPropertyId).eq("company_id", companyId);
+    const { error: propUpErr } = await supabase.from("properties").update({ status: "occupied", tenant: tenantForm.tenant.trim(), tenant_2: tenantForm.tenant_2?.trim() || "", tenant_2_email: tenantForm.tenant_2_email?.trim() || "", tenant_2_phone: tenantForm.tenant_2_phone?.trim() || "", tenant_3: tenantForm.tenant_3?.trim() || "", tenant_3_email: tenantForm.tenant_3_email?.trim() || "", tenant_3_phone: tenantForm.tenant_3_phone?.trim() || "", tenant_4: tenantForm.tenant_4?.trim() || "", tenant_4_email: tenantForm.tenant_4_email?.trim() || "", tenant_4_phone: tenantForm.tenant_4_phone?.trim() || "", tenant_5: tenantForm.tenant_5?.trim() || "", tenant_5_email: tenantForm.tenant_5_email?.trim() || "", tenant_5_phone: tenantForm.tenant_5_phone?.trim() || "", rent: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, lease_start: tenantForm.lease_start, lease_end: tenantForm.lease_end }).eq("id", savedPropertyId).eq("company_id", companyId);
     if (propUpErr) throw new Error("Failed to update property: " + propUpErr.message);
     // Create/find tenant (ilike prevents case duplicates)
     const { data: existingTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", tenantForm.tenant.trim()).eq("property", addr).is("archived_at", null).maybeSingle();
@@ -2224,13 +2224,13 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 </div>
               </div>
               {/* Additional tenants */}
-              {tenantForm.tenantCount < 4 && (
+              {tenantForm.tenantCount < 5 && (
                 <button type="button" onClick={() => setTenantForm(f => ({ ...f, tenantCount: f.tenantCount + 1 }))} className="text-sm text-indigo-600 hover:underline flex items-center gap-1 mt-2">
                   <span className="material-icons-outlined text-sm">person_add</span>
                   + Add Tenant {tenantForm.tenantCount + 1}
                 </button>
               )}
-              {[2, 3, 4].filter(n => n <= tenantForm.tenantCount).map(n => (
+              {[2, 3, 4, 5].filter(n => n <= tenantForm.tenantCount).map(n => (
                 <div key={n} className="border-t border-slate-200 pt-4 mt-4">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-semibold text-slate-600">Tenant {n}</span>
@@ -3699,11 +3699,11 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {/* Tenant Info */}
   {selectedProperty.tenant && (
   <div className="px-6 py-4 border-b border-indigo-50">
-  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Current Tenant{(selectedProperty.tenant_2 || selectedProperty.tenant_3 || selectedProperty.tenant_4) ? "s" : ""}</div>
+  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Current Tenant{(selectedProperty.tenant_2 || selectedProperty.tenant_3 || selectedProperty.tenant_4 || selectedProperty.tenant_5) ? "s" : ""}</div>
   <div className="flex items-center gap-3">
   <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">{selectedProperty.tenant?.[0]}</div>
   <div>
-  <div className="font-semibold text-slate-800">{formatAllTenants(selectedProperty)}</div>
+  <div className="font-semibold text-slate-800">{selectedProperty.tenant}</div>
   <div className="text-xs text-slate-400">{selectedProperty._tenantEmail || ""} · {selectedProperty._tenantPhone || ""}</div>
   </div>
   </div>
@@ -3731,6 +3731,15 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div>
   <div className="font-medium text-slate-700 text-sm">{selectedProperty.tenant_4}</div>
   <div className="text-xs text-slate-400">{selectedProperty.tenant_4_email || ""} · {selectedProperty.tenant_4_phone || ""}</div>
+  </div>
+  </div>
+  )}
+  {selectedProperty.tenant_5 && (
+  <div className="flex items-center gap-3 mt-2">
+  <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-500 font-bold text-sm">{selectedProperty.tenant_5?.[0]}</div>
+  <div>
+  <div className="font-medium text-slate-700 text-sm">{selectedProperty.tenant_5}</div>
+  <div className="text-xs text-slate-400">{selectedProperty.tenant_5_email || ""} · {selectedProperty.tenant_5_phone || ""}</div>
   </div>
   </div>
   )}
