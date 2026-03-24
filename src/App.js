@@ -12719,7 +12719,7 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
   admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","insurance","accounting","owners","notifications","admin","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
-  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","accounting","notifications","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
+  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","accounting","notifications","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
   tenant: { label: "Tenant", color: "bg-indigo-50/300", pages: ["tenant_portal"] },
@@ -16384,19 +16384,19 @@ const pageComponents = {
 
 // ============ ADMIN PAGE (Audit Trail + Team & Roles) ============
 function AdminPage({ companyId, activeCompany, addNotification, userProfile, userRole, showToast, showConfirm, currentUser }) {
-  const [adminTab, setAdminTab] = useState("audittrail");
+  const [adminTab, setAdminTab] = useState("audit");
   const isAdmin = userRole === "admin";
   return (
   <div>
   <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-1">Admin</h2>
   <p className="text-sm text-slate-400 mb-4">Manage team access and view activity logs</p>
   <div className="flex gap-1 mb-4 border-b border-indigo-50">
-  {[["audittrail", "Audit Trail"], ...(isAdmin ? [["roles", "Team & Roles"]] : [])].map(([id, label]) => (
+  {[["audit", "Audit Trail"], ...(isAdmin ? [["team", "Team & Roles"]] : [])].map(([id, label]) => (
   <button key={id} onClick={() => setAdminTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (adminTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}</button>
   ))}
   </div>
-  {adminTab === "audittrail" && <AuditTrail companyId={companyId} />}
-  {adminTab === "roles" && isAdmin && <RoleManagement companyId={companyId} activeCompany={activeCompany} addNotification={addNotification} userProfile={userProfile} userRole={userRole} showToast={showToast} showConfirm={showConfirm} currentUser={currentUser} />}
+  {adminTab === "audit" && <AuditTrail companyId={companyId} />}
+  {adminTab === "team" && isAdmin && <RoleManagement companyId={companyId} activeCompany={activeCompany} addNotification={addNotification} userProfile={userProfile} userRole={userRole} showToast={showToast} showConfirm={showConfirm} currentUser={currentUser} />}
   </div>
   );
 }
