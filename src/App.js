@@ -4943,14 +4943,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div>
   <div className="flex items-center justify-between mb-3">
   <h3 className="text-sm font-semibold text-slate-700">Transaction History</h3>
-  <div className="flex items-center gap-2">
-  <select value={newCharge.type} onChange={e => setNewCharge({...newCharge, type: e.target.value})} className="border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs">
-  <option value="charge">Charge</option><option value="payment">Payment</option><option value="credit">Credit</option><option value="late_fee">Late Fee</option>
-  </select>
-  <Input placeholder="Description" value={newCharge.description} onChange={e => setNewCharge({...newCharge, description: e.target.value})} className="text-xs w-32" />
-  <Input placeholder="$0.00" value={newCharge.amount} onChange={e => setNewCharge({...newCharge, amount: e.target.value})} className="text-xs w-20" />
-  <button onClick={addLedgerEntry} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg">Add</button>
-  </div>
+  <button onClick={() => setPage("accounting")} className="flex items-center gap-1.5 bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700"><span className="material-icons-outlined text-sm">add_circle</span>New Entry</button>
   </div>
   {ledger.length === 0 ? <div className="text-center py-6 text-slate-400 text-sm">No transactions yet</div> : (
   <div className="space-y-1">
