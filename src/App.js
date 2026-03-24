@@ -16901,7 +16901,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
   </div>
   <div className="flex items-center gap-2 shrink-0 ml-3">
-  <a href={window.location.origin + "/?company=" + c.id} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.stopPropagation(); }} className="text-indigo-600 text-xs font-medium hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>Open</a>
+  <a href={window.location.origin + window.location.pathname + "?company=" + encodeURIComponent(c.id) + "#dashboard"} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.stopPropagation(); }} className="text-indigo-600 text-xs font-medium hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>Open</a>
   {!["tenant", "owner"].includes(c.memberRole) && <button onClick={(e) => { e.stopPropagation(); deleteCompany(c); }} disabled={deleting === c.id} className="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors disabled:opacity-50">{deleting === c.id ? "Deleting..." : "Delete"}</button>}
   </div>
   </div>
@@ -17265,7 +17265,12 @@ function AppInner() {
   // Check for ?company=UUID in URL — auto-select that company if user is a member
   const urlCompanyId = urlCompanyParam || new URLSearchParams(window.location.search).get("company");
   if (urlCompanyId) {
-  const match = memberships.find(m => m.company_id === urlCompanyId);
+  let match = memberships.find(m => m.company_id === urlCompanyId);
+  // If not found in cached memberships, try a direct query (handles newly created companies)
+  if (!match) {
+  const { data: directMem } = await supabase.from("company_members").select("company_id, role, status").eq("company_id", urlCompanyId).ilike("user_email", user.email).eq("status", "active").maybeSingle();
+  if (directMem) match = directMem;
+  }
   if (match) {
   const { data: company } = await supabase.from("companies").select("*").eq("id", urlCompanyId).maybeSingle();
   if (company) { window.history.replaceState({}, "", window.location.pathname); handleSelectCompany(company, match.role); return; }
