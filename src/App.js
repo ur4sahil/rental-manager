@@ -5454,329 +5454,124 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
 }
 
 // ============ PAYMENTS ============
-function Payments({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
+function Payments({ addNotification, userProfile, userRole, companyId, showToast, showConfirm, setPage }) {
   const [payTab, setPayTab] = useState("payments");
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ tenant: "", property: "", amount: "", type: "rent", method: "ACH", status: "paid", date: formatLocalDate(new Date()) });
   const [paySearch, setPaySearch] = useState("");
-  const [payFilterStatus, setPayFilterStatus] = useState("all");
-  const [payFilterType, setPayFilterType] = useState("all");
-  const [payFilterMethod, setPayFilterMethod] = useState("all");
   const [payDateFrom, setPayDateFrom] = useState("");
   const [payDateTo, setPayDateTo] = useState("");
-  const [selectedPayments, setSelectedPayments] = useState(new Set());
-  const [payPage, setPayPage] = useState(0);
-  const [payTotalCount, setPayTotalCount] = useState(0);
-  const PAY_PAGE_SIZE = 100;
 
-  useEffect(() => { fetchPayments(); }, [companyId, payPage, payFilterStatus, payFilterType, payFilterMethod, payDateFrom, payDateTo, paySearch]);
+  useEffect(() => { fetchPayments(); }, [companyId, payDateFrom, payDateTo, paySearch]);
 
   async function fetchPayments() {
   setLoading(true);
-  let query = supabase.from("payments").select("*", { count: "exact" }).eq("company_id", companyId).is("archived_at", null);
-  if (payFilterStatus !== "all") query = query.eq("status", payFilterStatus);
-  if (payFilterType !== "all") query = query.eq("type", payFilterType);
-  if (payFilterMethod !== "all") query = query.eq("method", payFilterMethod);
+  // Fetch payment-type JEs: PAY-, STRIPE-, or payment-related descriptions
+  let query = supabase.from("acct_journal_entries").select("*, lines:acct_journal_lines(*)")
+    .eq("company_id", companyId).eq("status", "posted")
+    .or("reference.like.PAY-%,reference.like.STRIPE-%,reference.like.DEPRET-%,description.ilike.%payment%");
   if (payDateFrom) query = query.gte("date", payDateFrom);
   if (payDateTo) query = query.lte("date", payDateTo);
-  if (paySearch) { const esc = escapeFilterValue(paySearch); query = query.or(`tenant.ilike.%${esc}%,property.ilike.%${esc}%`); }
-  const { data, count } = await query.order("date", { ascending: false }).range(payPage * PAY_PAGE_SIZE, (payPage + 1) * PAY_PAGE_SIZE - 1);
-  setPayments(data || []);
-  setPayTotalCount(count || 0);
+  if (paySearch) query = query.or(`description.ilike.%${escapeFilterValue(paySearch)}%,property.ilike.%${escapeFilterValue(paySearch)}%`);
+  const { data } = await query.order("date", { ascending: false }).limit(200);
+  // Transform JEs into payment-like rows
+  const paymentRows = (data || []).map(je => {
+    const debitTotal = (je.lines || []).reduce((s, l) => s + safeNum(l.debit), 0);
+    // Extract tenant from description: "Payment received — TenantName — Property"
+    const descParts = (je.description || "").split("—").map(s => s.trim());
+    const tenant = descParts.length >= 2 ? descParts[1] : "";
+    // Extract method from description or reference
+    let method = "Journal Entry";
+    if (je.reference?.startsWith("STRIPE-")) method = "Stripe";
+    else if ((je.description || "").toLowerCase().includes("ach")) method = "ACH";
+    else if ((je.description || "").toLowerCase().includes("check")) method = "Check";
+    else if ((je.description || "").toLowerCase().includes("cash")) method = "Cash";
+    else if (je.reference?.startsWith("PAY-")) method = "Manual";
+    // Determine type
+    let type = "payment";
+    if ((je.description || "").toLowerCase().includes("deposit")) type = "deposit";
+    else if ((je.description || "").toLowerCase().includes("late fee")) type = "late_fee";
+    else if ((je.description || "").toLowerCase().includes("rent")) type = "rent";
+    return {
+      id: je.id, tenant, property: je.property || "", amount: debitTotal,
+      date: je.date, type, method, status: "posted",
+      description: je.description, reference: je.reference, number: je.number,
+    };
+  }).filter(p => p.amount > 0);
+  setPayments(paymentRows);
   setLoading(false);
-  }
-
-  async function bulkMarkPaid() {
-  if (selectedPayments.size === 0) return;
-  const ids = Array.from(selectedPayments);
-  const { error } = await supabase.from("payments").update({ status: "paid" }).in("id", ids).eq("company_id", companyId);
-  if (error) { showToast("Error updating payments: " + error.message, "error"); return; }
-  showToast(ids.length + " payment(s) marked as paid", "success");
-  addNotification("💰", ids.length + " payments marked as paid");
-  setSelectedPayments(new Set());
-  fetchPayments();
-  }
-
-  async function bulkDeletePayments() {
-  if (selectedPayments.size === 0) return;
-  if (!await showConfirm({ message: "Delete " + selectedPayments.size + " selected payment(s)?\n\nThis cannot be undone.", variant: "danger", confirmText: "Delete" })) return;
-  const ids = Array.from(selectedPayments);
-  const { error } = await supabase.from("payments").update({ archived_at: new Date().toISOString() }).in("id", ids).eq("company_id", companyId);
-  if (error) { showToast("Error deleting payments: " + error.message, "error"); return; }
-  showToast(ids.length + " payment(s) deleted", "success");
-  setSelectedPayments(new Set());
-  fetchPayments();
-  }
-
-  function exportSelectedPayments() {
-  const selected = payments.filter(p => selectedPayments.has(p.id));
-  exportToCSV(selected, [
-  { label: "Date", key: "date" },
-  { label: "Tenant", key: "tenant" },
-  { label: "Property", key: "property" },
-  { label: "Amount", key: "amount" },
-  { label: "Type", key: "type" },
-  { label: "Method", key: "method" },
-  { label: "Status", key: "status" },
-  ], "selected_payments_" + new Date().toLocaleDateString(), showToast);
-  }
-
-  async function addPayment() {
-  if (!guardSubmit("addPayment")) return;
-  try {
-  if (!form.tenant.trim()) { showToast("Tenant name is required.", "error"); return; }
-  if (!form.property.trim()) { showToast("Property is required.", "error"); return; }
-  if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0) { showToast("Please enter a valid amount.", "error"); return; }
-  if (!form.date) { showToast("Payment date is required.", "error"); return; }
-  if (new Date(form.date + "T12:00:00") > new Date()) { showToast("Payment date cannot be in the future.", "error"); return; }
-  if (!["rent","deposit","late_fee","other"].includes(form.type)) { form.type = "rent"; }
-  // #18: Check if tenant is archived
-  const { data: tenantCheck } = await supabase.from("tenants").select("id, archived_at").eq("company_id", companyId).ilike("name", form.tenant.trim()).maybeSingle();
-  if (tenantCheck?.archived_at) {
-  if (!await showConfirm({ message: `Warning: "${form.tenant}" is an archived tenant. Recording a payment for an archived tenant is unusual. Continue?` })) return;
-  }
-  // Duplicate detection: check for same tenant + amount + date in last 5 minutes
-  const { data: recentDup } = await supabase.from("payments").select("id").eq("company_id", companyId).eq("tenant", form.tenant).eq("amount", safeNum(form.amount)).eq("date", form.date).is("archived_at", null).limit(1);
-  if (recentDup && recentDup.length > 0) {
-  if (!await showConfirm({ message: "A payment for $" + form.amount + " from " + form.tenant + " on " + form.date + " already exists. Record another?" })) return;
-  }
-  const { error } = await supabase.from("payments").insert([{ ...form, amount: Number(form.amount), company_id: companyId }]);
-  if (error) { showToast("Error recording payment: " + error.message, "error"); return; }
-  // Only auto-post to accounting if payment is actually paid (not unpaid/partial)
-  if (form.status !== "paid") {
-  addNotification("💳", `Payment recorded (${form.status}): ${formatCurrency(form.amount)} from ${form.tenant}`);
-  logAudit("create", "payments", `Payment (${form.status}): ${formatCurrency(form.amount)} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole, companyId);
-  setShowForm(false);
-  setForm({ tenant: "", property: "", amount: "", type: "rent", method: "ACH", status: "paid", date: formatLocalDate(new Date()) });
-  fetchPayments();
-  return;
-  }
-  // AUTO-POST TO ACCOUNTING: Smart posting - settle AR if accrual exists, else direct revenue
-  // Ensure tenant AR sub-account exists (creates if missing)
-  const { data: payTenantRow } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.tenant.trim()).is("archived_at", null).maybeSingle();
-  if (payTenantRow?.id) await getOrCreateTenantAR(companyId, form.tenant.trim(), payTenantRow.id);
-  const classId = await getPropertyClassId(form.property, companyId);
-  const amt = Number(form.amount);
-  const isLateFee = form.type === "late_fee";
-  // Check if an accrual (AR) entry exists for this tenant/property this month
-  const month = form.date.slice(0, 7);
-  let hasAccrual = false;
-  if (!isLateFee) {
-  hasAccrual = await checkAccrualExists(companyId, month, form.tenant);
-  } else {
-  const { data: lateJEs } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).ilike("description", `%Late fee%${escapeFilterValue(form.tenant)}%`);
-  if (lateJEs && lateJEs.length > 0) hasAccrual = true;
-  }
-  // Post GL entry FIRST — only update tenant balance if GL succeeds
-  let jeId = null;
-  if (hasAccrual) {
-  jeId = await autoPostJournalEntry({
-  companyId,
-  date: form.date,
-  description: `Payment received — ${form.tenant} — ${form.property} (settling AR)`,
-  reference: `PAY-${shortId()}`,
-  property: form.property,
-  lines: [
-  { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: `${form.method} from ${form.tenant}` },
-  { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: `AR settlement — ${form.tenant}` },
-  ]
-  });
-  } else {
-  const revenueAcct = isLateFee ? "4010" : "4000";
-  const revenueAcctName = isLateFee ? "Late Fee Income" : "Rental Income";
-  jeId = await autoPostJournalEntry({
-  companyId,
-  date: form.date,
-  description: `${form.type === "rent" ? "Rent" : form.type} payment — ${form.tenant} — ${form.property}`,
-  reference: `PAY-${shortId()}`,
-  property: form.property,
-  lines: [
-  { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: `${form.method} from ${form.tenant}` },
-  { account_id: revenueAcct, account_name: revenueAcctName, debit: 0, credit: amt, class_id: classId, memo: `${form.tenant} — ${form.property}` },
-  ]
-  });
-  }
-  if (!jeId) {
-  console.error("GL posting failed for payment — tenant balance NOT updated to prevent drift");
-  showToast("Payment was saved but the accounting entry failed to post. Tenant balance was NOT updated. Please check the Accounting module and post manually if needed.", "error");
-  }
-  addNotification("💳", `Payment recorded: ${formatCurrency(form.amount)} from ${form.tenant}`);
-  logAudit("create", "payments", `Payment: ${formatCurrency(form.amount)} from ${form.tenant} at ${form.property}`, "", userProfile?.email, userRole, companyId);
-
-  // Update tenant balance and create ledger entry ONLY if GL posted successfully
-  if (jeId) {
-  const { data: tenantRow } = await supabase.from("tenants").select("id, balance, email").eq("name", form.tenant).eq("company_id", companyId).maybeSingle();
-  if (tenantRow) {
-  const payAmt = Number(form.amount);
-  let balanceUpdated = false;
-  try {
-  const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -payAmt });
-  if (balErr) showToast("Balance update failed: " + balErr.message + ". Please verify the tenant balance.", "error");
-  else balanceUpdated = true;
-  } catch (e) { console.warn("Balance RPC error:", e.message); }
-  await safeLedgerInsert({ company_id: companyId,
-  tenant: form.tenant, tenant_id: tenantRow.id, property: form.property,
-  date: form.date, description: `${form.type} payment (${form.method})`,
-  amount: -payAmt, type: "payment", balance: safeNum(tenantRow.balance) - payAmt,
-  });
-  // Queue payment receipt notification ONLY after balance confirmed updated
-  if (tenantRow.email && balanceUpdated) {
-  queueNotification("payment_received", tenantRow.email, { tenant: form.tenant, amount: payAmt, date: form.date, property: form.property, method: form.method }, companyId);
-  }
-  }
-  // Auto-create owner distribution for rent payments
-  if (form.type === "rent") {
-  await autoOwnerDistribution(companyId, form.property, Number(form.amount), form.date, form.tenant);
-  }
-  }
-
-  setShowForm(false);
-  setForm({ tenant: "", property: "", amount: "", type: "rent", method: "ACH", status: "paid", date: formatLocalDate(new Date()) });
-  fetchPayments();
-  } finally { guardRelease("addPayment"); }
   }
 
   if (loading) return <Spinner />;
 
-  const thisMonth = formatLocalDate(new Date()).slice(0, 7);
-  const totalExpected = payments.filter(p => p.type === "rent" && p.date?.startsWith(thisMonth)).reduce((s, p) => s + safeNum(p.amount), 0);
-  const totalCollected = payments.filter(p => p.status === "paid" && p.date?.startsWith(thisMonth)).reduce((s, p) => s + safeNum(p.amount), 0);
-
   return (
   <div>
   <div className="flex items-center justify-between mb-5">
-  <h2 className="text-2xl font-manrope font-bold text-slate-800">Payments & Rent</h2>
+  <h2 className="text-2xl font-manrope font-bold text-slate-800">Payments</h2>
   <div className="flex gap-2">
   <button onClick={() => exportToCSV(payments, [
-  { label: "Date", key: "date" }, { label: "Tenant", key: "tenant" }, { label: "Property", key: "property" },
-  { label: "Amount", key: "amount" }, { label: "Type", key: "type" }, { label: "Method", key: "method" }, { label: "Status", key: "status" },
-  ], "payments-export", showToast)} className="text-sm text-indigo-600 border border-indigo-200 px-3 py-2 rounded-2xl hover:bg-indigo-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
-  <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ Record Payment</button>
+  { label: "Date", key: "date" }, { label: "Tenant", key: "tenant" },
+  { label: "Property", key: "property" }, { label: "Amount", key: "amount" },
+  { label: "Type", key: "type" }, { label: "Method", key: "method" },
+  { label: "Reference", key: "reference" },
+  ], "payments-export", showToast)} className="text-sm text-indigo-600 border border-indigo-200 px-3 py-2 rounded-2xl hover:bg-indigo-50 font-medium">
+  <span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export
+  </button>
+  <button onClick={() => setPage("accounting")} className="bg-green-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-green-700 flex items-center gap-1.5">
+  <span className="material-icons-outlined text-sm">add_circle</span>Record Payment
+  </button>
   </div>
   </div>
 
-  {showForm && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
-  <h3 className="font-semibold text-slate-700 mb-3">New Payment</h3>
-  <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant *</label><TenantSelect value={form.tenant} onChange={(name, t) => setForm({ ...form, tenant: name, property: t?.property || form.property })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($) *</label><Input placeholder="1500.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Date</label><Input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Method</label><select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
-  {["ACH", "card", "autopay", "cash", "check"].map(m => <option key={m}>{m}</option>)}
-  </select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Payment Type</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
-  {["rent", "late_fee", "deposit", "other"].map(t => <option key={t}>{t}</option>)}
-  </select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
-  {["paid", "unpaid", "partial"].map(s => <option key={s}>{s}</option>)}
-  </select></div>
-  </div>
-  <div className="flex gap-2 mt-3">
-  <button onClick={addPayment} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">Save</button>
-  <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-2xl hover:bg-slate-100">Cancel</button>
-  </div>
-  </div>
-  )}
-
-  {payTab === "archived" && (
-  <ArchivedItems tableName="payments" label="Payment" fields="id, tenant, property, amount, type, date, archived_at, archived_by" companyId={companyId} addNotification={addNotification} onRestore={() => { fetchPayments(); }} />
-  )}
   {payTab === "autopay" && <Autopay addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
   {payTab === "payments" && (<>
-  <div className="grid grid-cols-3 gap-3 mb-5">
-  <StatCard label="Expected" value={`${formatCurrency(totalExpected)}`} color="text-slate-700" />
-  <StatCard label="Collected" value={`${formatCurrency(totalCollected)}`} color="text-green-600" />
-  <StatCard label="Outstanding" value={`$${(totalExpected - totalCollected).toLocaleString()}`} color="text-red-500" />
+  <div className="grid grid-cols-2 gap-3 mb-5">
+  <StatCard label="Total Collected" value={formatCurrency(payments.reduce((s, p) => s + p.amount, 0))} color="text-green-600" sub="From journal entries" />
+  <StatCard label="Transactions" value={payments.length} color="text-indigo-600" sub="Posted payments" />
   </div>
 
-  {/* Filters */}
   <div className="flex flex-wrap gap-2 mb-4">
   <Input placeholder="Search tenant or property..." value={paySearch} onChange={e => setPaySearch(e.target.value)} className="flex-1 min-w-0 sm:min-w-40" />
-  <select value={payFilterStatus} onChange={e => setPayFilterStatus(e.target.value)} >
-  <option value="all">All Status</option><option value="paid">Paid</option><option value="unpaid">Unpaid</option><option value="partial">Partial</option>
-  </select>
-  <select value={payFilterType} onChange={e => setPayFilterType(e.target.value)} >
-  <option value="all">All Types</option><option value="rent">Rent</option><option value="late_fee">Late Fee</option><option value="deposit">Deposit</option><option value="other">Other</option>
-  </select>
-  <select value={payFilterMethod} onChange={e => setPayFilterMethod(e.target.value)} >
-  <option value="all">All Methods</option><option value="ACH">ACH</option><option value="card">Card</option><option value="autopay">Autopay</option><option value="cash">Cash</option><option value="check">Check</option>
-  </select>
-  <Input type="date" value={payDateFrom} onChange={e => setPayDateFrom(e.target.value)}  title="From date" />
-  <Input type="date" value={payDateTo} onChange={e => setPayDateTo(e.target.value)}  title="To date" />
-  {(paySearch || payFilterStatus !== "all" || payFilterType !== "all" || payFilterMethod !== "all" || payDateFrom || payDateTo) && (
-  <button onClick={() => { setPaySearch(""); setPayFilterStatus("all"); setPayFilterType("all"); setPayFilterMethod("all"); setPayDateFrom(""); setPayDateTo(""); }} className="text-xs text-red-500 border border-red-200 px-3 py-2 rounded-2xl hover:bg-red-50">Clear</button>
+  <Input type="date" value={payDateFrom} onChange={e => setPayDateFrom(e.target.value)} title="From date" />
+  <Input type="date" value={payDateTo} onChange={e => setPayDateTo(e.target.value)} title="To date" />
+  {(paySearch || payDateFrom || payDateTo) && (
+  <button onClick={() => { setPaySearch(""); setPayDateFrom(""); setPayDateTo(""); }} className="text-xs text-red-500 border border-red-200 px-3 py-2 rounded-2xl hover:bg-red-50">Clear</button>
   )}
   </div>
 
-  {/* Bulk bar */}
-  {selectedPayments.size > 0 && (
-  <div className="bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3 mb-4 flex items-center justify-between">
-  <span className="text-sm font-medium text-indigo-800">{selectedPayments.size} payment{selectedPayments.size > 1 ? "s" : ""} selected</span>
-  <div className="flex gap-2">
-  <button onClick={bulkMarkPaid} className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-200 font-medium">Mark Paid</button>
-  <button onClick={exportSelectedPayments} className="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-200 font-medium">Export Selected</button>
-  <button onClick={bulkDeletePayments} className="text-xs bg-red-100 text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-200 font-medium">Delete</button>
-  <button onClick={() => setSelectedPayments(new Set())} className="text-xs text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-100">Deselect</button>
-  </div>
-  </div>
-  )}
-
-  {(() => {
-  const fp = payments;
-  const payTotalPages = Math.ceil(payTotalCount / PAY_PAGE_SIZE);
-  return (
-  <>
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden">
-  <div className="px-4 py-2 text-xs text-slate-400 border-b border-indigo-50 flex items-center justify-between">
-  <span>{payTotalCount} payments{payTotalPages > 1 ? ` — Page ${payPage + 1} of ${payTotalPages}` : ""}</span>
-  {payTotalPages > 1 && (
-  <div className="flex gap-1">
-  <button onClick={() => setPayPage(Math.max(0, payPage - 1))} disabled={payPage === 0} className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded-lg disabled:opacity-30">← Prev</button>
-  <button onClick={() => setPayPage(Math.min(payTotalPages - 1, payPage + 1))} disabled={payPage >= payTotalPages - 1} className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded-lg disabled:opacity-30">Next →</button>
-  </div>
-  )}
-  </div>
   <table className="w-full text-sm">
-  <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
+  <thead className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wider">
   <tr>
-  <th className="px-3 py-2 text-left w-8"><input type="checkbox" checked={fp.length > 0 && fp.every(p => selectedPayments.has(p.id))} onChange={e => { if (e.target.checked) setSelectedPayments(new Set(fp.map(p => p.id))); else setSelectedPayments(new Set()); }} className="rounded" /></th>
-  {["Tenant", "Property", "Amount", "Date", "Type", "Method", "Status", ""].map(h => <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>)}
+  <th className="px-4 py-3 text-left">Date</th>
+  <th className="px-4 py-3 text-left">JE #</th>
+  <th className="px-4 py-3 text-left">Tenant</th>
+  <th className="px-4 py-3 text-left">Property</th>
+  <th className="px-4 py-3 text-right">Amount</th>
+  <th className="px-4 py-3 text-left">Type</th>
+  <th className="px-4 py-3 text-left">Method</th>
+  <th className="px-4 py-3"></th>
   </tr>
   </thead>
   <tbody>
-  {fp.map(p => (
-  <tr key={p.id} className={`border-t border-indigo-50/50 hover:bg-indigo-50/30 ${selectedPayments.has(p.id) ? "bg-indigo-50/60" : ""}`}>
-  <td className="px-3 py-2.5"><input type="checkbox" checked={selectedPayments.has(p.id)} onChange={e => { const next = new Set(selectedPayments); if (e.target.checked) next.add(p.id); else next.delete(p.id); setSelectedPayments(next); }} className="rounded" /></td>
-  <td className="px-3 py-2.5 font-medium text-slate-800">{p.tenant}</td>
-  <td className="px-3 py-2.5 text-slate-400">{p.property}</td>
-  <td className="px-3 py-2.5 font-semibold">${p.amount}</td>
-  <td className="px-3 py-2.5 text-slate-400">{p.date}</td>
-  <td className="px-3 py-2.5 capitalize text-slate-500">{p.type?.replace("_", " ")}</td>
-  <td className="px-3 py-2.5 text-slate-400">{p.method}</td>
-  <td className="px-3 py-2.5"><Badge status={p.status} /></td>
-  <td className="px-3 py-2.5">{p.status === "paid" && <button onClick={() => generatePaymentReceipt(p)} className="text-xs text-green-600 border border-green-200 px-2 py-0.5 rounded hover:bg-green-50">Receipt</button>}</td>
+  {payments.map(p => (
+  <tr key={p.id} className="border-t border-slate-100 hover:bg-green-50/40 transition-colors">
+  <td className="px-4 py-3 text-slate-500">{p.date}</td>
+  <td className="px-4 py-3 font-mono text-xs text-green-600">{p.number || "—"}</td>
+  <td className="px-4 py-3 font-medium text-slate-800">{p.tenant || "—"}</td>
+  <td className="px-4 py-3 text-slate-400 text-xs">{p.property?.split(",")[0] || "—"}</td>
+  <td className="px-4 py-3 text-right font-semibold font-mono text-green-600">{formatCurrency(p.amount)}</td>
+  <td className="px-4 py-3 capitalize text-slate-500 text-xs">{p.type?.replace("_", " ")}</td>
+  <td className="px-4 py-3 text-slate-400 text-xs">{p.method}</td>
+  <td className="px-4 py-3">
+  <button onClick={() => generatePaymentReceipt({ tenant: p.tenant, property: p.property, amount: p.amount, date: p.date, method: p.method, type: p.type })} className="text-xs text-green-600 border border-green-200 px-2 py-0.5 rounded hover:bg-green-50">Receipt</button>
+  </td>
   </tr>
   ))}
   </tbody>
   </table>
-  {fp.length === 0 && <div className="text-center py-8 text-slate-400 text-sm">No payments match filters</div>}
+  {payments.length === 0 && <div className="text-center py-8 text-slate-400 text-sm">No payment transactions found</div>}
   </div>
-  {payTotalPages > 1 && (
-  <div className="flex items-center justify-between mt-3">
-  <span className="text-xs text-slate-400">Page {payPage + 1} of {payTotalPages} ({payTotalCount} records)</span>
-  <div className="flex gap-1">
-  <button onClick={() => setPayPage(Math.max(0, payPage - 1))} disabled={payPage === 0} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg disabled:opacity-30">← Prev</button>
-  <button onClick={() => setPayPage(Math.min(payTotalPages - 1, payPage + 1))} disabled={payPage >= payTotalPages - 1} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg disabled:opacity-30">Next →</button>
-  </div>
-  </div>
-  )}
-  </>
-  );
-  })()}
   </>)}
   </div>
   );
