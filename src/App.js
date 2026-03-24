@@ -12724,6 +12724,8 @@ const ALL_NAV = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard" },
   { id: "tasks", label: "Tasks & Approvals", icon: "assignment" },
   { id: "properties", label: "Properties", icon: "apartment", children: [
+    { id: "maintenance", label: "Maintenance", icon: "build" },
+    { id: "inspections", label: "Inspections", icon: "checklist" },
     { id: "utilities", label: "Utilities", icon: "bolt" },
     { id: "hoa", label: "HOA Payments", icon: "holiday_village" },
     { id: "loans", label: "Loans", icon: "account_balance_wallet" },
@@ -12731,10 +12733,8 @@ const ALL_NAV = [
   ]},
   { id: "tenants", label: "Tenants", icon: "people" },
   { id: "payments", label: "Payments", icon: "payments" },
-  { id: "maintenance", label: "Maintenance", icon: "build" },
   { id: "accounting", label: "Accounting", icon: "account_balance" },
   { id: "doc_builder", label: "Document Builder", icon: "description" },
-  { id: "inspections", label: "Inspections", icon: "checklist" },
   { id: "vendors", label: "Vendors", icon: "engineering" },
   { id: "autopay", label: "Autopay", icon: "autorenew" },
   { id: "owners", label: "Owners", icon: "person" },
@@ -17195,7 +17195,12 @@ function AppInner() {
   }, []);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [expandedNav, setExpandedNav] = useState(new Set());
+  const [expandedNav, setExpandedNav] = useState(() => {
+    const initial = new Set();
+    // Auto-expand parents whose child is the current page
+    ALL_NAV.forEach(n => { if (n.children && n.children.some(c => c.id === page)) initial.add(n.id); });
+    return initial;
+  });
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -17641,14 +17646,19 @@ function AppInner() {
   {adminNav.map(n => {
   const childIds = (n.children || []).map(c => c.id);
   const isParentActive = page === n.id || childIds.includes(page);
-  const isExpanded = isParentActive || expandedNav.has(n.id);
+  const isExpanded = expandedNav.has(n.id);
   return (
   <div key={n.id}>
-  <button onClick={() => { if (n.children) { setExpandedNav(s => { const next = new Set(s); if (next.has(n.id)) next.delete(n.id); else next.add(n.id); return next; }); } setPage(n.id); setSidebarOpen(false); }}
-  className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left transition-all rounded-2xl mb-0.5 ${isParentActive ? "bg-indigo-50 text-indigo-700 font-semibold" : "text-slate-500 hover:bg-indigo-50/50 hover:text-slate-700"}`}>
-  <span className="material-icons-outlined text-lg">{n.icon}</span><span className="flex-1">{n.label}</span>
-  {n.children && <span className={`material-icons-outlined text-sm text-slate-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}>expand_more</span>}
+  <div className={`flex items-center rounded-2xl mb-0.5 transition-all ${isParentActive ? "bg-indigo-50 text-indigo-700 font-semibold" : "text-slate-500 hover:bg-indigo-50/50 hover:text-slate-700"}`}>
+  <button onClick={() => { setPage(n.id); setSidebarOpen(false); }}
+  className="flex-1 flex items-center gap-3 px-3 py-2.5 text-sm text-left">
+  <span className="material-icons-outlined text-lg">{n.icon}</span><span>{n.label}</span>
   </button>
+  {n.children && <button onClick={(e) => { e.stopPropagation(); setExpandedNav(s => { const next = new Set(s); if (next.has(n.id)) next.delete(n.id); else next.add(n.id); return next; }); }}
+  className="px-2 py-2.5 text-slate-400 hover:text-slate-700">
+  <span className={`material-icons-outlined text-sm transition-transform ${isExpanded ? "rotate-180" : ""}`}>expand_more</span>
+  </button>}
+  </div>
   {n.children && isExpanded && n.children.map(c => (
   <button key={c.id} onClick={() => { setPage(c.id); setSidebarOpen(false); }}
   className={`w-full flex items-center gap-3 pl-9 pr-3 py-2 text-xs text-left transition-all rounded-xl mb-0.5 ${page === c.id ? "bg-indigo-50 text-indigo-700 font-semibold" : "text-slate-400 hover:bg-indigo-50/50 hover:text-slate-600"}`}>
