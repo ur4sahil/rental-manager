@@ -529,7 +529,7 @@ async function getPropertyClassId(propertyAddress, companyId) {
   }
   // 3. No class exists — create one and store on property
   const { data: newClass } = await supabase.from("acct_classes").insert([{
-  name: propertyAddress, description: "Auto-created for " + propertyAddress.split(",")[0],
+  id: crypto.randomUUID(), name: propertyAddress, description: "Auto-created for " + propertyAddress.split(",")[0],
   color: pickColor(propertyAddress), is_active: true, company_id: companyId,
   }]).select("id").maybeSingle();
   if (newClass?.id) {
@@ -1922,10 +1922,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       if (propErr) throw new Error("Failed to save property: " + propErr.message);
       setSavedPropertyId(newProp?.id || null);
       // Create accounting class
-      const { data: newClass, error: clsErr } = await supabase.from("acct_classes").upsert([{ name: compositeAddress, description: propForm.type + " · " + formatCurrency(0) + "/mo", color: pickColor(compositeAddress), is_active: true, company_id: companyId }], { onConflict: "company_id,name" }).select("id").maybeSingle();
+      const { data: newClass, error: clsErr } = await supabase.from("acct_classes").upsert([{ id: crypto.randomUUID(), name: compositeAddress, description: propForm.type + " · " + formatCurrency(0) + "/mo", color: pickColor(compositeAddress), is_active: true, company_id: companyId }], { onConflict: "company_id,name" }).select("id").maybeSingle();
       if (clsErr) {
       // Upsert failed — try plain insert
-      const { data: insClass, error: insClsErr } = await supabase.from("acct_classes").insert([{ name: compositeAddress, description: propForm.type + " · " + formatCurrency(0) + "/mo", color: pickColor(compositeAddress), is_active: true, company_id: companyId }]).select("id").maybeSingle();
+      const { data: insClass, error: insClsErr } = await supabase.from("acct_classes").insert([{ id: crypto.randomUUID(), name: compositeAddress, description: propForm.type + " · " + formatCurrency(0) + "/mo", color: pickColor(compositeAddress), is_active: true, company_id: companyId }]).select("id").maybeSingle();
       if (insClsErr) console.warn("Class creation failed:", insClsErr.message);
       else if (insClass?.id && newProp?.id) await supabase.from("properties").update({ class_id: insClass.id }).eq("id", newProp.id).eq("company_id", companyId);
       } else if (newClass?.id && newProp?.id) {
@@ -8770,6 +8770,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   const missing = allProps.filter(p => !existingNames.has(p.address));
   if (missing.length > 0) {
   const newClasses = missing.map(p => ({
+  id: crypto.randomUUID(),
   name: p.address,
   description: `${p.type || "Property"} · ${formatCurrency(p.rent || 0)}/mo`,
   color: pickColor(p.address),
