@@ -1815,6 +1815,58 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       created_by: userProfile?.email || ""
     }]);
     if (error) throw new Error("Failed to save recurring rent: " + error.message);
+
+    // Auto-post prorated first month rent if lease doesn't start on the 1st
+    const leaseStart = parseLocalDate(tenantForm.lease_start);
+    const startDay = leaseStart.getDate();
+    const monthlyRent = Number(recurring.amount);
+    const daysInMonth = new Date(leaseStart.getFullYear(), leaseStart.getMonth() + 1, 0).getDate();
+    const remainingDays = daysInMonth - startDay + 1; // include start day
+
+    if (startDay > 1 && remainingDays > 0 && monthlyRent > 0) {
+      const proratedAmount = Math.round(monthlyRent * remainingDays / daysInMonth);
+      const classId = await getPropertyClassId(savedAddress, companyId);
+      const tName = tenantForm.tenant.trim();
+      const { data: tRow } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", tName).eq("property", savedAddress).is("archived_at", null).maybeSingle();
+      const tenantId = tRow?.id;
+      const tenantArId2 = await getOrCreateTenantAR(companyId, tName, tenantId);
+      const revenueId2 = await resolveAccountId("4000", companyId);
+      const proOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start,
+        description: `Prorated rent (${remainingDays}/${daysInMonth} days) — ${tName} — ${savedAddress.split(",")[0]}`,
+        reference: "PRORENT-" + shortId(), property: savedAddress,
+        lines: [
+          { account_id: tenantArId2, account_name: "AR - " + tName, debit: proratedAmount, credit: 0, class_id: classId, memo: `Prorated first month rent` },
+          { account_id: revenueId2, account_name: "Rental Income", debit: 0, credit: proratedAmount, class_id: classId, memo: `${remainingDays}/${daysInMonth} days @ $${monthlyRent}/mo` },
+        ]
+      });
+      if (proOk && tenantId) {
+        await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: savedAddress, date: tenantForm.lease_start, description: `Prorated rent (${remainingDays}/${daysInMonth} days)`, amount: proratedAmount, type: "charge", balance: 0 });
+        // Update tenant balance
+        try { await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: proratedAmount }); } catch {}
+      }
+      showToast(`Prorated first month rent: $${proratedAmount} (${remainingDays}/${daysInMonth} days)`, "success");
+    } else if (startDay === 1 && monthlyRent > 0) {
+      // Lease starts on 1st — post full first month rent
+      const classId = await getPropertyClassId(savedAddress, companyId);
+      const tName = tenantForm.tenant.trim();
+      const { data: tRow } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", tName).eq("property", savedAddress).is("archived_at", null).maybeSingle();
+      const tenantId = tRow?.id;
+      const tenantArId2 = await getOrCreateTenantAR(companyId, tName, tenantId);
+      const revenueId2 = await resolveAccountId("4000", companyId);
+      const fullOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start,
+        description: `First month rent — ${tName} — ${savedAddress.split(",")[0]}`,
+        reference: "RENT1-" + shortId(), property: savedAddress,
+        lines: [
+          { account_id: tenantArId2, account_name: "AR - " + tName, debit: monthlyRent, credit: 0, class_id: classId, memo: "First month rent" },
+          { account_id: revenueId2, account_name: "Rental Income", debit: 0, credit: monthlyRent, class_id: classId, memo: "Full month rent" },
+        ]
+      });
+      if (fullOk && tenantId) {
+        await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: savedAddress, date: tenantForm.lease_start, description: "First month rent", amount: monthlyRent, type: "charge", balance: 0 });
+        try { await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: monthlyRent }); } catch {}
+      }
+    }
+
     return true;
   }
 
@@ -1874,6 +1926,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     if (!tenantForm.tenant_phone.trim()) throw new Error("Phone required");
     if (!tenantForm.rent || Number(tenantForm.rent) <= 0) throw new Error("Rent required");
     if (!tenantForm.lease_start || !tenantForm.lease_end) throw new Error("Lease dates required");
+    if (tenantForm.lease_end <= tenantForm.lease_start) throw new Error("Lease end date must be after start date");
     if (!savedPropertyId) throw new Error("Property must be saved first (complete Step 1)");
     const addr = savedAddress;
     // Update property with tenant info
