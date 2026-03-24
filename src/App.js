@@ -1638,6 +1638,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   const [insurance, setInsurance] = useState({ enabled: false, provider: "", policy_number: "", premium_amount: "", premium_frequency: "annual", coverage_amount: "", expiration_date: "", notes: "" });
   const [recurring, setRecurring] = useState({ frequency: "monthly", day_of_month: 1, amount: wizardData.rent || 0 });
   const [uploadedDocs, setUploadedDocs] = useState([]);
+  const [docUploadType, setDocUploadType] = useState("Lease");
+  const [docDescription, setDocDescription] = useState("");
 
   // File upload refs
   const fileInputRef = useRef();
@@ -2083,25 +2085,30 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         const fileName = companyId + "/" + shortId() + "_" + sanitizeFileName(file.name);
         const { error: uploadErr } = await supabase.storage.from("documents").upload(fileName, file, { cacheControl: "3600", upsert: false });
         if (uploadErr) { showToast("Upload failed for " + file.name + ": " + uploadErr.message, "error"); continue; }
+        const docName = docUploadType === "Other" ? docDescription : docUploadType + " — " + file.name.replace(/\.[^/.]+$/, "");
         const { error: insertErr } = await supabase.from("documents").insert([{
           company_id: companyId,
-          name: file.name.replace(/\.[^/.]+$/, ""),
+          name: docName,
           file_name: fileName,
           url: fileName,
           property: savedAddress,
           tenant: propForm.status === "occupied" ? (tenantForm.tenant || "") : "",
-          type: "Other",
+          type: docUploadType,
           tenant_visible: false,
           uploaded_at: new Date().toISOString()
         }]);
         if (insertErr) { showToast("File uploaded but record failed: " + insertErr.message, "error"); continue; }
-        setUploadedDocs(prev => [...prev, { name: file.name, fileName }]);
+        setUploadedDocs(prev => [...prev, { name: docName, type: docUploadType }]);
         uploaded++;
       } catch (err) {
         showToast("Error uploading " + file.name + ": " + err.message, "error");
       }
     }
-    if (uploaded > 0) showToast(uploaded + " document" + (uploaded > 1 ? "s" : "") + " uploaded", "success");
+    if (uploaded > 0) {
+      showToast(uploaded + " document" + (uploaded > 1 ? "s" : "") + " uploaded", "success");
+      setDocUploadType("Lease");
+      setDocDescription("");
+    }
     setSaving(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -2460,23 +2467,58 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
               </div>
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
-              {propForm.status === "occupied" ? (
-                <div className="space-y-2">
-                  <p className="text-sm text-slate-600 font-medium">Recommended documents for occupied property:</p>
-                  <div className="space-y-1.5">
-                    {["Signed Lease", "Government ID", "Renters Insurance", "Proof of Utility Transfer"].map(doc => {
-                      const isUploaded = uploadedDocs.some(d => d.name.toLowerCase().includes(doc.toLowerCase().split(" ")[0]));
-                      return (
-                        <div key={doc} className="flex items-center gap-2 text-sm">
-                          <span className={`material-icons-outlined text-base ${isUploaded ? "text-green-500" : "text-slate-300"}`}>{isUploaded ? "check_circle" : "radio_button_unchecked"}</span>
-                          <span className={isUploaded ? "text-green-700 font-medium" : "text-slate-500"}>{doc}</span>
-                        </div>
-                      );
-                    })}
+              {propForm.status === "occupied" && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+                  <div className="text-sm font-semibold text-amber-800 mb-2">Required Documents</div>
+                  {["Lease", "ID", "Insurance"].map(doc => {
+                    const uploaded = uploadedDocs.some(d => d.type === doc);
+                    return (
+                      <div key={doc} className="flex items-center gap-2 py-1 text-sm">
+                        <span className={uploaded ? "text-green-500" : "text-amber-400"}>{uploaded ? "✅" : "☐"}</span>
+                        <span className={uploaded ? "text-slate-700" : "text-amber-700"}>
+                          {doc === "Lease" ? "Lease Agreement" : doc === "ID" ? "Government-Issued ID" : "Renters Insurance"}
+                        </span>
+                        <span className="text-red-500 text-xs">*</span>
+                        {uploaded && <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">Uploaded</span>}
+                      </div>
+                    );
+                  })}
+                  <div className="flex items-center gap-2 py-1 text-sm">
+                    {uploadedDocs.some(d => d.type === "Utility Transfer") ? <span className="text-green-500">✅</span> : <span className="text-slate-300">☐</span>}
+                    <span className="text-slate-500">Proof of Utility Transfer</span>
+                    <span className="text-xs text-slate-400">(optional)</span>
                   </div>
                 </div>
-              ) : (
+              )}
+              {propForm.status !== "occupied" && (
                 <p className="text-sm text-slate-500">Upload property documents (deed, insurance, inspection reports, etc.)</p>
+              )}
+              <div className="mb-4">
+                <label className="text-xs font-medium text-slate-500 block mb-2">Document Type *</label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: "Lease", label: "Lease Agreement", icon: "description", required: true },
+                    { id: "ID", label: "Government ID", icon: "badge", required: true },
+                    { id: "Insurance", label: "Renters Insurance", icon: "verified_user", required: true },
+                    { id: "Utility Transfer", label: "Utility Transfer Proof", icon: "swap_horiz", required: false },
+                    { id: "Other", label: "Other", icon: "insert_drive_file", required: false },
+                  ].map(dt => (
+                    <button key={dt.id} type="button" onClick={() => setDocUploadType(dt.id)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                        docUploadType === dt.id ? "bg-green-50 border-green-300 text-green-700" : "bg-white border-slate-200 text-slate-600 hover:border-green-200"
+                      }`}>
+                      <span className="material-icons-outlined text-sm">{dt.icon}</span>
+                      {dt.label}
+                      {dt.required && <span className="text-red-500 text-xs">*</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {docUploadType === "Other" && (
+                <div className="mb-4">
+                  <label className="text-xs font-medium text-slate-500 block mb-1">Description *</label>
+                  <input type="text" value={docDescription} onChange={e => setDocDescription(e.target.value)} placeholder="Describe this document..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                </div>
               )}
               <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 text-center hover:border-green-300 transition-colors cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                 <span className="material-icons-outlined text-3xl text-slate-300 mb-2">cloud_upload</span>
@@ -2491,6 +2533,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                     <div key={idx} className="flex items-center gap-2 bg-green-50 rounded-lg px-3 py-2 text-sm">
                       <span className="material-icons-outlined text-green-500 text-base">check_circle</span>
                       <span className="text-green-800 font-medium truncate">{doc.name}</span>
+                      <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full ml-auto">{doc.type}</span>
                     </div>
                   ))}
                 </div>
@@ -12384,9 +12427,158 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   );
 }
 
+// ============ INSURANCE TRACKER ============
+function InsuranceTracker({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
+  const [policies, setPolicies] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingPolicy, setEditingPolicy] = useState(null);
+  const [form, setForm] = useState({ property: "", provider: "", policy_number: "", premium_amount: "", premium_frequency: "Annual", coverage_amount: "", expiration_date: "", notes: "" });
+  const [propertyFilter, setPropertyFilter] = useState("all");
+
+  useEffect(() => { fetchPolicies(); }, [companyId]);
+
+  async function fetchPolicies() {
+  const { data } = await supabase.from("property_insurance").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false });
+  setPolicies(data || []);
+  setLoading(false);
+  }
+
+  async function savePolicy() {
+  if (!guardSubmit("savePolicy")) return;
+  try {
+  if (!form.property || !form.provider || !form.premium_amount) { showToast("Property, provider, and premium amount are required.", "error"); return; }
+  const payload = { ...form, premium_amount: Number(form.premium_amount), coverage_amount: Number(form.coverage_amount || 0) };
+  if (editingPolicy) {
+  const { error: polErr } = await supabase.from("property_insurance").update({ property: payload.property, provider: payload.provider, policy_number: payload.policy_number, premium_amount: payload.premium_amount, premium_frequency: payload.premium_frequency, coverage_amount: payload.coverage_amount, expiration_date: payload.expiration_date || null, notes: payload.notes }).eq("id", editingPolicy.id).eq("company_id", companyId);
+  if (polErr) { showToast("Error updating policy: " + polErr.message, "error"); return; }
+  addNotification("🛡️", `Policy updated: ${form.provider}`);
+  logAudit("update", "insurance", `Policy updated: ${form.provider} ${formatCurrency(form.premium_amount)}`, editingPolicy.id, userProfile?.email, userRole, companyId);
+  } else {
+  const { error: polErr } = await supabase.from("property_insurance").insert([{ ...payload, company_id: companyId }]);
+  if (polErr) { showToast("Error saving policy: " + polErr.message, "error"); return; }
+  addNotification("🛡️", `Policy added: ${form.provider} — ${formatCurrency(form.premium_amount)}`);
+  logAudit("create", "insurance", `Policy added: ${form.provider} ${formatCurrency(form.premium_amount)} at ${form.property}`, "", userProfile?.email, userRole, companyId);
+  }
+  setShowForm(false);
+  setEditingPolicy(null);
+  setForm({ property: "", provider: "", policy_number: "", premium_amount: "", premium_frequency: "Annual", coverage_amount: "", expiration_date: "", notes: "" });
+  fetchPolicies();
+  } finally { guardRelease("savePolicy"); }
+  }
+
+  async function deletePolicy(id) {
+  if (!guardSubmit("deletePolicy")) return;
+  try {
+  if (!await showConfirm({ message: "Delete this insurance policy?", variant: "danger", confirmText: "Delete" })) return;
+  const { error: delErr } = await supabase.from("property_insurance").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", id).eq("company_id", companyId);
+  if (delErr) { showToast("Error deleting policy: " + delErr.message, "error"); return; }
+  logAudit("delete", "insurance", "Archived insurance policy", id, userProfile?.email, userRole, companyId);
+  fetchPolicies();
+  } finally { guardRelease("deletePolicy"); }
+  }
+
+  if (loading) return <Spinner />;
+
+  const filtered = policies.filter(p => propertyFilter === "all" || p.property === propertyFilter);
+
+  const today = new Date();
+  const in90 = new Date(today.getTime() + 90 * 86400000);
+  const activePolicies = policies;
+  const totalAnnualPremium = policies.reduce((s, p) => {
+  const amt = safeNum(p.premium_amount);
+  if (p.premium_frequency === "Monthly") return s + amt * 12;
+  if (p.premium_frequency === "Quarterly") return s + amt * 4;
+  return s + amt;
+  }, 0);
+  const expiringSoon = policies.filter(p => {
+  if (!p.expiration_date) return false;
+  const exp = parseLocalDate(p.expiration_date);
+  return exp >= today && exp <= in90;
+  }).length;
+  const uniqueProperties = [...new Set(policies.map(p => p.property).filter(Boolean))];
+
+  const emptyForm = { property: "", provider: "", policy_number: "", premium_amount: "", premium_frequency: "Annual", coverage_amount: "", expiration_date: "", notes: "" };
+
+  function expiryClass(expDate) {
+  if (!expDate) return "";
+  const exp = parseLocalDate(expDate);
+  if (exp < today) return "bg-red-50";
+  if (exp <= in90) return "bg-amber-50";
+  return "";
+  }
+
+  return (
+  <div>
+  <div className="flex flex-col md:flex-row gap-3 mb-4">
+  <h2 className="text-2xl font-manrope font-bold text-slate-800 mr-auto">Insurance</h2>
+  <select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
+  <option value="all">All Properties</option>
+  {uniqueProperties.map(p => <option key={p} value={p}>{p}</option>)}
+  </select>
+  <button onClick={() => { setEditingPolicy(null); setForm(emptyForm); setShowForm(true); }} className="bg-green-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-green-700">+ Add Policy</button>
+  </div>
+
+  {/* Stats */}
+  <div className="flex gap-3 mb-4">
+  <div className="rounded-xl shadow-sm border border-slate-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-slate-800">{activePolicies.length}</div><div className="text-xs text-slate-400">Active Policies</div></div>
+  <div className="rounded-xl shadow-sm border border-slate-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{formatCurrency(totalAnnualPremium)}</div><div className="text-xs text-slate-400">Total Premium (Annual)</div></div>
+  <div className="rounded-xl shadow-sm border border-slate-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">{expiringSoon}</div><div className="text-xs text-slate-400">Expiring Soon (90 days)</div></div>
+  </div>
+
+  {showForm && (
+  <Modal title={editingPolicy ? "Edit Policy" : "New Insurance Policy"} onClose={() => { setShowForm(false); setEditingPolicy(null); }}>
+  <div className="grid grid-cols-2 gap-3">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Provider *</label><Input placeholder="e.g. State Farm" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Policy Number</label><Input placeholder="Policy #" value={form.policy_number} onChange={e => setForm({ ...form, policy_number: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Premium Amount ($) *</label><Input placeholder="1200" type="number" value={form.premium_amount} onChange={e => setForm({ ...form, premium_amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Premium Frequency</label><select value={form.premium_frequency} onChange={e => setForm({ ...form, premium_frequency: e.target.value })} className="border border-slate-200 rounded-2xl px-3 py-2 text-sm w-full">
+  <option value="Monthly">Monthly</option><option value="Quarterly">Quarterly</option><option value="Annual">Annual</option>
+  </select></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Coverage Amount ($)</label><Input placeholder="300000" type="number" value={form.coverage_amount} onChange={e => setForm({ ...form, coverage_amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Expiration Date</label><Input type="date" value={form.expiration_date} onChange={e => setForm({ ...form, expiration_date: e.target.value })} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
+  </div>
+  <div className="flex gap-2 mt-4">
+  <button onClick={savePolicy} className="bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700">Save</button>
+  <button onClick={() => { setShowForm(false); setEditingPolicy(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
+  </div>
+  </Modal>
+  )}
+
+  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+  <table className="w-full text-sm">
+  <thead className="bg-slate-50 text-xs text-slate-400 uppercase">
+  <tr><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Provider</th><th className="px-4 py-3 text-left">Policy #</th><th className="px-4 py-3 text-right">Premium</th><th className="px-4 py-3 text-left">Frequency</th><th className="px-4 py-3 text-right">Coverage</th><th className="px-4 py-3 text-left">Expiry</th><th className="px-4 py-3 text-right">Actions</th></tr>
+  </thead>
+  <tbody>
+  {filtered.map(p => (
+  <tr key={p.id} className={`border-t border-slate-100 hover:bg-green-50/40 ${expiryClass(p.expiration_date)}`}>
+  <td className="px-4 py-2.5 text-slate-800">{p.property}</td>
+  <td className="px-4 py-2.5 font-medium text-slate-800">{p.provider}</td>
+  <td className="px-4 py-2.5 text-slate-500">{p.policy_number || "—"}</td>
+  <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(p.premium_amount)}</td>
+  <td className="px-4 py-2.5 text-slate-500">{p.premium_frequency}</td>
+  <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(p.coverage_amount)}</td>
+  <td className="px-4 py-2.5 text-slate-400">{p.expiration_date || "—"}</td>
+  <td className="px-4 py-2.5 text-right whitespace-nowrap">
+  <button onClick={() => { setEditingPolicy(p); setForm({ property: p.property || "", provider: p.provider || "", policy_number: p.policy_number || "", premium_amount: String(p.premium_amount || ""), premium_frequency: p.premium_frequency || "Annual", coverage_amount: String(p.coverage_amount || ""), expiration_date: p.expiration_date || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>
+  <button onClick={() => deletePolicy(p.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+  </td>
+  </tr>
+  ))}
+  </tbody>
+  </table>
+  {filtered.length === 0 && <div className="text-center py-8 text-slate-400">No insurance policies found</div>}
+  </div>
+  </div>
+  );
+}
+
 // ============ ARCHIVE (SOFT-DELETED ITEMS) ============
 // NOTE: Stale "invited" membership records (>30 days old, never accepted) should be
-// periodically cleaned up. Run: DELETE FROM company_members WHERE status = 'invited' 
+// periodically cleaned up. Run: DELETE FROM company_members WHERE status = 'invited'
 // AND created_at < NOW() - INTERVAL '30 days';
 
 function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
@@ -12533,7 +12725,7 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
 
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
-  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","accounting","owners","notifications","audittrail","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
+  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","insurance","accounting","owners","notifications","audittrail","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
   office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","accounting","notifications","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
@@ -12552,6 +12744,7 @@ const ALL_NAV = [
   { id: "utilities", label: "Utilities", icon: "bolt" },
   { id: "hoa", label: "HOA Payments", icon: "holiday_village" },
   { id: "loans", label: "Loans", icon: "account_balance_wallet" },
+  { id: "insurance", label: "Insurance", icon: "verified_user" },
   { id: "accounting", label: "Accounting", icon: "account_balance" },
   { id: "doc_builder", label: "Document Builder", icon: "description" },
   { id: "inspections", label: "Inspections", icon: "checklist" },
@@ -16179,6 +16372,7 @@ const pageComponents = {
   autopay: Autopay,
   hoa: HOAPayments,
   loans: Loans,
+  insurance: InsuranceTracker,
   audittrail: AuditTrail,
   leases: LeaseManagement,
   vendors: VendorManagement,
