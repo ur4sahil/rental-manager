@@ -4219,7 +4219,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 }
 
 // ============ TENANTS ============
-function Tenants({ addNotification, userProfile, userRole, companyId, setPage, initialTab, showToast, showConfirm }) {
+function Tenants({ addNotification, userProfile, userRole, companyId, setPage, initialTab, showToast, showConfirm, activeCompany }) {
   const isAdmin = userRole === "admin";
   const [pendingRecurringEntry, setPendingRecurringEntry] = useState(null);
   function exportTenants() {
@@ -4547,6 +4547,40 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   setTenantDocs(data || []);
   }
 
+  function exportLedgerPDF(tenant, ledgerData) {
+    const companyName = activeCompany?.name || "Property Management";
+    const today = acctToday();
+    const sorted = [...ledgerData].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+    const dateFrom = sorted.length > 0 ? sorted[0].date : today;
+    const dateTo = sorted.length > 0 ? sorted[sorted.length - 1].date : today;
+    const rows = sorted.map(e => {
+      const isCredit = e.type === "payment" || e.type === "credit";
+      return `<tr><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${e.date||""}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${(e.description||"").replace(/</g,"&lt;")}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-transform:capitalize">${e.type||""}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right">${isCredit?"":"$"+Math.abs(safeNum(e.amount)).toFixed(2)}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right">${isCredit?"$"+Math.abs(safeNum(e.amount)).toFixed(2):""}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">$${safeNum(e.balance).toFixed(2)}</td></tr>`;
+    }).join("");
+    const totalCharges = sorted.filter(e => e.type !== "payment" && e.type !== "credit").reduce((s, e) => s + Math.abs(safeNum(e.amount)), 0);
+    const totalPayments = sorted.filter(e => e.type === "payment" || e.type === "credit").reduce((s, e) => s + Math.abs(safeNum(e.amount)), 0);
+    const html = `<div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:20px">
+      <div style="text-align:center;margin-bottom:24px">
+        <h1 style="margin:0;font-size:22px;color:#1e293b">${companyName}</h1>
+        <h2 style="margin:4px 0 0;font-size:16px;color:#64748b;font-weight:normal">Tenant Ledger Statement</h2>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:16px;padding:12px 16px;background:#f8fafc;border-radius:8px">
+        <div><strong>Tenant:</strong> ${(tenant.name||"").replace(/</g,"&lt;")}<br><strong>Property:</strong> ${(tenant.property||"").replace(/</g,"&lt;")}</div>
+        <div style="text-align:right"><strong>Period:</strong> ${dateFrom} to ${dateTo}<br><strong>Current Balance:</strong> <span style="color:${safeNum(tenant.balance)>0?"#dc2626":"#16a34a"};font-weight:bold">$${safeNum(Math.abs(tenant.balance)).toFixed(2)}</span></div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:#f1f5f9"><th style="padding:8px 10px;text-align:left;border-bottom:2px solid #cbd5e1">Date</th><th style="padding:8px 10px;text-align:left;border-bottom:2px solid #cbd5e1">Description</th><th style="padding:8px 10px;text-align:left;border-bottom:2px solid #cbd5e1">Type</th><th style="padding:8px 10px;text-align:right;border-bottom:2px solid #cbd5e1">Charges</th><th style="padding:8px 10px;text-align:right;border-bottom:2px solid #cbd5e1">Payments</th><th style="padding:8px 10px;text-align:right;border-bottom:2px solid #cbd5e1">Balance</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr style="background:#f1f5f9;font-weight:bold"><td colspan="3" style="padding:8px 10px;text-align:right">Totals</td><td style="padding:8px 10px;text-align:right;color:#dc2626">$${totalCharges.toFixed(2)}</td><td style="padding:8px 10px;text-align:right;color:#16a34a">$${totalPayments.toFixed(2)}</td><td style="padding:8px 10px;text-align:right">$${safeNum(Math.abs(tenant.balance)).toFixed(2)}</td></tr></tfoot>
+      </table>
+      <div style="margin-top:24px;text-align:center;font-size:11px;color:#94a3b8">Generated on ${today} by ${companyName}</div>
+    </div>`;
+    const w = window.open("", "_blank", "width=900,height=700");
+    w.document.write(`<!DOCTYPE html><html><head><title>Ledger - ${(tenant.name||"Tenant").replace(/</g,"&lt;")}</title><style>@media print{body{margin:0}}</style></head><body>${html}</body></html>`);
+    w.document.close();
+    w.onload = () => setTimeout(() => w.print(), 300);
+  }
+
   async function openLedger(tenant) {
   setSelectedTenant(tenant);
   setActivePanel("detail");
@@ -4823,7 +4857,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* LEDGER */}
   {activePanel === "ledger" && (
   <div className="flex-1 overflow-y-auto p-4">
-  <div className={`rounded-3xl p-4 mb-4 text-center ${selectedTenant.balance > 0 ? "bg-red-50" : selectedTenant.balance < 0 ? "bg-green-50" : "bg-indigo-50/30"}`}>
+  <div className={`rounded-3xl p-4 mb-4 text-center relative ${selectedTenant.balance > 0 ? "bg-red-50" : selectedTenant.balance < 0 ? "bg-green-50" : "bg-indigo-50/30"}`}>
+  <button onClick={() => exportLedgerPDF(selectedTenant, ledger)} className="absolute top-3 right-3 text-xs text-red-600 border border-red-200 bg-white px-3 py-1.5 rounded-lg hover:bg-red-50 flex items-center gap-1" title="Export ledger as PDF for sharing"><span className="material-icons-outlined text-sm">picture_as_pdf</span>Export PDF</button>
   <div className="text-xs text-slate-400 mb-1">Current Balance</div>
   <div className={`text-3xl font-bold ${selectedTenant.balance > 0 ? "text-red-500" : selectedTenant.balance < 0 ? "text-green-600" : "text-slate-700"}`}>
   {selectedTenant.balance > 0 ? `-${formatCurrency(selectedTenant.balance)}` : selectedTenant.balance < 0 ? `Credit ${formatCurrency(Math.abs(selectedTenant.balance))}` : "$0 Current"}
@@ -7408,7 +7443,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   </div>
   {/* Add/Edit Modal */}
   <AcctModal isOpen={modal === "add" || modal?.mode === "edit"} onClose={() => setModal(null)} title={modal === "add" ? "New Journal Entry" : `Edit: ${modal?.je?.number}`} size="xl">
-  <JEFormUI />
+  {JEFormUI()}
   </AcctModal>
   {/* View Modal */}
   {modal?.mode === "view" && (
@@ -8190,75 +8225,143 @@ function biDetectDuplicates(importedRows, journalEntries, bankAccountId) {
   });
 }
 
+// Rules use account CODES (e.g. "4000") — resolved to real IDs at runtime via biResolveRuleAccounts()
 const DEFAULT_IMPORT_RULES = [
-  {id:"R001",matchType:"contains",matchValue:"rent",accountId:"4000",accountName:"Rental Income",classId:""},
-  {id:"R002",matchType:"contains",matchValue:"late fee",accountId:"4010",accountName:"Late Fee Income",classId:""},
-  {id:"R003",matchType:"contains",matchValue:"mortgage",accountId:"5000",accountName:"Mortgage Interest",classId:""},
-  {id:"R004",matchType:"contains",matchValue:"insurance",accountId:"5200",accountName:"Insurance Expense",classId:""},
-  {id:"R005",matchType:"contains",matchValue:"utility",accountId:"5400",accountName:"Utilities",classId:""},
-  {id:"R006",matchType:"contains",matchValue:"electric",accountId:"5400",accountName:"Utilities",classId:""},
-  {id:"R007",matchType:"contains",matchValue:"plumb",accountId:"5300",accountName:"Repairs & Maintenance",classId:""},
-  {id:"R008",matchType:"contains",matchValue:"repair",accountId:"5300",accountName:"Repairs & Maintenance",classId:""},
-  {id:"R009",matchType:"contains",matchValue:"landscap",accountId:"6100",accountName:"Landscaping",classId:""},
-  {id:"R010",matchType:"contains",matchValue:"pest",accountId:"6200",accountName:"Pest Control",classId:""},
-  {id:"R011",matchType:"contains",matchValue:"bank fee",accountId:"6000",accountName:"Bank Charges",classId:""},
-  {id:"R012",matchType:"contains",matchValue:"interest",accountId:"7000",accountName:"Interest Income",classId:""},
+  {id:"R001",matchType:"contains",matchValue:"rent",accountCode:"4000",accountName:"Rental Income",classId:""},
+  {id:"R002",matchType:"contains",matchValue:"late fee",accountCode:"4010",accountName:"Late Fee Income",classId:""},
+  {id:"R003",matchType:"contains",matchValue:"mortgage",accountCode:"5000",accountName:"Mortgage Interest",classId:""},
+  {id:"R004",matchType:"contains",matchValue:"insurance",accountCode:"5200",accountName:"Insurance Expense",classId:""},
+  {id:"R005",matchType:"contains",matchValue:"utility",accountCode:"5400",accountName:"Utilities",classId:""},
+  {id:"R006",matchType:"contains",matchValue:"electric",accountCode:"5400",accountName:"Utilities",classId:""},
+  {id:"R007",matchType:"contains",matchValue:"plumb",accountCode:"5300",accountName:"Repairs & Maintenance",classId:""},
+  {id:"R008",matchType:"contains",matchValue:"repair",accountCode:"5300",accountName:"Repairs & Maintenance",classId:""},
+  {id:"R009",matchType:"contains",matchValue:"landscap",accountCode:"6100",accountName:"Landscaping",classId:""},
+  {id:"R010",matchType:"contains",matchValue:"pest",accountCode:"6200",accountName:"Pest Control",classId:""},
+  {id:"R011",matchType:"contains",matchValue:"bank fee",accountCode:"6000",accountName:"Bank Charges",classId:""},
+  {id:"R012",matchType:"contains",matchValue:"interest",accountCode:"7000",accountName:"Interest Income",classId:""},
 ];
 
-function biApplyRules(rows,rules) {
-  return rows.map(row=>{
-  if(row.status==="duplicate")return row;
-  for(const rule of rules){const desc=row.description.toLowerCase(),val=rule.matchValue.toLowerCase();let matched=false;
-  switch(rule.matchType){case "contains":matched=desc.includes(val);break;case "startsWith":matched=desc.startsWith(val);break;case "equals":matched=desc===val;break;case "regex":try{matched=new RegExp(rule.matchValue,"i").test(row.description);}catch(e){matched=false;}break;default:matched=desc.includes(val);}
-  if(matched)return {...row,accountId:rule.accountId,accountName:rule.accountName,classId:rule.classId||"",matchedRule:rule.id};
+// Resolve account codes in rules to real account UUIDs
+function biResolveRuleAccounts(rules, accounts) {
+  return rules.map(r => {
+    if (r.accountId && accounts.find(a => a.id === r.accountId)) return r; // already resolved
+    const code = r.accountCode || r.accountId || "";
+    const acct = accounts.find(a => String(a.code) === String(code) && a.is_active);
+    if (acct) return { ...r, accountId: acct.id, accountName: acct.name };
+    // Fallback: try name match
+    const byName = accounts.find(a => a.name === r.accountName && a.is_active);
+    if (byName) return { ...r, accountId: byName.id, accountName: byName.name };
+    return { ...r, accountId: "" }; // unresolved
+  });
+}
+
+// Generate a fingerprint for duplicate detection across CSV imports
+function biFingerprint(date, amount, description) {
+  const norm = (description || "").toLowerCase().replace(/\s+/g, " ").trim();
+  return `${date}|${Math.round(amount * 100)}|${norm}`;
+}
+
+function biApplyRules(rows, rules) {
+  return rows.map(row => {
+  if (row.status === "duplicate") return row;
+  for (const rule of rules) {
+    if (!rule.accountId) continue; // skip unresolved rules
+    const desc = row.description.toLowerCase(), val = rule.matchValue.toLowerCase();
+    let matched = false;
+    switch (rule.matchType) { case "contains":matched=desc.includes(val);break;case "startsWith":matched=desc.startsWith(val);break;case "equals":matched=desc===val;break;case "regex":try{matched=new RegExp(rule.matchValue,"i").test(row.description);}catch(e){matched=false;}break;default:matched=desc.includes(val); }
+    if (matched) return { ...row, accountId: rule.accountId, accountName: rule.accountName, classId: rule.classId || "", matchedRule: rule.id };
   }
   return row;
   });
 }
 
 // --- Bank Import Component ---
-function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }) {
-  const [step, setStep] = useState(1);
-  const [wizardData, setWizardData] = useState({});
-  const [rules, setRules] = useState(DEFAULT_IMPORT_RULES);
-  const [importHistory, setImportHistory] = useState([]);
+function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry, companyId, showToast }) {
+  const STORAGE_KEY = `bi_wizard_${companyId || "default"}`;
+  const HISTORY_KEY = `bi_history_${companyId || "default"}`;
+  const RULES_KEY = `bi_rules_${companyId || "default"}`;
+
+  // Restore persisted state on mount
+  const loadSaved = (key, fallback) => { try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : fallback; } catch { return fallback; } };
+
+  const [step, setStep] = useState(() => loadSaved(STORAGE_KEY, {}).step || 1);
+  const [wizardData, setWizardData] = useState(() => loadSaved(STORAGE_KEY, {}).wizardData || {});
+  const resolvedDefaults = useMemo(() => biResolveRuleAccounts(DEFAULT_IMPORT_RULES, accounts), [accounts]);
+  const [rules, setRules] = useState(() => loadSaved(RULES_KEY, null) || resolvedDefaults);
+  const [importHistory, setImportHistory] = useState(() => loadSaved(HISTORY_KEY, []));
   const fileRef = useRef();
 
   // Step 1 state
   const [file, setFile] = useState(null);
-  const [bankAccountId, setBankAccountId] = useState("");
+  const [bankAccountId, setBankAccountId] = useState(() => loadSaved(STORAGE_KEY, {}).bankAccountId || "");
   const [error, setError] = useState("");
 
   // Step 2 state
-  const [mapping, setMapping] = useState({ date:"",description:"",amount:"",debit:"",credit:"",memo:"" });
+  const [mapping, setMapping] = useState(() => loadSaved(STORAGE_KEY, {}).mapping || { date:"",description:"",amount:"",debit:"",credit:"",memo:"" });
 
   // Step 3 state
-  const [transactions, setTransactions] = useState([]);
+  const [transactions, setTransactions] = useState(() => loadSaved(STORAGE_KEY, {}).transactions || []);
   const [filterStatus, setFilterStatus] = useState("all");
   const [showRules, setShowRules] = useState(false);
-  const [newRule, setNewRule] = useState({ matchType:"contains", matchValue:"", accountId:"", accountName:"", classId:"" });
+  const [newRule, setNewRule] = useState({ matchType:"contains", matchValue:"", accountCode:"", accountName:"", classId:"" });
 
   // Step 4 state
   const [posting, setPosting] = useState(false);
   const [done, setDone] = useState(false);
   const [postedCount, setPostedCount] = useState(0);
 
+  // Re-resolve rules when accounts load/change
+  useEffect(() => {
+    setRules(prev => biResolveRuleAccounts(prev, accounts));
+  }, [accounts]);
+
+  // Persist wizard state on changes
+  useEffect(() => {
+    if (step <= 1 && transactions.length === 0) return;
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ step, wizardData, bankAccountId, mapping, transactions })); } catch {}
+  }, [step, wizardData, bankAccountId, mapping, transactions]);
+
+  // Persist import history
+  useEffect(() => { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(importHistory.slice(0, 50))); } catch {} }, [importHistory]);
+
+  // Persist custom rules
+  useEffect(() => { try { localStorage.setItem(RULES_KEY, JSON.stringify(rules)); } catch {} }, [rules]);
+
   const bankAccounts = accounts.filter(a => a.type === "Asset" && (a.subtype === "Bank" || a.subtype === "Credit Card") && a.is_active);
 
-  const reset = () => { setStep(1); setWizardData({}); setFile(null); setBankAccountId(""); setError(""); setTransactions([]); setDone(false); setPostedCount(0); setFilterStatus("all"); };
+  const reset = () => {
+    setStep(1); setWizardData({}); setFile(null); setBankAccountId(""); setError(""); setTransactions([]); setDone(false); setPostedCount(0); setFilterStatus("all");
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+  };
+
+  // Build fingerprint set from existing JEs for cross-CSV duplicate detection
+  const existingFingerprints = useMemo(() => {
+    const fps = new Set();
+    journalEntries.forEach(je => {
+      if (je.status === "voided") return;
+      // Fingerprint from reference (imports store IMPORT- prefix)
+      if (je.reference?.startsWith("IMPORT-")) {
+        const totalAmt = (je.lines || []).reduce((s, l) => s + safeNum(l.debit), 0);
+        fps.add(biFingerprint(je.date, totalAmt, je.description));
+        fps.add(biFingerprint(je.date, -totalAmt, je.description));
+      }
+      // Also fingerprint by import_hash if stored
+      if (je.import_hash) fps.add(je.import_hash);
+    });
+    return fps;
+  }, [journalEntries]);
 
   // --- Step 1: Upload ---
   const handleUpload = () => {
-  if(!file) return setError("Please select a CSV file.");
-  if(!bankAccountId) return setError("Please select a bank account.");
+  if (!file) return setError("Please select a CSV file.");
+  if (!bankAccountId) return setError("Please select a bank account.");
   const reader = new FileReader();
   reader.onload = (e) => {
   const parsed = biParseCSV(e.target.result);
-  if(parsed.headers.length===0) return setError("Could not parse CSV.");
+  if (parsed.headers.length === 0) return setError("Could not parse CSV.");
   const detected = biDetectFormat(parsed.headers);
-  // Auto-fill mapping
   const m = { date:"",description:"",amount:"",debit:"",credit:"",memo:"" };
-  if(detected.id!=="generic"){ Object.entries(detected.mapping).forEach(([k,v])=>{m[k]=v;}); }
+  if (detected.id !== "generic") { Object.entries(detected.mapping).forEach(([k,v])=>{m[k]=v;}); }
   else { parsed.headers.forEach(h=>{const hl=h.toLowerCase();if(!m.date&&(hl.includes("date")))m.date=h;if(!m.description&&(hl.includes("desc")||hl.includes("name")||hl==="payee"))m.description=h;if(!m.amount&&(hl==="amount"||hl==="amt"))m.amount=h;if(!m.debit&&hl.includes("debit"))m.debit=h;if(!m.credit&&hl.includes("credit"))m.credit=h;if(!m.memo&&hl.includes("memo"))m.memo=h;}); }
   setMapping(m);
   setWizardData({ parsed, bankAccountId, detected, fileName: file.name });
@@ -8270,11 +8373,28 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
   // --- Step 2: Confirm mapping and go to review ---
   const mappingValid = mapping.date && mapping.description && (mapping.amount || mapping.debit || mapping.credit);
   const handleMapping = () => {
-  if(!mappingValid) return;
-  const rows = biApplyMapping(wizardData.parsed.rows, mapping);
-  const withDups = biDetectDuplicates(rows, journalEntries, wizardData.bankAccountId);
-  const withRules = biApplyRules(withDups, rules);
-  setTransactions(withRules);
+  if (!mappingValid) return;
+  let rows = biApplyMapping(wizardData.parsed.rows, mapping);
+  // Cross-CSV duplicate detection via fingerprints
+  rows = rows.map(row => {
+    const fp = biFingerprint(row.date, row.amount, row.description);
+    if (existingFingerprints.has(fp)) return { ...row, status: "duplicate", matchedJEId: "fingerprint", fingerprint: fp };
+    return { ...row, fingerprint: fp };
+  });
+  // Also detect within-batch duplicates
+  const seen = new Set();
+  rows = rows.map(row => {
+    if (row.status === "duplicate") { seen.add(row.fingerprint); return row; }
+    if (seen.has(row.fingerprint)) return { ...row, status: "duplicate", matchedJEId: "batch-dup" };
+    seen.add(row.fingerprint);
+    return row;
+  });
+  // Legacy duplicate detection (date+amount on bank account lines)
+  rows = biDetectDuplicates(rows, journalEntries, wizardData.bankAccountId);
+  // Apply categorization rules (with resolved account IDs)
+  const resolved = biResolveRuleAccounts(rules, accounts);
+  rows = biApplyRules(rows, resolved);
+  setTransactions(rows);
   setStep(3);
   };
 
@@ -8282,32 +8402,73 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
   const setTx = (i,updates) => setTransactions(txs=>txs.map((t,idx)=>idx===i?{...t,...updates}:t));
   const approveAll = () => setTransactions(txs=>txs.map(t=>t.status==="duplicate"?t:{...t,status:"approved"}));
   const skipAll = () => setTransactions(txs=>txs.map(t=>t.status==="duplicate"?t:{...t,status:"skipped"}));
-  const reapplyRules = () => setTransactions(txs=>biApplyRules(txs.map(t=>({...t,matchedRule:null})),rules));
+  const reapplyRules = () => { const resolved = biResolveRuleAccounts(rules, accounts); setTransactions(txs=>biApplyRules(txs.map(t=>({...t,matchedRule:null})),resolved)); };
   const counts = { total:transactions.length, pending:transactions.filter(t=>t.status==="pending").length, approved:transactions.filter(t=>t.status==="approved").length, skipped:transactions.filter(t=>t.status==="skipped").length, duplicate:transactions.filter(t=>t.status==="duplicate").length, noAccount:transactions.filter(t=>t.status==="approved"&&!t.accountId).length };
   const filtered = filterStatus === "all" ? transactions : transactions.filter(t=>t.status===filterStatus);
-  const addRule = () => { if(!newRule.matchValue||!newRule.accountId)return;const acct=accounts.find(a=>a.id===newRule.accountId);setRules(r=>[...r,{...newRule,id:`R${shortId()}`,accountName:acct?.name||""}]);setNewRule({matchType:"contains",matchValue:"",accountId:"",accountName:"",classId:""}); };
+  const addRule = () => { if(!newRule.matchValue||!newRule.accountCode)return; setRules(r=>[...r,{...newRule,id:`R${shortId()}`,accountId:newRule.accountId||newRule.accountCode,accountName:newRule.accountName||""}]); setNewRule({matchType:"contains",matchValue:"",accountCode:"",accountId:"",accountName:"",classId:""}); };
   const removeRule = (id) => setRules(r=>r.filter(x=>x.id!==id));
 
-  // --- Step 4: Post ---
+  // --- Step 4: Post (sequential with incrementing JE numbers) ---
   const handlePost = async () => {
   setPosting(true);
+  try {
   const approved = transactions.filter(t=>t.status==="approved");
   const bankAcct = accounts.find(a=>a.id===wizardData.bankAccountId);
-  for(const tx of approved) {
-  const isDeposit = tx.amount >= 0;
-  const abs = Math.abs(tx.amount);
-  const lines = isDeposit
-  ? [{ account_id:wizardData.bankAccountId, account_name:bankAcct?.name||"Bank", debit:abs, credit:0, class_id:null, memo:tx.memo||"" },
-  { account_id:tx.accountId||"9999", account_name:tx.accountName||"Suspense / Uncategorized", debit:0, credit:abs, class_id:tx.classId||null, memo:tx.memo||"" }]
-  : [{ account_id:tx.accountId||"9999", account_name:tx.accountName||"Suspense / Uncategorized", debit:abs, credit:0, class_id:tx.classId||null, memo:tx.memo||"" },
-  { account_id:wizardData.bankAccountId, account_name:bankAcct?.name||"Bank", debit:0, credit:abs, class_id:null, memo:tx.memo||"" }];
-  await onAddJournalEntry({ date:tx.date, description:tx.description, reference:`IMPORT-${tx.id}`, lines, status:"draft" });
+
+  // Get the current max JE number ONCE, then increment locally
+  const { data: maxJE } = await supabase.from("acct_journal_entries").select("number").eq("company_id", companyId).order("number", { ascending: false }).limit(1).maybeSingle();
+  let currentMax = 0;
+  if (maxJE?.number) { const parsed = parseInt(maxJE.number.replace("JE-",""), 10); if (!isNaN(parsed)) currentMax = parsed; }
+
+  let posted = 0;
+  const errors = [];
+
+  for (const tx of approved) {
+    currentMax++;
+    const isDeposit = tx.amount >= 0;
+    const abs = Math.abs(tx.amount);
+    const lines = isDeposit
+      ? [{ account_id:wizardData.bankAccountId, account_name:bankAcct?.name||"Bank", debit:abs, credit:0, class_id:null, memo:tx.memo||"" },
+         { account_id:tx.accountId, account_name:tx.accountName||"Uncategorized", debit:0, credit:abs, class_id:tx.classId||null, memo:tx.memo||"" }]
+      : [{ account_id:tx.accountId, account_name:tx.accountName||"Uncategorized", debit:abs, credit:0, class_id:tx.classId||null, memo:tx.memo||"" },
+         { account_id:wizardData.bankAccountId, account_name:bankAcct?.name||"Bank", debit:0, credit:abs, class_id:null, memo:tx.memo||"" }];
+
+    // Retry loop for JE number collisions (unique constraint)
+    let jeRow = null, hErr = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const jeNumber = `JE-${String(currentMax + attempt).padStart(4,"0")}`;
+      const result = await supabase.from("acct_journal_entries").insert([{
+        company_id: companyId, number: jeNumber, date: tx.date,
+        description: tx.description, reference: `IMPORT-${tx.fingerprint ? tx.fingerprint.substring(0,30) : tx.id}`,
+        property: "", status: "posted"
+      }]).select("id").maybeSingle();
+      jeRow = result.data; hErr = result.error;
+      if (!hErr && jeRow) { currentMax += attempt; break; }
+      if (hErr && !hErr.message?.includes("unique")) break; // non-collision error, stop retrying
+    }
+
+    if (hErr || !jeRow) { errors.push(`${tx.description}: ${hErr?.message || "no ID"}`); continue; }
+
+    const { error: lErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({
+      journal_entry_id: jeRow.id, company_id: companyId,
+      account_id: l.account_id, account_name: l.account_name,
+      debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || ""
+    })));
+
+    if (lErr) { errors.push(`${tx.description} lines: ${lErr.message}`); await supabase.from("acct_journal_entries").delete().eq("id", jeRow.id); continue; }
+    posted++;
   }
-  setPostedCount(approved.length);
-  setImportHistory(h=>[{ date:acctToday(), bankAccount:bankAcct?.name, count:approved.length, fileName:wizardData.fileName, net:approved.reduce((s,t)=>s+t.amount,0) },...h]);
-  setPosting(false);
+
+  if (errors.length > 0) showToast(`${errors.length} entries failed: ${errors[0]}`, "error");
+
+  setPostedCount(posted);
+  setImportHistory(h=>[{ date:acctToday(), bankAccount:bankAcct?.name, count:posted, fileName:wizardData.fileName, net:approved.reduce((s,t)=>s+t.amount,0) },...h]);
   setDone(true);
   setStep(5);
+  // Clear persisted wizard state after successful post
+  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+  } catch (e) { showToast("Import error: " + e.message, "error"); }
+  setPosting(false);
   };
 
   const bankAcct = accounts.find(a=>a.id===wizardData.bankAccountId);
@@ -8386,8 +8547,15 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
   {step === 3 && (
   <div className="space-y-4">
   <div className="flex items-center justify-between"><p className="text-sm text-slate-400">Importing into <strong>{bankAcct?.name}</strong> · {counts.total} transactions</p>
-  <div className="flex gap-2"><button onClick={reapplyRules} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg">⚡ Re-apply Rules</button><button onClick={()=>setShowRules(!showRules)} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg">🏷️ Rules</button></div>
+  <div className="flex gap-2"><button onClick={reapplyRules} className="text-xs bg-violet-100 text-violet-700 font-semibold px-3 py-1.5 rounded-lg hover:bg-violet-200">⚡ Re-apply Rules</button><button onClick={()=>setShowRules(!showRules)} className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${showRules?"bg-violet-600 text-white":"bg-violet-100 text-violet-700 hover:bg-violet-200"}`}>🏷️ Rules ({rules.length})</button></div>
   </div>
+
+  {/* Uncategorized warning with quick-link to rules */}
+  {counts.pending > 0 && <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between">
+  <p className="text-xs text-amber-800"><strong>{counts.pending}</strong> transactions need review. {counts.noAccount > 0 && <span>{counts.noAccount} approved rows still missing an account.</span>} Set up <button onClick={()=>setShowRules(true)} className="underline font-semibold text-violet-700">auto-categorization rules</button> to speed this up.</p>
+  <button onClick={approveAll} className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg ml-3 whitespace-nowrap">Approve All</button>
+  </div>}
+
   <div className="grid grid-cols-5 gap-2">
   {[{k:"all",l:"All",c:counts.total},{k:"pending",l:"Pending",c:counts.pending},{k:"approved",l:"Approved",c:counts.approved},{k:"skipped",l:"Skipped",c:counts.skipped},{k:"duplicate",l:"Duplicate",c:counts.duplicate}].map(s=>(
   <button key={s.k} onClick={()=>setFilterStatus(s.k)} className={`rounded-xl p-2 text-center border-2 ${filterStatus===s.k?"border-slate-800 bg-slate-50":"border-transparent bg-white"}`}><p className="text-lg font-bold">{s.c}</p><p className="text-xs text-slate-400">{s.l}</p></button>
@@ -8397,21 +8565,29 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry }
   {counts.noAccount>0&&<span className="text-xs text-amber-600 bg-amber-50 px-3 py-1.5 rounded-lg ml-auto">⚠ {counts.noAccount} approved rows missing account</span>}
   </div>
 
-  {/* Rules Panel */}
+  {/* Auto-Categorization Rules Panel (QuickBooks-style) */}
   {showRules && (
-  <div className="bg-violet-50 border border-violet-100 rounded-3xl p-4 space-y-3">
-  <p className="text-xs font-semibold text-violet-700 uppercase">Auto-Categorization Rules</p>
+  <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 space-y-3">
+  <div className="flex items-center justify-between">
+    <div><p className="text-sm font-bold text-violet-900">Auto-Categorization Rules</p><p className="text-xs text-violet-600">Rules match transaction descriptions and auto-assign accounts. Changes are saved automatically.</p></div>
+    <button onClick={()=>setShowRules(false)} className="text-violet-400 hover:text-violet-700 text-lg">✕</button>
+  </div>
+  <div className="max-h-48 overflow-y-auto space-y-1.5">
   {rules.map(r=>(
   <div key={r.id} className="flex items-center gap-2 text-xs bg-white rounded-lg p-2 border border-violet-100">
-  <span className="text-slate-400">If</span><span className="bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded">{r.matchType}</span><span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">"{r.matchValue}"</span><span className="text-slate-400">→</span><span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">{r.accountName||r.accountId}</span>
-  <button onClick={()=>removeRule(r.id)} className="ml-auto text-slate-300 hover:text-red-500">✕</button>
+  <span className="text-slate-400 shrink-0">If description</span><span className="bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded">{r.matchType}</span><span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded truncate max-w-[120px]" title={r.matchValue}>"{r.matchValue}"</span><span className="text-slate-400 shrink-0">→</span><span className={`px-1.5 py-0.5 rounded truncate max-w-[150px] ${r.accountId?"bg-blue-100 text-blue-700":"bg-red-100 text-red-600"}`} title={r.accountName}>{r.accountName||(r.accountId?"":"⚠ unresolved")}</span>
+  <button onClick={()=>removeRule(r.id)} className="ml-auto text-slate-300 hover:text-red-500 shrink-0">✕</button>
   </div>
   ))}
-  <div className="grid grid-cols-4 gap-2">
-  <select value={newRule.matchType} onChange={e=>setNewRule(r=>({...r,matchType:e.target.value}))} className="border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs"><option value="contains">Contains</option><option value="startsWith">Starts With</option><option value="equals">Equals</option><option value="regex">Regex</option></select>
-  <Input value={newRule.matchValue} onChange={e=>setNewRule(r=>({...r,matchValue:e.target.value}))} placeholder="Match text..." className="text-xs" />
-  <select value={newRule.accountId} onChange={e=>setNewRule(r=>({...r,accountId:e.target.value}))} className="border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs"><option value="">Account...</option>{accounts.filter(a=>a.is_active&&!["Bank"].includes(a.subtype)).map(a=><option key={a.id} value={a.id}>{a.code || a.id}-{a.name}</option>)}</select>
-  <button onClick={addRule} className="bg-violet-600 text-white text-xs px-3 py-1.5 rounded-lg">+ Add</button>
+  </div>
+  <div className="border-t border-violet-200 pt-3">
+  <p className="text-xs font-semibold text-violet-700 mb-2">Add New Rule</p>
+  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+  <select value={newRule.matchType} onChange={e=>setNewRule(r=>({...r,matchType:e.target.value}))} className="border border-violet-200 rounded-lg px-2 py-1.5 text-xs bg-white"><option value="contains">Contains</option><option value="startsWith">Starts With</option><option value="equals">Equals</option><option value="regex">Regex</option></select>
+  <input type="text" value={newRule.matchValue} onChange={e=>setNewRule(r=>({...r,matchValue:e.target.value}))} placeholder="e.g. rent, mortgage, electric..." className="border border-violet-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:border-violet-400 focus:outline-none" />
+  <select value={newRule.accountCode} onChange={e=>{const acct=accounts.find(a=>a.id===e.target.value);setNewRule(r=>({...r,accountCode:e.target.value,accountId:acct?.id||"",accountName:acct?.name||""}));}} className="border border-violet-200 rounded-lg px-2 py-1.5 text-xs bg-white"><option value="">Assign to account...</option>{ACCOUNT_TYPES.map(type=><optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active&&a.subtype!=="Bank").map(a=><option key={a.id} value={a.id}>{a.code||"•"} {a.name}</option>)}</optgroup>)}</select>
+  <button onClick={addRule} disabled={!newRule.matchValue||!newRule.accountCode} className="bg-violet-600 text-white text-xs px-3 py-1.5 rounded-lg disabled:opacity-40 hover:bg-violet-700">+ Add Rule</button>
+  </div>
   </div>
   </div>
   )}
@@ -8744,28 +8920,26 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   fetchAll();
   }
   async function voidJournalEntry(id) {
-  // Find the JE to check if it affected a tenant balance
+  try {
   const je = journalEntries.find(j => j.id === id);
-  const { error: _err3958 } = await supabase.from("acct_journal_entries").update({ status: "voided" }).eq("company_id", companyId).eq("id", id);
-  if (_err3958) { showToast("Error updating acct_journal_entries: " + _err3958.message, "error"); return; }
+  const { error: voidErr } = await supabase.from("acct_journal_entries").update({ status: "voided" }).eq("company_id", companyId).eq("id", id);
+  if (voidErr) { showToast("Error voiding entry: " + voidErr.message, "error"); return; }
+  showToast("Journal entry voided.", "success");
   // Reverse tenant balance based on JE type
   if (je) {
   const { data: jeLines } = await supabase.from("acct_journal_lines").select("*").eq("journal_entry_id", id);
-  const arAccountIds = new Set(accounts.filter(a => a.name === "Accounts Receivable").map(a => a.id));
-  // Parse tenant name from description (format: "Action — TenantName — Property ...")
+  const arAccountIds = new Set(acctAccounts.filter(a => a.name === "Accounts Receivable").map(a => a.id));
   const descParts = (je.description || "").split(" — ");
   const tenantName = descParts.length >= 2 ? descParts[1] : "";
-  
+
   if (tenantName.trim()) {
   const { data: tenantRow } = await supabase.from("tenants").select("id, balance").ilike("name", tenantName.trim()).eq("company_id", companyId).maybeSingle();
-  
+
   if (tenantRow && jeLines) {
-  // Calculate AR impact: net of debits and credits on AR accounts
   const arImpact = jeLines.filter(l => arAccountIds.has(l.account_id))
   .reduce((s, l) => s + safeNum(l.debit) - safeNum(l.credit), 0);
-  
+
   if (Math.abs(arImpact) > 0.01) {
-  // Reverse: if charge increased AR (positive), decrease balance; if payment decreased AR (negative), increase balance
   try {
   const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -arImpact });
   if (balErr) showToast("Balance update failed: " + balErr.message + ". Please verify the tenant balance.", "error");
@@ -8781,6 +8955,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   }
   }
   fetchAll();
+  } catch (e) { showToast("Error voiding entry: " + e.message, "error"); }
   }
 
   // --- Class CRUD ---
@@ -8997,7 +9172,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} addNotification={addNotification} userProfile={userProfile} />}
   {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} />}
-  {activeTab === "bankimport" && <AcctBankImport accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAddJournalEntry={addJournalEntry} />}
+  {activeTab === "bankimport" && <AcctBankImport accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAddJournalEntry={addJournalEntry} companyId={companyId} showToast={showToast} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
@@ -10142,7 +10317,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   {/* New Vendor Form */}
   {showForm && (
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
-  <h3 className="font-manrope font-semibold text-slate-800 mb-4">{editingVendor ? "Edit Vendor" : "Add New Vendor"}</h3>
+  <div className="flex items-center justify-between mb-4"><h3 className="font-manrope font-semibold text-slate-800">{editingVendor ? "Edit Vendor" : "Add New Vendor"}</h3><button onClick={resetVendorForm} className="text-slate-400 hover:text-slate-700 text-xl leading-none" title="Close">✕</button></div>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div className="col-span-2"><div className="grid grid-cols-6 gap-3">
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">First Name *</label><Input value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" /></div>
@@ -10179,7 +10354,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   {/* Invoice Form */}
   {showInvoiceForm && (
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
-  <h3 className="font-manrope font-semibold text-slate-800 mb-4">New Vendor Invoice</h3>
+  <div className="flex items-center justify-between mb-4"><h3 className="font-manrope font-semibold text-slate-800">New Vendor Invoice</h3><button onClick={() => setShowInvoiceForm(false)} className="text-slate-400 hover:text-slate-700 text-xl leading-none" title="Close">✕</button></div>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div><label className="text-xs text-slate-400 mb-1 block">Vendor *</label>
   <select value={invoiceForm.vendor_id} onChange={e => { const v = vendors.find(v => String(v.id) === String(e.target.value)); setInvoiceForm({...invoiceForm, vendor_id: e.target.value, vendor_name: v?.name || ""}); }} >
