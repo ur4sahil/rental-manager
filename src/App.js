@@ -5711,7 +5711,8 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   useEffect(() => { fetchWorkOrders(); }, [companyId]);
 
   async function fetchWorkOrders() {
-  const { data } = await supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }).limit(500);
+  const { data, error } = await supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }).limit(500);
+  if (error) { console.error("fetchWorkOrders error:", error.message); showToast("Error loading work orders: " + error.message, "error"); }
   setWorkOrders(data || []);
   setLoading(false);
   }
@@ -5756,6 +5757,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   ? await supabase.from("work_orders").update({ property: payload.property, tenant: payload.tenant, issue: payload.issue, priority: payload.priority, status: payload.status, assigned: payload.assigned, cost: payload.cost, notes: payload.notes }).eq("id", editingWO.id).eq("company_id", companyId)
   : await supabase.from("work_orders").insert([{ ...payload, company_id: companyId }]);
   if (error) { showToast("Error saving work order: " + error.message, "error"); return; }
+  showToast(editingWO ? "Work order updated." : "Work order created.", "success");
   if (editingWO) {
   const costChanged = safeNum(form.cost) !== safeNum(editingWO.cost);
   addNotification("🔧", `Work order updated: ${form.issue}`);
