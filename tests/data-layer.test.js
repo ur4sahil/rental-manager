@@ -54,7 +54,7 @@ async function testAccounting() {
   console.log('\n📊 ACCOUNTING');
   const { data: coa } = await supabase.from('acct_accounts').select('*');
   assert(coa && coa.length >= 10, 'Has all required accounts (' + (coa ? coa.length : 0) + ' found)');
-  var required = ['1000','1100','2100','2200','4000','4010','4100','4200','5300','5400'];
+  var required = ['1000','1100','2100','2200','4000','4010','4100','4200','5300','5400','5600'];
   for (var i = 0; i < required.length; i++) {
     assert(coa && coa.some(function(a) { return a.code === required[i] || a.id === required[i]; }), 'Account ' + required[i] + ' exists');
   }
@@ -730,6 +730,197 @@ async function testPropertyDeleteCascadeNewTables() {
   if (ids.property) await supabase.from('properties').delete().eq('id', ids.property);
 }
 
+async function testHOAPayments() {
+  console.log('\n🏘️  HOA PAYMENTS');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  assert(!!cid, 'HOA: company exists');
+  const { data: hoa, error: hoaErr } = await supabase.from('hoa_payments').insert({
+    company_id: cid, property: 'TEST-HOA-PROP', hoa_name: 'Test HOA Association',
+    amount: 250, due_date: '2026-04-01', frequency: 'Monthly', status: 'pending', notes: 'Test HOA'
+  }).select().single();
+  assert(!hoaErr && hoa, 'HOA: can insert payment');
+  if (hoa) {
+    const { data: fetched } = await supabase.from('hoa_payments').select('*').eq('id', hoa.id).single();
+    assert(fetched && fetched.hoa_name === 'Test HOA Association', 'HOA: name stored correctly');
+    assert(fetched && fetched.amount === 250, 'HOA: amount stored correctly');
+    assert(fetched && fetched.frequency === 'Monthly', 'HOA: frequency stored correctly');
+    const { error: upErr } = await supabase.from('hoa_payments').update({ status: 'paid' }).eq('id', hoa.id);
+    assert(!upErr, 'HOA: can update status to paid');
+    const { error: delErr } = await supabase.from('hoa_payments').update({ archived_at: new Date().toISOString() }).eq('id', hoa.id);
+    assert(!delErr, 'HOA: can soft-delete');
+    const { data: active } = await supabase.from('hoa_payments').select('id').eq('id', hoa.id).is('archived_at', null);
+    assert(!active || active.length === 0, 'HOA: soft-deleted hidden from active query');
+    await supabase.from('hoa_payments').delete().eq('id', hoa.id);
+  }
+}
+
+async function testInsuranceTracker() {
+  console.log('\n🛡️  INSURANCE TRACKER');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  // Test expiry detection
+  const past = new Date(); past.setDate(past.getDate() - 30);
+  const future = new Date(); future.setDate(future.getDate() + 60);
+  const { data: expired, error: e1 } = await supabase.from('property_insurance').insert({
+    company_id: cid, property: 'TEST-INS-EXP', provider: 'Expired Ins Co',
+    premium_amount: 1200, premium_frequency: 'annual', coverage_amount: 500000,
+    expiration_date: past.toISOString().slice(0,10)
+  }).select().single();
+  assert(!e1 && expired, 'Insurance: can insert expired policy');
+  const { data: valid, error: e2 } = await supabase.from('property_insurance').insert({
+    company_id: cid, property: 'TEST-INS-VALID', provider: 'Valid Ins Co',
+    premium_amount: 800, premium_frequency: 'annual', coverage_amount: 300000,
+    expiration_date: future.toISOString().slice(0,10)
+  }).select().single();
+  assert(!e2 && valid, 'Insurance: can insert valid policy');
+  // Query expiring within 90 days
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() + 90);
+  const { data: expiring } = await supabase.from('property_insurance').select('id, expiration_date')
+    .eq('company_id', cid).lte('expiration_date', cutoff.toISOString().slice(0,10)).is('archived_at', null);
+  assert(expiring && expiring.some(p => p.id === expired?.id), 'Insurance: expired policy found in expiry query');
+  // Cleanup
+  if (expired) await supabase.from('property_insurance').delete().eq('id', expired.id);
+  if (valid) await supabase.from('property_insurance').delete().eq('id', valid.id);
+}
+
+async function testMoveOutFlow() {
+  console.log('\n🚪 MOVE-OUT FLOW');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  const addr = 'TEST-MOVEOUT-' + Date.now();
+  // Create property + tenant + lease
+  const { data: prop } = await supabase.from('properties').insert({ company_id: cid, address: addr, status: 'occupied', type: 'Test', tenant: 'MoveOut Tenant', rent: 2000 }).select().single();
+  const { data: tenant } = await supabase.from('tenants').insert({ company_id: cid, name: 'MoveOut Tenant', email: 'moveout@test.com', phone: '555', property: addr, rent: 2000, balance: 0, lease_status: 'active' }).select().single();
+  const { data: lease } = await supabase.from('leases').insert({ company_id: cid, tenant_name: 'MoveOut Tenant', property: addr, start_date: '2026-01-01', end_date: '2026-12-31', rent_amount: 2000, security_deposit: 2000, status: 'active', move_in_checklist: '[]', move_out_checklist: '[]' }).select().single();
+  assert(prop && tenant && lease, 'MoveOut: property + tenant + lease created');
+  if (!tenant || !lease) return;
+  // Simulate move-out: terminate lease, archive tenant, vacant property
+  await supabase.from('leases').update({ status: 'terminated', end_date: '2026-03-24' }).eq('id', lease.id);
+  await supabase.from('tenants').update({ lease_status: 'inactive', archived_at: new Date().toISOString(), archived_by: 'test' }).eq('id', tenant.id);
+  await supabase.from('properties').update({ status: 'vacant', tenant: '' }).eq('id', prop.id);
+  // Verify
+  const { data: updLease } = await supabase.from('leases').select('status').eq('id', lease.id).single();
+  assert(updLease && updLease.status === 'terminated', 'MoveOut: lease terminated');
+  const { data: updTenant } = await supabase.from('tenants').select('lease_status, archived_at').eq('id', tenant.id).single();
+  assert(updTenant && updTenant.lease_status === 'inactive', 'MoveOut: tenant inactive');
+  assert(updTenant && updTenant.archived_at, 'MoveOut: tenant archived');
+  const { data: updProp } = await supabase.from('properties').select('status, tenant').eq('id', prop.id).single();
+  assert(updProp && updProp.status === 'vacant', 'MoveOut: property vacant');
+  assert(updProp && updProp.tenant === '', 'MoveOut: tenant cleared from property');
+  // Historical tenant query (archived tenants for this property)
+  const { data: historical } = await supabase.from('tenants').select('name').eq('company_id', cid).eq('property', addr).not('archived_at', 'is', null);
+  assert(historical && historical.some(t => t.name === 'MoveOut Tenant'), 'MoveOut: tenant appears in historical query');
+  // Cleanup
+  await supabase.from('leases').delete().eq('id', lease.id);
+  await supabase.from('tenants').delete().eq('id', tenant.id);
+  await supabase.from('properties').delete().eq('id', prop.id);
+}
+
+async function testEvictionCase() {
+  console.log('\n⚖️  EVICTION CASE');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  const { data: evCase, error: evErr } = await supabase.from('eviction_cases').insert({
+    company_id: cid, tenant_name: 'Evict Test Tenant', property: 'TEST-EVICT-PROP',
+    reason: 'non_payment', notice_type: 'pay_or_quit', notice_days: 30,
+    current_stage: 'notice_served',
+    stage_history: JSON.stringify([{ stage: 'notice_served', date: '2026-03-24', note: 'Test' }]),
+    total_costs: 0, status: 'active'
+  }).select().single();
+  assert(!evErr && evCase, 'Eviction: can create case');
+  if (evCase) {
+    const { data: fetched } = await supabase.from('eviction_cases').select('*').eq('id', evCase.id).single();
+    assert(fetched && fetched.reason === 'non_payment', 'Eviction: reason stored');
+    assert(fetched && fetched.current_stage === 'notice_served', 'Eviction: stage stored');
+    // Advance stage
+    const newHistory = JSON.parse(fetched.stage_history || '[]');
+    newHistory.push({ stage: 'court_filing', date: '2026-04-01', note: 'Filed' });
+    const { error: upErr } = await supabase.from('eviction_cases').update({ current_stage: 'court_filing', stage_history: JSON.stringify(newHistory), total_costs: 500 }).eq('id', evCase.id);
+    assert(!upErr, 'Eviction: can advance stage');
+    await supabase.from('eviction_cases').delete().eq('id', evCase.id);
+  }
+}
+
+async function testOwnerDistribution() {
+  console.log('\n💰 OWNER DISTRIBUTION');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  const { data: owners } = await supabase.from('owners').select('id').eq('company_id', cid).limit(1);
+  if (!owners || owners.length === 0) { assert(true, 'Owner Dist: no owners to test (skip)'); return; }
+  const ownerId = owners[0].id;
+  // owner_distributions columns: id, owner_id, statement_id, amount, method, reference, date, notes, created_at, company_id
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: dist, error: distErr } = await supabase.from('owner_distributions').insert({
+    company_id: cid, owner_id: ownerId, amount: 1800,
+    method: 'ACH', reference: 'TEST-DIST', date: today, notes: 'Test distribution'
+  }).select().single();
+  assert(!distErr && dist, 'Owner Dist: can create distribution');
+  if (dist) {
+    assert(dist.amount === 1800, 'Owner Dist: amount correct');
+    assert(dist.method === 'ACH', 'Owner Dist: method stored');
+    assert(dist.owner_id === ownerId, 'Owner Dist: owner linked');
+    const { error: upErr } = await supabase.from('owner_distributions').update({ notes: 'Paid and verified' }).eq('id', dist.id);
+    assert(!upErr, 'Owner Dist: can update');
+    await supabase.from('owner_distributions').delete().eq('id', dist.id);
+  }
+}
+
+async function testPropertyChangeRequests() {
+  console.log('\n📋 PROPERTY CHANGE REQUESTS');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  const { data: req, error: reqErr } = await supabase.from('property_change_requests').insert({
+    company_id: cid, request_type: 'add', requested_by: 'test@test.com',
+    address: 'TEST-CHANGEREQ-PROP', type: 'Single Family', property_status: 'vacant'
+  }).select().single();
+  assert(!reqErr && req, 'ChangeReq: can submit request');
+  if (req) {
+    assert(req.request_type === 'add', 'ChangeReq: type stored');
+    assert(req.requested_by === 'test@test.com', 'ChangeReq: requester stored');
+    // Approve
+    const { error: apErr } = await supabase.from('property_change_requests').update({ status: 'approved', reviewed_by: 'admin@test.com' }).eq('id', req.id);
+    assert(!apErr, 'ChangeReq: can approve');
+    await supabase.from('property_change_requests').delete().eq('id', req.id);
+  }
+}
+
+async function testRecurringEntryEngine() {
+  console.log('\n🔄 RECURRING ENTRY ENGINE');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  // Create a recurring entry
+  const { data: entry, error: entErr } = await supabase.from('recurring_journal_entries').insert({
+    company_id: cid, description: 'TEST-RECUR Monthly Rent', frequency: 'monthly',
+    day_of_month: 1, amount: 1500, property: 'TEST-RECUR-PROP',
+    debit_account_name: 'AR - Test', credit_account_name: 'Rental Income',
+    status: 'active'
+  }).select().single();
+  assert(!entErr && entry, 'Recurring: can create entry');
+  if (entry) {
+    assert(entry.frequency === 'monthly', 'Recurring: frequency stored');
+    assert(entry.amount === 1500, 'Recurring: amount stored');
+    assert(entry.status === 'active', 'Recurring: status is active');
+    // Pause
+    const { error: pauseErr } = await supabase.from('recurring_journal_entries').update({ status: 'paused' }).eq('id', entry.id);
+    assert(!pauseErr, 'Recurring: can pause');
+    const { data: paused } = await supabase.from('recurring_journal_entries').select('status').eq('id', entry.id).single();
+    assert(paused && paused.status === 'paused', 'Recurring: status changed to paused');
+    // Resume
+    await supabase.from('recurring_journal_entries').update({ status: 'active' }).eq('id', entry.id);
+    // Simulate posted (set last_posted_date)
+    const today = new Date().toISOString().slice(0,10);
+    const { error: postErr } = await supabase.from('recurring_journal_entries').update({ last_posted_date: today }).eq('id', entry.id);
+    assert(!postErr, 'Recurring: can update last_posted_date');
+    // Archive
+    const { error: archErr } = await supabase.from('recurring_journal_entries').update({ status: 'inactive', archived_at: new Date().toISOString() }).eq('id', entry.id);
+    assert(!archErr, 'Recurring: can archive');
+    const { data: activeEntries } = await supabase.from('recurring_journal_entries').select('id').eq('id', entry.id).eq('status', 'active');
+    assert(!activeEntries || activeEntries.length === 0, 'Recurring: archived entry not in active query');
+    await supabase.from('recurring_journal_entries').delete().eq('id', entry.id);
+  }
+}
+
 async function run() {
   console.log('🧪 PropManager Data Layer Tests');
   console.log('================================');
@@ -760,6 +951,13 @@ async function run() {
   await testWizardProgress();
   await testARSubAccountCreation();
   await testPropertyDeleteCascadeNewTables();
+  await testHOAPayments();
+  await testInsuranceTracker();
+  await testMoveOutFlow();
+  await testEvictionCase();
+  await testOwnerDistribution();
+  await testPropertyChangeRequests();
+  await testRecurringEntryEngine();
   console.log('\n================================');
   console.log('✅ Passed: ' + pass);
   console.log('❌ Failed: ' + fail);
