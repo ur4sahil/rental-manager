@@ -5044,7 +5044,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div>
   <div className="flex items-center justify-between mb-3">
   <h3 className="text-sm font-semibold text-slate-700">Transaction History</h3>
-  <button onClick={() => setPage("accounting")} className="flex items-center gap-1.5 bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700"><span className="material-icons-outlined text-sm">add_circle</span>New Entry</button>
+  <button onClick={() => setPage("accounting", "newJE")} className="flex items-center gap-1.5 bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700"><span className="material-icons-outlined text-sm">add_circle</span>New Entry</button>
   </div>
   {ledger.length === 0 ? <div className="text-center py-6 text-slate-400 text-sm">No transactions yet</div> : (
   <div className="space-y-1">
@@ -5618,7 +5618,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   ], "payments-export", showToast)} className="text-sm text-indigo-600 border border-indigo-200 px-3 py-2 rounded-2xl hover:bg-indigo-50 font-medium">
   <span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export
   </button>
-  <button onClick={() => setPage("accounting")} className="bg-green-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-green-700 flex items-center gap-1.5">
+  <button onClick={() => setPage("accounting", "newJE")} className="bg-green-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-green-700 flex items-center gap-1.5">
   <span className="material-icons-outlined text-sm">add_circle</span>Record Payment
   </button>
   </div>
@@ -7283,7 +7283,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
 }
 
 // --- Journal Entries Sub-Page ---
-function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate, onPost, onVoid, companyId, onOpenLedger, initialViewJEId }) {
+function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate, onPost, onVoid, companyId, onOpenLedger, initialViewJEId, autoOpenAdd }) {
   const [modal, setModal] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
   const [searchProperty, setSearchProperty] = useState("");
@@ -7301,6 +7301,9 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   if (je) setModal({ mode: "view", je });
   }
   }, [initialViewJEId, journalEntries.length]);
+
+  // Auto-open "New JE" modal when navigated from Record Payment
+  useEffect(() => { if (autoOpenAdd) openAdd(); }, [autoOpenAdd]);
 
   const filtered = [...journalEntries].sort((a,b) => b.date.localeCompare(a.date))
   .filter(je => filterStatus === "all" || je.status === filterStatus)
@@ -8670,12 +8673,12 @@ function AcctBankImport({ accounts, journalEntries, classes, onAddJournalEntry, 
 }
 
 // --- Main Accounting Component (Supabase-backed) ---
-function Accounting({ companyId, activeCompany, addNotification, userProfile, showToast, showConfirm }) {
+function Accounting({ companyId, activeCompany, addNotification, userProfile, showToast, showConfirm, initialAction }) {
   const [acctAccounts, setAcctAccounts] = useState([]);
   const [journalEntries, setJournalEntries] = useState([]);
   const [acctClasses, setAcctClasses] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState(initialAction === "newJE" ? "journal" : "overview");
   const [ledgerView, setLedgerView] = useState(null); // { accountIds: [], title: "" }
   const [viewJEId, setViewJEId] = useState(null); // JE ID to auto-open in journal tab
   const companyName = activeCompany?.name || "My Company";
@@ -9171,7 +9174,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
 
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} addNotification={addNotification} userProfile={userProfile} />}
   {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
-  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} />}
+  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} />}
   {activeTab === "bankimport" && <AcctBankImport accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAddJournalEntry={addJournalEntry} companyId={companyId} showToast={showToast} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
@@ -17175,7 +17178,8 @@ function AppInner() {
   const [screen, setScreenRaw] = useState("loading");
   const [page, setPageRaw] = useState("dashboard");
 
-  function setPage(p) { setPageRaw(p); window.history.pushState({ page: p, screen: "app" }, "", "#" + p); }
+  const [pageAction, setPageAction] = useState(null);
+  function setPage(p, action) { setPageAction(action || null); setPageRaw(p); window.history.pushState({ page: p, screen: "app" }, "", "#" + p); }
   function setScreen(s) { setScreenRaw(s); if (s !== "app") window.history.pushState({ screen: s }, "", "#" + s); }
 
   useEffect(() => {
@@ -17722,6 +17726,7 @@ function AppInner() {
   addNotification={addNotification}
   notifications={notifications}
   setPage={setPage}
+  initialAction={pageAction}
   currentUser={currentUser}
   userRole={userRole}
   userProfile={userProfile}
