@@ -13130,7 +13130,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   try {
   const { data, error } = await supabase.functions.invoke("create-checkout-session", {
   body: {
-  amount: Math.round(amt * 100), // Stripe uses cents
+  amount: amt, // Send dollars — edge function converts to cents once
   tenantId: tenantData.id,
   tenantName: tenantData.name,
   property: tenantData.property,

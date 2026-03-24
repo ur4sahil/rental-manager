@@ -30,7 +30,17 @@ function checkRateLimit(ip: string): boolean {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
+const CRON_SECRET = Deno.env.get("CRON_SECRET") || "";
+
 serve(async (req) => {
+  // Auth check: require shared secret for cron/internal calls
+  const authHeader = req.headers.get("x-cron-secret") || req.headers.get("authorization")?.replace("Bearer ", "") || "";
+  if (CRON_SECRET && authHeader !== CRON_SECRET) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401, headers: { "Content-Type": "application/json" },
+    });
+  }
+
   // Rate limit check
   const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   if (!checkRateLimit(clientIp)) {
