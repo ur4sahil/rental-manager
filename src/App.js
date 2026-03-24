@@ -12725,7 +12725,6 @@ const ALL_NAV = [
   { id: "tenants", label: "Tenants", icon: "people" },
   { id: "payments", label: "Payments", icon: "payments" },
   { id: "maintenance", label: "Maintenance", icon: "build" },
-  { id: "leases", label: "Leases", icon: "description" },
   { id: "utilities", label: "Utilities", icon: "bolt" },
   { id: "hoa", label: "HOA Payments", icon: "holiday_village" },
   { id: "loans", label: "Loans", icon: "account_balance_wallet" },
