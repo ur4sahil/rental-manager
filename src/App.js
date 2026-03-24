@@ -16581,11 +16581,11 @@ function AuditTrail({ companyId }) {
   <p className="text-xs text-slate-400">Users Active</p>
   </div>
   <div className="bg-white rounded-3xl border border-indigo-50 p-3 text-center">
-  <p className="text-lg font-bold text-emerald-600">{filtered.filter(l => l.action === "create").length}</p>
+  <p className="text-lg font-bold text-emerald-600">{logs.filter(l => l.action === "create").length}</p>
   <p className="text-xs text-slate-400">Created</p>
   </div>
   <div className="bg-white rounded-3xl border border-indigo-50 p-3 text-center">
-  <p className="text-lg font-bold text-red-500">{filtered.filter(l => l.action === "delete").length}</p>
+  <p className="text-lg font-bold text-red-500">{logs.filter(l => l.action === "delete").length}</p>
   <p className="text-xs text-slate-400">Deleted</p>
   </div>
   </div>
