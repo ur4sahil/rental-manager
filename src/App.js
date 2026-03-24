@@ -696,21 +696,38 @@ async function autoPostRecurringEntries(companyId) {
   // Skip if this RECUR ref was already posted (idempotent)
   const { data: existingRecur } = await supabase.from("acct_journal_entries").select("id").eq("company_id", cid).eq("reference", ref).neq("status", "voided").limit(1);
   if (existingRecur && existingRecur.length > 0) { cursor.setMonth(cursor.getMonth() + freqMonths); continue; }
+
+  // Prorate last month if lease ends mid-month
+  let postAmount = safeNum(entry.amount);
+  let postDesc = entry.description || "Recurring entry";
+  if (entry.tenant_name && entry.property) {
+    const { data: lease } = await supabase.from("leases").select("end_date").eq("company_id", cid).eq("property", entry.property).eq("status", "active").maybeSingle();
+    if (lease?.end_date && lease.end_date.slice(0, 7) === monthStr) {
+      const endDay = parseInt(lease.end_date.split("-")[2]);
+      const yr = parseInt(monthStr.split("-")[0]), mo = parseInt(monthStr.split("-")[1]);
+      const daysInMonth = new Date(yr, mo, 0).getDate();
+      if (endDay < daysInMonth) {
+        postAmount = Math.round(safeNum(entry.amount) * endDay / daysInMonth);
+        postDesc = (entry.description || "Recurring entry") + ` (prorated ${endDay}/${daysInMonth} days — lease ends ${lease.end_date})`;
+      }
+    }
+  }
+
   const jeId = await autoPostJournalEntry({
   companyId: cid, date: postDate,
-  description: entry.description || "Recurring entry",
+  description: postDesc,
   reference: ref,
   property: entry.property || "",
   lines: [
-  { account_id: entry.debit_account_id, account_name: entry.debit_account_name || "", debit: safeNum(entry.amount), credit: 0, class_id: classId, memo: entry.description },
-  { account_id: entry.credit_account_id, account_name: entry.credit_account_name || "", debit: 0, credit: safeNum(entry.amount), class_id: classId, memo: entry.description },
+  { account_id: entry.debit_account_id, account_name: entry.debit_account_name || "", debit: postAmount, credit: 0, class_id: classId, memo: postDesc },
+  { account_id: entry.credit_account_id, account_name: entry.credit_account_name || "", debit: 0, credit: postAmount, class_id: classId, memo: postDesc },
   ]
   });
   if (jeId) {
   await supabase.from("recurring_journal_entries").update({ last_posted_date: postDate, next_post_date: null }).eq("id", entry.id).eq("company_id", cid);
   // Update tenant balance if this is an AR entry (check account name pattern, not bare code — codes are resolved to UUIDs)
   if (entry.tenant_id && (entry.debit_account_name || "").toLowerCase().includes("ar")) {
-  await supabase.rpc("update_tenant_balance", { p_tenant_id: entry.tenant_id, p_amount_change: safeNum(entry.amount) }).catch(e => console.warn("Recurring balance update:", e.message));
+  await supabase.rpc("update_tenant_balance", { p_tenant_id: entry.tenant_id, p_amount_change: postAmount }).catch(e => console.warn("Recurring balance update:", e.message));
   }
   posted++;
   }
