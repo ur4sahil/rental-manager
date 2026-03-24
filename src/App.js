@@ -880,10 +880,10 @@ function TenantSelect({ value, onChange, className = "", companyId }) {
 function PropertySelect({ value, onChange, className = "", companyId }) {
   const [properties, setProperties] = useState([]);
   useEffect(() => {
-  supabase.from("properties").select("id, address, type").eq("company_id", companyId).is("archived_at", null).order("address").then(({ data }) => setProperties(data || []));
+  supabase.from("properties").select("id, address, type, tenant, rent, status").eq("company_id", companyId).is("archived_at", null).order("address").then(({ data }) => setProperties(data || []));
   }, [companyId]);
   return (
-  <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel ? sel.id : null); }} className={`border border-indigo-100 rounded-2xl px-3 py-2 text-sm ${className}`}>
+  <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel || null); }} className={`border border-indigo-100 rounded-2xl px-3 py-2 text-sm ${className}`}>
   <option value="">Select property...</option>
   {properties.map(p => <option key={p.id} value={p.address}>{p.address}</option>)}
   </select>
@@ -6044,10 +6044,8 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-slate-700 mb-3">{editingWO ? "Edit Work Order" : "New Work Order"}</h3>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={(v) => {
-  const prop = properties.find(p => p.address === v || buildAddress(p) === v);
-  const tenant = prop?.tenant || "";
-  setForm({ ...form, property: v, tenant: tenant });
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={(v, prop) => {
+  setForm({ ...form, property: v, tenant: prop?.tenant || "" });
   }} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant</label><input placeholder={form.property && !form.tenant ? "Vacant — no tenant" : "Tenant name"} value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className={"border rounded-lg px-3 py-2 text-sm w-full " + (!form.tenant && form.property ? "border-gray-100 bg-indigo-50/30 text-slate-400" : "border-indigo-100")} readOnly={!!(form.property && !form.tenant)} /></div>
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Issue *</label><Input placeholder="Describe the maintenance issue" value={form.issue} onChange={e => setForm({ ...form, issue: e.target.value })} /></div>
@@ -9262,7 +9260,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   <h3 className="font-semibold text-slate-700 mb-3">Upload Document</h3>
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Document Name *</label><Input placeholder="Lease Agreement 2026" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property</label><PropertySelect value={form.property} onChange={(addr, prop) => setForm({ ...form, property: addr, tenant: prop?.tenant || form.tenant })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant</label><Input placeholder="Optional — link to a tenant" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Document Type</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
   {["Lease", "Inspection", "Maintenance", "Financial", "Notice", "Other"].map(t => <option key={t}>{t}</option>)}
