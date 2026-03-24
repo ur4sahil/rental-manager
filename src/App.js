@@ -14042,7 +14042,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   // Full rent was posted — credit back the prorated difference
   const fullRent = safeNum(selectedLease.rent_amount);
   const proratedRent = Math.round(fullRent * moveOutDay / daysInMoveOutMonth);
-  const creditBack = Math.round((fullRent - proratedRent) * 100) / 100;
+  const creditBack = fullRent - proratedRent;
   if (creditBack > 0) {
   const tenantArId = await getOrCreateTenantAR(cid, tName, selectedTenant.id);
   const revenueId = await resolveAccountId("4000", cid);
