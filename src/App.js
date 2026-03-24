@@ -7679,227 +7679,601 @@ function AcctReports({ accounts, journalEntries, classes, companyName, onOpenLed
   const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id || "");
   const [classFilter, setClassFilter] = useState("");
   const [showARSub, setShowARSub] = useState(false);
+  const [compareTo, setCompareTo] = useState("");
+  const [showIncome, setShowIncome] = useState(true);
+  const [showExpenses, setShowExpenses] = useState(true);
+  const [showAssets, setShowAssets] = useState(true);
+  const [showLiabilities, setShowLiabilities] = useState(true);
+  const [showEquity, setShowEquity] = useState(true);
 
-  const { start, end } = period === "Custom" ? customDates : getPeriodDates(period);
+  const computedDates = period === "Custom" ? customDates : getPeriodDates(period);
+  const start = computedDates.start;
+  const end = computedDates.end;
 
-  const PeriodPicker = () => (
-  <div className="flex flex-wrap items-center gap-2 mb-4">
-  {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${period === p ? "bg-green-600 text-white border-green-600" : "bg-white text-slate-500 border-slate-200 hover:border-green-300"}`}>{p}</button>)}
-  {period === "Custom" && <><Input type="date" value={customDates.start} onChange={e => setCustomDates(d=>({...d,start:e.target.value}))} className="text-xs" /><span className="text-slate-400 text-xs">to</span><Input type="date" value={customDates.end} onChange={e => setCustomDates(d=>({...d,end:e.target.value}))} /></>}
-  </div>
-  );
+  const reports = [
+    { id: "pl", label: "Profit & Loss", icon: "trending_up" },
+    { id: "bs", label: "Balance Sheet", icon: "account_balance" },
+    { id: "ar", label: "AR Aging", icon: "timer" },
+    { id: "tb", label: "Trial Balance", icon: "balance" },
+    { id: "gl", label: "General Ledger", icon: "menu_book" },
+  ];
 
   // P&L
   const plData = getPLData(accounts, journalEntries, start, end, classFilter || null);
+
+  // P&L comparison
+  let compareData = null;
+  if (compareTo === "prior_period") {
+    const periodMs = new Date(end).getTime() - new Date(start).getTime();
+    const priorStart = formatLocalDate(new Date(new Date(start).getTime() - periodMs));
+    const priorEnd = formatLocalDate(new Date(new Date(end).getTime() - periodMs));
+    compareData = getPLData(accounts, journalEntries, priorStart, priorEnd, classFilter || null);
+  }
+  if (compareTo === "prior_year") {
+    const y = new Date(start).getFullYear();
+    compareData = getPLData(accounts, journalEntries, start.replace(String(y), String(y - 1)), end.replace(String(y), String(y - 1)), classFilter || null);
+  }
+
   // Balance Sheet
   const bsData = getBalanceSheetData(accounts, journalEntries, asOfDate);
   const bsBalanced = Math.abs(bsData.totalAssets - (bsData.totalLiabilities + bsData.totalEquity)) < 0.01;
+
   // Trial Balance
   const tbData = getTrialBalance(accounts, journalEntries, asOfDate);
-  const tbTotalDebit = tbData.reduce((s,a) => s + a.debitBalance, 0);
-  const tbTotalCredit = tbData.reduce((s,a) => s + a.creditBalance, 0);
+  const tbTotalDebit = tbData.reduce((s, a) => s + a.debitBalance, 0);
+  const tbTotalCredit = tbData.reduce((s, a) => s + a.creditBalance, 0);
   const tbBalanced = Math.abs(tbTotalDebit - tbTotalCredit) < 0.01;
+
   // General Ledger
-  const glLines = getGeneralLedger(selectedAccountId, accounts, journalEntries);
+  const allGlLines = getGeneralLedger(selectedAccountId, accounts, journalEntries);
+  const glLines = allGlLines.filter(l => l.date >= start && l.date <= end);
   const glAccount = accounts.find(a => a.id === selectedAccountId);
+
+  // Group TB by account type
+  const tbGrouped = {};
+  tbData.forEach(a => {
+    if (!tbGrouped[a.type]) tbGrouped[a.type] = [];
+    tbGrouped[a.type].push(a);
+  });
+  const tbTypeOrder = ["Asset", "Liability", "Equity", "Revenue", "Expense", "Cost of Goods Sold", "Other Income", "Other Expense"];
+
+  // CSV Export
+  function exportCSV() {
+    let rows = [];
+    if (activeReport === "pl") {
+      rows = [["Account", "Amount"]];
+      rows.push(["--- Income ---", ""]);
+      plData.revenue.forEach(a => rows.push([a.name, a.amount.toFixed(2)]));
+      rows.push(["Total Income", plData.totalRevenue.toFixed(2)]);
+      rows.push(["--- Expenses ---", ""]);
+      plData.expenses.forEach(a => rows.push([a.name, a.amount.toFixed(2)]));
+      rows.push(["Total Expenses", plData.totalExpenses.toFixed(2)]);
+      rows.push(["Net Income", plData.netIncome.toFixed(2)]);
+    } else if (activeReport === "bs") {
+      rows = [["Section", "Account", "Amount"]];
+      bsData.assets.filter(a => a.amount !== 0).forEach(a => rows.push(["Assets", a.name, a.amount.toFixed(2)]));
+      rows.push(["", "Total Assets", bsData.totalAssets.toFixed(2)]);
+      bsData.liabilities.filter(a => a.amount !== 0).forEach(a => rows.push(["Liabilities", a.name, a.amount.toFixed(2)]));
+      rows.push(["", "Total Liabilities", bsData.totalLiabilities.toFixed(2)]);
+      bsData.equity.filter(a => a.amount !== 0).forEach(a => rows.push(["Equity", a.name, a.amount.toFixed(2)]));
+      rows.push(["", "Total Equity", bsData.totalEquity.toFixed(2)]);
+    } else if (activeReport === "ar") {
+      rows = [["Tenant", "Current", "31-60", "61-90", "91-120", "120+", "Total"]];
+      Object.entries(bsData.arAgingByTenant || {}).filter(([, v]) => v.total > 0.01).sort((a, b) => b[1].total - a[1].total).forEach(([tenant, aging]) => {
+        rows.push([tenant, (aging.current || 0).toFixed(2), (aging.days30 || 0).toFixed(2), (aging.days60 || 0).toFixed(2), (aging.days90 || 0).toFixed(2), (aging.over90 || 0).toFixed(2), aging.total.toFixed(2)]);
+      });
+    } else if (activeReport === "tb") {
+      rows = [["Code", "Account", "Type", "Debit", "Credit"]];
+      tbData.forEach(a => rows.push([a.code || "", a.name, a.type, a.debitBalance.toFixed(2), a.creditBalance.toFixed(2)]));
+    } else if (activeReport === "gl") {
+      rows = [["Date", "Entry", "Description", "Memo", "Debit", "Credit", "Balance"]];
+      glLines.forEach(l => rows.push([l.date, l.jeId, l.description, l.memo || "", l.debit.toFixed(2), l.credit.toFixed(2), l.balance.toFixed(2)]));
+    }
+    const csv = rows.map(r => r.map(c => '"' + String(c || "").replace(/"/g, '""') + '"').join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = activeReport + "_" + start + "_" + end + ".csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Columns count helper for P&L
+  const plColSpan = compareData ? 4 : 2;
 
   return (
   <div className="space-y-4">
-  <div className="flex items-center justify-between mb-4">
-  <div><h3 className="text-lg font-semibold text-slate-900">Financial Reports</h3><p className="text-sm text-slate-400">P&L, Balance Sheet, Trial Balance, General Ledger</p></div>
-  <button onClick={() => window.print()} className="bg-slate-100 text-slate-500 text-xs px-3 py-1.5 rounded-2xl hover:bg-slate-100">🖨️ Print</button>
+  {/* Header */}
+  <div className="flex items-center justify-between mb-2">
+  <div>
+    <h3 className="text-lg font-semibold text-slate-900">Financial Reports</h3>
+    <p className="text-sm text-slate-400">P&L, Balance Sheet, AR Aging, Trial Balance, General Ledger</p>
   </div>
-  <div className="flex gap-1 border-b border-slate-200 mb-4 flex-wrap">
-  {[{id:"pl",l:"Profit & Loss"},{id:"bs",l:"Balance Sheet"},{id:"ar",l:"AR Aging"},{id:"tb",l:"Trial Balance"},{id:"gl",l:"General Ledger"}].map(t => (
-  <button key={t.id} onClick={() => setActiveReport(t.id)} className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px ${activeReport===t.id ? "border-green-600 text-green-700" : "border-transparent text-slate-400 hover:text-slate-500"}`}>{t.l}</button>
+  </div>
+
+  {/* Report Tabs */}
+  <div className="flex gap-1 border-b border-slate-200 mb-6">
+  {reports.map(r => (
+    <button key={r.id} onClick={() => setActiveReport(r.id)}
+      className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${
+        activeReport === r.id ? "border-green-600 text-green-700" : "border-transparent text-slate-400 hover:text-slate-600"
+      }`}>
+      <span className="material-icons-outlined text-lg">{r.icon}</span>{r.label}
+    </button>
   ))}
   </div>
 
-  {/* P&L */}
+  {/* Global Report Toolbar */}
+  <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4">
+  <div className="flex flex-wrap items-center gap-4">
+    {/* Report Period Dropdown */}
+    <div>
+      <label className="text-xs font-medium text-slate-500 block mb-1">Report period</label>
+      <select value={period} onChange={e => setPeriod(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white min-w-40">
+        {PERIODS.map(p => <option key={p}>{p}</option>)}
+      </select>
+    </div>
+    {/* From date picker */}
+    <div>
+      <label className="text-xs font-medium text-slate-500 block mb-1">From</label>
+      <input type="date" value={start} onChange={e => { setPeriod("Custom"); setCustomDates(d => ({ ...d, start: e.target.value })); }} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+    </div>
+    {/* To date picker */}
+    <div>
+      <label className="text-xs font-medium text-slate-500 block mb-1">To</label>
+      <input type="date" value={end} onChange={e => { setPeriod("Custom"); setCustomDates(d => ({ ...d, end: e.target.value })); }} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+    </div>
+    {/* As of date for BS/AR/TB */}
+    {(activeReport === "bs" || activeReport === "ar" || activeReport === "tb") && (
+    <div>
+      <label className="text-xs font-medium text-slate-500 block mb-1">As of</label>
+      <input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+    </div>
+    )}
+    {/* Compare to (P&L only) */}
+    {activeReport === "pl" && (
+    <div>
+      <label className="text-xs font-medium text-slate-500 block mb-1">Compare to</label>
+      <select value={compareTo} onChange={e => setCompareTo(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+        <option value="">No comparison</option>
+        <option value="prior_period">Prior Period</option>
+        <option value="prior_year">Prior Year</option>
+      </select>
+    </div>
+    )}
+    {/* Class filter (P&L, TB) */}
+    {(activeReport === "pl" || activeReport === "tb") && classes.length > 0 && (
+    <div>
+      <label className="text-xs font-medium text-slate-500 block mb-1">Class</label>
+      <select value={classFilter} onChange={e => setClassFilter(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+        <option value="">All Classes</option>
+        {classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+    </div>
+    )}
+    {/* GL Account selector */}
+    {activeReport === "gl" && (
+    <div>
+      <label className="text-xs font-medium text-slate-500 block mb-1">Account</label>
+      <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white min-w-56">
+        {ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a => a.type === type && a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "\u2022"} {a.name}</option>)}</optgroup>)}
+      </select>
+    </div>
+    )}
+    {/* Actions */}
+    <div className="ml-auto flex items-center gap-2">
+      <button onClick={exportCSV} className="text-xs bg-white border border-slate-200 px-3 py-2 rounded-lg hover:bg-slate-50 flex items-center gap-1"><span className="material-icons-outlined text-sm">download</span>Export</button>
+      <button onClick={() => window.print()} className="text-xs bg-white border border-slate-200 px-3 py-2 rounded-lg hover:bg-slate-50 flex items-center gap-1"><span className="material-icons-outlined text-sm">print</span>Print</button>
+    </div>
+  </div>
+  </div>
+
+  {/* ====== P&L Report ====== */}
   {activeReport === "pl" && (
-  <div>
-  <PeriodPicker />
-  <div className="flex gap-2 mb-4"><select value={classFilter} onChange={e => setClassFilter(e.target.value)} className="border border-indigo-100 rounded-xl px-3 py-1.5 text-sm bg-white"><option value="">All Classes</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-  <div className="grid grid-cols-3 gap-3 mb-4">
-  <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4"><p className="text-xs text-emerald-600">Total Revenue</p><p className="text-xl font-bold text-emerald-800 font-mono mt-1">{acctFmt(plData.totalRevenue)}</p></div>
-  <div className="bg-red-50 border border-red-100 rounded-xl p-4"><p className="text-xs text-red-600">Total Expenses</p><p className="text-xl font-bold text-red-800 font-mono mt-1">{acctFmt(plData.totalExpenses)}</p></div>
-  <div className={`border rounded-xl p-4 ${plData.netIncome>=0?"bg-blue-50 border-blue-100":"bg-orange-50 border-orange-100"}`}><p className={`text-xs ${plData.netIncome>=0?"text-blue-600":"text-orange-600"}`}>Net Income</p><p className={`text-xl font-bold font-mono mt-1 ${plData.netIncome>=0?"text-blue-800":"text-orange-800"}`}>{acctFmt(plData.netIncome, true)}</p></div>
-  </div>
-  <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-  <div className="text-center mb-4"><p className="text-xs text-slate-400 uppercase tracking-widest">Profit & Loss Statement</p><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-sm text-slate-400">{acctFmtDate(start)} — {acctFmtDate(end)}</p></div>
-  <div className="border-t pt-3"><p className="text-sm font-bold text-slate-800 uppercase mb-2">Income</p>{plData.revenue.map(a => <div key={a.id} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded cursor-pointer group"><span className="text-sm text-slate-700 group-hover:text-indigo-600">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount)}</span></div>)}<div onClick={() => onOpenLedger && onOpenLedger(plData.revenue.map(a=>a.id), "Total Income")} className="flex justify-between py-2 border-t-2 border-indigo-200 mt-2 font-bold cursor-pointer hover:bg-emerald-50/50 rounded"><span>Total Income</span><span className="font-mono text-emerald-700">{acctFmt(plData.totalRevenue)}</span></div></div>
-  <div className="border-t pt-3 mt-3"><p className="text-sm font-bold text-slate-800 uppercase mb-2">Expenses</p>{plData.expenses.map(a => <div key={a.id} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded cursor-pointer group"><span className="text-sm text-slate-700 group-hover:text-indigo-600">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount)}</span></div>)}<div onClick={() => onOpenLedger && onOpenLedger(plData.expenses.map(a=>a.id), "Total Expenses")} className="flex justify-between py-2 border-t-2 border-indigo-200 mt-2 font-bold cursor-pointer hover:bg-red-50/50 rounded"><span>Total Expenses</span><span className="font-mono text-red-600">{acctFmt(plData.totalExpenses)}</span></div></div>
-  <div className={`flex justify-between py-3 mt-3 border-t-4 border-gray-800 px-2 rounded-b-xl font-black ${plData.netIncome>=0?"bg-emerald-50":"bg-red-50"}`}><span>Net Income</span><span className={`font-mono ${plData.netIncome>=0?"text-emerald-700":"text-red-700"}`}>{acctFmt(plData.netIncome, true)}</span></div>
-  </div>
+  <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+    {/* Centered header */}
+    <div className="text-center mb-6">
+      <p className="text-xs text-slate-400 uppercase tracking-widest">Profit & Loss Statement</p>
+      <h4 className="text-base font-bold text-slate-900 mt-1">{companyName}</h4>
+      <p className="text-sm text-slate-400">{acctFmtDate(start)} through {acctFmtDate(end)}</p>
+    </div>
+
+    <table className="w-full">
+      <thead>
+        <tr className="border-b border-slate-300">
+          <th className="text-left py-2 text-sm font-semibold text-slate-700">Account</th>
+          <th className="text-right py-2 text-sm font-semibold text-slate-700 w-32">Total</th>
+          {compareData && <th className="text-right py-2 text-sm font-semibold text-slate-500 w-32">Prior</th>}
+          {compareData && <th className="text-right py-2 text-sm font-semibold text-slate-500 w-28">$ Change</th>}
+        </tr>
+      </thead>
+      <tbody>
+        {/* Income header */}
+        <tr className="cursor-pointer hover:bg-slate-50" onClick={() => setShowIncome(!showIncome)}>
+          <td colSpan={plColSpan} className="py-2 text-sm font-bold text-slate-800">
+            <span className="text-xs mr-1">{showIncome ? "\u25BE" : "\u25B8"}</span>Income
+          </td>
+        </tr>
+        {showIncome && plData.revenue.map(a => (
+          <tr key={a.id} className="hover:bg-green-50/30 cursor-pointer" onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}>
+            <td className="py-1.5 pl-8 text-sm text-slate-600">{a.name}</td>
+            <td className="text-right font-mono text-sm">{acctFmt(a.amount)}</td>
+            {compareData && <td className="text-right font-mono text-sm text-slate-400">{acctFmt(compareData.revenue.find(r => r.id === a.id)?.amount || 0)}</td>}
+            {compareData && <td className="text-right font-mono text-xs text-slate-400">{acctFmt((a.amount) - (compareData.revenue.find(r => r.id === a.id)?.amount || 0), true)}</td>}
+          </tr>
+        ))}
+        {/* Total Income */}
+        <tr className="border-t border-b border-slate-300 cursor-pointer hover:bg-emerald-50/50" onClick={() => onOpenLedger && onOpenLedger(plData.revenue.map(a => a.id), "Total Income")}>
+          <td className="py-2 pl-6 text-sm font-bold text-slate-800">Total for Income</td>
+          <td className="text-right font-mono text-sm font-bold text-emerald-700">{acctFmt(plData.totalRevenue)}</td>
+          {compareData && <td className="text-right font-mono text-sm text-slate-500">{acctFmt(compareData.totalRevenue)}</td>}
+          {compareData && <td className="text-right font-mono text-xs">{acctFmt(plData.totalRevenue - compareData.totalRevenue, true)}</td>}
+        </tr>
+        {/* Gross Profit */}
+        <tr className="bg-slate-100">
+          <td className="py-2 text-sm font-black text-slate-900">Gross Profit</td>
+          <td className="text-right font-mono text-sm font-black">{acctFmt(plData.totalRevenue)}</td>
+          {compareData && <td className="text-right font-mono text-sm font-black text-slate-500">{acctFmt(compareData.totalRevenue)}</td>}
+          {compareData && <td className="text-right font-mono text-xs font-bold">{acctFmt(plData.totalRevenue - compareData.totalRevenue, true)}</td>}
+        </tr>
+        {/* Expenses header */}
+        <tr className="cursor-pointer hover:bg-slate-50" onClick={() => setShowExpenses(!showExpenses)}>
+          <td colSpan={plColSpan} className="py-2 text-sm font-bold text-slate-800 pt-4">
+            <span className="text-xs mr-1">{showExpenses ? "\u25BE" : "\u25B8"}</span>Expenses
+          </td>
+        </tr>
+        {showExpenses && plData.expenses.map(a => (
+          <tr key={a.id} className="hover:bg-red-50/30 cursor-pointer" onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}>
+            <td className="py-1.5 pl-8 text-sm text-slate-600">{a.name}</td>
+            <td className="text-right font-mono text-sm">{acctFmt(a.amount)}</td>
+            {compareData && <td className="text-right font-mono text-sm text-slate-400">{acctFmt(compareData.expenses.find(r => r.id === a.id)?.amount || 0)}</td>}
+            {compareData && <td className="text-right font-mono text-xs text-slate-400">{acctFmt((a.amount) - (compareData.expenses.find(r => r.id === a.id)?.amount || 0), true)}</td>}
+          </tr>
+        ))}
+        {/* Total Expenses */}
+        <tr className="border-t border-b border-slate-300 cursor-pointer hover:bg-red-50/50" onClick={() => onOpenLedger && onOpenLedger(plData.expenses.map(a => a.id), "Total Expenses")}>
+          <td className="py-2 pl-6 text-sm font-bold text-slate-800">Total for Expenses</td>
+          <td className="text-right font-mono text-sm font-bold text-red-600">{acctFmt(plData.totalExpenses)}</td>
+          {compareData && <td className="text-right font-mono text-sm text-slate-500">{acctFmt(compareData.totalExpenses)}</td>}
+          {compareData && <td className="text-right font-mono text-xs">{acctFmt(plData.totalExpenses - compareData.totalExpenses, true)}</td>}
+        </tr>
+        {/* Net Operating Income */}
+        <tr className="bg-slate-50">
+          <td className="py-2 text-sm font-bold text-slate-900">Net Operating Income</td>
+          <td className={`text-right font-mono text-sm font-bold ${plData.netIncome >= 0 ? "text-emerald-700" : "text-red-700"}`}>{acctFmt(plData.netIncome, true)}</td>
+          {compareData && <td className={`text-right font-mono text-sm text-slate-500`}>{acctFmt(compareData.netIncome, true)}</td>}
+          {compareData && <td className="text-right font-mono text-xs">{acctFmt(plData.netIncome - compareData.netIncome, true)}</td>}
+        </tr>
+        {/* Net Income */}
+        <tr className="border-t-2 border-b-2 border-slate-800 bg-slate-50">
+          <td className="py-3 text-sm font-black text-slate-900">Net Income</td>
+          <td className={`text-right font-mono text-sm font-black ${plData.netIncome >= 0 ? "text-emerald-700" : "text-red-700"}`}>{acctFmt(plData.netIncome, true)}</td>
+          {compareData && <td className={`text-right font-mono text-sm font-black text-slate-500`}>{acctFmt(compareData.netIncome, true)}</td>}
+          {compareData && <td className="text-right font-mono text-xs font-bold">{acctFmt(plData.netIncome - compareData.netIncome, true)}</td>}
+        </tr>
+      </tbody>
+    </table>
+
+    <div className="text-xs text-slate-400 mt-4 flex justify-between">
+      <span>Accrual basis</span>
+      <span>{new Date().toLocaleString()}</span>
+    </div>
   </div>
   )}
 
-  {/* Balance Sheet */}
+  {/* ====== Balance Sheet ====== */}
   {activeReport === "bs" && (
   <div>
-  <div className="flex items-center gap-3 mb-4"><span className="text-sm text-slate-500">As of:</span><Input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} />{bsBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl">✓ Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-xl">⚠ Out of Balance</span>}</div>
-  <div className="grid grid-cols-2 gap-4">
-  <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-  <p className="text-base font-black text-slate-900 mb-3">ASSETS</p>
-  {bsData.assets.filter(a=>a.amount!==0).map(a => (
-  <div key={a.id}>
-  <div className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded cursor-pointer group" onClick={() => { if (a.name === "Accounts Receivable") setShowARSub(!showARSub); else onOpenLedger && onOpenLedger([a.id], a.name); }}>
-  <span className="text-sm text-slate-700 group-hover:text-indigo-600">{a.name}{a.name === "Accounts Receivable" && bsData.arByTenant?.length > 0 && <span className="text-xs text-indigo-500 ml-1">{showARSub ? "▾" : "▸"} {bsData.arByTenant.length} tenants</span>}</span>
-  <span className={`font-mono text-sm ${a.amount<0?"text-red-600":"text-slate-800"}`}>{acctFmt(a.amount, true)}</span>
-  </div>
-  {a.id === "1100" && showARSub && bsData.arByTenant?.length > 0 && (
-  <div className="ml-4 mb-2 border-l-2 border-indigo-200 pl-3">
-  <div className="text-xs font-bold text-indigo-600 uppercase tracking-wide py-1">Tenant Sub-Ledger</div>
-  {bsData.arByTenant.map((t, i) => (
-  <div key={i} className="flex justify-between py-0.5 px-1">
-  <span className="text-xs text-slate-500">{t.tenant}</span>
-  <span className={`font-mono text-xs ${t.balance < 0 ? "text-green-600" : "text-slate-700"}`}>{acctFmt(t.balance, true)}</span>
-  </div>
-  ))}
-  <div className="flex justify-between py-1 px-1 border-t border-indigo-200 mt-1">
-  <span className="text-xs font-bold text-indigo-700">Sub-Ledger Total</span>
-  <span className="font-mono text-xs font-bold text-indigo-700">{acctFmt(bsData.arByTenant.reduce((s,t) => s + t.balance, 0), true)}</span>
-  </div>
-  </div>
-  )}
-  </div>
-  ))}
-  <div onClick={() => onOpenLedger && onOpenLedger(bsData.assets.filter(a=>a.amount!==0).map(a=>a.id), "All Assets")} className="flex justify-between py-3 border-t-4 border-gray-800 bg-blue-50 px-2 rounded-xl mt-3 font-black cursor-pointer hover:bg-blue-100/50"><span>TOTAL ASSETS</span><span className="font-mono text-blue-700">{acctFmt(bsData.totalAssets)}</span></div>
-  </div>
-  <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-  <p className="text-base font-black text-slate-900 mb-3">LIABILITIES & EQUITY</p>
-  <p className="text-xs font-bold text-slate-400 uppercase mt-2 mb-1">Liabilities</p>
-  {bsData.liabilities.filter(a=>a.amount!==0).map(a => <div key={a.id} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded cursor-pointer group"><span className="text-sm text-slate-700 group-hover:text-indigo-600">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount, true)}</span></div>)}
-  <p className="text-xs font-bold text-slate-400 uppercase mt-3 mb-1">Equity</p>
-  {bsData.equity.filter(a=>a.amount!==0).map(a => <div key={a.id} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded cursor-pointer group"><span className="text-sm text-slate-700 group-hover:text-indigo-600">{a.name}</span><span className="font-mono text-sm">{acctFmt(a.amount, true)}</span></div>)}
-  {bsData.netIncome !== 0 && <div className="flex justify-between py-1 px-2 hover:bg-indigo-50/30 rounded"><span className="text-sm text-slate-700 italic">Net Income (Current)</span><span className="font-mono text-sm">{acctFmt(bsData.netIncome, true)}</span></div>}
-  <div className="flex justify-between py-3 border-t-4 border-gray-800 bg-violet-50 px-2 rounded-xl mt-3 font-black"><span>TOTAL L + E</span><span className="font-mono text-violet-700">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</span></div>
-  </div>
-  </div>
+    {/* Balanced indicator */}
+    <div className="flex justify-end mb-3">
+      {bsBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl font-medium">Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-xl font-medium">Out of Balance</span>}
+    </div>
+
+    <div className="grid grid-cols-2 gap-4">
+      {/* Assets */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+        <div className="text-center mb-4">
+          <p className="text-xs text-slate-400 uppercase tracking-widest">Balance Sheet</p>
+          <h4 className="text-base font-bold text-slate-900 mt-1">{companyName}</h4>
+          <p className="text-sm text-slate-400">As of {acctFmtDate(asOfDate)}</p>
+        </div>
+        {/* Assets section toggle */}
+        <div className="cursor-pointer hover:bg-slate-50 rounded py-1" onClick={() => setShowAssets(!showAssets)}>
+          <p className="text-base font-black text-slate-900"><span className="text-xs mr-1">{showAssets ? "\u25BE" : "\u25B8"}</span>ASSETS</p>
+        </div>
+        {showAssets && bsData.assets.filter(a => a.amount !== 0).map(a => (
+          <div key={a.id}>
+            <div className="flex justify-between py-1 px-2 hover:bg-green-50/30 rounded cursor-pointer group" onClick={() => { if (a.name === "Accounts Receivable") setShowARSub(!showARSub); else onOpenLedger && onOpenLedger([a.id], a.name); }}>
+              <span className="text-sm text-slate-700 group-hover:text-green-600">{a.name}{a.name === "Accounts Receivable" && bsData.arByTenant?.length > 0 && <span className="text-xs text-green-500 ml-1">{showARSub ? "\u25BE" : "\u25B8"} {bsData.arByTenant.length} tenants</span>}</span>
+              <span className={`font-mono text-sm ${a.amount < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(a.amount, true)}</span>
+            </div>
+            {a.id === "1100" && showARSub && bsData.arByTenant?.length > 0 && (
+              <div className="ml-4 mb-2 border-l-2 border-green-200 pl-3">
+                <div className="text-xs font-bold text-green-600 uppercase tracking-wide py-1">Tenant Sub-Ledger</div>
+                {bsData.arByTenant.map((t, i) => (
+                  <div key={i} className="flex justify-between py-0.5 px-1">
+                    <span className="text-xs text-slate-500">{t.tenant}</span>
+                    <span className={`font-mono text-xs ${t.balance < 0 ? "text-green-600" : "text-slate-700"}`}>{acctFmt(t.balance, true)}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between py-1 px-1 border-t border-green-200 mt-1">
+                  <span className="text-xs font-bold text-green-700">Sub-Ledger Total</span>
+                  <span className="font-mono text-xs font-bold text-green-700">{acctFmt(bsData.arByTenant.reduce((s, t) => s + t.balance, 0), true)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+        <div onClick={() => onOpenLedger && onOpenLedger(bsData.assets.filter(a => a.amount !== 0).map(a => a.id), "All Assets")} className="flex justify-between py-3 border-t-2 border-b-2 border-slate-800 bg-blue-50 px-2 rounded-xl mt-3 font-black cursor-pointer hover:bg-blue-100/50">
+          <span>TOTAL ASSETS</span><span className="font-mono text-blue-700">{acctFmt(bsData.totalAssets)}</span>
+        </div>
+      </div>
+
+      {/* Liabilities & Equity */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+        <div className="text-center mb-4">
+          <p className="text-xs text-slate-400 uppercase tracking-widest">Balance Sheet</p>
+          <h4 className="text-base font-bold text-slate-900 mt-1">&nbsp;</h4>
+          <p className="text-sm text-slate-400">&nbsp;</p>
+        </div>
+        {/* Liabilities section toggle */}
+        <div className="cursor-pointer hover:bg-slate-50 rounded py-1" onClick={() => setShowLiabilities(!showLiabilities)}>
+          <p className="text-base font-black text-slate-900"><span className="text-xs mr-1">{showLiabilities ? "\u25BE" : "\u25B8"}</span>LIABILITIES</p>
+        </div>
+        {showLiabilities && bsData.liabilities.filter(a => a.amount !== 0).map(a => (
+          <div key={a.id} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} className="flex justify-between py-1 px-2 hover:bg-green-50/30 rounded cursor-pointer group">
+            <span className="text-sm text-slate-700 group-hover:text-green-600">{a.name}</span>
+            <span className="font-mono text-sm">{acctFmt(a.amount, true)}</span>
+          </div>
+        ))}
+        {showLiabilities && (
+          <div className="flex justify-between py-2 border-t border-b border-slate-300 mt-2 font-bold px-2">
+            <span className="text-sm text-slate-800">Total Liabilities</span>
+            <span className="font-mono text-sm text-slate-800">{acctFmt(bsData.totalLiabilities)}</span>
+          </div>
+        )}
+        {/* Equity section toggle */}
+        <div className="cursor-pointer hover:bg-slate-50 rounded py-1 mt-3" onClick={() => setShowEquity(!showEquity)}>
+          <p className="text-base font-black text-slate-900"><span className="text-xs mr-1">{showEquity ? "\u25BE" : "\u25B8"}</span>EQUITY</p>
+        </div>
+        {showEquity && bsData.equity.filter(a => a.amount !== 0).map(a => (
+          <div key={a.id} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} className="flex justify-between py-1 px-2 hover:bg-green-50/30 rounded cursor-pointer group">
+            <span className="text-sm text-slate-700 group-hover:text-green-600">{a.name}</span>
+            <span className="font-mono text-sm">{acctFmt(a.amount, true)}</span>
+          </div>
+        ))}
+        {showEquity && bsData.netIncome !== 0 && (
+          <div className="flex justify-between py-1 px-2 hover:bg-green-50/30 rounded">
+            <span className="text-sm text-slate-700 italic">Net Income (Current)</span>
+            <span className="font-mono text-sm">{acctFmt(bsData.netIncome, true)}</span>
+          </div>
+        )}
+        {showEquity && (
+          <div className="flex justify-between py-2 border-t border-b border-slate-300 mt-2 font-bold px-2">
+            <span className="text-sm text-slate-800">Total Equity</span>
+            <span className="font-mono text-sm text-slate-800">{acctFmt(bsData.totalEquity)}</span>
+          </div>
+        )}
+        <div className="flex justify-between py-3 border-t-2 border-b-2 border-slate-800 bg-violet-50 px-2 rounded-xl mt-3 font-black">
+          <span>TOTAL L + E</span><span className="font-mono text-violet-700">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</span>
+        </div>
+      </div>
+    </div>
+
+    <div className="text-xs text-slate-400 mt-4 flex justify-between">
+      <span>Accrual basis</span>
+      <span>{new Date().toLocaleString()}</span>
+    </div>
   </div>
   )}
 
-  {/* AR Aging Report */}
+  {/* ====== AR Aging Report ====== */}
   {activeReport === "ar" && (
   <div>
-  <div className="flex items-center gap-3 mb-4"><span className="text-sm text-slate-500">As of:</span><Input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} /></div>
+    {/* Aging Summary Buckets */}
+    <div className="grid grid-cols-5 gap-3 mb-5">
+    {[
+      { label: "Current (0-30)", val: bsData.arAging?.current || 0, color: "text-green-700 bg-green-50 border border-green-100" },
+      { label: "31-60 Days", val: bsData.arAging?.days30 || 0, color: "text-yellow-700 bg-yellow-50 border border-yellow-100" },
+      { label: "61-90 Days", val: bsData.arAging?.days60 || 0, color: "text-orange-700 bg-orange-50 border border-orange-100" },
+      { label: "91-120 Days", val: bsData.arAging?.days90 || 0, color: "text-red-600 bg-red-50 border border-red-100" },
+      { label: "120+ Days", val: bsData.arAging?.over90 || 0, color: "text-red-800 bg-red-100 border border-red-200" },
+    ].map((b, i) => (
+      <div key={i} className={`rounded-xl p-3 ${b.color}`}>
+        <div className="text-xs font-medium opacity-75">{b.label}</div>
+        <div className="text-lg font-bold font-mono">{acctFmt(b.val)}</div>
+      </div>
+    ))}
+    </div>
 
-  {/* Aging Summary Buckets */}
-  <div className="grid grid-cols-5 gap-3 mb-5">
-  {[
-  { label: "Current (0-30)", val: bsData.arAging?.current || 0, color: "text-green-700 bg-green-50" },
-  { label: "31-60 Days", val: bsData.arAging?.days30 || 0, color: "text-yellow-700 bg-yellow-50" },
-  { label: "61-90 Days", val: bsData.arAging?.days60 || 0, color: "text-orange-700 bg-orange-50" },
-  { label: "91-120 Days", val: bsData.arAging?.days90 || 0, color: "text-red-600 bg-red-50" },
-  { label: "120+ Days", val: bsData.arAging?.over90 || 0, color: "text-red-800 bg-red-100" },
-  ].map((b, i) => (
-  <div key={i} className={`rounded-xl p-3 ${b.color}`}>
-  <div className="text-xs font-medium opacity-75">{b.label}</div>
-  <div className="text-lg font-bold font-mono">{acctFmt(b.val)}</div>
-  </div>
-  ))}
-  </div>
+    {/* Total AR */}
+    <div className="bg-indigo-50 rounded-xl border border-indigo-100 p-4 mb-5 flex justify-between items-center">
+      <div><span className="text-sm font-bold text-indigo-800">Total Accounts Receivable</span><span className="text-xs text-indigo-500 ml-2">(Account 1100)</span></div>
+      <span className="text-xl font-black font-mono text-indigo-800">{acctFmt((bsData.arAging?.current || 0) + (bsData.arAging?.days30 || 0) + (bsData.arAging?.days60 || 0) + (bsData.arAging?.days90 || 0) + (bsData.arAging?.over90 || 0))}</span>
+    </div>
 
-  {/* Total AR */}
-  <div className="bg-indigo-50 rounded-xl p-4 mb-5 flex justify-between items-center">
-  <div><span className="text-sm font-bold text-indigo-800">Total Accounts Receivable</span><span className="text-xs text-indigo-500 ml-2">(Account 1100)</span></div>
-  <span className="text-xl font-black font-mono text-indigo-800">{acctFmt((bsData.arAging?.current || 0) + (bsData.arAging?.days30 || 0) + (bsData.arAging?.days60 || 0) + (bsData.arAging?.days90 || 0) + (bsData.arAging?.over90 || 0))}</span>
-  </div>
+    {/* Per-Tenant Aging Table */}
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="px-5 py-3 bg-slate-50 border-b border-slate-200">
+        <h4 className="text-sm font-bold text-slate-800">AR Aging by Tenant</h4>
+      </div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-slate-100 text-xs text-slate-500 uppercase tracking-wider font-semibold bg-slate-50">
+            <th className="px-5 py-3 text-left">Tenant</th>
+            <th className="px-3 py-3 text-right">Current</th>
+            <th className="px-3 py-3 text-right">31-60</th>
+            <th className="px-3 py-3 text-right">61-90</th>
+            <th className="px-3 py-3 text-right">91-120</th>
+            <th className="px-3 py-3 text-right">120+</th>
+            <th className="px-5 py-3 text-right font-bold">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Object.entries(bsData.arAgingByTenant || {}).filter(([, v]) => v.total > 0.01).sort((a, b) => b[1].total - a[1].total).map(([tenant, aging], i) => (
+            <tr key={i} className="border-b border-slate-100 hover:bg-green-50/40 transition-colors">
+              <td className="px-4 py-2 font-medium text-slate-800">{tenant}</td>
+              <td className="px-3 py-2 text-right font-mono text-xs">{aging.current > 0 ? acctFmt(aging.current) : "\u2014"}</td>
+              <td className="px-3 py-2 text-right font-mono text-xs text-yellow-700">{aging.days30 > 0 ? acctFmt(aging.days30) : "\u2014"}</td>
+              <td className="px-3 py-2 text-right font-mono text-xs text-orange-700">{aging.days60 > 0 ? acctFmt(aging.days60) : "\u2014"}</td>
+              <td className="px-3 py-2 text-right font-mono text-xs text-red-600">{aging.days90 > 0 ? acctFmt(aging.days90) : "\u2014"}</td>
+              <td className="px-3 py-2 text-right font-mono text-xs text-red-800">{aging.over90 > 0 ? acctFmt(aging.over90) : "\u2014"}</td>
+              <td className="px-4 py-2 text-right font-mono text-sm font-bold">{acctFmt(aging.total)}</td>
+            </tr>
+          ))}
+          {Object.keys(bsData.arAgingByTenant || {}).length === 0 && (
+            <tr><td colSpan="7" className="px-4 py-6 text-center text-slate-400">No outstanding receivables</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
 
-  {/* Per-Tenant Aging Table */}
-  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-  <div className="px-5 py-3 bg-slate-50 border-b border-slate-200">
-  <h4 className="text-sm font-bold text-slate-800">AR Aging by Tenant</h4>
+    {/* Tenant Sub-Ledger (Net Balances) */}
+    {bsData.arByTenant?.length > 0 && (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mt-4">
+      <div className="px-5 py-3 bg-slate-50 border-b border-slate-200">
+        <h4 className="text-sm font-bold text-slate-800">Tenant Sub-Ledger (Net AR Balance)</h4>
+        <p className="text-xs text-slate-400">Charges minus payments per tenant -- rolls up to master AR on Balance Sheet</p>
+      </div>
+      <div className="p-4 space-y-1">
+        {bsData.arByTenant.map((t, i) => (
+          <div key={i} className="flex justify-between py-1.5 px-3 rounded hover:bg-green-50/30">
+            <span className="text-sm text-slate-700">{t.tenant}</span>
+            <span className={`font-mono text-sm font-medium ${t.balance > 0 ? "text-red-600" : "text-green-600"}`}>{t.balance > 0 ? acctFmt(t.balance) + " owed" : acctFmt(Math.abs(t.balance)) + " credit"}</span>
+          </div>
+        ))}
+        <div className="flex justify-between py-2 px-3 border-t-2 border-green-100 mt-2 font-bold">
+          <span className="text-sm text-slate-900">Total AR (must match Balance Sheet 1100)</span>
+          <span className="font-mono text-sm text-green-700">{acctFmt(bsData.arByTenant.reduce((s, t) => s + t.balance, 0))}</span>
+        </div>
+      </div>
+    </div>
+    )}
+
+    <div className="text-xs text-slate-400 mt-4 flex justify-between">
+      <span>Accrual basis</span>
+      <span>{new Date().toLocaleString()}</span>
+    </div>
   </div>
-  <table className="w-full text-sm">
-  <thead>
-  <tr className="border-b border-slate-100 text-xs text-slate-500 uppercase tracking-wider font-semibold bg-slate-50">
-  <th className="px-5 py-3 text-left">Tenant</th>
-  <th className="px-3 py-3 text-right">Current</th>
-  <th className="px-3 py-3 text-right">31-60</th>
-  <th className="px-3 py-3 text-right">61-90</th>
-  <th className="px-3 py-3 text-right">91-120</th>
-  <th className="px-3 py-3 text-right">120+</th>
-  <th className="px-5 py-3 text-right font-bold">Total</th>
-  </tr>
-  </thead>
-  <tbody>
-  {Object.entries(bsData.arAgingByTenant || {}).filter(([,v]) => v.total > 0.01).sort((a, b) => b[1].total - a[1].total).map(([tenant, aging], i) => (
-  <tr key={i} className="border-b border-slate-100 hover:bg-green-50/40 transition-colors">
-  <td className="px-4 py-2 font-medium text-slate-800">{tenant}</td>
-  <td className="px-3 py-2 text-right font-mono text-xs">{aging.current > 0 ? acctFmt(aging.current) : "—"}</td>
-  <td className="px-3 py-2 text-right font-mono text-xs text-yellow-700">{aging.days30 > 0 ? acctFmt(aging.days30) : "—"}</td>
-  <td className="px-3 py-2 text-right font-mono text-xs text-orange-700">{aging.days60 > 0 ? acctFmt(aging.days60) : "—"}</td>
-  <td className="px-3 py-2 text-right font-mono text-xs text-red-600">{aging.days90 > 0 ? acctFmt(aging.days90) : "—"}</td>
-  <td className="px-3 py-2 text-right font-mono text-xs text-red-800">{aging.over90 > 0 ? acctFmt(aging.over90) : "—"}</td>
-  <td className="px-4 py-2 text-right font-mono text-sm font-bold">{acctFmt(aging.total)}</td>
-  </tr>
-  ))}
-  {Object.keys(bsData.arAgingByTenant || {}).length === 0 && (
-  <tr><td colSpan="7" className="px-4 py-6 text-center text-slate-400">No outstanding receivables</td></tr>
   )}
-  </tbody>
-  </table>
-  </div>
 
-  {/* Tenant Sub-Ledger (Net Balances) */}
-  {bsData.arByTenant?.length > 0 && (
-  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mt-4">
-  <div className="px-5 py-3 bg-slate-50 border-b border-slate-200">
-  <h4 className="text-sm font-bold text-slate-800">Tenant Sub-Ledger (Net AR Balance)</h4>
-  <p className="text-xs text-slate-400">Charges minus payments per tenant — rolls up to master AR on Balance Sheet</p>
-  </div>
-  <div className="p-4 space-y-1">
-  {bsData.arByTenant.map((t, i) => (
-  <div key={i} className="flex justify-between py-1.5 px-3 rounded hover:bg-indigo-50/30">
-  <span className="text-sm text-slate-700">{t.tenant}</span>
-  <span className={`font-mono text-sm font-medium ${t.balance > 0 ? "text-red-600" : "text-green-600"}`}>{t.balance > 0 ? acctFmt(t.balance) + " owed" : acctFmt(Math.abs(t.balance)) + " credit"}</span>
-  </div>
-  ))}
-  <div className="flex justify-between py-2 px-3 border-t-2 border-indigo-100 mt-2 font-bold">
-  <span className="text-sm text-slate-900">Total AR (must match Balance Sheet 1100)</span>
-  <span className="font-mono text-sm text-indigo-700">{acctFmt(bsData.arByTenant.reduce((s, t) => s + t.balance, 0))}</span>
-  </div>
-  </div>
-  </div>
-  )}
-  </div>
-  )}
-
-  {/* Trial Balance */}
+  {/* ====== Trial Balance ====== */}
   {activeReport === "tb" && (
   <div>
-  <div className="flex items-center gap-3 mb-4"><span className="text-sm text-slate-500">As of:</span><Input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} />{tbBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl">✓ Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-xl">⚠ Out of Balance by {acctFmt(Math.abs(tbTotalDebit - tbTotalCredit))}</span>}</div>
-  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-  <table className="w-full text-sm">
-  <thead className="bg-slate-50"><tr><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">#</th><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Account</th><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Type</th><th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Debit</th><th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Credit</th></tr></thead>
-  <tbody>{tbData.map(a => <tr key={a.id} className="border-t border-slate-100 hover:bg-green-50/40 transition-colors"><td className="px-5 py-3 font-mono text-xs text-slate-400">{a.id}</td><td className="px-5 py-3 text-slate-700 font-medium">{a.name}</td><td className="px-5 py-3 text-xs text-slate-400">{a.type}</td><td className="px-5 py-3 text-right font-mono">{a.debitBalance > 0 ? acctFmt(a.debitBalance) : ""}</td><td className="px-5 py-3 text-right font-mono">{a.creditBalance > 0 ? acctFmt(a.creditBalance) : ""}</td></tr>)}</tbody>
-  <tfoot><tr className="border-t-2 border-gray-800 bg-slate-50"><td colSpan={3} className="px-5 py-3 text-right font-bold">TOTALS</td><td className={`px-4 py-3 text-right font-mono font-black ${tbBalanced?"text-emerald-700":"text-red-600"}`}>{acctFmt(tbTotalDebit)}</td><td className={`px-4 py-3 text-right font-mono font-black ${tbBalanced?"text-emerald-700":"text-red-600"}`}>{acctFmt(tbTotalCredit)}</td></tr></tfoot>
-  </table>
-  </div>
+    {/* Balance indicator */}
+    <div className="flex justify-end mb-3">
+      {tbBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl font-medium">Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-xl font-medium">Out of Balance by {acctFmt(Math.abs(tbTotalDebit - tbTotalCredit))}</span>}
+    </div>
+
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      {/* Centered header */}
+      <div className="text-center py-4 border-b border-slate-200">
+        <p className="text-xs text-slate-400 uppercase tracking-widest">Trial Balance</p>
+        <h4 className="text-base font-bold text-slate-900 mt-1">{companyName}</h4>
+        <p className="text-sm text-slate-400">As of {acctFmtDate(asOfDate)}</p>
+      </div>
+
+      <table className="w-full text-sm">
+        <thead className="bg-slate-50">
+          <tr>
+            <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Code</th>
+            <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Account</th>
+            <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Type</th>
+            <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Debit</th>
+            <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Credit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {tbTypeOrder.filter(type => tbGrouped[type]?.length > 0).map(type => (
+            <React.Fragment key={type}>
+              <tr className="bg-slate-50/70">
+                <td colSpan={5} className="px-5 py-2 text-xs font-bold text-slate-500 uppercase tracking-wider">{type}</td>
+              </tr>
+              {tbGrouped[type].map(a => (
+                <tr key={a.id} className="border-t border-slate-100 hover:bg-green-50/40 transition-colors cursor-pointer" onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}>
+                  <td className="px-5 py-3 font-mono text-xs text-slate-400">{a.code || "\u2014"}</td>
+                  <td className="px-5 py-3 text-slate-700 font-medium">{a.name}</td>
+                  <td className="px-5 py-3 text-xs text-slate-400">{a.type}</td>
+                  <td className="px-5 py-3 text-right font-mono">{a.debitBalance > 0 ? acctFmt(a.debitBalance) : ""}</td>
+                  <td className="px-5 py-3 text-right font-mono">{a.creditBalance > 0 ? acctFmt(a.creditBalance) : ""}</td>
+                </tr>
+              ))}
+            </React.Fragment>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="border-t-2 border-b-2 border-slate-800 bg-slate-50">
+            <td colSpan={3} className="px-5 py-3 text-right font-bold">TOTALS</td>
+            <td className={`px-4 py-3 text-right font-mono font-black ${tbBalanced ? "text-emerald-700" : "text-red-600"}`}>{acctFmt(tbTotalDebit)}</td>
+            <td className={`px-4 py-3 text-right font-mono font-black ${tbBalanced ? "text-emerald-700" : "text-red-600"}`}>{acctFmt(tbTotalCredit)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <div className="text-xs text-slate-400 mt-4 flex justify-between">
+      <span>Accrual basis</span>
+      <span>{new Date().toLocaleString()}</span>
+    </div>
   </div>
   )}
 
-  {/* General Ledger */}
+  {/* ====== General Ledger ====== */}
   {activeReport === "gl" && (
   <div>
-  <div className="flex items-center gap-3 mb-4">
-  <span className="text-sm text-slate-500">Account:</span>
-  <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} className="bg-white min-w-56">
-  {ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}
-  </select>
-  </div>
-  {glAccount && (
-  <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-  <div className="flex justify-between mb-4"><div><h4 className="font-semibold text-slate-800">{glAccount.name}</h4><p className="text-xs text-slate-400">#{glAccount.id} · {glAccount.type} — {glAccount.subtype}</p></div>{glLines.length > 0 && <div className="text-right"><p className="text-xs text-slate-400">Ending Balance</p><p className="font-mono font-bold">{acctFmt(glLines[glLines.length-1].balance, true)}</p></div>}</div>
-  <table className="w-full text-sm rounded-xl border border-slate-200 overflow-hidden">
-  <thead className="bg-slate-50"><tr><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Date</th><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Entry</th><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Description</th><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Memo</th><th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Debit</th><th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Credit</th><th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Balance</th></tr></thead>
-  <tbody>
-  {glLines.length === 0 ? <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-400">No transactions</td></tr> : glLines.map((l,i) => <tr key={i} className="border-t border-slate-100 hover:bg-green-50/40 transition-colors"><td className="px-5 py-3 text-xs text-slate-400">{acctFmtDate(l.date)}</td><td className="px-5 py-3 font-mono text-xs text-slate-400">{l.jeId}</td><td className="px-5 py-3 text-slate-700">{l.description}</td><td className="px-5 py-3 text-xs text-slate-400">{l.memo || "—"}</td><td className="px-5 py-3 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td><td className="px-5 py-3 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td><td className={`px-5 py-3 text-right font-mono font-semibold ${l.balance<0?"text-red-600":"text-slate-800"}`}>{acctFmt(l.balance, true)}</td></tr>)}
-  </tbody>
-  </table>
-  </div>
-  )}
+    {glAccount && (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+      {/* Centered header */}
+      <div className="text-center mb-4">
+        <p className="text-xs text-slate-400 uppercase tracking-widest">General Ledger</p>
+        <h4 className="text-base font-bold text-slate-900 mt-1">{glAccount.name}</h4>
+        <p className="text-sm text-slate-400">#{glAccount.code || glAccount.id} &middot; {glAccount.type} &mdash; {glAccount.subtype}</p>
+        <p className="text-sm text-slate-400">{acctFmtDate(start)} through {acctFmtDate(end)}</p>
+      </div>
+      {glLines.length > 0 && (
+        <div className="flex justify-end mb-3">
+          <div className="text-right">
+            <p className="text-xs text-slate-400">Ending Balance (filtered period)</p>
+            <p className="font-mono font-bold">{acctFmt(glLines[glLines.length - 1].balance, true)}</p>
+          </div>
+        </div>
+      )}
+      <table className="w-full text-sm rounded-xl border border-slate-200 overflow-hidden">
+        <thead className="bg-slate-50">
+          <tr>
+            <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Date</th>
+            <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Entry</th>
+            <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Description</th>
+            <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Memo</th>
+            <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Debit</th>
+            <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Credit</th>
+            <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Balance</th>
+          </tr>
+        </thead>
+        <tbody>
+          {glLines.length === 0 ? (
+            <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-400">No transactions in this period</td></tr>
+          ) : glLines.map((l, i) => (
+            <tr key={i} className="border-t border-slate-100 hover:bg-green-50/40 transition-colors">
+              <td className="px-5 py-3 text-xs text-slate-400">{acctFmtDate(l.date)}</td>
+              <td className="px-5 py-3 font-mono text-xs text-slate-400">{l.jeId}</td>
+              <td className="px-5 py-3 text-slate-700">{l.description}</td>
+              <td className="px-5 py-3 text-xs text-slate-400">{l.memo || "\u2014"}</td>
+              <td className="px-5 py-3 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>
+              <td className="px-5 py-3 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>
+              <td className={`px-5 py-3 text-right font-mono font-semibold ${l.balance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(l.balance, true)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="text-xs text-slate-400 mt-4 flex justify-between">
+        <span>Accrual basis</span>
+        <span>{new Date().toLocaleString()}</span>
+      </div>
+    </div>
+    )}
   </div>
   )}
   </div>
