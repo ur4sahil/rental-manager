@@ -693,13 +693,23 @@ async function autoPostRentCharges(companyId) {
   const ref = "RENT-AUTO-" + lease.id + "-" + monthStr;
 
   if (!postedRefs.has(ref)) {
-  const monthRent = getRent(cursor);
-  // Use tenant-specific AR sub-account (e.g., "1100-001 AR - Alice Johnson")
+  const fullMonthRent = getRent(cursor);
+  // Prorate rent for partial months (lease start/end mid-month)
+  const daysInMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
+  const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+  const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
+  const effectiveStart = leaseStart > monthStart ? leaseStart : monthStart;
+  const effectiveEnd = leaseEnd < monthEnd ? leaseEnd : monthEnd;
+  const chargeDays = Math.max(0, Math.round((effectiveEnd - effectiveStart) / 86400000) + 1);
+  const isPartialMonth = chargeDays < daysInMonth;
+  const monthRent = isPartialMonth ? Math.round(fullMonthRent * chargeDays / daysInMonth * 100) / 100 : fullMonthRent;
+  const prorationNote = isPartialMonth ? ` (${chargeDays}/${daysInMonth} days)` : "";
+  // Use tenant-specific AR sub-account
   const tenantArId = await getOrCreateTenantAR(cid, lease.tenant_name, lease.tenant_id);
   const revenueId = await resolveAccountId("4000", cid);
   const jeId = await autoPostJournalEntry({
   companyId: cid, date: chargeDate,
-  description: "Rent charge — " + lease.tenant_name + " — " + lease.property + " — " + monthStr,
+  description: "Rent charge — " + lease.tenant_name + " — " + lease.property + " — " + monthStr + prorationNote,
   reference: ref, property: lease.property,
   lines: [
   { account_id: tenantArId, account_name: "AR - " + lease.tenant_name, debit: monthRent, credit: 0, class_id: classId, memo: lease.tenant_name + " rent " + monthStr },
@@ -711,7 +721,7 @@ async function autoPostRentCharges(companyId) {
   // Ledger entry (single source of truth for tenant balance)
   await safeLedgerInsert({ company_id: cid,
   tenant: lease.tenant_name, tenant_id: lease.tenant_id || null, property: lease.property,
-  date: chargeDate, description: "Rent charge — " + monthStr, amount: monthRent, type: "charge", balance: 0,
+  date: chargeDate, description: "Rent charge — " + monthStr + prorationNote, amount: monthRent, type: "charge", balance: 0,
   });
 
   // Update tenant balance
@@ -13872,6 +13882,36 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: outstandingBalance, class_id: classId, memo: `AR write-off — ${tName}` },
   ], ledgerEntry: { tenant: tName, property: selectedLease.property, date: moveOutDate, description: "Bad debt write-off", amount: -outstandingBalance, type: "adjustment", balance: 0 },
   balanceUpdate: { tenantId: selectedTenant.id, amount: -outstandingBalance } });
+  }
+
+  // 2b. Prorate rent for partial move-out month
+  const moveOutDay = parseInt(moveOutDate.split("-")[2]);
+  const moveOutMonth = moveOutDate.slice(0, 7);
+  const daysInMoveOutMonth = new Date(parseInt(moveOutDate.split("-")[0]), parseInt(moveOutDate.split("-")[1]), 0).getDate();
+  if (moveOutDay < daysInMoveOutMonth && selectedLease.rent_amount > 0) {
+  // Check if full rent was already posted for this month
+  const fullRef = "RENT-AUTO-" + selectedLease.id + "-" + moveOutMonth;
+  const { data: existingCharge } = await supabase.from("acct_journal_entries").select("id").eq("company_id", cid).eq("reference", fullRef).neq("status", "voided").maybeSingle();
+  if (existingCharge) {
+  // Full rent was posted — credit back the prorated difference
+  const fullRent = safeNum(selectedLease.rent_amount);
+  const proratedRent = Math.round(fullRent * moveOutDay / daysInMoveOutMonth * 100) / 100;
+  const creditBack = Math.round((fullRent - proratedRent) * 100) / 100;
+  if (creditBack > 0) {
+  const tenantArId = await getOrCreateTenantAR(cid, tName, selectedTenant.id);
+  const revenueId = await resolveAccountId("4000", cid);
+  await autoPostJournalEntry({ companyId: cid, date: moveOutDate,
+  description: `Prorated rent adjustment — ${tName} — ${moveOutDay}/${daysInMoveOutMonth} days`,
+  reference: `RENT-PRORATE-${selectedLease.id}-${moveOutMonth}`, property: selectedLease.property,
+  lines: [
+  { account_id: revenueId, account_name: "Rental Income", debit: creditBack, credit: 0, class_id: classId, memo: `Proration credit ${moveOutMonth}` },
+  { account_id: tenantArId, account_name: "AR - " + tName, debit: 0, credit: creditBack, class_id: classId, memo: `${moveOutDay}/${daysInMoveOutMonth} days — move-out` },
+  ]
+  });
+  await safeLedgerInsert({ company_id: cid, tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: `Rent proration credit (${moveOutDay}/${daysInMoveOutMonth} days)`, amount: -creditBack, type: "adjustment", balance: 0 });
+  if (selectedTenant.id) await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: -creditBack }).catch(() => {});
+  }
+  }
   }
 
   // #7: Track completed steps for error recovery
