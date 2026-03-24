@@ -9098,7 +9098,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   ];
 
   return (
-  <div className="flex gap-0 -mx-4 md:-mx-6 -mt-2">
+  <div className="flex flex-col md:flex-row gap-0 -mx-4 md:-mx-6 -mt-2">
   {/* Left Sidebar Nav — desktop */}
   <div className="hidden md:block w-56 shrink-0 border-r border-slate-200 bg-white min-h-[calc(100vh-180px)] py-4 px-2">
   {acctSidebarItems.map(group => (
