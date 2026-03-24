@@ -632,116 +632,13 @@ async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   }
 }
 
-// ============ AUTOMATIC RENT CHARGE ENGINE ============
-// For every active lease, posts monthly rent charges (DR AR / CR Revenue)
-// for each month in the lease term up to the current month. Idempotent.
-async function autoPostRentCharges(companyId) {
-  if (!companyId) { console.error("autoPostRentCharges: missing companyId"); return { posted: 0, failed: 0 }; }
-  try {
-  const cid = companyId;
-  const today = new Date();
-  const todayStr = formatLocalDate(today);
-
-  // 1. Fetch active leases, auto-expire past end_date
-  const { data: leases } = await supabase.from("leases").select("*").eq("company_id", cid).eq("status", "active");
-  if (!leases || leases.length === 0) return { posted: 0, failed: 0 };
-
-  const expiredLeases = leases.filter(l => l.end_date && l.end_date < todayStr);
-  for (const el of expiredLeases) {
-  await supabase.from("leases").update({ status: "expired" }).eq("id", el.id).eq("company_id", cid);
-  }
-  if (expiredLeases.length > 0) logAudit("update", "leases", `Auto-expired ${expiredLeases.length} lease(s)`, "", "system", "system", cid);
-  const activeLeases = leases.filter(l => !expiredLeases.find(e => e.id === l.id));
-  if (activeLeases.length === 0) return { posted: 0, failed: 0 };
-
-  // 2. Fetch existing refs to avoid duplicates
-  const { data: existingJEs } = await supabase.from("acct_journal_entries").select("reference")
-  .eq("company_id", cid).like("reference", "RENT-AUTO-%").neq("status", "voided");
-  const postedRefs = new Set((existingJEs || []).map(j => j.reference));
-
-  let posted = 0, failed = 0;
-  const MAX = 50;
-
-  for (const lease of activeLeases) {
-  if (posted >= MAX) break;
-  if (!lease.rent_amount || lease.rent_amount <= 0 || !lease.start_date || !lease.end_date) continue;
-
-  const leaseStart = parseLocalDate(lease.start_date);
-  const leaseEnd = parseLocalDate(lease.end_date);
-  const baseRent = safeNum(lease.rent_amount);
-  const classId = await getPropertyClassId(lease.property, cid);
-
-  // Rent escalation calculator
-  const getRent = (date) => {
-  if (!lease.rent_escalation_pct || lease.rent_escalation_pct <= 0) return baseRent;
-  const yrs = (date - leaseStart) / (365.25 * 86400000);
-  const freq = lease.escalation_frequency || "annual";
-  const periods = freq === "quarterly" ? Math.min(Math.floor(yrs * 4), 200)
-  : freq === "semi-annual" ? Math.min(Math.floor(yrs * 2), 100)
-  : Math.min(Math.floor(yrs), 50);
-  return Math.round(baseRent * Math.pow(1 + lease.rent_escalation_pct / 100, periods) * 100) / 100;
-  };
-
-  // Walk each month from lease start to min(lease end, today)
-  let cursor = new Date(leaseStart.getFullYear(), leaseStart.getMonth(), 1);
-  const endCap = new Date(Math.min(leaseEnd.getTime(), today.getTime()));
-
-  while (cursor <= endCap && posted < MAX) {
-  const monthStr = formatLocalDate(cursor).slice(0, 7);
-  const dueDay = Math.min(lease.payment_due_day || 1, new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate());
-  const chargeDate = monthStr + "-" + String(dueDay).padStart(2, "0");
-  const ref = "RENT-AUTO-" + lease.id + "-" + monthStr;
-
-  if (!postedRefs.has(ref)) {
-  const fullMonthRent = getRent(cursor);
-  // Prorate rent for partial months (lease start/end mid-month)
-  const daysInMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
-  const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
-  const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
-  const effectiveStart = leaseStart > monthStart ? leaseStart : monthStart;
-  const effectiveEnd = leaseEnd < monthEnd ? leaseEnd : monthEnd;
-  const chargeDays = Math.max(0, Math.round((effectiveEnd - effectiveStart) / 86400000) + 1);
-  const isPartialMonth = chargeDays < daysInMonth;
-  const monthRent = isPartialMonth ? Math.round(fullMonthRent * chargeDays / daysInMonth * 100) / 100 : fullMonthRent;
-  const prorationNote = isPartialMonth ? ` (${chargeDays}/${daysInMonth} days)` : "";
-  // Use tenant-specific AR sub-account
-  const tenantArId = await getOrCreateTenantAR(cid, lease.tenant_name, lease.tenant_id);
-  const revenueId = await resolveAccountId("4000", cid);
-  const jeId = await autoPostJournalEntry({
-  companyId: cid, date: chargeDate,
-  description: "Rent charge — " + lease.tenant_name + " — " + lease.property + " — " + monthStr + prorationNote,
-  reference: ref, property: lease.property,
-  lines: [
-  { account_id: tenantArId, account_name: "AR - " + lease.tenant_name, debit: monthRent, credit: 0, class_id: classId, memo: lease.tenant_name + " rent " + monthStr },
-  { account_id: revenueId, account_name: "Rental Income", debit: 0, credit: monthRent, class_id: classId, memo: lease.property + " " + monthStr },
-  ]
-  });
-  if (!jeId) { failed++; cursor.setMonth(cursor.getMonth() + 1); continue; }
-
-  // Ledger entry (single source of truth for tenant balance)
-  await safeLedgerInsert({ company_id: cid,
-  tenant: lease.tenant_name, tenant_id: lease.tenant_id || null, property: lease.property,
-  date: chargeDate, description: "Rent charge — " + monthStr + prorationNote, amount: monthRent, type: "charge", balance: 0,
-  });
-
-  // Update tenant balance
-  const tenantId = lease.tenant_id || (await supabase.from("tenants").select("id").eq("company_id", cid).ilike("name", lease.tenant_name).eq("property", lease.property).maybeSingle())?.data?.id;
-  if (tenantId) {
-  const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: monthRent });
-  if (balErr) console.error("Balance update failed for " + lease.tenant_name + ": " + balErr.message);
-  }
-
-  posted++;
-  postedRefs.add(ref);
-  }
-  cursor.setMonth(cursor.getMonth() + 1);
-  }
-  }
-
-  if (posted > 0) logAudit("create", "accounting", "Auto-posted " + posted + " rent charges", "", "system", "system", cid);
-  return { posted, failed };
-  } catch (e) { console.error("autoPostRentCharges failed:", e); return { posted: 0, failed: -1 }; }
-}
+// ============ AUTOMATIC RENT CHARGE ENGINE (REMOVED) ============
+// Rent is now handled exclusively by autoPostRecurringEntries via the
+// recurring_journal_entries table. This stub remains for backward compat.
+// autoPostRentCharges removed — rent is now handled exclusively by
+// autoPostRecurringEntries via the recurring_journal_entries table.
+// Stub kept for backward compatibility with existing call sites.
+async function autoPostRentCharges() { return { posted: 0, failed: 0 }; }
 
 // ============ AUTO-POST RECURRING JOURNAL ENTRIES ============
 // Posts recurring JEs for each missed period (catches up if app was down).
@@ -769,12 +666,7 @@ async function autoPostRecurringEntries(companyId) {
   const monthStr = formatLocalDate(cursor).slice(0, 7);
   const postDate = cursor <= today ? formatLocalDate(new Date(Math.min(cursor.getTime(), today.getTime()))) : todayStr;
   const ref = "RECUR-" + (entry.id || shortId()).toString().slice(0, 8) + "-" + monthStr;
-  // Skip if autoPostRentCharges already posted for this property+month (prevent doubles)
-  if (entry.property && (entry.debit_account_name || "").toLowerCase().includes("ar")) {
-  const { data: existingRent } = await supabase.from("acct_journal_entries").select("id").eq("company_id", cid).like("reference", "RENT-AUTO-%-" + monthStr).eq("property", entry.property).neq("status", "voided").limit(1);
-  if (existingRent && existingRent.length > 0) { cursor.setMonth(cursor.getMonth() + freqMonths); continue; }
-  }
-  // Also skip if this RECUR ref was already posted
+  // Skip if this RECUR ref was already posted (idempotent)
   const { data: existingRecur } = await supabase.from("acct_journal_entries").select("id").eq("company_id", cid).eq("reference", ref).neq("status", "voided").limit(1);
   if (existingRecur && existingRecur.length > 0) { cursor.setMonth(cursor.getMonth() + freqMonths); continue; }
   const jeId = await autoPostJournalEntry({
