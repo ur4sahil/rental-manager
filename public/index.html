@@ -59,7 +59,9 @@
       /* Hide number input spinners/tickers globally */
       input[type="number"]::-webkit-inner-spin-button,
       input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-      input[type="number"] { -moz-appearance: textbox; }
+      input[type="number"] { -moz-appearance: textfield; }
+      /* Prevent select dropdowns from overflowing on mobile */
+      select { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
     </style>
   </head>
   <body>
