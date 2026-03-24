@@ -10275,11 +10275,18 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   try {
   if (!invoiceForm.vendor_id) { showToast("Please select a vendor.", "error"); return; }
   if (!invoiceForm.amount || isNaN(Number(invoiceForm.amount)) || Number(invoiceForm.amount) <= 0) { showToast("Please enter a valid positive amount.", "error"); return; }
+  const invDate = invoiceForm.invoice_date || formatLocalDate(new Date());
+  if (invoiceForm.due_date && invoiceForm.due_date < invDate) { showToast("Due date cannot be before invoice date.", "error"); return; }
+  // Clean empty strings for UUID columns to avoid "invalid input syntax for type uuid"
+  const cleanForm = { ...invoiceForm };
+  if (!cleanForm.work_order_id) delete cleanForm.work_order_id;
+  if (!cleanForm.vendor_id) delete cleanForm.vendor_id;
   const { error } = await supabase.from("vendor_invoices").insert([{
-  ...invoiceForm,
+  ...cleanForm,
+  vendor_id: invoiceForm.vendor_id,
   amount: Number(invoiceForm.amount),
   due_date: invoiceForm.due_date || null,
-  invoice_date: invoiceForm.invoice_date || formatLocalDate(new Date()),
+  invoice_date: invDate,
   status: "pending",
   company_id: companyId,
   }]);
@@ -10438,7 +10445,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div className="flex items-center justify-between mb-4"><h3 className="font-manrope font-semibold text-slate-800">New Vendor Invoice</h3><button onClick={() => setShowInvoiceForm(false)} className="text-slate-400 hover:text-slate-700 text-xl leading-none" title="Close">✕</button></div>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div><label className="text-xs text-slate-400 mb-1 block">Vendor *</label>
-  <select value={invoiceForm.vendor_id} onChange={e => { const v = vendors.find(v => String(v.id) === String(e.target.value)); setInvoiceForm({...invoiceForm, vendor_id: e.target.value, vendor_name: v?.name || ""}); }} >
+  <select value={invoiceForm.vendor_id} onChange={e => { const v = vendors.find(v => String(v.id) === String(e.target.value)); setInvoiceForm({...invoiceForm, vendor_id: e.target.value, vendor_name: v?.name || ""}); }} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm truncate">
   <option value="">Select vendor...</option>
   {vendors.filter(v => v.status !== "blocked").map(v => <option key={v.id} value={v.id}>{v.name} ({v.specialty})</option>)}
   </select>
