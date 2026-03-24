@@ -2841,7 +2841,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       <div className="bg-white border-t border-slate-200 px-6 py-4 flex items-center justify-between">
         <button onClick={handleBack} disabled={step === 1} className="text-sm text-slate-500 hover:text-slate-700 disabled:opacity-30">&#8592; Back</button>
         <div className="flex gap-3">
-          {currentStepId !== "review" && (
+          {currentStepId !== "review" && currentStepId !== "property_details" && (
             <button onClick={handleSkip} className="text-sm text-slate-400 hover:text-slate-600">Skip</button>
           )}
           {step < totalSteps ? (
