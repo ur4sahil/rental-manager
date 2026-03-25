@@ -8777,8 +8777,13 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
 
   // --- Transaction Actions ---
   async function acceptTransaction(txn, accountId, accountName, memo, classId) {
+    if (!guardSubmit("bankAccept", txn.id)) { showToast("Already processing this transaction.", "warning"); return; }
+    try {
     if (!accountId) { showToast("Please select a category/account.", "error"); return; }
     if (await checkPeriodLock(companyId, txn.posted_date)) { showToast("This transaction date falls in a locked accounting period.", "error"); return; }
+    // Verify transaction is still for_review (prevents double-post from concurrent tabs/clicks)
+    const { data: freshTxn } = await supabase.from("bank_feed_transaction").select("status").eq("id", txn.id).eq("company_id", companyId).maybeSingle();
+    if (!freshTxn || freshTxn.status !== "for_review") { showToast("This transaction has already been processed.", "warning"); fetchAll(); return; }
     const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
     if (!feed?.gl_account_id) { showToast("Bank account not linked to GL.", "error"); return; }
     const bankAcct = accounts.find(a => a.id === feed.gl_account_id);
@@ -8853,9 +8858,12 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     setExpandedTxn(null);
     setAddForm({ accountId: "", accountName: "", memo: "", classId: "" });
     fetchAll();
+    } finally { guardRelease("bankAccept", txn.id); }
   }
 
   async function excludeTransaction(txn, reason) {
+    if (!guardSubmit("bankExclude", txn.id)) return;
+    try {
     if (!reason) { showToast("Please select a reason.", "error"); return; }
     await supabase.from("bank_feed_transaction").update({
       status: "excluded", exclusion_reason: reason,
@@ -8871,6 +8879,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     logAudit("update", "banking", `Excluded bank txn: ${txn.bank_description_clean} (${reason})`, txn.id, userProfile?.email, "", companyId);
     showToast("Transaction excluded.", "success");
     fetchAll();
+    } finally { guardRelease("bankExclude", txn.id); }
   }
 
   // --- Match: find existing JEs that could be this bank transaction ---
@@ -8915,6 +8924,8 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   }
 
   async function confirmMatch(txn, targetJE) {
+    if (!guardSubmit("bankMatch", txn.id)) return;
+    try {
     // Link bank transaction to existing JE without creating a new one
     await supabase.from("bank_feed_transaction_link").insert([{
       company_id: companyId, bank_feed_transaction_id: txn.id,
@@ -8935,10 +8946,13 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     showToast(`Matched to ${targetJE.number}.`, "success");
     setExpandedTxn(null); setMatchCandidates([]);
     fetchAll();
+    } finally { guardRelease("bankMatch", txn.id); }
   }
 
   // --- Transfer: between balance sheet accounts ---
   async function acceptTransfer(txn, toAccountId, toAccountName, memo) {
+    if (!guardSubmit("bankTransfer", txn.id)) return;
+    try {
     if (!toAccountId) { showToast("Please select a transfer account.", "error"); return; }
     if (await checkPeriodLock(companyId, txn.posted_date)) { showToast("This transaction date falls in a locked accounting period.", "error"); return; }
     const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
@@ -8988,10 +9002,13 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     showToast("Transfer posted.", "success");
     setExpandedTxn(null); setTransferForm({ accountId: "", accountName: "", memo: "" });
     fetchAll();
+    } finally { guardRelease("bankTransfer", txn.id); }
   }
 
   // --- Split: one bank txn → multiple GL lines ---
   async function acceptSplit(txn, lines) {
+    if (!guardSubmit("bankSplit", txn.id)) return;
+    try {
     if (await checkPeriodLock(companyId, txn.posted_date)) { showToast("This transaction date falls in a locked accounting period.", "error"); return; }
     const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
     if (!feed?.gl_account_id) { showToast("Bank account not linked to GL.", "error"); return; }
@@ -9062,9 +9079,12 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     showToast(`Split into ${validLines.length} lines and posted.`, "success");
     setExpandedTxn(null); setSplitLines([{ accountId: "", accountName: "", amount: "", memo: "", classId: "" }, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }]);
     fetchAll();
+    } finally { guardRelease("bankSplit", txn.id); }
   }
 
   async function undoTransaction(txn) {
+    if (!guardSubmit("bankUndo", txn.id)) return;
+    try {
     if (txn.status === "locked") { showToast("Cannot undo a locked/reconciled transaction.", "error"); return; }
     if (await checkPeriodLock(companyId, txn.posted_date)) { showToast("This transaction is in a locked accounting period.", "error"); return; }
     if (!await showConfirm({ message: "Undo this transaction? The linked journal entry will be voided." })) return;
@@ -9090,6 +9110,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     logAudit("update", "banking", `Undid bank txn: ${txn.bank_description_clean}`, txn.id, userProfile?.email, "", companyId);
     showToast("Transaction returned to For Review.", "success");
     fetchAll();
+    } finally { guardRelease("bankUndo", txn.id); }
   }
 
   // --- Rules Engine ---
