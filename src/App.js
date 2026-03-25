@@ -1833,60 +1833,6 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     }]);
     if (error) throw new Error("Failed to save recurring rent: " + error.message);
     showToast("Recurring rent entry saved.", "success");
-
-    // Auto-post first month rent (prorated if mid-month, full if 1st)
-    // Wrapped in try/catch so it never blocks recurring entry creation
-    try {
-      if (tenantForm.lease_start) {
-        const leaseStart = parseLocalDate(tenantForm.lease_start);
-        const startDay = leaseStart.getDate();
-        const monthlyRent = Number(recurring.amount);
-        const daysInMonth = new Date(leaseStart.getFullYear(), leaseStart.getMonth() + 1, 0).getDate();
-
-        if (!isNaN(startDay) && !isNaN(daysInMonth) && monthlyRent > 0) {
-          const classId = await getPropertyClassId(savedAddress, companyId);
-          const tName = tenantForm.tenant.trim();
-          const { data: tRow } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", tName).eq("property", savedAddress).is("archived_at", null).maybeSingle();
-          const tenantId = tRow?.id;
-          const tenantArId2 = await getOrCreateTenantAR(companyId, tName, tenantId);
-          const revenueId2 = await resolveAccountId("4000", companyId);
-
-          if (startDay > 1) {
-            // Prorated first month
-            const remainingDays = daysInMonth - startDay + 1;
-            const proratedAmount = Math.round(monthlyRent * remainingDays / daysInMonth);
-            const proOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start,
-              description: `Prorated rent (${remainingDays}/${daysInMonth} days) — ${tName} — ${savedAddress.split(",")[0]}`,
-              reference: "PRORENT-" + shortId(), property: savedAddress,
-              lines: [
-                { account_id: tenantArId2, account_name: "AR - " + tName, debit: proratedAmount, credit: 0, class_id: classId, memo: "Prorated first month rent" },
-                { account_id: revenueId2, account_name: "Rental Income", debit: 0, credit: proratedAmount, class_id: classId, memo: `${remainingDays}/${daysInMonth} days @ $${monthlyRent}/mo` },
-              ]
-            });
-            if (proOk && tenantId) {
-              await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: savedAddress, date: tenantForm.lease_start, description: `Prorated rent (${remainingDays}/${daysInMonth} days)`, amount: proratedAmount, type: "charge", balance: 0 });
-              try { await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: proratedAmount }); } catch {}
-            }
-            showToast(`Prorated first month rent: $${proratedAmount} (${remainingDays}/${daysInMonth} days)`, "success");
-          } else {
-            // Full first month rent
-            const fullOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start,
-              description: `First month rent — ${tName} — ${savedAddress.split(",")[0]}`,
-              reference: "RENT1-" + shortId(), property: savedAddress,
-              lines: [
-                { account_id: tenantArId2, account_name: "AR - " + tName, debit: monthlyRent, credit: 0, class_id: classId, memo: "First month rent" },
-                { account_id: revenueId2, account_name: "Rental Income", debit: 0, credit: monthlyRent, class_id: classId, memo: "Full month rent" },
-              ]
-            });
-            if (fullOk && tenantId) {
-              await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: savedAddress, date: tenantForm.lease_start, description: "First month rent", amount: monthlyRent, type: "charge", balance: 0 });
-              try { await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: monthlyRent }); } catch {}
-            }
-          }
-        }
-      }
-    } catch (e) { console.warn("First month rent posting failed (non-blocking):", e.message); }
-
     return true;
   }
 
@@ -2044,6 +1990,49 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       ]
       });
       if (depOk) await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: addr, date: tenantForm.lease_start, description: "Security deposit collected", amount: dep, type: "deposit", balance: 0 });
+      }
+      // Post first month rent (prorated if mid-month)
+      const monthlyRent = Number(tenantForm.rent) || Number(recurring?.amount) || 0;
+      if (monthlyRent > 0 && tenantForm.lease_start) {
+      try {
+        const leaseStart = parseLocalDate(tenantForm.lease_start);
+        const startDay = leaseStart.getDate();
+        const daysInMonth = new Date(leaseStart.getFullYear(), leaseStart.getMonth() + 1, 0).getDate();
+        if (!isNaN(startDay) && !isNaN(daysInMonth)) {
+          const tenantArId2 = await getOrCreateTenantAR(companyId, tName, tenantId);
+          const revenueId2 = await resolveAccountId("4000", companyId);
+          const classId2 = await getPropertyClassId(addr, companyId);
+          if (startDay > 1) {
+            const remainingDays = daysInMonth - startDay + 1;
+            const proratedAmount = Math.round(monthlyRent * remainingDays / daysInMonth);
+            const proOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start,
+              description: `Prorated rent (${remainingDays}/${daysInMonth} days) — ${tName} — ${addr.split(",")[0]}`,
+              reference: "PRORENT-" + shortId(), property: addr,
+              lines: [
+                { account_id: tenantArId2, account_name: "AR - " + tName, debit: proratedAmount, credit: 0, class_id: classId2, memo: "Prorated first month rent" },
+                { account_id: revenueId2, account_name: "Rental Income", debit: 0, credit: proratedAmount, class_id: classId2, memo: `${remainingDays}/${daysInMonth} days @ $${monthlyRent}/mo` },
+              ]
+            });
+            if (proOk) {
+              await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: addr, date: tenantForm.lease_start, description: `Prorated rent (${remainingDays}/${daysInMonth} days)`, amount: proratedAmount, type: "charge", balance: 0 });
+              try { await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: proratedAmount }); } catch {}
+            }
+          } else {
+            const fullOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start,
+              description: `First month rent — ${tName} — ${addr.split(",")[0]}`,
+              reference: "RENT1-" + shortId(), property: addr,
+              lines: [
+                { account_id: tenantArId2, account_name: "AR - " + tName, debit: monthlyRent, credit: 0, class_id: classId2, memo: "First month rent" },
+                { account_id: revenueId2, account_name: "Rental Income", debit: 0, credit: monthlyRent, class_id: classId2, memo: "Full month rent" },
+              ]
+            });
+            if (fullOk) {
+              await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: addr, date: tenantForm.lease_start, description: "First month rent", amount: monthlyRent, type: "charge", balance: 0 });
+              try { await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: monthlyRent }); } catch {}
+            }
+          }
+        }
+      } catch (e) { console.warn("First month rent posting failed:", e.message); }
       }
       // Auto-post rent charges
       autoPostRentCharges(companyId).catch(() => {});
