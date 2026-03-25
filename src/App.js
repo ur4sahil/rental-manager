@@ -353,6 +353,28 @@ function sanitizeForPrint(str) {
   if (!str) return "";
   return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
+// ============ CREDENTIAL ENCRYPTION (AES-256-GCM via Web Crypto) ============
+async function encryptCredential(plaintext, companyId) {
+  if (!plaintext) return { encrypted: "", iv: "" };
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const keyStr = (companyId + "_propmanager_cred_key").slice(0, 32).padEnd(32, "0");
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(keyStr), { name: "AES-GCM" }, false, ["encrypt"]);
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(plaintext));
+  const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, "0")).join("");
+  return { encrypted: btoa(String.fromCharCode(...new Uint8Array(ciphertext))), iv: ivHex };
+}
+async function decryptCredential(encryptedB64, ivHex, companyId) {
+  if (!encryptedB64 || !ivHex) return "";
+  try {
+    const keyStr = (companyId + "_propmanager_cred_key").slice(0, 32).padEnd(32, "0");
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(keyStr), { name: "AES-GCM" }, false, ["decrypt"]);
+    const iv = new Uint8Array(ivHex.match(/.{2}/g).map(h => parseInt(h, 16)));
+    const ciphertext = Uint8Array.from(atob(encryptedB64), c => c.charCodeAt(0));
+    const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+    return new TextDecoder().decode(decrypted);
+  } catch { return "••••••"; }
+}
+
 function requireCompanyId(companyId, context = "") {
   if (!companyId) {
   const msg = "CRITICAL: Missing companyId" + (context ? " in " + context : "") + " — operation blocked";
@@ -1575,11 +1597,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
 
   // Step-specific form states
   const [utilities, setUtilities] = useState([
-    { provider: "", type: "Electric", account_number: "", due_date: 1, responsibility: propForm.status === "occupied" ? "tenant_pays" : "owner_pays" }
+    { provider: "", type: "Electric", account_number: "", due_date: 1, responsibility: propForm.status === "occupied" ? "tenant_pays" : "owner_pays", website: "", username: "", password: "" }
   ]);
-  const [hoa, setHoa] = useState({ enabled: false, hoa_name: "", amount: "", due_date: 1, frequency: "Monthly", notes: "" });
-  const [loan, setLoan] = useState({ enabled: false, lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: { taxes: false, insurance: false, pmi: false }, loan_start_date: "", maturity_date: "", account_number: "", notes: "", setup_recurring: false });
-  const [insurance, setInsurance] = useState({ enabled: false, provider: "", policy_number: "", premium_amount: "", premium_frequency: "annual", coverage_amount: "", expiration_date: "", notes: "" });
+  const [hoa, setHoa] = useState({ enabled: false, hoa_name: "", amount: "", due_date: 1, frequency: "Monthly", notes: "", website: "", username: "", password: "" });
+  const [loan, setLoan] = useState({ enabled: false, lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: { taxes: false, insurance: false, pmi: false }, loan_start_date: "", maturity_date: "", account_number: "", notes: "", setup_recurring: false, website: "", username: "", password: "" });
+  const [insurance, setInsurance] = useState({ enabled: false, provider: "", policy_number: "", premium_amount: "", premium_frequency: "annual", coverage_amount: "", expiration_date: "", notes: "", website: "", username: "", password: "" });
   const [recurring, setRecurring] = useState({ frequency: "monthly", day_of_month: 1, amount: wizardData.rent || 0 });
   const [uploadedDocs, setUploadedDocs] = useState([]);
   const [docUploadType, setDocUploadType] = useState("Lease");
@@ -1725,22 +1747,32 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   async function saveUtilities() {
     const validRows = utilities.filter(u => u.provider.trim());
     if (validRows.length === 0) return true; // nothing to save
-    const rows = validRows.map(u => {
+    const rows = validRows.map(async u => {
       // Build a proper date from the day-of-month (use current month)
       const now = new Date();
       const day = Math.min(28, Math.max(1, Number(u.due_date) || 1));
       const dueDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      return {
+      const row = {
       company_id: companyId,
       property: savedAddress,
       provider: u.provider.trim(),
       amount: 0,
       due: dueDate,
       responsibility: u.responsibility === "owner_pays" ? "owner" : "tenant",
-      status: "pending"
+      status: "pending",
+      website: u.website || "",
       };
+      if (u.username || u.password) {
+        const { encrypted: encUser, iv: ivUser } = await encryptCredential(u.username || "", companyId);
+        const { encrypted: encPass, iv: ivPass } = await encryptCredential(u.password || "", companyId);
+        row.username_encrypted = encUser;
+        row.password_encrypted = encPass;
+        row.encryption_iv = ivPass || ivUser;
+      }
+      return row;
     });
-    const { error } = await supabase.from("utilities").insert(rows);
+    const resolvedRows = await Promise.all(rows);
+    const { error } = await supabase.from("utilities").insert(resolvedRows);
     if (error) throw new Error("Failed to save utilities: " + error.message);
     return true;
   }
@@ -1749,7 +1781,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     if (!hoa.enabled) return true;
     if (!hoa.hoa_name.trim()) throw new Error("HOA name is required");
     if (!hoa.amount || Number(hoa.amount) <= 0) throw new Error("HOA amount is required");
-    const { error } = await supabase.from("hoa_payments").insert([{
+    const hoaRow = {
       company_id: companyId,
       property: savedAddress,
       hoa_name: hoa.hoa_name.trim(),
@@ -1757,8 +1789,17 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       due_date: hoa.due_date || formatLocalDate(new Date()),
       frequency: hoa.frequency,
       notes: hoa.notes.trim(),
-      status: "pending"
-    }]);
+      status: "pending",
+      website: hoa.website || "",
+    };
+    if (hoa.username || hoa.password) {
+      const { encrypted: encU, iv: ivU } = await encryptCredential(hoa.username || "", companyId);
+      const { encrypted: encP, iv: ivP } = await encryptCredential(hoa.password || "", companyId);
+      hoaRow.username_encrypted = encU;
+      hoaRow.password_encrypted = encP;
+      hoaRow.encryption_iv = ivP || ivU;
+    }
+    const { error } = await supabase.from("hoa_payments").insert([hoaRow]);
     if (error) throw new Error("Failed to save HOA: " + error.message);
     return true;
   }
@@ -1784,8 +1825,16 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       maturity_date: loan.maturity_date || null,
       account_number: loan.account_number.trim(),
       notes: loan.notes.trim(),
-      status: "active"
+      status: "active",
+      website: loan.website || "",
     };
+    if (loan.username || loan.password) {
+      const { encrypted: encU, iv: ivU } = await encryptCredential(loan.username || "", companyId);
+      const { encrypted: encP, iv: ivP } = await encryptCredential(loan.password || "", companyId);
+      loanRow.username_encrypted = encU;
+      loanRow.password_encrypted = encP;
+      loanRow.encryption_iv = ivP || ivU;
+    }
     const { error } = await supabase.from("property_loans").insert([loanRow]);
     if (error) throw new Error("Failed to save loan: " + error.message);
     // If setup_recurring, create a recurring journal entry for the mortgage payment
@@ -1819,7 +1868,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     if (!insurance.enabled) return true;
     if (!insurance.provider.trim()) throw new Error("Insurance provider is required");
     if (!insurance.premium_amount || Number(insurance.premium_amount) <= 0) throw new Error("Premium amount is required");
-    const { error } = await supabase.from("property_insurance").insert([{
+    const insRow = {
       company_id: companyId,
       property: savedAddress,
       property_id: String(savedPropertyId || ""),
@@ -1829,8 +1878,17 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       premium_frequency: insurance.premium_frequency,
       coverage_amount: Number(insurance.coverage_amount) || 0,
       expiration_date: insurance.expiration_date || null,
-      notes: insurance.notes.trim()
-    }]);
+      notes: insurance.notes.trim(),
+      website: insurance.website || "",
+    };
+    if (insurance.username || insurance.password) {
+      const { encrypted: encU, iv: ivU } = await encryptCredential(insurance.username || "", companyId);
+      const { encrypted: encP, iv: ivP } = await encryptCredential(insurance.password || "", companyId);
+      insRow.username_encrypted = encU;
+      insRow.password_encrypted = encP;
+      insRow.encryption_iv = ivP || ivU;
+    }
+    const { error } = await supabase.from("property_insurance").insert([insRow]);
     if (error) throw new Error("Failed to save insurance: " + error.message);
     return true;
   }
@@ -2131,7 +2189,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
 
   // ---- Utility row helpers ----
   function addUtilityRow() {
-    setUtilities(prev => [...prev, { provider: "", type: "Electric", account_number: "", due_date: 1, responsibility: propForm.status === "occupied" ? "tenant_pays" : "owner_pays" }]);
+    setUtilities(prev => [...prev, { provider: "", type: "Electric", account_number: "", due_date: 1, responsibility: propForm.status === "occupied" ? "tenant_pays" : "owner_pays", website: "", username: "", password: "" }]);
   }
   function removeUtilityRow(idx) {
     setUtilities(prev => prev.filter((_, i) => i !== idx));
@@ -2346,6 +2404,14 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                         <option value="tenant_pays">Tenant Pays</option>
                       </select>
                     </div>
+                    <div className="col-span-2 border-t border-slate-100 pt-2 mt-1">
+                      <p className="text-xs text-slate-400 mb-2">Portal Login (encrypted)</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div><label className="text-xs font-medium text-slate-500 block mb-1">Website</label><input type="url" value={u.website||""} onChange={e => updateUtility(idx, "website", e.target.value)} placeholder="https://..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
+                        <div><label className="text-xs font-medium text-slate-500 block mb-1">Username</label><input type="text" value={u.username||""} onChange={e => updateUtility(idx, "username", e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
+                        <div><label className="text-xs font-medium text-slate-500 block mb-1">Password</label><input type="password" value={u.password||""} onChange={e => updateUtility(idx, "password", e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -2400,6 +2466,14 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <div>
                     <label className="text-xs font-medium text-slate-500 block mb-1">Notes</label>
                     <textarea value={hoa.notes} onChange={e => setHoa({ ...hoa, notes: e.target.value })} rows={2} placeholder="Optional notes..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                  </div>
+                  <div className="border-t border-slate-100 pt-2 mt-1">
+                    <p className="text-xs text-slate-400 mb-2">Portal Login (encrypted)</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div><label className="text-xs font-medium text-slate-500 block mb-1">Website</label><input type="url" value={hoa.website||""} onChange={e => setHoa({...hoa, website: e.target.value})} placeholder="https://..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-slate-500 block mb-1">Username</label><input type="text" value={hoa.username||""} onChange={e => setHoa({...hoa, username: e.target.value})} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-slate-500 block mb-1">Password</label><input type="password" value={hoa.password||""} onChange={e => setHoa({...hoa, password: e.target.value})} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -2507,6 +2581,14 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                     <input type="checkbox" checked={loan.setup_recurring} onChange={e => setLoan({ ...loan, setup_recurring: e.target.checked })} className="accent-green-600" />
                     <span className="font-medium text-slate-700">Set up recurring mortgage payment</span>
                   </label>
+                  <div className="border-t border-slate-100 pt-2 mt-2">
+                    <p className="text-xs text-slate-400 mb-2">Lender Portal Login (encrypted)</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div><label className="text-xs font-medium text-slate-500 block mb-1">Website</label><input type="url" value={loan.website||""} onChange={e => setLoan({...loan, website: e.target.value})} placeholder="https://..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-slate-500 block mb-1">Username</label><input type="text" value={loan.username||""} onChange={e => setLoan({...loan, username: e.target.value})} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-slate-500 block mb-1">Password</label><input type="password" value={loan.password||""} onChange={e => setLoan({...loan, password: e.target.value})} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -2704,6 +2786,14 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <div>
                     <label className="text-xs font-medium text-slate-500 block mb-1">Notes</label>
                     <textarea value={insurance.notes} onChange={e => setInsurance({ ...insurance, notes: e.target.value })} rows={2} placeholder="Optional notes..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                  </div>
+                  <div className="border-t border-slate-100 pt-2 mt-1">
+                    <p className="text-xs text-slate-400 mb-2">Insurance Portal Login (encrypted)</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div><label className="text-xs font-medium text-slate-500 block mb-1">Website</label><input type="url" value={insurance.website||""} onChange={e => setInsurance({...insurance, website: e.target.value})} placeholder="https://..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-slate-500 block mb-1">Username</label><input type="text" value={insurance.username||""} onChange={e => setInsurance({...insurance, username: e.target.value})} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-slate-500 block mb-1">Password</label><input type="password" value={insurance.password||""} onChange={e => setInsurance({...insurance, password: e.target.value})} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    </div>
                   </div>
                 </div>
               )}
