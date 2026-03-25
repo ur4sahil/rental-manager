@@ -408,9 +408,17 @@ async function logAudit(action, module, details = "", recordId = "", userEmail =
 // ============ UNIFIED AUTO-POSTING TO ACCOUNTING ============
 // Direct insert approach — no RPC. Posts JE header + lines in two steps.
 // All bare account codes (e.g., "1000") are resolved to UUIDs via resolveAccountId().
+async function checkPeriodLock(companyId, date) {
+  if (!date || !companyId) return false;
+  const { data } = await supabase.from("accounting_period_lock").select("lock_date").eq("company_id", companyId).maybeSingle();
+  return data?.lock_date && date <= data.lock_date;
+}
+
 async function autoPostJournalEntry({ date, description, reference, property, lines, status = "posted", companyId }) {
   try {
   if (!companyId) { console.error("autoPostJournalEntry: missing companyId — blocked"); return null; }
+  // Period lock check
+  if (await checkPeriodLock(companyId, date)) { console.warn("autoPostJournalEntry: blocked by period lock (date: " + date + ")"); return null; }
   const cid = companyId;
   // Resolve bare account codes to UUIDs — work on a COPY to avoid mutating caller's data
   const resolvedLines = lines?.length > 0 ? lines.map(l => ({ ...l })) : [];
@@ -715,6 +723,8 @@ async function autoPostRecurringEntries(companyId) {
   const monthStr = formatLocalDate(cursor).slice(0, 7);
   const postDate = cursor <= today ? formatLocalDate(new Date(Math.min(cursor.getTime(), today.getTime()))) : todayStr;
   const ref = "RECUR-" + (entry.id || shortId()).toString().slice(0, 8) + "-" + monthStr;
+  // Skip if posting date falls in locked period
+  if (await checkPeriodLock(cid, postDate)) { cursor.setMonth(cursor.getMonth() + freqMonths); continue; }
   // Skip if this RECUR ref was already posted (idempotent)
   const { data: existingRecur } = await supabase.from("acct_journal_entries").select("id").eq("company_id", cid).eq("reference", ref).neq("status", "voided").limit(1);
   if (existingRecur && existingRecur.length > 0) { cursor.setMonth(cursor.getMonth() + freqMonths); continue; }
@@ -8749,6 +8759,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   // --- Transaction Actions ---
   async function acceptTransaction(txn, accountId, accountName, memo, classId) {
     if (!accountId) { showToast("Please select a category/account.", "error"); return; }
+    if (await checkPeriodLock(companyId, txn.posted_date)) { showToast("This transaction date falls in a locked accounting period.", "error"); return; }
     const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
     if (!feed?.gl_account_id) { showToast("Bank account not linked to GL.", "error"); return; }
     const bankAcct = accounts.find(a => a.id === feed.gl_account_id);
@@ -8910,6 +8921,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   // --- Transfer: between balance sheet accounts ---
   async function acceptTransfer(txn, toAccountId, toAccountName, memo) {
     if (!toAccountId) { showToast("Please select a transfer account.", "error"); return; }
+    if (await checkPeriodLock(companyId, txn.posted_date)) { showToast("This transaction date falls in a locked accounting period.", "error"); return; }
     const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
     if (!feed?.gl_account_id) { showToast("Bank account not linked to GL.", "error"); return; }
     if (toAccountId === feed.gl_account_id) { showToast("Cannot transfer to the same account.", "error"); return; }
@@ -8961,6 +8973,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
 
   // --- Split: one bank txn → multiple GL lines ---
   async function acceptSplit(txn, lines) {
+    if (await checkPeriodLock(companyId, txn.posted_date)) { showToast("This transaction date falls in a locked accounting period.", "error"); return; }
     const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
     if (!feed?.gl_account_id) { showToast("Bank account not linked to GL.", "error"); return; }
     const validLines = lines.filter(l => l.accountId && safeNum(l.amount) > 0);
@@ -9034,6 +9047,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
 
   async function undoTransaction(txn) {
     if (txn.status === "locked") { showToast("Cannot undo a locked/reconciled transaction.", "error"); return; }
+    if (await checkPeriodLock(companyId, txn.posted_date)) { showToast("This transaction is in a locked accounting period.", "error"); return; }
     if (!await showConfirm({ message: "Undo this transaction? The linked journal entry will be voided." })) return;
 
     // Void the linked JE if exists
@@ -9902,6 +9916,8 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   if (!guardSubmit("addJournalEntry")) return;
   try {
   const { lines, ...header } = data;
+  // Period lock check
+  if (await checkPeriodLock(companyId, header.date)) { showToast("Cannot post to a locked accounting period (" + header.date + ").", "error"); return; }
   // Validate DR/CR balance
   if (lines?.length > 0) {
   const v = validateJE(lines);
@@ -9932,6 +9948,8 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   async function updateJournalEntry(data) {
   const { id, lines, ...header } = data;
   delete header.created_at;
+  // Period lock check
+  if (await checkPeriodLock(companyId, header.date)) { showToast("Cannot edit a journal entry in a locked period.", "error"); return; }
   // Validate debit/credit balance before saving
   if (lines?.length > 0) {
   const v = validateJE(lines);
@@ -9971,6 +9989,8 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   async function voidJournalEntry(id) {
   try {
   const je = journalEntries.find(j => j.id === id);
+  // Period lock check
+  if (je && await checkPeriodLock(companyId, je.date)) { showToast("Cannot void a journal entry in a locked period (" + je.date + ").", "error"); return; }
   const { error: voidErr } = await supabase.from("acct_journal_entries").update({ status: "voided" }).eq("company_id", companyId).eq("id", id);
   if (voidErr) { showToast("Error voiding entry: " + voidErr.message, "error"); return; }
   showToast("Journal entry voided.", "success");
@@ -10222,7 +10242,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} />}
   {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} />}
-  {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} />}
+  {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {/* Account Ledger Drill-Down */}
@@ -11980,8 +12000,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   );
 }
 
-// ============ BANK RECONCILIATION ============
-function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
+// ============ BANK RECONCILIATION + PERIOD LOCK ============
+function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast, showConfirm, userProfile }) {
   const [reconPeriod, setReconPeriod] = useState(formatLocalDate(new Date()).slice(0, 7));
   const [bankBalance, setBankBalance] = useState("");
   const [reconItems, setReconItems] = useState([]);
@@ -11989,8 +12009,38 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
   const [loading, setLoading] = useState(true);
   const [showReconcile, setShowReconcile] = useState(false);
   const [viewRecon, setViewRecon] = useState(null);
+  // Period lock
+  const [periodLock, setPeriodLock] = useState(null);
+  const [lockDate, setLockDate] = useState("");
+  const [reconTab, setReconTab] = useState("reconcile"); // reconcile | period_lock
 
-  useEffect(() => { fetchRecons(); }, [companyId]);
+  useEffect(() => { fetchRecons(); fetchPeriodLock(); }, [companyId]);
+
+  async function fetchPeriodLock() {
+    const { data } = await supabase.from("accounting_period_lock").select("*").eq("company_id", companyId).maybeSingle();
+    setPeriodLock(data);
+    if (data?.lock_date) setLockDate(data.lock_date);
+  }
+
+  async function savePeriodLock() {
+    if (!lockDate) { showToast("Please select a lock date.", "error"); return; }
+    if (!await showConfirm({ message: `Lock all accounting periods through ${lockDate}? No transactions on or before this date can be posted, edited, or voided.`, confirmText: "Lock Period" })) return;
+    const { error } = await supabase.from("accounting_period_lock").upsert({
+      company_id: companyId, lock_date: lockDate, locked_by: userProfile?.email || "", notes: "Locked through " + lockDate
+    }, { onConflict: "company_id" });
+    if (error) { showToast("Error: " + error.message, "error"); return; }
+    logAudit("update", "accounting", `Period locked through ${lockDate}`, "", userProfile?.email, "", companyId);
+    showToast(`Accounting period locked through ${lockDate}.`, "success");
+    fetchPeriodLock();
+  }
+
+  async function removePeriodLock() {
+    if (!await showConfirm({ message: "Remove the period lock? This will allow modifications to previously locked periods.", variant: "danger", confirmText: "Remove Lock" })) return;
+    await supabase.from("accounting_period_lock").delete().eq("company_id", companyId);
+    logAudit("update", "accounting", "Period lock removed", "", userProfile?.email, "", companyId);
+    showToast("Period lock removed.", "success");
+    setPeriodLock(null); setLockDate("");
+  }
 
   async function fetchRecons() {
   const { data } = await supabase.from("bank_reconciliations").select("*").eq("company_id", companyId).order("created_at", { ascending: false });
@@ -12123,7 +12173,18 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
   }
   }
 
-  logAudit("create", "bank_reconciliation", "Bank reconciliation for " + reconPeriod + " — diff: $" + diff, "", "", "", companyId);
+  // Lock bank feed transactions that were reconciled in this period
+  const startDate = reconPeriod + "-01";
+  const endObj2 = parseLocalDate(startDate); endObj2.setMonth(endObj2.getMonth() + 1); endObj2.setDate(0);
+  const endDate2 = formatLocalDate(endObj2);
+  const { error: lockErr } = await supabase.from("bank_feed_transaction")
+    .update({ status: "locked" })
+    .eq("company_id", companyId)
+    .in("status", ["categorized", "matched", "posted"])
+    .gte("posted_date", startDate).lte("posted_date", endDate2);
+  if (lockErr) console.warn("Failed to lock bank feed transactions:", lockErr.message);
+
+  logAudit("create", "bank_reconciliation", "Bank reconciliation for " + reconPeriod + " — diff: $" + diff + (status === "reconciled" ? " (balanced)" : " (discrepancy)"), "", userProfile?.email || "", "", companyId);
   setShowReconcile(false);
   setBankBalance("");
   setReconItems([]);
@@ -12139,7 +12200,49 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId }) {
 
   return (
   <div>
-  {!showReconcile && !viewRecon && (
+  {/* Tabs: Reconcile / Period Lock */}
+  <div className="flex gap-1 mb-4 border-b border-slate-200">
+    {[["reconcile", "Reconcile"], ["period_lock", "Period Lock"]].map(([id, label]) => (
+      <button key={id} onClick={() => setReconTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 ${reconTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-500"}`}>{label}</button>
+    ))}
+  </div>
+
+  {/* Period Lock Tab */}
+  {reconTab === "period_lock" && (
+  <div className="space-y-4">
+    <div className="bg-white rounded-xl border border-slate-200 p-5">
+      <h3 className="font-semibold text-slate-800 mb-1">Accounting Period Lock</h3>
+      <p className="text-sm text-slate-400 mb-4">Lock past periods to prevent any changes to transactions on or before the lock date.</p>
+      {periodLock ? (
+      <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-semibold text-red-800">Period locked through {periodLock.lock_date}</div>
+            <div className="text-xs text-red-600 mt-1">Locked by {periodLock.locked_by || "admin"} on {new Date(periodLock.locked_at).toLocaleDateString()}</div>
+            {periodLock.notes && <div className="text-xs text-red-500 mt-1">{periodLock.notes}</div>}
+          </div>
+          <button onClick={removePeriodLock} className="text-xs bg-white text-red-600 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50">Remove Lock</button>
+        </div>
+      </div>
+      ) : (
+      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4">
+        <div className="text-sm text-emerald-800">No period lock active. All periods are open for modifications.</div>
+      </div>
+      )}
+      <div className="grid grid-cols-2 gap-3">
+        <div><label className="text-xs font-medium text-slate-500 block mb-1">Lock Date</label>
+          <Input type="date" value={lockDate} onChange={e => setLockDate(e.target.value)} /></div>
+        <div className="flex items-end"><button onClick={savePeriodLock} disabled={!lockDate} className="bg-red-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 w-full">Lock Period</button></div>
+      </div>
+      <div className="mt-3 text-xs text-slate-400">
+        <strong>What gets locked:</strong> No journal entries can be posted, edited, or voided with a date on or before the lock date. Bank feed transactions in locked periods cannot be accepted or undone. Recurring entries will skip locked periods.
+      </div>
+    </div>
+  </div>
+  )}
+
+  {/* Reconcile Tab */}
+  {reconTab === "reconcile" && !showReconcile && !viewRecon && (
   <div>
   <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-5">
   <h3 className="font-manrope font-semibold text-slate-800 mb-3">Start Bank Reconciliation</h3>
