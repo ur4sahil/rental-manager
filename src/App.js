@@ -8844,7 +8844,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       status: "categorized", accepted_at: new Date().toISOString(),
       accepted_by: userProfile?.email || "", journal_entry_id: jeRow.id,
       posting_decision_id: decision?.id
-    }).eq("id", txn.id);
+    }).eq("id", txn.id).eq("company_id", companyId);
 
     // Audit
     logAudit("create", "banking", `Accepted bank txn: ${txn.bank_description_clean} → ${accountName}`, txn.id, userProfile?.email, "", companyId);
@@ -8860,7 +8860,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     await supabase.from("bank_feed_transaction").update({
       status: "excluded", exclusion_reason: reason,
       excluded_at: new Date().toISOString(), excluded_by: userProfile?.email || ""
-    }).eq("id", txn.id);
+    }).eq("id", txn.id).eq("company_id", companyId);
 
     await supabase.from("bank_posting_decision").insert([{
       company_id: companyId, bank_feed_transaction_id: txn.id,
@@ -8930,7 +8930,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       status: "matched", accepted_at: new Date().toISOString(),
       accepted_by: userProfile?.email || "", journal_entry_id: targetJE.id,
       matched_target_type: "journal_entry", matched_target_id: targetJE.id
-    }).eq("id", txn.id);
+    }).eq("id", txn.id).eq("company_id", companyId);
     logAudit("update", "banking", `Matched bank txn to ${targetJE.number}: ${txn.bank_description_clean}`, txn.id, userProfile?.email, "", companyId);
     showToast(`Matched to ${targetJE.number}.`, "success");
     setExpandedTxn(null); setMatchCandidates([]);
@@ -8983,7 +8983,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     await supabase.from("bank_feed_transaction").update({
       status: "categorized", accepted_at: new Date().toISOString(),
       accepted_by: userProfile?.email || "", journal_entry_id: jeRow.id
-    }).eq("id", txn.id);
+    }).eq("id", txn.id).eq("company_id", companyId);
     logAudit("create", "banking", `Transfer: ${txn.bank_description_clean} → ${toAccountName}`, txn.id, userProfile?.email, "", companyId);
     showToast("Transfer posted.", "success");
     setExpandedTxn(null); setTransferForm({ accountId: "", accountName: "", memo: "" });
@@ -9057,7 +9057,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       status: "categorized", accepted_at: new Date().toISOString(),
       accepted_by: userProfile?.email || "", journal_entry_id: jeRow.id,
       posting_decision_id: decision?.id
-    }).eq("id", txn.id);
+    }).eq("id", txn.id).eq("company_id", companyId);
     logAudit("create", "banking", `Split: ${txn.bank_description_clean} → ${validLines.length} lines`, txn.id, userProfile?.email, "", companyId);
     showToast(`Split into ${validLines.length} lines and posted.`, "success");
     setExpandedTxn(null); setSplitLines([{ accountId: "", accountName: "", amount: "", memo: "", classId: "" }, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }]);
@@ -9080,7 +9080,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       excluded_at: null, excluded_by: null, exclusion_reason: null,
       journal_entry_id: null, posting_decision_id: null,
       matched_target_type: null, matched_target_id: null
-    }).eq("id", txn.id);
+    }).eq("id", txn.id).eq("company_id", companyId);
 
     // Mark decision as undone
     if (txn.posting_decision_id) {
@@ -9144,7 +9144,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
             classId: action.class_id || "", payee: action.payee || "", memo: action.memo || "",
             ruleId: result.rule.id, ruleName: result.rule.name
           }}
-        }).eq("id", txn.id);
+        }).eq("id", txn.id).eq("company_id", companyId);
         // Auto-accept if rule says so
         if (result.rule.auto_accept && action.account_id) {
           await acceptTransaction(txn, action.account_id, action.account_name || "", action.memo || "", action.class_id || "");
