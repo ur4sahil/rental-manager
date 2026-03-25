@@ -8052,6 +8052,149 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     return { netIncome: plData.netIncome, operating: { items: operating, total: opTotal }, investing: { items: [], total: 0 }, financing: { items: [], total: 0 }, netChange: bankEnd - bankStart, beginningCash: bankStart, endingCash: bankEnd };
   }
 
+  // --- Phase B Computation Functions ---
+
+  function getOpenInvoices(asOfDate) {
+    const arIds = new Set(accounts.filter(a => a.name?.includes("Accounts Receivable") || (a.code||"").startsWith("1100")).map(a => a.id));
+    const tenantCharges = {};
+    journalEntries.filter(je => je.status === "posted" && je.date <= asOfDate).sort((a,b) => a.date.localeCompare(b.date)).forEach(je => {
+      (je.lines||[]).filter(l => arIds.has(l.account_id)).forEach(l => {
+        const desc = je.description || ""; const parts = desc.split(" — ");
+        const tenant = parts.length >= 2 ? parts[1].trim() : l.memo?.split(" ")[0] || "Unknown";
+        if (!tenantCharges[tenant]) tenantCharges[tenant] = [];
+        if (safeNum(l.debit) > 0) tenantCharges[tenant].push({ date: je.date, description: desc, amount: safeNum(l.debit), paid: 0 });
+        if (safeNum(l.credit) > 0) { const unpaid = tenantCharges[tenant].filter(c => c.amount - c.paid > 0.01); let rem = safeNum(l.credit); for (const c of unpaid) { const apply = Math.min(rem, c.amount - c.paid); c.paid += apply; rem -= apply; if (rem <= 0) break; } }
+      });
+    });
+    const today = new Date();
+    return Object.entries(tenantCharges).flatMap(([tenant, charges]) => charges.filter(c => c.amount - c.paid > 0.01).map(c => ({
+      tenant, date: c.date, description: c.description, originalAmount: c.amount, amountPaid: c.paid, amountDue: Math.round((c.amount - c.paid) * 100) / 100,
+      daysOutstanding: Math.floor((today - parseLocalDate(c.date)) / 86400000)
+    }))).sort((a,b) => b.daysOutstanding - a.daysOutstanding);
+  }
+
+  function getCollectionsReport(asOfDate) {
+    const aging = bsData.arAgingByTenant || [];
+    return aging.map(t => {
+      const total = (t.current||0) + (t.days30||0) + (t.days60||0) + (t.days90||0) + (t.over90||0);
+      if (Math.abs(total) < 0.01) return null;
+      const tenant = tenants.find(tn => tn.name === t.tenant);
+      const severity = (t.over90||0) > 0 ? "critical" : (t.days60||0) > 0 ? "warning" : "normal";
+      return { tenant: t.tenant, email: tenant?.email || "", phone: tenant?.phone || "", property: tenant?.property || "", current: t.current||0, days30: t.days30||0, days60: t.days60||0, days90: t.days90||0, over90: t.over90||0, total, severity };
+    }).filter(Boolean).sort((a,b) => b.total - a.total);
+  }
+
+  function getCustomerBalanceDetail(asOfDate) {
+    const arIds = new Set(accounts.filter(a => a.name?.includes("Accounts Receivable") || (a.code||"").startsWith("1100")).map(a => a.id));
+    const byTenant = {};
+    journalEntries.filter(je => je.status === "posted" && je.date <= asOfDate).sort((a,b) => a.date.localeCompare(b.date)).forEach(je => {
+      (je.lines||[]).filter(l => arIds.has(l.account_id)).forEach(l => {
+        const desc = je.description || ""; const parts = desc.split(" — ");
+        const tenant = parts.length >= 2 ? parts[1].trim() : l.memo?.split(" ")[0] || "Unknown";
+        if (!byTenant[tenant]) byTenant[tenant] = { transactions: [], balance: 0 };
+        const amt = safeNum(l.debit) - safeNum(l.credit);
+        byTenant[tenant].balance += amt;
+        byTenant[tenant].transactions.push({ date: je.date, jeNumber: je.number, description: desc, debit: safeNum(l.debit), credit: safeNum(l.credit), balance: byTenant[tenant].balance });
+      });
+    });
+    return Object.entries(byTenant).filter(([,d]) => Math.abs(d.balance) > 0.01).map(([name, d]) => ({ name, transactions: d.transactions, totalBalance: d.balance })).sort((a,b) => b.totalBalance - a.totalBalance);
+  }
+
+  function getExpensesByVendor(startDate, endDate) {
+    const expenseTypes = new Set(["Expense","Cost of Goods Sold","Other Expense"]);
+    const acctMap = {}; accounts.forEach(a => { acctMap[a.id] = a; });
+    const byVendor = {};
+    let grandTotal = 0;
+    journalEntries.filter(je => je.status === "posted" && je.date >= startDate && je.date <= endDate).forEach(je => {
+      (je.lines||[]).forEach(l => {
+        const acct = acctMap[l.account_id];
+        if (!acct || !expenseTypes.has(acct.type)) return;
+        const amt = safeNum(l.debit) - safeNum(l.credit);
+        if (amt <= 0) return;
+        const vendor = je.description?.split(" — ")[0]?.replace(/^(Maintenance|Manual charge|Bulk charge):\s*/i, "").trim() || l.memo?.split(":")[0]?.trim() || "Uncategorized";
+        if (!byVendor[vendor]) byVendor[vendor] = { total: 0, accounts: {} };
+        byVendor[vendor].total += amt;
+        byVendor[vendor].accounts[acct.name] = (byVendor[vendor].accounts[acct.name] || 0) + amt;
+        grandTotal += amt;
+      });
+    });
+    return Object.entries(byVendor).map(([vendor, d]) => ({
+      vendor, total: d.total, percentage: grandTotal > 0 ? Math.round(d.total / grandTotal * 100) : 0,
+      accounts: Object.entries(d.accounts).map(([name, amount]) => ({ name, amount }))
+    })).sort((a,b) => b.total - a.total);
+  }
+
+  function getSecurityDepositLedger(asOfDate) {
+    const depIds = new Set(accounts.filter(a => a.name?.includes("Security Deposit") || (a.code||"").startsWith("2100")).map(a => a.id));
+    const byTenant = {};
+    journalEntries.filter(je => je.status === "posted" && je.date <= asOfDate).sort((a,b) => a.date.localeCompare(b.date)).forEach(je => {
+      (je.lines||[]).filter(l => depIds.has(l.account_id)).forEach(l => {
+        const desc = je.description || ""; const parts = desc.split(" — ");
+        const tenant = parts.length >= 2 ? parts[1].trim() : "Unknown";
+        if (!byTenant[tenant]) byTenant[tenant] = { received: 0, returned: 0, property: "" };
+        byTenant[tenant].received += safeNum(l.credit);
+        byTenant[tenant].returned += safeNum(l.debit);
+        if (parts.length >= 3) byTenant[tenant].property = parts[2].trim();
+      });
+    });
+    return Object.entries(byTenant).map(([tenant, d]) => ({ tenant, received: d.received, returned: d.returned, netHeld: d.received - d.returned, property: d.property })).filter(t => Math.abs(t.netHeld) > 0.01).sort((a,b) => b.netHeld - a.netHeld);
+  }
+
+  function getLateFeeReport(startDate, endDate) {
+    const byTenant = {};
+    journalEntries.filter(je => je.status === "posted" && je.date >= startDate && je.date <= endDate && (je.description||"").toLowerCase().includes("late fee")).forEach(je => {
+      const parts = (je.description || "").split(" — ");
+      const tenant = parts.length >= 2 ? parts[1].trim() : "Unknown";
+      if (!byTenant[tenant]) byTenant[tenant] = { assessed: 0, collected: 0, count: 0 };
+      (je.lines||[]).forEach(l => {
+        if (safeNum(l.debit) > 0) { byTenant[tenant].assessed += safeNum(l.debit); byTenant[tenant].count++; }
+        if (safeNum(l.credit) > 0) byTenant[tenant].collected += safeNum(l.credit);
+      });
+    });
+    return Object.entries(byTenant).map(([tenant, d]) => ({ tenant, feesAssessed: d.assessed, feesCollected: d.collected, feesOutstanding: d.assessed - d.collected, count: d.count })).sort((a,b) => b.feesOutstanding - a.feesOutstanding);
+  }
+
+  function getOwnerDistributions(startDate, endDate) {
+    const distJEs = journalEntries.filter(je => je.status === "posted" && je.date >= startDate && je.date <= endDate && ((je.reference||"").startsWith("ODIST-") || (je.description||"").toLowerCase().includes("distribution")));
+    return distJEs.map(je => {
+      const total = (je.lines||[]).reduce((s,l) => s + safeNum(l.debit), 0);
+      return { date: je.date, description: je.description, reference: je.reference, amount: total, jeNumber: je.number };
+    }).sort((a,b) => b.date.localeCompare(a.date));
+  }
+
+  function getRentCollectionSummary(startDate, endDate) {
+    const classReport = getClassReport(accounts, journalEntries, classes, startDate, endDate);
+    const arIds = new Set(accounts.filter(a => (a.code||"").startsWith("1100")).map(a => a.id));
+    const byProperty = Object.entries(classReport).map(([property, data]) => {
+      const charged = data.revenue || 0;
+      const cls = classes.find(c => c.name === property);
+      let collected = 0;
+      if (cls) {
+        journalEntries.filter(je => je.status === "posted" && je.date >= startDate && je.date <= endDate && (je.description||"").toLowerCase().includes("payment")).forEach(je => {
+          (je.lines||[]).filter(l => arIds.has(l.account_id) && l.class_id === cls.id && safeNum(l.credit) > 0).forEach(l => { collected += safeNum(l.credit); });
+        });
+      }
+      return { property, charged, collected, outstanding: charged - collected, collectionRate: charged > 0 ? Math.round(collected / charged * 100) : 0 };
+    });
+    const totals = { charged: byProperty.reduce((s,p) => s + p.charged, 0), collected: byProperty.reduce((s,p) => s + p.collected, 0), outstanding: byProperty.reduce((s,p) => s + p.outstanding, 0) };
+    totals.collectionRate = totals.charged > 0 ? Math.round(totals.collected / totals.charged * 100) : 0;
+    return { byProperty, totals };
+  }
+
+  function getTransactionsByAccount(startDate, endDate) {
+    const acctMap = {}; accounts.forEach(a => { acctMap[a.id] = a; });
+    const byAccount = {};
+    journalEntries.filter(je => je.status === "posted" && je.date >= startDate && je.date <= endDate).forEach(je => {
+      (je.lines||[]).forEach(l => {
+        const acct = acctMap[l.account_id];
+        const name = acct?.name || l.account_name || "Unknown";
+        if (!byAccount[name]) byAccount[name] = { type: acct?.type || "", code: acct?.code || "", transactions: [] };
+        byAccount[name].transactions.push({ date: je.date, jeNumber: je.number, description: je.description, memo: l.memo, debit: safeNum(l.debit), credit: safeNum(l.credit) });
+      });
+    });
+    return Object.entries(byAccount).sort((a,b) => (a[1].code||"").localeCompare(b[1].code||"")).map(([name, d]) => ({ name, ...d }));
+  }
+
   // --- CSV Export ---
   function exportCSV() {
     if (!currentReport) return;
@@ -8370,8 +8513,77 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       <tbody>{data.items.map(w => <tr key={w.id} className="border-t border-slate-100"><td className="px-3 py-2 text-slate-700">{w.property}</td><td className="px-3 py-2 text-slate-600">{w.issue}</td><td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${w.status==="open"?"bg-amber-100 text-amber-700":w.status==="in_progress"?"bg-purple-100 text-purple-700":"bg-emerald-100 text-emerald-700"}`}>{w.status}</span></td><td className="px-3 py-2 text-right font-mono">{w.cost ? acctFmt(w.cost) : "—"}</td><td className="px-3 py-2 text-right font-mono text-slate-500">{w.daysOpen}</td></tr>)}</tbody></table>
     </div>); })()}
 
+    {/* Open Invoices */}
+    {reportId === "open_invoices" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Open Invoices / Unpaid Charges</p><p className="text-sm text-slate-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
+      {(() => { const data = getOpenInvoices(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No unpaid charges</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Tenant</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Date</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Description</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Original</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Paid</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Due</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Days</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-3 py-2 text-slate-700">{r.tenant}</td><td className="px-3 py-2 text-xs text-slate-400">{r.date}</td><td className="px-3 py-2 text-xs text-slate-500 max-w-48 truncate">{r.description}</td><td className="px-3 py-2 text-right font-mono">{acctFmt(r.originalAmount)}</td><td className="px-3 py-2 text-right font-mono text-emerald-600">{acctFmt(r.amountPaid)}</td><td className="px-3 py-2 text-right font-mono font-semibold text-red-600">{acctFmt(r.amountDue)}</td><td className={`px-3 py-2 text-right font-mono ${r.daysOutstanding > 60 ? "text-red-600 font-bold" : r.daysOutstanding > 30 ? "text-amber-600" : ""}`}>{r.daysOutstanding}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td colSpan={5} className="px-3 py-2">TOTAL</td><td className="px-3 py-2 text-right font-mono text-red-600">{acctFmt(data.reduce((s,r)=>s+r.amountDue,0))}</td><td></td></tr></tfoot></table>); })()}
+    </div>)}
+
+    {/* Collections Report */}
+    {reportId === "collections" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Collections Report</p></div>
+      {(() => { const data = getCollectionsReport(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No outstanding balances</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Tenant</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Property</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Contact</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Total Owed</th><th className="px-3 py-2 text-center text-xs font-semibold text-slate-500">Severity</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-3 py-2 text-slate-700 font-medium">{r.tenant}</td><td className="px-3 py-2 text-xs text-slate-500">{r.property}</td><td className="px-3 py-2 text-xs text-slate-400">{r.email && <span className="block">{r.email}</span>}{r.phone && <span>{r.phone}</span>}</td><td className="px-3 py-2 text-right font-mono font-bold text-red-600">{acctFmt(r.total)}</td><td className="px-3 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.severity==="critical"?"bg-red-100 text-red-700":r.severity==="warning"?"bg-amber-100 text-amber-700":"bg-slate-100 text-slate-500"}`}>{r.severity}</span></td></tr>)}</tbody></table>); })()}
+    </div>)}
+
+    {/* Customer Balance Detail */}
+    {reportId === "customer_balance_detail" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Tenant Balance Detail</p></div>
+      {(() => { const data = getCustomerBalanceDetail(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No tenant balances</p> : data.map(t => (<div key={t.name} className="mb-6"><div className="flex justify-between items-center border-b border-slate-200 pb-1 mb-2"><span className="text-sm font-bold text-slate-800">{t.name}</span><span className={`font-mono text-sm font-bold ${t.totalBalance < 0 ? "text-green-600" : "text-red-600"}`}>{acctFmt(t.totalBalance, true)}</span></div>
+      <table className="w-full text-xs"><thead><tr><th className="px-2 py-1 text-left text-slate-400">Date</th><th className="px-2 py-1 text-left text-slate-400">Entry</th><th className="px-2 py-1 text-left text-slate-400">Description</th><th className="px-2 py-1 text-right text-slate-400">Debit</th><th className="px-2 py-1 text-right text-slate-400">Credit</th><th className="px-2 py-1 text-right text-slate-400">Balance</th></tr></thead>
+      <tbody>{t.transactions.map((tx,i) => <tr key={i} className="border-t border-slate-50"><td className="px-2 py-1 text-slate-400">{tx.date}</td><td className="px-2 py-1 text-indigo-600 font-mono">{tx.jeNumber||""}</td><td className="px-2 py-1 text-slate-600 truncate max-w-40">{tx.description}</td><td className="px-2 py-1 text-right font-mono">{tx.debit > 0 ? acctFmt(tx.debit) : ""}</td><td className="px-2 py-1 text-right font-mono">{tx.credit > 0 ? acctFmt(tx.credit) : ""}</td><td className={`px-2 py-1 text-right font-mono font-semibold ${tx.balance < 0 ? "text-green-600" : ""}`}>{acctFmt(tx.balance, true)}</td></tr>)}</tbody></table></div>)); })()}
+    </div>)}
+
+    {/* Expenses by Vendor */}
+    {reportId === "expenses_by_vendor" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Expenses by Vendor</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {(() => { const data = getExpensesByVendor(start, end); return (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Vendor</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Amount</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 w-48">% of Total</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.vendor}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.total)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-slate-100 rounded-full h-2"><div className="bg-orange-500 rounded-full h-2" style={{width: Math.min(100, r.percentage) + "%"}} /></div><span className="text-xs text-slate-500 w-8">{r.percentage}%</span></div></td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td className="px-4 py-2">TOTAL</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.total,0))}</td><td></td></tr></tfoot></table>); })()}
+    </div>)}
+
+    {/* Security Deposit Ledger */}
+    {reportId === "security_deposits" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Security Deposit Ledger</p><p className="text-sm text-slate-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
+      {(() => { const data = getSecurityDepositLedger(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No security deposits held</p> : (<><table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Tenant</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Received</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Returned</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Net Held</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.tenant}</td><td className="px-4 py-2 text-xs text-slate-500">{r.property}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.received)}</td><td className="px-4 py-2 text-right font-mono text-red-600">{r.returned > 0 ? acctFmt(r.returned) : ""}</td><td className="px-4 py-2 text-right font-mono font-bold">{acctFmt(r.netHeld)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td colSpan={4} className="px-4 py-2">TOTAL HELD</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.netHeld,0))}</td></tr></tfoot></table></>); })()}
+    </div>)}
+
+    {/* Late Fee Report */}
+    {reportId === "late_fees" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Late Fee Report</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {(() => { const data = getLateFeeReport(start, end); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No late fees in this period</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Assessed</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Collected</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Outstanding</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Count</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.tenant}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.feesAssessed)}</td><td className="px-4 py-2 text-right font-mono text-emerald-600">{acctFmt(r.feesCollected)}</td><td className="px-4 py-2 text-right font-mono font-bold text-red-600">{r.feesOutstanding > 0 ? acctFmt(r.feesOutstanding) : ""}</td><td className="px-4 py-2 text-right">{r.count}</td></tr>)}</tbody></table>); })()}
+    </div>)}
+
+    {/* Owner Distributions */}
+    {reportId === "owner_distributions" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Owner Distribution Report</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {(() => { const data = getOwnerDistributions(start, end); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No distributions in this period</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Date</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Entry</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Description</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Amount</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-400">{r.date}</td><td className="px-4 py-2 font-mono text-xs text-indigo-600">{r.jeNumber||""}</td><td className="px-4 py-2 text-slate-700">{r.description}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(r.amount)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td colSpan={3} className="px-4 py-2">TOTAL DISTRIBUTED</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.amount,0))}</td></tr></tfoot></table>); })()}
+    </div>)}
+
+    {/* Rent Collection Summary */}
+    {reportId === "rent_collection" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Rent Collection Summary</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {(() => { const data = getRentCollectionSummary(start, end); return (<><div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-blue-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-blue-700">{acctFmt(data.totals.charged)}</div><div className="text-xs text-slate-400">Charged</div></div><div className="bg-emerald-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-emerald-700">{acctFmt(data.totals.collected)}</div><div className="text-xs text-slate-400">Collected</div></div><div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-red-600">{acctFmt(data.totals.outstanding)}</div><div className="text-xs text-slate-400">Outstanding</div></div><div className="bg-slate-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.totals.collectionRate}%</div><div className="text-xs text-slate-400">Collection Rate</div></div></div>
+      <table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Charged</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Collected</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Outstanding</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Rate</th></tr></thead>
+      <tbody>{data.byProperty.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.property}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.charged)}</td><td className="px-4 py-2 text-right font-mono text-emerald-600">{acctFmt(r.collected)}</td><td className="px-4 py-2 text-right font-mono text-red-600">{r.outstanding > 0 ? acctFmt(r.outstanding) : ""}</td><td className="px-4 py-2 text-right">{r.collectionRate}%</td></tr>)}</tbody></table></>); })()}
+    </div>)}
+
+    {/* Transaction Detail by Account */}
+    {reportId === "txn_by_account" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Transaction Detail by Account</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {getTransactionsByAccount(start, end).map(acct => (<div key={acct.name} className="mb-4"><div className="bg-slate-50 px-3 py-2 rounded-lg font-semibold text-sm text-slate-800 flex justify-between"><span>{acct.code ? acct.code + " " : ""}{acct.name}</span><span className="text-xs text-slate-400">{acct.type}</span></div>
+      <table className="w-full text-xs mb-2"><tbody>{acct.transactions.map((t,i) => <tr key={i} className="border-t border-slate-50"><td className="px-3 py-1 text-slate-400 w-20">{t.date}</td><td className="px-3 py-1 text-indigo-600 font-mono w-16">{t.jeNumber||""}</td><td className="px-3 py-1 text-slate-600">{t.description}</td><td className="px-3 py-1 text-right font-mono w-20">{t.debit > 0 ? acctFmt(t.debit) : ""}</td><td className="px-3 py-1 text-right font-mono w-20">{t.credit > 0 ? acctFmt(t.credit) : ""}</td></tr>)}</tbody></table></div>))}
+    </div>)}
+
     {/* Fallback for reports not yet implemented */}
-    {!["pl","pl_compare","pl_by_class","bs","tb","gl","ar_aging_summary","ar_aging_detail","customer_balance_summary","journal","txn_by_date","account_list","expenses_by_category","cash_flow","rent_roll","noi_by_property","vacancy","lease_expirations","work_orders_summary"].includes(reportId) && (
+    {!["pl","pl_compare","pl_by_class","bs","tb","gl","ar_aging_summary","ar_aging_detail","customer_balance_summary","customer_balance_detail","journal","txn_by_date","txn_by_account","account_list","expenses_by_category","expenses_by_vendor","cash_flow","rent_roll","noi_by_property","vacancy","lease_expirations","work_orders_summary","open_invoices","collections","security_deposits","late_fees","owner_distributions","rent_collection"].includes(reportId) && (
     <div className="text-center py-12 text-slate-400"><span className="material-icons-outlined text-4xl mb-2 block">construction</span><p className="text-sm">This report is coming soon.</p></div>
     )}
 
