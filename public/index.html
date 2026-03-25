@@ -62,6 +62,10 @@
       input[type="number"] { -moz-appearance: textfield; }
       /* Prevent select overflow on mobile */
       select { max-width: 100%; box-sizing: border-box; }
+      /* Minimum touch target for accessibility (44x44px) */
+      button, a[role="button"], [type="submit"] { min-height: 32px; }
+      @media (pointer: coarse) { button, a[role="button"], [type="submit"] { min-height: 44px; min-width: 44px; } }
+      /* Note: maxLength must be set as HTML attribute, not CSS — enforced via Input component */
     </style>
   </head>
   <body>

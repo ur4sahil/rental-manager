@@ -57,7 +57,7 @@ async function tellerFetch(url: string, accessToken: string, client?: Deno.HttpC
 }
 
 serve(async (req) => {
-  const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
+  const corsHeaders = { "Access-Control-Allow-Origin": "https://rental-manager-one.vercel.app", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
@@ -235,6 +235,7 @@ serve(async (req) => {
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: corsHeaders });
+    console.error("teller-sync error:", e.message);
+    return new Response(JSON.stringify({ error: "Sync failed. Please try again." }), { status: 500, headers: corsHeaders });
   }
 });

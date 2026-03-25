@@ -35,7 +35,7 @@ serve(async (req) => {
     return new Response(null, {
       status: 204,
       headers: {
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": "https://rental-manager-one.vercel.app",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
         "Access-Control-Allow-Headers": "authorization, content-type, x-client-info, apikey",
       },
@@ -51,7 +51,7 @@ serve(async (req) => {
   if (!checkRateLimit(clientIp)) {
     return new Response(JSON.stringify({ error: "Too many requests" }), {
       status: 429,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Retry-After": "60" },
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "https://rental-manager-one.vercel.app", "Retry-After": "60" },
     });
   }
 
@@ -75,7 +75,7 @@ serve(async (req) => {
     if (authErr || !user?.email) {
       return new Response(JSON.stringify({ error: "Unauthorized — invalid or expired token" }), {
         status: 401,
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "https://rental-manager-one.vercel.app" },
       });
     }
     const userEmail = user.email;
@@ -91,14 +91,14 @@ serve(async (req) => {
     if (!membership) {
       return new Response(JSON.stringify({ error: "Not a member of this company" }), {
         status: 403,
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "https://rental-manager-one.vercel.app" },
       });
     }
     // Only tenants can create checkout sessions for themselves
     if (membership.role !== "tenant" && !["admin", "owner"].includes(membership.role)) {
       return new Response(JSON.stringify({ error: "Insufficient role for payment" }), {
         status: 403,
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "https://rental-manager-one.vercel.app" },
       });
     }
 
@@ -132,18 +132,18 @@ serve(async (req) => {
     if (!stripeRes.ok) {
       return new Response(JSON.stringify({ error: session.error?.message || "Stripe error" }), {
         status: 400,
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "https://rental-manager-one.vercel.app" },
       });
     }
 
     return new Response(JSON.stringify({ sessionId: session.id, url: session.url }), {
       status: 200,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "https://rental-manager-one.vercel.app" },
     });
   } catch (e) {
     return new Response(JSON.stringify({ error: (e as Error).message }), {
       status: 500,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "https://rental-manager-one.vercel.app" },
     });
   }
 });

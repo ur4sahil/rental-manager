@@ -99,14 +99,15 @@ function guardSubmit(key, recordId) {
   const guardKey = recordId ? key + ":" + recordId : key;
   if (_submitGuards[guardKey]) return false;
   _submitGuards[guardKey] = true;
-  // Fallback: release after 30s if not manually released (accounting operations can take 10-15s)
-  setTimeout(() => { _submitGuards[guardKey] = false; }, 30000);
+  setTimeout(() => { delete _submitGuards[guardKey]; }, 30000); // auto-cleanup after 30s
   return true;
 }
 function guardRelease(key, recordId) {
   const guardKey = recordId ? key + ":" + recordId : key;
-  _submitGuards[guardKey] = false;
+  delete _submitGuards[guardKey]; // delete instead of setting false to prevent memory leak
 }
+// Periodic cleanup of stale guards (runs every 5 min)
+setInterval(() => { Object.keys(_submitGuards).forEach(k => { if (!_submitGuards[k]) delete _submitGuards[k]; }); }, 300000);
 // Wrapper: use in async functions to auto-release on completion or error
 async function guarded(key, fn) {
   if (!guardSubmit(key)) return;
@@ -409,8 +410,9 @@ async function logAudit(action, module, details = "", recordId = "", userEmail =
   userEmail = user?.email || "unknown";
   }
   if (!companyId) { console.warn("logAudit: missing companyId — skipping"); return; }
-  // Sanitize audit details: truncate and strip potential injection
-  const safeDetails = String(details || "").replace(/<[^>]*>/g, "").slice(0, 500);
+  // Sanitize audit details: truncate, strip HTML, redact sensitive patterns
+  let safeDetails = String(details || "").replace(/<[^>]*>/g, "").slice(0, 500);
+  safeDetails = safeDetails.replace(/password[:\s=]*\S+/gi, "password:[REDACTED]").replace(/(token|secret|key|access_token)[:\s=]*\S+/gi, "$1:[REDACTED]");
   const { error: _err130 } = await supabase.from("audit_trail").insert([{ company_id: companyId, action, module, details: safeDetails, record_id: String(recordId), user_email: normalizeEmail(userEmail), user_role: userRoleVal }]);
   if (_err130) console.warn("Audit log insert failed:", _err130.message);
   } catch (e) { console.warn("Audit log failed:", e); }
@@ -709,6 +711,8 @@ async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
 // autoPostRentCharges removed — rent is now handled exclusively by
 // autoPostRecurringEntries via the recurring_journal_entries table.
 // Stub kept for backward compatibility with existing call sites.
+// INTENTIONAL NO-OP: Rent is handled exclusively by autoPostRecurringEntries via recurring_journal_entries table.
+// This stub exists for backward compatibility — called in handleSelectCompany and wizard completion.
 async function autoPostRentCharges() { return { posted: 0, failed: 0 }; }
 
 // ============ AUTO-POST RECURRING JOURNAL ENTRIES ============
@@ -749,10 +753,10 @@ async function autoPostRecurringEntries(companyId) {
   if (entry.tenant_name && entry.property) {
     const { data: lease } = await supabase.from("leases").select("end_date").eq("company_id", cid).eq("property", entry.property).eq("status", "active").maybeSingle();
     if (lease?.end_date && lease.end_date.slice(0, 7) === monthStr) {
-      const endDay = parseInt(lease.end_date.split("-")[2]);
-      const yr = parseInt(monthStr.split("-")[0]), mo = parseInt(monthStr.split("-")[1]);
+      const endDay = parseInt(lease.end_date.split("-")[2], 10) || 0;
+      const yr = parseInt(monthStr.split("-")[0], 10) || 2026, mo = parseInt(monthStr.split("-")[1], 10) || 1;
       const daysInMonth = new Date(yr, mo, 0).getDate();
-      if (endDay < daysInMonth) {
+      if (endDay > 0 && endDay < daysInMonth) {
         postAmount = Math.round(safeNum(entry.amount) * endDay / daysInMonth);
         postDesc = (entry.description || "Recurring entry") + ` (prorated ${endDay}/${daysInMonth} days — lease ends ${lease.end_date})`;
       }
@@ -1046,7 +1050,7 @@ function RecurringEntryModal({ entry, companyId, showToast, onComplete }) {
   </div>
   <div>
   <label className="text-xs font-medium text-slate-500 block mb-1">Day of Month</label>
-  <input type="number" min="1" max="28" value={dayOfMonth} onChange={e => setDayOfMonth(Math.min(28, Math.max(1, Number(e.target.value))))} className="w-full border border-indigo-100 rounded-xl px-3 py-2 text-sm" />
+  <input type="number" min="1" max="28" value={dayOfMonth} onChange={e => setDayOfMonth(Math.min(28, Math.max(1, Number(e.target.value))))} title="Day of month (1-28, to ensure valid date in all months)" className="w-full border border-indigo-100 rounded-xl px-3 py-2 text-sm" />
   </div>
   </div>
   <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-500">
@@ -1701,7 +1705,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             // Reopen as in_progress
             await supabase.from("property_setup_wizard").update({ status: "in_progress" }).eq("id", completed.id);
             setWizardId(completed.id);
-            setStep(1); // Start from step 1 so they can review/edit
+            setStep(completed.current_step || 1); // Preserve last step instead of restarting
             setCompletedSteps(new Set(completed.completed_steps || []));
             if (completed.wizard_data) {
               try {
@@ -4121,7 +4125,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {historicalTenantDetail.ledger.length === 0 ? <div className="text-center py-6 text-slate-400 text-sm">No transaction history</div> : (
   <div className="space-y-1">
   {historicalTenantDetail.ledger.map((e, i) => (
-  <div key={i} className="flex items-center justify-between py-2.5 border-b border-slate-100 text-sm">
+  <div key={item.id || i} className="flex items-center justify-between py-2.5 border-b border-slate-100 text-sm">
   <div>
   <div className="font-medium text-slate-700">{e.description}</div>
   <div className="text-xs text-slate-400">{e.date}{e.type ? " · " + e.type : ""}</div>
@@ -6323,7 +6327,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   supabase.from("utility_accounts").select("*").eq("company_id", companyId).is("archived_at", null).order("property"),
   supabase.from("utility_bills").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }).limit(100),
   supabase.from("automation_jobs").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(50),
-  supabase.from("utility_providers").select("*").eq("is_active", true).order("display_name"),
+  supabase.from("utility_providers").select("*").eq("is_active", true).order("display_name"), // Intentionally unscoped — shared reference table of utility companies
   ]);
   setUtilAccounts(accts.data || []);
   setAutoBills(bills.data || []);
@@ -16404,8 +16408,11 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   if (!html) return "";
   return DOMPurify.sanitize(html, { ALLOWED_TAGS: ["p","br","b","i","u","strong","em","h1","h2","h3","h4","h5","h6","ul","ol","li","table","thead","tbody","tr","th","td","div","span","a","img","hr","blockquote","pre","code","sub","sup","s","del","ins","mark"], ALLOWED_ATTR: ["href","src","alt","title","class","style","width","height","colspan","rowspan","align","valign"], ALLOW_DATA_ATTR: false, FORBID_TAGS: ["script","iframe","object","embed","form","input","button","select","textarea"], FORBID_ATTR: ["onerror","onload","onclick","onmouseover","onfocus","onblur"] });
   }
+  // Blocked merge field names that could leak system data
+  const BLOCKED_MERGE_FIELDS = new Set(["company_id","companyId","user_email","userEmail","password","secret","token","access_token","api_key","encryption_iv"]);
   function renderMergedBody(body, values, fieldConfig) {
   return sanitizeTemplateHtml((body || "").replace(/\{\{(\w+)\}\}/g, (match, fieldName) => {
+  if (BLOCKED_MERGE_FIELDS.has(fieldName)) return "[REDACTED]";
   // Hide merge tags for conditionally hidden fields
   if (fieldConfig && !isFieldVisible(fieldName, values, fieldConfig)) return "";
   const val = values[fieldName];
