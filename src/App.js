@@ -8500,8 +8500,13 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   const [wizInvertSign, setWizInvertSign] = useState(false);
   const fileRef = useRef();
 
-  // Add action state
+  // Action panel state
+  const [actionMode, setActionMode] = useState("add"); // add | match | transfer | split
   const [addForm, setAddForm] = useState({ accountId: "", accountName: "", memo: "", classId: "" });
+  const [transferForm, setTransferForm] = useState({ accountId: "", accountName: "", memo: "" });
+  const [splitLines, setSplitLines] = useState([{ accountId: "", accountName: "", amount: "", memo: "", classId: "" }, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }]);
+  const [matchCandidates, setMatchCandidates] = useState([]);
+  const [matchLoading, setMatchLoading] = useState(false);
 
   // Fetch on mount
   useEffect(() => { fetchAll(); }, [companyId]);
@@ -8765,6 +8770,195 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     fetchAll();
   }
 
+  // --- Match: find existing JEs that could be this bank transaction ---
+  async function findMatches(txn) {
+    setMatchLoading(true);
+    setMatchCandidates([]);
+    const abs = Math.abs(txn.amount);
+    const dateTolerance = 10; // days
+    // Find JEs within date tolerance that have a line matching this amount on the bank account
+    const { data: candidates } = await supabase.from("acct_journal_entries").select("*, lines:acct_journal_lines(*)")
+      .eq("company_id", companyId).eq("status", "posted")
+      .gte("date", (() => { const d = new Date(txn.posted_date); d.setDate(d.getDate() - dateTolerance); return d.toISOString().slice(0, 10); })())
+      .lte("date", (() => { const d = new Date(txn.posted_date); d.setDate(d.getDate() + dateTolerance); return d.toISOString().slice(0, 10); })())
+      .order("date", { ascending: false }).limit(50);
+    // Check which JEs are already linked to a bank feed transaction
+    const { data: existingLinks } = await supabase.from("bank_feed_transaction_link").select("linked_object_id")
+      .eq("company_id", companyId).eq("linked_object_type", "journal_entry");
+    const linkedJEIds = new Set((existingLinks || []).map(l => l.linked_object_id));
+    // Score candidates
+    const scored = (candidates || []).filter(je => !linkedJEIds.has(je.id)).map(je => {
+      const jeTotal = (je.lines || []).reduce((s, l) => s + safeNum(l.debit), 0);
+      const amountDiff = Math.abs(jeTotal - abs);
+      const dateDiff = Math.abs(Math.round((new Date(je.date) - new Date(txn.posted_date)) / 86400000));
+      let score = 0;
+      if (amountDiff < 0.01) score += 50; // exact amount
+      else if (amountDiff < 1) score += 30;
+      if (dateDiff === 0) score += 30; // same day
+      else if (dateDiff <= 3) score += 20;
+      else if (dateDiff <= 7) score += 10;
+      // Description similarity
+      const jeDesc = (je.description || "").toLowerCase();
+      const txnDesc = (txn.bank_description_clean || "").toLowerCase();
+      if (jeDesc && txnDesc) {
+        const words = txnDesc.split(/\s+/).filter(w => w.length > 3);
+        const matchedWords = words.filter(w => jeDesc.includes(w));
+        if (matchedWords.length > 0) score += Math.min(20, matchedWords.length * 5);
+      }
+      return { ...je, _score: score, _amountDiff: amountDiff, _dateDiff: dateDiff, _jeTotal: jeTotal };
+    }).filter(c => c._score >= 20).sort((a, b) => b._score - a._score).slice(0, 10);
+    setMatchCandidates(scored);
+    setMatchLoading(false);
+  }
+
+  async function confirmMatch(txn, targetJE) {
+    // Link bank transaction to existing JE without creating a new one
+    await supabase.from("bank_feed_transaction_link").insert([{
+      company_id: companyId, bank_feed_transaction_id: txn.id,
+      linked_object_type: "journal_entry", linked_object_id: targetJE.id,
+      link_role: "matched_to"
+    }]);
+    await supabase.from("bank_posting_decision").insert([{
+      company_id: companyId, bank_feed_transaction_id: txn.id,
+      decision_type: "match", memo: `Matched to ${targetJE.number}`,
+      status: "posted", created_by: userProfile?.email || ""
+    }]);
+    await supabase.from("bank_feed_transaction").update({
+      status: "matched", accepted_at: new Date().toISOString(),
+      accepted_by: userProfile?.email || "", journal_entry_id: targetJE.id,
+      matched_target_type: "journal_entry", matched_target_id: targetJE.id
+    }).eq("id", txn.id);
+    logAudit("update", "banking", `Matched bank txn to ${targetJE.number}: ${txn.bank_description_clean}`, txn.id, userProfile?.email, "", companyId);
+    showToast(`Matched to ${targetJE.number}.`, "success");
+    setExpandedTxn(null); setMatchCandidates([]);
+    fetchAll();
+  }
+
+  // --- Transfer: between balance sheet accounts ---
+  async function acceptTransfer(txn, toAccountId, toAccountName, memo) {
+    if (!toAccountId) { showToast("Please select a transfer account.", "error"); return; }
+    const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
+    if (!feed?.gl_account_id) { showToast("Bank account not linked to GL.", "error"); return; }
+    if (toAccountId === feed.gl_account_id) { showToast("Cannot transfer to the same account.", "error"); return; }
+    const bankAcct = accounts.find(a => a.id === feed.gl_account_id);
+    const abs = Math.abs(txn.amount);
+    const isInflow = txn.direction === "inflow";
+    // Transfer: debit one BS account, credit the other (no P&L)
+    const lines = isInflow
+      ? [{ account_id: feed.gl_account_id, account_name: bankAcct?.name || "Bank", debit: abs, credit: 0, class_id: null, memo: memo || "Transfer" },
+         { account_id: toAccountId, account_name: toAccountName, debit: 0, credit: abs, class_id: null, memo: memo || "Transfer" }]
+      : [{ account_id: toAccountId, account_name: toAccountName, debit: abs, credit: 0, class_id: null, memo: memo || "Transfer" },
+         { account_id: feed.gl_account_id, account_name: bankAcct?.name || "Bank", debit: 0, credit: abs, class_id: null, memo: memo || "Transfer" }];
+
+    const { data: maxJE } = await supabase.from("acct_journal_entries").select("number").eq("company_id", companyId).order("number", { ascending: false }).limit(1).maybeSingle();
+    let nextNum = 1; if (maxJE?.number) { const p = parseInt(maxJE.number.replace("JE-",""), 10); if (!isNaN(p)) nextNum = p + 1; }
+
+    const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
+      company_id: companyId, number: `JE-${String(nextNum).padStart(4,"0")}`, date: txn.posted_date,
+      description: memo || `Transfer — ${txn.bank_description_clean}`,
+      reference: `XFER-${txn.id.slice(0,8)}`, property: "", status: "posted"
+    }]).select("id").maybeSingle();
+    if (jeErr || !jeRow) { showToast("Error creating JE: " + (jeErr?.message || ""), "error"); return; }
+
+    await supabase.from("acct_journal_lines").insert(lines.map(l => ({
+      journal_entry_id: jeRow.id, company_id: companyId,
+      account_id: l.account_id, account_name: l.account_name,
+      debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: null, memo: l.memo || "",
+      bank_feed_transaction_id: txn.id
+    })));
+
+    await supabase.from("bank_posting_decision").insert([{
+      company_id: companyId, bank_feed_transaction_id: txn.id,
+      decision_type: "transfer", memo: memo || "", transfer_gl_account_id: toAccountId,
+      status: "posted", created_by: userProfile?.email || ""
+    }]);
+    await supabase.from("bank_feed_transaction_link").insert([{
+      company_id: companyId, bank_feed_transaction_id: txn.id,
+      linked_object_type: "journal_entry", linked_object_id: jeRow.id, link_role: "created_from"
+    }]);
+    await supabase.from("bank_feed_transaction").update({
+      status: "categorized", accepted_at: new Date().toISOString(),
+      accepted_by: userProfile?.email || "", journal_entry_id: jeRow.id
+    }).eq("id", txn.id);
+    logAudit("create", "banking", `Transfer: ${txn.bank_description_clean} → ${toAccountName}`, txn.id, userProfile?.email, "", companyId);
+    showToast("Transfer posted.", "success");
+    setExpandedTxn(null); setTransferForm({ accountId: "", accountName: "", memo: "" });
+    fetchAll();
+  }
+
+  // --- Split: one bank txn → multiple GL lines ---
+  async function acceptSplit(txn, lines) {
+    const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
+    if (!feed?.gl_account_id) { showToast("Bank account not linked to GL.", "error"); return; }
+    const validLines = lines.filter(l => l.accountId && safeNum(l.amount) > 0);
+    if (validLines.length < 2) { showToast("Split requires at least 2 lines.", "error"); return; }
+    const total = validLines.reduce((s, l) => s + safeNum(l.amount), 0);
+    const abs = Math.abs(txn.amount);
+    if (Math.abs(total - abs) > 0.01) { showToast(`Split total ($${total.toFixed(2)}) must equal transaction amount ($${abs.toFixed(2)}).`, "error"); return; }
+
+    const bankAcct = accounts.find(a => a.id === feed.gl_account_id);
+    const isInflow = txn.direction === "inflow";
+
+    const { data: maxJE } = await supabase.from("acct_journal_entries").select("number").eq("company_id", companyId).order("number", { ascending: false }).limit(1).maybeSingle();
+    let nextNum = 1; if (maxJE?.number) { const p = parseInt(maxJE.number.replace("JE-",""), 10); if (!isNaN(p)) nextNum = p + 1; }
+
+    const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
+      company_id: companyId, number: `JE-${String(nextNum).padStart(4,"0")}`, date: txn.posted_date,
+      description: `Split — ${txn.bank_description_clean}`,
+      reference: `SPLIT-${txn.id.slice(0,8)}`, property: "", status: "posted"
+    }]).select("id").maybeSingle();
+    if (jeErr || !jeRow) { showToast("Error: " + (jeErr?.message || ""), "error"); return; }
+
+    // Build JE lines: bank side + each split line
+    const jeLines = [];
+    // Bank side (single line for full amount)
+    jeLines.push({
+      journal_entry_id: jeRow.id, company_id: companyId,
+      account_id: feed.gl_account_id, account_name: bankAcct?.name || "Bank",
+      debit: isInflow ? abs : 0, credit: isInflow ? 0 : abs,
+      class_id: null, memo: "Split transaction", bank_feed_transaction_id: txn.id
+    });
+    // Category lines
+    for (const l of validLines) {
+      jeLines.push({
+        journal_entry_id: jeRow.id, company_id: companyId,
+        account_id: l.accountId, account_name: l.accountName,
+        debit: isInflow ? 0 : safeNum(l.amount), credit: isInflow ? safeNum(l.amount) : 0,
+        class_id: l.classId || null, memo: l.memo || "", bank_feed_transaction_id: txn.id
+      });
+    }
+    await supabase.from("acct_journal_lines").insert(jeLines);
+
+    // Decision + lines
+    const { data: decision } = await supabase.from("bank_posting_decision").insert([{
+      company_id: companyId, bank_feed_transaction_id: txn.id,
+      decision_type: "split", memo: `Split into ${validLines.length} lines`,
+      status: "posted", created_by: userProfile?.email || ""
+    }]).select("id").maybeSingle();
+    if (decision) {
+      await supabase.from("bank_posting_decision_line").insert(validLines.map((l, i) => ({
+        company_id: companyId, bank_posting_decision_id: decision.id,
+        line_no: i + 1, gl_account_id: l.accountId, gl_account_name: l.accountName,
+        amount: safeNum(l.amount), entry_side: isInflow ? "credit" : "debit",
+        memo: l.memo || "", class_id: l.classId || null
+      })));
+    }
+
+    await supabase.from("bank_feed_transaction_link").insert([{
+      company_id: companyId, bank_feed_transaction_id: txn.id,
+      linked_object_type: "journal_entry", linked_object_id: jeRow.id, link_role: "created_from"
+    }]);
+    await supabase.from("bank_feed_transaction").update({
+      status: "categorized", accepted_at: new Date().toISOString(),
+      accepted_by: userProfile?.email || "", journal_entry_id: jeRow.id,
+      posting_decision_id: decision?.id
+    }).eq("id", txn.id);
+    logAudit("create", "banking", `Split: ${txn.bank_description_clean} → ${validLines.length} lines`, txn.id, userProfile?.email, "", companyId);
+    showToast(`Split into ${validLines.length} lines and posted.`, "success");
+    setExpandedTxn(null); setSplitLines([{ accountId: "", accountName: "", amount: "", memo: "", classId: "" }, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }]);
+    fetchAll();
+  }
+
   async function undoTransaction(txn) {
     if (txn.status === "locked") { showToast("Cannot undo a locked/reconciled transaction.", "error"); return; }
     if (!await showConfirm({ message: "Undo this transaction? The linked journal entry will be voided." })) return;
@@ -8947,41 +9141,109 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
         {txn.status === "excluded" && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-blue-600 hover:underline">Restore</button>}
       </td>
     </tr>
-    {/* Inline Add Panel */}
+    {/* Inline Action Panel */}
     {isExpanded && txn.status === "for_review" && (
     <tr><td colSpan={7} className="px-4 py-3 bg-indigo-50/30 border-b border-indigo-100">
+      {/* Action Tabs */}
+      <div className="flex gap-1 mb-3 border-b border-indigo-100 pb-2">
+        {[["add","Add"],["match","Match"],["transfer","Transfer"],["split","Split"]].map(([id,label]) => (
+          <button key={id} onClick={() => { setActionMode(id); if (id === "match") findMatches(txn); }}
+            className={`px-3 py-1 text-xs font-medium rounded-lg ${actionMode === id ? "bg-indigo-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50 border border-slate-200"}`}>{label}</button>
+        ))}
+        <button onClick={() => { const reason = prompt("Exclude reason: duplicate / personal / noise / error"); if (reason) excludeTransaction(txn, reason); }}
+          className="px-3 py-1 text-xs text-red-500 hover:bg-red-50 rounded-lg ml-auto border border-red-200">Exclude</button>
+      </div>
+
+      {/* ADD */}
+      {actionMode === "add" && (
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
-        <div>
-          <label className="text-xs font-medium text-slate-500 block mb-1">Category / Account *</label>
-          <select value={addForm.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); setAddForm({...addForm, accountId: e.target.value, accountName: a?.name || ""}); }}
-            className="w-full border border-indigo-100 rounded-lg px-2 py-1.5 text-xs">
-            <option value="">Select account...</option>
-            {ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a => a.type === type && a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}
-          </select>
-        </div>
-        <div>
-          <label className="text-xs font-medium text-slate-500 block mb-1">Memo</label>
-          <input type="text" value={addForm.memo} onChange={e => setAddForm({...addForm, memo: e.target.value})} placeholder="Optional..." className="w-full border border-indigo-100 rounded-lg px-2 py-1.5 text-xs focus:border-indigo-300 focus:outline-none" />
-        </div>
-        <div>
-          <label className="text-xs font-medium text-slate-500 block mb-1">Class</label>
+        <div><label className="text-xs font-medium text-slate-500 block mb-1">Category *</label>
+          <select value={addForm.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); setAddForm({...addForm, accountId: e.target.value, accountName: a?.name || ""}); }} className="w-full border border-indigo-100 rounded-lg px-2 py-1.5 text-xs">
+            <option value="">Select account...</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a => a.type === type && a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}
+          </select></div>
+        <div><label className="text-xs font-medium text-slate-500 block mb-1">Memo</label>
+          <input type="text" value={addForm.memo} onChange={e => setAddForm({...addForm, memo: e.target.value})} placeholder="Optional..." className="w-full border border-indigo-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+        <div><label className="text-xs font-medium text-slate-500 block mb-1">Class</label>
           <select value={addForm.classId} onChange={e => setAddForm({...addForm, classId: e.target.value})} className="w-full border border-indigo-100 rounded-lg px-2 py-1.5 text-xs">
             <option value="">No class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          </select></div>
+        <button onClick={() => acceptTransaction(txn, addForm.accountId, addForm.accountName, addForm.memo, addForm.classId)} disabled={!addForm.accountId} className="bg-emerald-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-emerald-700">Add & Post</button>
+      </div>
+      )}
+
+      {/* MATCH */}
+      {actionMode === "match" && (
+      <div>
+        {matchLoading && <div className="text-xs text-slate-400 py-4 text-center">Searching for matches...</div>}
+        {!matchLoading && matchCandidates.length === 0 && <div className="text-xs text-slate-400 py-4 text-center">No matching journal entries found within 10 days.</div>}
+        {!matchLoading && matchCandidates.length > 0 && (
+        <div className="space-y-2 max-h-48 overflow-y-auto">
+          <p className="text-xs text-slate-500 mb-1">{matchCandidates.length} potential match{matchCandidates.length !== 1 ? "es" : ""}</p>
+          {matchCandidates.map(c => (
+          <div key={c.id} className="flex items-center justify-between bg-white rounded-lg border border-slate-200 px-3 py-2">
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium text-slate-800 truncate">{c.number} — {c.description}</div>
+              <div className="text-xs text-slate-400">{c.date} · ${safeNum(c._jeTotal).toFixed(2)} · Score: {c._score}/100</div>
+            </div>
+            <button onClick={() => confirmMatch(txn, c)} className="shrink-0 bg-indigo-600 text-white text-xs px-3 py-1 rounded-lg ml-2 hover:bg-indigo-700">Match</button>
+          </div>
+          ))}
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => acceptTransaction(txn, addForm.accountId, addForm.accountName, addForm.memo, addForm.classId)} disabled={!addForm.accountId} className="bg-emerald-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-emerald-700">Add</button>
-          <button onClick={() => {
-            const reason = prompt("Exclude reason: duplicate / personal / noise / error");
-            if (reason) excludeTransaction(txn, reason);
-          }} className="text-xs text-red-500 hover:underline">Exclude</button>
+        )}
+      </div>
+      )}
+
+      {/* TRANSFER */}
+      {actionMode === "transfer" && (
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+        <div><label className="text-xs font-medium text-slate-500 block mb-1">Transfer to Account *</label>
+          <select value={transferForm.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); setTransferForm({...transferForm, accountId: e.target.value, accountName: a?.name || ""}); }} className="w-full border border-indigo-100 rounded-lg px-2 py-1.5 text-xs">
+            <option value="">Select account...</option>{accounts.filter(a => a.is_active && (a.type === "Asset" || a.type === "Liability")).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}
+          </select></div>
+        <div><label className="text-xs font-medium text-slate-500 block mb-1">Memo</label>
+          <input type="text" value={transferForm.memo} onChange={e => setTransferForm({...transferForm, memo: e.target.value})} placeholder="e.g. Transfer to savings" className="w-full border border-indigo-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+        <button onClick={() => acceptTransfer(txn, transferForm.accountId, transferForm.accountName, transferForm.memo)} disabled={!transferForm.accountId} className="bg-blue-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-blue-700">Post Transfer</button>
+      </div>
+      )}
+
+      {/* SPLIT */}
+      {actionMode === "split" && (
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-slate-500">Split into lines (total must equal ${Math.abs(txn.amount).toFixed(2)})</span>
+          <button onClick={() => setSplitLines(prev => [...prev, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }])} className="text-xs text-indigo-600 hover:underline">+ Add Line</button>
+        </div>
+        <div className="space-y-2">
+          {splitLines.map((line, i) => (
+          <div key={i} className="grid grid-cols-5 gap-2 items-end">
+            <select value={line.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); const l = [...splitLines]; l[i] = {...l[i], accountId: e.target.value, accountName: a?.name || ""}; setSplitLines(l); }} className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs">
+              <option value="">Account...</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a => a.type === type && a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}
+            </select>
+            <input type="text" inputMode="decimal" value={line.amount} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], amount: e.target.value.replace(/[^0-9.]/g, "")}; setSplitLines(l); }} placeholder="0.00" className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs text-right font-mono" />
+            <input type="text" value={line.memo} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], memo: e.target.value}; setSplitLines(l); }} placeholder="Memo..." className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs" />
+            <select value={line.classId} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], classId: e.target.value}; setSplitLines(l); }} className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs">
+              <option value="">Class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            {splitLines.length > 2 && <button onClick={() => setSplitLines(prev => prev.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600 text-xs">✕</button>}
+          </div>
+          ))}
+        </div>
+        <div className="flex items-center justify-between mt-2">
+          <span className={`text-xs font-mono ${Math.abs(splitLines.reduce((s,l) => s + safeNum(l.amount), 0) - Math.abs(txn.amount)) < 0.01 ? "text-emerald-600" : "text-red-500"}`}>
+            Total: ${splitLines.reduce((s,l) => s + safeNum(l.amount), 0).toFixed(2)} / ${Math.abs(txn.amount).toFixed(2)}
+          </span>
+          <button onClick={() => acceptSplit(txn, splitLines)} disabled={splitLines.filter(l => l.accountId && safeNum(l.amount) > 0).length < 2} className="bg-purple-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-purple-700">Post Split</button>
         </div>
       </div>
-      <div className="mt-2 text-xs text-slate-400">
-        <span className="mr-3">Source: CSV</span>
+      )}
+
+      {/* Transaction Details */}
+      <div className="mt-2 text-xs text-slate-400 border-t border-indigo-100 pt-2">
+        <span className="mr-3">Source: {txn.source_type?.toUpperCase() || "CSV"}</span>
         <span className="mr-3">Raw: {txn.bank_description_raw}</span>
         {txn.check_number && <span className="mr-3">Check #: {txn.check_number}</span>}
-        {txn.reference_number && <span>Ref: {txn.reference_number}</span>}
+        {txn.reference_number && <span className="mr-3">Ref: {txn.reference_number}</span>}
+        {txn.payee_raw && <span>Payee: {txn.payee_raw}</span>}
       </div>
     </td></tr>
     )}
