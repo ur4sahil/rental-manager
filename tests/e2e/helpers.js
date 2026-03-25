@@ -157,9 +157,14 @@ async function goToPage(page, pageId) {
   // Map of page IDs to sidebar labels
   const sidebarMap = {
     dashboard: 'Dashboard', properties: 'Properties', tenants: 'Tenants',
-    payments: 'Payments', maintenance: 'Maintenance', utilities: 'Utilities',
-    hoa: 'HOA Payments', accounting: 'Accounting', owners: 'Owners',
-    doc_builder: 'Documents', roles: 'Team & Roles',
+    payments: 'Payments', accounting: 'Accounting', owners: 'Owners',
+    doc_builder: 'Document Builder', notifications: 'Notifications',
+  };
+
+  // Nested sidebar items (under Properties expand)
+  const nestedSidebarMap = {
+    maintenance: 'Maintenance', utilities: 'Utilities', hoa: 'HOA Payments',
+    loans: 'Loans', insurance: 'Insurance', inspections: 'Inspections',
   };
 
   if (sidebarMap[pageId]) {
@@ -167,30 +172,33 @@ async function goToPage(page, pageId) {
     return true;
   }
 
-  // Audit Trail: click the history icon button in sidebar footer
-  if (pageId === 'audittrail') {
-    const historyBtn = page.locator('button:has(span:has-text("history"))').first();
-    if (await historyBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await historyBtn.click();
-      await page.waitForTimeout(1500);
-      return true;
+  // For nested items, expand Properties first then click child
+  if (nestedSidebarMap[pageId]) {
+    // Click the expand chevron on Properties
+    const chevron = page.locator('button:has(span:has-text("expand_more"))').first();
+    if (await chevron.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await chevron.click();
+      await page.waitForTimeout(500);
     }
-    return false;
+    await navigateTo(page, nestedSidebarMap[pageId]);
+    return true;
   }
 
-  // Notifications: click bell, then "View All"
-  if (pageId === 'notifications') {
-    const bell = page.locator('button:has(span:has-text("notifications"))').first();
-    if (await bell.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await bell.click();
-      await page.waitForTimeout(500);
-      const viewAll = page.locator('button:has-text("View All")').first();
-      if (await viewAll.isVisible({ timeout: 2000 }).catch(() => false)) {
-        // Force click to bypass overlay
-        await viewAll.click({ force: true });
-        await page.waitForTimeout(1500);
-        return true;
+  // Admin page: click the avatar/role button in header
+  if (pageId === 'admin' || pageId === 'audittrail' || pageId === 'roles') {
+    const adminBtn = page.locator('button[title="Admin Settings"]').first();
+    if (await adminBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await adminBtn.click();
+      await page.waitForTimeout(1500);
+      // If requesting a specific tab within admin
+      if (pageId === 'roles') {
+        const teamTab = page.locator('button:has-text("Team & Roles")').first();
+        if (await teamTab.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await teamTab.click();
+          await page.waitForTimeout(1000);
+        }
       }
+      return true;
     }
     return false;
   }

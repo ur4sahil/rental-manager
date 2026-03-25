@@ -44,10 +44,11 @@ test.describe('Sidebar Navigation', () => {
     await expect(logo).toBeVisible({ timeout: 5000 });
   });
 
-  test('sidebar shows user avatar and role', async ({ page }) => {
+  test('header shows user avatar and role', async ({ page }) => {
     await page.waitForTimeout(1500);
-    // User info in sidebar footer
-    const hasAvatar = await page.locator('nav [class*="rounded-full"]').first().isVisible().catch(() => false);
+    // User avatar moved to header (top-right)
+    const hasAvatar = await page.locator('header [class*="rounded-full"]').first().isVisible().catch(() => false);
+    expect(hasAvatar).toBeTruthy();
   });
 
   test('notification bell is in header', async ({ page }) => {

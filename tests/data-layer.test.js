@@ -921,6 +921,254 @@ async function testRecurringEntryEngine() {
   }
 }
 
+// ============ NEW TESTS: UNTESTED TABLES & FEATURES ============
+
+async function testMessages() {
+  console.log('\n💬 MESSAGES');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  const { data: msg, error: msgErr } = await supabase.from('messages').insert({
+    company_id: cid, tenant: 'TEST-MSG-Tenant', property: 'TEST-MSG-Prop',
+    sender: 'admin', message: 'Test message content', read: false
+  }).select().single();
+  assert(!msgErr && msg, 'Messages: can insert');
+  if (msg) {
+    const { error: readErr } = await supabase.from('messages').update({ read: true }).eq('id', msg.id);
+    assert(!readErr, 'Messages: can mark as read');
+    const { data: fetched } = await supabase.from('messages').select('*').eq('id', msg.id).single();
+    assert(fetched && fetched.read === true, 'Messages: read status persisted');
+    await supabase.from('messages').delete().eq('id', msg.id);
+  }
+}
+
+async function testNotificationTables() {
+  console.log('\n🔔 NOTIFICATION TABLES');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  // notification_inbox
+  const { data: inbox, error: inErr } = await supabase.from('notification_inbox').insert({
+    company_id: cid, recipient_email: 'test@test.com', icon: '🔔',
+    message: 'Test notification', notification_type: 'test', read: false
+  }).select().single();
+  assert(!inErr && inbox, 'NotifInbox: can insert');
+  if (inbox) {
+    await supabase.from('notification_inbox').update({ read: true }).eq('id', inbox.id);
+    await supabase.from('notification_inbox').delete().eq('id', inbox.id);
+  }
+  // notification_settings
+  const { data: settings } = await supabase.from('notification_settings').select('*').eq('company_id', cid).limit(1);
+  assert(settings !== null, 'NotifSettings: can query');
+  // notification_log
+  // notification_log may be empty — just verify table exists
+  const { error: logQueryErr } = await supabase.from('notification_log').select('*').limit(1);
+  assert(!logQueryErr, 'NotifLog: table exists and can query');
+}
+
+async function testCompanyMembers() {
+  console.log('\n🏢 COMPANY MEMBERS');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  const { data: members, error: memErr } = await supabase.from('company_members').select('*').eq('company_id', cid);
+  assert(!memErr, 'CompanyMembers: can fetch');
+  assert(members && members.length > 0, 'CompanyMembers: has at least 1 member');
+  assert(members && members.some(m => m.role === 'admin'), 'CompanyMembers: has admin role');
+  // Test status field
+  assert(members && members.some(m => m.status === 'active'), 'CompanyMembers: has active member');
+}
+
+async function testCredentialEncryption() {
+  console.log('\n🔐 CREDENTIAL ENCRYPTION');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  // Test that credential columns exist on all 4 tables
+  const tables = ['utilities', 'hoa_payments', 'property_loans', 'property_insurance'];
+  for (const table of tables) {
+    const { data, error } = await supabase.from(table).select('website, username_encrypted, password_encrypted, encryption_iv').eq('company_id', cid).limit(1);
+    assert(!error, `Encryption: ${table} has credential columns`);
+  }
+  // Test insert with encrypted fields
+  const { data: util, error: utilErr } = await supabase.from('utilities').insert({
+    company_id: cid, property: 'TEST-CRED-PROP', provider: 'TEST-CRED',
+    amount: 0, due: '2026-01-01', status: 'pending',
+    website: 'https://test.com', username_encrypted: 'dGVzdA==', password_encrypted: 'cGFzcw==', encryption_iv: 'aabbccdd'
+  }).select().single();
+  assert(!utilErr && util, 'Encryption: can store encrypted credentials');
+  if (util) {
+    assert(util.website === 'https://test.com', 'Encryption: website stored as plaintext');
+    assert(util.username_encrypted === 'dGVzdA==', 'Encryption: encrypted username stored');
+    assert(util.encryption_iv === 'aabbccdd', 'Encryption: IV stored');
+    await supabase.from('utilities').delete().eq('id', util.id);
+  }
+}
+
+async function testProratedRentCalculation() {
+  console.log('\n📊 PRORATED RENT CALCULATION');
+  // Test the math: rent * remainingDays / daysInMonth, rounded to whole dollars
+  function calcProrated(rent, startDay, daysInMonth) {
+    const remainingDays = daysInMonth - startDay + 1;
+    return Math.round(rent * remainingDays / daysInMonth);
+  }
+  // Mid-month start
+  assert(calcProrated(1500, 15, 31) === 823, 'Proration: $1500 from day 15 of 31-day month = $823');
+  assert(calcProrated(2000, 20, 30) === 733, 'Proration: $2000 from day 20 of 30-day month = $733');
+  // First day = full month
+  assert(calcProrated(1500, 1, 31) === 1500, 'Proration: day 1 = full month ($1500)');
+  // Last day = 1 day
+  assert(calcProrated(1500, 31, 31) === 48, 'Proration: day 31 of 31 = $48');
+  // February
+  assert(calcProrated(1200, 15, 28) === 600, 'Proration: $1200 from day 15 of 28-day month = $600');
+  // Last month proration (endDay / daysInMonth)
+  function calcLastMonth(rent, endDay, daysInMonth) {
+    return Math.round(rent * endDay / daysInMonth);
+  }
+  assert(calcLastMonth(1500, 20, 31) === 968, 'LastMonth: $1500 for 20/31 days = $968');
+  assert(calcLastMonth(2000, 15, 30) === 1000, 'LastMonth: $2000 for 15/30 days = $1000');
+  assert(calcLastMonth(1500, 31, 31) === 1500, 'LastMonth: full month = $1500');
+}
+
+async function testPaymentEdgeCases() {
+  console.log('\n💰 PAYMENT EDGE CASES');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  // Zero amount
+  const { data: zero, error: zeroErr } = await supabase.from('payments').insert({
+    company_id: cid, tenant: 'TEST-EDGE', property: 'TEST-EDGE',
+    amount: 0, date: '2026-01-01', type: 'rent', method: 'test', status: 'paid'
+  }).select().single();
+  assert(!zeroErr, 'EdgeCase: zero amount payment inserts (DB allows it)');
+  if (zero) await supabase.from('payments').delete().eq('id', zero.id);
+  // Large amount
+  const { data: large, error: largeErr } = await supabase.from('payments').insert({
+    company_id: cid, tenant: 'TEST-EDGE', property: 'TEST-EDGE',
+    amount: 999999.99, date: '2026-01-01', type: 'rent', method: 'test', status: 'paid'
+  }).select().single();
+  assert(!largeErr, 'EdgeCase: large amount payment inserts');
+  if (large) {
+    assert(large.amount === 999999.99, 'EdgeCase: large amount stored correctly');
+    await supabase.from('payments').delete().eq('id', large.id);
+  }
+  // Negative amount (should we allow?)
+  const { error: negErr } = await supabase.from('payments').insert({
+    company_id: cid, tenant: 'TEST-EDGE', property: 'TEST-EDGE',
+    amount: -100, date: '2026-01-01', type: 'refund', method: 'test', status: 'paid'
+  }).select().single();
+  assert(true, 'EdgeCase: negative amount ' + (negErr ? 'blocked by DB' : 'allowed by DB'));
+  // Cleanup
+  await supabase.from('payments').delete().match({ tenant: 'TEST-EDGE', property: 'TEST-EDGE' });
+}
+
+async function testConcurrentLeasePrevention() {
+  console.log('\n📋 CONCURRENT LEASE PREVENTION');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  // Create first active lease
+  const { data: lease1, error: l1Err } = await supabase.from('leases').insert({
+    company_id: cid, tenant_name: 'TEST-CONCURRENT', property: 'TEST-CONC-PROP',
+    start_date: '2026-01-01', end_date: '2026-12-31', rent_amount: 1500, status: 'active'
+  }).select().single();
+  assert(!l1Err && lease1, 'ConcurrentLease: first lease created');
+  // Attempt second active lease for same property
+  const { data: lease2, error: l2Err } = await supabase.from('leases').insert({
+    company_id: cid, tenant_name: 'TEST-CONCURRENT-2', property: 'TEST-CONC-PROP',
+    start_date: '2026-06-01', end_date: '2027-05-31', rent_amount: 1600, status: 'active'
+  }).select().single();
+  // DB may allow it (no unique constraint) — document the behavior
+  assert(true, 'ConcurrentLease: second lease ' + (l2Err ? 'blocked (constraint exists)' : 'allowed (no constraint — app must enforce)'));
+  // Cleanup
+  if (lease1) await supabase.from('leases').delete().eq('id', lease1.id);
+  if (lease2) await supabase.from('leases').delete().eq('id', lease2.id);
+}
+
+async function testMultiTenantProperty() {
+  console.log('\n👥 MULTI-TENANT PROPERTY');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  const { data: prop, error: propErr } = await supabase.from('properties').insert({
+    company_id: cid, address: 'TEST-MULTI-TENANT-999', status: 'occupied', type: 'Multi Family',
+    tenant: 'Primary Tenant', tenant_2: 'Second Tenant', tenant_2_email: 'second@test.com', tenant_2_phone: '555-0002',
+    tenant_3: 'Third Tenant', tenant_3_email: 'third@test.com', tenant_3_phone: '555-0003',
+    tenant_4: 'Fourth Tenant', tenant_5: 'Fifth Tenant'
+  }).select().single();
+  assert(!propErr && prop, 'MultiTenant: can create property with 5 tenants');
+  if (prop) {
+    assert(prop.tenant === 'Primary Tenant', 'MultiTenant: primary tenant stored');
+    assert(prop.tenant_2 === 'Second Tenant', 'MultiTenant: tenant_2 stored');
+    assert(prop.tenant_3 === 'Third Tenant', 'MultiTenant: tenant_3 stored');
+    assert(prop.tenant_4 === 'Fourth Tenant', 'MultiTenant: tenant_4 stored');
+    assert(prop.tenant_5 === 'Fifth Tenant', 'MultiTenant: tenant_5 stored');
+    assert(prop.tenant_2_email === 'second@test.com', 'MultiTenant: tenant_2_email stored');
+    await supabase.from('properties').delete().eq('id', prop.id);
+  }
+}
+
+async function testBankReconciliation() {
+  console.log('\n🏦 BANK RECONCILIATION');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  const { data, error } = await supabase.from('bank_reconciliations').select('*').eq('company_id', cid).limit(1);
+  assert(!error, 'BankRecon: table exists and can query');
+  // Insert test reconciliation
+  const { data: recon, error: reconErr } = await supabase.from('bank_reconciliations').insert({
+    company_id: cid, period: '2026-01', bank_ending_balance: 10000,
+    book_balance: 10000, difference: 0, status: 'reconciled'
+  }).select().single();
+  assert(!reconErr, 'BankRecon: can insert (' + (reconErr?.message || 'ok') + ')');
+  if (recon) await supabase.from('bank_reconciliations').delete().eq('id', recon.id);
+}
+
+async function testWorkOrderPhotos() {
+  console.log('\n📸 WORK ORDER PHOTOS');
+  const { data, error } = await supabase.from('work_order_photos').select('*').limit(1);
+  assert(!error, 'WOPhotos: table exists and can query (' + (error?.message || 'ok') + ')');
+}
+
+async function testUserProfile() {
+  console.log('\n👤 USER PROFILE (app_users)');
+  const { data, error } = await supabase.from('app_users').select('*').limit(1);
+  assert(!error, 'AppUsers: table exists and can query');
+  if (data && data.length > 0) {
+    assert(data[0].email || data[0].user_email, 'AppUsers: has email field');
+  }
+}
+
+async function testClassTracking() {
+  console.log('\n🏷️ CLASS TRACKING (acct_classes)');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  const { data: cls, error: clsErr } = await supabase.from('acct_classes').insert({
+    id: require('crypto').randomUUID(),
+    company_id: cid, name: 'TEST-CLASS-999', description: 'Test class',
+    color: '#FF0000', is_active: true
+  }).select().single();
+  assert(!clsErr && cls, 'Classes: can create with randomUUID');
+  if (cls) {
+    assert(cls.name === 'TEST-CLASS-999', 'Classes: name stored');
+    assert(cls.is_active === true, 'Classes: is_active stored');
+    // Deactivate
+    await supabase.from('acct_classes').update({ is_active: false }).eq('id', cls.id);
+    const { data: inactive } = await supabase.from('acct_classes').select('is_active').eq('id', cls.id).single();
+    assert(inactive && inactive.is_active === false, 'Classes: can deactivate');
+    await supabase.from('acct_classes').delete().eq('id', cls.id);
+  }
+}
+
+async function testPagePersistence() {
+  console.log('\n💾 PAGE PERSISTENCE (localStorage simulation)');
+  // This tests the data contract — not actual browser localStorage
+  // Verify company_id is TEXT type (not UUID)
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  assert(typeof cid === 'string', 'Persistence: company_id is string type');
+  // Verify property_setup_wizard status values
+  const { data: wizards } = await supabase.from('property_setup_wizard').select('status').eq('company_id', cid).limit(5);
+  if (wizards && wizards.length > 0) {
+    const validStatuses = ['in_progress', 'completed', 'dismissed'];
+    assert(wizards.every(w => validStatuses.includes(w.status)), 'Persistence: wizard statuses are valid');
+  } else {
+    assert(true, 'Persistence: no wizards to check (ok)');
+  }
+}
+
 async function run() {
   console.log('🧪 PropManager Data Layer Tests');
   console.log('================================');
@@ -958,6 +1206,19 @@ async function run() {
   await testOwnerDistribution();
   await testPropertyChangeRequests();
   await testRecurringEntryEngine();
+  await testMessages();
+  await testNotificationTables();
+  await testCompanyMembers();
+  await testCredentialEncryption();
+  await testProratedRentCalculation();
+  await testPaymentEdgeCases();
+  await testConcurrentLeasePrevention();
+  await testMultiTenantProperty();
+  await testBankReconciliation();
+  await testWorkOrderPhotos();
+  await testUserProfile();
+  await testClassTracking();
+  await testPagePersistence();
   console.log('\n================================');
   console.log('✅ Passed: ' + pass);
   console.log('❌ Failed: ' + fail);

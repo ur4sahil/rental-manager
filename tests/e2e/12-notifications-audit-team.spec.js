@@ -79,10 +79,10 @@ test.describe('Notifications Module', () => {
   });
 });
 
-test.describe('Audit Trail Module', () => {
+test.describe('Audit Trail (Admin Page)', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
-    await goToPage(page, 'audittrail');
+    await goToPage(page, 'admin');
   });
 
   test('audit trail loads with data', async ({ page }) => {
@@ -145,10 +145,10 @@ test.describe('Audit Trail Module', () => {
   });
 });
 
-test.describe('Team & Roles Module', () => {
+test.describe('Team & Roles (Admin Page)', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
-    await navigateTo(page, 'Team & Roles');
+    await goToPage(page, 'roles');
   });
 
   test('team page loads', async ({ page }) => {

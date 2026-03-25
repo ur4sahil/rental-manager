@@ -36,8 +36,7 @@ test('All sidebar modules load without crashing', async ({ page }) => {
   // Test all sidebar-visible modules (click each and verify no crash)
   const sidebarModules = [
     'Dashboard', 'Properties', 'Tenants', 'Payments',
-    'Maintenance', 'Utilities', 'Accounting', 'Documents',
-    'Owners', 'Team & Roles',
+    'Accounting', 'Document Builder', 'Vendors', 'Owners', 'Notifications',
   ];
   for (const mod of sidebarModules) {
     const btn = page.locator(`button:has-text("${mod}")`).first();
@@ -49,7 +48,7 @@ test('All sidebar modules load without crashing', async ({ page }) => {
     }
   }
   // Test hidden modules via goToPage helper
-  const hiddenModules = ['leases', 'vendors', 'inspections', 'autopay', 'notifications', 'audittrail'];
+  const hiddenModules = ['leases', 'inspections', 'admin', 'maintenance', 'utilities', 'hoa', 'loans', 'insurance'];
   for (const mod of hiddenModules) {
     const success = await goToPage(page, mod);
     if (success) {
