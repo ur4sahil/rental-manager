@@ -8148,110 +8148,106 @@ function AcctReports({ accounts, journalEntries, classes, companyName, onOpenLed
   </div>
   )}
 
-  {/* ====== Balance Sheet ====== */}
-  {activeReport === "bs" && (
-  <div>
-    {/* Balanced indicator */}
-    <div className="flex justify-end mb-3">
-      {bsBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl font-medium">Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-xl font-medium">Out of Balance</span>}
-    </div>
+  {/* ====== Balance Sheet (QuickBooks-style) ====== */}
+  {activeReport === "bs" && (() => {
+    // Group accounts by subtype for hierarchical display
+    const bankAccounts = bsData.assets.filter(a => a.subtype === "Bank" || a.name?.includes("Checking") || a.name?.includes("Savings"));
+    const arAccounts = bsData.assets.filter(a => a.name?.includes("Accounts Receivable") || (a.code || "").startsWith("1100"));
+    const arSubAccounts = bsData.assets.filter(a => (a.code || "").startsWith("1100-"));
+    const otherAssets = bsData.assets.filter(a => !bankAccounts.includes(a) && !arAccounts.includes(a) && !arSubAccounts.includes(a));
+    const BSRow = ({ name, amount, indent = 0, bold, total, onClick, italic }) => (
+      <div className={`flex justify-between py-1 ${indent > 0 ? "pl-" + (indent * 6) : ""} ${total ? "border-t border-slate-300 font-bold mt-1" : ""} ${bold ? "font-semibold" : ""} ${onClick ? "cursor-pointer hover:bg-blue-50/50 rounded" : ""}`} style={{ paddingLeft: indent * 24 }} onClick={onClick}>
+        <span className={`text-sm ${total ? "text-slate-900" : "text-slate-700"} ${italic ? "italic" : ""}`}>{name}</span>
+        <span className={`font-mono text-sm tabular-nums ${amount < 0 ? "text-red-600" : total ? "text-slate-900" : "text-slate-700"}`}>{acctFmt(amount, true)}</span>
+      </div>
+    );
+    const BSSection = ({ title, children, show, toggle, total, totalLabel }) => (
+      <div className="mb-2">
+        <div className="cursor-pointer hover:bg-slate-50 rounded py-1 flex items-center gap-1" onClick={toggle}>
+          <span className="material-icons-outlined text-sm text-slate-400">{show ? "expand_more" : "chevron_right"}</span>
+          <span className="text-sm font-bold text-slate-900">{title}</span>
+        </div>
+        {show && children}
+        {show && total !== undefined && (
+          <div className="flex justify-between py-1.5 border-t border-b border-slate-300 font-bold mt-1" style={{ paddingLeft: 24 }}>
+            <span className="text-sm text-slate-900">{totalLabel || "Total " + title}</span>
+            <span className="font-mono text-sm text-slate-900 tabular-nums">{acctFmt(total)}</span>
+          </div>
+        )}
+      </div>
+    );
+    return (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 max-w-3xl mx-auto">
+      {/* QB-style header */}
+      <div className="text-center py-6 border-b border-slate-200">
+        <p className="text-xs text-slate-400 uppercase tracking-widest mb-1">Balance Sheet</p>
+        <h3 className="text-lg font-bold text-slate-900">{companyName}</h3>
+        <p className="text-sm text-slate-500">As of {acctFmtDate(asOfDate)}</p>
+        <div className="mt-2">
+          {bsBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1 rounded-full">Out of Balance by {acctFmt(Math.abs(bsData.totalAssets - bsData.totalLiabilities - bsData.totalEquity))}</span>}
+        </div>
+      </div>
+      <div className="px-6 py-4">
+        {/* Column header */}
+        <div className="flex justify-end mb-2 border-b border-slate-200 pb-1">
+          <span className="text-xs font-semibold text-slate-500 uppercase">Total</span>
+        </div>
 
-    <div className="grid grid-cols-2 gap-4">
-      {/* Assets */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-        <div className="text-center mb-4">
-          <p className="text-xs text-slate-400 uppercase tracking-widest">Balance Sheet</p>
-          <h4 className="text-base font-bold text-slate-900 mt-1">{companyName}</h4>
-          <p className="text-sm text-slate-400">As of {acctFmtDate(asOfDate)}</p>
-        </div>
-        {/* Assets section toggle */}
-        <div className="cursor-pointer hover:bg-slate-50 rounded py-1" onClick={() => setShowAssets(!showAssets)}>
-          <p className="text-base font-black text-slate-900"><span className="text-xs mr-1">{showAssets ? "\u25BE" : "\u25B8"}</span>ASSETS</p>
-        </div>
-        {showAssets && bsData.assets.filter(a => a.amount !== 0).map(a => (
-          <div key={a.id}>
-            <div className="flex justify-between py-1 px-2 hover:bg-green-50/30 rounded cursor-pointer group" onClick={() => { if (a.name === "Accounts Receivable") setShowARSub(!showARSub); else onOpenLedger && onOpenLedger([a.id], a.name); }}>
-              <span className="text-sm text-slate-700 group-hover:text-green-600">{a.name}{a.name === "Accounts Receivable" && bsData.arByTenant?.length > 0 && <span className="text-xs text-green-500 ml-1">{showARSub ? "\u25BE" : "\u25B8"} {bsData.arByTenant.length} tenants</span>}</span>
-              <span className={`font-mono text-sm ${a.amount < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(a.amount, true)}</span>
+        {/* ── ASSETS ── */}
+        <BSSection title="Assets" show={showAssets} toggle={() => setShowAssets(!showAssets)} total={bsData.totalAssets} totalLabel="TOTAL ASSETS">
+          {/* Bank Accounts */}
+          {bankAccounts.length > 0 && (
+          <div className="mb-1">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide py-1" style={{ paddingLeft: 24 }}>Bank Accounts</div>
+            {bankAccounts.map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={2} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}
+            <div className="flex justify-between py-1 border-t border-slate-200 font-semibold" style={{ paddingLeft: 48 }}>
+              <span className="text-xs text-slate-700">Total for Bank Accounts</span>
+              <span className="font-mono text-xs text-slate-900 tabular-nums">{acctFmt(bankAccounts.reduce((s, a) => s + a.amount, 0))}</span>
             </div>
-            {a.id === "1100" && showARSub && bsData.arByTenant?.length > 0 && (
-              <div className="ml-4 mb-2 border-l-2 border-green-200 pl-3">
-                <div className="text-xs font-bold text-green-600 uppercase tracking-wide py-1">Tenant Sub-Ledger</div>
-                {bsData.arByTenant.map((t, i) => (
-                  <div key={i} className="flex justify-between py-0.5 px-1">
-                    <span className="text-xs text-slate-500">{t.tenant}</span>
-                    <span className={`font-mono text-xs ${t.balance < 0 ? "text-green-600" : "text-slate-700"}`}>{acctFmt(t.balance, true)}</span>
-                  </div>
-                ))}
-                <div className="flex justify-between py-1 px-1 border-t border-green-200 mt-1">
-                  <span className="text-xs font-bold text-green-700">Sub-Ledger Total</span>
-                  <span className="font-mono text-xs font-bold text-green-700">{acctFmt(bsData.arByTenant.reduce((s, t) => s + t.balance, 0), true)}</span>
-                </div>
-              </div>
-            )}
           </div>
-        ))}
-        <div onClick={() => onOpenLedger && onOpenLedger(bsData.assets.filter(a => a.amount !== 0).map(a => a.id), "All Assets")} className="flex justify-between py-3 border-t-2 border-b-2 border-slate-800 bg-blue-50 px-2 rounded-xl mt-3 font-black cursor-pointer hover:bg-blue-100/50">
-          <span>TOTAL ASSETS</span><span className="font-mono text-blue-700">{acctFmt(bsData.totalAssets)}</span>
+          )}
+          {/* Accounts Receivable */}
+          {arAccounts.length > 0 && (
+          <div className="mb-1">
+            <div className="cursor-pointer text-xs font-semibold text-slate-500 uppercase tracking-wide py-1 flex items-center gap-1" style={{ paddingLeft: 24 }} onClick={() => setShowARSub(!showARSub)}>
+              <span className="material-icons-outlined text-xs">{showARSub ? "expand_more" : "chevron_right"}</span>Accounts Receivable
+            </div>
+            {showARSub && arSubAccounts.filter(a => a.amount !== 0).map(a => <BSRow key={a.id} name={a.name.replace("AR - ", "")} amount={a.amount} indent={3} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}
+            {showARSub && bsData.arByTenant?.filter(t => !arSubAccounts.some(a => a.name?.includes(t.tenant))).map((t, i) => <BSRow key={"art-" + i} name={t.tenant} amount={t.balance} indent={3} />)}
+            <div className="flex justify-between py-1 border-t border-slate-200 font-semibold" style={{ paddingLeft: 48 }}>
+              <span className="text-xs text-slate-700">Total for Accounts Receivable</span>
+              <span className="font-mono text-xs text-slate-900 tabular-nums">{acctFmt(arAccounts.reduce((s, a) => s + a.amount, 0) + arSubAccounts.reduce((s, a) => s + a.amount, 0))}</span>
+            </div>
+          </div>
+          )}
+          {/* Other Assets */}
+          {otherAssets.filter(a => a.amount !== 0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}
+        </BSSection>
+
+        {/* ── LIABILITIES ── */}
+        <BSSection title="Liabilities" show={showLiabilities} toggle={() => setShowLiabilities(!showLiabilities)} total={bsData.totalLiabilities} totalLabel="Total Liabilities">
+          {bsData.liabilities.filter(a => a.amount !== 0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}
+        </BSSection>
+
+        {/* ── EQUITY ── */}
+        <BSSection title="Equity" show={showEquity} toggle={() => setShowEquity(!showEquity)} total={bsData.totalEquity} totalLabel="Total Equity">
+          {bsData.equity.filter(a => a.amount !== 0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}
+          {bsData.netIncome !== 0 && <BSRow name="Net Income (Current Period)" amount={bsData.netIncome} indent={1} italic />}
+        </BSSection>
+
+        {/* ── TOTAL L + E ── */}
+        <div className="flex justify-between py-3 border-t-2 border-b-2 border-slate-800 mt-4 font-black">
+          <span className="text-sm">TOTAL LIABILITIES AND EQUITY</span>
+          <span className="font-mono text-sm tabular-nums">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</span>
         </div>
       </div>
-
-      {/* Liabilities & Equity */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-        <div className="text-center mb-4">
-          <p className="text-xs text-slate-400 uppercase tracking-widest">Balance Sheet</p>
-          <h4 className="text-base font-bold text-slate-900 mt-1">&nbsp;</h4>
-          <p className="text-sm text-slate-400">&nbsp;</p>
-        </div>
-        {/* Liabilities section toggle */}
-        <div className="cursor-pointer hover:bg-slate-50 rounded py-1" onClick={() => setShowLiabilities(!showLiabilities)}>
-          <p className="text-base font-black text-slate-900"><span className="text-xs mr-1">{showLiabilities ? "\u25BE" : "\u25B8"}</span>LIABILITIES</p>
-        </div>
-        {showLiabilities && bsData.liabilities.filter(a => a.amount !== 0).map(a => (
-          <div key={a.id} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} className="flex justify-between py-1 px-2 hover:bg-green-50/30 rounded cursor-pointer group">
-            <span className="text-sm text-slate-700 group-hover:text-green-600">{a.name}</span>
-            <span className="font-mono text-sm">{acctFmt(a.amount, true)}</span>
-          </div>
-        ))}
-        {showLiabilities && (
-          <div className="flex justify-between py-2 border-t border-b border-slate-300 mt-2 font-bold px-2">
-            <span className="text-sm text-slate-800">Total Liabilities</span>
-            <span className="font-mono text-sm text-slate-800">{acctFmt(bsData.totalLiabilities)}</span>
-          </div>
-        )}
-        {/* Equity section toggle */}
-        <div className="cursor-pointer hover:bg-slate-50 rounded py-1 mt-3" onClick={() => setShowEquity(!showEquity)}>
-          <p className="text-base font-black text-slate-900"><span className="text-xs mr-1">{showEquity ? "\u25BE" : "\u25B8"}</span>EQUITY</p>
-        </div>
-        {showEquity && bsData.equity.filter(a => a.amount !== 0).map(a => (
-          <div key={a.id} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} className="flex justify-between py-1 px-2 hover:bg-green-50/30 rounded cursor-pointer group">
-            <span className="text-sm text-slate-700 group-hover:text-green-600">{a.name}</span>
-            <span className="font-mono text-sm">{acctFmt(a.amount, true)}</span>
-          </div>
-        ))}
-        {showEquity && bsData.netIncome !== 0 && (
-          <div className="flex justify-between py-1 px-2 hover:bg-green-50/30 rounded">
-            <span className="text-sm text-slate-700 italic">Net Income (Current)</span>
-            <span className="font-mono text-sm">{acctFmt(bsData.netIncome, true)}</span>
-          </div>
-        )}
-        {showEquity && (
-          <div className="flex justify-between py-2 border-t border-b border-slate-300 mt-2 font-bold px-2">
-            <span className="text-sm text-slate-800">Total Equity</span>
-            <span className="font-mono text-sm text-slate-800">{acctFmt(bsData.totalEquity)}</span>
-          </div>
-        )}
-        <div className="flex justify-between py-3 border-t-2 border-b-2 border-slate-800 bg-violet-50 px-2 rounded-xl mt-3 font-black">
-          <span>TOTAL L + E</span><span className="font-mono text-violet-700">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</span>
-        </div>
+      <div className="text-xs text-slate-400 px-6 py-3 border-t border-slate-100 flex justify-between">
+        <span>Accrual basis</span>
+        <span>{new Date().toLocaleString()}</span>
       </div>
     </div>
-
-    <div className="text-xs text-slate-400 mt-4 flex justify-between">
-      <span>Accrual basis</span>
-      <span>{new Date().toLocaleString()}</span>
-    </div>
-  </div>
+    );
+  })()}
   )}
 
   {/* ====== AR Aging Report ====== */}
