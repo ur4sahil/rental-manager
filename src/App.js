@@ -6269,7 +6269,8 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   const [showAudit, setShowAudit] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ property: "", provider: "", amount: "", due: "", responsibility: "owner", status: "pending" });
+  const [form, setForm] = useState({ property: "", provider: "", amount: "", due: "", responsibility: "owner", status: "pending", website: "", username: "", password: "" });
+  const [showCreds, setShowCreds] = useState(new Set());
   const [utilView, setUtilView] = useState("card");
   const [utilSearch, setUtilSearch] = useState("");
   const [utilFilterStatus, setUtilFilterStatus] = useState("all");
@@ -6423,12 +6424,20 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   if (!form.provider.trim()) { showToast("Provider name is required.", "error"); return; }
   if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0) { showToast("Please enter a valid amount.", "error"); return; }
   if (!form.due) { showToast("Due date is required.", "error"); return; }
-  const { error } = await supabase.from("utilities").insert([{ ...form, amount: Number(form.amount), company_id: companyId }]);
+  const row = { ...form, amount: Number(form.amount), company_id: companyId };
+  delete row.username; delete row.password; // don't store plaintext
+  row.website = form.website || "";
+  if (form.username || form.password) {
+    const { encrypted: encU, iv: ivU } = await encryptCredential(form.username || "", companyId);
+    const { encrypted: encP, iv: ivP } = await encryptCredential(form.password || "", companyId);
+    row.username_encrypted = encU; row.password_encrypted = encP; row.encryption_iv = ivP || ivU;
+  }
+  const { error } = await supabase.from("utilities").insert([row]);
   if (error) { showToast("Error adding utility: " + error.message, "error"); return; }
   addNotification("⚡", `Utility bill added: ${form.provider} at ${form.property}`);
   logAudit("create", "utilities", `Utility added: ${form.provider} ${formatCurrency(form.amount)} at ${form.property}`, "", userProfile?.email, userRole, companyId);
   setShowForm(false);
-  setForm({ property: "", provider: "", amount: "", due: "", responsibility: "owner", status: "pending" });
+  setForm({ property: "", provider: "", amount: "", due: "", responsibility: "owner", status: "pending", website: "", username: "", password: "" });
   fetchUtilities();
   } finally { guardRelease("addUtility"); }
   }
@@ -6654,6 +6663,12 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Responsibility</label><select value={form.responsibility} onChange={e => setForm({ ...form, responsibility: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
   {["owner", "tenant", "shared"].map(r => <option key={r}>{r}</option>)}
   </select></div>
+  <div className="col-span-2 border-t border-slate-100 pt-2 mt-1"><p className="text-xs text-slate-400 mb-2">Portal Login (encrypted)</p>
+  <div className="grid grid-cols-3 gap-2">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Website</label><Input type="url" value={form.website||""} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Username</label><Input value={form.username||""} onChange={e => setForm({...form, username: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Password</label><Input type="password" value={form.password||""} onChange={e => setForm({...form, password: e.target.value})} /></div>
+  </div></div>
   </div>
   <div className="flex gap-2 mt-3">
   <button onClick={addUtility} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
@@ -6694,7 +6709,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-x-auto">
   <table className="w-full text-sm">
   <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
-  <tr><th className="px-4 py-3 text-left">Provider</th><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-left">Due</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Resp.</th><th className="px-4 py-3 text-right">Actions</th></tr>
+  <tr><th className="px-4 py-3 text-left">Provider</th><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-left">Due</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Resp.</th><th className="px-4 py-3 text-left">Portal</th><th className="px-4 py-3 text-right">Actions</th></tr>
   </thead>
   <tbody>
   {fu.map(u => (
@@ -6705,6 +6720,11 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <td className="px-4 py-2.5 text-slate-400">{u.due}</td>
   <td className="px-4 py-2.5"><Badge status={u.status} /></td>
   <td className="px-4 py-2.5 text-slate-500 capitalize">{u.responsibility}</td>
+  <td className="px-4 py-2.5 text-xs">
+  {u.website ? <a href={u.website} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline block truncate max-w-28">{u.website.replace(/^https?:\/\//, "")}</a> : <span className="text-slate-300">—</span>}
+  {u.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(s); } else { u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv, companyId); u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId); s.add(u.id); setShowCreds(new Set(s)); }}} className="text-indigo-500 hover:underline">{showCreds.has(u.id) ? "Hide" : "Show"} login</button>}
+  {showCreds.has(u.id) && <div className="text-slate-600 mt-0.5">{u._decUser || "—"} / {u._decPass || "—"}</div>}
+  </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
   {u.status === "pending" && <button onClick={() => approvePay(u)} className="text-xs text-green-600 hover:underline mr-2">Pay</button>}
   <button onClick={() => openAuditLog(u)} className="text-xs text-slate-400 hover:underline">Audit</button>
@@ -12316,8 +12336,9 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingHoa, setEditingHoa] = useState(null);
-  const [form, setForm] = useState({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "" });
+  const [form, setForm] = useState({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "", website: "", username: "", password: "" });
   const [hoaFilter, setHoaFilter] = useState("all");
+  const [showCreds, setShowCreds] = useState(new Set());
 
   useEffect(() => { fetchHOA(); }, [companyId]);
 
@@ -12333,8 +12354,15 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   if (!form.property || !form.hoa_name || !form.amount) { showToast("Property, HOA name, and amount are required.", "error"); return; }
   if (!form.due_date) { setForm({...form, due_date: formatLocalDate(new Date())}); showToast("Due date was not set — defaulting to today. Please verify and save again.", "error"); return; }
   const payload = { ...form, amount: Number(form.amount) };
+  delete payload.username; delete payload.password;
+  payload.website = form.website || "";
+  if (form.username || form.password) {
+    const { encrypted: encU, iv: ivU } = await encryptCredential(form.username || "", companyId);
+    const { encrypted: encP, iv: ivP } = await encryptCredential(form.password || "", companyId);
+    payload.username_encrypted = encU; payload.password_encrypted = encP; payload.encryption_iv = ivP || ivU;
+  }
   if (editingHoa) {
-  const { error: hoaErr } = await supabase.from("hoa_payments").update({ property: payload.property, hoa_name: payload.hoa_name, amount: payload.amount, due_date: payload.due_date, frequency: payload.frequency, status: payload.status, notes: payload.notes }).eq("id", editingHoa.id).eq("company_id", companyId);
+  const { error: hoaErr } = await supabase.from("hoa_payments").update({ property: payload.property, hoa_name: payload.hoa_name, amount: payload.amount, due_date: payload.due_date, frequency: payload.frequency, status: payload.status, notes: payload.notes, website: payload.website, username_encrypted: payload.username_encrypted || editingHoa.username_encrypted || "", password_encrypted: payload.password_encrypted || editingHoa.password_encrypted || "", encryption_iv: payload.encryption_iv || editingHoa.encryption_iv || "" }).eq("id", editingHoa.id).eq("company_id", companyId);
   if (hoaErr) { showToast("Error updating HOA: " + hoaErr.message, "error"); return; }
   addNotification("🏘️", `HOA payment updated: ${form.hoa_name}`);
   logAudit("update", "hoa", `HOA updated: ${form.hoa_name} ${formatCurrency(form.amount)}`, editingHoa.id, userProfile?.email, userRole, companyId);
@@ -12346,7 +12374,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   }
   setShowForm(false);
   setEditingHoa(null);
-  setForm({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "" });
+  setForm({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "", website: "", username: "", password: "" });
   fetchHOA();
   } finally { guardRelease("saveHOA"); }
   }
@@ -12402,7 +12430,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={hoaFilter} onChange={e => setHoaFilter(e.target.value)} >
   <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
   </select>
-  <button onClick={() => { setEditingHoa(null); setForm({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ Add HOA</button>
+  <button onClick={() => { setEditingHoa(null); setForm({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "", website: "", username: "", password: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ Add HOA</button>
   </div>
 
   {/* Stats */}
@@ -12424,6 +12452,12 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   <option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="annual">Annual</option>
   </select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
+  <div className="col-span-2 border-t border-slate-100 pt-2 mt-1"><p className="text-xs text-slate-400 mb-2">Portal Login (encrypted)</p>
+  <div className="grid grid-cols-3 gap-2">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Website</label><Input type="url" value={form.website||""} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Username</label><Input value={form.username||""} onChange={e => setForm({...form, username: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Password</label><Input type="password" value={form.password||""} onChange={e => setForm({...form, password: e.target.value})} /></div>
+  </div></div>
   </div>
   <div className="flex gap-2 mt-3">
   <button onClick={saveHOA} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
@@ -12435,7 +12469,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-x-auto">
   <table className="w-full text-sm">
   <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
-  <tr><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">HOA Company</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-left">Due Date</th><th className="px-4 py-3 text-left">Frequency</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-right">Actions</th></tr>
+  <tr><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">HOA Company</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-left">Due Date</th><th className="px-4 py-3 text-left">Frequency</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Portal</th><th className="px-4 py-3 text-right">Actions</th></tr>
   </thead>
   <tbody>
   {filtered.map(h => (
@@ -12446,6 +12480,11 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   <td className="px-4 py-2.5 text-slate-400">{h.due_date}</td>
   <td className="px-4 py-2.5 text-slate-500 capitalize">{h.frequency}</td>
   <td className="px-4 py-2.5"><Badge status={h.status} /></td>
+  <td className="px-4 py-2.5 text-xs">
+  {h.website ? <a href={h.website} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline block truncate max-w-28">{h.website.replace(/^https?:\/\//, "")}</a> : <span className="text-slate-300">—</span>}
+  {h.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(h.id)) { s.delete(h.id); setShowCreds(s); } else { h._decUser = await decryptCredential(h.username_encrypted, h.encryption_iv, companyId); h._decPass = await decryptCredential(h.password_encrypted, h.encryption_iv, companyId); s.add(h.id); setShowCreds(new Set(s)); }}} className="text-indigo-500 hover:underline">{showCreds.has(h.id) ? "Hide" : "Show"} login</button>}
+  {showCreds.has(h.id) && <div className="text-slate-600 mt-0.5">{h._decUser || "—"} / {h._decPass || "—"}</div>}
+  </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
   {h.status === "pending" && <button onClick={() => payHOA(h)} className="text-xs text-green-600 hover:underline mr-2">Pay</button>}
   <button onClick={() => { setEditingHoa(h); setForm({ property: h.property, hoa_name: h.hoa_name, amount: String(h.amount), due_date: h.due_date, frequency: h.frequency || "monthly", status: h.status, notes: h.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>
@@ -12467,9 +12506,10 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingLoan, setEditingLoan] = useState(null);
-  const [form, setForm] = useState({ lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: "", loan_start_date: "", maturity_date: "", account_number: "", property: "", notes: "", status: "active" });
+  const [form, setForm] = useState({ lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: "", loan_start_date: "", maturity_date: "", account_number: "", property: "", notes: "", status: "active", website: "", username: "", password: "" });
   const [propertyFilter, setPropertyFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [showCreds, setShowCreds] = useState(new Set());
 
   useEffect(() => { fetchLoans(); }, [companyId]);
 
@@ -12484,20 +12524,28 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   try {
   if (!form.property || !form.lender_name || !form.original_amount) { showToast("Property, lender name, and original amount are required.", "error"); return; }
   const payload = { ...form, original_amount: Number(form.original_amount), current_balance: Number(form.current_balance || form.original_amount), interest_rate: Number(form.interest_rate || 0), monthly_payment: Number(form.monthly_payment || 0), escrow_amount: form.escrow_included ? Number(form.escrow_amount || 0) : 0, escrow_covers: form.escrow_included ? form.escrow_covers : "" };
+  delete payload.username; delete payload.password;
+  payload.website = form.website || "";
+  if (form.username || form.password) {
+    const { encrypted: encU, iv: ivU } = await encryptCredential(form.username || "", companyId);
+    const { encrypted: encP, iv: ivP } = await encryptCredential(form.password || "", companyId);
+    payload.username_encrypted = encU; payload.password_encrypted = encP; payload.encryption_iv = ivP || ivU;
+  }
   if (editingLoan) {
-  const { error: loanErr } = await supabase.from("property_loans").update({ lender_name: payload.lender_name, loan_type: payload.loan_type, original_amount: payload.original_amount, current_balance: payload.current_balance, interest_rate: payload.interest_rate, monthly_payment: payload.monthly_payment, escrow_included: payload.escrow_included, escrow_amount: payload.escrow_amount, escrow_covers: payload.escrow_covers, loan_start_date: payload.loan_start_date || null, maturity_date: payload.maturity_date || null, account_number: payload.account_number, property: payload.property, notes: payload.notes, status: payload.status }).eq("id", editingLoan.id).eq("company_id", companyId);
+  const { error: loanErr } = await supabase.from("property_loans").update({ lender_name: payload.lender_name, loan_type: payload.loan_type, original_amount: payload.original_amount, current_balance: payload.current_balance, interest_rate: payload.interest_rate, monthly_payment: payload.monthly_payment, escrow_included: payload.escrow_included, escrow_amount: payload.escrow_amount, escrow_covers: payload.escrow_covers, loan_start_date: payload.loan_start_date || null, maturity_date: payload.maturity_date || null, account_number: payload.account_number, property: payload.property, notes: payload.notes, status: payload.status, website: payload.website, username_encrypted: payload.username_encrypted || editingLoan.username_encrypted || "", password_encrypted: payload.password_encrypted || editingLoan.password_encrypted || "", encryption_iv: payload.encryption_iv || editingLoan.encryption_iv || "" }).eq("id", editingLoan.id).eq("company_id", companyId);
   if (loanErr) { showToast("Error updating loan: " + loanErr.message, "error"); return; }
   addNotification("🏦", `Loan updated: ${form.lender_name}`);
   logAudit("update", "loans", `Loan updated: ${form.lender_name} ${formatCurrency(form.original_amount)}`, editingLoan.id, userProfile?.email, userRole, companyId);
   } else {
-  const { error: loanErr } = await supabase.from("property_loans").insert([{ ...payload, company_id: companyId }]);
+  const insPayload = { ...payload, company_id: companyId }; delete insPayload.username; delete insPayload.password;
+  const { error: loanErr } = await supabase.from("property_loans").insert([insPayload]);
   if (loanErr) { showToast("Error saving loan: " + loanErr.message, "error"); return; }
   addNotification("🏦", `Loan added: ${form.lender_name} — ${formatCurrency(form.original_amount)}`);
   logAudit("create", "loans", `Loan added: ${form.lender_name} ${formatCurrency(form.original_amount)} at ${form.property}`, "", userProfile?.email, userRole, companyId);
   }
   setShowForm(false);
   setEditingLoan(null);
-  setForm({ lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: "", loan_start_date: "", maturity_date: "", account_number: "", property: "", notes: "", status: "active" });
+  setForm({ lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: "", loan_start_date: "", maturity_date: "", account_number: "", property: "", notes: "", status: "active", website: "", username: "", password: "" });
   fetchLoans();
   } finally { guardRelease("saveLoan"); }
   }
@@ -12606,6 +12654,12 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Escrow Covers</label><Input placeholder="e.g. Taxes, Insurance" value={form.escrow_covers} onChange={e => setForm({ ...form, escrow_covers: e.target.value })} /></div>
   </>
   )}
+  <div className="col-span-2 border-t border-slate-100 pt-2 mt-1"><p className="text-xs text-slate-400 mb-2">Lender Portal Login (encrypted)</p>
+  <div className="grid grid-cols-3 gap-2">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Website</label><Input type="url" value={form.website||""} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Username</label><Input value={form.username||""} onChange={e => setForm({...form, username: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Password</label><Input type="password" value={form.password||""} onChange={e => setForm({...form, password: e.target.value})} /></div>
+  </div></div>
   </div>
   <div className="flex gap-2 mt-4">
   <button onClick={saveLoan} className="bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700">Save</button>
@@ -12617,7 +12671,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
   <table className="w-full text-sm">
   <thead className="bg-slate-50 text-xs text-slate-400 uppercase">
-  <tr><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Lender</th><th className="px-4 py-3 text-left">Type</th><th className="px-4 py-3 text-right">Rate</th><th className="px-4 py-3 text-right">Monthly Payment</th><th className="px-4 py-3 text-right">Balance</th><th className="px-4 py-3 text-left">Maturity</th><th className="px-4 py-3 text-right">Actions</th></tr>
+  <tr><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Lender</th><th className="px-4 py-3 text-left">Type</th><th className="px-4 py-3 text-right">Rate</th><th className="px-4 py-3 text-right">Monthly</th><th className="px-4 py-3 text-right">Balance</th><th className="px-4 py-3 text-left">Maturity</th><th className="px-4 py-3 text-left">Portal</th><th className="px-4 py-3 text-right">Actions</th></tr>
   </thead>
   <tbody>
   {filtered.map(l => (
@@ -12629,6 +12683,11 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(l.monthly_payment)}</td>
   <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(l.current_balance)}</td>
   <td className="px-4 py-2.5 text-slate-400">{l.maturity_date || "—"}</td>
+  <td className="px-4 py-2.5 text-xs">
+  {l.website ? <a href={l.website} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline block truncate max-w-28">{l.website.replace(/^https?:\/\//, "")}</a> : <span className="text-slate-300">—</span>}
+  {l.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(l.id)) { s.delete(l.id); setShowCreds(s); } else { l._decUser = await decryptCredential(l.username_encrypted, l.encryption_iv, companyId); l._decPass = await decryptCredential(l.password_encrypted, l.encryption_iv, companyId); s.add(l.id); setShowCreds(new Set(s)); }}} className="text-indigo-500 hover:underline">{showCreds.has(l.id) ? "Hide" : "Show"} login</button>}
+  {showCreds.has(l.id) && <div className="text-slate-600 mt-0.5">{l._decUser || "—"} / {l._decPass || "—"}</div>}
+  </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
   {l.status === "active" && <button onClick={() => recordPayment(l)} className="text-xs text-green-600 hover:underline mr-2">Record Payment</button>}
   <button onClick={() => { setEditingLoan(l); setForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), escrow_covers: l.escrow_covers || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", property: l.property || "", notes: l.notes || "", status: l.status || "active" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>
@@ -12650,8 +12709,9 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingPolicy, setEditingPolicy] = useState(null);
-  const [form, setForm] = useState({ property: "", provider: "", policy_number: "", premium_amount: "", premium_frequency: "Annual", coverage_amount: "", expiration_date: "", notes: "" });
+  const [form, setForm] = useState({ property: "", provider: "", policy_number: "", premium_amount: "", premium_frequency: "Annual", coverage_amount: "", expiration_date: "", notes: "", website: "", username: "", password: "" });
   const [propertyFilter, setPropertyFilter] = useState("all");
+  const [showCreds, setShowCreds] = useState(new Set());
 
   useEffect(() => { fetchPolicies(); }, [companyId]);
 
@@ -12666,20 +12726,28 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   try {
   if (!form.property || !form.provider || !form.premium_amount) { showToast("Property, provider, and premium amount are required.", "error"); return; }
   const payload = { ...form, premium_amount: Number(form.premium_amount), coverage_amount: Number(form.coverage_amount || 0) };
+  delete payload.username; delete payload.password;
+  payload.website = form.website || "";
+  if (form.username || form.password) {
+    const { encrypted: encU, iv: ivU } = await encryptCredential(form.username || "", companyId);
+    const { encrypted: encP, iv: ivP } = await encryptCredential(form.password || "", companyId);
+    payload.username_encrypted = encU; payload.password_encrypted = encP; payload.encryption_iv = ivP || ivU;
+  }
   if (editingPolicy) {
-  const { error: polErr } = await supabase.from("property_insurance").update({ property: payload.property, provider: payload.provider, policy_number: payload.policy_number, premium_amount: payload.premium_amount, premium_frequency: payload.premium_frequency, coverage_amount: payload.coverage_amount, expiration_date: payload.expiration_date || null, notes: payload.notes }).eq("id", editingPolicy.id).eq("company_id", companyId);
+  const { error: polErr } = await supabase.from("property_insurance").update({ property: payload.property, provider: payload.provider, policy_number: payload.policy_number, premium_amount: payload.premium_amount, premium_frequency: payload.premium_frequency, coverage_amount: payload.coverage_amount, expiration_date: payload.expiration_date || null, notes: payload.notes, website: payload.website, username_encrypted: payload.username_encrypted || editingPolicy.username_encrypted || "", password_encrypted: payload.password_encrypted || editingPolicy.password_encrypted || "", encryption_iv: payload.encryption_iv || editingPolicy.encryption_iv || "" }).eq("id", editingPolicy.id).eq("company_id", companyId);
   if (polErr) { showToast("Error updating policy: " + polErr.message, "error"); return; }
   addNotification("🛡️", `Policy updated: ${form.provider}`);
   logAudit("update", "insurance", `Policy updated: ${form.provider} ${formatCurrency(form.premium_amount)}`, editingPolicy.id, userProfile?.email, userRole, companyId);
   } else {
-  const { error: polErr } = await supabase.from("property_insurance").insert([{ ...payload, company_id: companyId }]);
+  const insPayload = { ...payload, company_id: companyId }; delete insPayload.username; delete insPayload.password;
+  const { error: polErr } = await supabase.from("property_insurance").insert([insPayload]);
   if (polErr) { showToast("Error saving policy: " + polErr.message, "error"); return; }
   addNotification("🛡️", `Policy added: ${form.provider} — ${formatCurrency(form.premium_amount)}`);
   logAudit("create", "insurance", `Policy added: ${form.provider} ${formatCurrency(form.premium_amount)} at ${form.property}`, "", userProfile?.email, userRole, companyId);
   }
   setShowForm(false);
   setEditingPolicy(null);
-  setForm({ property: "", provider: "", policy_number: "", premium_amount: "", premium_frequency: "Annual", coverage_amount: "", expiration_date: "", notes: "" });
+  setForm({ property: "", provider: "", policy_number: "", premium_amount: "", premium_frequency: "Annual", coverage_amount: "", expiration_date: "", notes: "", website: "", username: "", password: "" });
   fetchPolicies();
   } finally { guardRelease("savePolicy"); }
   }
@@ -12756,6 +12824,12 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Coverage Amount ($)</label><Input placeholder="300000" type="number" value={form.coverage_amount} onChange={e => setForm({ ...form, coverage_amount: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Expiration Date</label><Input type="date" value={form.expiration_date} onChange={e => setForm({ ...form, expiration_date: e.target.value })} /></div>
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
+  <div className="col-span-2 border-t border-slate-100 pt-2 mt-1"><p className="text-xs text-slate-400 mb-2">Insurance Portal Login (encrypted)</p>
+  <div className="grid grid-cols-3 gap-2">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Website</label><Input type="url" value={form.website||""} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Username</label><Input value={form.username||""} onChange={e => setForm({...form, username: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Password</label><Input type="password" value={form.password||""} onChange={e => setForm({...form, password: e.target.value})} /></div>
+  </div></div>
   </div>
   <div className="flex gap-2 mt-4">
   <button onClick={savePolicy} className="bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700">Save</button>
@@ -12767,7 +12841,7 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
   <table className="w-full text-sm">
   <thead className="bg-slate-50 text-xs text-slate-400 uppercase">
-  <tr><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Provider</th><th className="px-4 py-3 text-left">Policy #</th><th className="px-4 py-3 text-right">Premium</th><th className="px-4 py-3 text-left">Frequency</th><th className="px-4 py-3 text-right">Coverage</th><th className="px-4 py-3 text-left">Expiry</th><th className="px-4 py-3 text-right">Actions</th></tr>
+  <tr><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Provider</th><th className="px-4 py-3 text-left">Policy #</th><th className="px-4 py-3 text-right">Premium</th><th className="px-4 py-3 text-left">Freq.</th><th className="px-4 py-3 text-right">Coverage</th><th className="px-4 py-3 text-left">Expiry</th><th className="px-4 py-3 text-left">Portal</th><th className="px-4 py-3 text-right">Actions</th></tr>
   </thead>
   <tbody>
   {filtered.map(p => (
@@ -12779,8 +12853,13 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   <td className="px-4 py-2.5 text-slate-500">{p.premium_frequency}</td>
   <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(p.coverage_amount)}</td>
   <td className="px-4 py-2.5 text-slate-400">{p.expiration_date || "—"}</td>
+  <td className="px-4 py-2.5 text-xs">
+  {p.website ? <a href={p.website} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline block truncate max-w-28">{p.website.replace(/^https?:\/\//, "")}</a> : <span className="text-slate-300">—</span>}
+  {p.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(p.id)) { s.delete(p.id); setShowCreds(s); } else { p._decUser = await decryptCredential(p.username_encrypted, p.encryption_iv, companyId); p._decPass = await decryptCredential(p.password_encrypted, p.encryption_iv, companyId); s.add(p.id); setShowCreds(new Set(s)); }}} className="text-indigo-500 hover:underline">{showCreds.has(p.id) ? "Hide" : "Show"} login</button>}
+  {showCreds.has(p.id) && <div className="text-slate-600 mt-0.5">{p._decUser || "—"} / {p._decPass || "—"}</div>}
+  </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
-  <button onClick={() => { setEditingPolicy(p); setForm({ property: p.property || "", provider: p.provider || "", policy_number: p.policy_number || "", premium_amount: String(p.premium_amount || ""), premium_frequency: p.premium_frequency || "Annual", coverage_amount: String(p.coverage_amount || ""), expiration_date: p.expiration_date || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>
+  <button onClick={() => { setEditingPolicy(p); setForm({ property: p.property || "", provider: p.provider || "", policy_number: p.policy_number || "", premium_amount: String(p.premium_amount || ""), premium_frequency: p.premium_frequency || "Annual", coverage_amount: String(p.coverage_amount || ""), expiration_date: p.expiration_date || "", notes: p.notes || "", website: p.website || "", username: "", password: "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>
   <button onClick={() => deletePolicy(p.id)} className="text-xs text-red-500 hover:underline">Delete</button>
   </td>
   </tr>
