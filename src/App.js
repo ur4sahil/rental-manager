@@ -8485,6 +8485,9 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   const [showImportWizard, setShowImportWizard] = useState(false);
   const [showRules, setShowRules] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
+  const [plaidConnecting, setPlaidConnecting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [connections, setConnections] = useState([]);
   const [ruleForm, setRuleForm] = useState({ name: "", condField: "description", condOp: "contains", condValue: "", condDirection: "all", condAmountMin: "", condAmountMax: "", actionAccountId: "", actionAccountName: "", actionClassId: "", actionPayee: "", actionMemo: "", autoAccept: false, priority: 100 });
   const [showNewAccount, setShowNewAccount] = useState(false);
   const [newAccountForm, setNewAccountForm] = useState({ name: "", type: "checking", masked_number: "", institution_name: "" });
@@ -8515,17 +8518,16 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
 
   async function fetchAll() {
     setLoading(true);
-    const [feedsRes, txnRes, rulesRes] = await Promise.all([
+    const [feedsRes, txnRes, rulesRes, connRes] = await Promise.all([
       supabase.from("bank_account_feed").select("*").eq("company_id", companyId).eq("status", "active").order("created_at"),
       supabase.from("bank_feed_transaction").select("*").eq("company_id", companyId).order("posted_date", { ascending: false }).limit(500),
       supabase.from("bank_transaction_rule").select("*").eq("company_id", companyId).eq("enabled", true).order("priority"),
+      supabase.from("bank_connection").select("*").eq("company_id", companyId).order("created_at"),
     ]);
     setFeeds(feedsRes.data || []);
     setTransactions(txnRes.data || []);
     setRules(rulesRes.data || []);
-    // Update review counts
-    const counts = {};
-    (txnRes.data || []).filter(t => t.status === "for_review").forEach(t => { counts[t.bank_account_feed_id] = (counts[t.bank_account_feed_id] || 0) + 1; });
+    setConnections(connRes.data || []);
     setLoading(false);
   }
 
@@ -8553,6 +8555,70 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     setShowNewAccount(false);
     setNewAccountForm({ name: "", type: "checking", masked_number: "", institution_name: "" });
     fetchAll();
+  }
+
+  // --- Plaid Connect ---
+  async function connectBank() {
+    setPlaidConnecting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) { showToast("Not authenticated.", "error"); return; }
+      // Get link token from edge function
+      const res = await fetch(supabase.supabaseUrl + "/functions/v1/plaid-create-link-token", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
+        body: JSON.stringify({ company_id: companyId })
+      });
+      const data = await res.json();
+      if (data.error) { showToast("Plaid error: " + data.error, "error"); return; }
+      // Open Plaid Link
+      if (!window.Plaid) {
+        // Load Plaid Link SDK
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdn.plaid.com/link/v2/stable/link-initialize.js";
+          script.onload = resolve; script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+      const handler = window.Plaid.create({
+        token: data.link_token,
+        onSuccess: async (publicToken, metadata) => {
+          showToast("Connecting accounts...", "success");
+          const exchangeRes = await fetch(supabase.supabaseUrl + "/functions/v1/plaid-exchange-token", {
+            method: "POST",
+            headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
+            body: JSON.stringify({ public_token: publicToken, company_id: companyId, institution: metadata.institution })
+          });
+          const exchangeData = await exchangeRes.json();
+          if (exchangeData.error) { showToast("Connection error: " + exchangeData.error, "error"); }
+          else { showToast(exchangeData.message || "Bank connected!", "success"); fetchAll(); }
+        },
+        onExit: (err) => { if (err) showToast("Plaid Link closed: " + (err.display_message || err.error_code), "error"); },
+      });
+      handler.open();
+    } catch (e) { showToast("Error connecting bank: " + e.message, "error"); }
+    finally { setPlaidConnecting(false); }
+  }
+
+  async function syncTransactions() {
+    setSyncing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) { showToast("Not authenticated.", "error"); return; }
+      const res = await fetch(supabase.supabaseUrl + "/functions/v1/plaid-sync-transactions", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
+        body: JSON.stringify({ company_id: companyId })
+      });
+      const data = await res.json();
+      if (data.error) { showToast("Sync error: " + data.error, "error"); }
+      else {
+        showToast(`Synced: ${data.total_added} new, ${data.total_modified} updated`, "success");
+        fetchAll();
+      }
+    } catch (e) { showToast("Sync failed: " + e.message, "error"); }
+    finally { setSyncing(false); }
   }
 
   // --- CSV Import Wizard ---
@@ -9165,11 +9231,26 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   {/* Header */}
   <div className="flex items-center justify-between">
     <div><h3 className="text-lg font-semibold text-slate-900">Bank Transactions</h3><p className="text-sm text-slate-400">Import, review, and categorize bank transactions</p></div>
-    <div className="flex gap-2">
+    <div className="flex gap-2 flex-wrap">
       <button onClick={() => setShowRules(!showRules)} className="text-xs bg-violet-100 text-violet-700 px-3 py-1.5 rounded-lg font-semibold hover:bg-violet-200">Rules ({rules.length})</button>
+      {connections.some(c => c.connection_status === "active") && <button onClick={syncTransactions} disabled={syncing} className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg font-semibold hover:bg-emerald-200 disabled:opacity-50">{syncing ? "Syncing..." : "Sync"}</button>}
+      <button onClick={connectBank} disabled={plaidConnecting} className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">link</span>{plaidConnecting ? "Connecting..." : "Connect Bank"}</button>
       <button onClick={startImport} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-slate-700 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">upload_file</span>Import CSV</button>
     </div>
   </div>
+
+  {/* Connection Banners */}
+  {connections.filter(c => c.connection_status === "needs_reauth").length > 0 && (
+  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between">
+    <div className="text-sm text-amber-800"><strong>Action needed:</strong> {connections.filter(c => c.connection_status === "needs_reauth").length} bank connection(s) need re-authentication.</div>
+    <button onClick={connectBank} className="text-xs bg-amber-200 text-amber-800 px-3 py-1.5 rounded-lg font-medium hover:bg-amber-300">Fix Now</button>
+  </div>
+  )}
+  {connections.filter(c => c.connection_status === "errored").length > 0 && (
+  <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+    <div className="text-sm text-red-800"><strong>Sync errors:</strong> {connections.filter(c => c.connection_status === "errored").map(c => `${c.institution_name}: ${c.last_error_message || "Unknown error"}`).join("; ")}</div>
+  </div>
+  )}
 
   {/* Account Cards */}
   {feeds.length > 0 && (
@@ -9184,7 +9265,8 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
         <div className="font-semibold text-slate-800 truncate">{feed.account_name}</div>
         {feed.masked_number && <div className="text-xs text-slate-400">••••{feed.masked_number}</div>}
         <div className="flex justify-between mt-2">
-          <span className="text-xs text-slate-500">{feed.connection_type.toUpperCase()}</span>
+          <span className={`text-xs px-1.5 py-0.5 rounded ${feed.connection_type === "plaid" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>{feed.connection_type === "plaid" ? "Plaid" : "CSV"}</span>
+          {feed.last_synced_at && <span className="text-xs text-slate-400">{new Date(feed.last_synced_at).toLocaleDateString()}</span>}
           {reviewCount > 0 && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold">{reviewCount}</span>}
         </div>
       </button>
