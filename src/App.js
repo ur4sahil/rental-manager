@@ -7219,7 +7219,7 @@ const getGeneralLedger = (accountId, accounts, journalEntries) => {
   journalEntries.filter(je => je.status === "posted").sort((a,b) => a.date.localeCompare(b.date)).forEach(je => {
   (je.lines || []).filter(l => l.account_id === accountId).forEach(l => {
   running += nb === "debit" ? safeNum(l.debit) - safeNum(l.credit) : safeNum(l.credit) - safeNum(l.debit);
-  lines.push({ date: je.date, jeId: je.id, description: je.description, reference: je.reference, memo: l.memo, debit: safeNum(l.debit), credit: safeNum(l.credit), balance: running });
+  lines.push({ date: je.date, jeId: je.id, jeNumber: je.number || "", description: je.description, reference: je.reference, memo: l.memo, debit: safeNum(l.debit), credit: safeNum(l.credit), balance: running });
   });
   });
   return lines;
@@ -7877,6 +7877,9 @@ function AcctReports({ accounts, journalEntries, classes, companyName, onOpenLed
   const [showAssets, setShowAssets] = useState(true);
   const [showLiabilities, setShowLiabilities] = useState(true);
   const [showEquity, setShowEquity] = useState(true);
+  const [glColumns, setGlColumns] = useState(() => { try { const s = localStorage.getItem("gl_columns"); return s ? JSON.parse(s) : { date: true, entry: true, description: true, memo: true, debit: true, credit: true, balance: true }; } catch { return { date: true, entry: true, description: true, memo: true, debit: true, credit: true, balance: true }; } });
+  const [showColPicker, setShowColPicker] = useState(false);
+  const toggleGlCol = (col) => { const next = { ...glColumns, [col]: !glColumns[col] }; setGlColumns(next); try { localStorage.setItem("gl_columns", JSON.stringify(next)); } catch {} };
 
   const computedDates = period === "Custom" ? customDates : getPeriodDates(period);
   const start = computedDates.start;
@@ -8427,30 +8430,43 @@ function AcctReports({ accounts, journalEntries, classes, companyName, onOpenLed
           </div>
         </div>
       )}
+      {/* Column picker */}
+      <div className="flex justify-end mb-2 relative">
+        <button onClick={() => setShowColPicker(!showColPicker)} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">view_column</span>Columns</button>
+        {showColPicker && (
+        <div className="absolute right-0 top-8 bg-white border border-slate-200 rounded-xl shadow-lg p-3 z-20 w-48">
+          {[["date","Date"],["entry","Entry #"],["description","Description"],["memo","Memo"],["debit","Debit"],["credit","Credit"],["balance","Balance"]].map(([id,label]) => (
+          <label key={id} className="flex items-center gap-2 py-1 cursor-pointer text-sm text-slate-700 hover:text-slate-900">
+            <input type="checkbox" checked={glColumns[id]} onChange={() => toggleGlCol(id)} className="accent-indigo-600" />{label}
+          </label>
+          ))}
+        </div>
+        )}
+      </div>
       <table className="w-full text-sm rounded-xl border border-slate-200 overflow-hidden">
         <thead className="bg-slate-50">
           <tr>
-            <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Date</th>
-            <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Entry</th>
-            <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Description</th>
-            <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Memo</th>
-            <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Debit</th>
-            <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Credit</th>
-            <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Balance</th>
+            {glColumns.date && <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Date</th>}
+            {glColumns.entry && <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Entry #</th>}
+            {glColumns.description && <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Description</th>}
+            {glColumns.memo && <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Memo</th>}
+            {glColumns.debit && <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Debit</th>}
+            {glColumns.credit && <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Credit</th>}
+            {glColumns.balance && <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Balance</th>}
           </tr>
         </thead>
         <tbody>
           {glLines.length === 0 ? (
-            <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-400">No transactions in this period</td></tr>
+            <tr><td colSpan={Object.values(glColumns).filter(Boolean).length} className="px-5 py-8 text-center text-slate-400">No transactions in this period</td></tr>
           ) : glLines.map((l, i) => (
-            <tr key={i} className="border-t border-slate-100 hover:bg-green-50/40 transition-colors">
-              <td className="px-5 py-3 text-xs text-slate-400">{acctFmtDate(l.date)}</td>
-              <td className="px-5 py-3 font-mono text-xs text-slate-400">{l.jeId}</td>
-              <td className="px-5 py-3 text-slate-700">{l.description}</td>
-              <td className="px-5 py-3 text-xs text-slate-400">{l.memo || "\u2014"}</td>
-              <td className="px-5 py-3 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>
-              <td className="px-5 py-3 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>
-              <td className={`px-5 py-3 text-right font-mono font-semibold ${l.balance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(l.balance, true)}</td>
+            <tr key={l.jeId + "-" + i} className="border-t border-slate-100 hover:bg-green-50/40 transition-colors cursor-pointer" onClick={() => { const je = journalEntries.find(j => j.id === l.jeId); if (je) { setActiveReport("gl"); /* navigate to JE view if needed */ } }}>
+              {glColumns.date && <td className="px-5 py-3 text-xs text-slate-400">{acctFmtDate(l.date)}</td>}
+              {glColumns.entry && <td className="px-5 py-3 font-mono text-xs text-indigo-600">{l.jeNumber || "—"}</td>}
+              {glColumns.description && <td className="px-5 py-3 text-slate-700">{l.description}</td>}
+              {glColumns.memo && <td className="px-5 py-3 text-xs text-slate-400">{l.memo || "—"}</td>}
+              {glColumns.debit && <td className="px-5 py-3 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>}
+              {glColumns.credit && <td className="px-5 py-3 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>}
+              {glColumns.balance && <td className={`px-5 py-3 text-right font-mono font-semibold ${l.balance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(l.balance, true)}</td>}
             </tr>
           ))}
         </tbody>
