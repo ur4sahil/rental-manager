@@ -8801,7 +8801,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
       company_id: companyId, number: jeNumber, date: txn.posted_date,
       description: memo || txn.bank_description_clean,
-      reference: `BANK-${txn.id.slice(0, 8)}`, property: "", status: "posted"
+      reference: `BANK-${txn.id}`, property: "", status: "posted"
     }]).select("id").maybeSingle();
 
     if (jeErr || !jeRow) { showToast("Error creating JE: " + (jeErr?.message || "no ID"), "error"); return; }
@@ -8960,7 +8960,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
       company_id: companyId, number: `JE-${String(nextNum).padStart(4,"0")}`, date: txn.posted_date,
       description: memo || `Transfer — ${txn.bank_description_clean}`,
-      reference: `XFER-${txn.id.slice(0,8)}`, property: "", status: "posted"
+      reference: `XFER-${txn.id}`, property: "", status: "posted"
     }]).select("id").maybeSingle();
     if (jeErr || !jeRow) { showToast("Error creating JE: " + (jeErr?.message || ""), "error"); return; }
 
@@ -9010,7 +9010,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
       company_id: companyId, number: `JE-${String(nextNum).padStart(4,"0")}`, date: txn.posted_date,
       description: `Split — ${txn.bank_description_clean}`,
-      reference: `SPLIT-${txn.id.slice(0,8)}`, property: "", status: "posted"
+      reference: `SPLIT-${txn.id}`, property: "", status: "posted"
     }]).select("id").maybeSingle();
     if (jeErr || !jeRow) { showToast("Error: " + (jeErr?.message || ""), "error"); return; }
 
