@@ -1169,6 +1169,263 @@ async function testPagePersistence() {
   }
 }
 
+// ============ BANK FEED TABLES (Phase 1 + 2) ============
+
+async function testBankAccountFeed() {
+  console.log('\n🏦 BANK ACCOUNT FEED');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  // Create GL account first
+  const oldTextId = cid + '-test-bank-feed';
+  const { data: glAcct } = await supabase.from('acct_accounts').insert({
+    company_id: cid, code: '1000-TST', name: 'TEST Bank Feed Account',
+    type: 'Asset', is_active: true, old_text_id: oldTextId
+  }).select('id').single();
+  // Create bank account feed
+  const { data: feed, error: feedErr } = await supabase.from('bank_account_feed').insert({
+    company_id: cid, gl_account_id: glAcct?.id, account_name: 'TEST Chase Checking',
+    masked_number: '4567', account_type: 'checking', institution_name: 'Chase',
+    connection_type: 'csv', status: 'active'
+  }).select().single();
+  assert(!feedErr && feed, 'BankFeed: can create');
+  assert(feed?.account_name === 'TEST Chase Checking', 'BankFeed: account_name stored');
+  assert(feed?.account_type === 'checking', 'BankFeed: account_type stored');
+  assert(feed?.gl_account_id === glAcct?.id, 'BankFeed: gl_account_id linked');
+  // Cleanup
+  if (feed) await supabase.from('bank_account_feed').delete().eq('id', feed.id);
+  if (glAcct) await supabase.from('acct_accounts').delete().eq('id', glAcct.id);
+}
+
+async function testBankImportBatch() {
+  console.log('\n📦 BANK IMPORT BATCH');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  // Create feed first
+  const { data: feed } = await supabase.from('bank_account_feed').insert({
+    company_id: cid, account_name: 'TEST Batch Feed', account_type: 'checking',
+    connection_type: 'csv', status: 'active'
+  }).select('id').single();
+  // Create batch
+  const { data: batch, error: batchErr } = await supabase.from('bank_import_batch').insert({
+    company_id: cid, bank_account_feed_id: feed?.id, source_type: 'csv',
+    original_filename: 'test.csv', file_hash: 'abc123', imported_by: 'test@test.com',
+    row_count: 10, status: 'imported'
+  }).select().single();
+  assert(!batchErr && batch, 'ImportBatch: can create');
+  assert(batch?.row_count === 10, 'ImportBatch: row_count stored');
+  assert(batch?.status === 'imported', 'ImportBatch: status stored');
+  // Update stats
+  const { error: upErr } = await supabase.from('bank_import_batch').update({
+    accepted_count: 8, skipped_count: 1, duplicate_count: 1
+  }).eq('id', batch?.id);
+  assert(!upErr, 'ImportBatch: can update stats');
+  // Cleanup
+  if (batch) await supabase.from('bank_import_batch').delete().eq('id', batch.id);
+  if (feed) await supabase.from('bank_account_feed').delete().eq('id', feed.id);
+}
+
+async function testBankFeedTransaction() {
+  console.log('\n💳 BANK FEED TRANSACTION');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  const { data: feed } = await supabase.from('bank_account_feed').insert({
+    company_id: cid, account_name: 'TEST Txn Feed', account_type: 'checking',
+    connection_type: 'csv', status: 'active'
+  }).select('id').single();
+  // Create transaction
+  const fp = 'test-fp-' + Date.now();
+  const { data: txn, error: txnErr } = await supabase.from('bank_feed_transaction').insert({
+    company_id: cid, bank_account_feed_id: feed?.id, source_type: 'csv',
+    posted_date: '2026-03-24', amount: 1500.00, direction: 'inflow',
+    bank_description_raw: 'Zelle payment from JOHN DOE Conf# abc123',
+    bank_description_clean: 'Zelle payment from JOHN DOE',
+    payee_raw: 'JOHN DOE', payee_normalized: 'John Doe',
+    fingerprint_hash: fp, status: 'for_review'
+  }).select().single();
+  assert(!txnErr && txn, 'BankTxn: can create');
+  assert(txn?.amount == 1500, 'BankTxn: amount stored');
+  assert(txn?.direction === 'inflow', 'BankTxn: direction stored');
+  assert(txn?.status === 'for_review', 'BankTxn: status is for_review');
+  assert(txn?.fingerprint_hash === fp, 'BankTxn: fingerprint stored');
+  // Test duplicate prevention
+  const { error: dupErr } = await supabase.from('bank_feed_transaction').insert({
+    company_id: cid, bank_account_feed_id: feed?.id, source_type: 'csv',
+    posted_date: '2026-03-24', amount: 1500.00, direction: 'inflow',
+    bank_description_raw: 'Duplicate', fingerprint_hash: fp, status: 'for_review'
+  });
+  assert(dupErr && dupErr.message.includes('unique'), 'BankTxn: duplicate fingerprint blocked');
+  // Status transitions
+  await supabase.from('bank_feed_transaction').update({ status: 'categorized', accepted_at: new Date().toISOString() }).eq('id', txn?.id);
+  const { data: cat } = await supabase.from('bank_feed_transaction').select('status').eq('id', txn?.id).single();
+  assert(cat?.status === 'categorized', 'BankTxn: status → categorized');
+  await supabase.from('bank_feed_transaction').update({ status: 'excluded', exclusion_reason: 'duplicate' }).eq('id', txn?.id);
+  const { data: excl } = await supabase.from('bank_feed_transaction').select('status').eq('id', txn?.id).single();
+  assert(excl?.status === 'excluded', 'BankTxn: status → excluded');
+  // Undo back to for_review
+  await supabase.from('bank_feed_transaction').update({ status: 'for_review', accepted_at: null, exclusion_reason: null }).eq('id', txn?.id);
+  const { data: undo } = await supabase.from('bank_feed_transaction').select('status').eq('id', txn?.id).single();
+  assert(undo?.status === 'for_review', 'BankTxn: undo → for_review');
+  // Cleanup
+  if (txn) await supabase.from('bank_feed_transaction').delete().eq('id', txn.id);
+  if (feed) await supabase.from('bank_account_feed').delete().eq('id', feed.id);
+}
+
+async function testBankPostingDecision() {
+  console.log('\n📝 BANK POSTING DECISION');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  const { data: feed } = await supabase.from('bank_account_feed').insert({
+    company_id: cid, account_name: 'TEST Decision Feed', account_type: 'checking',
+    connection_type: 'csv', status: 'active'
+  }).select('id').single();
+  const { data: txn } = await supabase.from('bank_feed_transaction').insert({
+    company_id: cid, bank_account_feed_id: feed?.id, posted_date: '2026-03-24',
+    amount: 500, direction: 'outflow', bank_description_raw: 'Test expense',
+    fingerprint_hash: 'dec-test-' + Date.now(), status: 'for_review'
+  }).select('id').single();
+  // Add decision
+  const { data: addDec, error: addErr } = await supabase.from('bank_posting_decision').insert({
+    company_id: cid, bank_feed_transaction_id: txn?.id,
+    decision_type: 'add', payee: 'Test Vendor', memo: 'Office supplies',
+    status: 'posted', created_by: 'test@test.com'
+  }).select().single();
+  assert(!addErr && addDec, 'Decision: add decision created');
+  assert(addDec?.decision_type === 'add', 'Decision: type stored');
+  // Split decision with lines
+  const { data: splitDec } = await supabase.from('bank_posting_decision').insert({
+    company_id: cid, bank_feed_transaction_id: txn?.id,
+    decision_type: 'split', memo: 'Split test', status: 'draft', created_by: 'test@test.com'
+  }).select('id').single();
+  if (splitDec) {
+    const { error: lineErr } = await supabase.from('bank_posting_decision_line').insert([
+      { company_id: cid, bank_posting_decision_id: splitDec.id, line_no: 1, amount: 300, entry_side: 'debit', memo: 'Line 1' },
+      { company_id: cid, bank_posting_decision_id: splitDec.id, line_no: 2, amount: 200, entry_side: 'debit', memo: 'Line 2' },
+    ]);
+    assert(!lineErr, 'Decision: split lines created');
+    // Verify lines
+    const { data: lines } = await supabase.from('bank_posting_decision_line').select('*').eq('bank_posting_decision_id', splitDec.id);
+    assert(lines && lines.length === 2, 'Decision: 2 split lines stored');
+    assert(lines && lines.reduce((s,l) => s + Number(l.amount), 0) === 500, 'Decision: split total = 500');
+    await supabase.from('bank_posting_decision_line').delete().eq('bank_posting_decision_id', splitDec.id);
+    await supabase.from('bank_posting_decision').delete().eq('id', splitDec.id);
+  }
+  // Transfer decision
+  const { data: xferDec, error: xferErr } = await supabase.from('bank_posting_decision').insert({
+    company_id: cid, bank_feed_transaction_id: txn?.id,
+    decision_type: 'transfer', memo: 'To savings', status: 'posted', created_by: 'test@test.com'
+  }).select().single();
+  assert(!xferErr && xferDec, 'Decision: transfer decision created');
+  // Match decision
+  const { data: matchDec, error: matchErr } = await supabase.from('bank_posting_decision').insert({
+    company_id: cid, bank_feed_transaction_id: txn?.id,
+    decision_type: 'match', memo: 'Matched to JE-0001', status: 'posted', created_by: 'test@test.com'
+  }).select().single();
+  assert(!matchErr && matchDec, 'Decision: match decision created');
+  // Exclude decision
+  const { data: exclDec, error: exclErr } = await supabase.from('bank_posting_decision').insert({
+    company_id: cid, bank_feed_transaction_id: txn?.id,
+    decision_type: 'exclude', memo: 'duplicate', status: 'posted', created_by: 'test@test.com'
+  }).select().single();
+  assert(!exclErr && exclDec, 'Decision: exclude decision created');
+  // Cleanup
+  await supabase.from('bank_posting_decision').delete().eq('bank_feed_transaction_id', txn?.id);
+  if (addDec) await supabase.from('bank_posting_decision').delete().eq('id', addDec.id);
+  if (xferDec) await supabase.from('bank_posting_decision').delete().eq('id', xferDec.id);
+  if (matchDec) await supabase.from('bank_posting_decision').delete().eq('id', matchDec.id);
+  if (exclDec) await supabase.from('bank_posting_decision').delete().eq('id', exclDec.id);
+  if (txn) await supabase.from('bank_feed_transaction').delete().eq('id', txn.id);
+  if (feed) await supabase.from('bank_account_feed').delete().eq('id', feed.id);
+}
+
+async function testBankTransactionLink() {
+  console.log('\n🔗 BANK TRANSACTION LINK');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  const { data: feed } = await supabase.from('bank_account_feed').insert({
+    company_id: cid, account_name: 'TEST Link Feed', account_type: 'checking',
+    connection_type: 'csv', status: 'active'
+  }).select('id').single();
+  const { data: txn } = await supabase.from('bank_feed_transaction').insert({
+    company_id: cid, bank_account_feed_id: feed?.id, posted_date: '2026-03-24',
+    amount: 100, direction: 'inflow', bank_description_raw: 'Link test',
+    fingerprint_hash: 'link-test-' + Date.now(), status: 'for_review'
+  }).select('id').single();
+  // Create link
+  const fakeJeId = require('crypto').randomUUID();
+  const { data: link, error: linkErr } = await supabase.from('bank_feed_transaction_link').insert({
+    company_id: cid, bank_feed_transaction_id: txn?.id,
+    linked_object_type: 'journal_entry', linked_object_id: fakeJeId,
+    link_role: 'created_from'
+  }).select().single();
+  assert(!linkErr && link, 'TxnLink: can create link');
+  assert(link?.link_role === 'created_from', 'TxnLink: role stored');
+  // Match link
+  const { error: matchLinkErr } = await supabase.from('bank_feed_transaction_link').insert({
+    company_id: cid, bank_feed_transaction_id: txn?.id,
+    linked_object_type: 'journal_entry', linked_object_id: require('crypto').randomUUID(),
+    link_role: 'matched_to'
+  });
+  assert(!matchLinkErr, 'TxnLink: matched_to link created');
+  // Cleanup
+  await supabase.from('bank_feed_transaction_link').delete().eq('bank_feed_transaction_id', txn?.id);
+  if (txn) await supabase.from('bank_feed_transaction').delete().eq('id', txn.id);
+  if (feed) await supabase.from('bank_account_feed').delete().eq('id', feed.id);
+}
+
+async function testBankTransactionRule() {
+  console.log('\n📏 BANK TRANSACTION RULE');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  const { data: rule, error: ruleErr } = await supabase.from('bank_transaction_rule').insert({
+    company_id: cid, name: 'TEST Rent Rule', priority: 10, enabled: true,
+    condition_json: { field: 'description', operator: 'contains', value: 'rent' },
+    action_json: { account_code: '4000', account_name: 'Rental Income' },
+    auto_accept: false
+  }).select().single();
+  assert(!ruleErr && rule, 'Rule: can create');
+  assert(rule?.name === 'TEST Rent Rule', 'Rule: name stored');
+  assert(rule?.priority === 10, 'Rule: priority stored');
+  assert(rule?.condition_json?.field === 'description', 'Rule: condition_json stored');
+  // Disable
+  await supabase.from('bank_transaction_rule').update({ enabled: false }).eq('id', rule?.id);
+  const { data: disabled } = await supabase.from('bank_transaction_rule').select('enabled').eq('id', rule?.id).single();
+  assert(disabled && disabled.enabled === false, 'Rule: can disable');
+  // Cleanup
+  if (rule) await supabase.from('bank_transaction_rule').delete().eq('id', rule.id);
+}
+
+async function testMappingProfile() {
+  console.log('\n🗂️ MAPPING PROFILE');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  const { data: profile, error: profErr } = await supabase.from('bank_import_mapping_profile').insert({
+    company_id: cid, name: 'Chase Format', institution_name: 'Chase',
+    date_column: 'Transaction Date', date_format: 'MM/DD/YYYY',
+    amount_mode: 'single_signed', amount_column: 'Amount',
+    description_columns_json: ['Description'], memo_column: 'Memo'
+  }).select().single();
+  assert(!profErr && profile, 'MappingProfile: can create');
+  assert(profile?.name === 'Chase Format', 'MappingProfile: name stored');
+  assert(profile?.amount_mode === 'single_signed', 'MappingProfile: amount_mode stored');
+  // Cleanup
+  if (profile) await supabase.from('bank_import_mapping_profile').delete().eq('id', profile.id);
+}
+
+async function testPeriodLock() {
+  console.log('\n🔒 PERIOD LOCK');
+  const { data: companies } = await supabase.from('companies').select('id').limit(1);
+  const cid = companies?.[0]?.id;
+  // Upsert period lock
+  const { error: lockErr } = await supabase.from('accounting_period_lock').upsert({
+    company_id: cid, lock_date: '2025-12-31', locked_by: 'test@test.com', notes: 'Year-end close'
+  }, { onConflict: 'company_id' });
+  assert(!lockErr, 'PeriodLock: can upsert');
+  const { data: lock } = await supabase.from('accounting_period_lock').select('*').eq('company_id', cid).single();
+  assert(lock && lock.lock_date === '2025-12-31', 'PeriodLock: lock_date stored');
+  // Cleanup
+  await supabase.from('accounting_period_lock').delete().eq('company_id', cid);
+}
+
 async function run() {
   console.log('🧪 PropManager Data Layer Tests');
   console.log('================================');
@@ -1219,6 +1476,14 @@ async function run() {
   await testUserProfile();
   await testClassTracking();
   await testPagePersistence();
+  await testBankAccountFeed();
+  await testBankImportBatch();
+  await testBankFeedTransaction();
+  await testBankPostingDecision();
+  await testBankTransactionLink();
+  await testBankTransactionRule();
+  await testMappingProfile();
+  await testPeriodLock();
   console.log('\n================================');
   console.log('✅ Passed: ' + pass);
   console.log('❌ Failed: ' + fail);
