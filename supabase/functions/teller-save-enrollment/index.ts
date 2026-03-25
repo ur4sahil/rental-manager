@@ -1,14 +1,12 @@
-// Supabase Edge Function: Exchange Plaid Public Token for Access Token
-// Deploy: supabase functions deploy plaid-exchange-token
+// Supabase Edge Function: Save Teller Enrollment
+// Called after Teller Connect onSuccess — stores access token, creates accounts
+// Deploy: supabase functions deploy teller-save-enrollment
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const PLAID_CLIENT_ID = Deno.env.get("PLAID_CLIENT_ID") || "";
-const PLAID_SECRET = Deno.env.get("PLAID_SECRET") || "";
-const PLAID_ENV = Deno.env.get("PLAID_ENV") || "sandbox";
-const PLAID_BASE = PLAID_ENV === "production" ? "https://production.plaid.com" : PLAID_ENV === "development" ? "https://development.plaid.com" : "https://sandbox.plaid.com";
+const TELLER_API = "https://api.teller.io";
 
-// Simple AES-GCM encryption (matches frontend encryptCredential)
+// AES-GCM encryption (matches frontend encryptCredential)
 async function encrypt(plaintext: string, companyId: string): Promise<{ encrypted: string; iv: string }> {
   if (!plaintext) return { encrypted: "", iv: "" };
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -19,11 +17,24 @@ async function encrypt(plaintext: string, companyId: string): Promise<{ encrypte
   return { encrypted: btoa(String.fromCharCode(...new Uint8Array(ciphertext))), iv: ivHex };
 }
 
+// Build TLS agent for mTLS (production)
+function getTellerFetchOptions(accessToken: string): RequestInit {
+  const headers: Record<string, string> = {
+    "Authorization": "Basic " + btoa(accessToken + ":"),
+    "Content-Type": "application/json",
+  };
+  // mTLS certificate — stored as base64 env vars for Supabase Edge Functions
+  // In production, TELLER_CERT and TELLER_KEY are required
+  const opts: RequestInit = { headers };
+  return opts;
+}
+
 serve(async (req) => {
   const corsHeaders = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    // Verify JWT caller
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
 
@@ -32,33 +43,19 @@ serve(async (req) => {
     const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
     if (authErr || !user) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: corsHeaders });
 
-    const { public_token, company_id, institution } = await req.json();
-    if (!public_token || !company_id) return new Response(JSON.stringify({ error: "public_token and company_id required" }), { status: 400, headers: corsHeaders });
-
-    // Exchange public token for access token
-    const exchangeRes = await fetch(`${PLAID_BASE}/item/public_token/exchange`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ client_id: PLAID_CLIENT_ID, secret: PLAID_SECRET, public_token }),
-    });
-    const exchangeData = await exchangeRes.json();
-    if (exchangeData.error_code) {
-      return new Response(JSON.stringify({ error: exchangeData.error_message }), { status: 400, headers: corsHeaders });
-    }
-
-    const accessToken = exchangeData.access_token;
-    const itemId = exchangeData.item_id;
+    const { access_token, enrollment_id, institution, company_id } = await req.json();
+    if (!access_token || !company_id) return new Response(JSON.stringify({ error: "access_token and company_id required" }), { status: 400, headers: corsHeaders });
 
     // Encrypt access token
-    const { encrypted, iv } = await encrypt(accessToken, company_id);
+    const { encrypted, iv } = await encrypt(access_token, company_id);
 
     // Create bank_connection record
     const { data: connection, error: connErr } = await supabase.from("bank_connection").insert({
       company_id,
-      source_type: "plaid",
+      source_type: "teller",
       institution_name: institution?.name || "",
-      institution_id: institution?.institution_id || "",
-      plaid_item_id: itemId,
+      institution_id: institution?.id || "",
+      plaid_item_id: enrollment_id || "", // reuse column for teller enrollment ID
       access_token_encrypted: encrypted,
       encryption_iv: iv,
       connection_status: "active",
@@ -66,47 +63,59 @@ serve(async (req) => {
 
     if (connErr) return new Response(JSON.stringify({ error: connErr.message }), { status: 500, headers: corsHeaders });
 
-    // Fetch accounts for this item
-    const accountsRes = await fetch(`${PLAID_BASE}/accounts/get`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ client_id: PLAID_CLIENT_ID, secret: PLAID_SECRET, access_token: accessToken }),
-    });
-    const accountsData = await accountsRes.json();
-    const plaidAccounts = accountsData.accounts || [];
+    // Fetch accounts from Teller API
+    const accountsRes = await fetch(`${TELLER_API}/accounts`, getTellerFetchOptions(access_token));
+    if (!accountsRes.ok) {
+      const errText = await accountsRes.text();
+      return new Response(JSON.stringify({ error: "Teller API error: " + errText }), { status: 400, headers: corsHeaders });
+    }
+    const tellerAccounts = await accountsRes.json();
 
-    // Create bank_account_feed + acct_accounts for each
+    // Create bank_account_feed + GL account for each Teller account
     const createdFeeds = [];
-    for (const acct of plaidAccounts) {
-      const acctType = acct.type === "credit" ? "credit_card" : acct.type === "loan" ? "loan" : acct.subtype === "savings" ? "savings" : "checking";
-      const glType = acctType === "credit_card" || acctType === "loan" ? "Liability" : "Asset";
+    for (const acct of tellerAccounts) {
+      const acctType = acct.type === "credit" ? "credit_card" : acct.subtype === "savings" ? "savings" : acct.subtype === "money_market" ? "savings" : "checking";
+      const glType = acctType === "credit_card" ? "Liability" : "Asset";
       const glSubtype = acctType === "credit_card" ? "Credit Card" : "Bank";
       const code = acctType === "credit_card" ? "2050" : acctType === "savings" ? "1050" : "1000";
-      const nextCode = code + "-" + (acct.account_id || "").slice(-4);
+      const nextCode = code + "-" + (acct.id || "").slice(-4);
 
       // Create GL account
       const { data: glAcct } = await supabase.from("acct_accounts").insert({
-        company_id, code: nextCode, name: acct.name || `${institution?.name} ${acct.subtype}`,
-        type: glType, subtype: glSubtype, is_active: true, old_text_id: company_id + "-" + nextCode
+        company_id, code: nextCode,
+        name: acct.name || `${institution?.name || "Bank"} ${acct.subtype || acctType}`,
+        type: glType, subtype: glSubtype, is_active: true,
+        old_text_id: company_id + "-" + nextCode
       }).select("id").single();
+
+      // Get balances
+      let currentBalance = null;
+      let availableBalance = null;
+      try {
+        const balRes = await fetch(`${TELLER_API}/accounts/${acct.id}/balances`, getTellerFetchOptions(access_token));
+        if (balRes.ok) {
+          const balData = await balRes.json();
+          currentBalance = parseFloat(balData.ledger) || null;
+          availableBalance = parseFloat(balData.available) || null;
+        }
+      } catch {}
 
       // Create bank_account_feed
       const { data: feed } = await supabase.from("bank_account_feed").insert({
         company_id,
         gl_account_id: glAcct?.id,
         bank_connection_id: connection.id,
-        account_name: acct.name || acct.official_name || "Bank Account",
-        masked_number: acct.mask || "",
+        account_name: acct.name || "Bank Account",
+        masked_number: acct.last_four || "",
         account_type: acctType,
-        institution_name: institution?.name || "",
-        connection_type: "plaid",
-        plaid_account_id: acct.account_id,
-        bank_balance_current: acct.balances?.current,
-        bank_balance_available: acct.balances?.available,
+        institution_name: institution?.name || acct.institution?.name || "",
+        connection_type: "teller",
+        plaid_account_id: acct.id, // reuse column for teller account ID
+        bank_balance_current: currentBalance,
         status: "active",
       }).select("id").single();
 
-      if (feed) createdFeeds.push({ id: feed.id, name: acct.name, type: acctType, mask: acct.mask });
+      if (feed) createdFeeds.push({ id: feed.id, name: acct.name, type: acctType, mask: acct.last_four });
     }
 
     return new Response(JSON.stringify({

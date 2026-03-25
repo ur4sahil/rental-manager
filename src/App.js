@@ -8567,46 +8567,45 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     fetchAll();
   }
 
-  // --- Plaid Connect ---
+  // --- Teller Connect ---
   async function connectBank() {
     setPlaidConnecting(true);
     try {
+      const tellerAppId = window.__TELLER_APP_ID || process.env.REACT_APP_TELLER_APP_ID || "";
+      if (!tellerAppId) { showToast("Teller Application ID not configured. Set REACT_APP_TELLER_APP_ID.", "error"); return; }
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) { showToast("Not authenticated.", "error"); return; }
-      // Get link token from edge function
-      const res = await fetch(supabase.supabaseUrl + "/functions/v1/plaid-create-link-token", {
-        method: "POST",
-        headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
-        body: JSON.stringify({ company_id: companyId })
-      });
-      const data = await res.json();
-      if (data.error) { showToast("Plaid error: " + data.error, "error"); return; }
-      // Open Plaid Link
-      if (!window.Plaid) {
-        // Load Plaid Link SDK
+      // Load Teller Connect SDK
+      if (!window.TellerConnect) {
         await new Promise((resolve, reject) => {
           const script = document.createElement("script");
-          script.src = "https://cdn.plaid.com/link/v2/stable/link-initialize.js";
+          script.src = "https://cdn.teller.io/connect/connect.js";
           script.onload = resolve; script.onerror = reject;
           document.head.appendChild(script);
         });
       }
-      const handler = window.Plaid.create({
-        token: data.link_token,
-        onSuccess: async (publicToken, metadata) => {
+      const tellerConnect = window.TellerConnect.setup({
+        applicationId: tellerAppId,
+        environment: window.__TELLER_ENV || "sandbox",
+        onSuccess: async (enrollment) => {
           showToast("Connecting accounts...", "success");
-          const exchangeRes = await fetch(supabase.supabaseUrl + "/functions/v1/plaid-exchange-token", {
+          const saveRes = await fetch(supabase.supabaseUrl + "/functions/v1/teller-save-enrollment", {
             method: "POST",
             headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
-            body: JSON.stringify({ public_token: publicToken, company_id: companyId, institution: metadata.institution })
+            body: JSON.stringify({
+              access_token: enrollment.accessToken,
+              enrollment_id: enrollment.enrollment?.id || "",
+              institution: enrollment.enrollment?.institution || {},
+              company_id: companyId
+            })
           });
-          const exchangeData = await exchangeRes.json();
-          if (exchangeData.error) { showToast("Connection error: " + exchangeData.error, "error"); }
-          else { showToast(exchangeData.message || "Bank connected!", "success"); fetchAll(); }
+          const saveData = await saveRes.json();
+          if (saveData.error) { showToast("Connection error: " + saveData.error, "error"); }
+          else { showToast(saveData.message || "Bank connected!", "success"); fetchAll(); }
         },
-        onExit: (err) => { if (err) showToast("Plaid Link closed: " + (err.display_message || err.error_code), "error"); },
+        onExit: () => { /* user closed */ },
       });
-      handler.open();
+      tellerConnect.open();
     } catch (e) { showToast("Error connecting bank: " + e.message, "error"); }
     finally { setPlaidConnecting(false); }
   }
@@ -8616,7 +8615,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) { showToast("Not authenticated.", "error"); return; }
-      const res = await fetch(supabase.supabaseUrl + "/functions/v1/plaid-sync-transactions", {
+      const res = await fetch(supabase.supabaseUrl + "/functions/v1/teller-sync-transactions", {
         method: "POST",
         headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
         body: JSON.stringify({ company_id: companyId })
@@ -9279,7 +9278,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
         <div className="font-semibold text-slate-800 truncate">{feed.account_name}</div>
         {feed.masked_number && <div className="text-xs text-slate-400">••••{feed.masked_number}</div>}
         <div className="flex justify-between mt-2">
-          <span className={`text-xs px-1.5 py-0.5 rounded ${feed.connection_type === "plaid" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>{feed.connection_type === "plaid" ? "Plaid" : "CSV"}</span>
+          <span className={`text-xs px-1.5 py-0.5 rounded ${feed.connection_type === "teller" ? "bg-blue-100 text-blue-700" : feed.connection_type === "plaid" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>{feed.connection_type === "teller" ? "Teller" : feed.connection_type === "plaid" ? "Plaid" : "CSV"}</span>
           {feed.last_synced_at && <span className="text-xs text-slate-400">{new Date(feed.last_synced_at).toLocaleDateString()}</span>}
           {reviewCount > 0 && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold">{reviewCount}</span>}
         </div>
