@@ -3952,6 +3952,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="flex items-center gap-2">
   <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-indigo-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</button>
   {isAdmin && <button onClick={async () => {
+  if (!guardSubmit("delPropDoc", d.id)) return;
+  try {
   if (!await showConfirm({ message: `Delete document "${d.name}"?\n\nThis will remove the document from active views. It can be recovered within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from("documents").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", d.id).eq("company_id", companyId);
   if (error) { showToast("Error deleting document: " + error.message, "error"); return; }
@@ -3959,6 +3961,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   logAudit("delete", "documents", "Deleted document: " + d.name, d.id, userProfile?.email, userRole, companyId);
   const { data: refreshed } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("property", selectedProperty.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100);
   setPropertyDocs(refreshed || []);
+  } finally { guardRelease("delPropDoc", d.id); }
   }} className="text-xs text-red-400 hover:text-red-600 flex items-center gap-0.5"><span className="material-icons-outlined text-sm">delete</span></button>}
   </div>
   </div>
@@ -5452,7 +5455,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {isAdmin ? (
   <button onClick={async () => { await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", showTenantDocPrompt).is("archived_at", null); showToast("Document exception approved for " + showTenantDocPrompt, "success"); setShowTenantDocPrompt(null); fetchTenants(); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Admin: Approve Exception</button>
   ) : (
-  <button onClick={async () => { if (!await showConfirm({ message: "Skipping requires admin approval. An approval request will be sent. Continue?" })) return; await supabase.from("doc_exception_requests").insert([{ company_id: companyId, tenant_name: showTenantDocPrompt, property: selectedTenant?.property || "", requested_by: userProfile?.email || "" }]); addNotification("📋", "Document exception request sent for " + showTenantDocPrompt); logAudit("request", "tenants", "Document exception requested for " + showTenantDocPrompt, "", userProfile?.email, userRole, companyId); setShowTenantDocPrompt(null); fetchDocExceptions(); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Request Exception</button>
+  <button onClick={async () => { if (!guardSubmit("reqException")) return; try { if (!await showConfirm({ message: "Skipping requires admin approval. An approval request will be sent. Continue?" })) return; await supabase.from("doc_exception_requests").insert([{ company_id: companyId, tenant_name: showTenantDocPrompt, property: selectedTenant?.property || "", requested_by: userProfile?.email || "" }]); addNotification("📋", "Document exception request sent for " + showTenantDocPrompt); logAudit("request", "tenants", "Document exception requested for " + showTenantDocPrompt, "", userProfile?.email, userRole, companyId); setShowTenantDocPrompt(null); fetchDocExceptions(); } finally { guardRelease("reqException"); } }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Request Exception</button>
   )}
   </div>
   </div>
@@ -5547,6 +5550,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </select>
   </div>
   <button onClick={async () => {
+  if (!guardSubmit("bulkNotice")) return;
+  try {
   const days = parseInt(document.getElementById("bulk-notice-days").value);
   const noticeDate = new Date(); noticeDate.setDate(noticeDate.getDate() + days);
   const moveOutDate = formatLocalDate(noticeDate);
@@ -5558,6 +5563,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   addNotification("📋", `${days}-day notice sent to ${count} tenant(s)`);
   logAudit("update", "tenants", `Bulk ${days}-day notice to ${count} tenants`, "", userProfile?.email, userRole, companyId);
   setBulkAction(null); setSelectedTenants(new Set()); fetchTenants();
+  } finally { guardRelease("bulkNotice"); }
   }} className="w-full bg-orange-600 text-white text-sm py-2.5 rounded-lg hover:bg-orange-700 font-semibold">Send Notices</button>
   </div>
   </Modal>
@@ -5576,6 +5582,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </select>
   </div>
   <button onClick={async () => {
+  if (!guardSubmit("bulkCharge")) return;
+  try {
   const desc = document.getElementById("bulk-charge-desc").value;
   const amt = Math.abs(Number(document.getElementById("bulk-charge-amt").value));
   const acctCode = document.getElementById("bulk-charge-acct").value;
@@ -5603,6 +5611,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (count < selectedTenants.size) showToast((selectedTenants.size - count) + " charge(s) failed — check the Accounting module.", "error");
   logAudit("create", "tenants", `Bulk charge $${amt} "${desc}" to ${count} tenants (acct ${acctCode})`, "", userProfile?.email, userRole, companyId);
   setBulkAction(null); setSelectedTenants(new Set()); fetchTenants();
+  } finally { guardRelease("bulkCharge"); }
   }} className="w-full bg-blue-600 text-white text-sm py-2.5 rounded-lg hover:bg-blue-700 font-semibold">Add Charges</button>
   </div>
   </Modal>
@@ -5616,6 +5625,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </select>
   </div>
   <button onClick={async () => {
+  if (!guardSubmit("bulkStatus")) return;
+  try {
   const newStatus = document.getElementById("bulk-status-val").value;
   let count = 0;
   for (const tid of selectedTenants) {
@@ -5625,6 +5636,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   addNotification("👤", `Status changed to "${newStatus}" for ${count} tenant(s)`);
   logAudit("update", "tenants", `Bulk status change to ${newStatus} for ${count} tenants`, "", userProfile?.email, userRole, companyId);
   setBulkAction(null); setSelectedTenants(new Set()); fetchTenants();
+  } finally { guardRelease("bulkStatus"); }
   }} className="w-full bg-purple-600 text-white text-sm py-2.5 rounded-lg hover:bg-purple-700 font-semibold">Update Status</button>
   </div>
   </Modal>
@@ -5637,6 +5649,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {[...selectedTenants].map(tid => { const t = tenants.find(x => x.id === tid); return t ? <div key={tid}>{t.name} — {t.property}{safeNum(t.balance) > 0 ? ` (owes ${formatCurrency(t.balance)})` : ""}</div> : null; })}
   </div>
   <button onClick={async () => {
+  if (!guardSubmit("bulkArchive")) return;
+  try {
   let count = 0;
   for (const tid of selectedTenants) {
   const t = tenants.find(x => x.id === tid);
@@ -5647,6 +5661,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   addNotification("📦", `${count} tenant(s) archived`);
   logAudit("archive", "tenants", `Bulk archived ${count} tenants`, "", userProfile?.email, userRole, companyId);
   setBulkAction(null); setSelectedTenants(new Set()); fetchTenants();
+  } finally { guardRelease("bulkArchive"); }
   }} className="w-full bg-red-600 text-white text-sm py-2.5 rounded-lg hover:bg-red-700 font-semibold">Confirm Delete</button>
   </div>
   </Modal>
@@ -14345,7 +14360,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   <div className="font-semibold text-indigo-800 text-sm">{r.name}</div>
   <div className="text-xs text-indigo-500">{r.grace_days} day grace · {r.fee_type === "flat" ? `${formatCurrency(r.fee_amount)} flat` : `${r.fee_amount}% of rent`}</div>
   </div>
-  <button onClick={async () => { if(!await showConfirm({ message: "Delete this late fee rule?" }))return; await supabase.from("late_fee_rules").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", r.id).eq("company_id", companyId); fetchData(); }} className="text-xs text-red-400 hover:text-red-600">Delete</button>
+  <button onClick={async () => { if(!guardSubmit("delLateFee",r.id))return; try{ if(!await showConfirm({ message: "Delete this late fee rule?" }))return; await supabase.from("late_fee_rules").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", r.id).eq("company_id", companyId); fetchData(); }finally{guardRelease("delLateFee",r.id);} }} className="text-xs text-red-400 hover:text-red-600">Delete</button>
   </div>
   ))}
   </div>
