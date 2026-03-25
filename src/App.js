@@ -1619,17 +1619,16 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   useEffect(() => {
     async function initWizard() {
       try {
-        // Check for existing in-progress wizard for this property
+        const addr = savedAddress || wizardData.address || "NEW";
+        // Check for existing wizard (in_progress first, then completed for edit mode)
         const { data: existing } = await supabase.from("property_setup_wizard").select("*")
-          .eq("company_id", companyId).eq("property_address", savedAddress || wizardData.address || "NEW").eq("status", "in_progress").maybeSingle();
+          .eq("company_id", companyId).eq("property_address", addr).eq("status", "in_progress").maybeSingle();
         if (existing) {
           setWizardId(existing.id);
-          // Restore progress
           const savedStep = existing.current_step || 1;
           const savedCompleted = new Set(existing.completed_steps || []);
           setStep(savedStep);
           setCompletedSteps(savedCompleted);
-          // Restore form data if available
           if (existing.wizard_data) {
             try {
             const wd = typeof existing.wizard_data === "string" ? JSON.parse(existing.wizard_data) : existing.wizard_data;
@@ -1646,11 +1645,39 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
           }
           return;
         }
+        // Edit mode: check for completed wizard and reopen it
+        if (wizardData.isEdit) {
+          const { data: completed } = await supabase.from("property_setup_wizard").select("*")
+            .eq("company_id", companyId).eq("property_address", addr).eq("status", "completed").order("updated_at", { ascending: false }).limit(1).maybeSingle();
+          if (completed) {
+            // Reopen as in_progress
+            await supabase.from("property_setup_wizard").update({ status: "in_progress" }).eq("id", completed.id);
+            setWizardId(completed.id);
+            setStep(1); // Start from step 1 so they can review/edit
+            setCompletedSteps(new Set(completed.completed_steps || []));
+            if (completed.wizard_data) {
+              try {
+              const wd = typeof completed.wizard_data === "string" ? JSON.parse(completed.wizard_data) : completed.wizard_data;
+              if (wd.propForm) setPropForm(wd.propForm);
+              if (wd.tenantForm) setTenantForm(wd.tenantForm);
+              if (wd.savedPropertyId) setSavedPropertyId(wd.savedPropertyId);
+              if (wd.savedAddress) setSavedAddress(wd.savedAddress);
+              if (wd.utilities) setUtilities(wd.utilities);
+              if (wd.hoa) setHoa(wd.hoa);
+              if (wd.loan) setLoan(wd.loan);
+              if (wd.insurance) setInsurance(wd.insurance);
+              if (wd.recurring) setRecurring(wd.recurring);
+              } catch (e) { console.warn("Wizard data restore failed:", e.message); }
+            }
+            return;
+          }
+          // No completed wizard found — create one with existing property data pre-filled
+        }
         // Create new wizard entry
         const { data: created, error } = await supabase.from("property_setup_wizard").insert([{
           company_id: companyId,
           property_id: String(savedPropertyId || wizardData.propertyId || ""),
-          property_address: savedAddress || wizardData.address || "NEW",
+          property_address: addr,
           status: "in_progress",
           current_step: 1,
           completed_steps: [],
@@ -3502,12 +3529,31 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const [historicalTenantDetail, setHistoricalTenantDetail] = useState(null); // { tenant, ledger, docs, messages, leases, activeTab }
   const [pmCode, setPmCode] = useState("");
   const [incompleteWizards, setIncompleteWizards] = useState([]);
+  const [allWizards, setAllWizards] = useState([]);
 
-  // Fetch incomplete wizards on load
+  // Fetch all wizards on load (in_progress + completed)
   useEffect(() => {
-  supabase.from("property_setup_wizard").select("*").eq("company_id", companyId).eq("status", "in_progress")
-  .then(({ data }) => setIncompleteWizards(data || []));
+  supabase.from("property_setup_wizard").select("*").eq("company_id", companyId).in("status", ["in_progress", "completed"])
+  .then(({ data }) => {
+    const wizards = data || [];
+    setAllWizards(wizards);
+    setIncompleteWizards(wizards.filter(w => w.status === "in_progress"));
+  });
   }, [companyId, showPropertyWizard]);
+
+  // Calculate setup completeness for a property
+  function getSetupStatus(property) {
+    const wizard = allWizards.find(w => w.property_address === property.address);
+    const completedSteps = wizard?.completed_steps || [];
+    const isOccupied = property.status === "occupied";
+    // All possible optional steps
+    const optionalSteps = ["utilities", "hoa", "documents", "insurance"];
+    if (isOccupied) optionalSteps.push("tenant_lease", "recurring_rent");
+    if (userRole === "admin" || userRole === "owner") optionalSteps.push("loan");
+    const missing = optionalSteps.filter(s => !completedSteps.includes(s));
+    const isInProgress = wizard?.status === "in_progress";
+    return { wizard, completedSteps, missing, total: optionalSteps.length, completed: optionalSteps.length - missing.length, isInProgress, isComplete: missing.length === 0 && !isInProgress };
+  }
 
   const allCols = [
   { id: "address", label: "Address" }, { id: "type", label: "Type" }, { id: "status", label: "Status" },
@@ -3832,7 +3878,14 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {!isReadOnly(selectedProperty) && <button onClick={() => { setEditingProperty(selectedProperty); setForm({ address_line_1: selectedProperty.address_line_1 || selectedProperty.address || "", address_line_2: selectedProperty.address_line_2 || "", city: selectedProperty.city || "", state: selectedProperty.state || "", zip: selectedProperty.zip || "", type: selectedProperty.type, status: selectedProperty.status, rent: selectedProperty.rent || "", security_deposit: selectedProperty.security_deposit || "", tenant: selectedProperty.tenant || "", tenant_email: selectedProperty._tenantEmail || "", tenant_phone: selectedProperty._tenantPhone || "", lease_start: selectedProperty.lease_start || "", lease_end: selectedProperty.lease_end || "", notes: selectedProperty.notes || "" }); setShowForm(true); setSelectedProperty(null); }} className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors"><span className="material-icons-outlined text-indigo-600">edit</span>Edit Property</button>}
   <button onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })} className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors"><span className="material-icons-outlined text-indigo-600">upload_file</span>Upload Document</button>
   <button onClick={() => { setPage("maintenance"); setSelectedProperty(null); }} className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors"><span className="material-icons-outlined text-indigo-600">build</span>New Work Order</button>
-  {incompleteWizards.some(w => w.property_address === selectedProperty?.address) && (
+  {(() => {
+  const ss = getSetupStatus(selectedProperty);
+  const isInProg = ss.isInProgress;
+  const hasMissing = ss.missing.length > 0;
+  const label = isInProg ? "Resume Property Setup" : hasMissing ? `Complete Setup (${ss.missing.length} remaining)` : "Edit Property Setup";
+  const icon = isInProg ? "construction" : hasMissing ? "pending" : "settings";
+  const colors = isInProg || hasMissing ? "bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100" : "bg-white border-slate-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/30";
+  return (
   <button onClick={() => {
   setShowPropertyWizard({
   propertyId: selectedProperty.id,
@@ -3843,10 +3896,12 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   leaseStart: selectedProperty.lease_start || "",
   leaseEnd: selectedProperty.lease_end || "",
   securityDeposit: Number(selectedProperty.security_deposit) || 0,
+  isEdit: true,
   });
   setSelectedProperty(null);
-  }} className="w-full flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 hover:bg-amber-100 transition-colors"><span className="material-icons-outlined text-amber-600">construction</span>Resume Property Setup</button>
-  )}
+  }} className={`w-full flex items-center gap-3 border rounded-xl px-4 py-3 text-sm transition-colors ${colors}`}><span className={`material-icons-outlined ${isInProg || hasMissing ? "text-amber-600" : "text-indigo-600"}`}>{icon}</span>{label}</button>
+  );
+  })()}
   </div>
   </div>
   )}
@@ -4101,6 +4156,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   {isReadOnly(p) && <div className="mt-2 text-xs text-purple-600 bg-purple-50 rounded-lg px-2 py-1">🔒 Managed property — view only</div>}
   {p.status === "inactive" && <div className="mt-2 text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-1">⏸ Inactive — accounting history preserved</div>}
+  {(() => { const ss = getSetupStatus(p); return (!ss.isComplete && ss.total > 0) ? <div className="mt-2 text-xs text-blue-600 bg-blue-50 rounded-lg px-2 py-1 flex items-center gap-1"><span className="material-icons-outlined text-sm">pending</span>Setup Incomplete — {ss.missing.length} step{ss.missing.length !== 1 ? "s" : ""} remaining</div> : null; })()}
   <div className="flex gap-2 mt-3 pt-3 border-t border-indigo-50/50 flex-wrap" onClick={e => e.stopPropagation()}>
   {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
   {!isReadOnly(p) && isAdmin && p.status !== "inactive" && <button onClick={() => deactivateProperty(p)} className="text-xs text-amber-600 hover:underline">Deactivate</button>}
