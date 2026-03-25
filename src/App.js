@@ -10674,6 +10674,8 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   <button onClick={() => setSelectedInspection(insp)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">📋 View Report</button>
   {insp.status === "scheduled" && <button onClick={() => updateStatus(insp.id, "completed")} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">✓ Mark Complete</button>}
   {insp.status === "completed" && <button onClick={async () => {
+  if (!guardSubmit("woFromInsp", insp.id)) return;
+  try {
   const items = (() => { try { return JSON.parse(insp.items || "{}"); } catch { return {}; } })();
   const failed = Object.entries(items).filter(([, v]) => v.pass === false).map(([k]) => k);
   if (failed.length === 0) { showToast("No failed items in this inspection.", "info"); return; }
@@ -10681,6 +10683,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   const { error } = await supabase.from("work_orders").insert([{ company_id: companyId, property: insp.property, issue: `Inspection findings: ${failed.join(", ")}`, priority: "normal", status: "open", notes: `Auto-created from ${insp.type} inspection on ${insp.date}` }]);
   if (error) { showToast("Error: " + error.message, "error"); return; }
   addNotification("🔧", `Work order created from inspection at ${insp.property}`);
+  } finally { guardRelease("woFromInsp", insp.id); }
   }} className="text-xs text-orange-600 border border-orange-200 px-3 py-1 rounded-lg hover:bg-orange-50"><span className="material-icons-outlined text-xs align-middle">build</span> Create Work Order</button>}
   </div>
   </div>
@@ -14065,13 +14068,15 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   }
 
   async function toggleActive(s) {
-  // #11: Use 'enabled' consistently for autopay field name
+  if (!guardSubmit("toggleAutopay", s.id)) return;
+  try {
   const newState = !s.enabled;
   const { error: togErr } = await supabase.from("autopay_schedules").update({ enabled: newState }).eq("company_id", companyId).eq("id", s.id);
   if (togErr) { showToast("Error toggling autopay: " + togErr.message, "error"); return; }
   addNotification("🔄", `Autopay ${newState ? "activated" : "paused"} for ${s.tenant}`);
   logAudit("update", "autopay", `Autopay ${newState ? "enabled" : "disabled"}: ${s.tenant}`, s.id, userProfile?.email, userRole, companyId);
   fetchData();
+  } finally { guardRelease("toggleAutopay", s.id); }
   }
 
   async function deleteSchedule(id, tenant) {
