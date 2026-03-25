@@ -8484,6 +8484,8 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   const [expandedTxn, setExpandedTxn] = useState(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [editingRule, setEditingRule] = useState(null);
+  const [ruleForm, setRuleForm] = useState({ name: "", condField: "description", condOp: "contains", condValue: "", condDirection: "all", condAmountMin: "", condAmountMax: "", actionAccountId: "", actionAccountName: "", actionClassId: "", actionPayee: "", actionMemo: "", autoAccept: false, priority: 100 });
   const [showNewAccount, setShowNewAccount] = useState(false);
   const [newAccountForm, setNewAccountForm] = useState({ name: "", type: "checking", masked_number: "", institution_name: "" });
 
@@ -8663,12 +8665,17 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       accepted_count: imported, skipped_count: skipped, duplicate_count: duplicates
     }).eq("id", batchId);
 
-    // Apply rules if enabled
-    if (wizOptions.autoApplyRules && rules.length > 0) {
-      // Phase 3 will implement full rules engine
+    // Apply rules to newly imported transactions
+    let ruleApplied = 0;
+    if (wizOptions.autoApplyRules && rules.length > 0 && imported > 0) {
+      const { data: newTxns } = await supabase.from("bank_feed_transaction").select("id")
+        .eq("company_id", companyId).eq("bank_import_batch_id", batchId).eq("status", "for_review");
+      if (newTxns && newTxns.length > 0) {
+        ruleApplied = await applyRulesToTransactions(newTxns.map(t => t.id));
+      }
     }
 
-    setWizResult({ imported, skipped, duplicates, total: validRows.length });
+    setWizResult({ imported, skipped, duplicates, total: validRows.length, ruleApplied });
     setWizStep(6);
     fetchAll();
   }
@@ -8986,6 +8993,128 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     fetchAll();
   }
 
+  // --- Rules Engine ---
+  function evaluateRules(txn, rulesList) {
+    const desc = (txn.bank_description_clean || txn.bank_description_raw || "").toLowerCase();
+    const amt = Math.abs(safeNum(txn.amount));
+    for (const rule of rulesList) {
+      if (!rule.enabled) continue;
+      const cond = rule.condition_json || {};
+      let matched = false;
+      // Text condition
+      const val = (cond.value || "").toLowerCase();
+      if (val) {
+        switch (cond.operator || "contains") {
+          case "contains": matched = desc.includes(val); break;
+          case "starts_with": matched = desc.startsWith(val); break;
+          case "ends_with": matched = desc.endsWith(val); break;
+          case "equals": matched = desc === val; break;
+          case "regex": try { matched = new RegExp(cond.value, "i").test(desc); } catch { matched = false; } break;
+          default: matched = desc.includes(val);
+        }
+      } else { matched = true; } // no text condition = match all
+      // Direction filter
+      if (cond.direction && cond.direction !== "all" && txn.direction !== cond.direction) matched = false;
+      // Amount range
+      if (cond.amount_min && amt < Number(cond.amount_min)) matched = false;
+      if (cond.amount_max && amt > Number(cond.amount_max)) matched = false;
+      // Bank account scope
+      if (rule.bank_account_feed_id && rule.bank_account_feed_id !== txn.bank_account_feed_id) matched = false;
+      if (matched) {
+        return { rule, action: rule.action_json || {} };
+      }
+      if (matched && rule.stop_processing) break;
+    }
+    return null;
+  }
+
+  async function applyRulesToTransactions(txnIds) {
+    if (rules.length === 0) return 0;
+    const { data: txns } = await supabase.from("bank_feed_transaction").select("*").in("id", txnIds).eq("status", "for_review");
+    if (!txns || txns.length === 0) return 0;
+    let applied = 0;
+    for (const txn of txns) {
+      const result = evaluateRules(txn, rules);
+      if (result) {
+        const { action } = result;
+        // Store suggestion on the transaction
+        await supabase.from("bank_feed_transaction").update({
+          suggestion_status: "suggested_rule",
+          raw_payload_json: { ...(txn.raw_payload_json || {}), _suggestion: {
+            accountId: action.account_id || "", accountName: action.account_name || "",
+            classId: action.class_id || "", payee: action.payee || "", memo: action.memo || "",
+            ruleId: result.rule.id, ruleName: result.rule.name
+          }}
+        }).eq("id", txn.id);
+        // Auto-accept if rule says so
+        if (result.rule.auto_accept && action.account_id) {
+          await acceptTransaction(txn, action.account_id, action.account_name || "", action.memo || "", action.class_id || "");
+        }
+        applied++;
+      }
+    }
+    return applied;
+  }
+
+  async function saveRule() {
+    const cond = { field: ruleForm.condField, operator: ruleForm.condOp, value: ruleForm.condValue };
+    if (ruleForm.condDirection !== "all") cond.direction = ruleForm.condDirection;
+    if (ruleForm.condAmountMin) cond.amount_min = Number(ruleForm.condAmountMin);
+    if (ruleForm.condAmountMax) cond.amount_max = Number(ruleForm.condAmountMax);
+    const action = {};
+    if (ruleForm.actionAccountId) { action.account_id = ruleForm.actionAccountId; action.account_name = ruleForm.actionAccountName; }
+    if (ruleForm.actionClassId) action.class_id = ruleForm.actionClassId;
+    if (ruleForm.actionPayee) action.payee = ruleForm.actionPayee;
+    if (ruleForm.actionMemo) action.memo = ruleForm.actionMemo;
+    if (!ruleForm.name.trim()) { showToast("Rule name is required.", "error"); return; }
+    if (!ruleForm.condValue.trim() && !ruleForm.condAmountMin && !ruleForm.condAmountMax) { showToast("At least one condition is required.", "error"); return; }
+    if (editingRule) {
+      const { error } = await supabase.from("bank_transaction_rule").update({
+        name: ruleForm.name, priority: Number(ruleForm.priority) || 100,
+        condition_json: cond, action_json: action, auto_accept: ruleForm.autoAccept
+      }).eq("id", editingRule.id);
+      if (error) { showToast("Error: " + error.message, "error"); return; }
+      showToast("Rule updated.", "success");
+    } else {
+      const { error } = await supabase.from("bank_transaction_rule").insert([{
+        company_id: companyId, name: ruleForm.name, priority: Number(ruleForm.priority) || 100,
+        enabled: true, condition_json: cond, action_json: action, auto_accept: ruleForm.autoAccept
+      }]);
+      if (error) { showToast("Error: " + error.message, "error"); return; }
+      showToast("Rule created.", "success");
+    }
+    setEditingRule(null);
+    setRuleForm({ name: "", condField: "description", condOp: "contains", condValue: "", condDirection: "all", condAmountMin: "", condAmountMax: "", actionAccountId: "", actionAccountName: "", actionClassId: "", actionPayee: "", actionMemo: "", autoAccept: false, priority: 100 });
+    fetchAll();
+  }
+
+  async function deleteRule(ruleId) {
+    if (!await showConfirm({ message: "Delete this rule?" })) return;
+    await supabase.from("bank_transaction_rule").delete().eq("id", ruleId);
+    showToast("Rule deleted.", "success");
+    fetchAll();
+  }
+
+  async function toggleRule(rule) {
+    await supabase.from("bank_transaction_rule").update({ enabled: !rule.enabled }).eq("id", rule.id);
+    fetchAll();
+  }
+
+  function startEditRule(rule) {
+    const c = rule.condition_json || {};
+    const a = rule.action_json || {};
+    setEditingRule(rule);
+    setRuleForm({
+      name: rule.name, condField: c.field || "description", condOp: c.operator || "contains",
+      condValue: c.value || "", condDirection: c.direction || "all",
+      condAmountMin: c.amount_min || "", condAmountMax: c.amount_max || "",
+      actionAccountId: a.account_id || "", actionAccountName: a.account_name || "",
+      actionClassId: a.class_id || "", actionPayee: a.payee || "", actionMemo: a.memo || "",
+      autoAccept: rule.auto_accept || false, priority: rule.priority || 100
+    });
+    setShowRules(true);
+  }
+
   // Bulk actions
   async function bulkAccept(accountId, accountName) {
     const selected = transactions.filter(t => selectedTxns.has(t.id) && t.status === "for_review");
@@ -9130,13 +9259,16 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     <tr className={`border-b border-slate-100 hover:bg-slate-50 cursor-pointer ${isExpanded ? "bg-indigo-50/50" : ""}`} onClick={() => setExpandedTxn(isExpanded ? null : txn.id)}>
       {activeTab === "for_review" && <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><input type="checkbox" checked={selectedTxns.has(txn.id)} onChange={e => { const s = new Set(selectedTxns); e.target.checked ? s.add(txn.id) : s.delete(txn.id); setSelectedTxns(s); }} className="accent-indigo-600" /></td>}
       <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{txn.posted_date}</td>
-      <td className="px-3 py-2.5 text-slate-800 max-w-xs truncate">{txn.bank_description_clean || txn.bank_description_raw}</td>
+      <td className="px-3 py-2.5 text-slate-800 max-w-xs truncate">
+        {txn.bank_description_clean || txn.bank_description_raw}
+        {txn.suggestion_status === "suggested_rule" && <span className="ml-1.5 text-xs bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full">Rule</span>}
+      </td>
       <td className="px-3 py-2.5 text-slate-500 truncate max-w-32">{txn.payee_normalized || "—"}</td>
       {activeTab === "categorized" && <td className="px-3 py-2.5 text-xs"><span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">Posted</span></td>}
       {activeTab === "excluded" && <td className="px-3 py-2.5 text-xs text-red-600">{txn.exclusion_reason || "—"}</td>}
       <td className={`px-3 py-2.5 text-right font-mono font-semibold ${txn.direction === "inflow" ? "text-emerald-700" : "text-red-600"}`}>{txn.direction === "inflow" ? "+" : "-"}${safeNum(txn.amount).toFixed(2)}</td>
       <td className="px-3 py-2.5 text-right whitespace-nowrap">
-        {txn.status === "for_review" && <button onClick={e => { e.stopPropagation(); setExpandedTxn(isExpanded ? null : txn.id); }} className="text-xs text-indigo-600 font-semibold hover:underline">Add</button>}
+        {txn.status === "for_review" && <button onClick={e => { e.stopPropagation(); if (isExpanded) { setExpandedTxn(null); } else { setExpandedTxn(txn.id); setActionMode("add"); const sug = txn.raw_payload_json?._suggestion; if (sug) setAddForm({ accountId: sug.accountId || "", accountName: sug.accountName || "", memo: sug.memo || "", classId: sug.classId || "" }); else setAddForm({ accountId: "", accountName: "", memo: "", classId: "" }); }}} className="text-xs text-indigo-600 font-semibold hover:underline">{txn.suggestion_status === "suggested_rule" ? "Review" : "Add"}</button>}
         {["categorized", "matched", "posted"].includes(txn.status) && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-slate-400 hover:underline">Undo</button>}
         {txn.status === "excluded" && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-blue-600 hover:underline">Restore</button>}
       </td>
@@ -9404,6 +9536,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
         <p><strong>{wizResult.imported}</strong> transactions imported</p>
         {wizResult.duplicates > 0 && <p>{wizResult.duplicates} duplicates skipped</p>}
         {wizResult.skipped > 0 && <p>{wizResult.skipped} rows skipped (errors)</p>}
+        {wizResult.ruleApplied > 0 && <p className="text-violet-600">{wizResult.ruleApplied} auto-categorized by rules</p>}
       </div>
       <button onClick={() => { setShowImportWizard(false); setActiveTab("for_review"); }} className="bg-slate-800 text-white text-sm px-6 py-2 rounded-lg">Review Transactions</button>
     </div>
@@ -9417,16 +9550,84 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   {showRules && (
   <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 space-y-3">
     <div className="flex items-center justify-between">
-      <div><p className="text-sm font-bold text-violet-900">Auto-Categorization Rules</p><p className="text-xs text-violet-600">Rules will be applied to new imports (Phase 3: full rules engine)</p></div>
+      <div><p className="text-sm font-bold text-violet-900">Auto-Categorization Rules</p><p className="text-xs text-violet-600">Rules run in priority order on new imports. Lower number = higher priority.</p></div>
       <button onClick={() => setShowRules(false)} className="text-violet-400 hover:text-violet-700 text-lg">✕</button>
     </div>
-    {rules.length === 0 && <p className="text-sm text-violet-500 text-center py-4">No rules yet. Rules engine coming in Phase 3.</p>}
-    {rules.map(r => (
-    <div key={r.id} className="text-xs bg-white rounded-lg p-2 border border-violet-100 flex items-center gap-2">
-      <span className="text-slate-400">If</span><span className="bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded">{JSON.stringify(r.condition_json)}</span>
-      <span className="text-slate-400">→</span><span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">{JSON.stringify(r.action_json)}</span>
+
+    {/* Existing Rules */}
+    {rules.length === 0 && <p className="text-sm text-violet-500 text-center py-2">No rules yet. Create one below.</p>}
+    <div className="max-h-48 overflow-y-auto space-y-1.5">
+    {rules.map(r => {
+      const c = r.condition_json || {};
+      const a = r.action_json || {};
+      return (
+      <div key={r.id} className={`text-xs bg-white rounded-lg p-2.5 border ${r.enabled ? "border-violet-100" : "border-slate-200 opacity-50"} flex items-center gap-2`}>
+        <span className="text-slate-400 shrink-0 w-6 text-center font-mono">{r.priority}</span>
+        <div className="flex-1 min-w-0">
+          <span className="font-semibold text-slate-700">{r.name}</span>
+          <div className="text-slate-400 mt-0.5">If {c.field || "desc"} <span className="text-violet-600">{c.operator || "contains"}</span> "<span className="font-mono">{c.value}</span>"
+          {c.direction && c.direction !== "all" && <span> · {c.direction}</span>}
+          {c.amount_min && <span> · min ${c.amount_min}</span>}
+          {c.amount_max && <span> · max ${c.amount_max}</span>}
+          → <span className="text-blue-600">{a.account_name || a.account_id || "no category"}</span>
+          {r.auto_accept && <span className="ml-1 bg-amber-100 text-amber-700 px-1 py-0.5 rounded">auto-accept</span>}
+          </div>
+        </div>
+        <div className="flex gap-1 shrink-0">
+          <button onClick={() => toggleRule(r)} className={`px-1.5 py-0.5 rounded text-xs ${r.enabled ? "text-emerald-600" : "text-slate-400"}`}>{r.enabled ? "On" : "Off"}</button>
+          <button onClick={() => startEditRule(r)} className="text-indigo-500 hover:underline">Edit</button>
+          <button onClick={() => deleteRule(r.id)} className="text-red-400 hover:text-red-600">✕</button>
+        </div>
+      </div>
+      );
+    })}
     </div>
-    ))}
+
+    {/* Add/Edit Rule Form */}
+    <div className="border-t border-violet-200 pt-3">
+      <p className="text-xs font-semibold text-violet-700 mb-2">{editingRule ? "Edit Rule" : "New Rule"}</p>
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <div><label className="text-xs text-slate-500 block mb-0.5">Rule Name *</label>
+          <input type="text" value={ruleForm.name} onChange={e => setRuleForm({...ruleForm, name: e.target.value})} placeholder="e.g. Rent payments" className="w-full border border-violet-200 rounded-lg px-2 py-1.5 text-xs" /></div>
+        <div><label className="text-xs text-slate-500 block mb-0.5">Priority</label>
+          <input type="number" value={ruleForm.priority} onChange={e => setRuleForm({...ruleForm, priority: e.target.value})} min="1" max="999" className="w-full border border-violet-200 rounded-lg px-2 py-1.5 text-xs" /></div>
+      </div>
+      <p className="text-xs text-slate-400 mb-1">Conditions</p>
+      <div className="grid grid-cols-3 gap-2 mb-2">
+        <select value={ruleForm.condOp} onChange={e => setRuleForm({...ruleForm, condOp: e.target.value})} className="border border-violet-200 rounded-lg px-2 py-1.5 text-xs">
+          <option value="contains">Contains</option><option value="starts_with">Starts with</option><option value="ends_with">Ends with</option><option value="equals">Equals</option><option value="regex">Regex</option>
+        </select>
+        <input type="text" value={ruleForm.condValue} onChange={e => setRuleForm({...ruleForm, condValue: e.target.value})} placeholder="e.g. rent, mortgage..." className="border border-violet-200 rounded-lg px-2 py-1.5 text-xs col-span-2" />
+      </div>
+      <div className="grid grid-cols-3 gap-2 mb-2">
+        <select value={ruleForm.condDirection} onChange={e => setRuleForm({...ruleForm, condDirection: e.target.value})} className="border border-violet-200 rounded-lg px-2 py-1.5 text-xs">
+          <option value="all">Any direction</option><option value="inflow">Money In</option><option value="outflow">Money Out</option>
+        </select>
+        <input type="number" value={ruleForm.condAmountMin} onChange={e => setRuleForm({...ruleForm, condAmountMin: e.target.value})} placeholder="Min $" className="border border-violet-200 rounded-lg px-2 py-1.5 text-xs" />
+        <input type="number" value={ruleForm.condAmountMax} onChange={e => setRuleForm({...ruleForm, condAmountMax: e.target.value})} placeholder="Max $" className="border border-violet-200 rounded-lg px-2 py-1.5 text-xs" />
+      </div>
+      <p className="text-xs text-slate-400 mb-1">Actions</p>
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <div><label className="text-xs text-slate-500 block mb-0.5">Category / Account</label>
+          <select value={ruleForm.actionAccountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); setRuleForm({...ruleForm, actionAccountId: e.target.value, actionAccountName: a?.name || ""}); }} className="w-full border border-violet-200 rounded-lg px-2 py-1.5 text-xs">
+            <option value="">Select...</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a => a.type === type && a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}
+          </select></div>
+        <div><label className="text-xs text-slate-500 block mb-0.5">Class</label>
+          <select value={ruleForm.actionClassId} onChange={e => setRuleForm({...ruleForm, actionClassId: e.target.value})} className="w-full border border-violet-200 rounded-lg px-2 py-1.5 text-xs">
+            <option value="">No class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></div>
+        <div><label className="text-xs text-slate-500 block mb-0.5">Payee</label>
+          <input type="text" value={ruleForm.actionPayee} onChange={e => setRuleForm({...ruleForm, actionPayee: e.target.value})} placeholder="Optional" className="w-full border border-violet-200 rounded-lg px-2 py-1.5 text-xs" /></div>
+        <div><label className="text-xs text-slate-500 block mb-0.5">Memo</label>
+          <input type="text" value={ruleForm.actionMemo} onChange={e => setRuleForm({...ruleForm, actionMemo: e.target.value})} placeholder="Optional" className="w-full border border-violet-200 rounded-lg px-2 py-1.5 text-xs" /></div>
+      </div>
+      <label className="flex items-center gap-2 text-xs mb-3"><input type="checkbox" checked={ruleForm.autoAccept} onChange={e => setRuleForm({...ruleForm, autoAccept: e.target.checked})} className="accent-violet-600" /> <span className="text-slate-600">Auto-accept (skip review — use with caution)</span></label>
+      <div className="flex gap-2">
+        <button onClick={saveRule} className="bg-violet-600 text-white text-xs px-4 py-1.5 rounded-lg hover:bg-violet-700">{editingRule ? "Update Rule" : "Create Rule"}</button>
+        {editingRule && <button onClick={() => { setEditingRule(null); setRuleForm({ name: "", condField: "description", condOp: "contains", condValue: "", condDirection: "all", condAmountMin: "", condAmountMax: "", actionAccountId: "", actionAccountName: "", actionClassId: "", actionPayee: "", actionMemo: "", autoAccept: false, priority: 100 }); }} className="text-xs text-slate-400">Cancel</button>}
+        {transactions.filter(t => t.status === "for_review").length > 0 && <button onClick={async () => { const ids = transactions.filter(t => t.status === "for_review").map(t => t.id); const n = await applyRulesToTransactions(ids); showToast(`Rules applied to ${n} transaction(s).`, "success"); }} className="text-xs text-violet-600 hover:underline ml-auto">Re-apply rules to all For Review</button>}
+      </div>
+    </div>
   </div>
   )}
 
