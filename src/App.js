@@ -7862,642 +7862,523 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   );
 }
 
-// --- Reports Sub-Page ---
-function AcctReports({ accounts, journalEntries, classes, companyName, onOpenLedger }) {
-  const [activeReport, setActiveReport] = useState("pl");
+// --- Reports Center (QuickBooks-style) ---
+function AcctReports({ accounts, journalEntries, classes, companyName, companyId, userProfile, showToast, onOpenLedger }) {
+  const [activeView, setActiveView] = useState("catalog"); // catalog | viewer
+  const [currentReport, setCurrentReport] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [catalogTab, setCatalogTab] = useState("standard"); // standard | favorites | custom
+  const [favorites, setFavorites] = useState(() => { try { const s = localStorage.getItem(`report_favorites_${companyId}`); return s ? JSON.parse(s) : []; } catch { return []; } });
+  const [collapsedCats, setCollapsedCats] = useState({});
+
+  // Report config (shared toolbar state)
   const [period, setPeriod] = useState("This Year");
   const [customDates, setCustomDates] = useState({ start: `${new Date().getFullYear()}-01-01`, end: `${new Date().getFullYear()}-12-31` });
   const [asOfDate, setAsOfDate] = useState(acctToday());
-  const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id || "");
-  const [classFilter, setClassFilter] = useState("");
-  const [showARSub, setShowARSub] = useState(false);
   const [compareTo, setCompareTo] = useState("");
+  const [classFilter, setClassFilter] = useState("");
+  const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id || "");
   const [showIncome, setShowIncome] = useState(true);
   const [showExpenses, setShowExpenses] = useState(true);
   const [showAssets, setShowAssets] = useState(true);
   const [showLiabilities, setShowLiabilities] = useState(true);
   const [showEquity, setShowEquity] = useState(true);
+  const [showARSub, setShowARSub] = useState(false);
   const [glColumns, setGlColumns] = useState(() => { try { const s = localStorage.getItem("gl_columns"); return s ? JSON.parse(s) : { date: true, entry: true, description: true, memo: true, debit: true, credit: true, balance: true }; } catch { return { date: true, entry: true, description: true, memo: true, debit: true, credit: true, balance: true }; } });
   const [showColPicker, setShowColPicker] = useState(false);
   const toggleGlCol = (col) => { const next = { ...glColumns, [col]: !glColumns[col] }; setGlColumns(next); try { localStorage.setItem("gl_columns", JSON.stringify(next)); } catch {} };
+
+  // Extra data for property reports (fetched on demand)
+  const [properties, setProperties] = useState([]);
+  const [tenants, setTenants] = useState([]);
+  const [leases, setLeases] = useState([]);
+  const [workOrders, setWorkOrders] = useState([]);
+  const [extraDataLoaded, setExtraDataLoaded] = useState(false);
+
+  async function loadExtraData() {
+    if (extraDataLoaded) return;
+    const [propRes, tenRes, leaseRes, woRes] = await Promise.all([
+      supabase.from("properties").select("*").eq("company_id", companyId).is("archived_at", null),
+      supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null),
+      supabase.from("leases").select("*").eq("company_id", companyId),
+      supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null),
+    ]);
+    setProperties(propRes.data || []);
+    setTenants(tenRes.data || []);
+    setLeases(leaseRes.data || []);
+    setWorkOrders(woRes.data || []);
+    setExtraDataLoaded(true);
+  }
 
   const computedDates = period === "Custom" ? customDates : getPeriodDates(period);
   const start = computedDates.start;
   const end = computedDates.end;
 
-  const reports = [
-    { id: "pl", label: "Profit & Loss", icon: "trending_up" },
-    { id: "bs", label: "Balance Sheet", icon: "account_balance" },
-    { id: "ar", label: "AR Aging", icon: "timer" },
-    { id: "tb", label: "Trial Balance", icon: "balance" },
-    { id: "gl", label: "General Ledger", icon: "menu_book" },
+  // Toggle favorite
+  function toggleFavorite(reportId) {
+    const next = favorites.includes(reportId) ? favorites.filter(f => f !== reportId) : [...favorites, reportId];
+    setFavorites(next);
+    try { localStorage.setItem(`report_favorites_${companyId}`, JSON.stringify(next)); } catch {}
+    // Also try to save to DB for cross-device sync
+    if (userProfile?.email) {
+      supabase.from("app_users").update({ preferences: { report_favorites: next } }).ilike("email", userProfile.email).then(() => {}).catch(() => {});
+    }
+  }
+
+  // --- Report Catalog Definition ---
+  const REPORT_CATALOG = [
+    { category: "Business Overview", icon: "insights", reports: [
+      { id: "pl", title: "Profit & Loss", description: "Income vs expenses for a period", icon: "trending_up" },
+      { id: "pl_by_class", title: "P&L by Property", description: "P&L broken out by property", icon: "apartment" },
+      { id: "pl_compare", title: "P&L Comparison", description: "Side-by-side P&L for two periods", icon: "compare_arrows" },
+      { id: "bs", title: "Balance Sheet", description: "Assets, liabilities, equity as-of date", icon: "account_balance" },
+      { id: "cash_flow", title: "Cash Flow Statement", description: "Cash inflows/outflows by activity", icon: "water_drop" },
+    ]},
+    { category: "Who Owes You", icon: "people", reports: [
+      { id: "ar_aging_summary", title: "AR Aging Summary", description: "Outstanding AR bucketed by age", icon: "timer" },
+      { id: "ar_aging_detail", title: "AR Aging Detail", description: "Per-tenant AR aging breakdown", icon: "timer" },
+      { id: "customer_balance_summary", title: "Tenant Balance Summary", description: "Total balance per tenant", icon: "people" },
+      { id: "open_invoices", title: "Open Invoices", description: "Unpaid rent charges with days outstanding", icon: "receipt_long" },
+      { id: "collections", title: "Collections Report", description: "Most overdue tenants with contact info", icon: "gavel" },
+    ]},
+    { category: "Expenses & Vendors", icon: "receipt", reports: [
+      { id: "expenses_by_category", title: "Expenses by Category", description: "Expenses grouped by account type", icon: "category" },
+      { id: "expenses_by_vendor", title: "Expenses by Vendor", description: "Total expenses per vendor/payee", icon: "receipt" },
+    ]},
+    { category: "For My Accountant", icon: "calculate", reports: [
+      { id: "tb", title: "Trial Balance", description: "All account balances (debit/credit)", icon: "balance" },
+      { id: "gl", title: "General Ledger", description: "Transaction detail for a single account", icon: "menu_book" },
+      { id: "journal", title: "Journal", description: "All journal entries with full lines", icon: "edit_note" },
+      { id: "txn_by_date", title: "Transaction List by Date", description: "Every posted transaction sorted by date", icon: "list_alt" },
+      { id: "account_list", title: "Account Listing", description: "Chart of Accounts as a report", icon: "format_list_numbered" },
+    ]},
+    { category: "Property Performance", icon: "real_estate_agent", reports: [
+      { id: "rent_roll", title: "Rent Roll", description: "All units with tenant, rent, lease dates", icon: "real_estate_agent" },
+      { id: "vacancy", title: "Vacancy Report", description: "Vacant properties with days vacant", icon: "door_front" },
+      { id: "lease_expirations", title: "Lease Expirations", description: "Leases expiring soon", icon: "event_upcoming" },
+      { id: "rent_collection", title: "Rent Collection", description: "Charged vs collected vs outstanding", icon: "payments" },
+      { id: "work_orders_summary", title: "Work Order Summary", description: "Work orders by status, property, cost", icon: "build" },
+      { id: "security_deposits", title: "Security Deposit Ledger", description: "Deposits held per tenant", icon: "savings" },
+      { id: "noi_by_property", title: "NOI by Property", description: "Net Operating Income per property", icon: "insights" },
+    ]},
   ];
 
-  // P&L
+  const allReports = REPORT_CATALOG.flatMap(c => c.reports);
+
+  function openReport(report) {
+    setCurrentReport(report);
+    setActiveView("viewer");
+    // Load extra data for property reports
+    if (["rent_roll","vacancy","lease_expirations","rent_collection","work_orders_summary","security_deposits","collections","noi_by_property"].includes(report.id)) {
+      loadExtraData();
+    }
+  }
+
+  // --- Computation Functions (NEW reports) ---
+  function getJournalReport(startDate, endDate) {
+    return journalEntries.filter(je => je.status === "posted" && je.date >= startDate && je.date <= endDate)
+      .sort((a,b) => a.date.localeCompare(b.date) || (a.number||"").localeCompare(b.number||""))
+      .map(je => ({ jeId: je.id, jeNumber: je.number, date: je.date, description: je.description, reference: je.reference, lines: (je.lines||[]).map(l => ({ accountName: l.account_name, memo: l.memo, debit: safeNum(l.debit), credit: safeNum(l.credit) })) }));
+  }
+
+  function getTransactionsByDate(startDate, endDate) {
+    const acctMap = {}; accounts.forEach(a => { acctMap[a.id] = a; });
+    const rows = [];
+    journalEntries.filter(je => je.status === "posted" && je.date >= startDate && je.date <= endDate).forEach(je => {
+      (je.lines||[]).forEach(l => {
+        const acct = acctMap[l.account_id];
+        rows.push({ date: je.date, jeNumber: je.number, accountName: acct?.name || l.account_name, accountType: acct?.type || "", description: je.description, memo: l.memo, debit: safeNum(l.debit), credit: safeNum(l.credit) });
+      });
+    });
+    return rows.sort((a,b) => a.date.localeCompare(b.date));
+  }
+
+  function getExpensesByCategory(startDate, endDate) {
+    const plData = getPLData(accounts, journalEntries, startDate, endDate, classFilter || null);
+    const total = plData.totalExpenses || 1;
+    return plData.expenses.map(a => ({ ...a, percentage: Math.round(a.amount / total * 100) })).sort((a,b) => b.amount - a.amount);
+  }
+
+  function getRentRoll() {
+    return properties.map(p => {
+      const t = tenants.find(t => t.property === p.address && t.lease_status === "active");
+      const l = leases.find(l => l.property === p.address && l.status === "active");
+      return { property: p.address, tenant: t?.name || "VACANT", rent: safeNum(p.rent), leaseStart: l?.start_date || p.lease_start || "", leaseEnd: l?.end_date || p.lease_end || "", status: p.status, deposit: safeNum(p.security_deposit) };
+    }).sort((a,b) => a.property.localeCompare(b.property));
+  }
+
+  function getVacancyReport() {
+    return properties.filter(p => p.status === "vacant" || !p.tenant).map(p => {
+      const lastLease = leases.filter(l => l.property === p.address).sort((a,b) => (b.end_date||"").localeCompare(a.end_date||""))[0];
+      const moveOut = lastLease?.end_date ? parseLocalDate(lastLease.end_date) : null;
+      const daysVacant = moveOut ? Math.max(0, Math.floor((new Date() - moveOut) / 86400000)) : 0;
+      return { property: p.address, lastTenant: lastLease?.tenant_name || "—", moveOutDate: lastLease?.end_date || "—", daysVacant, lastRent: safeNum(p.rent), estimatedLost: Math.round(daysVacant * safeNum(p.rent) / 30) };
+    });
+  }
+
+  function getLeaseExpirations(windowDays = 90) {
+    const today = new Date();
+    return leases.filter(l => l.status === "active" && l.end_date).map(l => {
+      const end = parseLocalDate(l.end_date);
+      const days = Math.ceil((end - today) / 86400000);
+      return { tenant: l.tenant_name, property: l.property, leaseStart: l.start_date, leaseEnd: l.end_date, daysUntilExpiration: days, rent: safeNum(l.rent_amount) };
+    }).filter(l => l.daysUntilExpiration <= windowDays && l.daysUntilExpiration >= 0).sort((a,b) => a.daysUntilExpiration - b.daysUntilExpiration);
+  }
+
+  function getWorkOrderSummary(startDate, endDate) {
+    const wos = workOrders.filter(w => w.created_at?.slice(0,10) >= startDate && w.created_at?.slice(0,10) <= endDate);
+    const byStatus = { open: wos.filter(w => w.status === "open").length, in_progress: wos.filter(w => w.status === "in_progress").length, completed: wos.filter(w => w.status === "completed").length };
+    const totalCost = wos.reduce((s, w) => s + safeNum(w.cost), 0);
+    return { byStatus, totalCost, total: wos.length, items: wos.map(w => ({ ...w, daysOpen: Math.floor((new Date() - new Date(w.created_at)) / 86400000) })) };
+  }
+
+  function getNOIByProperty(startDate, endDate) {
+    const classReport = getClassReport(accounts, journalEntries, classes, startDate, endDate);
+    return Object.entries(classReport).map(([name, data]) => ({
+      property: name, revenue: data.revenue || 0, expenses: data.expenses || 0, noi: (data.revenue || 0) - (data.expenses || 0),
+      noiMargin: data.revenue ? Math.round(((data.revenue - data.expenses) / data.revenue) * 100) : 0
+    })).sort((a,b) => b.noi - a.noi);
+  }
+
+  function getCashFlowData(startDate, endDate) {
+    const plData = getPLData(accounts, journalEntries, startDate, endDate, null);
+    const bsStart = getBalanceSheetData(accounts, journalEntries, startDate);
+    const bsEnd = getBalanceSheetData(accounts, journalEntries, endDate);
+    const arChange = bsEnd.totalAR - bsStart.totalAR || (bsEnd.assets.find(a=>a.name?.includes("Receivable"))?.amount||0) - (bsStart.assets.find(a=>a.name?.includes("Receivable"))?.amount||0);
+    const bankStart = bsStart.assets.filter(a => a.subtype === "Bank" || a.name?.includes("Checking") || a.name?.includes("Savings")).reduce((s,a)=>s+a.amount,0);
+    const bankEnd = bsEnd.assets.filter(a => a.subtype === "Bank" || a.name?.includes("Checking") || a.name?.includes("Savings")).reduce((s,a)=>s+a.amount,0);
+    const operating = [{ name: "Net Income", amount: plData.netIncome }, { name: "Change in Accounts Receivable", amount: -arChange }];
+    const opTotal = operating.reduce((s,i) => s + i.amount, 0);
+    return { netIncome: plData.netIncome, operating: { items: operating, total: opTotal }, investing: { items: [], total: 0 }, financing: { items: [], total: 0 }, netChange: bankEnd - bankStart, beginningCash: bankStart, endingCash: bankEnd };
+  }
+
+  // --- CSV Export ---
+  function exportCSV() {
+    if (!currentReport) return;
+    let rows = [];
+    const id = currentReport.id;
+    if (id === "pl") {
+      const plData = getPLData(accounts, journalEntries, start, end, classFilter || null);
+      rows = [["Account","Amount"]]; plData.revenue.forEach(a => rows.push([a.name, a.amount.toFixed(2)])); rows.push(["Total Income", plData.totalRevenue.toFixed(2)]); plData.expenses.forEach(a => rows.push([a.name, a.amount.toFixed(2)])); rows.push(["Total Expenses", plData.totalExpenses.toFixed(2)]); rows.push(["Net Income", plData.netIncome.toFixed(2)]);
+    } else if (id === "bs") {
+      const bsData = getBalanceSheetData(accounts, journalEntries, asOfDate);
+      rows = [["Section","Account","Amount"]]; bsData.assets.filter(a=>a.amount!==0).forEach(a => rows.push(["Assets",a.name,a.amount.toFixed(2)])); rows.push(["","Total Assets",bsData.totalAssets.toFixed(2)]); bsData.liabilities.filter(a=>a.amount!==0).forEach(a => rows.push(["Liabilities",a.name,a.amount.toFixed(2)])); rows.push(["","Total Liabilities",bsData.totalLiabilities.toFixed(2)]);
+    } else if (id === "gl") {
+      const glLines = getGeneralLedger(selectedAccountId, accounts, journalEntries).filter(l => l.date >= start && l.date <= end);
+      rows = [["Date","Entry","Description","Memo","Debit","Credit","Balance"]]; glLines.forEach(l => rows.push([l.date,l.jeNumber||"",l.description,l.memo||"",l.debit.toFixed(2),l.credit.toFixed(2),l.balance.toFixed(2)]));
+    } else if (id === "rent_roll") {
+      const data = getRentRoll(); rows = [["Property","Tenant","Rent","Lease Start","Lease End","Status"]]; data.forEach(r => rows.push([r.property,r.tenant,"$"+r.rent,r.leaseStart,r.leaseEnd,r.status]));
+    }
+    if (rows.length === 0) { showToast("Export not available for this report.", "info"); return; }
+    const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = currentReport.id + "-" + acctToday() + ".csv"; a.click();
+  }
+
+  // --- Print ---
+  function printReport() { window.print(); }
+
+  // ============ RENDER ============
+  // CATALOG VIEW
+  if (activeView === "catalog") {
+    const filteredReports = searchQuery ? allReports.filter(r => r.title.toLowerCase().includes(searchQuery.toLowerCase()) || r.description.toLowerCase().includes(searchQuery.toLowerCase())) : null;
+    const favReports = allReports.filter(r => favorites.includes(r.id));
+    return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div><h3 className="text-lg font-semibold text-slate-900">Reports</h3><p className="text-sm text-slate-400">Run financial and property reports</p></div>
+      </div>
+
+      {/* Search */}
+      <div className="relative mb-5">
+        <span className="material-icons-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-300">search</span>
+        <input type="text" placeholder="Find report by name..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+          className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-green-200 focus:border-green-400 transition-all" />
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 border-b border-slate-200">
+        {[["standard","Standard Reports"],["favorites",`Favorites (${favReports.length})`],["custom","Custom Reports"]].map(([id,label]) => (
+          <button key={id} onClick={() => setCatalogTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 ${catalogTab === id ? "border-green-600 text-green-700" : "border-transparent text-slate-400 hover:text-slate-600"}`}>{label}</button>
+        ))}
+      </div>
+
+      {/* Search results */}
+      {searchQuery && filteredReports && (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        {filteredReports.map(r => (
+        <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-slate-200 rounded-xl p-4 hover:border-green-300 hover:shadow-md transition-all bg-white">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <span className="material-icons-outlined text-slate-400 group-hover:text-green-600 text-xl">{r.icon}</span>
+              <div><p className="text-sm font-semibold text-slate-800 group-hover:text-green-700">{r.title}</p><p className="text-xs text-slate-400 mt-0.5">{r.description}</p></div>
+            </div>
+            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className="text-slate-300 hover:text-amber-400"><span className="material-icons text-lg">{favorites.includes(r.id) ? "star" : "star_border"}</span></button>
+          </div>
+        </div>
+        ))}
+        {filteredReports.length === 0 && <p className="col-span-4 text-center text-slate-400 py-8">No reports match "{searchQuery}"</p>}
+      </div>
+      )}
+
+      {/* Favorites tab */}
+      {!searchQuery && catalogTab === "favorites" && (
+      <div>{favReports.length === 0 ? <div className="text-center py-12 text-slate-400"><span className="material-icons-outlined text-4xl mb-2 block">star_border</span><p className="text-sm">No favorite reports yet. Click the star on any report to add it here.</p></div> : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {favReports.map(r => (
+          <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-slate-200 rounded-xl p-4 hover:border-green-300 hover:shadow-md transition-all bg-white">
+            <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-slate-400 group-hover:text-green-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-slate-800 group-hover:text-green-700">{r.title}</p><p className="text-xs text-slate-400 mt-0.5">{r.description}</p></div></div>
+            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className="text-amber-400 hover:text-amber-500"><span className="material-icons text-lg">star</span></button></div>
+          </div>))}
+        </div>
+      )}</div>
+      )}
+
+      {/* Custom reports tab */}
+      {!searchQuery && catalogTab === "custom" && (
+      <div className="text-center py-12 text-slate-400"><span className="material-icons-outlined text-4xl mb-2 block">tune</span><p className="text-sm">Custom report configurations coming soon.</p></div>
+      )}
+
+      {/* Standard reports — categorized */}
+      {!searchQuery && catalogTab === "standard" && REPORT_CATALOG.map(cat => (
+      <div key={cat.category} className="mb-6">
+        <button onClick={() => setCollapsedCats(prev => ({...prev, [cat.category]: !prev[cat.category]}))} className="flex items-center gap-2 w-full text-left mb-3">
+          <span className="material-icons-outlined text-sm text-slate-400">{collapsedCats[cat.category] ? "chevron_right" : "expand_more"}</span>
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">{cat.category}</h3>
+          <span className="text-xs text-slate-300 ml-1">({cat.reports.length})</span>
+        </button>
+        {!collapsedCats[cat.category] && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {cat.reports.map(r => (
+          <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-slate-200 rounded-xl p-4 hover:border-green-300 hover:shadow-md transition-all bg-white">
+            <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-slate-400 group-hover:text-green-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-slate-800 group-hover:text-green-700">{r.title}</p><p className="text-xs text-slate-400 mt-0.5">{r.description}</p></div></div>
+            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className={favorites.includes(r.id) ? "text-amber-400 hover:text-amber-500" : "text-slate-300 hover:text-amber-400"}><span className="material-icons text-lg">{favorites.includes(r.id) ? "star" : "star_border"}</span></button></div>
+          </div>))}
+        </div>
+        )}
+      </div>
+      ))}
+    </div>
+    );
+  }
+
+  // VIEWER VIEW
+  const reportId = currentReport?.id;
+
+  // Compute data based on report type
   const plData = getPLData(accounts, journalEntries, start, end, classFilter || null);
-
-  // P&L comparison
   let compareData = null;
-  if (compareTo === "prior_period") {
-    const periodMs = new Date(end).getTime() - new Date(start).getTime();
-    const priorStart = formatLocalDate(new Date(new Date(start).getTime() - periodMs));
-    const priorEnd = formatLocalDate(new Date(new Date(end).getTime() - periodMs));
-    compareData = getPLData(accounts, journalEntries, priorStart, priorEnd, classFilter || null);
-  }
-  if (compareTo === "prior_year") {
-    const y = new Date(start).getFullYear();
-    compareData = getPLData(accounts, journalEntries, start.replace(String(y), String(y - 1)), end.replace(String(y), String(y - 1)), classFilter || null);
-  }
-
-  // Balance Sheet
+  if (compareTo === "prior_period") { const ms = new Date(end).getTime() - new Date(start).getTime(); compareData = getPLData(accounts, journalEntries, formatLocalDate(new Date(new Date(start).getTime() - ms)), formatLocalDate(new Date(new Date(end).getTime() - ms)), classFilter || null); }
+  if (compareTo === "prior_year") { const y = new Date(start).getFullYear(); compareData = getPLData(accounts, journalEntries, start.replace(String(y), String(y-1)), end.replace(String(y), String(y-1)), classFilter || null); }
   const bsData = getBalanceSheetData(accounts, journalEntries, asOfDate);
   const bsBalanced = Math.abs(bsData.totalAssets - (bsData.totalLiabilities + bsData.totalEquity)) < 0.01;
-
-  // Trial Balance
   const tbData = getTrialBalance(accounts, journalEntries, asOfDate);
-  const tbTotalDebit = tbData.reduce((s, a) => s + a.debitBalance, 0);
-  const tbTotalCredit = tbData.reduce((s, a) => s + a.creditBalance, 0);
-  const tbBalanced = Math.abs(tbTotalDebit - tbTotalCredit) < 0.01;
-
-  // General Ledger
   const allGlLines = getGeneralLedger(selectedAccountId, accounts, journalEntries);
   const glLines = allGlLines.filter(l => l.date >= start && l.date <= end);
   const glAccount = accounts.find(a => a.id === selectedAccountId);
 
-  // Group TB by account type
-  const tbGrouped = {};
-  tbData.forEach(a => {
-    if (!tbGrouped[a.type]) tbGrouped[a.type] = [];
-    tbGrouped[a.type].push(a);
-  });
-  const tbTypeOrder = ["Asset", "Liability", "Equity", "Revenue", "Expense", "Cost of Goods Sold", "Other Income", "Other Expense"];
-
-  // CSV Export
-  function exportCSV() {
-    let rows = [];
-    if (activeReport === "pl") {
-      rows = [["Account", "Amount"]];
-      rows.push(["--- Income ---", ""]);
-      plData.revenue.forEach(a => rows.push([a.name, a.amount.toFixed(2)]));
-      rows.push(["Total Income", plData.totalRevenue.toFixed(2)]);
-      rows.push(["--- Expenses ---", ""]);
-      plData.expenses.forEach(a => rows.push([a.name, a.amount.toFixed(2)]));
-      rows.push(["Total Expenses", plData.totalExpenses.toFixed(2)]);
-      rows.push(["Net Income", plData.netIncome.toFixed(2)]);
-    } else if (activeReport === "bs") {
-      rows = [["Section", "Account", "Amount"]];
-      bsData.assets.filter(a => a.amount !== 0).forEach(a => rows.push(["Assets", a.name, a.amount.toFixed(2)]));
-      rows.push(["", "Total Assets", bsData.totalAssets.toFixed(2)]);
-      bsData.liabilities.filter(a => a.amount !== 0).forEach(a => rows.push(["Liabilities", a.name, a.amount.toFixed(2)]));
-      rows.push(["", "Total Liabilities", bsData.totalLiabilities.toFixed(2)]);
-      bsData.equity.filter(a => a.amount !== 0).forEach(a => rows.push(["Equity", a.name, a.amount.toFixed(2)]));
-      rows.push(["", "Total Equity", bsData.totalEquity.toFixed(2)]);
-    } else if (activeReport === "ar") {
-      rows = [["Tenant", "Current", "31-60", "61-90", "91-120", "120+", "Total"]];
-      Object.entries(bsData.arAgingByTenant || {}).filter(([, v]) => v.total > 0.01).sort((a, b) => b[1].total - a[1].total).forEach(([tenant, aging]) => {
-        rows.push([tenant, (aging.current || 0).toFixed(2), (aging.days30 || 0).toFixed(2), (aging.days60 || 0).toFixed(2), (aging.days90 || 0).toFixed(2), (aging.over90 || 0).toFixed(2), aging.total.toFixed(2)]);
-      });
-    } else if (activeReport === "tb") {
-      rows = [["Code", "Account", "Type", "Debit", "Credit"]];
-      tbData.forEach(a => rows.push([a.code || "", a.name, a.type, a.debitBalance.toFixed(2), a.creditBalance.toFixed(2)]));
-    } else if (activeReport === "gl") {
-      rows = [["Date", "Entry", "Description", "Memo", "Debit", "Credit", "Balance"]];
-      glLines.forEach(l => rows.push([l.date, l.jeId, l.description, l.memo || "", l.debit.toFixed(2), l.credit.toFixed(2), l.balance.toFixed(2)]));
-    }
-    const csv = rows.map(r => r.map(c => '"' + String(c || "").replace(/"/g, '""') + '"').join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = activeReport + "_" + start + "_" + end + ".csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  // Columns count helper for P&L
-  const plColSpan = compareData ? 4 : 2;
+  // Toolbar filter visibility
+  const SHOW_PERIOD = true;
+  const SHOW_AS_OF = ["bs","tb","ar_aging_summary","ar_aging_detail","customer_balance_summary","security_deposits"].includes(reportId);
+  const SHOW_COMPARE = ["pl","pl_by_class","bs"].includes(reportId);
+  const SHOW_CLASS = ["pl","pl_compare","expenses_by_category","gl","noi_by_property","rent_collection"].includes(reportId);
+  const SHOW_ACCOUNT = reportId === "gl";
 
   return (
-  <div className="space-y-4">
-  {/* Header */}
-  <div className="flex items-center justify-between mb-2">
   <div>
-    <h3 className="text-lg font-semibold text-slate-900">Financial Reports</h3>
-    <p className="text-sm text-slate-400">P&L, Balance Sheet, AR Aging, Trial Balance, General Ledger</p>
-  </div>
-  </div>
+    {/* Viewer Header */}
+    <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center gap-3">
+        <button onClick={() => setActiveView("catalog")} className="text-sm text-slate-400 hover:text-slate-700 flex items-center gap-1"><span className="material-icons-outlined text-sm">arrow_back</span>Back to Reports</button>
+        <h3 className="text-lg font-semibold text-slate-900">{currentReport?.title}</h3>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={() => toggleFavorite(reportId)} className={favorites.includes(reportId) ? "text-amber-400" : "text-slate-300 hover:text-amber-400"}><span className="material-icons text-lg">{favorites.includes(reportId) ? "star" : "star_border"}</span></button>
+        <button onClick={exportCSV} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">download</span>Export</button>
+        <button onClick={printReport} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">print</span>Print</button>
+      </div>
+    </div>
 
-  {/* Report Tabs */}
-  <div className="flex gap-1 border-b border-slate-200 mb-6">
-  {reports.map(r => (
-    <button key={r.id} onClick={() => setActiveReport(r.id)}
-      className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${
-        activeReport === r.id ? "border-green-600 text-green-700" : "border-transparent text-slate-400 hover:text-slate-600"
-      }`}>
-      <span className="material-icons-outlined text-lg">{r.icon}</span>{r.label}
-    </button>
-  ))}
-  </div>
+    {/* Toolbar */}
+    <div className="bg-slate-50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-end">
+      {SHOW_PERIOD && (
+      <div><label className="text-xs text-slate-500 block mb-1">Period</label>
+        <select value={period} onChange={e => setPeriod(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white">
+          {["This Month","Last Month","This Quarter","Last Quarter","This Year","Last Year","Custom"].map(p => <option key={p}>{p}</option>)}
+        </select></div>
+      )}
+      {period === "Custom" && <>
+        <div><label className="text-xs text-slate-500 block mb-1">From</label><Input type="date" value={start} onChange={e => setCustomDates({...customDates, start: e.target.value})} className="w-36" /></div>
+        <div><label className="text-xs text-slate-500 block mb-1">To</label><Input type="date" value={end} onChange={e => setCustomDates({...customDates, end: e.target.value})} className="w-36" /></div>
+      </>}
+      {SHOW_AS_OF && <div><label className="text-xs text-slate-500 block mb-1">As of</label><Input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="w-36" /></div>}
+      {SHOW_COMPARE && <div><label className="text-xs text-slate-500 block mb-1">Compare to</label><select value={compareTo} onChange={e => setCompareTo(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white"><option value="">No comparison</option><option value="prior_period">Prior Period</option><option value="prior_year">Prior Year</option></select></div>}
+      {SHOW_CLASS && <div><label className="text-xs text-slate-500 block mb-1">Property</label><select value={classFilter} onChange={e => setClassFilter(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white"><option value="">All Properties</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>}
+      {SHOW_ACCOUNT && <div><label className="text-xs text-slate-500 block mb-1">Account</label><select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white min-w-48">{accounts.filter(a=>a.is_active).map(a => <option key={a.id} value={a.id}>{a.code||"•"} {a.name}</option>)}</select></div>}
+    </div>
 
-  {/* Global Report Toolbar */}
-  <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4">
-  <div className="flex flex-wrap items-center gap-4">
-    {/* Report Period Dropdown */}
+    {/* Report Content */}
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+
+    {/* P&L */}
+    {reportId === "pl" && (
     <div>
-      <label className="text-xs font-medium text-slate-500 block mb-1">Report period</label>
-      <select value={period} onChange={e => setPeriod(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white min-w-40">
-        {PERIODS.map(p => <option key={p}>{p}</option>)}
-      </select>
-    </div>
-    {/* From date picker */}
-    <div>
-      <label className="text-xs font-medium text-slate-500 block mb-1">From</label>
-      <input type="date" value={start} onChange={e => { setPeriod("Custom"); setCustomDates(d => ({ ...d, start: e.target.value })); }} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-    </div>
-    {/* To date picker */}
-    <div>
-      <label className="text-xs font-medium text-slate-500 block mb-1">To</label>
-      <input type="date" value={end} onChange={e => { setPeriod("Custom"); setCustomDates(d => ({ ...d, end: e.target.value })); }} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-    </div>
-    {/* As of date for BS/AR/TB */}
-    {(activeReport === "bs" || activeReport === "ar" || activeReport === "tb") && (
-    <div>
-      <label className="text-xs font-medium text-slate-500 block mb-1">As of</label>
-      <input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Profit & Loss</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      <div className="cursor-pointer hover:bg-slate-50 rounded py-1 flex items-center gap-1" onClick={() => setShowIncome(!showIncome)}><span className="material-icons-outlined text-sm text-slate-400">{showIncome ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-slate-900">Income</span></div>
+      {showIncome && plData.revenue.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-green-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><span className="text-sm text-slate-700">{a.name}</span><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
+      {showIncome && <div className="flex justify-between py-1.5 border-t border-slate-300 font-bold mt-1" style={{paddingLeft:24}}><span className="text-sm">Total Income</span><span className="font-mono text-sm tabular-nums">{acctFmt(plData.totalRevenue)}</span></div>}
+      <div className="flex justify-between py-2 border-t-2 border-slate-800 font-black mt-2"><span className="text-sm">Gross Profit</span><span className="font-mono text-sm tabular-nums">{acctFmt(plData.totalRevenue)}</span></div>
+      <div className="cursor-pointer hover:bg-slate-50 rounded py-1 mt-3 flex items-center gap-1" onClick={() => setShowExpenses(!showExpenses)}><span className="material-icons-outlined text-sm text-slate-400">{showExpenses ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-slate-900">Expenses</span></div>
+      {showExpenses && plData.expenses.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-green-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><span className="text-sm text-slate-700">{a.name}</span><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
+      {showExpenses && <div className="flex justify-between py-1.5 border-t border-slate-300 font-bold mt-1" style={{paddingLeft:24}}><span className="text-sm">Total Expenses</span><span className="font-mono text-sm tabular-nums">{acctFmt(plData.totalExpenses)}</span></div>}
+      <div className="flex justify-between py-3 border-t-2 border-b-2 border-slate-800 font-black mt-3"><span className="text-sm">NET INCOME</span><span className={`font-mono text-sm tabular-nums ${plData.netIncome < 0 ? "text-red-600" : ""}`}>{acctFmt(plData.netIncome)}</span></div>
+      <div className="text-xs text-slate-400 mt-4 flex justify-between"><span>Accrual basis</span><span>{new Date().toLocaleString()}</span></div>
     </div>
     )}
-    {/* Compare to (P&L only) */}
-    {activeReport === "pl" && (
-    <div>
-      <label className="text-xs font-medium text-slate-500 block mb-1">Compare to</label>
-      <select value={compareTo} onChange={e => setCompareTo(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
-        <option value="">No comparison</option>
-        <option value="prior_period">Prior Period</option>
-        <option value="prior_year">Prior Year</option>
-      </select>
-    </div>
-    )}
-    {/* Class filter (P&L, TB) */}
-    {(activeReport === "pl" || activeReport === "tb") && classes.length > 0 && (
-    <div>
-      <label className="text-xs font-medium text-slate-500 block mb-1">Class</label>
-      <select value={classFilter} onChange={e => setClassFilter(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
-        <option value="">All Classes</option>
-        {classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-      </select>
-    </div>
-    )}
-    {/* GL Account selector */}
-    {activeReport === "gl" && (
-    <div>
-      <label className="text-xs font-medium text-slate-500 block mb-1">Account</label>
-      <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white min-w-56">
-        {ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a => a.type === type && a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "\u2022"} {a.name}</option>)}</optgroup>)}
-      </select>
-    </div>
-    )}
-    {/* Actions */}
-    <div className="ml-auto flex items-center gap-2">
-      <button onClick={exportCSV} className="text-xs bg-white border border-slate-200 px-3 py-2 rounded-lg hover:bg-slate-50 flex items-center gap-1"><span className="material-icons-outlined text-sm">download</span>Export</button>
-      <button onClick={() => window.print()} className="text-xs bg-white border border-slate-200 px-3 py-2 rounded-lg hover:bg-slate-50 flex items-center gap-1"><span className="material-icons-outlined text-sm">print</span>Print</button>
-    </div>
-  </div>
-  </div>
 
-  {/* ====== P&L Report ====== */}
-  {activeReport === "pl" && (
-  <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-    {/* Centered header */}
-    <div className="text-center mb-6">
-      <p className="text-xs text-slate-400 uppercase tracking-widest">Profit & Loss Statement</p>
-      <h4 className="text-base font-bold text-slate-900 mt-1">{companyName}</h4>
-      <p className="text-sm text-slate-400">{acctFmtDate(start)} through {acctFmtDate(end)}</p>
-    </div>
-
-    <table className="w-full">
-      <thead>
-        <tr className="border-b border-slate-300">
-          <th className="text-left py-2 text-sm font-semibold text-slate-700">Account</th>
-          <th className="text-right py-2 text-sm font-semibold text-slate-700 w-32">Total</th>
-          {compareData && <th className="text-right py-2 text-sm font-semibold text-slate-500 w-32">Prior</th>}
-          {compareData && <th className="text-right py-2 text-sm font-semibold text-slate-500 w-28">$ Change</th>}
-        </tr>
-      </thead>
-      <tbody>
-        {/* Income header */}
-        <tr className="cursor-pointer hover:bg-slate-50" onClick={() => setShowIncome(!showIncome)}>
-          <td colSpan={plColSpan} className="py-2 text-sm font-bold text-slate-800">
-            <span className="text-xs mr-1">{showIncome ? "\u25BE" : "\u25B8"}</span>Income
-          </td>
-        </tr>
-        {showIncome && plData.revenue.map(a => (
-          <tr key={a.id} className="hover:bg-green-50/30 cursor-pointer" onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}>
-            <td className="py-1.5 pl-8 text-sm text-slate-600">{a.name}</td>
-            <td className="text-right font-mono text-sm">{acctFmt(a.amount)}</td>
-            {compareData && <td className="text-right font-mono text-sm text-slate-400">{acctFmt(compareData.revenue.find(r => r.id === a.id)?.amount || 0)}</td>}
-            {compareData && <td className="text-right font-mono text-xs text-slate-400">{acctFmt((a.amount) - (compareData.revenue.find(r => r.id === a.id)?.amount || 0), true)}</td>}
-          </tr>
-        ))}
-        {/* Total Income */}
-        <tr className="border-t border-b border-slate-300 cursor-pointer hover:bg-emerald-50/50" onClick={() => onOpenLedger && onOpenLedger(plData.revenue.map(a => a.id), "Total Income")}>
-          <td className="py-2 pl-6 text-sm font-bold text-slate-800">Total for Income</td>
-          <td className="text-right font-mono text-sm font-bold text-emerald-700">{acctFmt(plData.totalRevenue)}</td>
-          {compareData && <td className="text-right font-mono text-sm text-slate-500">{acctFmt(compareData.totalRevenue)}</td>}
-          {compareData && <td className="text-right font-mono text-xs">{acctFmt(plData.totalRevenue - compareData.totalRevenue, true)}</td>}
-        </tr>
-        {/* Gross Profit */}
-        <tr className="bg-slate-100">
-          <td className="py-2 text-sm font-black text-slate-900">Gross Profit</td>
-          <td className="text-right font-mono text-sm font-black">{acctFmt(plData.totalRevenue)}</td>
-          {compareData && <td className="text-right font-mono text-sm font-black text-slate-500">{acctFmt(compareData.totalRevenue)}</td>}
-          {compareData && <td className="text-right font-mono text-xs font-bold">{acctFmt(plData.totalRevenue - compareData.totalRevenue, true)}</td>}
-        </tr>
-        {/* Expenses header */}
-        <tr className="cursor-pointer hover:bg-slate-50" onClick={() => setShowExpenses(!showExpenses)}>
-          <td colSpan={plColSpan} className="py-2 text-sm font-bold text-slate-800 pt-4">
-            <span className="text-xs mr-1">{showExpenses ? "\u25BE" : "\u25B8"}</span>Expenses
-          </td>
-        </tr>
-        {showExpenses && plData.expenses.map(a => (
-          <tr key={a.id} className="hover:bg-red-50/30 cursor-pointer" onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}>
-            <td className="py-1.5 pl-8 text-sm text-slate-600">{a.name}</td>
-            <td className="text-right font-mono text-sm">{acctFmt(a.amount)}</td>
-            {compareData && <td className="text-right font-mono text-sm text-slate-400">{acctFmt(compareData.expenses.find(r => r.id === a.id)?.amount || 0)}</td>}
-            {compareData && <td className="text-right font-mono text-xs text-slate-400">{acctFmt((a.amount) - (compareData.expenses.find(r => r.id === a.id)?.amount || 0), true)}</td>}
-          </tr>
-        ))}
-        {/* Total Expenses */}
-        <tr className="border-t border-b border-slate-300 cursor-pointer hover:bg-red-50/50" onClick={() => onOpenLedger && onOpenLedger(plData.expenses.map(a => a.id), "Total Expenses")}>
-          <td className="py-2 pl-6 text-sm font-bold text-slate-800">Total for Expenses</td>
-          <td className="text-right font-mono text-sm font-bold text-red-600">{acctFmt(plData.totalExpenses)}</td>
-          {compareData && <td className="text-right font-mono text-sm text-slate-500">{acctFmt(compareData.totalExpenses)}</td>}
-          {compareData && <td className="text-right font-mono text-xs">{acctFmt(plData.totalExpenses - compareData.totalExpenses, true)}</td>}
-        </tr>
-        {/* Net Operating Income */}
-        <tr className="bg-slate-50">
-          <td className="py-2 text-sm font-bold text-slate-900">Net Operating Income</td>
-          <td className={`text-right font-mono text-sm font-bold ${plData.netIncome >= 0 ? "text-emerald-700" : "text-red-700"}`}>{acctFmt(plData.netIncome, true)}</td>
-          {compareData && <td className={`text-right font-mono text-sm text-slate-500`}>{acctFmt(compareData.netIncome, true)}</td>}
-          {compareData && <td className="text-right font-mono text-xs">{acctFmt(plData.netIncome - compareData.netIncome, true)}</td>}
-        </tr>
-        {/* Net Income */}
-        <tr className="border-t-2 border-b-2 border-slate-800 bg-slate-50">
-          <td className="py-3 text-sm font-black text-slate-900">Net Income</td>
-          <td className={`text-right font-mono text-sm font-black ${plData.netIncome >= 0 ? "text-emerald-700" : "text-red-700"}`}>{acctFmt(plData.netIncome, true)}</td>
-          {compareData && <td className={`text-right font-mono text-sm font-black text-slate-500`}>{acctFmt(compareData.netIncome, true)}</td>}
-          {compareData && <td className="text-right font-mono text-xs font-bold">{acctFmt(plData.netIncome - compareData.netIncome, true)}</td>}
-        </tr>
-      </tbody>
-    </table>
-
-    <div className="text-xs text-slate-400 mt-4 flex justify-between">
-      <span>Accrual basis</span>
-      <span>{new Date().toLocaleString()}</span>
-    </div>
-  </div>
-  )}
-
-  {/* ====== Balance Sheet (QuickBooks-style) ====== */}
-  {activeReport === "bs" && (() => {
-    // Group accounts by subtype for hierarchical display
+    {/* Balance Sheet — reuse existing QB-style */}
+    {reportId === "bs" && (() => {
     const bankAccounts = bsData.assets.filter(a => a.subtype === "Bank" || a.name?.includes("Checking") || a.name?.includes("Savings"));
     const arAccounts = bsData.assets.filter(a => a.name?.includes("Accounts Receivable") || (a.code || "").startsWith("1100"));
     const arSubAccounts = bsData.assets.filter(a => (a.code || "").startsWith("1100-"));
     const otherAssets = bsData.assets.filter(a => !bankAccounts.includes(a) && !arAccounts.includes(a) && !arSubAccounts.includes(a));
-    const BSRow = ({ name, amount, indent = 0, bold, total, onClick, italic }) => (
-      <div className={`flex justify-between py-1 ${indent > 0 ? "pl-" + (indent * 6) : ""} ${total ? "border-t border-slate-300 font-bold mt-1" : ""} ${bold ? "font-semibold" : ""} ${onClick ? "cursor-pointer hover:bg-blue-50/50 rounded" : ""}`} style={{ paddingLeft: indent * 24 }} onClick={onClick}>
-        <span className={`text-sm ${total ? "text-slate-900" : "text-slate-700"} ${italic ? "italic" : ""}`}>{name}</span>
-        <span className={`font-mono text-sm tabular-nums ${amount < 0 ? "text-red-600" : total ? "text-slate-900" : "text-slate-700"}`}>{acctFmt(amount, true)}</span>
-      </div>
-    );
-    const BSSection = ({ title, children, show, toggle, total, totalLabel }) => (
-      <div className="mb-2">
-        <div className="cursor-pointer hover:bg-slate-50 rounded py-1 flex items-center gap-1" onClick={toggle}>
-          <span className="material-icons-outlined text-sm text-slate-400">{show ? "expand_more" : "chevron_right"}</span>
-          <span className="text-sm font-bold text-slate-900">{title}</span>
-        </div>
-        {show && children}
-        {show && total !== undefined && (
-          <div className="flex justify-between py-1.5 border-t border-b border-slate-300 font-bold mt-1" style={{ paddingLeft: 24 }}>
-            <span className="text-sm text-slate-900">{totalLabel || "Total " + title}</span>
-            <span className="font-mono text-sm text-slate-900 tabular-nums">{acctFmt(total)}</span>
-          </div>
-        )}
-      </div>
-    );
-    return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 max-w-3xl mx-auto">
-      {/* QB-style header */}
-      <div className="text-center py-6 border-b border-slate-200">
-        <p className="text-xs text-slate-400 uppercase tracking-widest mb-1">Balance Sheet</p>
-        <h3 className="text-lg font-bold text-slate-900">{companyName}</h3>
-        <p className="text-sm text-slate-500">As of {acctFmtDate(asOfDate)}</p>
-        <div className="mt-2">
-          {bsBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1 rounded-full">Out of Balance by {acctFmt(Math.abs(bsData.totalAssets - bsData.totalLiabilities - bsData.totalEquity))}</span>}
-        </div>
-      </div>
-      <div className="px-6 py-4">
-        {/* Column header */}
-        <div className="flex justify-end mb-2 border-b border-slate-200 pb-1">
-          <span className="text-xs font-semibold text-slate-500 uppercase">Total</span>
-        </div>
+    const BSRow = ({ name, amount, indent = 0, bold, total, onClick, italic }) => (<div className={`flex justify-between py-1 ${total ? "border-t border-slate-300 font-bold mt-1" : ""} ${bold ? "font-semibold" : ""} ${onClick ? "cursor-pointer hover:bg-blue-50/50 rounded" : ""}`} style={{ paddingLeft: indent * 24 }} onClick={onClick}><span className={`text-sm ${total ? "text-slate-900" : "text-slate-700"} ${italic ? "italic" : ""}`}>{name}</span><span className={`font-mono text-sm tabular-nums ${amount < 0 ? "text-red-600" : total ? "text-slate-900" : "text-slate-700"}`}>{acctFmt(amount, true)}</span></div>);
+    const BSSection = ({ title, children, show, toggle, total, totalLabel }) => (<div className="mb-2"><div className="cursor-pointer hover:bg-slate-50 rounded py-1 flex items-center gap-1" onClick={toggle}><span className="material-icons-outlined text-sm text-slate-400">{show ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-slate-900">{title}</span></div>{show && children}{show && total !== undefined && (<div className="flex justify-between py-1.5 border-t border-b border-slate-300 font-bold mt-1" style={{ paddingLeft: 24 }}><span className="text-sm text-slate-900">{totalLabel || "Total " + title}</span><span className="font-mono text-sm text-slate-900 tabular-nums">{acctFmt(total)}</span></div>)}</div>);
+    return (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Balance Sheet</p><p className="text-sm text-slate-500 mt-1">As of {acctFmtDate(asOfDate)}</p><div className="mt-2">{bsBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1 rounded-full">Out of Balance</span>}</div></div>
+      <div className="flex justify-end mb-2 border-b border-slate-200 pb-1"><span className="text-xs font-semibold text-slate-500 uppercase">Total</span></div>
+      <BSSection title="Assets" show={showAssets} toggle={() => setShowAssets(!showAssets)} total={bsData.totalAssets} totalLabel="TOTAL ASSETS">{bankAccounts.length > 0 && <div className="mb-1"><div className="text-xs font-semibold text-slate-500 uppercase tracking-wide py-1" style={{paddingLeft:24}}>Bank Accounts</div>{bankAccounts.map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={2} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}<div className="flex justify-between py-1 border-t border-slate-200 font-semibold" style={{paddingLeft:48}}><span className="text-xs text-slate-700">Total for Bank Accounts</span><span className="font-mono text-xs text-slate-900 tabular-nums">{acctFmt(bankAccounts.reduce((s,a)=>s+a.amount,0))}</span></div></div>}{arAccounts.length > 0 && <div className="mb-1"><div className="cursor-pointer text-xs font-semibold text-slate-500 uppercase tracking-wide py-1 flex items-center gap-1" style={{paddingLeft:24}} onClick={() => setShowARSub(!showARSub)}><span className="material-icons-outlined text-xs">{showARSub ? "expand_more" : "chevron_right"}</span>Accounts Receivable</div>{showARSub && arSubAccounts.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name.replace("AR - ","")} amount={a.amount} indent={3} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}<div className="flex justify-between py-1 border-t border-slate-200 font-semibold" style={{paddingLeft:48}}><span className="text-xs text-slate-700">Total for AR</span><span className="font-mono text-xs text-slate-900 tabular-nums">{acctFmt(arAccounts.reduce((s,a)=>s+a.amount,0)+arSubAccounts.reduce((s,a)=>s+a.amount,0))}</span></div></div>}{otherAssets.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}</BSSection>
+      <BSSection title="Liabilities" show={showLiabilities} toggle={() => setShowLiabilities(!showLiabilities)} total={bsData.totalLiabilities} totalLabel="Total Liabilities">{bsData.liabilities.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}</BSSection>
+      <BSSection title="Equity" show={showEquity} toggle={() => setShowEquity(!showEquity)} total={bsData.totalEquity} totalLabel="Total Equity">{bsData.equity.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}{bsData.netIncome !== 0 && <BSRow name="Net Income (Current Period)" amount={bsData.netIncome} indent={1} italic />}</BSSection>
+      <div className="flex justify-between py-3 border-t-2 border-b-2 border-slate-800 mt-4 font-black"><span className="text-sm">TOTAL LIABILITIES AND EQUITY</span><span className="font-mono text-sm tabular-nums">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</span></div>
+      <div className="text-xs text-slate-400 mt-4 flex justify-between"><span>Accrual basis</span><span>{new Date().toLocaleString()}</span></div>
+    </div>);
+    })()}
 
-        {/* ── ASSETS ── */}
-        <BSSection title="Assets" show={showAssets} toggle={() => setShowAssets(!showAssets)} total={bsData.totalAssets} totalLabel="TOTAL ASSETS">
-          {/* Bank Accounts */}
-          {bankAccounts.length > 0 && (
-          <div className="mb-1">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide py-1" style={{ paddingLeft: 24 }}>Bank Accounts</div>
-            {bankAccounts.map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={2} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}
-            <div className="flex justify-between py-1 border-t border-slate-200 font-semibold" style={{ paddingLeft: 48 }}>
-              <span className="text-xs text-slate-700">Total for Bank Accounts</span>
-              <span className="font-mono text-xs text-slate-900 tabular-nums">{acctFmt(bankAccounts.reduce((s, a) => s + a.amount, 0))}</span>
-            </div>
-          </div>
-          )}
-          {/* Accounts Receivable */}
-          {arAccounts.length > 0 && (
-          <div className="mb-1">
-            <div className="cursor-pointer text-xs font-semibold text-slate-500 uppercase tracking-wide py-1 flex items-center gap-1" style={{ paddingLeft: 24 }} onClick={() => setShowARSub(!showARSub)}>
-              <span className="material-icons-outlined text-xs">{showARSub ? "expand_more" : "chevron_right"}</span>Accounts Receivable
-            </div>
-            {showARSub && arSubAccounts.filter(a => a.amount !== 0).map(a => <BSRow key={a.id} name={a.name.replace("AR - ", "")} amount={a.amount} indent={3} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}
-            {showARSub && bsData.arByTenant?.filter(t => !arSubAccounts.some(a => a.name?.includes(t.tenant))).map((t, i) => <BSRow key={"art-" + i} name={t.tenant} amount={t.balance} indent={3} />)}
-            <div className="flex justify-between py-1 border-t border-slate-200 font-semibold" style={{ paddingLeft: 48 }}>
-              <span className="text-xs text-slate-700">Total for Accounts Receivable</span>
-              <span className="font-mono text-xs text-slate-900 tabular-nums">{acctFmt(arAccounts.reduce((s, a) => s + a.amount, 0) + arSubAccounts.reduce((s, a) => s + a.amount, 0))}</span>
-            </div>
-          </div>
-          )}
-          {/* Other Assets */}
-          {otherAssets.filter(a => a.amount !== 0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}
-        </BSSection>
+    {/* Trial Balance */}
+    {reportId === "tb" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Trial Balance</p><p className="text-sm text-slate-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
+      <table className="w-full text-sm"><thead className="bg-slate-50 border-b border-slate-200"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Account</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Debit</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Credit</th></tr></thead>
+      <tbody>{tbData.filter(a => a.debitBalance !== 0 || a.creditBalance !== 0).map(a => <tr key={a.id} className="border-t border-slate-100 hover:bg-green-50/30 cursor-pointer" onClick={() => { setSelectedAccountId(a.id); setCurrentReport({ id: "gl", title: "General Ledger" }); }}><td className="px-4 py-2 text-slate-700">{a.code ? a.code + " " : ""}{a.name}</td><td className="px-4 py-2 text-right font-mono">{a.debitBalance > 0 ? acctFmt(a.debitBalance) : ""}</td><td className="px-4 py-2 text-right font-mono">{a.creditBalance > 0 ? acctFmt(a.creditBalance) : ""}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td className="px-4 py-2">TOTALS</td><td className="px-4 py-2 text-right font-mono">{acctFmt(tbData.reduce((s,a) => s + a.debitBalance, 0))}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(tbData.reduce((s,a) => s + a.creditBalance, 0))}</td></tr></tfoot></table>
+    </div>)}
 
-        {/* ── LIABILITIES ── */}
-        <BSSection title="Liabilities" show={showLiabilities} toggle={() => setShowLiabilities(!showLiabilities)} total={bsData.totalLiabilities} totalLabel="Total Liabilities">
-          {bsData.liabilities.filter(a => a.amount !== 0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}
-        </BSSection>
+    {/* General Ledger */}
+    {reportId === "gl" && glAccount && (<div>
+      <div className="text-center mb-4"><p className="text-xs text-slate-400 uppercase tracking-widest">General Ledger</p><h4 className="text-base font-bold text-slate-900 mt-1">{glAccount.name}</h4><p className="text-sm text-slate-400">#{glAccount.code} · {glAccount.type}</p><p className="text-sm text-slate-400">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {glLines.length > 0 && <div className="flex justify-end mb-3"><div className="text-right"><p className="text-xs text-slate-400">Ending Balance</p><p className="font-mono font-bold">{acctFmt(glLines[glLines.length-1].balance, true)}</p></div></div>}
+      <div className="flex justify-end mb-2 relative"><button onClick={() => setShowColPicker(!showColPicker)} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">view_column</span>Columns</button>{showColPicker && <div className="absolute right-0 top-8 bg-white border border-slate-200 rounded-xl shadow-lg p-3 z-20 w-48">{[["date","Date"],["entry","Entry #"],["description","Description"],["memo","Memo"],["debit","Debit"],["credit","Credit"],["balance","Balance"]].map(([id,label]) => <label key={id} className="flex items-center gap-2 py-1 cursor-pointer text-sm text-slate-700"><input type="checkbox" checked={glColumns[id]} onChange={() => toggleGlCol(id)} className="accent-indigo-600" />{label}</label>)}</div>}</div>
+      <table className="w-full text-sm border border-slate-200 rounded-xl overflow-hidden"><thead className="bg-slate-50"><tr>{glColumns.date && <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Date</th>}{glColumns.entry && <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Entry #</th>}{glColumns.description && <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Description</th>}{glColumns.memo && <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Memo</th>}{glColumns.debit && <th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Debit</th>}{glColumns.credit && <th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Credit</th>}{glColumns.balance && <th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Balance</th>}</tr></thead>
+      <tbody>{glLines.length === 0 ? <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">No transactions</td></tr> : glLines.map((l,i) => <tr key={l.jeId+"-"+i} className="border-t border-slate-100 hover:bg-green-50/40">{glColumns.date && <td className="px-4 py-2 text-xs text-slate-400">{acctFmtDate(l.date)}</td>}{glColumns.entry && <td className="px-4 py-2 font-mono text-xs text-indigo-600">{l.jeNumber||"—"}</td>}{glColumns.description && <td className="px-4 py-2 text-slate-700">{l.description}</td>}{glColumns.memo && <td className="px-4 py-2 text-xs text-slate-400">{l.memo||"—"}</td>}{glColumns.debit && <td className="px-4 py-2 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>}{glColumns.credit && <td className="px-4 py-2 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>}{glColumns.balance && <td className={`px-4 py-2 text-right font-mono font-semibold ${l.balance < 0 ? "text-red-600" : ""}`}>{acctFmt(l.balance, true)}</td>}</tr>)}</tbody></table>
+    </div>)}
 
-        {/* ── EQUITY ── */}
-        <BSSection title="Equity" show={showEquity} toggle={() => setShowEquity(!showEquity)} total={bsData.totalEquity} totalLabel="Total Equity">
-          {bsData.equity.filter(a => a.amount !== 0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}
-          {bsData.netIncome !== 0 && <BSRow name="Net Income (Current Period)" amount={bsData.netIncome} indent={1} italic />}
-        </BSSection>
+    {/* AR Aging Summary */}
+    {reportId === "ar_aging_summary" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">AR Aging Summary</p><p className="text-sm text-slate-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
+      <table className="w-full text-sm"><thead className="bg-slate-50 border-b border-slate-200"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-emerald-600">Current</th><th className="px-4 py-2 text-right text-xs font-semibold text-amber-600">1-30</th><th className="px-4 py-2 text-right text-xs font-semibold text-orange-600">31-60</th><th className="px-4 py-2 text-right text-xs font-semibold text-red-600">61-90</th><th className="px-4 py-2 text-right text-xs font-semibold text-red-800">91+</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-700">Total</th></tr></thead>
+      <tbody>{(bsData.arAgingByTenant || []).filter(t => Math.abs(t.current + t.days30 + t.days60 + t.days90 + t.over90) > 0.01).map((t,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{t.tenant}</td><td className="px-4 py-2 text-right font-mono">{t.current ? acctFmt(t.current) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.days30 ? acctFmt(t.days30) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.days60 ? acctFmt(t.days60) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.days90 ? acctFmt(t.days90) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.over90 ? acctFmt(t.over90) : ""}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(t.current + t.days30 + t.days60 + t.days90 + t.over90)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td className="px-4 py-2">TOTALS</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.current||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.days30||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.days60||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.days90||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.over90||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt((bsData.arAging?.current||0)+(bsData.arAging?.days30||0)+(bsData.arAging?.days60||0)+(bsData.arAging?.days90||0)+(bsData.arAging?.over90||0))}</td></tr></tfoot></table>
+    </div>)}
 
-        {/* ── TOTAL L + E ── */}
-        <div className="flex justify-between py-3 border-t-2 border-b-2 border-slate-800 mt-4 font-black">
-          <span className="text-sm">TOTAL LIABILITIES AND EQUITY</span>
-          <span className="font-mono text-sm tabular-nums">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</span>
-        </div>
-      </div>
-      <div className="text-xs text-slate-400 px-6 py-3 border-t border-slate-100 flex justify-between">
-        <span>Accrual basis</span>
-        <span>{new Date().toLocaleString()}</span>
-      </div>
-    </div>
-    );
-  })()}
-  )}
+    {/* Tenant Balance Summary */}
+    {reportId === "customer_balance_summary" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Tenant Balance Summary</p></div>
+      <table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Balance</th></tr></thead>
+      <tbody>{(bsData.arByTenant||[]).map((t,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{t.tenant}</td><td className={`px-4 py-2 text-right font-mono font-semibold ${t.balance < 0 ? "text-green-600" : t.balance > 0 ? "text-red-600" : ""}`}>{acctFmt(t.balance, true)}</td></tr>)}</tbody></table>
+    </div>)}
 
-  {/* ====== AR Aging Report ====== */}
-  {activeReport === "ar" && (
-  <div>
-    {/* Aging Summary Buckets */}
-    <div className="grid grid-cols-5 gap-3 mb-5">
-    {[
-      { label: "Current (0-30)", val: bsData.arAging?.current || 0, color: "text-green-700 bg-green-50 border border-green-100" },
-      { label: "31-60 Days", val: bsData.arAging?.days30 || 0, color: "text-yellow-700 bg-yellow-50 border border-yellow-100" },
-      { label: "61-90 Days", val: bsData.arAging?.days60 || 0, color: "text-orange-700 bg-orange-50 border border-orange-100" },
-      { label: "91-120 Days", val: bsData.arAging?.days90 || 0, color: "text-red-600 bg-red-50 border border-red-100" },
-      { label: "120+ Days", val: bsData.arAging?.over90 || 0, color: "text-red-800 bg-red-100 border border-red-200" },
-    ].map((b, i) => (
-      <div key={i} className={`rounded-xl p-3 ${b.color}`}>
-        <div className="text-xs font-medium opacity-75">{b.label}</div>
-        <div className="text-lg font-bold font-mono">{acctFmt(b.val)}</div>
-      </div>
-    ))}
-    </div>
+    {/* Journal */}
+    {reportId === "journal" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Journal</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {getJournalReport(start, end).map(je => <div key={je.jeId} className="mb-4 border border-slate-100 rounded-lg p-3"><div className="flex justify-between items-start mb-2"><div><span className="font-mono text-xs text-indigo-600 mr-2">{je.jeNumber}</span><span className="text-sm font-semibold text-slate-800">{je.description}</span></div><span className="text-xs text-slate-400">{acctFmtDate(je.date)}</span></div>
+      <table className="w-full text-xs"><tbody>{je.lines.map((l,i) => <tr key={i} className="border-t border-slate-50"><td className="py-1 text-slate-600">{l.accountName}</td><td className="py-1 text-slate-400">{l.memo||""}</td><td className="py-1 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td><td className="py-1 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td></tr>)}</tbody></table></div>)}
+    </div>)}
 
-    {/* Total AR */}
-    <div className="bg-indigo-50 rounded-xl border border-indigo-100 p-4 mb-5 flex justify-between items-center">
-      <div><span className="text-sm font-bold text-indigo-800">Total Accounts Receivable</span><span className="text-xs text-indigo-500 ml-2">(Account 1100)</span></div>
-      <span className="text-xl font-black font-mono text-indigo-800">{acctFmt((bsData.arAging?.current || 0) + (bsData.arAging?.days30 || 0) + (bsData.arAging?.days60 || 0) + (bsData.arAging?.days90 || 0) + (bsData.arAging?.over90 || 0))}</span>
-    </div>
+    {/* Transaction List by Date */}
+    {reportId === "txn_by_date" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Transaction List by Date</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      <table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Date</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Entry</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Description</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Credit</th></tr></thead>
+      <tbody>{getTransactionsByDate(start, end).map((t,i) => <tr key={i} className="border-t border-slate-100"><td className="px-3 py-1.5 text-xs text-slate-400">{t.date}</td><td className="px-3 py-1.5 text-xs text-indigo-600 font-mono">{t.jeNumber||""}</td><td className="px-3 py-1.5 text-slate-700">{t.accountName}</td><td className="px-3 py-1.5 text-xs text-slate-500">{t.description}</td><td className="px-3 py-1.5 text-right font-mono">{t.debit > 0 ? acctFmt(t.debit) : ""}</td><td className="px-3 py-1.5 text-right font-mono">{t.credit > 0 ? acctFmt(t.credit) : ""}</td></tr>)}</tbody></table>
+    </div>)}
 
-    {/* Per-Tenant Aging Table */}
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-      <div className="px-5 py-3 bg-slate-50 border-b border-slate-200">
-        <h4 className="text-sm font-bold text-slate-800">AR Aging by Tenant</h4>
-      </div>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-slate-100 text-xs text-slate-500 uppercase tracking-wider font-semibold bg-slate-50">
-            <th className="px-5 py-3 text-left">Tenant</th>
-            <th className="px-3 py-3 text-right">Current</th>
-            <th className="px-3 py-3 text-right">31-60</th>
-            <th className="px-3 py-3 text-right">61-90</th>
-            <th className="px-3 py-3 text-right">91-120</th>
-            <th className="px-3 py-3 text-right">120+</th>
-            <th className="px-5 py-3 text-right font-bold">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {Object.entries(bsData.arAgingByTenant || {}).filter(([, v]) => v.total > 0.01).sort((a, b) => b[1].total - a[1].total).map(([tenant, aging], i) => (
-            <tr key={i} className="border-b border-slate-100 hover:bg-green-50/40 transition-colors">
-              <td className="px-4 py-2 font-medium text-slate-800">{tenant}</td>
-              <td className="px-3 py-2 text-right font-mono text-xs">{aging.current > 0 ? acctFmt(aging.current) : "\u2014"}</td>
-              <td className="px-3 py-2 text-right font-mono text-xs text-yellow-700">{aging.days30 > 0 ? acctFmt(aging.days30) : "\u2014"}</td>
-              <td className="px-3 py-2 text-right font-mono text-xs text-orange-700">{aging.days60 > 0 ? acctFmt(aging.days60) : "\u2014"}</td>
-              <td className="px-3 py-2 text-right font-mono text-xs text-red-600">{aging.days90 > 0 ? acctFmt(aging.days90) : "\u2014"}</td>
-              <td className="px-3 py-2 text-right font-mono text-xs text-red-800">{aging.over90 > 0 ? acctFmt(aging.over90) : "\u2014"}</td>
-              <td className="px-4 py-2 text-right font-mono text-sm font-bold">{acctFmt(aging.total)}</td>
-            </tr>
-          ))}
-          {Object.keys(bsData.arAgingByTenant || {}).length === 0 && (
-            <tr><td colSpan="7" className="px-4 py-6 text-center text-slate-400">No outstanding receivables</td></tr>
-          )}
-        </tbody>
-      </table>
-    </div>
+    {/* Account Listing */}
+    {reportId === "account_list" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Account Listing</p></div>
+      <table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Code</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Name</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Type</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Subtype</th><th className="px-4 py-2 text-center text-xs font-semibold text-slate-500">Active</th></tr></thead>
+      <tbody>{accounts.sort((a,b) => (a.code||"").localeCompare(b.code||"")).map(a => <tr key={a.id} className="border-t border-slate-100"><td className="px-4 py-2 font-mono text-xs text-slate-600">{a.code||"—"}</td><td className="px-4 py-2 text-slate-800">{a.name}</td><td className="px-4 py-2 text-slate-500">{a.type}</td><td className="px-4 py-2 text-xs text-slate-400">{a.subtype||"—"}</td><td className="px-4 py-2 text-center">{a.is_active ? "✓" : "✗"}</td></tr>)}</tbody></table>
+    </div>)}
 
-    {/* Tenant Sub-Ledger (Net Balances) */}
-    {bsData.arByTenant?.length > 0 && (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mt-4">
-      <div className="px-5 py-3 bg-slate-50 border-b border-slate-200">
-        <h4 className="text-sm font-bold text-slate-800">Tenant Sub-Ledger (Net AR Balance)</h4>
-        <p className="text-xs text-slate-400">Charges minus payments per tenant -- rolls up to master AR on Balance Sheet</p>
-      </div>
-      <div className="p-4 space-y-1">
-        {bsData.arByTenant.map((t, i) => (
-          <div key={i} className="flex justify-between py-1.5 px-3 rounded hover:bg-green-50/30">
-            <span className="text-sm text-slate-700">{t.tenant}</span>
-            <span className={`font-mono text-sm font-medium ${t.balance > 0 ? "text-red-600" : "text-green-600"}`}>{t.balance > 0 ? acctFmt(t.balance) + " owed" : acctFmt(Math.abs(t.balance)) + " credit"}</span>
-          </div>
-        ))}
-        <div className="flex justify-between py-2 px-3 border-t-2 border-green-100 mt-2 font-bold">
-          <span className="text-sm text-slate-900">Total AR (must match Balance Sheet 1100)</span>
-          <span className="font-mono text-sm text-green-700">{acctFmt(bsData.arByTenant.reduce((s, t) => s + t.balance, 0))}</span>
-        </div>
-      </div>
-    </div>
+    {/* Expenses by Category */}
+    {reportId === "expenses_by_category" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Expenses by Category</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {(() => { const data = getExpensesByCategory(start, end); return (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Category</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Amount</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 w-48">% of Total</th></tr></thead>
+      <tbody>{data.map(a => <tr key={a.id} className="border-t border-slate-100 cursor-pointer hover:bg-green-50/30" onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><td className="px-4 py-2 text-slate-700">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-slate-100 rounded-full h-2"><div className="bg-green-500 rounded-full h-2" style={{width: Math.min(100, a.percentage) + "%"}} /></div><span className="text-xs text-slate-500 w-8">{a.percentage}%</span></div></td></tr>)}</tbody></table>); })()}
+    </div>)}
+
+    {/* P&L by Property */}
+    {reportId === "pl_by_class" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Profit & Loss by Property</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {(() => { const data = getClassReport(accounts, journalEntries, classes, start, end); return (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Revenue</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Expenses</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Net Income</th></tr></thead>
+      <tbody>{Object.entries(data).map(([name, d]) => <tr key={name} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{name}</td><td className="px-4 py-2 text-right font-mono text-emerald-700">{acctFmt(d.revenue||0)}</td><td className="px-4 py-2 text-right font-mono text-red-600">{acctFmt(d.expenses||0)}</td><td className={`px-4 py-2 text-right font-mono font-bold ${(d.revenue||0)-(d.expenses||0) < 0 ? "text-red-600" : "text-emerald-700"}`}>{acctFmt((d.revenue||0)-(d.expenses||0))}</td></tr>)}</tbody></table>); })()}
+    </div>)}
+
+    {/* Cash Flow */}
+    {reportId === "cash_flow" && (() => { const cf = getCashFlowData(start, end); return (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Statement of Cash Flows</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      <div className="text-sm font-bold text-slate-900 py-1">Operating Activities</div>
+      {cf.operating.items.map((item,i) => <div key={i} className="flex justify-between py-1" style={{paddingLeft:24}}><span className="text-sm text-slate-700">{item.name}</span><span className="font-mono text-sm tabular-nums">{acctFmt(item.amount, true)}</span></div>)}
+      <div className="flex justify-between py-1.5 border-t border-slate-300 font-bold" style={{paddingLeft:24}}><span className="text-sm">Net Cash from Operations</span><span className="font-mono text-sm tabular-nums">{acctFmt(cf.operating.total)}</span></div>
+      <div className="flex justify-between py-3 border-t-2 border-b-2 border-slate-800 font-black mt-4"><span className="text-sm">NET CHANGE IN CASH</span><span className="font-mono text-sm tabular-nums">{acctFmt(cf.netChange, true)}</span></div>
+      <div className="flex justify-between py-1 mt-2"><span className="text-sm text-slate-500">Beginning Cash</span><span className="font-mono text-sm">{acctFmt(cf.beginningCash)}</span></div>
+      <div className="flex justify-between py-1 font-bold"><span className="text-sm">Ending Cash</span><span className="font-mono text-sm">{acctFmt(cf.endingCash)}</span></div>
+    </div>); })()}
+
+    {/* Rent Roll */}
+    {reportId === "rent_roll" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Rent Roll</p></div>
+      {(() => { const data = getRentRoll(); const occ = data.filter(r=>r.status==="occupied").length; return (<><div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-slate-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.length}</div><div className="text-xs text-slate-400">Total Units</div></div><div className="bg-emerald-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-emerald-700">{occ}</div><div className="text-xs text-slate-400">Occupied</div></div><div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-red-600">{data.length-occ}</div><div className="text-xs text-slate-400">Vacant</div></div><div className="bg-blue-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-blue-700">{acctFmt(data.reduce((s,r)=>s+r.rent,0))}</div><div className="text-xs text-slate-400">Monthly Rent</div></div></div>
+      <table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Property</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Tenant</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Rent</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Lease End</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Status</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-3 py-2 text-slate-700">{r.property}</td><td className="px-3 py-2">{r.tenant === "VACANT" ? <span className="text-red-500 font-medium">VACANT</span> : r.tenant}</td><td className="px-3 py-2 text-right font-mono">{r.rent > 0 ? acctFmt(r.rent) : "—"}</td><td className="px-3 py-2 text-xs text-slate-400">{r.leaseEnd||"—"}</td><td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="occupied"?"bg-emerald-100 text-emerald-700":r.status==="vacant"?"bg-red-100 text-red-600":"bg-amber-100 text-amber-700"}`}>{r.status}</span></td></tr>)}</tbody></table></>); })()}
+    </div>)}
+
+    {/* NOI by Property */}
+    {reportId === "noi_by_property" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">NOI by Property</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {(() => { const data = getNOIByProperty(start, end); return (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Revenue</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Expenses</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">NOI</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Margin</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.property}</td><td className="px-4 py-2 text-right font-mono text-emerald-700">{acctFmt(r.revenue)}</td><td className="px-4 py-2 text-right font-mono text-red-600">{acctFmt(r.expenses)}</td><td className={`px-4 py-2 text-right font-mono font-bold ${r.noi < 0 ? "text-red-600" : "text-emerald-700"}`}>{acctFmt(r.noi)}</td><td className="px-4 py-2 text-right text-sm">{r.noiMargin}%</td></tr>)}</tbody></table>); })()}
+    </div>)}
+
+    {/* Vacancy Report */}
+    {reportId === "vacancy" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Vacancy Report</p></div>
+      {(() => { const data = getVacancyReport(); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No vacant properties</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Property</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Last Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Days Vacant</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Est. Lost Revenue</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.property}</td><td className="px-4 py-2 text-slate-500">{r.lastTenant}</td><td className="px-4 py-2 text-right font-mono">{r.daysVacant}</td><td className="px-4 py-2 text-right font-mono text-red-600">{acctFmt(r.estimatedLost)}</td></tr>)}</tbody></table>); })()}
+    </div>)}
+
+    {/* Lease Expirations */}
+    {reportId === "lease_expirations" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Lease Expiration Schedule</p></div>
+      {(() => { const data = getLeaseExpirations(180); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No leases expiring in the next 180 days</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Tenant</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Property</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Lease End</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Days Left</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Rent</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.tenant}</td><td className="px-4 py-2 text-slate-500">{r.property}</td><td className="px-4 py-2 text-slate-500">{r.leaseEnd}</td><td className={`px-4 py-2 text-right font-mono ${r.daysUntilExpiration <= 30 ? "text-red-600 font-bold" : r.daysUntilExpiration <= 60 ? "text-amber-600" : ""}`}>{r.daysUntilExpiration}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.rent)}</td></tr>)}</tbody></table>); })()}
+    </div>)}
+
+    {/* Work Order Summary */}
+    {reportId === "work_orders_summary" && (() => { const data = getWorkOrderSummary(start, end); return (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Work Order Summary</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      <div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-slate-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.total}</div><div className="text-xs text-slate-400">Total</div></div><div className="bg-amber-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-amber-600">{data.byStatus.open}</div><div className="text-xs text-slate-400">Open</div></div><div className="bg-purple-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-purple-600">{data.byStatus.in_progress}</div><div className="text-xs text-slate-400">In Progress</div></div><div className="bg-emerald-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-emerald-600">{data.byStatus.completed}</div><div className="text-xs text-slate-400">Completed</div></div></div>
+      <table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Property</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Issue</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Status</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Cost</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Days</th></tr></thead>
+      <tbody>{data.items.map(w => <tr key={w.id} className="border-t border-slate-100"><td className="px-3 py-2 text-slate-700">{w.property}</td><td className="px-3 py-2 text-slate-600">{w.issue}</td><td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${w.status==="open"?"bg-amber-100 text-amber-700":w.status==="in_progress"?"bg-purple-100 text-purple-700":"bg-emerald-100 text-emerald-700"}`}>{w.status}</span></td><td className="px-3 py-2 text-right font-mono">{w.cost ? acctFmt(w.cost) : "—"}</td><td className="px-3 py-2 text-right font-mono text-slate-500">{w.daysOpen}</td></tr>)}</tbody></table>
+    </div>); })()}
+
+    {/* Fallback for reports not yet implemented */}
+    {!["pl","pl_compare","pl_by_class","bs","tb","gl","ar_aging_summary","ar_aging_detail","customer_balance_summary","journal","txn_by_date","account_list","expenses_by_category","cash_flow","rent_roll","noi_by_property","vacancy","lease_expirations","work_orders_summary"].includes(reportId) && (
+    <div className="text-center py-12 text-slate-400"><span className="material-icons-outlined text-4xl mb-2 block">construction</span><p className="text-sm">This report is coming soon.</p></div>
     )}
 
-    <div className="text-xs text-slate-400 mt-4 flex justify-between">
-      <span>Accrual basis</span>
-      <span>{new Date().toLocaleString()}</span>
     </div>
-  </div>
-  )}
-
-  {/* ====== Trial Balance ====== */}
-  {activeReport === "tb" && (
-  <div>
-    {/* Balance indicator */}
-    <div className="flex justify-end mb-3">
-      {tbBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl font-medium">Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-xl font-medium">Out of Balance by {acctFmt(Math.abs(tbTotalDebit - tbTotalCredit))}</span>}
-    </div>
-
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-      {/* Centered header */}
-      <div className="text-center py-4 border-b border-slate-200">
-        <p className="text-xs text-slate-400 uppercase tracking-widest">Trial Balance</p>
-        <h4 className="text-base font-bold text-slate-900 mt-1">{companyName}</h4>
-        <p className="text-sm text-slate-400">As of {acctFmtDate(asOfDate)}</p>
-      </div>
-
-      <table className="w-full text-sm">
-        <thead className="bg-slate-50">
-          <tr>
-            <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Code</th>
-            <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Account</th>
-            <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Type</th>
-            <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Debit</th>
-            <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Credit</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tbTypeOrder.filter(type => tbGrouped[type]?.length > 0).map(type => (
-            <React.Fragment key={type}>
-              <tr className="bg-slate-50/70">
-                <td colSpan={5} className="px-5 py-2 text-xs font-bold text-slate-500 uppercase tracking-wider">{type}</td>
-              </tr>
-              {tbGrouped[type].map(a => (
-                <tr key={a.id} className="border-t border-slate-100 hover:bg-green-50/40 transition-colors cursor-pointer" onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}>
-                  <td className="px-5 py-3 font-mono text-xs text-slate-400">{a.code || "\u2014"}</td>
-                  <td className="px-5 py-3 text-slate-700 font-medium">{a.name}</td>
-                  <td className="px-5 py-3 text-xs text-slate-400">{a.type}</td>
-                  <td className="px-5 py-3 text-right font-mono">{a.debitBalance > 0 ? acctFmt(a.debitBalance) : ""}</td>
-                  <td className="px-5 py-3 text-right font-mono">{a.creditBalance > 0 ? acctFmt(a.creditBalance) : ""}</td>
-                </tr>
-              ))}
-            </React.Fragment>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr className="border-t-2 border-b-2 border-slate-800 bg-slate-50">
-            <td colSpan={3} className="px-5 py-3 text-right font-bold">TOTALS</td>
-            <td className={`px-4 py-3 text-right font-mono font-black ${tbBalanced ? "text-emerald-700" : "text-red-600"}`}>{acctFmt(tbTotalDebit)}</td>
-            <td className={`px-4 py-3 text-right font-mono font-black ${tbBalanced ? "text-emerald-700" : "text-red-600"}`}>{acctFmt(tbTotalCredit)}</td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-
-    <div className="text-xs text-slate-400 mt-4 flex justify-between">
-      <span>Accrual basis</span>
-      <span>{new Date().toLocaleString()}</span>
-    </div>
-  </div>
-  )}
-
-  {/* ====== General Ledger ====== */}
-  {activeReport === "gl" && (
-  <div>
-    {glAccount && (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-      {/* Centered header */}
-      <div className="text-center mb-4">
-        <p className="text-xs text-slate-400 uppercase tracking-widest">General Ledger</p>
-        <h4 className="text-base font-bold text-slate-900 mt-1">{glAccount.name}</h4>
-        <p className="text-sm text-slate-400">#{glAccount.code || glAccount.id} &middot; {glAccount.type} &mdash; {glAccount.subtype}</p>
-        <p className="text-sm text-slate-400">{acctFmtDate(start)} through {acctFmtDate(end)}</p>
-      </div>
-      {glLines.length > 0 && (
-        <div className="flex justify-end mb-3">
-          <div className="text-right">
-            <p className="text-xs text-slate-400">Ending Balance (filtered period)</p>
-            <p className="font-mono font-bold">{acctFmt(glLines[glLines.length - 1].balance, true)}</p>
-          </div>
-        </div>
-      )}
-      {/* Column picker */}
-      <div className="flex justify-end mb-2 relative">
-        <button onClick={() => setShowColPicker(!showColPicker)} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">view_column</span>Columns</button>
-        {showColPicker && (
-        <div className="absolute right-0 top-8 bg-white border border-slate-200 rounded-xl shadow-lg p-3 z-20 w-48">
-          {[["date","Date"],["entry","Entry #"],["description","Description"],["memo","Memo"],["debit","Debit"],["credit","Credit"],["balance","Balance"]].map(([id,label]) => (
-          <label key={id} className="flex items-center gap-2 py-1 cursor-pointer text-sm text-slate-700 hover:text-slate-900">
-            <input type="checkbox" checked={glColumns[id]} onChange={() => toggleGlCol(id)} className="accent-indigo-600" />{label}
-          </label>
-          ))}
-        </div>
-        )}
-      </div>
-      <table className="w-full text-sm rounded-xl border border-slate-200 overflow-hidden">
-        <thead className="bg-slate-50">
-          <tr>
-            {glColumns.date && <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Date</th>}
-            {glColumns.entry && <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Entry #</th>}
-            {glColumns.description && <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Description</th>}
-            {glColumns.memo && <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Memo</th>}
-            {glColumns.debit && <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Debit</th>}
-            {glColumns.credit && <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Credit</th>}
-            {glColumns.balance && <th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Balance</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {glLines.length === 0 ? (
-            <tr><td colSpan={Object.values(glColumns).filter(Boolean).length} className="px-5 py-8 text-center text-slate-400">No transactions in this period</td></tr>
-          ) : glLines.map((l, i) => (
-            <tr key={l.jeId + "-" + i} className="border-t border-slate-100 hover:bg-green-50/40 transition-colors cursor-pointer" onClick={() => { const je = journalEntries.find(j => j.id === l.jeId); if (je) { setActiveReport("gl"); /* navigate to JE view if needed */ } }}>
-              {glColumns.date && <td className="px-5 py-3 text-xs text-slate-400">{acctFmtDate(l.date)}</td>}
-              {glColumns.entry && <td className="px-5 py-3 font-mono text-xs text-indigo-600">{l.jeNumber || "—"}</td>}
-              {glColumns.description && <td className="px-5 py-3 text-slate-700">{l.description}</td>}
-              {glColumns.memo && <td className="px-5 py-3 text-xs text-slate-400">{l.memo || "—"}</td>}
-              {glColumns.debit && <td className="px-5 py-3 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>}
-              {glColumns.credit && <td className="px-5 py-3 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>}
-              {glColumns.balance && <td className={`px-5 py-3 text-right font-mono font-semibold ${l.balance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(l.balance, true)}</td>}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <div className="text-xs text-slate-400 mt-4 flex justify-between">
-        <span>Accrual basis</span>
-        <span>{new Date().toLocaleString()}</span>
-      </div>
-    </div>
-    )}
-  </div>
-  )}
   </div>
   );
 }
-
-// ═══════════════════════════════════════════════════════════════
-// BANK TRANSACTIONS (QuickBooks-style) — Phase 1
-// CSV Import + For Review / Categorized / Excluded + Add/Exclude
-// ═══════════════════════════════════════════════════════════════
-
-// --- CSV Parsing Utilities ---
-const KNOWN_BANK_FORMATS = [
-  { id:"chase", name:"Chase Bank", headers:["Transaction Date","Post Date","Description","Category","Type","Amount","Memo"], mapping:{date:"Transaction Date",description:"Description",amount:"Amount",memo:"Memo"} },
-  { id:"bofa", name:"Bank of America", headers:["Date","Description","Amount","Running Bal."], mapping:{date:"Date",description:"Description",amount:"Amount"} },
-  { id:"wells", name:"Wells Fargo", headers:["Date","Amount","* ","* ","Description"], mapping:{date:"Date",description:"Description",amount:"Amount"} },
-  { id:"citi", name:"Citibank", headers:["Date","Description","Debit","Credit"], mapping:{date:"Date",description:"Description",debit:"Debit",credit:"Credit"} },
-  { id:"capital_one", name:"Capital One", headers:["Transaction Date","Posted Date","Card No.","Description","Category","Debit","Credit"], mapping:{date:"Transaction Date",description:"Description",debit:"Debit",credit:"Credit"} },
-  { id:"usbank", name:"US Bank", headers:["Date","Transaction","Name","Memo","Amount"], mapping:{date:"Date",description:"Name",memo:"Memo",amount:"Amount"} },
-];
 
 function csvParseText(csvText) {
   const lines = csvText.trim().split(/\r?\n/);
@@ -10325,7 +10206,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
-  {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
+  {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} companyId={companyId} userProfile={userProfile} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {/* Account Ledger Drill-Down */}
   {ledgerView && <AccountLedgerView accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => setLedgerView(null)} onViewJE={(jeId) => { setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
 
