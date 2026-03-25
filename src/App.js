@@ -7622,6 +7622,11 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
 
   const openView = (je) => setModal({ mode: "view", je });
 
+  const openDuplicate = (je) => {
+  setForm({ date: acctToday(), description: je.description || "", reference: je.reference || "", property: je.property || "", lines: (je.lines || []).map(l => ({ account_id: l.account_id, account_name: l.account_name, debit: l.debit || "", credit: l.credit || "", class_id: l.class_id || "", memo: l.memo || "" })) });
+  setModal("add");
+  };
+
   const setLine = (i, k, v) => {
   const lines = [...form.lines];
   lines[i] = { ...lines[i], [k]: v };
@@ -7684,7 +7689,6 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   <div className="flex justify-between pt-2">
   <button onClick={() => setModal(null)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   <div className="flex gap-2">
-  <button onClick={() => saveEntry("draft")} disabled={!form.description || !validation.isValid} className="bg-slate-200 text-slate-700 text-sm px-4 py-2 rounded-lg disabled:opacity-50">Save Draft</button>
   <button onClick={() => saveEntry("posted")} disabled={!form.description || !validation.isValid} className="bg-emerald-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50 hover:bg-emerald-700">Post Entry</button>
   </div>
   </div>
@@ -7730,6 +7734,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   {je.status === "draft" && <button onClick={() => onPost(je.id)} className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-100 text-xs">Post</button>}
   {je.status === "posted" && <button onClick={() => onVoid(je.id)} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-100 text-xs">Void</button>}
   {je.status !== "voided" && <button onClick={() => openEdit(je)} className="text-xs text-indigo-600 hover:underline">Edit</button>}
+  <button onClick={() => openDuplicate(je)} className="text-xs text-slate-400 hover:text-slate-700 hover:underline">Duplicate</button>
   </div>
   </td>
   </tr>
@@ -7775,6 +7780,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   {modal.je.status === "draft" && <button onClick={() => { onPost(modal.je.id); setModal(null); }} className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-100 text-xs">Post</button>}
   {modal.je.status === "posted" && <button onClick={() => { onVoid(modal.je.id); setModal(null); }} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-100 text-xs">Void</button>}
   {modal.je.status !== "voided" && <button onClick={() => openEdit(modal.je)} className="bg-slate-200 text-slate-700 text-xs px-3 py-1.5 rounded-lg">Edit</button>}
+  <button onClick={() => { openDuplicate(modal.je); }} className="bg-slate-100 text-slate-500 text-xs px-3 py-1.5 rounded-lg hover:bg-slate-200">Duplicate</button>
   </div>
   </div>
   </AcctModal>
