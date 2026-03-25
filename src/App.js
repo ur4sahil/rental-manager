@@ -3578,6 +3578,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   async function assignPM(property) {
   if (!guardSubmit("assignPM")) return;
+  try {
   if (!pmCode.trim()) { showToast("Please enter the PM company's 8-digit code.", "error"); return; }
   const { data: pmCompany } = await supabase.from("companies").select("id, name, company_role").eq("company_code", pmCode.trim()).maybeSingle();
   if (!pmCompany) { showToast("No company found with that code.", "error"); return; }
@@ -3606,6 +3607,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   setShowPmAssign(null);
   setPmCode("");
   fetchProperties();
+  } finally { guardRelease("assignPM"); }
   }
 
   async function removePM(property) {
@@ -6406,6 +6408,8 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   }
 
   async function authorizeBillPayment(bill, paymentMethod) {
+  if (!guardSubmit("authorizeBill", bill?.id)) return;
+  try {
   const { error } = await supabase.from("utility_bills").update({
   status: "authorized",
   payment_method_selected: paymentMethod,
@@ -6439,6 +6443,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   addNotification("✅", "Payment authorized: " + (bill.provider_display || bill.provider) + " $" + bill.amount);
   setPaymentMethodModal(null);
   fetchAutomationData();
+  } finally { guardRelease("authorizeBill", bill?.id); }
   }
 
   async function fetchUtilities() {
@@ -10017,7 +10022,8 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   fetchAll();
   }
   async function postJournalEntry(id) {
-  // Check JE has lines before posting
+  if (!guardSubmit("postJE", id)) return;
+  try {
   const je = journalEntries.find(j => j.id === id);
   if (!je?.lines || je.lines.length === 0) { showToast("Cannot post a journal entry with no lines.", "error"); return; }
   const v = validateJE(je.lines);
@@ -10025,8 +10031,10 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   const { error: _err3952 } = await supabase.from("acct_journal_entries").update({ status: "posted" }).eq("company_id", companyId).eq("id", id);
   if (_err3952) { showToast("Error updating acct_journal_entries: " + _err3952.message, "error"); return; }
   fetchAll();
+  } finally { guardRelease("postJE", id); }
   }
   async function voidJournalEntry(id) {
+  if (!guardSubmit("voidJE", id)) return;
   try {
   const je = journalEntries.find(j => j.id === id);
   // Period lock check
@@ -10064,7 +10072,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   }
   }
   fetchAll();
-  } catch (e) { showToast("Error voiding entry: " + e.message, "error"); }
+  } catch (e) { showToast("Error voiding entry: " + e.message, "error"); } finally { guardRelease("voidJE", id); }
   }
 
   // --- Class CRUD ---
