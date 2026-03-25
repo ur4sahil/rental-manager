@@ -67,23 +67,20 @@ serve(async (req) => {
     }
 
     // Extract user email from JWT
+    // Verify JWT with Supabase auth (signature verification, not just decode)
     const authHeader = req.headers.get("authorization") || "";
     const token = authHeader.replace("Bearer ", "");
-    let userEmail = "";
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      userEmail = payload.email || "";
-    } catch { /* invalid token */ }
-
-    if (!userEmail) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
+    if (authErr || !user?.email) {
+      return new Response(JSON.stringify({ error: "Unauthorized — invalid or expired token" }), {
         status: 401,
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       });
     }
+    const userEmail = user.email;
 
-    // Verify caller belongs to claimed company
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    // Verify caller belongs to claimed company AND has appropriate role
     const { data: membership } = await supabase.from("company_members")
       .select("role, status")
       .eq("company_id", companyId)
@@ -93,6 +90,13 @@ serve(async (req) => {
 
     if (!membership) {
       return new Response(JSON.stringify({ error: "Not a member of this company" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+    // Only tenants can create checkout sessions for themselves
+    if (membership.role !== "tenant" && !["admin", "owner"].includes(membership.role)) {
+      return new Response(JSON.stringify({ error: "Insufficient role for payment" }), {
         status: 403,
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       });

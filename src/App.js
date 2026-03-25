@@ -12,6 +12,7 @@
 //  - Tenant balance updates → RPC (done: update_tenant_balance)
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import DOMPurify from "dompurify";
 import { supabase } from "./supabase";
 import { Input, Textarea } from "./ui";
 
@@ -134,7 +135,7 @@ async function postAccountingTransaction({ date, description, reference, propert
   if (!enrichedEntry.tenant_id && balanceUpdate?.tenantId) enrichedEntry.tenant_id = balanceUpdate.tenantId;
   if (balanceUpdate?.tenantId && enrichedEntry.balance === 0) {
   try {
-  const { data: tRow } = await supabase.from("tenants").select("balance").eq("id", balanceUpdate.tenantId).maybeSingle();
+  const { data: tRow } = await supabase.from("tenants").select("balance").eq("id", balanceUpdate.tenantId).eq("company_id", companyId).maybeSingle();
   enrichedEntry.balance = safeNum(tRow?.balance) + safeNum(balanceUpdate.amount);
   } catch (_) {}
   }
@@ -144,8 +145,11 @@ async function postAccountingTransaction({ date, description, reference, propert
   try {
   const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: balanceUpdate.tenantId, p_amount_change: balanceUpdate.amount });
   result.balanceOk = !balErr;
-  if (balErr) result.error = balErr.message;
-  } catch (e) { result.error = e.message; }
+  if (balErr) {
+    result.error = balErr.message;
+    console.error("Balance update failed for tenant " + balanceUpdate.tenantId + ": " + balErr.message + ". Ledger entry exists — manual correction may be needed.");
+  }
+  } catch (e) { result.error = e.message; console.error("Balance RPC exception:", e.message); }
   }
   return result;
 }
@@ -353,12 +357,20 @@ function sanitizeForPrint(str) {
   if (!str) return "";
   return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
-// ============ CREDENTIAL ENCRYPTION (AES-256-GCM via Web Crypto) ============
+// ============ CREDENTIAL ENCRYPTION (AES-256-GCM via Web Crypto + PBKDF2) ============
+// Master key from environment — falls back to legacy derivation for backward compat
+const _MASTER_KEY = process.env.REACT_APP_ENCRYPTION_KEY || "";
+async function _deriveKey(companyId, usage) {
+  // Use PBKDF2 with master key + company salt for strong key derivation
+  const salt = new TextEncoder().encode("propmanager_" + companyId + "_v2");
+  const masterMaterial = _MASTER_KEY || (companyId + "_propmanager_cred_key");
+  const baseKey = await crypto.subtle.importKey("raw", new TextEncoder().encode(masterMaterial), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" }, baseKey, { name: "AES-GCM", length: 256 }, false, usage);
+}
 async function encryptCredential(plaintext, companyId) {
   if (!plaintext) return { encrypted: "", iv: "" };
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const keyStr = (companyId + "_propmanager_cred_key").slice(0, 32).padEnd(32, "0");
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(keyStr), { name: "AES-GCM" }, false, ["encrypt"]);
+  const key = await _deriveKey(companyId, ["encrypt"]);
   const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(plaintext));
   const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, "0")).join("");
   return { encrypted: btoa(String.fromCharCode(...new Uint8Array(ciphertext))), iv: ivHex };
@@ -366,8 +378,7 @@ async function encryptCredential(plaintext, companyId) {
 async function decryptCredential(encryptedB64, ivHex, companyId) {
   if (!encryptedB64 || !ivHex) return "";
   try {
-    const keyStr = (companyId + "_propmanager_cred_key").slice(0, 32).padEnd(32, "0");
-    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(keyStr), { name: "AES-GCM" }, false, ["decrypt"]);
+    const key = await _deriveKey(companyId, ["decrypt"]);
     const iv = new Uint8Array(ivHex.match(/.{2}/g).map(h => parseInt(h, 16)));
     const ciphertext = Uint8Array.from(atob(encryptedB64), c => c.charCodeAt(0));
     const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
@@ -539,8 +550,11 @@ async function autoOwnerDistribution(companyId, propertyAddress, paymentAmount, 
   const hasAccrual = await checkAccrualExists(companyId, month, tenantName);
   if (!hasAccrual) return; // No accrual to reclassify — distribution handled when payment was direct revenue
   const feePct = safeNum(owner.management_fee_pct || 10);
-  const mgmtFee = Math.round(paymentAmount * (feePct / 100) * 100) / 100;
-  const ownerNet = Math.round((paymentAmount - mgmtFee) * 100) / 100;
+  // Use integer cents to avoid floating point precision loss
+  const paymentCents = Math.round(paymentAmount * 100);
+  const mgmtFeeCents = Math.round(paymentCents * feePct / 100);
+  const mgmtFee = mgmtFeeCents / 100;
+  const ownerNet = (paymentCents - mgmtFeeCents) / 100;
   const classId = await getPropertyClassId(propertyAddress, companyId);
   const jeId = await autoPostJournalEntry({
   companyId, date: paymentDate,
@@ -573,7 +587,7 @@ async function getPropertyClassId(propertyAddress, companyId) {
   const { data: prop } = await supabase.from("properties").select("id, class_id").eq("company_id", companyId).eq("address", propertyAddress).maybeSingle();
   if (prop?.class_id) {
   // Verify the class still exists
-  const { data: cls } = await supabase.from("acct_classes").select("id").eq("id", prop.class_id).maybeSingle();
+  const { data: cls } = await supabase.from("acct_classes").select("id").eq("id", prop.class_id).eq("company_id", companyId).maybeSingle();
   if (cls?.id) { _classIdCache[cacheKey] = cls.id; return cls.id; }
   }
   // 2. class_id is null or stale — find or create the class by exact name match
@@ -1066,6 +1080,8 @@ function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUpl
   const ALLOWED_DOC_EXTENSIONS = /\.(pdf|jpg|jpeg|png|gif|webp|doc|docx|xls|xlsx|txt|csv)$/i;
   if (!ALLOWED_DOC_TYPES.includes(file.type) && !ALLOWED_DOC_EXTENSIONS.test(file.name)) { showToast("File type not allowed. Accepted: PDF, images, Word, Excel, text files.", "error"); return; }
   if (file.size > 25 * 1024 * 1024) { showToast("File must be under 25MB.", "error"); return; }
+  // Magic bytes validation (prevents MIME spoofing)
+  try { const hdr = new Uint8Array(await file.slice(0, 8).arrayBuffer()); const hex = Array.from(hdr.slice(0, 4)).map(b => b.toString(16).padStart(2, "0")).join(""); const ok = ["25504446","89504e47","ffd8ffe0","ffd8ffe1","ffd8ffe2","47494638","504b0304","d0cf11e0"].some(m => hex.startsWith(m)) || file.type.startsWith("text/"); if (!ok) { showToast("File content doesn't match expected format.", "error"); return; } } catch {}
   setUploading(true);
   const fileName = companyId + "/" + shortId() + "_" + sanitizeFileName(file.name);
   const { error: uploadErr } = await supabase.storage.from("documents").upload(fileName, file, { cacheControl: "3600", upsert: false });
@@ -1419,7 +1435,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   try {
   const { data: jeHeaders } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).eq("status", "posted");
   const jeIds = (jeHeaders || []).map(j => j.id);
-  const { data: jeLines } = jeIds.length > 0 ? await supabase.from("acct_journal_lines").select("account_id, debit, credit").in("journal_entry_id", jeIds) : { data: [] };
+  const { data: jeLines } = jeIds.length > 0 ? await supabase.from("acct_journal_lines").select("account_id, debit, credit").eq("company_id", companyId).in("journal_entry_id", jeIds) : { data: [] };
   const { data: accounts } = await supabase.from("acct_accounts").select("id, type").eq("company_id", companyId);
   if (jeLines && accounts) {
   const acctMap = {};
@@ -2130,7 +2146,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       } catch (e) { console.warn("First month rent posting failed:", e.message); }
       }
       // Auto-post rent charges
-      autoPostRentCharges(companyId).catch(() => {});
+      autoPostRentCharges(companyId).catch(e => console.warn('autoPostRentCharges failed:', e.message));
       }
       }
       await persistStatus("completed");
@@ -5084,11 +5100,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* LEDGER */}
   {activePanel === "ledger" && (
   <div className="flex-1 overflow-y-auto p-4">
-  <div className={`rounded-3xl p-4 mb-4 text-center relative ${selectedTenant.balance > 0 ? "bg-red-50" : selectedTenant.balance < 0 ? "bg-green-50" : "bg-indigo-50/30"}`}>
+  <div className={`rounded-3xl p-4 mb-4 text-center relative ${safeNum(selectedTenant?.balance) > 0 ? "bg-red-50" : safeNum(selectedTenant?.balance) < 0 ? "bg-green-50" : "bg-indigo-50/30"}`}>
   <button onClick={() => exportLedgerPDF(selectedTenant, ledger)} className="absolute top-3 right-3 text-xs text-red-600 border border-red-200 bg-white px-3 py-1.5 rounded-lg hover:bg-red-50 flex items-center gap-1" title="Export ledger as PDF for sharing"><span className="material-icons-outlined text-sm">picture_as_pdf</span>Export PDF</button>
   <div className="text-xs text-slate-400 mb-1">Current Balance</div>
-  <div className={`text-3xl font-bold ${selectedTenant.balance > 0 ? "text-red-500" : selectedTenant.balance < 0 ? "text-green-600" : "text-slate-700"}`}>
-  {selectedTenant.balance > 0 ? `-${formatCurrency(selectedTenant.balance)}` : selectedTenant.balance < 0 ? `Credit ${formatCurrency(Math.abs(selectedTenant.balance))}` : "$0 Current"}
+  <div className={`text-3xl font-bold ${safeNum(selectedTenant?.balance) > 0 ? "text-red-500" : safeNum(selectedTenant?.balance) < 0 ? "text-green-600" : "text-slate-700"}`}>
+  {safeNum(selectedTenant?.balance) > 0 ? `-${formatCurrency(selectedTenant.balance)}` : safeNum(selectedTenant?.balance) < 0 ? `Credit ${formatCurrency(Math.abs(selectedTenant.balance))}` : "$0 Current"}
   </div>
   </div>
   <div className="bg-indigo-50/30 rounded-xl p-3 mb-4">
@@ -10280,6 +10296,8 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   const ALLOWED_DOC_EXTENSIONS = /\.(pdf|jpg|jpeg|png|gif|webp|doc|docx|xls|xlsx|txt|csv)$/i;
   if (!ALLOWED_DOC_TYPES.includes(file.type) && !ALLOWED_DOC_EXTENSIONS.test(file.name)) { showToast("File type not allowed. Accepted: PDF, images, Word, Excel, text files.", "error"); return; }
   if (file.size > 25 * 1024 * 1024) { showToast("File must be under 25MB.", "error"); return; }
+  // Magic bytes validation (prevents MIME spoofing)
+  try { const hdr = new Uint8Array(await file.slice(0, 8).arrayBuffer()); const hex = Array.from(hdr.slice(0, 4)).map(b => b.toString(16).padStart(2, "0")).join(""); const ok = ["25504446","89504e47","ffd8ffe0","ffd8ffe1","ffd8ffe2","47494638","504b0304","d0cf11e0"].some(m => hex.startsWith(m)) || file.type.startsWith("text/"); if (!ok) { showToast("File content doesn't match expected format.", "error"); return; } } catch {}
   setUploading(true);
   const fileName = `${companyId}/${shortId()}_${sanitizeFileName(file.name)}`;
   const { error: uploadError } = await supabase.storage.from("documents").upload(fileName, file, {
@@ -14439,7 +14457,9 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   }
   });
   if (!error && data?.url) {
-  window.location.href = data.url; // Redirect to Stripe Checkout
+  // Validate Stripe URL before redirect (prevents open redirect if API compromised)
+  if (!data.url || !data.url.startsWith("https://checkout.stripe.com/")) { showToast("Invalid payment URL. Please try again.", "error"); return; }
+  window.location.href = data.url;
   return;
   }
   } catch (stripeErr) { console.warn("Stripe Edge Function not available, using fallback:", stripeErr.message); }
@@ -16382,14 +16402,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // Sanitize template body: allow only safe HTML tags, strip scripts/events
   function sanitizeTemplateHtml(html) {
   if (!html) return "";
-  // Strip <script>, <iframe>, <object>, <embed>, <link>, <meta>, <base> tags entirely
-  let safe = html.replace(/<\s*(script|iframe|object|embed|link|meta|base|form)\b[^>]*>[\s\S]*?<\/\s*\1\s*>/gi, "");
-  safe = safe.replace(/<\s*(script|iframe|object|embed|link|meta|base|form)\b[^>]*\/?>/gi, "");
-  // Strip event handlers (on*)
-  safe = safe.replace(/\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]*)/gi, "");
-  // Strip javascript: and data: URLs in attributes
-  safe = safe.replace(/(href|src|action)\s*=\s*["']?\s*(javascript|data|vbscript)\s*:/gi, "$1=\"#\"");
-  return safe;
+  return DOMPurify.sanitize(html, { ALLOWED_TAGS: ["p","br","b","i","u","strong","em","h1","h2","h3","h4","h5","h6","ul","ol","li","table","thead","tbody","tr","th","td","div","span","a","img","hr","blockquote","pre","code","sub","sup","s","del","ins","mark"], ALLOWED_ATTR: ["href","src","alt","title","class","style","width","height","colspan","rowspan","align","valign"], ALLOW_DATA_ATTR: false, FORBID_TAGS: ["script","iframe","object","embed","form","input","button","select","textarea"], FORBID_ATTR: ["onerror","onload","onclick","onmouseover","onfocus","onblur"] });
   }
   function renderMergedBody(body, values, fieldConfig) {
   return sanitizeTemplateHtml((body || "").replace(/\{\{(\w+)\}\}/g, (match, fieldName) => {

@@ -70,7 +70,7 @@ serve(async (req) => {
     let body: any = {};
     try { body = await req.json(); } catch {}
 
-    if (body.cron_secret === CRON_SECRET && CRON_SECRET) {
+    if (CRON_SECRET && body.cron_secret === CRON_SECRET) {
       companyFilter = null; // sync all
     } else if (authHeader) {
       const token = authHeader.replace("Bearer ", "");
