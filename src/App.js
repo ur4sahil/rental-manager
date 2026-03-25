@@ -906,7 +906,7 @@ function PropertySelect({ value, onChange, className = "", companyId }) {
   supabase.from("properties").select("id, address, type, tenant, tenant_2, tenant_3, tenant_4, rent, status").eq("company_id", companyId).is("archived_at", null).order("address").then(({ data }) => setProperties(data || []));
   }, [companyId]);
   return (
-  <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel || null); }} className={`border border-indigo-100 rounded-2xl px-3 py-2 text-sm ${className}`}>
+  <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel || null); }} className={`w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm ${className}`}>
   <option value="">Select property...</option>
   {properties.map(p => <option key={p.id} value={p.address}>{p.address}</option>)}
   </select>
@@ -3631,20 +3631,20 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {propertyTypes.map(t => <option key={t} value={t}>{t}</option>)}
   </select>
   {hasManagedProps && (
-  <select value={filterOwnership} onChange={e => setFilterOwnership(e.target.value)} >
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={filterOwnership} onChange={e => setFilterOwnership(e.target.value)} >
   <option value="all">All Properties</option>
   <option value="owned">Owned by Us</option>
   <option value="managed">PM-Managed</option>
   </select>
   )}
   {propertyOwners.length > 1 && (
-  <select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} >
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={filterOwner} onChange={e => setFilterOwner(e.target.value)} >
   <option value="all">All Owners</option>
   {propertyOwners.map(o => <option key={o} value={o}>{o}</option>)}
   </select>
   )}
   {propertyCities.length > 1 && (
-  <select value={filterCity} onChange={e => setFilterCity(e.target.value)} >
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={filterCity} onChange={e => setFilterCity(e.target.value)} >
   <option value="all">All Cities</option>
   {propertyCities.map(c => <option key={c} value={c}>{c}</option>)}
   </select>
@@ -5336,17 +5336,17 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* Filters */}
   <div className="flex flex-wrap gap-2 mb-4">
   <Input placeholder="Search name, email, phone, property..." value={tenantSearch || ""} onChange={e => setTenantSearch(e.target.value)} className="flex-1 min-w-0 sm:min-w-48" />
-  <select value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} >
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} >
   <option value="all">All Status</option><option value="active">Active</option><option value="notice">Notice</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
   </select>
-  <select value={tenantFilterProp} onChange={e => setTenantFilterProp(e.target.value)} >
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={tenantFilterProp} onChange={e => setTenantFilterProp(e.target.value)} >
   <option value="all">All Properties</option>
   {[...new Set(tenants.map(t => t.property).filter(Boolean))].sort().map(p => <option key={p} value={p}>{p.length > 30 ? p.slice(0, 30) + "..." : p}</option>)}
   </select>
-  <select value={tenantFilterBalance} onChange={e => setTenantFilterBalance(e.target.value)} >
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={tenantFilterBalance} onChange={e => setTenantFilterBalance(e.target.value)} >
   <option value="all">All Balances</option><option value="delinquent">Delinquent (owes)</option><option value="current">Current ($0)</option><option value="credit">Credit (overpaid)</option>
   </select>
-  <select value={tenantFilterLeaseExpiry} onChange={e => setTenantFilterLeaseExpiry(e.target.value)} >
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={tenantFilterLeaseExpiry} onChange={e => setTenantFilterLeaseExpiry(e.target.value)} >
   <option value="all">All Leases</option><option value="30">Expires in 30 days</option><option value="60">Expires in 60 days</option><option value="90">Expires in 90 days</option><option value="expired">Expired</option><option value="no_lease">No lease date</option>
   </select>
   {(tenantFilter !== "all" || tenantFilterProp !== "all" || tenantFilterBalance !== "all" || tenantFilterLeaseExpiry !== "all" || tenantSearch) && (
@@ -5372,7 +5372,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="space-y-3">
   <p className="text-sm text-slate-500">This will set the selected tenants' status to "notice" and generate a move-out date.</p>
   <div><label className="text-xs font-medium text-slate-400 block mb-1">Notice Period (days)</label>
-  <select id="bulk-notice-days" >
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" id="bulk-notice-days" >
   <option value="30">30 days</option><option value="60">60 days</option><option value="90">90 days</option>
   </select>
   </div>
@@ -5441,7 +5441,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <Modal title={`Change Status — ${selectedTenants.size} Tenant(s)`} onClose={() => setBulkAction(null)}>
   <div className="space-y-3">
   <div><label className="text-xs font-medium text-slate-400 block mb-1">New Status</label>
-  <select id="bulk-status-val" >
+  <select id="bulk-status-val" className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" >
   <option value="active">Active</option><option value="notice">Notice</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
   </select>
   </div>
@@ -6482,10 +6482,10 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="flex flex-col md:flex-row gap-3 mb-4">
   <div className="mr-auto"></div>
   <Input placeholder="Search..." value={utilSearch} onChange={e => setUtilSearch(e.target.value)} className="w-full sm:w-40" />
-  <select value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} >
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} >
   <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
   </select>
-  <select value={utilFilterProp} onChange={e => setUtilFilterProp(e.target.value)} >
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={utilFilterProp} onChange={e => setUtilFilterProp(e.target.value)} >
   <option value="all">All Properties</option>
   {[...new Set(utilities.map(u => u.property).filter(Boolean))].map(p => <option key={p} value={p}>{p}</option>)}
   </select>
@@ -7342,7 +7342,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   <div className="grid grid-cols-2 gap-3">
   <div>
   <label className="text-xs font-medium text-slate-500">Type *</label>
-  <select value={form.type} onChange={e => { const v = e.target.value; setForm({...form, type: v, subtype: v === "__custom__" ? "" : (getAccountSubtypes(accounts, v)[0] || ""), customType: v === "__custom__" ? form.customType : "" }); }} className="mt-1">
+  <select value={form.type} onChange={e => { const v = e.target.value; setForm({...form, type: v, subtype: v === "__custom__" ? "" : (getAccountSubtypes(accounts, v)[0] || ""), customType: v === "__custom__" ? form.customType : "" }); }} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1">
   {dynamicTypes.map(t => <option key={t} value={t}>{t}</option>)}
   <option value="__custom__">+ Add Custom Type...</option>
   </select>
@@ -7350,7 +7350,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   </div>
   <div>
   <label className="text-xs font-medium text-slate-500">Subtype</label>
-  <select value={form.subtype} onChange={e => setForm({...form, subtype: e.target.value, customSubtype: e.target.value === "__custom__" ? form.customSubtype : ""})} className="mt-1">
+  <select value={form.subtype} onChange={e => setForm({...form, subtype: e.target.value, customSubtype: e.target.value === "__custom__" ? form.customSubtype : ""})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1">
   {(form.type === "__custom__" ? [] : dynamicSubtypes).map(s => <option key={s} value={s}>{s}</option>)}
   <option value="__custom__">+ Add Custom Subtype...</option>
   <option value="">None</option>
@@ -10066,7 +10066,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <h3 className="font-manrope font-semibold text-slate-800 mb-4">{editingLease ? "Edit Lease" : "Create New Lease"}</h3>
   {!editingLease && templates.length > 0 && (
   <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Apply Template</label>
-  <select value={form.template_id} onChange={e => { setForm({...form, template_id: e.target.value}); applyTemplate(e.target.value); }} >
+  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.template_id} onChange={e => { setForm({...form, template_id: e.target.value}); applyTemplate(e.target.value); }} >
   <option value="">Select template...</option>
   {templates.map(t => <option key={t.id} value={t.id}>{t.name} — {t.description}</option>)}
   </select>
@@ -10074,7 +10074,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   )}
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div><label className="text-xs text-slate-400 mb-1 block">Tenant *</label>
-  <select value={form.tenant_name} onChange={e => { setForm({...form, tenant_name: e.target.value}); prefillFromTenant(e.target.value); }} >
+  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.tenant_name} onChange={e => { setForm({...form, tenant_name: e.target.value}); prefillFromTenant(e.target.value); }} >
   <option value="">Select tenant...</option>
   {tenants.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
   </select>
@@ -10087,7 +10087,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <div><label className="text-xs text-slate-400 mb-1 block">Annual Escalation %</label><Input type="number" step="0.1" min="0" max="25" placeholder="3.0" value={form.rent_escalation_pct} onChange={e => setForm({...form, rent_escalation_pct: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Payment Due Day</label><Input type="number" min="1" max="31" placeholder="1" value={form.payment_due_day} onChange={e => setForm({...form, payment_due_day: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Lease Type</label>
-  <select value={form.lease_type} onChange={e => setForm({...form, lease_type: e.target.value})} ><option value="fixed">Fixed Term</option><option value="month_to_month">Month-to-Month</option><option value="renewal">Renewal</option></select></div>
+  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.lease_type} onChange={e => setForm({...form, lease_type: e.target.value})} ><option value="fixed">Fixed Term</option><option value="month_to_month">Month-to-Month</option><option value="renewal">Renewal</option></select></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Renewal Notice (days)</label><Input type="number" min="0" max="180" placeholder="60" value={form.renewal_notice_days} onChange={e => setForm({...form, renewal_notice_days: e.target.value})} /></div>
   </div>
   {/* Late Fee Settings */}
@@ -10426,12 +10426,12 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div><label className="text-xs text-slate-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} /></div>
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address</label><Input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Specialty</label>
-  <select value={form.specialty} onChange={e => setForm({...form, specialty: e.target.value})} >
+  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.specialty} onChange={e => setForm({...form, specialty: e.target.value})} >
   {specialties.map(s => <option key={s} value={s}>{s}</option>)}
   </select>
   </div>
   <div><label className="text-xs text-slate-400 mb-1 block">Status</label>
-  <select value={form.status} onChange={e => setForm({...form, status: e.target.value})} >
+  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.status} onChange={e => setForm({...form, status: e.target.value})} >
   <option value="active">Active</option><option value="preferred">Preferred</option><option value="inactive">Inactive</option><option value="blocked">Blocked</option>
   </select>
   </div>
@@ -10478,7 +10478,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div>
   <div className="flex gap-2 mb-4">
   <Input placeholder="Search vendors..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="flex-1" />
-  <select value={filterSpecialty} onChange={e => setFilterSpecialty(e.target.value)} >
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={filterSpecialty} onChange={e => setFilterSpecialty(e.target.value)} >
   <option value="all">All Specialties</option>
   {specialties.map(s => <option key={s} value={s}>{s}</option>)}
   </select>
@@ -10829,7 +10829,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <h3 className="font-manrope font-semibold text-slate-800 mb-4">Generate Owner Statement</h3>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div><label className="text-xs text-slate-400 mb-1 block">Owner *</label>
-  <select value={genOwner} onChange={e => setGenOwner(e.target.value)} >
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={genOwner} onChange={e => setGenOwner(e.target.value)} >
   <option value="">Select owner...</option>
   {activeOwners.map(o => <option key={o.id} value={o.id}>{o.name} ({properties.filter(p => String(p.owner_id) === String(o.id)).length} properties)</option>)}
   </select>
@@ -10867,12 +10867,12 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div><label className="text-xs text-slate-400 mb-1 block">Tax ID / EIN</label><Input placeholder="XX-XXXXXXX" value={form.tax_id} onChange={e => setForm({...form, tax_id: e.target.value})} maxLength={10} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Management Fee %</label><Input type="number" step="0.5" min="0" max="50" placeholder="10.0" value={form.management_fee_pct} onChange={e => setForm({...form, management_fee_pct: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Payment Method</label>
-  <select value={form.payment_method} onChange={e => setForm({...form, payment_method: e.target.value})} >
+  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.payment_method} onChange={e => setForm({...form, payment_method: e.target.value})} >
   <option value="check">Check</option><option value="ach">ACH</option><option value="wire">Wire</option>
   </select>
   </div>
   <div><label className="text-xs text-slate-400 mb-1 block">Status</label>
-  <select value={form.status} onChange={e => setForm({...form, status: e.target.value})} >
+  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.status} onChange={e => setForm({...form, status: e.target.value})} >
   <option value="active">Active</option><option value="inactive">Inactive</option>
   </select>
   </div>
@@ -11507,7 +11507,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   <div className="flex items-center gap-3 text-xs mb-2">
   <span className="text-slate-400">Recipients:</span>
   <span className="font-medium text-slate-500">{s.recipients}</span>
-  <select value={s.recipient_filter || "all"} onChange={async (e) => {
+  <select className="border border-indigo-100 rounded-lg px-2 py-1 text-xs" value={s.recipient_filter || "all"} onChange={async (e) => {
   await supabase.from("notification_settings").update({ recipient_filter: e.target.value }).eq("id", s.id).eq("company_id", companyId);
   fetchData();
   }} className="text-xs border border-gray-200 rounded px-1.5 py-0.5 mr-2">
@@ -12261,7 +12261,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   <div>
   <div className="flex flex-col md:flex-row gap-3 mb-4">
   <h2 className="text-2xl font-manrope font-bold text-slate-800 mr-auto">HOA Payments</h2>
-  <select value={hoaFilter} onChange={e => setHoaFilter(e.target.value)} >
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={hoaFilter} onChange={e => setHoaFilter(e.target.value)} >
   <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
   </select>
   <button onClick={() => { setEditingHoa(null); setForm({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ Add HOA</button>
@@ -12423,11 +12423,11 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <div>
   <div className="flex flex-col md:flex-row gap-3 mb-4">
   <h2 className="text-2xl font-manrope font-bold text-slate-800 mr-auto">Loans</h2>
-  <select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
   <option value="all">All Properties</option>
   {uniqueProperties.map(p => <option key={p} value={p}>{p}</option>)}
   </select>
-  <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
   <option value="all">All Status</option><option value="active">Active</option><option value="paid_off">Paid Off</option>
   </select>
   <button onClick={() => { setEditingLoan(null); setForm(emptyForm); setShowForm(true); }} className="bg-green-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-green-700">+ Add Loan</button>
@@ -12591,7 +12591,7 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   <div>
   <div className="flex flex-col md:flex-row gap-3 mb-4">
   <h2 className="text-2xl font-manrope font-bold text-slate-800 mr-auto">Insurance</h2>
-  <select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
   <option value="all">All Properties</option>
   {uniqueProperties.map(p => <option key={p} value={p}>{p}</option>)}
   </select>
@@ -12988,7 +12988,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   </select></div>
   <div>
   <label className="text-xs text-slate-400 mb-1 block">Day of Month</label>
-  <select value={form.day_of_month} onChange={e => setForm({ ...form, day_of_month: e.target.value })} >
+  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.day_of_month} onChange={e => setForm({ ...form, day_of_month: e.target.value })} >
   {Array.from({ length: 28 }, (_, i) => i + 1).map(d => <option key={d} value={String(d)}>{d}{d === 1 ? "st" : d === 2 ? "nd" : d === 3 ? "rd" : "th"}</option>)}
   </select>
   </div>
@@ -14284,7 +14284,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <div className="space-y-4">
   <div>
   <label className="text-xs font-medium text-slate-400 uppercase tracking-widest block mb-1">Tenant</label>
-  <select value={selectedTenant?.id || ""} onChange={e => selectTenant(e.target.value)} >
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={selectedTenant?.id || ""} onChange={e => selectTenant(e.target.value)} >
   <option value="">Select tenant...</option>
   {tenants.map(t => <option key={t.id} value={t.id}>{t.name} — {t.property}</option>)}
   </select>
@@ -14684,7 +14684,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   </div>
   <div>
   <label className="text-xs font-medium text-slate-400 mb-1 block">Reason</label>
-  <select value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} >
+  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} >
   <option value="non_payment">Non-Payment of Rent</option>
   <option value="lease_violation">Lease Violation</option>
   <option value="holdover">Holdover (Expired Lease)</option>
@@ -14696,7 +14696,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   </div>
   <div>
   <label className="text-xs font-medium text-slate-400 mb-1 block">Notice Type</label>
-  <select value={form.notice_type} onChange={e => setForm({ ...form, notice_type: e.target.value })} >
+  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.notice_type} onChange={e => setForm({ ...form, notice_type: e.target.value })} >
   <option value="pay_or_quit">Pay or Quit</option>
   <option value="cure_or_quit">Cure or Quit</option>
   <option value="unconditional_quit">Unconditional Quit</option>
@@ -14705,7 +14705,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   </div>
   <div>
   <label className="text-xs font-medium text-slate-400 mb-1 block">Cure Period (days)</label>
-  <select value={form.notice_days} onChange={e => setForm({ ...form, notice_days: e.target.value })} >
+  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.notice_days} onChange={e => setForm({ ...form, notice_days: e.target.value })} >
   <option value="3">3 days</option><option value="5">5 days</option><option value="7">7 days</option><option value="10">10 days</option><option value="14">14 days</option><option value="30">30 days</option><option value="60">60 days</option>
   </select>
   </div>
@@ -14721,7 +14721,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   {/* Filters */}
   <div className="flex flex-wrap gap-2 mb-4">
   <Input placeholder="Search tenant or property..." value={evSearch} onChange={e => setEvSearch(e.target.value)} className="flex-1 min-w-40" />
-  <select value={filterStage} onChange={e => setFilterStage(e.target.value)} >
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={filterStage} onChange={e => setFilterStage(e.target.value)} >
   <option value="all">All Cases</option>
   <option value="active">Active Only</option>
   <option value="closed">Closed Only</option>
@@ -16558,11 +16558,11 @@ function AuditTrail({ companyId }) {
 
   {/* Filters */}
   <div className="flex flex-wrap gap-2 mb-4">
-  <select value={filterModule} onChange={e => { setFilterModule(e.target.value); setPage(0); }} >
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={filterModule} onChange={e => { setFilterModule(e.target.value); setPage(0); }} >
   <option value="all">All Modules</option>
   {modules.map(m => <option key={m} value={m}>{moduleIcons[m] || "📌"} {m}</option>)}
   </select>
-  <select value={filterAction} onChange={e => { setFilterAction(e.target.value); setPage(0); }} >
+  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={filterAction} onChange={e => { setFilterAction(e.target.value); setPage(0); }} >
   <option value="all">All Actions</option>
   {actions.map(a => <option key={a} value={a}>{a}</option>)}
   </select>
