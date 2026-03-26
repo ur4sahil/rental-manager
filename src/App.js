@@ -3065,7 +3065,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         </div>
         <div className="flex items-center gap-4">
           <span className="text-sm text-slate-500">Step {step} of {totalSteps}</span>
-          <button onClick={handleDismiss} className="text-slate-400 hover:text-slate-600"><span className="material-icons-outlined">close</span></button>
+          <IconBtn icon="close" onClick={handleDismiss} />
         </div>
       </div>
       {/* Progress bar */}
@@ -3833,8 +3833,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="flex flex-col gap-2 shrink-0">
   <Input value={reviewNotes[req.id] || ""} onChange={e => setReviewNotes(prev => ({...prev, [req.id]: e.target.value}))} placeholder="Note" className="text-xs w-32" />
   <div className="flex gap-1">
-  <button onClick={() => approveRequest(req)} className="bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-lg">✓ Approve</button>
-  <button onClick={() => rejectRequest(req)} className="bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg">✕ Reject</button>
+  <Btn variant="success-fill" size="sm" onClick={() => approveRequest(req)}>✓ Approve</Btn>
+  <Btn variant="danger-fill" size="sm" onClick={() => rejectRequest(req)}>✕ Reject</Btn>
   </div>
   </div>
   </div>
@@ -3845,13 +3845,13 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-3 mb-4">
   <Input placeholder="Search properties..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 min-w-0" />
-  <select value={filter} onChange={e => setFilter(e.target.value)} className="w-full sm:w-auto" >
+  <Select value={filter} onChange={e => setFilter(e.target.value)} className="w-full sm:w-auto" >
   <option value="all">All Status</option><option value="occupied">Occupied</option><option value="vacant">Vacant</option><option value="maintenance">Maintenance</option>
-  </select>
-  <select value={filterType} onChange={e => setFilterType(e.target.value)} className="w-full sm:w-auto" >
+  </Select>
+  <Select value={filterType} onChange={e => setFilterType(e.target.value)} className="w-full sm:w-auto" >
   <option value="all">All Types</option>
   {propertyTypes.map(t => <option key={t} value={t}>{t}</option>)}
-  </select>
+  </Select>
   {hasManagedProps && (
   <Select value={filterOwnership} onChange={e => setFilterOwnership(e.target.value)} >
   <option value="all">All Properties</option>
@@ -3891,9 +3891,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
   </div>
   )}
-  <button onClick={() => { setShowPropertyWizard({ propertyId: null, address: "", isOccupied: false, tenant: "", rent: 0, isNew: true }); }} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700 whitespace-nowrap">
+  <Btn onClick={() => { setShowPropertyWizard({ propertyId: null, address: "", isOccupied: false, tenant: "", rent: 0, isNew: true }); }} >
   {isAdmin ? "+ Add" : "+ Request"}
-  </button>
+  </Btn>
   </div>
 
   {/* ===== PROPERTY DETAIL PANEL ===== */}
@@ -3908,7 +3908,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="text-sm opacity-80">{[selectedProperty.city, selectedProperty.state, selectedProperty.zip].filter(Boolean).join(", ")}</div>
   {selectedProperty.address_line_2 && <div className="text-xs opacity-60">{selectedProperty.address_line_2}</div>}
   </div>
-  <button onClick={() => setSelectedProperty(null)} className="text-white/70 hover:text-white text-2xl">✕</button>
+  <IconBtn icon="close" onClick={() => setSelectedProperty(null)} className="text-white/70 hover:text-white" />
   </div>
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
   <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs opacity-70">Status</div><div className="text-sm font-bold capitalize">{selectedProperty.status}</div></div>
@@ -3992,7 +3992,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="px-6 py-4 flex-1">
   <div className="flex items-center justify-between mb-3">
   <div className="text-sm font-semibold text-slate-700">Documents</div>
-  <button onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })} className="bg-brand-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-brand-700 flex items-center gap-1"><span className="material-icons-outlined text-sm">upload</span>Upload</button>
+  <Btn variant="primary" size="sm" onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })}><span className="material-icons-outlined text-sm">upload</span>Upload</Btn>
   </div>
   {propertyDocs.length === 0 ? (
   <div className="text-center py-8">
@@ -4038,7 +4038,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="px-6 py-4">
   <div className="flex items-center justify-between mb-3">
   <div className="text-sm font-semibold text-slate-700">Work Orders</div>
-  <button onClick={() => { setPage("maintenance"); setSelectedProperty(null); }} className="bg-brand-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-brand-700 flex items-center gap-1"><span className="material-icons-outlined text-sm">add</span>New</button>
+  <Btn variant="primary" size="sm" onClick={() => { setPage("maintenance"); setSelectedProperty(null); }}><span className="material-icons-outlined text-sm">add</span>New</Btn>
   </div>
   {propertyWorkOrders.length === 0 ? (
   <div className="text-center py-8">
@@ -4261,11 +4261,11 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address Line 2</label><Input placeholder="Apt 4B, Suite 200, etc." value={form.address_line_2} onChange={e => setForm({ ...form, address_line_2: e.target.value })} autoComplete="address-line2" name="address-line2" /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">City *</label><Input placeholder="Greenbelt" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} autoComplete="address-level2" name="city" required /></div>
   <div className="grid grid-cols-2 gap-2">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">State *</label><select value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" autoComplete="address-level1" name="state" required><option value="">--</option>{US_STATES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">State *</label><Select value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} autoComplete="address-level1" name="state" required><option value="">--</option>{US_STATES.map(s => <option key={s} value={s}>{s}</option>)}</Select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">ZIP *</label><Input placeholder="20770" value={form.zip} onChange={async e => { const z = e.target.value.replace(/\D/g, "").slice(0, 5); setForm(f => ({ ...f, zip: z })); if (z.length === 5) { const loc = await lookupZip(z); if (loc) setForm(f => ({ ...f, city: f.city || loc.city, state: f.state || loc.state })); } }} maxLength={5} autoComplete="postal-code" name="postal-code" required /></div>
   </div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Type *</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full"><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status *</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full"><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option><option value="inactive">Inactive</option></select></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Type *</label><Select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></Select></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status *</label><Select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option><option value="inactive">Inactive</option></Select></div>
   {form.status === "occupied" && (<>
   <div className="col-span-1 sm:col-span-2 bg-brand-50 rounded-lg px-3 py-2"><div className="text-xs font-semibold text-brand-700">Tenant Information</div></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant Name *</label><Input placeholder="Jane Doe" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} required /></div>
@@ -4281,7 +4281,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   <div className="flex gap-2 mt-3">
   <Btn onClick={saveProperty} disabled={_submitGuards["saveProperty"]}>{_submitGuards["saveProperty"] ? "Saving..." : (isAdmin ? "Save" : "Submit")}</Btn>
-  <button onClick={() => { setShowForm(false); setEditingProperty(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
+  <Btn variant="ghost" onClick={() => { setShowForm(false); setEditingProperty(null); }}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -4440,7 +4440,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <Input value={pmCode} onChange={e => setPmCode(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="e.g. 12345678" maxLength={8} className="font-mono tracking-wider" />
   <p className="text-xs text-slate-400 mt-1">Ask the property manager for their company code</p>
   </div>
-  <button onClick={() => assignPM(showPmAssign)} className="w-full bg-purple-600 text-white text-sm py-2.5 rounded-lg hover:bg-purple-700 font-semibold">Assign Property Manager</button>
+  <Btn variant="purple" className="w-full" onClick={() => assignPM(showPmAssign)}>Assign Property Manager</Btn>
   </div>
   </Modal>
   )}
@@ -4481,7 +4481,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   </div>
   <div className="flex gap-2">
-  <button onClick={async () => {
+  <Btn className="flex-1" onClick={async () => {
   const grace = Number(document.getElementById("rr-grace")?.value) || 5;
   const lateFee = Number(document.getElementById("rr-latefee")?.value) || 50;
   const { error } = await supabase.from("recurring_journal_entries").insert([{
@@ -4507,8 +4507,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (error) { showToast("Failed to create recurring entry: " + userError(error.message), "error"); }
   else { addNotification("🔄", "Recurring rent set up for " + showRecurringSetup.tenant); }
   setShowRecurringSetup(null);
-  }} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-brand-700 flex-1">Yes, Set Up Recurring Rent</button>
-  <button onClick={() => setShowRecurringSetup(null)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg flex-1">Skip for Now</button>
+  }}>Yes, Set Up Recurring Rent</Btn>
+  <Btn variant="ghost" className="flex-1" onClick={() => setShowRecurringSetup(null)}>Skip for Now</Btn>
   </div>
   </div>
   </Modal>
@@ -5158,7 +5158,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="font-bold">{selectedTenant.name}</div>
   <div className="text-xs text-brand-200">{selectedTenant.property}</div>
   </div>
-  <button onClick={closePanel} className="text-brand-200 hover:text-white text-xl">✕</button>
+  <IconBtn icon="close" onClick={closePanel} className="text-brand-200 hover:text-white" />
   </div>
   <div className="flex border-b border-brand-50">
   {[["ledger", "📒 Ledger"], ["messages", "💬 Messages"], ["lease", "📄 Lease"]].map(([id, label]) => (
@@ -5183,12 +5183,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="bg-brand-50/30 rounded-xl p-3 mb-4">
   <div className="text-xs font-semibold text-slate-500 mb-2">Add Transaction</div>
   <div className="grid grid-cols-3 gap-2">
-  <select value={newCharge.type} onChange={e => setNewCharge({ ...newCharge, type: e.target.value })} className="border border-brand-100 rounded-2xl px-2 py-2 text-xs">
+  <Select value={newCharge.type} onChange={e => setNewCharge({ ...newCharge, type: e.target.value })}>
   <option value="charge">Charge</option>
   <option value="payment">Payment</option>
   <option value="credit">Credit</option>
   <option value="late_fee">Late Fee</option>
-  </select>
+  </Select>
   <Input placeholder="e.g. Rent, Late fee, Repair" value={newCharge.description} title="Description" onChange={e => setNewCharge({ ...newCharge, description: e.target.value })} className="text-xs" />
   <Input placeholder="0.00" value={newCharge.amount} title="Amount ($)" onChange={e => setNewCharge({ ...newCharge, amount: e.target.value })} className="text-xs" />
   </div>
@@ -5265,8 +5265,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="text-sm font-semibold text-brand-700 mb-2">Enter New Lease End Date</div>
   <Input type="date" value={leaseInput} onChange={e => setLeaseInput(e.target.value)} className="mb-2" />
   <div className="flex gap-2">
-  <button onClick={() => renewLease(leaseInput)} className="bg-brand-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-brand-700">Confirm Renewal</button>
-  <button onClick={() => setLeaseModal(null)} className="bg-slate-200 text-slate-500 text-xs px-4 py-2 rounded-lg">Cancel</button>
+  <Btn variant="primary" size="sm" onClick={() => renewLease(leaseInput)}>Confirm Renewal</Btn>
+  <Btn variant="ghost" size="sm" onClick={() => setLeaseModal(null)}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -5278,8 +5278,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <button onClick={() => setLeaseInput("60")} className={`flex-1 py-2 rounded-lg text-sm font-medium ${leaseInput === "60" ? "bg-orange-500 text-white" : "bg-white border border-orange-200 text-orange-700"}`}>60 Days</button>
   </div>
   <div className="flex gap-2">
-  <button onClick={() => generateMoveOutNotice(leaseInput)} className="bg-orange-500 text-white text-xs px-4 py-2 rounded-lg hover:bg-orange-600">Generate Notice</button>
-  <button onClick={() => setLeaseModal(null)} className="bg-slate-200 text-slate-500 text-xs px-4 py-2 rounded-lg">Cancel</button>
+  <Btn variant="warning-fill" size="sm" onClick={() => generateMoveOutNotice(leaseInput)}>Generate Notice</Btn>
+  <Btn variant="ghost" size="sm" onClick={() => setLeaseModal(null)}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -5324,7 +5324,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="text-brand-200 text-sm">{selectedTenant.property}</div>
   </div>
   </div>
-  <button onClick={() => { setSelectedTenant(null); setActivePanel(null); }} className="text-white/70 hover:text-white text-2xl">✕</button>
+  <IconBtn icon="close" onClick={() => { setSelectedTenant(null); setActivePanel(null); }} className="text-white/70 hover:text-white" />
   </div>
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
   <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Rent</div><div className="text-lg font-bold">{selectedTenant.rent ? formatCurrency(selectedTenant.rent) : "—"}</div></div>
@@ -5360,7 +5360,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div>
   <div className="flex items-center justify-between mb-3">
   <h3 className="text-sm font-semibold text-slate-700">Transaction History</h3>
-  <button onClick={() => setPage("accounting", "newJE")} className="flex items-center gap-1.5 bg-brand-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-brand-700"><span className="material-icons-outlined text-sm">add_circle</span>New Entry</button>
+  <Btn variant="primary" size="sm" onClick={() => setPage("accounting", "newJE")}><span className="material-icons-outlined text-sm">add_circle</span>New Entry</Btn>
   </div>
   {ledger.length === 0 ? <div className="text-center py-6 text-slate-400 text-sm">No transactions yet</div> : (
   <div className="space-y-1">
@@ -5420,7 +5420,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ))}
   </div>
   )}
-  <button onClick={() => setShowDocUpload({ property: selectedTenant?.property || "", tenant: selectedTenant?.name || "" })} className="mt-3 bg-brand-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-brand-700">Upload Documents</button>
+  <Btn variant="primary" size="sm" className="mt-3" onClick={() => setShowDocUpload({ property: selectedTenant?.property || "", tenant: selectedTenant?.name || "" })}>Upload Documents</Btn>
   </div>
   )}
 
@@ -5515,11 +5515,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ))}
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={() => { setShowDocUpload({ property: selectedTenant?.property || "", tenant: selectedTenant?.name || showTenantDocPrompt || "" }); setShowTenantDocPrompt(null); }} className="bg-amber-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-amber-700">Upload Documents Now</button>
+  <Btn variant="warning-fill" size="sm" onClick={() => { setShowDocUpload({ property: selectedTenant?.property || "", tenant: selectedTenant?.name || showTenantDocPrompt || "" }); setShowTenantDocPrompt(null); }} >Upload Documents Now</Btn>
   {isAdmin ? (
-  <button onClick={async () => { if (!guardSubmit("approveException")) return; try { await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", showTenantDocPrompt).is("archived_at", null); showToast("Document exception approved for " + showTenantDocPrompt, "success"); setShowTenantDocPrompt(null); fetchTenants(); } finally { guardRelease("approveException"); } }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Admin: Approve Exception</button>
+  <Btn variant="ghost" size="sm" onClick={async () => { if (!guardSubmit("approveException")) return; try { await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", showTenantDocPrompt).is("archived_at", null); showToast("Document exception approved for " + showTenantDocPrompt, "success"); setShowTenantDocPrompt(null); fetchTenants(); } finally { guardRelease("approveException"); } }} >Admin: Approve Exception</Btn>
   ) : (
-  <button onClick={async () => { if (!guardSubmit("reqException")) return; try { if (!await showConfirm({ message: "Skipping requires admin approval. An approval request will be sent. Continue?" })) return; await supabase.from("doc_exception_requests").insert([{ company_id: companyId, tenant_name: showTenantDocPrompt, property: selectedTenant?.property || "", requested_by: userProfile?.email || "" }]); addNotification("📋", "Document exception request sent for " + showTenantDocPrompt); logAudit("request", "tenants", "Document exception requested for " + showTenantDocPrompt, "", userProfile?.email, userRole, companyId); setShowTenantDocPrompt(null); fetchDocExceptions(); } finally { guardRelease("reqException"); } }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Request Exception</button>
+  <Btn variant="ghost" size="sm" onClick={async () => { if (!guardSubmit("reqException")) return; try { if (!await showConfirm({ message: "Skipping requires admin approval. An approval request will be sent. Continue?" })) return; await supabase.from("doc_exception_requests").insert([{ company_id: companyId, tenant_name: showTenantDocPrompt, property: selectedTenant?.property || "", requested_by: userProfile?.email || "" }]); addNotification("📋", "Document exception request sent for " + showTenantDocPrompt); logAudit("request", "tenants", "Document exception requested for " + showTenantDocPrompt, "", userProfile?.email, userRole, companyId); setShowTenantDocPrompt(null); fetchDocExceptions(); } finally { guardRelease("reqException"); } }} >Request Exception</Btn>
   )}
   </div>
   </div>
@@ -5587,7 +5587,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <option value="all">All Leases</option><option value="30">Expires in 30 days</option><option value="60">Expires in 60 days</option><option value="90">Expires in 90 days</option><option value="expired">Expired</option><option value="no_lease">No lease date</option>
   </Select>
   {(tenantFilter !== "all" || tenantFilterProp !== "all" || tenantFilterBalance !== "all" || tenantFilterLeaseExpiry !== "all" || tenantSearch) && (
-  <button onClick={() => { setTenantFilter("all"); setTenantFilterProp("all"); setTenantFilterBalance("all"); setTenantFilterLeaseExpiry("all"); setTenantSearch(""); }} className="text-xs text-red-500 border border-red-200 px-3 py-2 rounded-2xl hover:bg-red-50">Clear Filters</button>
+  <Btn variant="danger" size="sm" onClick={() => { setTenantFilter("all"); setTenantFilterProp("all"); setTenantFilterBalance("all"); setTenantFilterLeaseExpiry("all"); setTenantSearch(""); }}>Clear Filters</Btn>
   )}
   </div>
   {/* Bulk action bar */}
@@ -5613,7 +5613,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <option value="30">30 days</option><option value="60">60 days</option><option value="90">90 days</option>
   </Select>
   </div>
-  <button onClick={async () => {
+  <Btn variant="warning-fill" className="w-full" onClick={async () => {
   if (!guardSubmit("bulkNotice")) return;
   try {
   const days = parseInt(document.getElementById("bulk-notice-days").value);
@@ -5628,7 +5628,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   logAudit("update", "tenants", `Bulk ${days}-day notice to ${count} tenants`, "", userProfile?.email, userRole, companyId);
   setBulkAction(null); setSelectedTenants(new Set()); fetchTenants();
   } finally { guardRelease("bulkNotice"); }
-  }} className="w-full bg-orange-600 text-white text-sm py-2.5 rounded-lg hover:bg-orange-700 font-semibold">Send Notices</button>
+  }}>Send Notices</Btn>
   </div>
   </Modal>
   )}
@@ -5638,14 +5638,14 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div><label className="text-xs font-medium text-slate-400 block mb-1">Description</label><Input id="bulk-charge-desc" placeholder="Late fee, utility charge, etc." /></div>
   <div><label className="text-xs font-medium text-slate-400 block mb-1">Amount ($)</label><Input id="bulk-charge-amt" type="number" placeholder="50.00" /></div>
   <div><label className="text-xs font-medium text-slate-400 block mb-1">Revenue Account</label>
-  <select id="bulk-charge-acct" className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm">
+  <Select id="bulk-charge-acct" >
   <option value="4100">4100 — Other Income</option>
   <option value="4000">4000 — Rental Income</option>
   <option value="4010">4010 — Late Fee Income</option>
   <option value="4200">4200 — Management Fee Income</option>
-  </select>
+  </Select>
   </div>
-  <button onClick={async () => {
+  <Btn variant="primary" className="w-full" onClick={async () => {
   if (!guardSubmit("bulkCharge")) return;
   try {
   const desc = document.getElementById("bulk-charge-desc").value;
@@ -5676,7 +5676,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   logAudit("create", "tenants", `Bulk charge $${amt} "${desc}" to ${count} tenants (acct ${acctCode})`, "", userProfile?.email, userRole, companyId);
   setBulkAction(null); setSelectedTenants(new Set()); fetchTenants();
   } finally { guardRelease("bulkCharge"); }
-  }} className="w-full bg-blue-600 text-white text-sm py-2.5 rounded-lg hover:bg-blue-700 font-semibold">Add Charges</button>
+  }}>Add Charges</Btn>
   </div>
   </Modal>
   )}
@@ -5684,11 +5684,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <Modal title={`Change Status — ${selectedTenants.size} Tenant(s)`} onClose={() => setBulkAction(null)}>
   <div className="space-y-3">
   <div><label className="text-xs font-medium text-slate-400 block mb-1">New Status</label>
-  <select id="bulk-status-val" className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" >
+  <Select id="bulk-status-val"  >
   <option value="active">Active</option><option value="notice">Notice</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
-  </select>
+  </Select>
   </div>
-  <button onClick={async () => {
+  <Btn variant="purple" className="w-full" onClick={async () => {
   if (!guardSubmit("bulkStatus")) return;
   try {
   const newStatus = document.getElementById("bulk-status-val").value;
@@ -5701,7 +5701,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   logAudit("update", "tenants", `Bulk status change to ${newStatus} for ${count} tenants`, "", userProfile?.email, userRole, companyId);
   setBulkAction(null); setSelectedTenants(new Set()); fetchTenants();
   } finally { guardRelease("bulkStatus"); }
-  }} className="w-full bg-purple-600 text-white text-sm py-2.5 rounded-lg hover:bg-purple-700 font-semibold">Update Status</button>
+  }}>Update Status</Btn>
   </div>
   </Modal>
   )}
@@ -5744,9 +5744,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({ ...form, phone: formatPhoneInput(e.target.value) })} maxLength={14} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Monthly Rent ($)</label><Input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Status</label><select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Status</label><Select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })}>
   {["active", "notice", "expired"].map(s => <option key={s}>{s}</option>)}
-  </select></div>
+  </Select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Start / Move-in</label><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease End / Move-out</label><Input type="date" value={form.lease_end} onChange={e => setForm({ ...form, lease_end: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Security Deposit ($)</label><Input placeholder="0" value={form.security_deposit || ""} onChange={e => setForm({ ...form, security_deposit: e.target.value })} /></div>
@@ -5759,7 +5759,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   )}
   <div className="flex gap-2 mt-3">
   <Btn onClick={saveTenant} disabled={_submitGuards["saveTenant"]}>{_submitGuards["saveTenant"] ? "Saving..." : "Save"}</Btn>
-  <button onClick={() => { setShowForm(false); setEditingTenant(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
+  <Btn variant="slate" onClick={() => { setShowForm(false); setEditingTenant(null); }}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -5938,17 +5938,17 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   <div className="flex items-center justify-between mb-5">
   <PageHeader title="Payments" />
   <div className="flex gap-2">
-  <button onClick={() => exportToCSV(payments, [
+  <Btn variant="secondary" onClick={() => exportToCSV(payments, [
   { label: "Date", key: "date" }, { label: "Tenant", key: "tenant" },
   { label: "Property", key: "property" }, { label: "Amount", key: "amount" },
   { label: "Type", key: "type" }, { label: "Method", key: "method" },
   { label: "Reference", key: "reference" },
-  ], "payments-export", showToast)} className="text-sm text-brand-600 border border-brand-200 px-3 py-2 rounded-2xl hover:bg-brand-50 font-medium">
+  ], "payments-export", showToast)}>
   <span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export
-  </button>
-  <button onClick={() => setPage("accounting", "newJE")} className="bg-green-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-green-700 flex items-center gap-1.5">
+  </Btn>
+  <Btn variant="success-fill" onClick={() => setPage("accounting", "newJE")}>
   <span className="material-icons-outlined text-sm">add_circle</span>Record Payment
-  </button>
+  </Btn>
   </div>
   </div>
 
@@ -5970,7 +5970,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   <Input type="date" value={payDateFrom} onChange={e => setPayDateFrom(e.target.value)} title="From date" />
   <Input type="date" value={payDateTo} onChange={e => setPayDateTo(e.target.value)} title="To date" />
   {(paySearch || payDateFrom || payDateTo) && (
-  <button onClick={() => { setPaySearch(""); setPayDateFrom(""); setPayDateTo(""); }} className="text-xs text-red-500 border border-red-200 px-3 py-2 rounded-2xl hover:bg-red-50">Clear</button>
+  <Btn variant="danger" size="xs" onClick={() => { setPaySearch(""); setPayDateFrom(""); setPayDateTo(""); }}>Clear</Btn>
   )}
   </div>
 
@@ -5999,7 +5999,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   <td className="px-4 py-3 capitalize text-slate-500 text-xs">{p.type?.replace("_", " ")}</td>
   <td className="px-4 py-3 text-slate-400 text-xs">{p.method}</td>
   <td className="px-4 py-3">
-  <button onClick={() => generatePaymentReceipt({ tenant: p.tenant, property: p.property, amount: p.amount, date: p.date, method: p.method, type: p.type })} className="text-xs text-green-600 border border-green-200 px-2 py-0.5 rounded hover:bg-green-50">Receipt</button>
+  <Btn variant="success-fill" size="xs" onClick={() => generatePaymentReceipt({ tenant: p.tenant, property: p.property, amount: p.amount, date: p.date, method: p.method, type: p.type })} className="py-0.5">Receipt</Btn>
   </td>
   </tr>
   ))}
@@ -6269,7 +6269,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   {maintTab === "workorders" && (<>
   <div className="flex items-center justify-between mb-4">
   <div></div>
-  <button onClick={() => { setEditingWO(null); setForm({ property: "", tenant: "", issue: "", priority: "normal", status: "open", assigned: "", cost: 0, notes: "" }); setShowForm(!showForm); }} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Work Order</button>
+  <Btn onClick={() => { setEditingWO(null); setForm({ property: "", tenant: "", issue: "", priority: "normal", status: "open", assigned: "", cost: 0, notes: "" }); setShowForm(!showForm); }}>+ New Work Order</Btn>
   </div>
 
   {showForm && (
@@ -6281,19 +6281,19 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   }} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant</label><input placeholder={form.property && !form.tenant ? "Vacant — no tenant" : "Tenant name"} value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className={"border rounded-lg px-3 py-2 text-sm w-full " + (!form.tenant && form.property ? "border-gray-100 bg-brand-50/30 text-slate-400" : "border-brand-100")} readOnly={!!(form.property && !form.tenant)} /></div>
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Issue *</label><Input placeholder="Describe the maintenance issue" value={form.issue} onChange={e => setForm({ ...form, issue: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Priority</label><select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Priority</label><Select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })}>
   {["normal", "emergency", "low"].map(p => <option key={p}>{p}</option>)}
-  </select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
+  </Select></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status</label><Select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
   {["open", "in_progress", "completed"].map(s => <option key={s}>{s}</option>)}
-  </select></div>
+  </Select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Assigned To</label><Input placeholder="Vendor or staff name" value={form.assigned} onChange={e => setForm({ ...form, assigned: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Cost ($)</label><Input placeholder="0.00" type="number" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} /></div>
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="Completion details, parts used, etc." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
   </div>
   <div className="flex gap-2 mt-3">
   <Btn onClick={saveWorkOrder}>Save</Btn>
-  <button onClick={() => { setShowForm(false); setEditingWO(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-2xl hover:bg-slate-100">Cancel</button>
+  <Btn variant="slate" onClick={() => { setShowForm(false); setEditingWO(null); }}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -6304,14 +6304,14 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   ))}
   <div className="flex-1" />
   <Input placeholder="Search issue, property, tenant..." value={woSearch} onChange={e => setWoSearch(e.target.value)} className="flex-1 min-w-0 sm:min-w-40" />
-  <select value={woFilterProp} onChange={e => setWoFilterProp(e.target.value)} className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm">
+  <Select value={woFilterProp} onChange={e => setWoFilterProp(e.target.value)} className="py-1.5">
   <option value="all">All Properties</option>
   {[...new Set(workOrders.map(w => w.property).filter(Boolean))].sort().map(p => <option key={p} value={p}>{p.length > 30 ? p.slice(0, 30) + "..." : p}</option>)}
-  </select>
-  <select value={woFilterAssigned} onChange={e => setWoFilterAssigned(e.target.value)} className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm">
+  </Select>
+  <Select value={woFilterAssigned} onChange={e => setWoFilterAssigned(e.target.value)} className="py-1.5">
   <option value="all">All Assigned</option><option value="_unassigned">Unassigned</option>
   {[...new Set(workOrders.map(w => w.assigned).filter(Boolean))].sort().map(a => <option key={a} value={a}>{a}</option>)}
-  </select>
+  </Select>
   </div>
   <div className="text-xs text-slate-400 mb-3">{filtered.length} of {workOrders.length} work orders</div>
   {/* WO Bulk Action Bar */}
@@ -6646,7 +6646,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <h3 className="font-semibold text-gray-700">Connected Utility Accounts</h3>
   <p className="text-xs text-gray-400 mt-0.5">{utilAccounts.length} account{utilAccounts.length !== 1 ? "s" : ""} connected</p>
   </div>
-  <button onClick={() => { setEditingAccount(null); setAccountForm({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "" }); setShowAccountForm(true); }} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-brand-700">+ Add Account</button>
+  <Btn onClick={() => { setEditingAccount(null); setAccountForm({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "" }); setShowAccountForm(true); }}>+ Add Account</Btn>
   </div>
 
   {showAccountForm && (
@@ -6654,18 +6654,18 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <h3 className="font-semibold text-gray-700 mb-3">{editingAccount ? "Edit Account" : "Connect Utility Account"}</h3>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={accountForm.property} onChange={v => setAccountForm({...accountForm, property: v})} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Provider *</label><select value={accountForm.provider} onChange={e => { const p = providers.find(x => x.id === e.target.value); setAccountForm({...accountForm, provider: e.target.value, account_type: p?.account_type || "electric"}); }} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option value="">Select provider...</option>{providers.map(p => <option key={p.id} value={p.id}>{p.display_name} ({p.region})</option>)}</select></div>
+  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Provider *</label><Select value={accountForm.provider} onChange={e => { const p = providers.find(x => x.id === e.target.value); setAccountForm({...accountForm, provider: e.target.value, account_type: p?.account_type || "electric"}); }}><option value="">Select provider...</option>{providers.map(p => <option key={p.id} value={p.id}>{p.display_name} ({p.region})</option>)}</Select></div>
   <div><label className="text-xs font-medium text-gray-500 mb-1 block">Account Number</label><Input placeholder="e.g. 1234567890" value={accountForm.account_number} onChange={e => setAccountForm({...accountForm, account_number: e.target.value})} /></div>
-  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Account Type</label><select value={accountForm.account_type} onChange={e => setAccountForm({...accountForm, account_type: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option value="electric">Electric</option><option value="gas">Gas</option><option value="water_sewer">Water/Sewer</option><option value="electric_gas">Electric + Gas</option><option value="trash">Trash</option></select></div>
+  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Account Type</label><Select value={accountForm.account_type} onChange={e => setAccountForm({...accountForm, account_type: e.target.value})}><option value="electric">Electric</option><option value="gas">Gas</option><option value="water_sewer">Water/Sewer</option><option value="electric_gas">Electric + Gas</option><option value="trash">Trash</option></Select></div>
   <div className="col-span-1 sm:col-span-2 bg-amber-50 rounded-lg px-3 py-2"><div className="text-xs font-semibold text-amber-700">🔐 Login Credentials (encrypted before storage)</div></div>
   <div><label className="text-xs font-medium text-gray-500 mb-1 block">Username / Email *</label><Input placeholder="your-login@email.com" value={accountForm.username} onChange={e => setAccountForm({...accountForm, username: e.target.value})} autoComplete="off" /></div>
   <div><label className="text-xs font-medium text-gray-500 mb-1 block">Password *</label><Input type="password" placeholder="••••••••" value={accountForm.password} onChange={e => setAccountForm({...accountForm, password: e.target.value})} autoComplete="new-password" /></div>
-  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Check Frequency</label><select value={accountForm.check_frequency} onChange={e => setAccountForm({...accountForm, check_frequency: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option value="weekly">Weekly</option><option value="biweekly">Every 2 Weeks</option><option value="monthly">Monthly</option></select></div>
-  <div><label className="text-xs font-medium text-gray-500 mb-1 block">2FA Method</label><select value={accountForm.two_factor_method} onChange={e => setAccountForm({...accountForm, two_factor_method: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option value="none">None</option><option value="sms">SMS</option><option value="email">Email</option></select></div>
+  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Check Frequency</label><Select value={accountForm.check_frequency} onChange={e => setAccountForm({...accountForm, check_frequency: e.target.value})}><option value="weekly">Weekly</option><option value="biweekly">Every 2 Weeks</option><option value="monthly">Monthly</option></Select></div>
+  <div><label className="text-xs font-medium text-gray-500 mb-1 block">2FA Method</label><Select value={accountForm.two_factor_method} onChange={e => setAccountForm({...accountForm, two_factor_method: e.target.value})}><option value="none">None</option><option value="sms">SMS</option><option value="email">Email</option></Select></div>
   </div>
   <div className="flex gap-2 mt-3">
   <Btn onClick={saveAccount}>Save Account</Btn>
-  <button onClick={() => { setShowAccountForm(false); setEditingAccount(null); }} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+  <Btn variant="slate" onClick={() => { setShowAccountForm(false); setEditingAccount(null); }}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -6755,7 +6755,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <button key={m} onClick={() => setUtilView(m)} className={`px-3 py-1.5 text-sm rounded-md ${utilView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-slate-400"}`}>{icon}</button>
   ))}
   </div>
-  <button onClick={() => setShowForm(!showForm)} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700 whitespace-nowrap">+ Add Bill</button>
+  <Btn onClick={() => setShowForm(!showForm)}>+ Add Bill</Btn>
   </div>
 
   {/* Stats */}
@@ -6774,9 +6774,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Provider</label><Input placeholder="e.g. PEPCO, Washington Gas" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($)</label><Input placeholder="150.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Due Date</label><Input type="date" value={form.due} onChange={e => setForm({ ...form, due: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Responsibility</label><select value={form.responsibility} onChange={e => setForm({ ...form, responsibility: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Responsibility</label><Select value={form.responsibility} onChange={e => setForm({ ...form, responsibility: e.target.value })}>
   {["owner", "tenant", "shared"].map(r => <option key={r}>{r}</option>)}
-  </select></div>
+  </Select></div>
   <div className="col-span-2 border-t border-slate-100 pt-2 mt-1"><p className="text-xs text-slate-400 mb-2">Portal Login (encrypted)</p>
   <div className="grid grid-cols-3 gap-2">
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Website</label><Input type="url" value={form.website||""} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." /></div>
@@ -6786,7 +6786,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </div>
   <div className="flex gap-2 mt-3">
   <Btn onClick={addUtility}>Save</Btn>
-  <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
+  <Btn variant="slate" onClick={() => setShowForm(false)}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -7014,8 +7014,8 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   <div className="text-sm text-gray-500">{active.length} active · {paused.length} paused</div>
   </div>
   <div className="flex gap-2">
-  <button onClick={runNow} className="bg-amber-50 text-amber-700 text-xs px-3 py-1.5 rounded-lg border border-amber-200 hover:bg-amber-100">⚡ Post Now</button>
-  <button onClick={() => { setEditingEntry(null); setForm({ description: "", frequency: "monthly", day_of_month: 1, amount: "", tenant_name: "", property: "", debit_account_id: "1200", debit_account_name: "Accounts Receivable", credit_account_id: "4000", credit_account_name: "Rental Income", late_fee_enabled: true, grace_period_days: 5, late_fee_amount: 50 }); setShowForm(true); }} className="bg-brand-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-brand-700">+ Add Entry</button>
+  <Btn variant="warning-fill" size="xs" onClick={runNow}>⚡ Post Now</Btn>
+  <Btn onClick={() => { setEditingEntry(null); setForm({ description: "", frequency: "monthly", day_of_month: 1, amount: "", tenant_name: "", property: "", debit_account_id: "1200", debit_account_name: "Accounts Receivable", credit_account_id: "4000", credit_account_name: "Rental Income", late_fee_enabled: true, grace_period_days: 5, late_fee_amount: 50 }); setShowForm(true); }} variant="primary" size="xs">+ Add Entry</Btn>
   </div>
   </div>
 
@@ -7026,7 +7026,7 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   <div className="col-span-2"><label className="text-xs text-gray-500 mb-1 block">Description *</label><Input value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Monthly rent — John Doe — 123 Main St" /></div>
   <div><label className="text-xs text-gray-500 mb-1 block">Amount *</label><Input type="number" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} /></div>
   <div><label className="text-xs text-gray-500 mb-1 block">Day of Month</label><Input type="number" min="1" max="28" value={form.day_of_month} onChange={e => setForm({...form, day_of_month: e.target.value})} /></div>
-  <div><label className="text-xs text-gray-500 mb-1 block">Tenant</label><select value={form.tenant_name} onChange={e => { const t = tenants.find(x => x.name === e.target.value); setForm({...form, tenant_name: e.target.value, property: t?.property || form.property, amount: t?.rent ? String(t.rent) : form.amount }); }} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm"><option value="">Select tenant...</option>{tenants.map(t => <option key={t.id} value={t.name}>{t.name} — {t.property?.split(",")[0]}</option>)}</select></div>
+  <div><label className="text-xs text-gray-500 mb-1 block">Tenant</label><Select value={form.tenant_name} onChange={e => { const t = tenants.find(x => x.name === e.target.value); setForm({...form, tenant_name: e.target.value, property: t?.property || form.property, amount: t?.rent ? String(t.rent) : form.amount }); }} ><option value="">Select tenant...</option>{tenants.map(t => <option key={t.id} value={t.name}>{t.name} — {t.property?.split(",")[0]}</option>)}</Select></div>
   <div><label className="text-xs text-gray-500 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
   <div><label className="text-xs text-gray-500 mb-1 block">Debit Account</label><Input value={form.debit_account_name} onChange={e => setForm({...form, debit_account_name: e.target.value})} /></div>
   <div><label className="text-xs text-gray-500 mb-1 block">Credit Account</label><Input value={form.credit_account_name} onChange={e => setForm({...form, credit_account_name: e.target.value})} /></div>
@@ -7045,7 +7045,7 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   </div>
   <div className="flex gap-2 mt-3">
   <Btn onClick={saveEntry}>{editingEntry ? "Update" : "Create"}</Btn>
-  <button onClick={() => { setShowForm(false); setEditingEntry(null); }} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
+  <Btn variant="slate" onClick={() => { setShowForm(false); setEditingEntry(null); }}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -7411,7 +7411,7 @@ function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClos
   <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 px-4 sm:px-6 py-2 sm:py-3 border-b border-brand-50 bg-slate-50/50 overflow-x-auto">
   {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border font-medium whitespace-nowrap ${period === p ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-400 border-brand-100"}`}>{p}</button>)}
   {period === "Custom" && <><Input type="date" value={customDates.start} onChange={e => setCustomDates(d => ({...d, start: e.target.value}))} className="text-xs w-auto" /><span className="text-xs text-slate-400">to</span><Input type="date" value={customDates.end} onChange={e => setCustomDates(d => ({...d, end: e.target.value}))} className="text-xs w-auto" /></>}
-  {properties.length > 1 && <select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)} className="text-xs border border-brand-100 rounded-xl px-2 py-1.5 bg-white"><option value="">All Properties</option>{properties.map(p => <option key={p} value={p}>{p.split(",")[0]}</option>)}</select>}
+  {properties.length > 1 && <Select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)} className="text-xs py-1.5 rounded-xl"><option value="">All Properties</option>{properties.map(p => <option key={p} value={p}>{p.split(",")[0]}</option>)}</Select>}
   </div>
   {/* Summary bar */}
   <div className="flex flex-wrap items-center gap-3 sm:gap-6 px-4 sm:px-6 py-2 border-b border-brand-50 text-xs text-slate-500">
@@ -7615,25 +7615,25 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   <div className="grid grid-cols-2 gap-3">
   <div>
   <label className="text-xs font-medium text-slate-500">Type *</label>
-  <select value={form.type} onChange={e => { const v = e.target.value; setForm({...form, type: v, subtype: v === "__custom__" ? "" : (getAccountSubtypes(accounts, v)[0] || ""), customType: v === "__custom__" ? form.customType : "" }); }} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mt-1">
+  <Select value={form.type} onChange={e => { const v = e.target.value; setForm({...form, type: v, subtype: v === "__custom__" ? "" : (getAccountSubtypes(accounts, v)[0] || ""), customType: v === "__custom__" ? form.customType : "" }); }} className="mt-1">
   {dynamicTypes.map(t => <option key={t} value={t}>{t}</option>)}
   <option value="__custom__">+ Add Custom Type...</option>
-  </select>
+  </Select>
   {form.type === "__custom__" && <Input value={form.customType} onChange={e => setForm({...form, customType: e.target.value})} className="mt-1 bg-brand-50" placeholder="Enter new account type" autoFocus />}
   </div>
   <div>
   <label className="text-xs font-medium text-slate-500">Subtype</label>
-  <select value={form.subtype} onChange={e => setForm({...form, subtype: e.target.value, customSubtype: e.target.value === "__custom__" ? form.customSubtype : ""})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mt-1">
+  <Select value={form.subtype} onChange={e => setForm({...form, subtype: e.target.value, customSubtype: e.target.value === "__custom__" ? form.customSubtype : ""})} className="mt-1">
   {(form.type === "__custom__" ? [] : dynamicSubtypes).map(s => <option key={s} value={s}>{s}</option>)}
   <option value="__custom__">+ Add Custom Subtype...</option>
   <option value="">None</option>
-  </select>
+  </Select>
   {form.subtype === "__custom__" && <Input value={form.customSubtype} onChange={e => setForm({...form, customSubtype: e.target.value})} className="mt-1 bg-brand-50" placeholder="Enter new subtype" />}
   </div>
   </div>
   <div><label className="text-xs font-medium text-slate-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
   <div className="flex justify-end gap-2 pt-2">
-  <button onClick={() => setModal(null)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
+  <Btn variant="slate" onClick={() => setModal(null)}>Cancel</Btn>
   <Btn variant="success-fill" onClick={saveAccount}>{modal === "add" ? "Create" : "Save"}</Btn>
   </div>
   </div>
@@ -7737,8 +7737,8 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   <tbody>
   {form.lines.map((line, i) => (
   <tr key={i} className="border-b border-slate-100">
-  <td className="px-2 py-1.5"><select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}</select></td>
-  <td className="px-2 py-1.5"><select value={line.class_id || ""} onChange={e => { setLine(i,"class_id",e.target.value||null); const cls = classes.find(c=>c.id===e.target.value); if (cls && !form.property) setForm(f=>({...f, property: cls.name})); }} className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></td>
+  <td className="px-2 py-1.5"><Select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}</Select></td>
+  <td className="px-2 py-1.5"><Select value={line.class_id || ""} onChange={e => { setLine(i,"class_id",e.target.value||null); const cls = classes.find(c=>c.id===e.target.value); if (cls && !form.property) setForm(f=>({...f, property: cls.name})); }} className="px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></td>
   <td className="px-2 py-1.5"><input type="text" value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs bg-white focus:border-brand-300 focus:outline-none" /></td>
   <td className="px-2 py-1.5"><input type="text" inputMode="decimal" value={line.debit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], debit: v, ...(v ? { credit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono focus:border-brand-300 focus:outline-none" /></td>
   <td className="px-2 py-1.5"><input type="text" inputMode="decimal" value={line.credit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], credit: v, ...(v ? { debit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono focus:border-brand-300 focus:outline-none" /></td>
@@ -7752,9 +7752,9 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   {!validation.isValid && totalDebit > 0 && totalCredit > 0 && <div className="text-xs text-red-600 bg-red-50 rounded-2xl px-3 py-2">⚠ Out of balance by {acctFmt(validation.difference)}</div>}
   {validation.isValid && totalDebit > 0 && <div className="text-xs text-emerald-600 bg-emerald-50 rounded-2xl px-3 py-2">✓ Balanced — {acctFmt(totalDebit)}</div>}
   <div className="flex justify-between pt-2">
-  <button onClick={() => setModal(null)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
+  <Btn variant="slate" onClick={() => setModal(null)}>Cancel</Btn>
   <div className="flex gap-2">
-  <button onClick={() => saveEntry("posted")} disabled={!form.description || !validation.isValid} className="bg-emerald-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50 hover:bg-emerald-700">Post Entry</button>
+  <Btn variant="success-fill" onClick={() => saveEntry("posted")} disabled={!form.description || !validation.isValid}>Post Entry</Btn>
   </div>
   </div>
   </div>
@@ -7770,10 +7770,10 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   {[{k:"all",l:`All (${counts.all})`},{k:"posted",l:`Posted (${counts.posted})`},{k:"draft",l:`Drafts (${counts.draft})`},{k:"voided",l:`Voided (${counts.voided})`}].map(f => (
   <button key={f.k} onClick={() => setFilterStatus(f.k)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${filterStatus === f.k ? "bg-green-600 text-white border-green-600" : "bg-white text-slate-500 border-slate-200 hover:border-green-300"}`}>{f.l}</button>
   ))}
-  <select value={searchProperty} onChange={e => setSearchProperty(e.target.value)} className="text-xs px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-500 ml-auto">
+  <Select value={searchProperty} onChange={e => setSearchProperty(e.target.value)} className="text-xs py-1.5 rounded-xl ml-auto">
   <option value="">All Properties</option>
   {jeProperties.map(p => <option key={p} value={p}>{p.split(",")[0]}</option>)}
-  </select>
+  </Select>
   <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-500" title="From date" />
   <span className="text-xs text-slate-400">to</span>
   <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-500" title="To date" />
@@ -7918,7 +7918,7 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   <div><label className="text-xs font-medium text-slate-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form,description:e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
   <div><label className="text-xs font-medium text-slate-500 block mb-2">Color</label><div className="flex gap-2 flex-wrap">{COLORS.map(c => <button key={c} type="button" onClick={() => setForm({...form,color:c})} className={`w-7 h-7 rounded-full border-2 ${form.color===c?"border-gray-800 scale-110":"border-transparent"}`} style={{background:c}} />)}</div></div>
   <div className="flex justify-end gap-2 pt-2">
-  <button onClick={() => setModal(null)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
+  <Btn variant="slate" onClick={() => setModal(null)}>Cancel</Btn>
   <Btn variant="success-fill" onClick={saveClass}>{modal === "add" ? "Create" : "Save"}</Btn>
   </div>
   </div>
@@ -8575,9 +8575,9 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     <div className="bg-slate-50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-end">
       {SHOW_PERIOD && (
       <div><label className="text-xs text-slate-500 block mb-1">Period</label>
-        <select value={period} onChange={e => setPeriod(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white">
+        <Select value={period} onChange={e => setPeriod(e.target.value)} className="py-1.5">
           {["This Month","Last Month","This Quarter","Last Quarter","This Year","Last Year","Custom"].map(p => <option key={p}>{p}</option>)}
-        </select></div>
+        </Select></div>
       )}
       {period === "Custom" && <>
         <div><label className="text-xs text-slate-500 block mb-1">From</label><Input type="date" value={start} onChange={e => setCustomDates({...customDates, start: e.target.value})} className="w-36" /></div>
@@ -11520,7 +11520,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   <PageHeader title="Inspections" />
   <div className="flex gap-2">
   <Btn variant="secondary" onClick={exportInspections}><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</Btn>
-  <button onClick={() => { setShowForm(!showForm); initChecklist("Move-In"); }} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Inspection</button>
+  <Btn onClick={() => { setShowForm(!showForm); initChecklist("Move-In"); }}>+ New Inspection</Btn>
   </div>
   </div>
 
@@ -11529,9 +11529,9 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   <h3 className="font-semibold text-slate-700 mb-3">New Inspection</h3>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Inspection Type</label><select value={form.type} onChange={e => { setForm({ ...form, type: e.target.value }); initChecklist(e.target.value); }} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Inspection Type</label><Select value={form.type} onChange={e => { setForm({ ...form, type: e.target.value }); initChecklist(e.target.value); }}>
   {["Move-In", "Move-Out", "Periodic"].map(t => <option key={t}>{t}</option>)}
-  </select></div>
+  </Select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Inspector</label><Input placeholder="Inspector name" value={form.inspector} onChange={e => setForm({ ...form, inspector: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Date</label><Input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="General notes about the inspection" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
@@ -11552,7 +11552,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
 
   <div className="flex gap-2">
   <Btn onClick={saveInspection}>Save Inspection</Btn>
-  <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-2xl hover:bg-slate-100">Cancel</button>
+  <Btn variant="slate" onClick={() => setShowForm(false)}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -11572,9 +11572,9 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   <div><span className="text-slate-400">Type</span><div className="font-semibold text-slate-700">{insp.type}</div></div>
   </div>
   <div className="mt-3 flex gap-2 flex-wrap">
-  <button onClick={() => setSelectedInspection(insp)} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">📋 View Report</button>
-  {insp.status === "scheduled" && <button onClick={() => updateStatus(insp.id, "completed")} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">✓ Mark Complete</button>}
-  {insp.status === "completed" && <button onClick={async () => {
+  <Btn variant="secondary" size="xs" onClick={() => setSelectedInspection(insp)}>📋 View Report</Btn>
+  {insp.status === "scheduled" && <Btn variant="success-fill" size="xs" onClick={() => updateStatus(insp.id, "completed")}>✓ Mark Complete</Btn>}
+  {insp.status === "completed" && <Btn variant="warning-fill" size="xs" onClick={async () => {
   if (!guardSubmit("woFromInsp", insp.id)) return;
   try {
   const items = (() => { try { return JSON.parse(insp.items || "{}"); } catch { return {}; } })();
@@ -11585,7 +11585,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   if (error) { showToast("Error: " + error.message, "error"); return; }
   addNotification("🔧", `Work order created from inspection at ${insp.property}`);
   } finally { guardRelease("woFromInsp", insp.id); }
-  }} className="text-xs text-orange-600 border border-orange-200 px-3 py-1 rounded-lg hover:bg-orange-50"><span className="material-icons-outlined text-xs align-middle">build</span> Create Work Order</button>}
+  }}><span className="material-icons-outlined text-xs align-middle">build</span> Create Work Order</Btn>}
   </div>
   </div>
   ))}
@@ -11933,8 +11933,8 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="flex justify-between items-center mb-5">
   <PageHeader title="Lease Management" />
   <div className="flex gap-2">
-  <button onClick={() => setShowTemplateForm(true)} className="text-xs border border-brand-100 text-slate-500 px-3 py-2 rounded-lg hover:bg-brand-50/30">Manage Templates</button>
-  <button onClick={() => { resetForm(); setShowForm(true); }} className="bg-brand-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Lease</button>
+  <Btn variant="secondary" size="xs" onClick={() => setShowTemplateForm(true)}>Manage Templates</Btn>
+  <Btn onClick={() => { resetForm(); setShowForm(true); }}>+ New Lease</Btn>
   </div>
   </div>
 
@@ -11951,7 +11951,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   {expiringSoon.map(l => { const d = Math.ceil((parseLocalDate(l.end_date) - new Date()) / 86400000); return (
   <div key={l.id} className="flex justify-between items-center py-1 text-sm">
   <span className="text-amber-700">{l.tenant_name} — {l.property}</span>
-  <div className="flex items-center gap-2"><span className="text-amber-600 font-bold">{d} days</span><button onClick={() => renewLease(l)} className="text-xs bg-amber-600 text-white px-2 py-1 rounded hover:bg-amber-700">Renew</button></div>
+  <div className="flex items-center gap-2"><span className="text-amber-600 font-bold">{d} days</span><Btn variant="warning-fill" size="xs" onClick={() => renewLease(l)}>Renew</Btn></div>
   </div>
   ); })}
   </div>
@@ -11991,7 +11991,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   {Number(depositForm.amount_returned || 0) < safeNum(showDepositModal.security_deposit) && depositForm.amount_returned && (
   <div className="bg-red-50 rounded-lg p-2 text-xs text-red-700">Deducting ${(safeNum(showDepositModal.security_deposit) - Number(depositForm.amount_returned)).toLocaleString()} from deposit</div>
   )}
-  <button onClick={() => processDepositReturn(showDepositModal)} className="bg-purple-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-purple-700">Process Return</button>
+  <Btn variant="purple" onClick={() => processDepositReturn(showDepositModal)}>Process Return</Btn>
   </div>
   </Modal>
   )}
@@ -12043,7 +12043,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="text-sm font-semibold text-amber-800 mb-2">⚠️ Late Fee Settings</div>
   <div className="grid grid-cols-3 gap-3">
   <div><label className="text-xs text-slate-400 mb-1 block">Grace Period (days)</label><Input type="number" min="0" max="30" placeholder="5" value={form.late_fee_grace_days} onChange={e => setForm({...form, late_fee_grace_days: e.target.value})} className="border-amber-200 bg-white" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Fee Type</label><select value={form.late_fee_type} onChange={e => setForm({...form, late_fee_type: e.target.value})} className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></select></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Fee Type</label><Select value={form.late_fee_type} onChange={e => setForm({...form, late_fee_type: e.target.value})} className="border-amber-200 bg-white"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></Select></div>
   <div><label className="text-xs text-slate-400 mb-1 block">{form.late_fee_type === "flat" ? "Fee Amount ($)" : "Fee Percentage (%)"}</label><Input type="number" step="0.01" min="0" placeholder="50.00" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} className="border-amber-200 bg-white" /></div>
   </div>
   <p className="text-xs text-amber-600 mt-2">Late fees auto-apply to tenant ledger after grace period. Admin can waive from ledger.</p>
@@ -12053,7 +12053,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Special Terms</label><Textarea value={form.special_terms} onChange={e => setForm({...form, special_terms: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={2} placeholder="Pet deposit, parking, storage..." /></div>
   <div className="flex gap-2">
   <Btn onClick={saveLease}>{editingLease ? "Update Lease" : "Create Lease"}</Btn>
-  <button onClick={resetForm} className="text-sm text-slate-400 px-4 py-2 hover:text-slate-700">Cancel</button>
+  <Btn variant="ghost" onClick={resetForm}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -12084,15 +12084,15 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <div><span className="text-slate-400">Auto-Renew:</span> <span className="font-medium">{l.auto_renew ? "Yes" : "No"}</span></div>
   </div>
   <div className="flex flex-wrap gap-2 pt-2 border-t border-brand-50/50">
-  <button onClick={() => startEdit(l)} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">Edit</button>
+  <Btn variant="secondary" size="xs" onClick={() => startEdit(l)}>Edit</Btn>
   <button onClick={() => setShowESign(l)} className={"text-xs border px-3 py-1 rounded-lg " + (l.signature_status === "fully_signed" ? "text-green-600 border-green-200 bg-green-50" : "text-purple-600 border-purple-200 hover:bg-purple-50")}>{l.signature_status === "fully_signed" ? "✓ Signed" : "\u270d\ufe0f E-Sign"}</button>
-  {l.status === "active" && <button onClick={() => renewLease(l)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">Renew</button>}
-  {l.status === "active" && <button onClick={() => { setShowRentIncrease(l); setRentIncreaseForm({ new_amount: String(l.rent_amount), effective_date: formatLocalDate(new Date()), reason: "" }); }} className="text-xs text-blue-600 border border-blue-200 px-3 py-1 rounded-lg hover:bg-blue-50">📈 Rent Increase</button>}
-  {l.status === "active" && <button onClick={() => terminateLease(l)} className="text-xs text-red-600 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">Terminate</button>}
+  {l.status === "active" && <Btn variant="success-fill" size="xs" onClick={() => renewLease(l)}>Renew</Btn>}
+  {l.status === "active" && <Btn variant="secondary" size="xs" onClick={() => { setShowRentIncrease(l); setRentIncreaseForm({ new_amount: String(l.rent_amount), effective_date: formatLocalDate(new Date()), reason: "" }); }}>📈 Rent Increase</Btn>}
+  {l.status === "active" && <Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>Terminate</Btn>}
   <button onClick={() => setShowChecklist({ lease: l, type: "in" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_in_completed ? "text-green-600 border-green-200 bg-green-50" : "text-slate-400 border-brand-100 hover:bg-brand-50/30")}>Move-In {l.move_in_completed ? "✓" : ""}</button>
   <button onClick={() => setShowChecklist({ lease: l, type: "out" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_out_completed ? "text-green-600 border-green-200 bg-green-50" : "text-slate-400 border-brand-100 hover:bg-brand-50/30")}>Move-Out {l.move_out_completed ? "✓" : ""}</button>
   {safeNum(l.security_deposit) > 0 && l.deposit_status === "held" && (l.status === "terminated" || l.status === "expired" || isExpired) && (
-  <button onClick={() => { setShowDepositModal(l); setDepositForm({ amount_returned: String(l.security_deposit), deductions: "", return_date: formatLocalDate(new Date()) }); }} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">Return Deposit</button>
+  <Btn variant="purple" size="xs" onClick={() => { setShowDepositModal(l); setDepositForm({ amount_returned: String(l.security_deposit), deductions: "", return_date: formatLocalDate(new Date()) }); }}>Return Deposit</Btn>
   )}
   </div>
   </div>
@@ -12117,7 +12117,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   {Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "+" : ""}{Math.round((Number(rentIncreaseForm.new_amount) - showRentIncrease.rent_amount) / showRentIncrease.rent_amount * 100)}% ({Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "+" : ""}${Number(rentIncreaseForm.new_amount) - showRentIncrease.rent_amount}/mo)
   </div>
   )}
-  <button onClick={async () => {
+  <Btn className="w-full" onClick={async () => {
   if (!rentIncreaseForm.new_amount || !rentIncreaseForm.effective_date) { showToast("Amount and date required.", "error"); return; }
   const newAmt = Number(rentIncreaseForm.new_amount);
   const { error: _err4960 } = await supabase.from("leases").update({ rent_amount: newAmt, rent_increase_history: JSON.stringify([...(JSON.parse(showRentIncrease.rent_increase_history || "[]")), { from: showRentIncrease.rent_amount, to: newAmt, date: rentIncreaseForm.effective_date, reason: rentIncreaseForm.reason }]) }).eq("company_id", companyId).eq("id", showRentIncrease.id);
@@ -12127,7 +12127,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   logAudit("update", "leases", `Rent increase: ${formatCurrency(showRentIncrease.rent_amount)} → ${formatCurrency(newAmt)} for ${showRentIncrease.tenant_name}`, showRentIncrease.id, userProfile?.email, userRole, companyId);
   setShowRentIncrease(null);
   fetchData();
-  }} className="w-full bg-brand-600 text-white text-sm py-2.5 rounded-2xl hover:bg-brand-700">Apply Rent Increase</button>
+  }}>Apply Rent Increase</Btn>
   </div>
   </Modal>
   )}
@@ -12332,8 +12332,8 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div className="flex justify-between items-center mb-5">
   <PageHeader title="Vendor Management" />
   <div className="flex gap-2">
-  <button onClick={() => setShowInvoiceForm(true)} className="text-xs border border-brand-100 text-slate-500 px-3 py-2 rounded-lg hover:bg-brand-50/30">+ Invoice</button>
-  <button onClick={() => { resetVendorForm(); setShowForm(true); }} className="bg-brand-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Vendor</button>
+  <Btn variant="secondary" size="xs" onClick={() => setShowInvoiceForm(true)}>+ Invoice</Btn>
+  <Btn onClick={() => { resetVendorForm(); setShowForm(true); }}>+ New Vendor</Btn>
   </div>
   </div>
 
@@ -12362,7 +12362,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   {/* New Vendor Form */}
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
-  <div className="flex items-center justify-between mb-4"><h3 className="font-manrope font-semibold text-slate-800">{editingVendor ? "Edit Vendor" : "Add New Vendor"}</h3><button onClick={resetVendorForm} className="text-slate-400 hover:text-slate-700 text-xl leading-none" title="Close">✕</button></div>
+  <div className="flex items-center justify-between mb-4"><h3 className="font-manrope font-semibold text-slate-800">{editingVendor ? "Edit Vendor" : "Add New Vendor"}</h3><Btn variant="ghost" onClick={resetVendorForm} title="Close">✕</Btn></div>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div className="col-span-2"><div className="grid grid-cols-6 gap-3">
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">First Name *</label><Input value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" /></div>
@@ -12391,7 +12391,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Notes</label><Textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={2} /></div>
   <div className="flex gap-2">
   <Btn onClick={saveVendor}>{editingVendor ? "Update" : "Add Vendor"}</Btn>
-  <button onClick={resetVendorForm} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
+  <Btn variant="ghost" onClick={resetVendorForm}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -12399,13 +12399,13 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   {/* Invoice Form */}
   {showInvoiceForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
-  <div className="flex items-center justify-between mb-4"><h3 className="font-manrope font-semibold text-slate-800">New Vendor Invoice</h3><button onClick={() => setShowInvoiceForm(false)} className="text-slate-400 hover:text-slate-700 text-xl leading-none" title="Close">✕</button></div>
+  <div className="flex items-center justify-between mb-4"><h3 className="font-manrope font-semibold text-slate-800">New Vendor Invoice</h3><Btn variant="ghost" onClick={() => setShowInvoiceForm(false)} title="Close">✕</Btn></div>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div><label className="text-xs text-slate-400 mb-1 block">Vendor *</label>
-  <select value={invoiceForm.vendor_id} onChange={e => { const v = vendors.find(v => String(v.id) === String(e.target.value)); setInvoiceForm({...invoiceForm, vendor_id: e.target.value, vendor_name: v?.name || ""}); }} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm truncate">
+  <Select value={invoiceForm.vendor_id} onChange={e => { const v = vendors.find(v => String(v.id) === String(e.target.value)); setInvoiceForm({...invoiceForm, vendor_id: e.target.value, vendor_name: v?.name || ""}); }} className="truncate">
   <option value="">Select vendor...</option>
   {vendors.filter(v => v.status !== "blocked").map(v => <option key={v.id} value={v.id}>{v.name} ({v.specialty})</option>)}
-  </select>
+  </Select>
   </div>
   <div><label className="text-xs text-slate-400 mb-1 block">Property</label><PropertySelect value={invoiceForm.property} onChange={v => setInvoiceForm({...invoiceForm, property: v})} companyId={companyId} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Amount ($) *</label><Input type="number" min="0" step="0.01" placeholder="500.00" value={invoiceForm.amount} onChange={e => setInvoiceForm({...invoiceForm, amount: e.target.value})} /></div>
@@ -12416,7 +12416,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   </div>
   <div className="flex gap-2">
   <Btn onClick={saveInvoice}>Save Invoice</Btn>
-  <button onClick={() => setShowInvoiceForm(false)} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
+  <Btn variant="ghost" onClick={() => setShowInvoiceForm(false)}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -12459,8 +12459,8 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   </div>
   {v.notes && <div className="text-xs text-slate-400 mb-2">{v.notes}</div>}
   <div className="flex flex-wrap gap-2 pt-2 border-t border-brand-50/50">
-  <button onClick={() => startEditVendor(v)} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">Edit</button>
-  <button onClick={() => deleteVendor(v.id, v.name)} className="text-xs text-red-500 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">Delete</button>
+  <Btn variant="secondary" size="xs" onClick={() => startEditVendor(v)}>Edit</Btn>
+  <Btn variant="danger" size="xs" onClick={() => deleteVendor(v.id, v.name)}>Delete</Btn>
   <div className="flex items-center gap-0.5 ml-2">
   {[1,2,3,4,5].map(star => (
   <button key={star} onClick={() => rateVendor(v, star)} className={"text-sm " + (star <= (v.rating || 0) ? "text-amber-400" : "text-slate-300")}>{star <= (v.rating || 0) ? "\u2605" : "\u2606"}</button>
@@ -12501,7 +12501,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   </div>
   {(inv.status === "pending" || inv.status === "approved") && (
   <div className="flex gap-2 pt-2 mt-2 border-t border-brand-50/50">
-  <button onClick={() => payInvoice(inv)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">Mark Paid</button>
+  <Btn variant="success-fill" size="xs" onClick={() => payInvoice(inv)}>Mark Paid</Btn>
   </div>
   )}
   </div>
@@ -12753,8 +12753,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="flex justify-between items-center mb-5">
   <PageHeader title="Owner Management" />
   <div className="flex gap-2">
-  <button onClick={() => setShowGenerate(true)} className="text-xs border border-brand-100 text-slate-500 px-3 py-2 rounded-lg hover:bg-brand-50/30">Generate Statement</button>
-  <button onClick={() => { resetForm(); setShowForm(true); }} className="bg-brand-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Owner</button>
+  <Btn variant="secondary" size="xs" onClick={() => setShowGenerate(true)}>Generate Statement</Btn>
+  <Btn onClick={() => { resetForm(); setShowForm(true); }}>+ New Owner</Btn>
   </div>
   </div>
 
@@ -12793,7 +12793,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   )}
   <div className="flex gap-2">
   <Btn onClick={generateStatement}>Generate</Btn>
-  <button onClick={() => setShowGenerate(false)} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
+  <Btn variant="ghost" onClick={() => setShowGenerate(false)}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -12828,7 +12828,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Notes</label><Textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={2} /></div>
   <div className="flex gap-2">
   <Btn onClick={saveOwner}>{editingOwner ? "Update" : "Add Owner"}</Btn>
-  <button onClick={resetForm} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
+  <Btn variant="ghost" onClick={resetForm}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -12859,8 +12859,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   ));
   })()}
   <div className="flex gap-2 pt-3 border-t border-brand-50">
-  {viewStatement.status === "draft" && <button onClick={() => { markStatementSent(viewStatement); setViewStatement(null); }} className="text-xs bg-blue-600 text-white px-4 py-2 rounded-lg">Mark Sent</button>}
-  {(viewStatement.status === "draft" || viewStatement.status === "sent") && <button onClick={() => { distributeToOwner(viewStatement); setViewStatement(null); }} className="text-xs bg-green-600 text-white px-4 py-2 rounded-lg">Distribute ${safeNum(viewStatement.net_to_owner).toLocaleString()}</button>}
+  {viewStatement.status === "draft" && <Btn variant="primary" size="xs" onClick={() => { markStatementSent(viewStatement); setViewStatement(null); }}>Mark Sent</Btn>}
+  {(viewStatement.status === "draft" || viewStatement.status === "sent") && <Btn variant="success-fill" size="xs" onClick={() => { distributeToOwner(viewStatement); setViewStatement(null); }}>Distribute ${safeNum(viewStatement.net_to_owner).toLocaleString()}</Btn>}
   </div>
   </div>
   </Modal>
@@ -12891,9 +12891,9 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="text-xs text-slate-400 mb-2">{ownerProps.map(p => p.address).join(" · ")}</div>
   )}
   <div className="flex gap-2 pt-2 border-t border-brand-50/50">
-  <button onClick={() => inviteOwner(o)} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">✉️ Invite</button>
-  <button onClick={() => startEdit(o)} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">Edit</button>
-  <button onClick={() => { setGenOwner(o.id); setShowGenerate(true); }} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">Generate Statement</button>
+  <Btn variant="purple" size="xs" onClick={() => inviteOwner(o)}>✉️ Invite</Btn>
+  <Btn variant="secondary" size="xs" onClick={() => startEdit(o)}>Edit</Btn>
+  <Btn variant="success-fill" size="xs" onClick={() => { setGenOwner(o.id); setShowGenerate(true); }}>Generate Statement</Btn>
   </div>
   </div>
   );
@@ -12912,10 +12912,10 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="text-sm font-medium text-slate-800">{p.address}</div>
   <div className="text-xs text-slate-400">{p.type} · {p.status}</div>
   </div>
-  <select value={p.owner_id || ""} onChange={e => assignPropertyToOwner(p.id, e.target.value)} className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm min-w-40">
+  <Select value={p.owner_id || ""} onChange={e => assignPropertyToOwner(p.id, e.target.value)} className="min-w-40">
   <option value="">No owner</option>
   {owners.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-  </select>
+  </Select>
   </div>
   ))}
   </div>
@@ -13252,7 +13252,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
 
   {viewRecon && (
   <div>
-  <button onClick={() => setViewRecon(null)} className="text-sm text-brand-600 mb-3 hover:underline">← Back</button>
+  <Btn variant="ghost" size="sm" onClick={() => setViewRecon(null)}>← Back</Btn>
   <div className="bg-white rounded-3xl border border-brand-50 p-5">
   <div className="flex justify-between items-start mb-4">
   <div><h3 className="font-semibold text-slate-800">Reconciliation — {viewRecon.period}</h3><div className="text-xs text-slate-400">{new Date(viewRecon.created_at).toLocaleDateString()}</div></div>
@@ -13278,7 +13278,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   <h3 className="font-semibold text-slate-800">Reconcile — {reconPeriod}</h3>
   <div className="text-xs text-slate-400">Bank balance: ${Number(bankBalance).toLocaleString()} · Check items that match your bank statement</div>
   </div>
-  <button onClick={() => { setShowReconcile(false); setReconItems([]); }} className="text-sm text-slate-400 hover:text-slate-700">Cancel</button>
+  <Btn variant="ghost" onClick={() => { setShowReconcile(false); setReconItems([]); }}>Cancel</Btn>
   </div>
 
   <div className="grid grid-cols-3 gap-3 mb-4">
@@ -13289,7 +13289,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
 
   <div className="mb-3 flex items-center gap-2">
   <Btn variant="secondary" size="sm" onClick={toggleAllRecon}>{reconItems.every(i => i.reconciled) ? "Uncheck All" : "Check All"}</Btn>
-  <button onClick={() => autoMatchItems(reconItems)} className="text-xs text-emerald-600 border border-emerald-200 px-3 py-1 rounded-lg hover:bg-emerald-50">⚡ Auto-Match</button>
+  <Btn variant="success-fill" size="xs" onClick={() => autoMatchItems(reconItems)}>⚡ Auto-Match</Btn>
   <span className="text-xs text-slate-400">{reconItems.length} transactions</span>
   </div>
 
@@ -13567,7 +13567,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   <div className="mb-2">
   <Textarea value={s.template} onChange={e => updateTemplate(s, e.target.value)} className="text-xs text-slate-500" rows={2} />
   </div>
-  <button onClick={() => sendTestNotification(s)} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">Send Test</button>
+  <Btn variant="secondary" size="xs" onClick={() => sendTestNotification(s)}>Send Test</Btn>
   </div>
   );
   })}
@@ -13827,7 +13827,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   className="w-full cursor-crosshair" style={{ touchAction: "none" }} />
   <div className="absolute bottom-1 left-3 text-xs text-slate-300">Sign above this line</div>
   </div>
-  <button onClick={clearCanvas} className="text-xs text-slate-400 hover:text-slate-700">Clear</button>
+  <Btn variant="ghost" size="xs" onClick={clearCanvas}>Clear</Btn>
   </div>
   ) : (
   <div>
@@ -14121,7 +14121,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   {/* STATEMENT DETAIL */}
   {activeTab === "statements" && viewStatement && (
   <div>
-  <button onClick={() => setViewStatement(null)} className="text-sm text-brand-600 mb-3 hover:underline">\u2190 Back to Statements</button>
+  <Btn variant="ghost" size="sm" onClick={() => setViewStatement(null)}>\u2190 Back to Statements</Btn>
   <div className="bg-white rounded-3xl border border-brand-50 p-5">
   <div className="flex justify-between items-start mb-4">
   <div>
@@ -14129,7 +14129,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="text-xs text-slate-400">{viewStatement.owner_name} · Generated {new Date(viewStatement.created_at).toLocaleDateString()}</div>
   </div>
   <div className="flex items-center gap-2">
-  <button onClick={() => { const w = window.open("", "_blank", "noopener,noreferrer"); w.document.write("<pre>" + escapeHtml(JSON.stringify(viewStatement, null, 2)) + "</pre>"); w.document.title = "Statement " + sanitizeForPrint(viewStatement.period); setTimeout(() => w.print(), 300); }} className="text-xs text-brand-600 border border-brand-200 px-2 py-1 rounded-lg hover:bg-brand-50"><span className="material-icons-outlined text-xs align-middle">print</span></button>
+  <Btn onClick={() => { const w = window.open("", "_blank", "noopener,noreferrer"); w.document.write("<pre>" + escapeHtml(JSON.stringify(viewStatement, null, 2)) + "</pre>"); w.document.title = "Statement " + sanitizeForPrint(viewStatement.period); setTimeout(() => w.print(), 300); }} variant="secondary" size="xs"><span className="material-icons-outlined text-xs align-middle">print</span></Btn>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewStatement.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{viewStatement.status}</span>
   </div>
   </div>
@@ -14303,7 +14303,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   <Select value={hoaFilter} onChange={e => setHoaFilter(e.target.value)} >
   <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
   </Select>
-  <button onClick={() => { setEditingHoa(null); setForm({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "", website: "", username: "", password: "" }); setShowForm(!showForm); }} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ Add HOA</button>
+  <Btn onClick={() => { setEditingHoa(null); setForm({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "", website: "", username: "", password: "" }); setShowForm(!showForm); }}>+ Add HOA</Btn>
   </div>
 
   {/* Stats */}
@@ -14321,9 +14321,9 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">HOA Company</label><Input placeholder="e.g. Riverside HOA" value={form.hoa_name} onChange={e => setForm({ ...form, hoa_name: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($)</label><Input placeholder="250.00" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Due Date</label><Input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Frequency</label><select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Frequency</label><Select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })}>
   <option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="annual">Annual</option>
-  </select></div>
+  </Select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
   <div className="col-span-2 border-t border-slate-100 pt-2 mt-1"><p className="text-xs text-slate-400 mb-2">Portal Login (encrypted)</p>
   <div className="grid grid-cols-3 gap-2">
@@ -14334,7 +14334,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   </div>
   <div className="flex gap-2 mt-3">
   <Btn onClick={saveHOA}>Save</Btn>
-  <button onClick={() => { setShowForm(false); setEditingHoa(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
+  <Btn variant="secondary" onClick={() => { setShowForm(false); setEditingHoa(null); }}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -14489,7 +14489,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
   <option value="all">All Status</option><option value="active">Active</option><option value="paid_off">Paid Off</option>
   </Select>
-  <button onClick={() => { setEditingLoan(null); setForm(emptyForm); setShowForm(true); }} className="bg-green-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-green-700">+ Add Loan</button>
+  <Btn variant="success-fill" onClick={() => { setEditingLoan(null); setForm(emptyForm); setShowForm(true); }}>+ Add Loan</Btn>
   </div>
 
   {/* Stats */}
@@ -14504,9 +14504,9 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lender Name *</label><Input placeholder="e.g. Wells Fargo" value={form.lender_name} onChange={e => setForm({ ...form, lender_name: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Loan Type</label><select value={form.loan_type} onChange={e => setForm({ ...form, loan_type: e.target.value })} className="border border-slate-200 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Loan Type</label><Select value={form.loan_type} onChange={e => setForm({ ...form, loan_type: e.target.value })}>
   <option value="Conventional">Conventional</option><option value="FHA">FHA</option><option value="VA">VA</option><option value="DSCR">DSCR</option><option value="Hard Money">Hard Money</option><option value="HELOC">HELOC</option><option value="Other">Other</option>
-  </select></div>
+  </Select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Original Amount ($) *</label><Input placeholder="250000" type="number" value={form.original_amount} onChange={e => setForm({ ...form, original_amount: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Current Balance ($)</label><Input placeholder="230000" type="number" value={form.current_balance} onChange={e => setForm({ ...form, current_balance: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Interest Rate (%)</label><Input placeholder="6.5" type="number" step="0.01" value={form.interest_rate} onChange={e => setForm({ ...form, interest_rate: e.target.value })} /></div>
@@ -14514,9 +14514,9 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Account Number</label><Input placeholder="Loan account #" value={form.account_number} onChange={e => setForm({ ...form, account_number: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Loan Start Date</label><Input type="date" value={form.loan_start_date} onChange={e => setForm({ ...form, loan_start_date: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Maturity Date</label><Input type="date" value={form.maturity_date} onChange={e => setForm({ ...form, maturity_date: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-slate-200 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status</label><Select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
   <option value="active">Active</option><option value="paid_off">Paid Off</option>
-  </select></div>
+  </Select></div>
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
   <div className="col-span-2">
   <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.escrow_included} onChange={e => setForm({ ...form, escrow_included: e.target.checked })} className="rounded" /><span className="text-sm text-slate-600">Escrow Included</span></label>
@@ -14536,7 +14536,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   </div>
   <div className="flex gap-2 mt-4">
   <Btn variant="success-fill" onClick={saveLoan}>Save</Btn>
-  <button onClick={() => { setShowForm(false); setEditingLoan(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
+  <Btn variant="secondary" onClick={() => { setShowForm(false); setEditingLoan(null); }}>Cancel</Btn>
   </div>
   </Modal>
   )}
@@ -14674,7 +14674,7 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   <option value="all">All Properties</option>
   {uniqueProperties.map(p => <option key={p} value={p}>{p}</option>)}
   </Select>
-  <button onClick={() => { setEditingPolicy(null); setForm(emptyForm); setShowForm(true); }} className="bg-green-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-green-700">+ Add Policy</button>
+  <Btn variant="success-fill" onClick={() => { setEditingPolicy(null); setForm(emptyForm); setShowForm(true); }}>+ Add Policy</Btn>
   </div>
 
   {/* Stats */}
@@ -14691,9 +14691,9 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Provider *</label><Input placeholder="e.g. State Farm" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Policy Number</label><Input placeholder="Policy #" value={form.policy_number} onChange={e => setForm({ ...form, policy_number: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Premium Amount ($) *</label><Input placeholder="1200" type="number" value={form.premium_amount} onChange={e => setForm({ ...form, premium_amount: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Premium Frequency</label><select value={form.premium_frequency} onChange={e => setForm({ ...form, premium_frequency: e.target.value })} className="border border-slate-200 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Premium Frequency</label><Select value={form.premium_frequency} onChange={e => setForm({ ...form, premium_frequency: e.target.value })}>
   <option value="Monthly">Monthly</option><option value="Quarterly">Quarterly</option><option value="Annual">Annual</option>
-  </select></div>
+  </Select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Coverage Amount ($)</label><Input placeholder="300000" type="number" value={form.coverage_amount} onChange={e => setForm({ ...form, coverage_amount: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Expiration Date</label><Input type="date" value={form.expiration_date} onChange={e => setForm({ ...form, expiration_date: e.target.value })} /></div>
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
@@ -14706,7 +14706,7 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   </div>
   <div className="flex gap-2 mt-4">
   <Btn variant="success-fill" onClick={savePolicy}>Save</Btn>
-  <button onClick={() => { setShowForm(false); setEditingPolicy(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
+  <Btn variant="secondary" onClick={() => { setShowForm(false); setEditingPolicy(null); }}>Cancel</Btn>
   </div>
   </Modal>
   )}
@@ -15064,32 +15064,32 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   <PageHeader title="Autopay & Recurring Rent" />
   <p className="text-xs text-slate-400 mt-0.5">Set recurring schedules per tenant with custom start and end dates</p>
   </div>
-  <button onClick={() => setShowForm(!showForm)} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Schedule</button>
+  <Btn onClick={() => setShowForm(!showForm)}>+ New Schedule</Btn>
   </div>
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-5">
   <h3 className="font-semibold text-slate-700 mb-3">New Autopay Schedule</h3>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant *</label><select value={form.tenant} onChange={e => { const t = tenants.find(t => t.name === e.target.value); setForm({ ...form, tenant: e.target.value, property: t?.property || "", amount: t?.rent || "" }); }} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant *</label><Select value={form.tenant} onChange={e => { const t = tenants.find(t => t.name === e.target.value); setForm({ ...form, tenant: e.target.value, property: t?.property || "", amount: t?.rent || "" }); }}>
   <option value="">Select tenant...</option>
   {tenants.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
-  </select></div>
+  </Select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($)</label><Input placeholder="1500.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Payment Method</label><select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Payment Method</label><Select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })}>
   {["ACH", "card", "cash", "check"].map(m => <option key={m}>{m}</option>)}
-  </select></div>
+  </Select></div>
   <div>
   <label className="text-xs text-slate-400 mb-1 block">Day of Month</label>
   <Select value={form.day_of_month} onChange={e => setForm({ ...form, day_of_month: e.target.value })} >
   {Array.from({ length: 28 }, (_, i) => i + 1).map(d => <option key={d} value={String(d)}>{d}{d === 1 ? "st" : d === 2 ? "nd" : d === 3 ? "rd" : "th"}</option>)}
   </Select>
   </div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Frequency</label><select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Frequency</label><Select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })}>
   <option value="monthly">Monthly</option>
   <option value="weekly">Weekly</option>
   <option value="biweekly">Bi-Weekly</option>
-  </select></div>
+  </Select></div>
   <div>
   <label className="text-xs text-slate-400 mb-1 block">Start Date</label>
   <Input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })}  />
@@ -15101,7 +15101,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   </div>
   <div className="flex gap-2 mt-3">
   <Btn onClick={saveSchedule}>Save Schedule</Btn>
-  <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
+  <Btn variant="secondary" onClick={() => setShowForm(false)}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -15127,9 +15127,9 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   <div className="mt-2 flex items-center justify-between">
   <div className="text-xs text-brand-600 font-medium">Next due: {nextDue(s)}</div>
   <div className="flex gap-2">
-  <button onClick={() => runNow(s)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">▶ Run Now</button>
+  <Btn variant="secondary" size="xs" onClick={() => runNow(s)}>▶ Run Now</Btn>
   <button onClick={() => toggleActive(s)} className={`text-xs border px-3 py-1 rounded-lg ${s.enabled ? "text-orange-500 border-orange-200 hover:bg-orange-50" : "text-green-600 border-green-200 hover:bg-green-50"}`}>{s.enabled ? "⏸ Pause" : "▶ Resume"}</button>
-  <button onClick={() => deleteSchedule(s.id, s.tenant)} className="text-xs text-red-500 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">🗑️</button>
+  <Btn variant="danger" size="xs" onClick={() => deleteSchedule(s.id, s.tenant)}>🗑️</Btn>
   </div>
   </div>
   </div>
@@ -15255,7 +15255,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   </div>
   <div className="flex gap-2">
   {afterGrace.length > 0 && <Btn variant="danger-fill" className="bg-red-500 hover:bg-red-600" onClick={applyAllFees}>⚡ Apply All ({afterGrace.length})</Btn>}
-  <button onClick={() => setShowForm(!showForm)} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Rule</button>
+  <Btn onClick={() => setShowForm(!showForm)}>+ New Rule</Btn>
   </div>
   </div>
   {rules.length > 0 && (
@@ -15278,12 +15278,12 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   <div className="grid grid-cols-2 gap-3">
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Rule Name *</label><Input placeholder="Standard Late Fee" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Grace Period (days)</label><Input type="number" min="0" max="30" placeholder="5" value={form.grace_days} onChange={e => setForm({ ...form, grace_days: e.target.value })} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Fee Type</label><select value={form.fee_type} onChange={e => setForm({ ...form, fee_type: e.target.value })} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></select></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Fee Type</label><Select value={form.fee_type} onChange={e => setForm({ ...form, fee_type: e.target.value })}><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></Select></div>
   <div><label className="text-xs text-slate-400 mb-1 block">{form.fee_type === "flat" ? "Fee Amount ($)" : "Percentage (%)"}</label><Input type="number" min="0" step="0.01" placeholder={form.fee_type === "flat" ? "50.00" : "5.0"} value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} /></div>
   </div>
   <div className="flex gap-2 mt-3">
   <Btn onClick={saveRule}>Save Rule</Btn>
-  <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
+  <Btn variant="secondary" onClick={() => setShowForm(false)}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -15302,7 +15302,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   <div className="text-right"><div className="font-bold text-red-500">${p.amount}</div><div className={`text-xs font-semibold ${pastGrace ? "text-red-500" : "text-orange-500"}`}>{p.daysLate} days late</div></div>
   </div>
   <div className="mt-3 flex gap-2">
-  {pastGrace && rules.length > 0 && <button onClick={() => applyLateFee(p, rules[0])} className="text-xs text-red-600 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">Apply ${rules[0].fee_type === "flat" ? rules[0].fee_amount : Math.round(p.amount * rules[0].fee_amount / 100)} Late Fee</button>}
+  {pastGrace && rules.length > 0 && <Btn variant="danger" size="xs" onClick={() => applyLateFee(p, rules[0])}>Apply ${rules[0].fee_type === "flat" ? rules[0].fee_amount : Math.round(p.amount * rules[0].fee_amount / 100)} Late Fee</Btn>}
   {!pastGrace && <span className="text-xs text-orange-500 bg-orange-50 px-3 py-1 rounded-lg">Within grace period</span>}
   </div>
   </div>
@@ -15560,7 +15560,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="text-sm font-semibold text-red-800">Balance Due: ${safeNum(tenantData.balance).toLocaleString()}</div>
   <div className="text-xs text-red-600">Please make a payment to avoid late fees.</div>
   </div>
-  <button onClick={() => setActiveTab("pay")} className="bg-red-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-red-700">Pay Now</button>
+  <Btn variant="danger-fill" size="xs" onClick={() => setActiveTab("pay")}>Pay Now</Btn>
   </div>
   )}
   <div className="bg-white rounded-3xl border border-brand-50 p-4">
@@ -15682,10 +15682,10 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div>
   <div className="flex justify-between items-center mb-3">
   <h3 className="font-semibold text-slate-700">Payment History</h3>
-  <button onClick={() => exportToCSV(payments, [
+  <Btn variant="secondary" size="xs" onClick={() => exportToCSV(payments, [
   { label: "Date", key: "date" }, { label: "Type", key: "type" }, { label: "Amount", key: "amount" },
   { label: "Method", key: "method" }, { label: "Status", key: "status" },
-  ], "my-payments", showToast)} className="text-xs text-brand-600 border border-brand-200 px-2 py-1 rounded-lg hover:bg-brand-50"><span className="material-icons-outlined text-xs align-middle mr-1">download</span>Export</button>
+  ], "my-payments", showToast)}><span className="material-icons-outlined text-xs align-middle mr-1">download</span>Export</Btn>
   </div>
   <div className="space-y-2">
   {payments.map(p => (
@@ -15695,7 +15695,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="text-xs text-slate-400">{p.date} · {p.method}</div>
   </div>
   <div className="flex items-center gap-3">
-  {p.status === "paid" && <button onClick={() => generatePaymentReceipt(p)} className="text-xs text-brand-600 border border-brand-200 px-2 py-0.5 rounded hover:bg-brand-50">Receipt</button>}
+  {p.status === "paid" && <Btn variant="secondary" size="xs" onClick={() => generatePaymentReceipt(p)}>Receipt</Btn>}
   <div className="text-right">
   <div className="text-sm font-bold text-green-600">${safeNum(p.amount).toLocaleString()}</div>
   <span className={"text-xs px-2 py-0.5 rounded-full " + (p.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{p.status}</span>
@@ -15729,20 +15729,20 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div>
   <div className="flex justify-between items-center mb-4">
   <h3 className="font-semibold text-slate-700">Maintenance Requests</h3>
-  <button onClick={() => setShowMaintForm(!showMaintForm)} className="bg-brand-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-brand-700">
+  <Btn size="xs" onClick={() => setShowMaintForm(!showMaintForm)}>
   {showMaintForm ? "Cancel" : "+ New Request"}
-  </button>
+  </Btn>
   </div>
   {showMaintForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
   <h4 className="font-medium text-slate-700 mb-3">Submit a Maintenance Request</h4>
   <label className="text-xs font-medium text-slate-400 mb-1 block">What's the issue? *</label>
   <Input placeholder="e.g. Leaking faucet in kitchen" value={maintForm.issue} onChange={e => setMaintForm({...maintForm, issue: e.target.value})} className="mb-3" />
-  <select value={maintForm.priority} onChange={e => setMaintForm({...maintForm, priority: e.target.value})} className="mb-3">
+  <Select value={maintForm.priority} onChange={e => setMaintForm({...maintForm, priority: e.target.value})} className="mb-3">
   <option value="normal">Normal Priority</option>
   <option value="urgent">Urgent</option>
   <option value="emergency">Emergency</option>
-  </select>
+  </Select>
   <Textarea placeholder="Additional details..." value={maintForm.notes} onChange={e => setMaintForm({...maintForm, notes: e.target.value})} className="mb-3" rows={3} />
   <div className="mb-3">
   <label className="text-xs text-slate-400 mb-1 block">Attach Photo (optional)</label>
@@ -15777,7 +15777,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div>
   <div className="flex items-center justify-between mb-3">
   <h3 className="font-semibold text-slate-700">My Documents</h3>
-  <button onClick={() => setShowTenantDocUpload(true)} className="bg-brand-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-brand-700">+ Upload</button>
+  <Btn size="xs" onClick={() => setShowTenantDocUpload(true)}>+ Upload</Btn>
   </div>
   <div className="space-y-2">
   {documents.map(d => (
@@ -15791,7 +15791,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="text-xs text-slate-400">{d.type || "Document"} · {new Date(d.uploaded_at).toLocaleDateString()}</div>
   </div>
   </div>
-  <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">View</button>
+  <Btn variant="secondary" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }}>View</Btn>
   </div>
   ))}
   {documents.length === 0 && <div className="text-center py-8 text-slate-400">No documents uploaded yet</div>}
@@ -16035,15 +16035,15 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   disabled={!!editingUser}
   className="border border-brand-100 rounded-2xl px-3 py-2 text-sm disabled:bg-brand-50/30 disabled:text-slate-400"
   />
-  <select
+  <Select
   value={form.role}
   onChange={e => handleRoleChange(e.target.value)}
-  className="border border-brand-100 rounded-2xl px-3 py-2 text-sm col-span-2"
+  className="col-span-2"
   >
   {Object.entries(ROLES).filter(([k]) => k !== "tenant").map(([key, r]) => (
   <option key={key} value={key}>{r.label}</option>
   ))}
-  </select>
+  </Select>
   </div>
 
   {/* Module picker — only shown for customizable roles */}
@@ -16102,9 +16102,9 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   <Btn size="lg" onClick={saveUser}>
   {editingUser ? "Save Changes" : "Add User"}
   </Btn>
-  <button onClick={() => { setShowForm(false); setEditingUser(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">
+  <Btn variant="secondary" onClick={() => { setShowForm(false); setEditingUser(null); }}>
   Cancel
-  </button>
+  </Btn>
   </div>
   </div>
   )}
@@ -16129,15 +16129,15 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   <span className={`text-xs font-semibold text-white px-2 py-0.5 rounded-full ${ROLES[u.role]?.color || "bg-slate-400"}`}>
   {ROLES[u.role]?.label}
   </span>
-  <button onClick={() => inviteUser(u)} className="text-xs text-emerald-500 border border-emerald-200 px-2 py-1 rounded-lg hover:bg-emerald-50">
+  <Btn variant="secondary" size="xs" onClick={() => inviteUser(u)}>
   ✉️ Invite
-  </button>
-  <button onClick={() => startEdit(u)} className="text-xs text-brand-500 border border-brand-200 px-2 py-1 rounded-lg hover:bg-brand-50">
+  </Btn>
+  <Btn variant="secondary" size="xs" onClick={() => startEdit(u)}>
   ✏️ Edit
-  </button>
-  <button onClick={() => removeUser(u.id, u.name, u.email)} className="text-xs text-red-400 hover:text-red-600 border border-red-100 px-2 py-1 rounded-lg hover:bg-red-50">
+  </Btn>
+  <Btn variant="danger" size="xs" onClick={() => removeUser(u.id, u.name, u.email)}>
   Remove
-  </button>
+  </Btn>
   </div>
   </div>
   {/* Show their current module access */}
@@ -16351,7 +16351,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   </div>
   <PageHeader title="Move-Out Complete" />
   <p className="text-slate-400 mb-6">All accounting entries posted, lease terminated, and property marked vacant.</p>
-  <button onClick={() => setPage("dashboard")} className="bg-brand-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-brand-700 transition-colors">Back to Dashboard</button>
+  <Btn onClick={() => setPage("dashboard")}>Back to Dashboard</Btn>
   </div>
   );
 
@@ -16400,7 +16400,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   )}
   </div>
   <div className="flex justify-end mt-6">
-  <button disabled={!selectedTenant} onClick={() => setStep(2)} className="bg-brand-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-brand-700 disabled:opacity-40 transition-colors">Next →</button>
+  <Btn disabled={!selectedTenant} onClick={() => setStep(2)} className="disabled:opacity-40">Next →</Btn>
   </div>
   </div>
   )}
@@ -16418,8 +16418,8 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   ))}
   </div>
   <div className="flex justify-between mt-6">
-  <button onClick={() => setStep(1)} className="text-slate-400 px-4 py-2 rounded-2xl hover:bg-brand-50/30 transition-colors">← Back</button>
-  <button onClick={() => setStep(3)} className="bg-brand-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-brand-700 transition-colors">Next →</button>
+  <Btn variant="ghost" onClick={() => setStep(1)}>← Back</Btn>
+  <Btn onClick={() => setStep(3)}>Next →</Btn>
   </div>
   </div>
   )}
@@ -16451,8 +16451,8 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <div className="flex justify-between text-sm font-bold"><span className="text-emerald-700">Return to Tenant</span><span className="text-emerald-700">${depositReturn.toFixed(2)}</span></div>
   </div>
   <div className="flex justify-between mt-6">
-  <button onClick={() => setStep(2)} className="text-slate-400 px-4 py-2 rounded-2xl hover:bg-brand-50/30 transition-colors">← Back</button>
-  <button onClick={() => setStep(4)} className="bg-brand-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-brand-700 transition-colors">Next →</button>
+  <Btn variant="ghost" onClick={() => setStep(2)}>← Back</Btn>
+  <Btn onClick={() => setStep(4)}>Next →</Btn>
   </div>
   </div>
   )}
@@ -16481,8 +16481,8 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   )}
   {outstandingBalance <= 0 && <p className="text-sm text-emerald-600 font-medium">No outstanding balance — tenant is settled.</p>}
   <div className="flex justify-between mt-6">
-  <button onClick={() => setStep(3)} className="text-slate-400 px-4 py-2 rounded-2xl hover:bg-brand-50/30 transition-colors">← Back</button>
-  <button onClick={() => setStep(5)} className="bg-brand-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-brand-700 transition-colors">Next →</button>
+  <Btn variant="ghost" onClick={() => setStep(3)}>← Back</Btn>
+  <Btn onClick={() => setStep(5)}>Next →</Btn>
   </div>
   </div>
   )}
@@ -16505,7 +16505,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   This will terminate the lease, update property to vacant, and post all accounting entries. This cannot be undone.
   </div>
   <div className="flex justify-between mt-6">
-  <button onClick={() => setStep(4)} className="text-slate-400 px-4 py-2 rounded-2xl hover:bg-brand-50/30 transition-colors">← Back</button>
+  <Btn variant="ghost" onClick={() => setStep(4)}>← Back</Btn>
   <Btn variant="danger-fill" className="disabled:opacity-40" onClick={executeMoveOut} disabled={processing}>
   {processing ? "Processing..." : "Execute Move-Out"}
   </Btn>
@@ -16755,7 +16755,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <PageHeader title="Eviction Tracker" />
   <p className="text-sm text-slate-400">Manage eviction cases from notice to resolution</p>
   </div>
-  <button onClick={() => setShowForm(!showForm)} className="bg-red-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-red-700">+ New Case</button>
+  <Btn variant="danger-fill" onClick={() => setShowForm(!showForm)}>+ New Case</Btn>
   </div>
 
   {/* Stats */}
@@ -16772,10 +16772,10 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <div className="grid grid-cols-2 gap-3">
   <div className="col-span-2">
   <label className="text-xs font-medium text-slate-400 mb-1 block">Tenant *</label>
-  <select value={form.tenant_id} onChange={e => { const t = tenants.find(x => String(x.id) === e.target.value); if (t) setForm({ ...form, tenant_id: t.id, tenant_name: t.name, property: t.property || "" }); }} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm">
+  <Select value={form.tenant_id} onChange={e => { const t = tenants.find(x => String(x.id) === e.target.value); if (t) setForm({ ...form, tenant_id: t.id, tenant_name: t.name, property: t.property || "" }); }}>
   <option value="">Select tenant...</option>
   {tenants.filter(t => !t.archived_at).map(t => <option key={t.id} value={t.id}>{t.name} — {t.property}{safeNum(t.balance) > 0 ? ` (owes ${formatCurrency(t.balance)})` : ""}</option>)}
-  </select>
+  </Select>
   </div>
   <div>
   <label className="text-xs font-medium text-slate-400 mb-1 block">Reason</label>
@@ -16808,7 +16808,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   </div>
   <div className="flex gap-2 mt-3">
   <Btn variant="danger-fill" onClick={createCase}>Start Case</Btn>
-  <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-2xl">Cancel</button>
+  <Btn variant="secondary" onClick={() => setShowForm(false)}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -17711,7 +17711,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="fixed inset-0 z-50 bg-[#fcf8ff] flex flex-col">
   {/* Toolbar */}
   <div className="h-14 border-b border-brand-100 bg-white/80 backdrop-blur-md flex items-center px-5 gap-3 shrink-0">
-  <button onClick={() => { setShowTemplateEditor(false); setEditingTemplate(null); }} className="text-slate-400 hover:text-slate-600"><span className="material-icons-outlined text-xl">arrow_back</span></button>
+  <IconBtn icon="arrow_back" onClick={() => { setShowTemplateEditor(false); setEditingTemplate(null); }} />
   <div className="flex-1 min-w-0">
   <h2 className="text-lg font-manrope font-bold text-slate-800 truncate">{editingTemplate ? "Edit Template" : "New Template"}{templateForm.name ? ": " + templateForm.name : ""}</h2>
   </div>
@@ -17736,9 +17736,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   <div>
   <label className="text-xs font-medium text-slate-400 block mb-1">Category</label>
-  <select value={templateForm.category} onChange={e => setTemplateForm({...templateForm, category: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm">
+  <Select value={templateForm.category} onChange={e => setTemplateForm({...templateForm, category: e.target.value})}>
   {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
-  </select>
+  </Select>
   </div>
   </div>
   <div className="mt-3">
@@ -17757,9 +17757,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div key={i} className="border border-brand-50 rounded-xl p-3 bg-brand-50/20">
   <div className="grid grid-cols-3 gap-2 mb-2">
   <Input value={f.label} onChange={e => updateField(i, "label", e.target.value)} placeholder="Label" className="text-xs" />
-  <select value={f.type} onChange={e => updateField(i, "type", e.target.value)} className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+  <Select value={f.type} onChange={e => updateField(i, "type", e.target.value)} className="text-xs">
   {["text","textarea","number","currency","date","checkbox","select","address_block","signature_placeholder"].map(t => <option key={t} value={t}>{t}</option>)}
-  </select>
+  </Select>
   <Input value={f.section || ""} onChange={e => updateField(i, "section", e.target.value)} placeholder="Section" className="text-xs" />
   </div>
   <div className="grid grid-cols-3 gap-2">
@@ -17877,10 +17877,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {placingField ? (
   <span className="text-xs text-emerald-600 font-semibold">Click on PDF to place: {placingField} <button onClick={() => setPlacingField(null)} className="text-red-400 ml-1">✕ Cancel</button></span>
   ) : (
-  <select onChange={e => { if (e.target.value) setPlacingField(e.target.value); e.target.value = ""; }} className="text-xs border border-brand-100 rounded-lg px-2 py-1">
+  <Select onChange={e => { if (e.target.value) setPlacingField(e.target.value); e.target.value = ""; }} className="text-xs">
   <option value="">+ Place field on PDF...</option>
   {templateForm.fields.map(f => <option key={f.name} value={f.name}>{f.label || f.name}</option>)}
-  </select>
+  </Select>
   )}
   <button onClick={async () => {
   if (!pdfDoc) return;
@@ -18030,10 +18030,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const val = fieldValues[f.name] || "";
   if (f.type === "textarea") return <textarea value={val} onChange={e => updateVal(f.name, e.target.value)} className={base} rows={3} />;
   if (f.type === "select") return (
-  <select value={val} onChange={e => updateVal(f.name, e.target.value)} className={base}>
+  <Select value={val} onChange={e => updateVal(f.name, e.target.value)}>
   <option value="">Select...</option>
   {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
-  </select>
+  </Select>
   );
   if (f.type === "checkbox") return (
   <label className="flex items-center gap-2"><input type="checkbox" checked={!!val} onChange={e => updateVal(f.name, e.target.checked)} className="accent-brand-600" />{f.label}</label>
@@ -18063,16 +18063,16 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="fixed inset-0 z-50 bg-[#fcf8ff] flex flex-col">
   {/* Toolbar */}
   <div className="h-14 border-b border-brand-100 bg-white/80 backdrop-blur-md flex items-center px-5 gap-3 shrink-0">
-  <button onClick={resetFlow} className="text-slate-400 hover:text-slate-600"><span className="material-icons-outlined text-xl">arrow_back</span></button>
+  <IconBtn icon="arrow_back" onClick={resetFlow} />
   <div className="flex-1 min-w-0">
   <h2 className="text-lg font-manrope font-bold text-slate-800 truncate">{selectedTemplate.name}</h2>
   <p className="text-xs text-slate-400">{mode === "prefill" ? "Prefilled from " + (prefillProperty || "property") : "Blank mode"} · Fill the form, then preview</p>
   </div>
-  <button onClick={() => {
+  <Btn onClick={() => {
   const errors = validateFields(selectedTemplate, fieldValues);
   if (errors.length > 0) { showToast(errors[0], "error"); return; }
   setStep("preview");
-  }} className="bg-brand-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-brand-700 font-semibold">Preview →</button>
+  }}>Preview →</Btn>
   <span className="text-xs text-slate-300 ml-2">Esc to close</span>
   </div>
 
@@ -18147,21 +18147,21 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="fixed inset-0 z-50 bg-[#fcf8ff] flex flex-col">
   {/* Toolbar */}
   <div className="h-14 border-b border-brand-100 bg-white/80 backdrop-blur-md flex items-center px-5 gap-3 shrink-0">
-  <button onClick={() => setStep("fill")} className="text-slate-400 hover:text-slate-600"><span className="material-icons-outlined text-xl">arrow_back</span></button>
+  <IconBtn icon="arrow_back" onClick={() => setStep("fill")} />
   <div className="flex-1 min-w-0">
   <h2 className="text-lg font-manrope font-bold text-slate-800 truncate">Document Preview</h2>
   <p className="text-xs text-slate-400">Review the final document, then export or send</p>
   </div>
   <div className="flex items-center gap-2">
-  <button onClick={() => exportPDF()} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-xl hover:bg-red-100">
+  <Btn variant="danger" size="xs" onClick={() => exportPDF()}>
   <span className="material-icons-outlined text-sm">picture_as_pdf</span>PDF
-  </button>
-  <button onClick={() => exportDOCX()} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100">
+  </Btn>
+  <Btn variant="secondary" size="xs" onClick={() => exportDOCX()}>
   <span className="material-icons-outlined text-sm">article</span>DOCX
-  </button>
-  <button onClick={() => exportTXT()} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100">
+  </Btn>
+  <Btn variant="slate" size="xs" onClick={() => exportTXT()}>
   <span className="material-icons-outlined text-sm">text_snippet</span>TXT
-  </button>
+  </Btn>
   </div>
   <span className="text-xs text-slate-300 ml-2">Esc to go back</span>
   </div>
@@ -18207,15 +18207,15 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 mb-3">Export</h3>
   <div className="space-y-2">
-  <button onClick={() => exportPDF()} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-2xl hover:bg-red-100">
+  <Btn variant="danger" className="w-full justify-start" onClick={() => exportPDF()}>
   <span className="material-icons-outlined text-lg">picture_as_pdf</span>Download PDF
-  </button>
-  <button onClick={() => exportDOCX()} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-2xl hover:bg-blue-100">
+  </Btn>
+  <Btn variant="secondary" className="w-full justify-start" onClick={() => exportDOCX()}>
   <span className="material-icons-outlined text-lg">article</span>Download DOCX
-  </button>
-  <button onClick={() => exportTXT()} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-2xl hover:bg-slate-100">
+  </Btn>
+  <Btn variant="slate" className="w-full justify-start" onClick={() => exportTXT()}>
   <span className="material-icons-outlined text-lg">text_snippet</span>Download TXT
-  </button>
+  </Btn>
   </div>
   </div>
 
@@ -18229,19 +18229,19 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <Input value={sendTo.custom} onChange={e => setSendTo({...sendTo, custom: e.target.value})} placeholder="email@example.com" />
   </div>
   </div>
-  <button onClick={async () => {
+  <Btn variant="success-fill" className="w-full" onClick={async () => {
   const doc = await saveDocument("sent");
   if (doc) await sendEmail(doc);
-  }} disabled={sending} className="w-full bg-emerald-600 text-white py-2.5 rounded-2xl font-semibold hover:bg-emerald-700 disabled:opacity-50">
+  }} disabled={sending}>
   {sending ? "Sending..." : "Send Email"}
-  </button>
+  </Btn>
   </div>
 
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 mb-3">Save</h3>
   <div className="space-y-2">
-  <button onClick={async () => { await saveDocument("draft"); resetFlow(); }} className="w-full bg-brand-600 text-white py-2.5 rounded-2xl font-semibold hover:bg-brand-700">Save as Draft</button>
-  <button onClick={async () => { await saveDocument("final"); resetFlow(); }} className="w-full bg-slate-100 text-slate-700 py-2.5 rounded-2xl font-semibold hover:bg-slate-200">Finalize</button>
+  <Btn className="w-full" onClick={async () => { await saveDocument("draft"); resetFlow(); }}>Save as Draft</Btn>
+  <Btn variant="slate" className="w-full" onClick={async () => { await saveDocument("final"); resetFlow(); }}>Finalize</Btn>
   </div>
   </div>
   </div>
@@ -18322,7 +18322,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {tab === "templates" && (
   <div>
   <div className="flex justify-end mb-4">
-  <button onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", category: "general", description: "", body: "", fields: [], field_config: {}, template_type: "html", pdf_storage_path: "", pdf_page_count: 0, pdf_field_placements: [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); }} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Template</button>
+  <Btn size="sm" onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", category: "general", description: "", body: "", fields: [], field_config: {}, template_type: "html", pdf_storage_path: "", pdf_page_count: 0, pdf_field_placements: [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); }}>+ New Template</Btn>
   </div>
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
   {templates.map(t => (
@@ -18337,9 +18337,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <p className="text-xs text-slate-400 mt-2">{t.description}</p>
   <div className="text-xs text-slate-500 mt-2">{(t.fields || []).length} fields{t.template_type === "pdf_overlay" ? " · PDF" : ""}</div>
   <div className="mt-3 flex gap-2">
-  <button onClick={async () => { setEditingTemplate(t); setTemplateForm({ name: t.name, category: t.category, description: t.description || "", body: t.body || "", fields: t.fields || [], field_config: t.field_config || {}, template_type: t.template_type || "html", pdf_storage_path: t.pdf_storage_path || "", pdf_page_count: t.pdf_page_count || 0, pdf_field_placements: t.pdf_field_placements || [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); if (t.template_type === "pdf_overlay" && t.pdf_storage_path) { setTimeout(async () => { const pdf = await loadPdfForPreview(t.pdf_storage_path); if (pdf) await renderPdfPages(pdf, pdfScale, pdfContainerRef.current); }, 100); } }} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">Edit</button>
-  <button onClick={() => { setSelectedTemplate(t); setMode("blank"); setFieldValues(applyDefaults(t)); setStep("fill"); setTab("create"); }} className="text-xs text-emerald-600 border border-emerald-200 px-3 py-1 rounded-lg hover:bg-emerald-50">Use</button>
-  <button onClick={() => deleteTemplate(t)} className="text-xs text-red-400 hover:text-red-600 ml-auto">Delete</button>
+  <Btn variant="secondary" size="xs" onClick={async () => { setEditingTemplate(t); setTemplateForm({ name: t.name, category: t.category, description: t.description || "", body: t.body || "", fields: t.fields || [], field_config: t.field_config || {}, template_type: t.template_type || "html", pdf_storage_path: t.pdf_storage_path || "", pdf_page_count: t.pdf_page_count || 0, pdf_field_placements: t.pdf_field_placements || [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); if (t.template_type === "pdf_overlay" && t.pdf_storage_path) { setTimeout(async () => { const pdf = await loadPdfForPreview(t.pdf_storage_path); if (pdf) await renderPdfPages(pdf, pdfScale, pdfContainerRef.current); }, 100); } }}>Edit</Btn>
+  <Btn variant="success-fill" size="xs" onClick={() => { setSelectedTemplate(t); setMode("blank"); setFieldValues(applyDefaults(t)); setStep("fill"); setTab("create"); }}>Use</Btn>
+  <Btn variant="danger" size="xs" onClick={() => deleteTemplate(t)} className="ml-auto">Delete</Btn>
   </div>
   </div>
   ))}
@@ -18369,13 +18369,13 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   </div>
   <div className="flex gap-2">
-  <button onClick={() => { const t = templates.find(t => t.id === d.template_id); exportPDF({ ...d, _template: t }); }} className="text-xs text-red-600 border border-red-200 px-2 py-1 rounded-lg hover:bg-red-50" title="PDF">PDF</button>
-  <button onClick={() => exportDOCX(d)} className="text-xs text-blue-600 border border-blue-200 px-2 py-1 rounded-lg hover:bg-blue-50" title="DOCX">DOCX</button>
-  <button onClick={() => exportTXT(d)} className="text-xs text-slate-500 border border-slate-200 px-2 py-1 rounded-lg hover:bg-slate-50" title="TXT">TXT</button>
-  <button onClick={() => {
+  <Btn variant="danger" size="xs" onClick={() => { const t = templates.find(t => t.id === d.template_id); exportPDF({ ...d, _template: t }); }} title="PDF">PDF</Btn>
+  <Btn variant="secondary" size="xs" onClick={() => exportDOCX(d)} title="DOCX">DOCX</Btn>
+  <Btn variant="slate" size="xs" onClick={() => exportTXT(d)} title="TXT">TXT</Btn>
+  <Btn variant="success-fill" size="xs" onClick={() => {
   setSendModal(d);
   setSendTo({ self: false, tenant: false, custom: "" });
-  }} className="text-xs text-emerald-600 border border-emerald-200 px-2 py-1 rounded-lg hover:bg-emerald-50">Email</button>
+  }}>Email</Btn>
   <button onClick={() => deleteGeneratedDoc(d)} className="text-xs text-red-400 hover:text-red-600">✕</button>
   </div>
   </div>
@@ -18393,9 +18393,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <label className="text-xs font-medium text-slate-400 block mb-1">Custom recipients</label>
   <Input value={sendTo.custom} onChange={e => setSendTo({...sendTo, custom: e.target.value})}  placeholder="email@example.com, other@example.com" />
   </div>
-  <button onClick={() => sendEmail(sendModal)} disabled={sending} className="w-full bg-emerald-600 text-white py-2.5 rounded-2xl font-semibold hover:bg-emerald-700 disabled:opacity-50">
+  <Btn variant="success-fill" className="w-full" onClick={() => sendEmail(sendModal)} disabled={sending}>
   {sending ? "Sending..." : "Send"}
-  </button>
+  </Btn>
   </div>
   </Modal>
   )}
@@ -18493,7 +18493,7 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   <div>
   <div className="flex items-center justify-between mb-5">
   <PageHeader title="Tasks & Approvals" />
-  <button onClick={fetchAll} className="text-xs text-brand-600 hover:underline">Refresh</button>
+  <Btn variant="ghost" size="xs" onClick={fetchAll}>Refresh</Btn>
   </div>
 
   <div className="flex gap-2 mb-5">
@@ -18517,8 +18517,8 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   </div>
   </div>
   <div className="flex gap-2 shrink-0 ml-3">
-  <button onClick={() => handleApproval(a, "approve")} className="text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 font-medium">Approve</button>
-  <button onClick={() => handleApproval(a, "reject")} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100 font-medium">Reject</button>
+  <Btn variant="success-fill" size="xs" onClick={() => handleApproval(a, "approve")}>Approve</Btn>
+  <Btn variant="danger" size="xs" onClick={() => handleApproval(a, "reject")}>Reject</Btn>
   </div>
   </div>
   ))}
@@ -18682,7 +18682,7 @@ function AuditTrail({ companyId }) {
   {actions.map(a => <option key={a} value={a}>{a}</option>)}
   </Select>
   <Input placeholder="Filter by user email..." value={filterUser} onChange={e => { setFilterUser(e.target.value); setPage(0); }} className="flex-1 min-w-48" />
-  <button onClick={fetchLogs} className="bg-slate-100 text-slate-500 text-sm px-3 py-2 rounded-2xl hover:bg-slate-100">🔄 Refresh</button>
+  <Btn variant="slate" size="sm" onClick={fetchLogs}>Refresh</Btn>
   </div>
 
   {/* Stats */}
@@ -18739,8 +18739,8 @@ function AuditTrail({ companyId }) {
   <div className="flex items-center justify-between mt-3">
   <span className="text-xs text-slate-400">Page {page + 1} of {totalPages} ({totalCount} records)</span>
   <div className="flex gap-1">
-  <button onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg disabled:opacity-30">← Prev</button>
-  <button onClick={() => setPage(Math.min(totalPages - 1, page + 1))} disabled={page >= totalPages - 1} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg disabled:opacity-30">Next →</button>
+  <Btn variant="slate" size="xs" onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0}>← Prev</Btn>
+  <Btn variant="slate" size="xs" onClick={() => setPage(Math.min(totalPages - 1, page + 1))} disabled={page >= totalPages - 1}>Next →</Btn>
   </div>
   </div>
   )}
@@ -18818,9 +18818,9 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   return (
   <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
   <div className="w-full max-w-lg">
-  <button onClick={onBack} className="flex items-center gap-1 text-sm text-brand-600 hover:underline mb-6">
+  <Btn variant="ghost" size="sm" onClick={onBack} className="mb-6">
   <span className="material-icons-outlined text-sm">arrow_back</span> Back to Companies
-  </button>
+  </Btn>
 
   <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-6 mb-4">
   <PageHeader title="Profile" />
@@ -18872,9 +18872,9 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-6 mb-4">
   <h3 className="font-semibold text-slate-800 mb-2">Password</h3>
   <p className="text-xs text-slate-400 mb-3">We'll send a password reset link to your email.</p>
-  <button onClick={sendPasswordReset} disabled={resetSent} className="bg-slate-100 text-slate-700 text-sm px-4 py-2 rounded-xl hover:bg-slate-200 disabled:opacity-50 font-medium">
+  <Btn variant="slate" size="sm" onClick={sendPasswordReset} disabled={resetSent}>
   {resetSent ? "Reset Link Sent" : "Send Password Reset Email"}
-  </button>
+  </Btn>
   </div>
 
   {/* Preferences */}
@@ -18903,14 +18903,14 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   <h3 className="font-semibold text-red-600 mb-2">Delete Account</h3>
   <p className="text-xs text-slate-400 mb-3">This will deactivate your account and remove you from all companies. This action cannot be undone.</p>
   {!showDeleteConfirm ? (
-  <button onClick={() => setShowDeleteConfirm(true)} className="text-sm text-red-500 border border-red-200 px-4 py-2 rounded-xl hover:bg-red-50 font-medium">Delete My Account</button>
+  <Btn variant="danger" size="sm" onClick={() => setShowDeleteConfirm(true)}>Delete My Account</Btn>
   ) : (
   <div className="space-y-3">
   <p className="text-sm text-red-600 font-medium">Type "DELETE" to confirm:</p>
   <Input value={deleteText} onChange={e => setDeleteText(e.target.value.toUpperCase())} placeholder="Type DELETE" className="border-red-200" />
   <div className="flex gap-2">
   <Btn variant="danger-fill" onClick={deleteAccount} disabled={deleteText !== "DELETE" || deleting}>{deleting ? "Deleting..." : "Permanently Delete"}</Btn>
-  <button onClick={() => { setShowDeleteConfirm(false); setDeleteText(""); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-xl">Cancel</button>
+  <Btn variant="slate" size="sm" onClick={() => { setShowDeleteConfirm(false); setDeleteText(""); }}>Cancel</Btn>
   </div>
   </div>
   )}
@@ -19143,12 +19143,12 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
   {/* Top-right menu */}
   <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
-  <button onClick={() => setShowProfile(true)} className="flex items-center gap-2 bg-white border border-brand-100 shadow-sm px-3 py-2 rounded-xl hover:bg-brand-50 transition-colors text-sm text-slate-600">
+  <Btn variant="secondary" size="sm" onClick={() => setShowProfile(true)}>
   <span className="material-icons-outlined text-base">person</span>Profile
-  </button>
-  <button onClick={onLogout} className="flex items-center gap-2 bg-white border border-red-100 shadow-sm px-3 py-2 rounded-xl hover:bg-red-50 transition-colors text-sm text-red-500">
+  </Btn>
+  <Btn variant="danger" size="sm" onClick={onLogout}>
   <span className="material-icons-outlined text-base">logout</span>Logout
-  </button>
+  </Btn>
   </div>
   <div className="w-full max-w-2xl">
   <div className="text-center mb-8">
@@ -19237,7 +19237,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
   <div><label className="text-xs font-medium text-slate-500">Company Name *</label><Input value={createForm.name} onChange={e => setCreateForm({...createForm, name: e.target.value})} className="mt-1" placeholder={createForm.company_role === "management" ? "e.g. Sigma Property Management" : "e.g. Smith Properties LLC"} /></div>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-500">Entity Type</label><select value={createForm.type} onChange={e => setCreateForm({...createForm, type: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mt-1"><option>LLC</option><option>Corporation</option><option>Partnership</option><option>Sole Proprietorship</option><option>Trust</option><option>Other</option></select></div>
+  <div><label className="text-xs font-medium text-slate-500">Entity Type</label><Select value={createForm.type} onChange={e => setCreateForm({...createForm, type: e.target.value})} className="mt-1"><option>LLC</option><option>Corporation</option><option>Partnership</option><option>Sole Proprietorship</option><option>Trust</option><option>Other</option></Select></div>
   <div><label className="text-xs font-medium text-slate-500">Email</label><Input type="email" value={createForm.email} onChange={e => setCreateForm({...createForm, email: e.target.value})} className="mt-1" placeholder="company@email.com" /></div>
   </div>
   <div className="grid grid-cols-2 gap-3">
@@ -19246,7 +19246,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
   <div className="flex gap-2 pt-2">
   <Btn size="lg" onClick={createCompany} disabled={creating}>{creating ? "Creating..." : "Create Company"}</Btn>
-  <button onClick={() => setShowCreate(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
+  <Btn variant="slate" size="sm" onClick={() => setShowCreate(false)}>Cancel</Btn>
   </div>
   </div>
   </div>
@@ -19262,14 +19262,14 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   <div><label className="text-xs font-medium text-slate-500">Search by Name</label><Input value={joinSearch} onChange={e => setJoinSearch(e.target.value)} className="mt-1" placeholder="e.g. Sigma Housing" /></div>
   <div className="flex gap-2">
   <Btn size="lg" onClick={searchCompanies}>Search</Btn>
-  <button onClick={() => setShowJoin(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
+  <Btn variant="slate" size="sm" onClick={() => setShowJoin(false)}>Cancel</Btn>
   </div>
   {searchResults.length > 0 && (
   <div className="space-y-2 mt-3">
   {searchResults.map(c => (
   <div key={c.id} className="flex items-center justify-between bg-brand-50/30 rounded-lg p-3">
   <div><div className="text-sm font-semibold text-slate-800">{c.name}</div><div className="text-xs text-slate-400">{c.type}</div></div>
-  <button onClick={() => requestJoin(c)} className="bg-brand-600 text-white text-xs px-3 py-1.5 rounded-2xl hover:bg-brand-700">Request to Join</button>
+  <Btn size="xs" onClick={() => requestJoin(c)}>Request to Join</Btn>
   </div>
   ))}
   </div>
@@ -19331,8 +19331,8 @@ function PendingRequestsPanel({ companyId, addNotification }) {
   <div className="text-xs text-slate-400">{r.user_email} · Requested: {new Date(r.created_at).toLocaleDateString()}</div>
   </div>
   <div className="flex gap-2">
-  <button onClick={() => handleRequest(r, "approve")} className="bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-green-700">Approve</button>
-  <button onClick={() => handleRequest(r, "reject")} className="bg-red-100 text-red-600 text-xs px-3 py-1.5 rounded-lg hover:bg-red-200">Reject</button>
+  <Btn variant="success-fill" size="xs" onClick={() => handleRequest(r, "approve")}>Approve</Btn>
+  <Btn variant="danger" size="xs" onClick={() => handleRequest(r, "reject")}>Reject</Btn>
   </div>
   </div>
   ))}
@@ -19394,8 +19394,8 @@ function PendingPMAssignments({ companyId, addNotification }) {
   <div className="text-xs text-slate-400">Owner requested: {new Date(r.requested_at).toLocaleDateString()} · {r.requested_by}</div>
   </div>
   <div className="flex gap-2">
-  <button onClick={() => handleRequest(r, "accept")} className="bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-green-700">Accept</button>
-  <button onClick={() => handleRequest(r, "decline")} className="bg-red-100 text-red-600 text-xs px-3 py-1.5 rounded-lg hover:bg-red-200">Decline</button>
+  <Btn variant="success-fill" size="xs" onClick={() => handleRequest(r, "accept")}>Accept</Btn>
+  <Btn variant="danger" size="xs" onClick={() => handleRequest(r, "decline")}>Decline</Btn>
   </div>
   </div>
   ))}
