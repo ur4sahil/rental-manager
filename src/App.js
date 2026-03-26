@@ -9162,6 +9162,15 @@ function csvParseText(csvText) {
   return {headers,rows};
 }
 
+const KNOWN_BANK_FORMATS = [
+  { name: "Chase", headers: ["Details","Posting Date","Description","Amount","Type","Balance","Check or Slip #"], mapping: { date:"Posting Date", description:"Description", amount:"Amount", memo:"Details", check_number:"Check or Slip #" } },
+  { name: "Bank of America", headers: ["Date","Description","Amount","Running Bal."], mapping: { date:"Date", description:"Description", amount:"Amount" } },
+  { name: "Wells Fargo", headers: ["Date","Amount","*","Description"], mapping: { date:"Date", description:"Description", amount:"Amount" } },
+  { name: "Citibank", headers: ["Status","Date","Description","Debit","Credit"], mapping: { date:"Date", description:"Description", debit:"Debit", credit:"Credit" } },
+  { name: "Capital One", headers: ["Transaction Date","Posted Date","Card No.","Description","Category","Debit","Credit"], mapping: { date:"Transaction Date", description:"Description", debit:"Debit", credit:"Credit" } },
+  { name: "US Bank", headers: ["Date","Transaction","Name","Memo","Amount"], mapping: { date:"Date", description:"Name", amount:"Amount", memo:"Memo" } },
+];
+
 function csvDetectFormat(headers) {
   const norm = headers.map(h=>h.toLowerCase().trim());
   for(const fmt of KNOWN_BANK_FORMATS){const fh=fmt.headers.map(h=>h.toLowerCase().trim());if(fh.filter(h=>h&&norm.includes(h)).length>=2)return fmt;}
