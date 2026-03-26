@@ -19141,14 +19141,13 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
 
   return (
   <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
-  {/* Profile icon — top right */}
-  <div className="fixed top-4 right-4 z-50">
-  <button onClick={() => setShowProfile(true)} className="w-10 h-10 rounded-full bg-white border border-brand-100 shadow-sm flex items-center justify-center hover:bg-brand-50 transition-colors" title="Profile">
-  {currentUser?.user_metadata?.avatar_url ? (
-  <img src={currentUser.user_metadata.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover" />
-  ) : (
-  <span className="text-brand-600 font-bold text-sm">{(currentUser?.user_metadata?.name || currentUser?.email || "U")[0].toUpperCase()}</span>
-  )}
+  {/* Top-right menu */}
+  <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
+  <button onClick={() => setShowProfile(true)} className="flex items-center gap-2 bg-white border border-brand-100 shadow-sm px-3 py-2 rounded-xl hover:bg-brand-50 transition-colors text-sm text-slate-600">
+  <span className="material-icons-outlined text-base">person</span>Profile
+  </button>
+  <button onClick={onLogout} className="flex items-center gap-2 bg-white border border-red-100 shadow-sm px-3 py-2 rounded-xl hover:bg-red-50 transition-colors text-sm text-red-500">
+  <span className="material-icons-outlined text-base">logout</span>Logout
   </button>
   </div>
   <div className="w-full max-w-2xl">
@@ -19280,9 +19279,6 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
   )}
 
-  <div className="text-center">
-  <button onClick={onLogout} className="text-sm text-slate-400 hover:text-red-500">Logout</button>
-  </div>
   </div>
   </div>
   );
@@ -19434,6 +19430,7 @@ function AppInner() {
   });
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [toasts, setToasts] = useState([]);
   const [confirmConfig, setConfirmConfig] = useState(null);
@@ -19923,14 +19920,22 @@ function AppInner() {
   <header className="bg-white/80 backdrop-blur-md border-b border-brand-50 px-4 py-3 flex items-center gap-3">
   <button className="md:hidden text-slate-400 hover:text-slate-600 transition-colors" onClick={() => setSidebarOpen(!sidebarOpen)}><span className="material-icons-outlined">menu</span></button>
   <div className="flex-1 text-sm text-slate-400 capitalize font-medium">{page.replace("_", " ")}</div>
-  <button onClick={switchCompany} className="hidden md:flex items-center gap-1.5 text-xs bg-brand-50 text-brand-600 px-3 py-1.5 rounded-2xl hover:bg-brand-100 transition-colors font-semibold border border-brand-100">
-  <span className="material-icons-outlined text-sm">swap_horiz</span> Switch Company
-  </button>
-  <button onClick={() => setPage("admin")} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-2xl hover:bg-brand-50 transition-colors ${page === "admin" ? "bg-brand-50" : ""}`} title="Admin Settings">
+  <div className="relative">
+  <button onClick={() => setShowUserMenu(!showUserMenu)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-2xl hover:bg-brand-50 transition-colors ${showUserMenu ? "bg-brand-50" : ""}`}>
   <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${ROLES[userRole]?.color || "bg-brand-600"}`}>{userProfile?.name?.[0]?.toUpperCase() || "U"}</div>
   <span className={`hidden md:inline text-xs font-semibold uppercase tracking-wide ${ROLES[userRole]?.color?.replace("bg-", "text-") || "text-brand-600"}`}>{ROLES[userRole]?.label}</span>
+  <span className="material-icons-outlined text-sm text-slate-400">expand_more</span>
   </button>
-  <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 transition-colors" title="Sign Out"><span className="material-icons-outlined text-lg">logout</span></button>
+  {showUserMenu && <>
+  <div className="fixed inset-0 z-30" onClick={() => setShowUserMenu(false)} />
+  <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg py-1 w-48 z-40">
+    <button onClick={() => { setShowUserMenu(false); switchCompany(); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">swap_horiz</span>Switch Company</button>
+    <button onClick={() => { setShowUserMenu(false); setPage("admin"); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">settings</span>Settings</button>
+    <div className="border-t border-slate-100 my-1" />
+    <button onClick={() => { setShowUserMenu(false); handleLogout(); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 text-left"><span className="material-icons-outlined text-base">logout</span>Logout</button>
+  </div>
+  </>}
+  </div>
   <div className="relative">
   <button onClick={() => { 
   setShowNotifications(!showNotifications); 
