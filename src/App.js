@@ -19706,10 +19706,18 @@ function AppInner() {
   // For production, generate VAPID keys and store the public key here
   const VAPID_PUBLIC_KEY = process.env.REACT_APP_VAPID_PUBLIC_KEY || "";
   if (!VAPID_PUBLIC_KEY) { console.warn("VAPID key not configured — push disabled"); return; }
-  
+
+  // Convert base64url to Uint8Array for applicationServerKey
+  function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const rawData = window.atob(base64);
+    return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+  }
+
   const subscription = await registration.pushManager.subscribe({
   userVisibleOnly: true,
-  applicationServerKey: VAPID_PUBLIC_KEY,
+  applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
   });
   
   // Save subscription to DB
