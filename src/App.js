@@ -8949,11 +8949,98 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       <tbody>{data.map(a => <tr key={a.id} className="border-t border-neutral-100 cursor-pointer hover:bg-positive-50/30" onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><td className="px-4 py-2 text-neutral-700">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-neutral-100 rounded-full h-2"><div className="bg-positive-500 rounded-full h-2" style={{width: Math.min(100, a.percentage) + "%"}} /></div><span className="text-xs text-neutral-500 w-8">{a.percentage}%</span></div></td></tr>)}</tbody></table>); })()}
     </div>)}
 
-    {/* P&L by Property */}
+    {/* P&L by Property — columnar QBO-style */}
     {reportId === "pl_by_class" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Profit & Loss by Property</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      {(() => { const data = getClassReport(accounts, journalEntries, classes, start, end); return (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Revenue</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Expenses</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Net Income</th></tr></thead>
-      <tbody>{Object.entries(data).map(([name, d]) => <tr key={name} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{name}</td><td className="px-4 py-2 text-right font-mono text-success-700">{acctFmt(d.revenue||0)}</td><td className="px-4 py-2 text-right font-mono text-danger-600">{acctFmt(d.expenses||0)}</td><td className={`px-4 py-2 text-right font-mono font-bold ${(d.revenue||0)-(d.expenses||0) < 0 ? "text-danger-600" : "text-success-700"}`}>{acctFmt((d.revenue||0)-(d.expenses||0))}</td></tr>)}</tbody></table>); })()}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">Profit and Loss by Property</h4><p className="text-xs text-neutral-400">{companyName}</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} – {acctFmtDate(end)}</p></div>
+      {(() => {
+        const acctMap = {}; accounts.forEach(a => { acctMap[a.id] = a; });
+        // Gather all properties (classes) that have data
+        const propData = {}; // { classId: { accountId: amount } }
+        const accountsUsed = new Set();
+        for (const je of journalEntries) {
+          if (je.status !== "posted" || je.date < start || je.date > end) continue;
+          for (const l of (je.lines || [])) {
+            if (!l.class_id) continue;
+            const acct = acctMap[l.account_id]; if (!acct) continue;
+            if (!["Revenue","Other Income","Expense","Cost of Goods Sold","Other Expense"].includes(acct.type)) continue;
+            if (!propData[l.class_id]) propData[l.class_id] = {};
+            if (!propData[l.class_id][l.account_id]) propData[l.class_id][l.account_id] = 0;
+            if (["Revenue","Other Income"].includes(acct.type)) propData[l.class_id][l.account_id] += safeNum(l.credit) - safeNum(l.debit);
+            else propData[l.class_id][l.account_id] += safeNum(l.debit) - safeNum(l.credit);
+            accountsUsed.add(l.account_id);
+          }
+        }
+        const props = classes.filter(c => propData[c.id]).sort((a,b) => a.name.localeCompare(b.name));
+        if (props.length === 0) return <p className="text-center py-8 text-neutral-400">No property data for this period</p>;
+        // Group accounts by category
+        const incomeAccts = accounts.filter(a => a.type === "Revenue" && accountsUsed.has(a.id)).sort((a,b) => a.code.localeCompare(b.code));
+        const otherIncomeAccts = accounts.filter(a => a.type === "Other Income" && accountsUsed.has(a.id)).sort((a,b) => a.code.localeCompare(b.code));
+        const cogsAccts = accounts.filter(a => a.type === "Cost of Goods Sold" && accountsUsed.has(a.id)).sort((a,b) => a.code.localeCompare(b.code));
+        const expenseAccts = accounts.filter(a => a.type === "Expense" && accountsUsed.has(a.id)).sort((a,b) => a.code.localeCompare(b.code));
+        const otherExpAccts = accounts.filter(a => a.type === "Other Expense" && accountsUsed.has(a.id)).sort((a,b) => a.code.localeCompare(b.code));
+        const val = (classId, acctId) => propData[classId]?.[acctId] || 0;
+        const sumGroup = (classId, group) => group.reduce((s, a) => s + val(classId, a.id), 0);
+        const fmtCell = (v) => v === 0 ? "–" : acctFmt(Math.abs(v));
+        const cellCls = "px-3 py-1.5 text-right font-mono text-xs whitespace-nowrap";
+        const labelCls = "px-3 py-1.5 text-sm text-neutral-700 whitespace-nowrap";
+        const boldLabelCls = "px-3 py-1.5 text-sm font-bold text-neutral-900 whitespace-nowrap";
+        const boldCellCls = "px-3 py-1.5 text-right font-mono text-xs font-bold whitespace-nowrap";
+        const sectionCls = "px-3 py-2 text-xs font-semibold text-neutral-500 uppercase tracking-wider bg-neutral-50";
+        const renderRow = (label, getVal, bold, borderTop) => (
+          <tr key={label} className={borderTop ? "border-t border-neutral-300" : "border-t border-neutral-50"}>
+            <td className={bold ? boldLabelCls : labelCls} style={!bold ? { paddingLeft: 24 } : {}}>{label}</td>
+            {props.map(p => { const v = getVal(p.id); return <td key={p.id} className={bold ? boldCellCls : cellCls}>{fmtCell(v)}</td>; })}
+          </tr>
+        );
+        return (
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse min-w-max">
+        <thead><tr className="bg-neutral-50 border-b border-neutral-200">
+          <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 sticky left-0 bg-neutral-50 min-w-48"></th>
+          {props.map(p => <th key={p.id} className="px-3 py-2 text-right text-xs font-semibold text-neutral-700 min-w-28">{p.name.split(",")[0]}</th>)}
+        </tr></thead>
+        <tbody>
+          {/* Income */}
+          {incomeAccts.length > 0 && <tr><td colSpan={props.length + 1} className={sectionCls}>Income</td></tr>}
+          {incomeAccts.map(a => renderRow(a.name, cid => val(cid, a.id), false, false))}
+          {renderRow("Total for Income", cid => sumGroup(cid, incomeAccts), true, true)}
+
+          {/* COGS */}
+          {cogsAccts.length > 0 && <tr><td colSpan={props.length + 1} className={sectionCls}>Cost of Goods Sold</td></tr>}
+          {cogsAccts.map(a => renderRow(a.name, cid => -val(cid, a.id), false, false))}
+          {cogsAccts.length > 0 && renderRow("Total COGS", cid => sumGroup(cid, cogsAccts), true, true)}
+
+          {/* Gross Profit */}
+          {renderRow("Gross Profit", cid => sumGroup(cid, incomeAccts) - sumGroup(cid, cogsAccts), true, true)}
+
+          {/* Expenses */}
+          {expenseAccts.length > 0 && <tr><td colSpan={props.length + 1} className={sectionCls}>Expenses</td></tr>}
+          {expenseAccts.map(a => renderRow(a.name, cid => val(cid, a.id), false, false))}
+          {renderRow("Total for Expenses", cid => sumGroup(cid, expenseAccts), true, true)}
+
+          {/* Net Operating Income */}
+          {renderRow("Net Operating Income", cid => sumGroup(cid, incomeAccts) - sumGroup(cid, cogsAccts) - sumGroup(cid, expenseAccts), true, true)}
+
+          {/* Other Income/Expense */}
+          {(otherIncomeAccts.length > 0 || otherExpAccts.length > 0) && <>
+            {otherIncomeAccts.map(a => renderRow(a.name, cid => val(cid, a.id), false, false))}
+            {otherExpAccts.map(a => renderRow(a.name, cid => -val(cid, a.id), false, false))}
+            {renderRow("Net Other Income", cid => sumGroup(cid, otherIncomeAccts) - sumGroup(cid, otherExpAccts), true, true)}
+          </>}
+
+          {/* Net Income */}
+          <tr className="border-t-2 border-neutral-800">
+            <td className="px-3 py-2 text-sm font-black text-neutral-900">Net Income</td>
+            {props.map(p => {
+              const ni = sumGroup(p.id, [...incomeAccts, ...otherIncomeAccts]) - sumGroup(p.id, [...cogsAccts, ...expenseAccts, ...otherExpAccts]);
+              return <td key={p.id} className={`px-3 py-2 text-right font-mono text-xs font-black ${ni < 0 ? "text-danger-600" : ""}`}>{fmtCell(ni)}</td>;
+            })}
+          </tr>
+        </tbody>
+        </table>
+        </div>
+        );
+      })()}
     </div>)}
 
     {/* Cash Flow */}
