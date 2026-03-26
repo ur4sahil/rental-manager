@@ -9649,29 +9649,66 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   }
 
   async function applyRulesToTransactions(txnIds) {
-    if (rules.length === 0) return 0;
+    const enabledRules = rules.filter(r => r.enabled);
+    if (enabledRules.length === 0) return 0;
     const { data: txns } = await supabase.from("bank_feed_transaction").select("*").in("id", txnIds).eq("status", "for_review");
     if (!txns || txns.length === 0) return 0;
     let applied = 0;
     for (const txn of txns) {
-      const result = evaluateRules(txn, rules);
-      if (result) {
-        const { action } = result;
-        // Store suggestion on the transaction
-        await supabase.from("bank_feed_transaction").update({
-          suggestion_status: "suggested_rule",
-          raw_payload_json: { ...(txn.raw_payload_json || {}), _suggestion: {
-            accountId: action.account_id || "", accountName: action.account_name || "",
-            classId: action.class_id || "", payee: action.payee || "", memo: action.memo || "",
-            ruleId: result.rule.id, ruleName: result.rule.name
-          }}
-        }).eq("id", txn.id).eq("company_id", companyId);
-        // Auto-accept if rule says so
-        if (result.rule.auto_accept && action.account_id) {
-          await acceptTransaction(txn, action.account_id, action.account_name || "", action.memo || "", action.class_id || "");
+      const result = evaluateRules(txn, enabledRules);
+      if (!result) continue;
+      const { rule, action } = result;
+      const actionType = action.type || "assign";
+
+      // --- EXCLUDE RULES ---
+      if (actionType === "exclude") {
+        if (rule.auto_accept) {
+          await excludeTransaction(txn, action.exclude_reason || "auto-rule");
+        } else {
+          await supabase.from("bank_feed_transaction").update({
+            suggestion_status: "suggested_exclude",
+            raw_payload_json: { ...(txn.raw_payload_json || {}), _suggestion: { type: "exclude", reason: action.exclude_reason || "auto-rule", ruleId: rule.id, ruleName: rule.name } }
+          }).eq("id", txn.id).eq("company_id", companyId);
         }
         applied++;
+        await incrementRuleStats(rule.id);
+        continue;
       }
+
+      // --- ASSIGN RULES (single or split) ---
+      const lines = action.lines || [];
+      const primaryLine = lines[0] || {};
+      const isSplit = action.split && lines.length >= 2;
+
+      await supabase.from("bank_feed_transaction").update({
+        suggestion_status: "suggested_rule",
+        raw_payload_json: { ...(txn.raw_payload_json || {}), _suggestion: {
+          type: isSplit ? "split" : "assign",
+          transactionType: action.transaction_type || "expense",
+          accountId: primaryLine.account_id || "", accountName: primaryLine.account_name || "",
+          classId: primaryLine.class_id || "", payee: action.payee || "", memo: action.memo || "",
+          split: isSplit, splitBy: action.split_by || null, lines: lines,
+          ruleId: rule.id, ruleName: rule.name
+        }}
+      }).eq("id", txn.id).eq("company_id", companyId);
+
+      if (rule.auto_accept && primaryLine.account_id) {
+        if (isSplit) {
+          const abs = Math.abs(txn.amount);
+          const splitLines = lines.map(l => ({
+            accountId: l.account_id, accountName: l.account_name, classId: l.class_id || "",
+            memo: action.memo || "",
+            amount: action.split_by === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0)
+          }));
+          await acceptSplit(txn, splitLines);
+        } else if (action.transaction_type === "transfer") {
+          await acceptTransfer(txn, primaryLine.account_id, primaryLine.account_name || "", action.memo || "");
+        } else {
+          await acceptTransaction(txn, primaryLine.account_id, primaryLine.account_name || "", action.memo || "", primaryLine.class_id || "");
+        }
+      }
+      applied++;
+      await incrementRuleStats(rule.id);
     }
     return applied;
   }
@@ -9901,7 +9938,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   // --- Filtering ---
   const filtered = transactions.filter(t => {
     if (activeTab === "for_review" && t.status !== "for_review") return false;
-    if (activeTab === "recognized" && !(t.status === "for_review" && t.suggestion_status === "suggested_rule")) return false;
+    if (activeTab === "recognized" && !(t.status === "for_review" && (t.suggestion_status === "suggested_rule" || t.suggestion_status === "suggested_exclude"))) return false;
     if (activeTab === "categorized" && !["categorized", "matched", "posted"].includes(t.status)) return false;
     if (activeTab === "excluded" && t.status !== "excluded") return false;
     if (activeTab === "rules") return false; // Rules tab shows rules, not transactions
@@ -9921,7 +9958,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
 
   const counts = {
     for_review: transactions.filter(t => t.status === "for_review").length,
-    recognized: transactions.filter(t => t.status === "for_review" && t.suggestion_status === "suggested_rule").length,
+    recognized: transactions.filter(t => t.status === "for_review" && (t.suggestion_status === "suggested_rule" || t.suggestion_status === "suggested_exclude")).length,
     categorized: transactions.filter(t => ["categorized", "matched", "posted"].includes(t.status)).length,
     excluded: transactions.filter(t => t.status === "excluded").length,
   };
@@ -10115,14 +10152,15 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{txn.posted_date}</td>
       <td className="px-3 py-2.5 text-slate-800 max-w-xs truncate">
         {txn.bank_description_clean || txn.bank_description_raw}
-        {txn.suggestion_status === "suggested_rule" && <span className="ml-1.5 text-xs bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full">Rule</span>}
+        {txn.suggestion_status === "suggested_rule" && (() => { const sug = txn.raw_payload_json?._suggestion; const sugType = sug?.type || "assign"; return <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${sugType === "split" ? "bg-purple-100 text-purple-600" : "bg-violet-100 text-violet-600"}`}>{sugType === "split" ? "Rule: Split" : "Rule"}</span>; })()}
+        {txn.suggestion_status === "suggested_exclude" && <span className="ml-1.5 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">Rule: Exclude</span>}
       </td>
       <td className="px-3 py-2.5 text-slate-500 truncate max-w-32">{txn.payee_normalized || "—"}</td>
       {activeTab === "categorized" && <td className="px-3 py-2.5 text-xs"><span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">Posted</span></td>}
       {activeTab === "excluded" && <td className="px-3 py-2.5 text-xs text-red-600">{txn.exclusion_reason || "—"}</td>}
       <td className={`px-3 py-2.5 text-right font-mono font-semibold ${txn.direction === "inflow" ? "text-emerald-700" : "text-red-600"}`}>{txn.direction === "inflow" ? "+" : "-"}${safeNum(txn.amount).toFixed(2)}</td>
       <td className="px-3 py-2.5 text-right whitespace-nowrap">
-        {txn.status === "for_review" && <button onClick={e => { e.stopPropagation(); if (isExpanded) { setExpandedTxn(null); } else { setExpandedTxn(txn.id); setActionMode("add"); const sug = txn.raw_payload_json?._suggestion; if (sug) setAddForm({ accountId: sug.accountId || "", accountName: sug.accountName || "", memo: sug.memo || "", classId: sug.classId || "" }); else setAddForm({ accountId: "", accountName: "", memo: "", classId: "" }); }}} className="text-xs text-brand-600 font-semibold hover:underline">{txn.suggestion_status === "suggested_rule" ? "Review" : "Add"}</button>}
+        {txn.status === "for_review" && <button onClick={e => { e.stopPropagation(); if (isExpanded) { setExpandedTxn(null); } else { setExpandedTxn(txn.id); const sug = txn.raw_payload_json?._suggestion; if (sug?.type === "split" && sug.lines?.length >= 2) { setActionMode("split"); const abs = Math.abs(txn.amount); setSplitLines(sug.lines.map(l => ({ accountId: l.account_id || "", accountName: l.account_name || "", classId: l.class_id || "", memo: sug.memo || "", amount: sug.splitBy === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0) }))); } else if (sug) { setActionMode("add"); setAddForm({ accountId: sug.accountId || "", accountName: sug.accountName || "", memo: sug.memo || "", classId: sug.classId || "" }); } else { setActionMode("add"); setAddForm({ accountId: "", accountName: "", memo: "", classId: "" }); } }}} className="text-xs text-brand-600 font-semibold hover:underline">{txn.suggestion_status === "suggested_rule" || txn.suggestion_status === "suggested_exclude" ? "Review" : "Add"}</button>}
         {["categorized", "matched", "posted"].includes(txn.status) && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-slate-400 hover:underline">Undo</button>}
         {txn.status === "excluded" && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-blue-600 hover:underline">Restore</button>}
       </td>
@@ -10139,6 +10177,12 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
         <button onClick={() => { const reason = prompt("Exclude reason: duplicate / personal / noise / error"); if (reason) excludeTransaction(txn, reason); }}
           className="px-3 py-1 text-xs text-red-500 hover:bg-red-50 rounded-lg ml-auto border border-red-200">Exclude</button>
       </div>
+      {/* Rule Suggestion Indicator */}
+      {txn.raw_payload_json?._suggestion?.ruleName && (
+        <div className="text-xs text-violet-600 mb-2 flex items-center gap-1"><span className="material-icons-outlined text-sm">auto_fix_high</span>Suggested by rule: <strong>{txn.raw_payload_json._suggestion.ruleName}</strong>
+        {txn.suggestion_status === "suggested_exclude" && <span className="ml-2 text-red-500">— This rule suggests excluding this transaction ({txn.raw_payload_json._suggestion.reason || "auto-rule"}). <button onClick={() => excludeTransaction(txn, txn.raw_payload_json._suggestion.reason || "auto-rule")} className="text-red-600 font-semibold hover:underline ml-1">Confirm Exclude</button></span>}
+        </div>
+      )}
 
       {/* ADD */}
       {actionMode === "add" && (
