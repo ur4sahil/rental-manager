@@ -18543,16 +18543,21 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   // Empty company — hard delete with warning
   if (!await showConfirm({ message: '⚠️ PERMANENTLY DELETE "' + company.name + '"?\n\nThis company has no data and will be deleted immediately. This cannot be undone.', variant: "danger", confirmText: "Delete Permanently" })) return;
   setDeleting(company.id);
+  try {
   // Delete all related records in parallel, then company
-  await Promise.all([
+  const results = await Promise.allSettled([
   supabase.from("company_members").delete().eq("company_id", company.id),
   supabase.from("app_users").delete().eq("company_id", company.id),
   supabase.from("acct_accounts").delete().eq("company_id", company.id),
   supabase.from("acct_classes").delete().eq("company_id", company.id),
   supabase.from("notification_settings").delete().eq("company_id", company.id),
   ]);
-  await supabase.from("companies").delete().eq("id", company.id);
+  const failures = results.filter(r => r.status === "rejected");
+  if (failures.length > 0) { showToast("Warning: " + failures.length + " related table(s) failed to clean up.", "warning"); }
+  const { error: delErr } = await supabase.from("companies").delete().eq("id", company.id);
+  if (delErr) { showToast("Error deleting company: " + delErr.message, "error"); setDeleting(null); return; }
   showToast('"' + company.name + '" permanently deleted.', "success");
+  } catch (e) { showToast("Error deleting company: " + e.message, "error"); }
   } else {
   // Company with data — archive for 180 days
   if (!await showConfirm({ message: '⚠️ ARCHIVE "' + company.name + '"?\n\nThis company has ' + totalRecords + ' records (' + (props.count || 0) + ' properties, ' + (tenants.count || 0) + ' tenants, ' + (payments.count || 0) + ' payments).\n\nIt will be moved to the master archive and automatically purged after 180 days. During this period, contact support to restore it.\n\nThis action cannot be easily undone.', variant: "danger", confirmText: "Archive Company" })) return;
