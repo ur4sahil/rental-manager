@@ -9303,6 +9303,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
 
     // Audit
     logAudit("create", "banking", `Accepted bank txn: ${txn.bank_description_clean} → ${accountName}`, txn.id, userProfile?.email, "", companyId);
+    trackCategorizationPattern(txn, accountId, accountName, classId);
 
     showToast("Transaction categorized and posted.", "success");
     setExpandedTxn(null);
@@ -9859,6 +9860,54 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     }
   }
 
+  function trackCategorizationPattern(txn, accountId, accountName, classId) {
+    try {
+      const key = `catPatterns_${companyId}`;
+      const patterns = JSON.parse(localStorage.getItem(key) || "{}");
+      const descKey = (txn.bank_description_clean || "").toLowerCase().replace(/\d+/g, "").replace(/\s+/g, " ").trim().split(" ").slice(0, 3).join("_");
+      if (!descKey) return;
+      if (!patterns[descKey]) patterns[descKey] = { count: 0, accountId: "", accountName: "", classId: "" };
+      const p = patterns[descKey];
+      if (p.accountId === accountId || !p.accountId) {
+        p.count++; p.accountId = accountId; p.accountName = accountName; p.classId = classId; p.lastDesc = txn.bank_description_clean || "";
+      } else {
+        p.count = 1; p.accountId = accountId; p.accountName = accountName; p.classId = classId; p.lastDesc = txn.bank_description_clean || "";
+      }
+      localStorage.setItem(key, JSON.stringify(patterns));
+      if (p.count === 2) {
+        showToast(
+          `You've categorized "${(p.lastDesc || "").slice(0, 30)}..." the same way twice. Open the Rules tab to create a rule!`,
+          "info"
+        );
+      }
+    } catch {}
+  }
+
+  const RENTAL_RULE_PRESETS = [
+    { name: "Mortgage / Loan Payments", conditions: [{ field: "description", operator: "contains", value: "mortgage" }], direction: "outflow", action: { type: "assign", transaction_type: "expense", lines: [{ accountName: "Mortgage Interest" }] }, description: "Auto-categorize mortgage payments" },
+    { name: "Insurance Premiums", conditions: [{ field: "description", operator: "contains", value: "insurance" }], direction: "outflow", action: { type: "assign", transaction_type: "expense", lines: [{ accountName: "Insurance" }] }, description: "Property and liability insurance" },
+    { name: "Utility Payments", conditions: [{ field: "description", operator: "contains", value: "dominion" }, { field: "description", operator: "contains", value: "energy" }], condLogic: "any", direction: "outflow", action: { type: "assign", transaction_type: "expense", lines: [{ accountName: "Utilities" }] }, description: "Electric, gas, water payments" },
+    { name: "Tenant Rent Deposits", conditions: [{ field: "amount", operator: "greater_than", value: "500" }], direction: "inflow", action: { type: "assign", transaction_type: "deposit", lines: [{ accountName: "Rental Income" }] }, description: "Incoming rent payments" },
+    { name: "Home Depot / Lowe's", conditions: [{ field: "description", operator: "contains", value: "home depot" }, { field: "description", operator: "contains", value: "lowes" }], condLogic: "any", direction: "outflow", action: { type: "assign", transaction_type: "expense", lines: [{ accountName: "Repairs & Maintenance" }] }, description: "Hardware store purchases for property repairs" },
+    { name: "Personal / Non-Business", conditions: [{ field: "description", operator: "contains", value: "amazon" }, { field: "description", operator: "contains", value: "netflix" }, { field: "description", operator: "contains", value: "spotify" }], condLogic: "any", direction: "outflow", action: { type: "exclude", exclude_reason: "personal" }, description: "Exclude personal purchases" },
+  ];
+
+  function applyPreset(preset) {
+    const matchedAcct = preset.action.lines?.[0]?.accountName ? accounts.find(a => a.name.toLowerCase().includes(preset.action.lines[0].accountName.toLowerCase())) : null;
+    setRuleForm({
+      name: preset.name,
+      conditions: preset.conditions.map(c => ({ ...c, value2: "" })),
+      condLogic: preset.condLogic || "all", condDirection: preset.direction || "all", bankAccountFeedId: "",
+      ruleType: preset.action.type || "assign", transactionType: preset.action.transaction_type || "expense",
+      actionPayee: "", actionMemo: "", excludeReason: preset.action.exclude_reason || "personal",
+      split: false, splitBy: null,
+      lines: [{ accountId: matchedAcct?.id || "", accountName: matchedAcct?.name || preset.action.lines?.[0]?.accountName || "", classId: "", percentage: null, amount: null }],
+      autoAccept: false, priority: 100
+    });
+    setEditingRule(null);
+    setShowRuleDrawer(true);
+  }
+
   function createRuleFromTransaction(txn) {
     const desc = txn.bank_description_clean || txn.bank_description_raw || "";
     const sug = txn.raw_payload_json?._suggestion;
@@ -10090,10 +10139,22 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
         </tbody>
       </table>
       {rules.length === 0 && (
-        <div className="py-12 text-center text-slate-400">
+        <div className="py-8 text-center text-slate-400">
           <div className="text-3xl mb-2">📋</div>
           <p className="font-medium">No rules yet</p>
-          <p className="text-xs mt-1">Rules auto-categorize imported transactions. Create your first one!</p>
+          <p className="text-xs mt-1 mb-4">Rules auto-categorize imported transactions. Start with a template or create your own!</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-left max-w-3xl mx-auto">
+            {RENTAL_RULE_PRESETS.map((preset, i) => (
+              <button key={i} onClick={() => applyPreset(preset)} className="bg-white border border-violet-100 rounded-xl p-3 hover:border-violet-300 hover:shadow-sm transition-all text-left">
+                <p className="text-sm font-semibold text-slate-700">{preset.name}</p>
+                <p className="text-xs text-slate-400 mt-1">{preset.description}</p>
+                <div className="flex gap-1 mt-2">
+                  {preset.action.type === "exclude" ? <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">Exclude</span> : <span className="text-xs bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded">Assign</span>}
+                  <span className="text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">{preset.conditions.length} condition{preset.conditions.length > 1 ? "s" : ""}</span>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
