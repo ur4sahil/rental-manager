@@ -9198,7 +9198,7 @@ function csvBuildFingerprint(feedId, date, amount, description) {
 }
 
 // --- Main Component ---
-function BankTransactions({ accounts, journalEntries, classes, companyId, showToast, showConfirm, userProfile }) {
+function BankTransactions({ accounts, journalEntries, classes, companyId, showToast, showConfirm, userProfile, onRefreshAccounting }) {
   // State
   const [feeds, setFeeds] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -9594,6 +9594,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     setExpandedTxn(null);
     setAddForm({ accountId: "", accountName: "", memo: "", classId: "" });
     fetchAll();
+    if (onRefreshAccounting) onRefreshAccounting();
     } finally { guardRelease("bankAccept", txn.id); }
   }
 
@@ -9685,6 +9686,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     showToast(`Matched to ${targetJE.number}.`, "success");
     setExpandedTxn(null); setMatchCandidates([]);
     fetchAll();
+    if (onRefreshAccounting) onRefreshAccounting();
     } finally { guardRelease("bankMatch", txn.id); }
   }
 
@@ -9744,6 +9746,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     showToast("Transfer posted.", "success");
     setExpandedTxn(null); setTransferForm({ accountId: "", accountName: "", memo: "" });
     fetchAll();
+    if (onRefreshAccounting) onRefreshAccounting();
     } finally { guardRelease("bankTransfer", txn.id); }
   }
 
@@ -9826,6 +9829,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     showToast(`Split into ${validLines.length} lines and posted.`, "success");
     setExpandedTxn(null); setSplitLines([{ accountId: "", accountName: "", amount: "", memo: "", classId: "" }, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }]);
     fetchAll();
+    if (onRefreshAccounting) onRefreshAccounting();
     } finally { guardRelease("bankSplit", txn.id); }
   }
 
@@ -11492,7 +11496,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} addNotification={addNotification} userProfile={userProfile} />}
   {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} />}
-  {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} />}
+  {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} companyId={companyId} userProfile={userProfile} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
