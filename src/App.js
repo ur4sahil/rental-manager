@@ -141,13 +141,13 @@ async function safeLedgerInsert(entry) {
         else entry.balance = prevBal + amt; // deposit, adjustment — use amount as-is
       }
     } catch (e) {
-      console.warn("Balance calc failed, using 0:", e.message);
+      pmError("PM-6005", { raw: e, context: "ledger balance calculation", silent: true });
       entry.balance = 0;
     }
   }
   const { error } = await supabase.from("ledger_entries").insert([entry]);
   if (error) {
-  console.error("LEDGER ENTRY FAILED:", error.message, { type: entry.type, tenant_id: entry.tenant_id });
+  pmError("PM-6005", { raw: error, context: "ledger entry insert", silent: true, meta: { type: entry.type, tenant_id: entry.tenant_id } });
   }
   return !error;
 }
@@ -184,7 +184,7 @@ async function atomicPostJEAndLedger({ date, description, reference, property, l
     result.balanceOk = !!balanceUpdate;
     return result;
   } catch (e) {
-    console.warn("Atomic RPC failed, falling back to sequential:", e.message);
+    pmError("PM-4002", { raw: e, context: "atomic JE+ledger RPC, falling back to sequential", silent: true });
     return postAccountingTransaction({ date, description, reference, property, lines, status, ledgerEntry, balanceUpdate, requireJE: true, companyId });
   }
 }
@@ -204,7 +204,7 @@ async function postAccountingTransaction({ date, description, reference, propert
   try {
   const { data: tRow } = await supabase.from("tenants").select("balance").eq("id", balanceUpdate.tenantId).eq("company_id", companyId).maybeSingle();
   enrichedEntry.balance = safeNum(tRow?.balance) + safeNum(balanceUpdate.amount);
-  } catch (_) {}
+  } catch (_e) { pmError("PM-6002", { raw: _e, context: "tenant balance lookup for ledger enrichment", silent: true }); }
   }
   result.ledgerOk = await safeLedgerInsert({ company_id: companyId, ...enrichedEntry });
   }
@@ -214,9 +214,9 @@ async function postAccountingTransaction({ date, description, reference, propert
   result.balanceOk = !balErr;
   if (balErr) {
     result.error = balErr.message;
-    console.error("Balance update failed for tenant " + balanceUpdate.tenantId + ": " + balErr.message + ". Ledger entry exists — manual correction may be needed.");
+    pmError("PM-6002", { raw: balErr, context: "balance update for tenant " + balanceUpdate.tenantId, silent: true, meta: { tenantId: balanceUpdate.tenantId } });
   }
-  } catch (e) { result.error = e.message; console.error("Balance RPC exception:", e.message); }
+  } catch (e) { result.error = e.message; pmError("PM-6002", { raw: e, context: "balance RPC exception", silent: true }); }
   }
   return result;
 }
@@ -295,11 +295,11 @@ async function checkRPCHealth(companyId) {
   }
   }
   if (missing.length > 0) {
-  console.warn("Missing RPCs:", missing.join(", "));
+  pmError("PM-8003", { raw: { message: "Missing RPCs: " + missing.join(", ") }, context: "RPC health check", silent: true });
   }
   return missing;
   } catch (e) {
-  console.warn("RPC health check failed:", e.message);
+  pmError("PM-8006", { raw: e, context: "RPC health check", silent: true });
   return []; // Never crash the app over a health check
   }
 }
@@ -334,17 +334,7 @@ function formatAllTenants(property) {
 // Sanitize error messages for user display — prevents leaking internal DB details to users
 // ✅ DONE: Replaced all browser alerts with showToast() non-blocking notifications
 // ✅ DONE: Replaced all native confirms with showConfirm() modal confirmations
-function userError(msg) {
-  if (!msg) return "An unexpected error occurred. Please try again.";
-  // Strip Supabase internal details
-  const cleaned = String(msg)
-  .replace(/row-level security/gi, "permission")
-  .replace(/violates.*constraint/gi, "a validation rule was not met")
-  .replace(/duplicate key.*detail:/gi, "this record already exists.")
-  .replace(/relation ".*?" does not exist/gi, "a required database table is missing")
-  .replace(/function ".*?" does not exist/gi, "a required server function is missing");
-  return cleaned.length > 200 ? cleaned.slice(0, 200) + "..." : cleaned;
-}
+// ✅ DONE: Replaced userError() with pmError() structured error system
 // ============ ERROR MANAGEMENT SYSTEM ============
 const PM_ERRORS = {
   // PM-1xxx: AUTH & ACCESS
@@ -504,7 +494,7 @@ function formatCurrency(amount) {
 async function getSignedUrl(bucket, filePath, expiresIn = 3600) {
   if (!filePath) return "";
   const { data, error } = await supabase.storage.from(bucket).createSignedUrl(filePath, expiresIn);
-  if (error) { console.warn("Signed URL failed for", filePath, error.message); return ""; }
+  if (error) { pmError("PM-8006", { raw: error, context: "signed URL for " + filePath, silent: true }); return ""; }
   return data?.signedUrl || "";
 }
 
@@ -600,7 +590,7 @@ async function decryptCredential(encryptedB64, ivHex, companyId) {
     const ciphertext = Uint8Array.from(atob(encryptedB64), c => c.charCodeAt(0));
     const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
     return new TextDecoder().decode(decrypted);
-  } catch (e) { console.warn("Credential decryption failed:", e.message); return "••••••"; }
+  } catch (e) { pmError("PM-8006", { raw: e, context: "credential decryption", silent: true }); return "••••••"; }
 }
 
 function requireCompanyId(companyId, context = "") {
@@ -619,19 +609,19 @@ const AUDIT_MODULES = new Set(["properties","tenants","payments","maintenance","
 async function logAudit(action, module, details = "", recordId = "", userEmail = "", userRoleVal = "unknown", companyId) {
   try {
   // Validate action and module to prevent injection of arbitrary audit entries
-  if (!AUDIT_ACTIONS.has(action)) { console.warn("logAudit: invalid action:", action); return; }
-  if (!AUDIT_MODULES.has(module)) { console.warn("logAudit: invalid module:", module); return; }
+  if (!AUDIT_ACTIONS.has(action)) { pmError("PM-9001", { raw: { message: "invalid audit action: " + action }, context: "logAudit validation", silent: true }); return; }
+  if (!AUDIT_MODULES.has(module)) { pmError("PM-9001", { raw: { message: "invalid audit module: " + module }, context: "logAudit validation", silent: true }); return; }
   if (!userEmail) {
   const { data: { user } } = await supabase.auth.getUser();
   userEmail = user?.email || "unknown";
   }
-  if (!companyId) { console.warn("logAudit: missing companyId — skipping"); return; }
+  if (!companyId) { pmError("PM-9001", { raw: { message: "missing companyId" }, context: "logAudit", silent: true }); return; }
   // Sanitize audit details: truncate, strip HTML, redact sensitive patterns
   let safeDetails = String(details || "").replace(/<[^>]*>/g, "").slice(0, 500);
   safeDetails = safeDetails.replace(/password[:\s=]*\S+/gi, "password:[REDACTED]").replace(/(token|secret|key|access_token)[:\s=]*\S+/gi, "$1:[REDACTED]");
   const { error: _err130 } = await supabase.from("audit_trail").insert([{ company_id: companyId, action, module, details: safeDetails, record_id: String(recordId), user_email: normalizeEmail(userEmail), user_role: userRoleVal }]);
-  if (_err130) console.warn("Audit log insert failed:", _err130.message);
-  } catch (e) { console.warn("Audit log failed:", e); }
+  if (_err130) pmError("PM-8006", { raw: _err130, context: "audit log insert", silent: true });
+  } catch (e) { pmError("PM-8006", { raw: e, context: "audit log", silent: true }); }
 }
 
 // ============ UNIFIED AUTO-POSTING TO ACCOUNTING ============
@@ -645,9 +635,9 @@ async function checkPeriodLock(companyId, date) {
 
 async function autoPostJournalEntry({ date, description, reference, property, lines, status = "posted", companyId }) {
   try {
-  if (!companyId) { console.error("autoPostJournalEntry: missing companyId — blocked"); return null; }
+  if (!companyId) { pmError("PM-4002", { raw: { message: "missing companyId" }, context: "autoPostJournalEntry", silent: true }); return null; }
   // Period lock check
-  if (await checkPeriodLock(companyId, date)) { console.warn("autoPostJournalEntry: blocked by period lock (date: " + date + ")"); return null; }
+  if (await checkPeriodLock(companyId, date)) { pmError("PM-4004", { raw: { message: "blocked by period lock" }, context: "autoPostJournalEntry, date: " + date, silent: true }); return null; }
   const cid = companyId;
   // Resolve bare account codes to UUIDs — work on a COPY to avoid mutating caller's data
   const resolvedLines = lines?.length > 0 ? lines.map(l => ({ ...l })) : [];
@@ -668,7 +658,7 @@ async function autoPostJournalEntry({ date, description, reference, property, li
   if (!jeErr && jeRow) break; // success
   if (jeErr && !jeErr.message?.includes("unique")) break; // non-duplicate error, don't retry
   }
-  if (jeErr || !jeRow) { console.error("Journal entry insert failed:", jeErr?.message); return null; }
+  if (jeErr || !jeRow) { pmError("PM-4002", { raw: jeErr, context: "journal entry insert" }); return null; }
   // Step 2: Insert journal entry lines (with company_id for RLS)
   if (resolvedLines.length > 0) {
   const { error: lineErr } = await supabase.from("acct_journal_lines").insert(resolvedLines.map(l => ({
@@ -678,14 +668,14 @@ async function autoPostJournalEntry({ date, description, reference, property, li
   class_id: l.class_id || null, memo: l.memo || ""
   })));
   if (lineErr) {
-  console.error("Journal lines insert failed:", lineErr.message);
+  pmError("PM-4003", { raw: lineErr, context: "journal lines insert" });
   // Clean up orphan header
   await supabase.from("acct_journal_entries").delete().eq("id", jeRow.id).eq("company_id", cid);
   return null;
   }
   }
   return jeRow.id;
-  } catch (e) { console.error("Auto-post JE failed:", e); return null; }
+  } catch (e) { pmError("PM-4002", { raw: e, context: "auto-post journal entry" }); return null; }
 }
 
 // Check if an AR accrual (rent charge) exists for a tenant in a given month
@@ -733,7 +723,7 @@ async function queueNotification(type, recipientEmail, data, companyId) {
   data: typeof data === "string" ? data : JSON.stringify(data),
   status: "pending",
   }]);
-  if (_notifWriteErr) console.warn("Email queue failed:", _notifWriteErr.message);
+  if (_notifWriteErr) pmError("PM-8006", { raw: _notifWriteErr, context: "email queue insert", silent: true });
   }
   
   // Queue for push if push channel is enabled
@@ -747,7 +737,7 @@ async function queueNotification(type, recipientEmail, data, companyId) {
   // Push queued (debug removed)
   }
   }
-  } catch (e) { console.warn("queueNotification failed:", e.message); }
+  } catch (e) { pmError("PM-8006", { raw: e, context: "queue notification", silent: true }); }
 }
 
 // ============ OWNER DISTRIBUTION AUTOMATION ============
@@ -784,14 +774,14 @@ async function autoOwnerDistribution(companyId, propertyAddress, paymentAmount, 
   { account_id: "2200", account_name: "Owner Distributions Payable", debit: 0, credit: ownerNet, class_id: classId, memo: `Net to ${owner.name}` },
   ]
   });
-  if (!jeId) { console.warn("Owner distribution JE failed — skipping distribution record"); return; }
+  if (!jeId) { pmError("PM-6004", { raw: { message: "JE failed" }, context: "owner distribution — skipping record", silent: true }); return; }
   const { error: distErr } = await supabase.from("owner_distributions").insert([{
   company_id: companyId, owner_id: owner.id, property: propertyAddress,
   period: month, type: "rent", gross_amount: paymentAmount,
   management_fee: mgmtFee, net_amount: ownerNet, status: "pending",
   }]);
-  if (distErr) console.warn("Owner dist insert:", distErr.message);
-  } catch (e) { console.warn("autoOwnerDistribution failed:", e.message); }
+  if (distErr) pmError("PM-6004", { raw: distErr, context: "owner distribution insert", silent: true });
+  } catch (e) { pmError("PM-6004", { raw: e, context: "auto owner distribution", silent: true }); }
 }
 
 // Resolve property address to cost-center class ID (with caching)
@@ -864,7 +854,7 @@ async function resolveAccountId(bareCode, companyId) {
   const { data: created, error: createErr } = await supabase.from("acct_accounts").insert([{
   company_id: cid, code: bareCode, name: acctName, type: acctType, is_active: true, old_text_id: cid + "-" + bareCode
   }]).select("id").maybeSingle();
-  if (createErr) console.warn("resolveAccountId: auto-create failed for", bareCode, createErr.message);
+  if (createErr) pmError("PM-4006", { raw: createErr, context: "resolveAccountId auto-create for " + bareCode, silent: true });
   const resolvedId = created?.id || null;
   if (resolvedId) _acctIdCache[cid][bareCode] = resolvedId;
   return resolvedId;
@@ -909,14 +899,14 @@ async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   }]).select("id").maybeSingle());
   }
   if (createErr || !newAcct?.id) {
-  console.warn("AR sub-account creation failed after 3 attempts:", createErr?.message);
+  pmError("PM-4006", { raw: createErr, context: "AR sub-account creation after 3 attempts", silent: true });
   _tenantArCache[cacheKey] = parentArId;
   return parentArId;
   }
   _tenantArCache[cacheKey] = newAcct.id;
   return newAcct.id;
   } catch (e) {
-  console.warn("getOrCreateTenantAR error:", e.message);
+  pmError("PM-4006", { raw: e, context: "get or create tenant AR sub-account", silent: true });
   return await resolveAccountId("1100", companyId);
   }
 }
@@ -993,7 +983,7 @@ async function autoPostRecurringEntries(companyId) {
   await supabase.from("recurring_journal_entries").update({ last_posted_date: postDate, next_post_date: null }).eq("id", entry.id).eq("company_id", cid);
   // Update tenant balance if this is an AR entry (check account name pattern, not bare code — codes are resolved to UUIDs)
   if (entry.tenant_id && (entry.debit_account_name || "").toLowerCase().includes("ar")) {
-  await supabase.rpc("update_tenant_balance", { p_tenant_id: entry.tenant_id, p_amount_change: postAmount }).catch(e => console.warn("Recurring balance update:", e.message));
+  await supabase.rpc("update_tenant_balance", { p_tenant_id: entry.tenant_id, p_amount_change: postAmount }).catch(e => pmError("PM-6002", { raw: e, context: "recurring balance update", silent: true }));
   }
   posted++;
   }
@@ -1002,7 +992,7 @@ async function autoPostRecurringEntries(companyId) {
   }
   if (posted > 0) logAudit("create", "accounting", "Auto-posted " + posted + " recurring entries", "", "system", "system", cid);
   return { posted };
-  } catch (e) { console.warn("Auto recurring entries failed:", e); return { posted: 0 }; }
+  } catch (e) { pmError("PM-4008", { raw: e, context: "auto recurring entries", silent: true }); return { posted: 0 }; }
 }
 
 // ============ STYLES ============
@@ -1022,7 +1012,7 @@ async function lookupZip(zip) {
   const result = { city: place["place name"], state: place["state abbreviation"] };
   _zipCache[zip] = result;
   return result;
-  } catch { return null; }
+  } catch (_e) { pmError("PM-8006", { raw: _e, context: "ZIP code lookup", silent: true }); return null; }
 }
 const STATE_NAMES = {AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",CO:"Colorado",CT:"Connecticut",DE:"Delaware",DC:"District of Columbia",FL:"Florida",GA:"Georgia",HI:"Hawaii",ID:"Idaho",IL:"Illinois",IN:"Indiana",IA:"Iowa",KS:"Kansas",KY:"Kentucky",LA:"Louisiana",ME:"Maine",MD:"Maryland",MA:"Massachusetts",MI:"Michigan",MN:"Minnesota",MS:"Mississippi",MO:"Missouri",MT:"Montana",NE:"Nebraska",NV:"Nevada",NH:"New Hampshire",NJ:"New Jersey",NM:"New Mexico",NY:"New York",NC:"North Carolina",ND:"North Dakota",OH:"Ohio",OK:"Oklahoma",OR:"Oregon",PA:"Pennsylvania",RI:"Rhode Island",SC:"South Carolina",SD:"South Dakota",TN:"Tennessee",TX:"Texas",UT:"Utah",VT:"Vermont",VA:"Virginia",WA:"Washington",WV:"West Virginia",WI:"Wisconsin",WY:"Wyoming"};
 
@@ -1240,14 +1230,14 @@ function RecurringEntryModal({ entry, companyId, showToast, onComplete }) {
   if (entry.tenantId && isUUID(String(entry.tenantId))) payload.tenant_id = entry.tenantId;
   const { error } = await supabase.from("recurring_journal_entries").insert([payload]);
   if (error) {
-  showToast("Failed to create recurring entry: " + error.message, "error");
+  pmError("PM-4008", { raw: error, context: "create recurring rent entry" });
   setSaving(false);
   return;
   }
   showToast("Recurring rent entry created for " + entry.tenantName + " — $" + Number(amount).toLocaleString() + "/" + freq, "success");
   onComplete();
   } catch (e) {
-  showToast("Error: " + e.message, "error");
+  pmError("PM-4008", { raw: e, context: "create recurring rent entry" });
   setSaving(false);
   }
   }
@@ -1315,17 +1305,17 @@ function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUpl
   if (!ALLOWED_DOC_TYPES.includes(file.type) && !ALLOWED_DOC_EXTENSIONS.test(file.name)) { showToast("File type not allowed. Accepted: PDF, images, Word, Excel, text files.", "error"); return; }
   if (file.size > 25 * 1024 * 1024) { showToast("File must be under 25MB.", "error"); return; }
   // Magic bytes validation (prevents MIME spoofing)
-  try { const hdr = new Uint8Array(await file.slice(0, 8).arrayBuffer()); const hex = Array.from(hdr.slice(0, 4)).map(b => b.toString(16).padStart(2, "0")).join(""); const ok = ["25504446","89504e47","ffd8ffe0","ffd8ffe1","ffd8ffe2","47494638","504b0304","d0cf11e0"].some(m => hex.startsWith(m)) || file.type.startsWith("text/"); if (!ok) { showToast("File content doesn't match expected format.", "error"); return; } } catch {}
+  try { const hdr = new Uint8Array(await file.slice(0, 8).arrayBuffer()); const hex = Array.from(hdr.slice(0, 4)).map(b => b.toString(16).padStart(2, "0")).join(""); const ok = ["25504446","89504e47","ffd8ffe0","ffd8ffe1","ffd8ffe2","47494638","504b0304","d0cf11e0"].some(m => hex.startsWith(m)) || file.type.startsWith("text/"); if (!ok) { showToast("File content doesn't match expected format.", "error"); return; } } catch (_e) { pmError("PM-7002", { raw: _e, context: "file magic bytes validation", silent: true }); }
   setUploading(true);
   const fileName = companyId + "/" + shortId() + "_" + sanitizeFileName(file.name);
   const { error: uploadErr } = await supabase.storage.from("documents").upload(fileName, file, { cacheControl: "3600", upsert: false });
-  if (uploadErr) { showToast("Upload failed: " + uploadErr.message, "error"); setUploading(false); return; }
+  if (uploadErr) { pmError("PM-7002", { raw: uploadErr, context: "document upload" }); setUploading(false); return; }
   const { error: insertErr } = await supabase.from("documents").insert([{
   company_id: companyId, name: form.name.trim(), file_name: fileName, url: fileName,
   property: property || "", tenant: tenant || "", type: form.type,
   tenant_visible: form.tenant_visible, uploaded_at: new Date().toISOString(),
   }]);
-  if (insertErr) { showToast("File uploaded but record failed: " + insertErr.message, "error"); setUploading(false); return; }
+  if (insertErr) { pmError("PM-7003", { raw: insertErr, context: "document record insert after upload" }); setUploading(false); return; }
   // Update tenant doc_status to complete when a doc is uploaded for them
   if (tenant) {
   await supabase.from("tenants").update({ doc_status: "complete" }).eq("company_id", companyId).ilike("name", tenant).eq("doc_status", "pending_docs");
@@ -1488,7 +1478,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   email, password,
   options: { data: { name: name.trim(), user_type: userType } }
   });
-  if (signupErr) { setError(userError(signupErr.message)); setLoading(false); return; }
+  if (signupErr) { pmError("PM-1009", { raw: signupErr, context: "user signup" }); setError(PM_ERRORS["PM-1009"].message); setLoading(false); return; }
 
   // NOW redeem the invite (auth account exists, safe to consume)
   if (userType === "tenant" && inviteCode) {
@@ -1515,7 +1505,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   status: "active",  // Invite was redeemed — full access immediately
   invited_by: "invite_code",
   }], { onConflict: "company_id,user_email" });
-  if (memErr) console.warn("Auto-join from invite failed:", memErr.message);
+  if (memErr) pmError("PM-1006", { raw: memErr, context: "auto-join from invite", silent: true });
   }
 
   // Save user_type to app_users
@@ -1523,7 +1513,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   email: email.toLowerCase(), name: name.trim(), role: userType === "tenant" ? "tenant" : userType === "owner" ? "owner" : "pm",
   user_type: userType,
   }]).select();
-  if (appUserErr && !appUserErr.message.includes("duplicate")) { console.warn("app_users write failed:", appUserErr.message); }
+  if (appUserErr && !appUserErr.message.includes("duplicate")) { pmError("PM-1009", { raw: appUserErr, context: "app_users write", silent: true }); }
 
   setSignupSuccess(true);
   setLoading(false);
@@ -1663,7 +1653,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   supabase.from("company_members").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "pending"),
   ]);
   setPendingApprovalCount((propReqs.count || 0) + (docExceptions.count || 0) + (memberReqs.count || 0));
-  } catch (e) { console.warn("Approval count:", e); }
+  } catch (e) { pmError("PM-8006", { raw: e, context: "approval count fetch", silent: true }); }
   // Pull financials from accounting module (journal entries are the GL source of truth,
   // but dashboard stats also reference payments/tenants tables for quick metrics)
   try {
@@ -1683,7 +1673,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   setAcctRevenue(rev);
   setAcctExpenses(exp);
   }
-  } catch(e) { console.warn("Dashboard accounting fetch:", e); }
+  } catch(e) { pmError("PM-4002", { raw: e, context: "dashboard accounting fetch", silent: true }); }
   setLoading(false);
   }
   fetchData();
@@ -1923,7 +1913,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             if (wd.loan) setLoan(wd.loan);
             if (wd.insurance) setInsurance(wd.insurance);
             if (wd.recurring) setRecurring(wd.recurring);
-            } catch (e) { console.warn("Wizard data restore failed:", e.message); }
+            } catch (e) { pmError("PM-2007", { raw: e, context: "wizard data restore", silent: true }); }
           }
           return;
         }
@@ -1949,7 +1939,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
               if (wd.loan) setLoan(wd.loan);
               if (wd.insurance) setInsurance(wd.insurance);
               if (wd.recurring) setRecurring(wd.recurring);
-              } catch (e) { console.warn("Wizard data restore failed:", e.message); }
+              } catch (e) { pmError("PM-2007", { raw: e, context: "wizard data restore (edit mode)", silent: true }); }
             }
             return;
           }
@@ -1965,10 +1955,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
           completed_steps: [],
           wizard_data: { propForm, tenantForm },
         }]).select("id").maybeSingle();
-        if (error) console.warn("Wizard persistence init failed:", error.message);
+        if (error) pmError("PM-2007", { raw: error, context: "wizard persistence init", silent: true });
         if (created?.id) setWizardId(created.id);
       } catch (e) {
-        console.warn("Wizard persistence error:", e.message);
+        pmError("PM-2007", { raw: e, context: "wizard persistence init", silent: true });
       }
     }
     initWizard();
@@ -1986,7 +1976,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         updated_at: new Date().toISOString()
       }).eq("id", wizardId);
     } catch (e) {
-      console.warn("Wizard progress save failed:", e.message);
+      pmError("PM-2007", { raw: e, context: "wizard progress save", silent: true });
     }
   }
 
@@ -1998,7 +1988,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         updated_at: new Date().toISOString()
       }).eq("id", wizardId);
     } catch (e) {
-      console.warn("Wizard status save failed:", e.message);
+      pmError("PM-2007", { raw: e, context: "wizard status save", silent: true });
     }
   }
 
@@ -2216,7 +2206,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       if (clsErr) {
       // Upsert failed — try plain insert
       const { data: insClass, error: insClsErr } = await supabase.from("acct_classes").insert([{ id: crypto.randomUUID(), name: compositeAddress, description: propForm.type + " · " + formatCurrency(0) + "/mo", color: pickColor(compositeAddress), is_active: true, company_id: companyId }]).select("id").maybeSingle();
-      if (insClsErr) console.warn("Class creation failed:", insClsErr.message);
+      if (insClsErr) pmError("PM-4010", { raw: insClsErr, context: "accounting class creation in wizard", silent: true });
       else if (insClass?.id && newProp?.id) await supabase.from("properties").update({ class_id: insClass.id }).eq("id", newProp.id).eq("company_id", companyId);
       } else if (newClass?.id && newProp?.id) {
       await supabase.from("properties").update({ class_id: newClass.id }).eq("id", newProp.id).eq("company_id", companyId);
@@ -2360,7 +2350,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             });
             if (proOk) {
               await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: addr, date: tenantForm.lease_start, description: `Prorated rent (${remainingDays}/${daysInMonth} days)`, amount: proratedAmount, type: "charge", balance: 0 });
-              try { await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: proratedAmount }); } catch {}
+              try { await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: proratedAmount }); } catch (_e) { pmError("PM-6002", { raw: _e, context: "prorated rent balance update", silent: true }); }
             }
           } else {
             const fullOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start,
@@ -2373,21 +2363,21 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             });
             if (fullOk) {
               await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: addr, date: tenantForm.lease_start, description: "First month rent", amount: monthlyRent, type: "charge", balance: 0 });
-              try { await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: monthlyRent }); } catch {}
+              try { await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: monthlyRent }); } catch (_e) { pmError("PM-6002", { raw: _e, context: "first month rent balance update", silent: true }); }
             }
           }
         }
-      } catch (e) { console.warn("First month rent posting failed:", e.message); }
+      } catch (e) { pmError("PM-4002", { raw: e, context: "first month rent posting", silent: true }); }
       }
       // Auto-post rent charges
-      autoPostRentCharges(companyId).catch(e => console.warn('autoPostRentCharges failed:', e.message));
+      autoPostRentCharges(companyId).catch(e => pmError('PM-4002', { raw: e, context: 'auto-post rent charges', silent: true }));
       }
       }
       await persistStatus("completed");
       showToast("Property setup complete!", "success");
       onComplete();
     } catch (e) {
-      showToast("Error completing setup: " + e.message, "error");
+      pmError("PM-2002", { raw: e, context: "completing property setup wizard" });
     } finally {
       setSaving(false);
     }
@@ -2416,7 +2406,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       try {
         const fileName = companyId + "/" + shortId() + "_" + sanitizeFileName(file.name);
         const { error: uploadErr } = await supabase.storage.from("documents").upload(fileName, file, { cacheControl: "3600", upsert: false });
-        if (uploadErr) { showToast("Upload failed for " + file.name + ": " + uploadErr.message, "error"); continue; }
+        if (uploadErr) { pmError("PM-7002", { raw: uploadErr, context: "wizard document upload for " + file.name }); continue; }
         const docName = docUploadType === "Other" ? docDescription : docUploadType + " — " + file.name.replace(/\.[^/.]+$/, "");
         const { error: insertErr } = await supabase.from("documents").insert([{
           company_id: companyId,
@@ -2429,11 +2419,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
           tenant_visible: false,
           uploaded_at: new Date().toISOString()
         }]);
-        if (insertErr) { showToast("File uploaded but record failed: " + insertErr.message, "error"); continue; }
+        if (insertErr) { pmError("PM-7003", { raw: insertErr, context: "wizard document record insert" }); continue; }
         setUploadedDocs(prev => [...prev, { name: docName, type: docUploadType }]);
         uploaded++;
       } catch (err) {
-        showToast("Error uploading " + file.name + ": " + err.message, "error");
+        pmError("PM-7002", { raw: err, context: "wizard file upload for " + file.name });
       }
     }
     if (uploaded > 0) {
@@ -3305,7 +3295,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   async function restoreProperty(prop) {
   if (!await showConfirm({ message: "Restore property \"" + prop.address + "\"?" })) return;
   const { error } = await supabase.from("properties").update({ archived_at: null, archived_by: null }).eq("id", prop.id).eq("company_id", companyId);
-  if (error) { showToast(userError(error.message), "error"); return; }
+  if (error) { pmError("PM-2010", { raw: error, context: "restore property" }); return; }
   if (prop.class_id) await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("id", prop.class_id);
   else await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("name", prop.address);
   // #9: Prompt to restore archived tenants/leases
@@ -3325,7 +3315,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   async function permanentDeleteProperty(prop) {
   if (!await showConfirm({ message: "PERMANENTLY delete \"" + prop.address + "\"?\n\nThis cannot be undone. All related data will be lost.", variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from("properties").delete().eq("id", prop.id).eq("company_id", companyId);
-  if (error) { showToast(userError(error.message), "error"); return; }
+  if (error) { pmError("PM-2003", { raw: error, context: "permanent delete property " + prop.address }); return; }
   addNotification("🗑️", "Permanently deleted: " + prop.address);
   fetchArchivedProperties();
   }
@@ -3452,9 +3442,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (error) {
   // Better error message for duplicate address
   if (error.message?.includes("idx_properties_unique_address") || error.message?.includes("duplicate")) {
-  showToast("A property with this exact address already exists in your company. Please check your existing properties.", "error");
+  pmError("PM-2001", { raw: error, context: "save property " + compositeAddress });
   } else {
-  showToast(userError(error.message), "error");
+  pmError("PM-2002", { raw: error, context: "save property " + compositeAddress });
   }
   return;
   }
@@ -3499,7 +3489,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   try {
   const result = await autoPostRentCharges(companyId);
   if (result?.posted > 0) showToast("Posted " + result.posted + " rent charge(s) to accounting", "success");
-  } catch (e) { console.warn("Auto rent post after property save:", e.message); }
+  } catch (e) { pmError("PM-4008", { raw: e, context: "auto rent post after property save", silent: true }); }
   // Recurring rent is now handled by PropertySetupWizard (Step 5)
   }
   }
@@ -3516,7 +3506,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   });
   if (renameErr) {
   // #13: Client-side fallback — cascade rename to tables the RPC may not cover
-  console.warn("Property rename RPC failed, running client-side fallback:", renameErr.message);
+  pmError("PM-2006", { raw: renameErr, context: "property rename RPC, running client-side fallback", silent: true });
   const oldAddr = editingProperty.address;
   const renameResults = await Promise.allSettled([
   supabase.from("tenants").update({ property: compositeAddress }).eq("company_id", companyId).eq("property", oldAddr),
@@ -3535,7 +3525,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   ]);
   const renameFails = renameResults.filter(r => r.status === "rejected");
   if (renameFails.length > 0) {
-    console.error("Rename failures:", renameFails.map(r => r.reason?.message || r.reason));
+    pmError("PM-2006", { raw: { message: renameFails.map(r => r.reason?.message || r.reason).join("; ") }, context: "property rename failures", silent: true });
     showToast("Warning: " + renameFails.length + " table(s) failed to update during rename. Some records may still reference the old address.", "error");
   }
   }
@@ -3571,7 +3561,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   lease_end: form.lease_end || null,
   notes: form.notes,
   }]);
-  if (error) { showToast("Error submitting request: " + error.message, "error"); return; }
+  if (error) { pmError("PM-7001", { raw: error, context: "submit maintenance request" }); return; }
   addNotification("📋", `Change request submitted for: ${form.address} — awaiting admin approval`);
   logAudit("request", "properties", `Requested ${editingProperty ? "edit" : "add"}: ${form.address}`, editingProperty?.id || "", userProfile?.email, userRole, companyId);
   fetchChangeRequests();
@@ -3584,7 +3574,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   setSavingProperty(false);
   showToast("Property updated successfully", "success");
   } catch (e) {
-  console.error("saveProperty error:", e);
+  pmError("PM-2002", { raw: e, context: "saveProperty" });
   setSavingProperty(false);
   showToast("Property was saved but a post-save operation failed: " + (e.message || e) + ". Please check the property list.", "error");
   // Still close form and refresh since the DB save succeeded (error is in post-save operations)
@@ -3599,7 +3589,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const { error } = await supabase.from("properties").update({ 
   status: "inactive",
   }).eq("id", property.id).eq("company_id", companyId);
-  if (error) { showToast(userError(error.message), "error"); return; }
+  if (error) { pmError("PM-2003", { raw: error, context: "deactivate property " + property.address }); return; }
   // Deactivate accounting class
   if (property.class_id) await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("id", property.class_id);
   else await supabase.from("acct_classes").update({ is_active: false }).eq("company_id", companyId).eq("name", property.address);
@@ -3614,7 +3604,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const { error } = await supabase.from("properties").update({ 
   status: property.tenant ? "occupied" : "vacant",
   }).eq("id", property.id).eq("company_id", companyId);
-  if (error) { showToast(userError(error.message), "error"); return; }
+  if (error) { pmError("PM-2004", { raw: error, context: "reactivate property " + property.address }); return; }
   if (property.class_id) await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("id", property.class_id);
   else await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("name", property.address);
   await supabase.from("tenants").update({ lease_status: "active" }).eq("company_id", companyId).eq("property", property.address).is("archived_at", null);
@@ -3751,7 +3741,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   // Auto-create accounting class for this property
   const classId = crypto.randomUUID();
   const { data: newClass, error: classErr } = await supabase.from("acct_classes").upsert([{ id: classId, name: req.address, description: `${req.type} · ${formatCurrency(req.rent)}/mo`, color: pickColor(req?.address || ""), is_active: true, company_id: companyId }], { onConflict: "company_id,name" }).select("id").maybeSingle();
-  if (classErr) console.warn("Accounting class creation failed:", classErr.message);
+  if (classErr) pmError("PM-4010", { raw: classErr, context: "accounting class creation", silent: true });
   if (newClass?.id) await supabase.from("properties").update({ class_id: newClass.id }).eq("company_id", companyId).eq("address", req.address);
   addNotification("✅", `Property approved & added: ${req.address}`);
   } else if (req.request_type === "edit" && req.property_id) {
@@ -4189,7 +4179,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   try {
   if (!await showConfirm({ message: `Delete document "${d.name}"?\n\nThis will remove the document from active views. It can be recovered within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from("documents").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", d.id).eq("company_id", companyId);
-  if (error) { showToast("Error deleting document: " + error.message, "error"); return; }
+  if (error) { pmError("PM-7004", { raw: error, context: "delete document" }); return; }
   showToast("Document deleted: " + d.name, "success");
   logAudit("delete", "documents", "Deleted document: " + d.name, d.id, userProfile?.email, userRole, companyId);
   const { data: refreshed } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("property", selectedProperty.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100);
@@ -4675,7 +4665,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   next_post_date: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().split("T")[0],
   created_by: userProfile?.email || "",
   }]);
-  if (error) { showToast("Failed to create recurring entry: " + userError(error.message), "error"); }
+  if (error) { pmError("PM-4008", { raw: error, context: "create recurring entry for " + showRecurringSetup.tenant }); }
   else { addNotification("🔄", "Recurring rent set up for " + showRecurringSetup.tenant); }
   setShowRecurringSetup(null);
   }}>Yes, Set Up Recurring Rent</Btn>
@@ -4758,7 +4748,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   fetchTenants();
   fetchDocExceptions();
   supabase.from("properties").select("*").eq("company_id", companyId).is("archived_at", null)
-  .then(({ data, error }) => { if (error) console.warn("Tenants property fetch:", error.message); setProperties(data || []); });
+  .then(({ data, error }) => { if (error) pmError("PM-8006", { raw: error, context: "tenants property fetch", silent: true }); setProperties(data || []); });
   }, [companyId]);
 
   async function fetchTenants() {
@@ -4797,9 +4787,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   : await supabase.from("tenants").insert([{ company_id: companyId, name: form.name, first_name: form.first_name, middle_initial: form.mi, last_name: form.last_name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, rent: form.rent, balance: 0, doc_status: "pending_docs" }]);
   if (error) {
   if (error.message?.includes("idx_tenants_unique_name_property") || error.message?.includes("duplicate")) {
-  showToast("A tenant named \"" + form.name.trim() + "\" already exists at this property. Please check your existing tenants.", "error");
+  pmError("PM-3001", { raw: error, context: "save tenant " + form.name.trim() });
   } else {
-  showToast("Error saving tenant: " + userError(error.message), "error");
+  pmError("PM-3002", { raw: error, context: "save tenant " + form.name.trim() });
   }
   return;
   }
@@ -4843,7 +4833,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (!_depOk) showToast("Security deposit accounting entry failed.", "error");
   }
   // Rent charges — fire and forget (don't block the popup)
-  autoPostRentCharges(companyId).then(result => { if (result?.posted > 0) showToast("Posted " + result.posted + " rent charge(s)", "success"); }).catch(e => console.warn("Auto rent charge posting failed:", e.message));
+  autoPostRentCharges(companyId).then(result => { if (result?.posted > 0) showToast("Posted " + result.posted + " rent charge(s)", "success"); }).catch(e => pmError("PM-4008", { raw: e, context: "auto rent charge posting", silent: true }));
   setSavingTenant(false);
   // Queue recurring entry popup
   setPendingRecurringEntry({ tenantName: _name, tenantId: tenantId, property: _property, rent: _rent, leaseStart: _leaseStart, leaseEnd: _leaseEnd });
@@ -4861,7 +4851,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   });
   if (tenantRenameErr) {
   // #13: Client-side fallback — cascade rename to tables the RPC may not cover
-  console.warn("Tenant rename RPC failed, running client-side fallback:", tenantRenameErr.message);
+  pmError("PM-3002", { raw: tenantRenameErr, context: "tenant rename RPC, running client-side fallback", silent: true });
   const oldName = editingTenant.name;
   const tRenameResults = await Promise.allSettled([
   supabase.from("payments").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName),
@@ -4888,7 +4878,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   fetchTenants();
   showToast(_isNew ? "Tenant added successfully" : "Tenant updated successfully", "success");
   } catch (e) {
-  console.error("saveTenant error:", e);
+  pmError("PM-3002", { raw: e, context: "saveTenant" });
   setSavingTenant(false);
   showToast("Tenant was saved but a post-save operation failed: " + (e.message || e) + ". Please check the tenant list.", "error");
   setShowForm(false);
@@ -4929,15 +4919,15 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   archived_by: userProfile?.email,
   lease_status: "inactive" 
   }).eq("id", id).eq("company_id", companyId);
-  if (archiveErr) { showToast("Failed to archive tenant: " + archiveErr.message, "error"); return; }
+  if (archiveErr) { pmError("PM-3003", { raw: archiveErr, context: "archive tenant" }); return; }
   // Update property to vacant when tenant archived
   if (tenantProperty) {
   const { error: propErr } = await supabase.from("properties").update({ status: "vacant", tenant: "", lease_end: null, lease_start: "" }).eq("company_id", companyId).eq("address", tenantProperty).ilike("tenant", name);
-  if (propErr) console.warn("Failed to update property to vacant:", propErr.message);
+  if (propErr) pmError("PM-2002", { raw: propErr, context: "update property to vacant", silent: true });
   }
   // Terminate active leases for this tenant
   const { error: leaseErr } = await supabase.from("leases").update({ status: "terminated", archived_at: new Date().toISOString() }).eq("company_id", companyId).ilike("tenant_name", name).eq("status", "active");
-  if (leaseErr) console.warn("Failed to terminate leases:", leaseErr.message);
+  if (leaseErr) pmError("PM-3004", { raw: leaseErr, context: "terminate leases on archive", silent: true });
   // Archive autopay schedules for this tenant
   await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", name);
   // Settle outstanding AR on tenant sub-accounts (write off remaining balance)
@@ -4951,7 +4941,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ]
   });
   // Zero out tenant balance
-  await supabase.rpc("update_tenant_balance", { p_tenant_id: id, p_amount_change: -tenantBal }).catch(e => console.warn("Balance zero-out:", e.message));
+  await supabase.rpc("update_tenant_balance", { p_tenant_id: id, p_amount_change: -tenantBal }).catch(e => pmError("PM-6002", { raw: e, context: "balance zero-out on archive", silent: true }));
   }
   // Deactivate tenant AR sub-accounts
   await supabase.from("acct_accounts").update({ is_active: false }).eq("company_id", companyId).eq("tenant_id", id);
@@ -4989,14 +4979,14 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }]);
 
   // Also send magic link — but only if invite code was created successfully
-  if (codeInsertError) { showToast("Failed to create invite code: " + codeInsertError.message, "error"); return; }
+  if (codeInsertError) { pmError("PM-3007", { raw: codeInsertError, context: "create tenant invite code" }); return; }
   const { error: authErr } = await supabase.auth.signInWithOtp({
   email: (tenant.email || "").trim().toLowerCase(),
   options: { data: { name: tenant.name, role: "tenant" } }
   });
   if (authErr) {
   // Auth failed — do NOT create membership records for a non-deliverable invite
-  showToast("Failed to send invitation email to " + tenant.email + ": " + authErr.message + "\n\nPlease verify the email address and try again. No access records were created.", "error");
+  pmError("PM-3007", { raw: authErr, context: "send invitation to " + tenant.email });
   return;
   }
   // Create membership as "invited" — this is a placeholder record only.
@@ -5096,7 +5086,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const { data } = await supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tenant.name).order("created_at", { ascending: true }).limit(100);
   setMessages(data || []);
   const { error: _err1494 } = await supabase.from("messages").update({ read: true }).eq("company_id", companyId).eq("tenant", tenant.name);
-  if (_err1494) console.warn("messages write failed:", _err1494.message);
+  if (_err1494) pmError("PM-8006", { raw: _err1494, context: "messages write", silent: true });
   }
 
   async function sendMessage() {
@@ -5111,7 +5101,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   message: newMessage,
   read: false,
   }]);
-  if (_err_messages_1499) { showToast("Failed to send message: " + _err_messages_1499.message, "error"); return; }
+  if (_err_messages_1499) { pmError("PM-8006", { raw: _err_messages_1499, context: "send tenant message" }); return; }
   setNewMessage("");
   const { data } = await supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", selectedTenant.name).order("created_at", { ascending: true });
   setMessages(data || []);
@@ -5174,7 +5164,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (!newMoveOut) return;
   if (!selectedTenant?.id) return;
   const { error } = await supabase.from("tenants").update({ move_out: newMoveOut, lease_end_date: newMoveOut, lease_status: "active" }).eq("company_id", companyId).eq("id", selectedTenant.id);
-  if (error) { showToast("Failed to renew lease: " + error.message, "error"); return; }
+  if (error) { pmError("PM-3004", { raw: error, context: "renew lease" }); return; }
   // #4: Update active lease end_date if one exists, or create one
   const { data: activeLease, error: leaseErr } = await supabase.from("leases").select("id, rent_amount").eq("company_id", companyId).eq("tenant_name", selectedTenant.name).eq("status", "active").limit(1);
   if (leaseErr) { showToast("Lease lookup failed: " + leaseErr.message, "error"); }
@@ -5207,7 +5197,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   noticeDate.setDate(noticeDate.getDate() + parseInt(days));
   const moveOutDate = formatLocalDate(noticeDate);
   const { error } = await supabase.from("tenants").update({ lease_status: "notice", move_out: moveOutDate }).eq("company_id", companyId).eq("id", selectedTenant.id);
-  if (error) { showToast("Failed to generate notice: " + error.message, "error"); return; }
+  if (error) { pmError("PM-3006", { raw: error, context: "generate move-out notice" }); return; }
   // #8: Also update lease status to reflect notice
   const { error: leaseErr } = await supabase.from("leases").update({ status: "notice" }).eq("company_id", companyId).eq("tenant_name", selectedTenant.name).eq("status", "active");
   if (leaseErr) showToast("Lease status update failed: " + leaseErr.message, "error");
@@ -5581,7 +5571,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {isAdmin && <button onClick={async () => {
   if (!await showConfirm({ message: `Delete document "${d.name}"?\n\nThis will remove the document from active views. It can be recovered within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from("documents").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", d.id).eq("company_id", companyId);
-  if (error) { showToast("Error deleting document: " + error.message, "error"); return; }
+  if (error) { pmError("PM-7004", { raw: error, context: "delete document" }); return; }
   showToast("Document deleted: " + d.name, "success");
   logAudit("delete", "documents", "Deleted document: " + d.name + " (tenant: " + (selectedTenant?.name || "") + ")", d.id, userProfile?.email, userRole, companyId);
   fetchTenantDocs(selectedTenant);
@@ -6217,7 +6207,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
 
   async function fetchWorkOrders() {
   const { data, error } = await supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }).limit(500);
-  if (error) { console.error("fetchWorkOrders error:", error.message); showToast("Error loading work orders: " + error.message, "error"); }
+  if (error) { pmError("PM-7001", { raw: error, context: "loading work orders" }); }
   setWorkOrders(data || []);
   setLoading(false);
   }
@@ -6226,7 +6216,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   if (selectedWOs.size === 0) return;
   const ids = Array.from(selectedWOs);
   const { error } = await supabase.from("work_orders").update({ status: newStatus }).in("id", ids).eq("company_id", companyId);
-  if (error) { showToast("Error updating work orders: " + error.message, "error"); return; }
+  if (error) { pmError("PM-7002", { raw: error, context: "bulk updating work orders" }); return; }
   showToast(ids.length + " work order(s) updated to " + newStatus, "success");
   addNotification("🔧", ids.length + " work orders → " + newStatus);
   setSelectedWOs(new Set());
@@ -6237,7 +6227,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   if (selectedWOs.size === 0 || !vendorName) return;
   const ids = Array.from(selectedWOs);
   const { error } = await supabase.from("work_orders").update({ assigned: vendorName }).in("id", ids).eq("company_id", companyId);
-  if (error) { showToast("Error assigning vendor: " + error.message, "error"); return; }
+  if (error) { pmError("PM-7003", { raw: error, context: "bulk assigning vendor" }); return; }
   showToast(ids.length + " work order(s) assigned to " + vendorName, "success");
   setSelectedWOs(new Set());
   fetchWorkOrders();
@@ -6261,7 +6251,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   const { error } = editingWO
   ? await supabase.from("work_orders").update({ property: payload.property, tenant: payload.tenant, issue: payload.issue, priority: payload.priority, status: payload.status, assigned: payload.assigned, cost: payload.cost, notes: payload.notes }).eq("id", editingWO.id).eq("company_id", companyId)
   : await supabase.from("work_orders").insert([{ ...payload, company_id: companyId }]);
-  if (error) { showToast("Error saving work order: " + error.message, "error"); return; }
+  if (error) { pmError("PM-7004", { raw: error, context: "saving work order" }); return; }
   showToast(editingWO ? "Work order updated." : "Work order created.", "success");
   if (editingWO) {
   const costChanged = safeNum(form.cost) !== safeNum(editingWO.cost);
@@ -6285,7 +6275,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
 
   async function updateStatus(wo, newStatus) {
   const { error } = await supabase.from("work_orders").update({ status: newStatus }).eq("company_id", companyId).eq("id", wo.id);
-  if (error) { showToast("Error updating status: " + error.message, "error"); return; }
+  if (error) { pmError("PM-7005", { raw: error, context: "updating work order status" }); return; }
   // AUTO-POST TO ACCOUNTING when completed with a cost (with duplicate guard)
   if (newStatus === "completed" && safeNum(wo.cost) > 0) {
   const { data: existingWoJE } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).eq("reference", "WO-" + wo.id).limit(1);
@@ -6303,8 +6293,8 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid for: ${wo.issue}` },
   ]
   });
-  if (!_jeOk) { showToast("Accounting entry failed. The record was saved but the journal entry could not be posted. Please check the accounting module.", "error"); }
-  
+  if (!_jeOk) { pmError("PM-4001", { raw: new Error("JE post failed"), context: "posting work order accounting entry" }); }
+
   }
   addNotification("🔧", `Work order "${wo.issue}" marked as ${newStatus.replace("_", " ")}`);
   logAudit("update", "maintenance", `Work order status: ${wo.issue} → ${newStatus}${safeNum(wo.cost) > 0 ? " ($" + safeNum(wo.cost) + ")" : ""}`, wo.id, userProfile?.email, userRole, companyId);
@@ -6346,11 +6336,11 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   setUploadingPhoto(true);
   const fileName = `wo_${viewingPhotos.id}_${shortId()}_${sanitizeFileName(file.name)}`;
   const { error: uploadError } = await supabase.storage.from("maintenance-photos").upload(fileName, file);
-  if (uploadError) { showToast("Upload failed: " + uploadError.message, "error"); setUploadingPhoto(false); return; }
+  if (uploadError) { pmError("PM-7006", { raw: uploadError, context: "uploading work order photo" }); setUploadingPhoto(false); return; }
   // Store file path (not public URL) — signed URLs generated on display
   const storagePath = fileName;
   const { error: _photoErr } = await supabase.from("work_order_photos").insert([{ work_order_id: viewingPhotos.id, property: viewingPhotos.property, url: storagePath, caption: file.name, company_id: companyId, storage_bucket: "maintenance-photos" }]);
-  if (_photoErr) { showToast("Error saving photo: " + _photoErr.message, "error"); setUploadingPhoto(false); return; }
+  if (_photoErr) { pmError("PM-7007", { raw: _photoErr, context: "saving work order photo record" }); setUploadingPhoto(false); return; }
   addNotification("📸", `Photo uploaded for: ${viewingPhotos.issue}`);
   setUploadingPhoto(false);
   if (photoRef.current) photoRef.current.value = "";
@@ -6363,7 +6353,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   try {
   // Photos DO have company_id — delete is scoped to current company
   const { error: _photoDelErr } = await supabase.from("work_order_photos").delete().eq("company_id", companyId).eq("id", id);
-  if (_photoDelErr) { showToast("Error deleting photo: " + _photoDelErr.message, "error"); return; }
+  if (_photoDelErr) { pmError("PM-7008", { raw: _photoDelErr, context: "deleting work order photo" }); return; }
   openPhotos(viewingPhotos);
   } finally { guardRelease("deletePhoto"); }
   }
@@ -6628,7 +6618,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   } else {
   ({ error } = await supabase.from("utility_accounts").insert([payload]));
   }
-  if (error) { showToast("Error saving account: " + error.message, "error"); return; }
+  if (error) { pmError("PM-4002", { raw: error, context: "saving utility account" }); return; }
   addNotification("⚡", (editingAccount ? "Updated" : "Added") + " utility account: " + (providerInfo?.display_name || accountForm.provider));
   setShowAccountForm(false);
   setEditingAccount(null);
@@ -6652,7 +6642,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   status: "queued",
   triggered_by: userProfile?.email || "manual",
   }]);
-  if (error) { showToast("Error queuing job: " + error.message, "error"); return; }
+  if (error) { pmError("PM-4003", { raw: error, context: "queuing automation job" }); return; }
   addNotification("🔄", "Bill check queued for " + acct.provider_display + " at " + acct.property);
   fetchAutomationData();
   }
@@ -6666,7 +6656,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   authorized_by: userProfile?.email,
   authorized_at: new Date().toISOString(),
   }).eq("id", bill.id).eq("company_id", companyId);
-  if (error) { showToast("Error authorizing: " + error.message, "error"); return; }
+  if (error) { pmError("PM-6001", { raw: error, context: "authorizing bill payment" }); return; }
   // Queue payment job
   await supabase.from("automation_jobs").insert([{
   company_id: companyId,
@@ -6689,7 +6679,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(bill.amount), class_id: classId, memo: "Utility payment" },
   ]
   });
-  if (!_jeOk) { showToast("Payment authorized but accounting entry failed. Please check the Accounting module.", "error"); }
+  if (!_jeOk) { pmError("PM-4004", { raw: new Error("JE post failed"), context: "posting bill payment accounting entry" }); }
   addNotification("✅", "Payment authorized: " + (bill.provider_display || bill.provider) + " $" + bill.amount);
   setPaymentMethodModal(null);
   fetchAutomationData();
@@ -6718,7 +6708,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
     row.username_encrypted = encU; row.password_encrypted = encP; row.encryption_iv = ivP || ivU;
   }
   const { error } = await supabase.from("utilities").insert([row]);
-  if (error) { showToast("Error adding utility: " + error.message, "error"); return; }
+  if (error) { pmError("PM-4005", { raw: error, context: "adding utility bill" }); return; }
   addNotification("⚡", `Utility bill added: ${form.provider} at ${form.property}`);
   logAudit("create", "utilities", `Utility added: ${form.provider} ${formatCurrency(form.amount)} at ${form.property}`, "", userProfile?.email, userRole, companyId);
   setShowForm(false);
@@ -6733,7 +6723,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   if (u.status === "paid") { showToast("This utility is already marked as paid.", "error"); return; }
   const now = new Date().toISOString();
   const { error } = await supabase.from("utilities").update({ status: "paid", paid_at: now }).eq("company_id", companyId).eq("id", u.id);
-  if (error) { showToast("Error approving payment: " + error.message, "error"); return; }
+  if (error) { pmError("PM-6002", { raw: error, context: "approving utility payment" }); return; }
   await supabase.from("utility_audit").insert([{ company_id: companyId,
   utility_id: u.id,
   property: u.property,
@@ -6758,7 +6748,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid: ${u.provider}` },
   ]
   });
-  if (!_jeOk) { showToast("Accounting entry failed. The record was saved but the journal entry could not be posted. Please check the accounting module.", "error"); }
+  if (!_jeOk) { pmError("PM-4006", { raw: new Error("JE post failed"), context: "posting utility payment accounting entry" }); }
   // #15: Create ledger entry for utility payment
   await safeLedgerInsert({ company_id: companyId, tenant: "", property: u.property, date: formatLocalDate(new Date()), description: `Utility: ${u.provider}`, amount: amt, type: "expense", balance: 0 });
   }
@@ -7047,7 +7037,7 @@ function ArchivedItems({ tableName, label, fields, companyId, addNotification, o
   async function restore(item) {
   if (!await showConfirm({ message: "Restore this " + label.toLowerCase() + "?" })) return;
   const { error } = await supabase.from(tableName).update({ archived_at: null, archived_by: null }).eq("id", item.id).eq("company_id", companyId);
-  if (error) { showToast("Restore failed: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: "restoring archived " + label.toLowerCase() }); return; }
   addNotification("♻️", "Restored " + label + ": " + (item.address || item.name || item.issue || item.tenant || "item"));
   fetchItems();
   if (onRestore) onRestore();
@@ -7056,7 +7046,7 @@ function ArchivedItems({ tableName, label, fields, companyId, addNotification, o
   async function permanentDelete(item) {
   if (!await showConfirm({ message: "PERMANENTLY delete this " + label.toLowerCase() + "? This cannot be undone.", variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from(tableName).delete().eq("id", item.id).eq("company_id", companyId);
-  if (error) { showToast("Delete failed: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: "permanently deleting " + label.toLowerCase() }); return; }
   logAudit("delete", tableName, "Permanently deleted " + label + ": " + (item.name || item.address || item.id), item.id, userProfile?.email, userRole, companyId);
   addNotification("🗑️", "Deleted " + label);
   fetchItems();
@@ -7137,11 +7127,11 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   };
   if (editingEntry) {
   const { error } = await supabase.from("recurring_journal_entries").update(payload).eq("id", editingEntry.id).eq("company_id", companyId);
-  if (error) { showToast(userError(error.message), "error"); return; }
+  if (error) { pmError("PM-4007", { raw: error, context: "updating recurring journal entry" }); return; }
   addNotification("✏️", "Updated recurring entry: " + form.description);
   } else {
   const { error } = await supabase.from("recurring_journal_entries").insert([payload]);
-  if (error) { showToast(userError(error.message), "error"); return; }
+  if (error) { pmError("PM-4008", { raw: error, context: "creating recurring journal entry" }); return; }
   addNotification("🔄", "Created recurring entry: " + form.description);
   }
   setShowForm(false); setEditingEntry(null);
@@ -7152,7 +7142,7 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   async function toggleStatus(entry) {
   const newStatus = entry.status === "active" ? "paused" : "active";
   const { error } = await supabase.from("recurring_journal_entries").update({ status: newStatus }).eq("id", entry.id).eq("company_id", companyId);
-  if (error) { showToast(userError(error.message), "error"); return; }
+  if (error) { pmError("PM-4009", { raw: error, context: "toggling recurring entry status" }); return; }
   addNotification(newStatus === "active" ? "▶️" : "⏸️", (newStatus === "active" ? "Resumed" : "Paused") + ": " + entry.description);
   fetchEntries();
   }
@@ -7160,7 +7150,7 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   async function deleteEntry(entry) {
   if (!await showConfirm({ message: "Delete this recurring entry? This cannot be undone.", variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from("recurring_journal_entries").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", entry.id).eq("company_id", companyId);
-  if (error) { showToast(userError(error.message), "error"); return; }
+  if (error) { pmError("PM-4010", { raw: error, context: "deleting recurring journal entry" }); return; }
   addNotification("🗑️", "Deleted: " + entry.description);
   fetchEntries();
   }
@@ -8104,7 +8094,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
   const [currentReport, setCurrentReport] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [catalogTab, setCatalogTab] = useState("standard"); // standard | favorites | custom
-  const [favorites, setFavorites] = useState(() => { try { const s = localStorage.getItem(`report_favorites_${companyId}`); return s ? JSON.parse(s) : []; } catch { return []; } });
+  const [favorites, setFavorites] = useState(() => { try { const s = localStorage.getItem(`report_favorites_${companyId}`); return s ? JSON.parse(s) : []; } catch (e) { pmError("PM-4012", { raw: e, context: "reading report favorites from localStorage", silent: true }); return []; } });
   const [collapsedCats, setCollapsedCats] = useState({});
 
   // Report config (shared toolbar state)
@@ -8120,9 +8110,9 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
   const [showLiabilities, setShowLiabilities] = useState(true);
   const [showEquity, setShowEquity] = useState(true);
   const [showARSub, setShowARSub] = useState(false);
-  const [glColumns, setGlColumns] = useState(() => { try { const s = localStorage.getItem("gl_columns"); return s ? JSON.parse(s) : { date: true, entry: true, description: true, memo: true, debit: true, credit: true, balance: true }; } catch { return { date: true, entry: true, description: true, memo: true, debit: true, credit: true, balance: true }; } });
+  const [glColumns, setGlColumns] = useState(() => { try { const s = localStorage.getItem("gl_columns"); return s ? JSON.parse(s) : { date: true, entry: true, description: true, memo: true, debit: true, credit: true, balance: true }; } catch (e) { pmError("PM-4013", { raw: e, context: "reading GL column prefs from localStorage", silent: true }); return { date: true, entry: true, description: true, memo: true, debit: true, credit: true, balance: true }; } });
   const [showColPicker, setShowColPicker] = useState(false);
-  const toggleGlCol = (col) => { const next = { ...glColumns, [col]: !glColumns[col] }; setGlColumns(next); try { localStorage.setItem("gl_columns", JSON.stringify(next)); } catch {} };
+  const toggleGlCol = (col) => { const next = { ...glColumns, [col]: !glColumns[col] }; setGlColumns(next); try { localStorage.setItem("gl_columns", JSON.stringify(next)); } catch (e) { pmError("PM-4014", { raw: e, context: "saving GL column prefs to localStorage", silent: true }); } };
 
   // Extra data for property reports (fetched on demand)
   const [properties, setProperties] = useState([]);
@@ -8154,10 +8144,10 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
   function toggleFavorite(reportId) {
     const next = favorites.includes(reportId) ? favorites.filter(f => f !== reportId) : [...favorites, reportId];
     setFavorites(next);
-    try { localStorage.setItem(`report_favorites_${companyId}`, JSON.stringify(next)); } catch {}
+    try { localStorage.setItem(`report_favorites_${companyId}`, JSON.stringify(next)); } catch (e) { pmError("PM-4015", { raw: e, context: "saving report favorites to localStorage", silent: true }); }
     // Also try to save to DB for cross-device sync
     if (userProfile?.email) {
-      supabase.from("app_users").update({ preferences: { report_favorites: next } }).eq("company_id", companyId).ilike("email", userProfile.email).then(() => {}).catch(() => {});
+      supabase.from("app_users").update({ preferences: { report_favorites: next } }).eq("company_id", companyId).ilike("email", userProfile.email).then(() => {}).catch((e) => { pmError("PM-4016", { raw: e, context: "syncing report favorites to DB", silent: true }); });
     }
   }
 
@@ -8501,7 +8491,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
   const [budgets, setBudgets] = useState([]);
   const [showBudgetEditor, setShowBudgetEditor] = useState(false);
   const [budgetMonth, setBudgetMonth] = useState(acctToday().slice(0, 7));
-  const [customReports, setCustomReports] = useState(() => { try { const s = localStorage.getItem(`custom_reports_${companyId}`); return s ? JSON.parse(s) : []; } catch { return []; } });
+  const [customReports, setCustomReports] = useState(() => { try { const s = localStorage.getItem(`custom_reports_${companyId}`); return s ? JSON.parse(s) : []; } catch (e) { pmError("PM-4017", { raw: e, context: "reading custom reports from localStorage", silent: true }); return []; } });
   const [saveReportName, setSaveReportName] = useState("");
 
   // --- Phase D: Budget, Custom Reports, PDF ---
@@ -8518,7 +8508,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
         company_id: companyId, account_id: accountId, account_name: accountName,
         period: budgetMonth, amount: Number(amount) || 0
       }, { onConflict: "company_id,account_id,period" });
-      if (error) { showToast("Error saving budget: " + error.message, "error"); return; }
+      if (error) { pmError("PM-4011", { raw: error, context: "saving budget" }); return; }
       fetchBudgets(budgetMonth);
     } finally { guardRelease("saveBudget", accountId); }
   }
@@ -8544,7 +8534,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     const config = { id: shortId(), name: saveReportName.trim(), reportId: currentReport.id, reportTitle: currentReport.title, period, customDates, asOfDate, compareTo, classFilter, selectedAccountId, savedAt: new Date().toISOString() };
     const next = [...customReports, config];
     setCustomReports(next);
-    try { localStorage.setItem(`custom_reports_${companyId}`, JSON.stringify(next)); } catch {}
+    try { localStorage.setItem(`custom_reports_${companyId}`, JSON.stringify(next)); } catch (e) { pmError("PM-4018", { raw: e, context: "saving custom report config to localStorage", silent: true }); }
     setSaveReportName("");
     showToast("Report configuration saved.", "success");
   }
@@ -8552,7 +8542,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
   function deleteCustomReport(configId) {
     const next = customReports.filter(c => c.id !== configId);
     setCustomReports(next);
-    try { localStorage.setItem(`custom_reports_${companyId}`, JSON.stringify(next)); } catch {}
+    try { localStorage.setItem(`custom_reports_${companyId}`, JSON.stringify(next)); } catch (e) { pmError("PM-4019", { raw: e, context: "saving custom report config to localStorage", silent: true }); }
   }
 
   function loadCustomReport(config) {
@@ -9093,7 +9083,7 @@ function csvParseDate(raw) {
   if(/^\d{4}-\d{2}-\d{2}/.test(raw))return raw.substring(0,10);
   const mdy=raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);if(mdy)return `${mdy[3]}-${mdy[1].padStart(2,"0")}-${mdy[2].padStart(2,"0")}`;
   const mdy2=raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/);if(mdy2){const yr=parseInt(mdy2[3])>50?"19"+mdy2[3]:"20"+mdy2[3];return `${yr}-${mdy2[1].padStart(2,"0")}-${mdy2[2].padStart(2,"0")}`;}
-  try{const d=new Date(raw);if(!isNaN(d))return d.toISOString().slice(0,10);}catch{}
+  try{const d=new Date(raw);if(!isNaN(d))return d.toISOString().slice(0,10);}catch(_e){pmError("PM-8006",{raw:_e,context:"date parsing fallback",silent:true});}
   return raw;
 }
 
@@ -9192,14 +9182,14 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       subtype: newAccountForm.type === "credit_card" ? "Credit Card" : "Bank",
       is_active: true, old_text_id: companyId + "-" + nextCode
     }]).select("id").maybeSingle();
-    if (glErr) { showToast("Error creating GL account: " + glErr.message, "error"); return; }
+    if (glErr) { pmError("PM-5001", { raw: glErr, context: "creating GL account for bank feed" }); return; }
     // Create bank_account_feed
     const { error: feedErr } = await supabase.from("bank_account_feed").insert([{
       company_id: companyId, gl_account_id: glAcct?.id, account_name: newAccountForm.name.trim(),
       masked_number: newAccountForm.masked_number, account_type: newAccountForm.type,
       institution_name: newAccountForm.institution_name, connection_type: "csv"
     }]);
-    if (feedErr) { showToast("Error creating feed: " + feedErr.message, "error"); return; }
+    if (feedErr) { pmError("PM-5002", { raw: feedErr, context: "creating bank account feed" }); return; }
     showToast("Bank account created.", "success");
     setShowNewAccount(false);
     setNewAccountForm({ name: "", type: "checking", masked_number: "", institution_name: "" });
@@ -9239,13 +9229,13 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
             })
           });
           const saveData = await saveRes.json();
-          if (saveData.error) { showToast("Connection error: " + saveData.error, "error"); }
+          if (saveData.error) { pmError("PM-5003", { raw: new Error(saveData.error), context: "saving Teller enrollment" }); }
           else { showToast(saveData.message || "Bank connected!", "success"); fetchAll(); }
         },
         onExit: () => { /* user closed */ },
       });
       tellerConnect.open();
-    } catch (e) { showToast("Error connecting bank: " + e.message, "error"); }
+    } catch (e) { pmError("PM-5004", { raw: e, context: "connecting bank via Teller" }); }
     finally { setPlaidConnecting(false); }
   }
 
@@ -9659,7 +9649,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       description: `Split — ${txn.bank_description_clean}`,
       reference: `SPLIT-${txn.id}`, property: "", status: "posted"
     }]).select("id").maybeSingle();
-    if (jeErr || !jeRow) { showToast("Error: " + (jeErr?.message || ""), "error"); return; }
+    if (jeErr || !jeRow) { pmError("PM-4002", { raw: jeErr, context: "create journal entry" }); return; }
 
     // Build JE lines: bank side + each split line
     const jeLines = [];
@@ -9966,11 +9956,11 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     };
     if (editingRule) {
       const { error } = await supabase.from("bank_transaction_rule").update(payload).eq("id", editingRule.id);
-      if (error) { showToast("Error: " + error.message, "error"); return; }
+      if (error) { pmError("PM-5008", { raw: error, context: "update bank rule" }); return; }
       showToast("Rule updated.", "success");
     } else {
       const { error } = await supabase.from("bank_transaction_rule").insert([{ ...payload, company_id: companyId, enabled: true }]);
-      if (error) { showToast("Error: " + error.message, "error"); return; }
+      if (error) { pmError("PM-5008", { raw: error, context: "create bank rule" }); return; }
       showToast("Rule created.", "success");
     }
     resetRuleForm();
@@ -9981,7 +9971,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   async function deleteRule(ruleId) {
     if (!await showConfirm({ message: "Delete this rule?" })) return;
     const { error } = await supabase.from("bank_transaction_rule").delete().eq("id", ruleId).eq("company_id", companyId);
-    if (error) { showToast("Error deleting rule: " + error.message, "error"); return; }
+    if (error) { pmError("PM-5008", { raw: error, context: "delete bank rule" }); return; }
     showToast("Rule deleted.", "success");
     fetchAll();
   }
@@ -9997,13 +9987,13 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       enabled: false, condition_json: rule.condition_json, action_json: rule.action_json,
       auto_accept: rule.auto_accept, rule_type: rule.rule_type, bank_account_feed_id: rule.bank_account_feed_id
     }]);
-    if (error) { showToast("Error: " + error.message, "error"); return; }
+    if (error) { pmError("PM-5008", { raw: error, context: "duplicate bank rule" }); return; }
     showToast("Rule duplicated (disabled). Edit it to enable.", "success");
     fetchAll();
   }
 
   async function incrementRuleStats(ruleId) {
-    try { await supabase.rpc("increment_rule_stats", { rule_id: ruleId }); } catch {}
+    try { await supabase.rpc("increment_rule_stats", { rule_id: ruleId }); } catch (_e) { pmError("PM-5008", { raw: _e, context: "increment bank rule stats", silent: true }); }
   }
 
   // Migrate V1 rules to V2 JSON format (runs once per company)
@@ -10053,7 +10043,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
           "info"
         );
       }
-    } catch {}
+    } catch (_e) { pmError("PM-8006", { raw: _e, context: "bank categorization pattern learning", silent: true }); }
   }
 
   const RENTAL_RULE_PRESETS = [
@@ -10911,12 +10901,12 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   for (const acct of defaults) {
   const oldTextId = companyId + "-" + acct.code;
   const { error: insErr } = await supabase.from("acct_accounts").insert([{ ...acct, company_id: companyId, old_text_id: oldTextId }]);
-  if (insErr) console.warn("Default account insert failed for " + acct.code + ":", insErr.message);
+  if (insErr) pmError("PM-4006", { raw: insErr, context: "default account insert for " + acct.code, silent: true });
   }
   const { data: freshAccts, error: fetchErr } = await supabase.from("acct_accounts").select("*").eq("company_id", companyId).order("code");
   // Default accounts created (debug removed)
   accounts = (freshAccts || []).map(a => ({ ...a, type: _typeNorm[(a.type || "").toLowerCase()] || a.type }));
-  if (accounts.length === 0) showToast("Failed to create default accounts. Check browser console for details.", "error");
+  if (accounts.length === 0) pmError("PM-4006", { raw: { message: "No accounts created" }, context: "create default chart of accounts" });
   }
 
   // Fetch all journal lines for this company's JEs and attach to entries
@@ -10990,7 +10980,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   }
   }
   }
-  if (patched > 0) console.warn("Backfilled class_id on " + patched + " JE lines via property→class_id");
+  if (patched > 0) pmError("PM-9001", { raw: { message: "Backfilled class_id on " + patched + " JE lines" }, context: "JE lines class_id backfill", silent: true });
   }
 
   // Backfill: renumber old JEs with hash-style numbers (JE-MN2L16YX → JE-0001)
@@ -11022,7 +11012,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   if (!guardSubmit("addAccount")) return;
   try {
   const { error } = await supabase.from("acct_accounts").insert([{ ...acct, company_id: companyId, old_text_id: companyId + "-" + (acct.code || shortId()) }]);
-  if (error) { showToast("Error creating account: " + error.message, "error"); return; }
+  if (error) { pmError("PM-4006", { raw: error, context: "create account" }); return; }
   fetchAll();
   } finally { guardRelease("addAccount"); }
   }
@@ -11032,7 +11022,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   name: acct.name, type: acct.type, subtype: acct.subtype,
   is_active: acct.is_active, description: acct.description || ""
   }).eq("company_id", companyId).eq("id", id);
-  if (error) { showToast("Error updating account: " + error.message, "error"); return; }
+  if (error) { pmError("PM-4006", { raw: error, context: "update account" }); return; }
   fetchAll();
   }
   async function toggleAccount(id, currentActive) {
@@ -11096,11 +11086,11 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   await supabase.from("acct_journal_entries").update({ date: header.date, description: header.description, reference: header.reference || "", property: header.property || "", status: header.status }).eq("company_id", companyId).eq("id", id);
   // Replace lines
   const { error: _err3930 } = await supabase.from("acct_journal_lines").delete().eq("journal_entry_id", id).eq("company_id", companyId);
-  if (_err3930) console.warn("acct_journal_lines write failed:", _err3930.message);
+  if (_err3930) pmError("PM-4003", { raw: _err3930, context: "acct_journal_lines write", silent: true });
   if (lines?.length > 0) {
   const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "" })));
   if (linesErr) {
-  console.warn("Update lines failed, restoring:", linesErr.message);
+  pmError("PM-4003", { raw: linesErr, context: "update journal lines failed, restoring" });
   if (oldLines?.length > 0) {
   await supabase.from("acct_journal_lines").insert(oldLines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: l.debit, credit: l.credit, class_id: l.class_id, memo: l.memo })));
   }
@@ -11150,7 +11140,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   try {
   const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantRow.id, p_amount_change: -arImpact });
   if (balErr) showToast("Balance update failed: " + balErr.message + ". Please verify the tenant balance.", "error");
-  } catch (e) { console.warn("Void balance RPC error:", e.message); }
+  } catch (e) { pmError("PM-6002", { raw: e, context: "void balance RPC", silent: true }); }
   await safeLedgerInsert({ company_id: companyId,
   tenant: tenantName.trim(), property: je.property || "",
   date: formatLocalDate(new Date()),
@@ -11170,7 +11160,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   if (!guardSubmit("addClass")) return;
   try {
   const { error } = await supabase.from("acct_classes").insert([{ ...cls, company_id: companyId }]);
-  if (error) { showToast("Error creating class: " + error.message, "error"); return; }
+  if (error) { pmError("PM-4010", { raw: error, context: "create accounting class" }); return; }
   fetchAll();
   } finally { guardRelease("addClass"); }
   }
@@ -11180,7 +11170,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   name: cls.name, type: cls.type, is_active: cls.is_active,
   description: cls.description || "", color: cls.color || "#3B82F6"
   }).eq("company_id", companyId).eq("id", id);
-  if (error) { showToast("Error updating class: " + error.message, "error"); return; }
+  if (error) { pmError("PM-4010", { raw: error, context: "update accounting class" }); return; }
   fetchAll();
   }
   async function toggleClass(id, currentActive) {
@@ -11418,7 +11408,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   if (!ALLOWED_DOC_TYPES.includes(file.type) && !ALLOWED_DOC_EXTENSIONS.test(file.name)) { showToast("File type not allowed. Accepted: PDF, images, Word, Excel, text files.", "error"); return; }
   if (file.size > 25 * 1024 * 1024) { showToast("File must be under 25MB.", "error"); return; }
   // Magic bytes validation (prevents MIME spoofing)
-  try { const hdr = new Uint8Array(await file.slice(0, 8).arrayBuffer()); const hex = Array.from(hdr.slice(0, 4)).map(b => b.toString(16).padStart(2, "0")).join(""); const ok = ["25504446","89504e47","ffd8ffe0","ffd8ffe1","ffd8ffe2","47494638","504b0304","d0cf11e0"].some(m => hex.startsWith(m)) || file.type.startsWith("text/"); if (!ok) { showToast("File content doesn't match expected format.", "error"); return; } } catch {}
+  try { const hdr = new Uint8Array(await file.slice(0, 8).arrayBuffer()); const hex = Array.from(hdr.slice(0, 4)).map(b => b.toString(16).padStart(2, "0")).join(""); const ok = ["25504446","89504e47","ffd8ffe0","ffd8ffe1","ffd8ffe2","47494638","504b0304","d0cf11e0"].some(m => hex.startsWith(m)) || file.type.startsWith("text/"); if (!ok) { showToast("File content doesn't match expected format.", "error"); return; } } catch (_e) { pmError("PM-7002", { raw: _e, context: "file magic bytes validation", silent: true }); }
   setUploading(true);
   const fileName = `${companyId}/${shortId()}_${sanitizeFileName(file.name)}`;
   const { error: uploadError } = await supabase.storage.from("documents").upload(fileName, file, {
@@ -11461,7 +11451,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   try {
   if (!await showConfirm({ message: `Delete "${name}"?`, variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from("documents").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", id).eq("company_id", companyId);
-  if (error) { showToast("Error deleting document: " + error.message, "error"); return; }
+  if (error) { pmError("PM-7004", { raw: error, context: "delete document" }); return; }
   addNotification("🗑️", `Document deleted: ${name}`);
   fetchDocs();
   } finally { guardRelease("deleteDoc"); }
@@ -11630,7 +11620,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   if (!form.property.trim()) { showToast("Property is required.", "error"); return; }
   if (!form.date) { showToast("Inspection date is required.", "error"); return; }
   const { error } = await supabase.from("inspections").insert([{ ...form, checklist: JSON.stringify(checklist), company_id: companyId }]);
-  if (error) { showToast("Error saving inspection: " + error.message, "error"); return; }
+  if (error) { pmError("PM-7001", { raw: error, context: "save inspection" }); return; }
   addNotification("🔍", `Inspection scheduled: ${form.type} at ${form.property}`);
   setShowForm(false);
   setForm({ property: "", type: "Move-In", inspector: "", date: formatLocalDate(new Date()), status: "scheduled", notes: "" });
@@ -11754,7 +11744,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   if (failed.length === 0) { showToast("No failed items in this inspection.", "info"); return; }
   if (!await showConfirm({ message: `Create work order for ${failed.length} failed item(s)?\n\n${failed.join(", ")}` })) return;
   const { error } = await supabase.from("work_orders").insert([{ company_id: companyId, property: insp.property, issue: `Inspection findings: ${failed.join(", ")}`, priority: "normal", status: "open", notes: `Auto-created from ${insp.type} inspection on ${insp.date}` }]);
-  if (error) { showToast("Error: " + error.message, "error"); return; }
+  if (error) { pmError("PM-7001", { raw: error, context: "create work order from inspection" }); return; }
   addNotification("🔧", `Work order created from inspection at ${insp.property}`);
   } finally { guardRelease("woFromInsp", insp.id); }
   }}><span className="material-icons-outlined text-xs align-middle">build</span> Create Work Order</Btn>}
@@ -11870,7 +11860,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   ({ error } = await supabase.from("leases").insert([{ ...payload, company_id: companyId }]));
   if (!error && tenant) {
   const { error: tenantErr } = await supabase.from("tenants").update({ lease_status: "active", move_in: form.start_date, move_out: form.end_date, rent: Number(form.rent_amount) }).eq("company_id", companyId).eq("id", tenant.id);
-  if (tenantErr) console.warn("Tenant status update failed:", tenantErr.message);
+  if (tenantErr) pmError("PM-3002", { raw: tenantErr, context: "tenant status update", silent: true });
   }
   if (!error && Number(form.security_deposit) > 0) {
   const classId = await getPropertyClassId(form.property, companyId);
@@ -11893,7 +11883,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   }
   }
   }
-  if (error) { showToast("Error saving lease: " + error.message, "error"); return; }
+  if (error) { pmError("PM-3004", { raw: error, context: "save lease" }); return; }
   // Update properties table to reflect lease assignment
   if (!editingLease && tenant) {
   const { error: _err4608 } = await supabase.from("properties").update({ tenant: form.tenant_name, lease_end: form.end_date, status: "occupied" }).eq("company_id", companyId).eq("address", form.property);
@@ -12085,7 +12075,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   try {
   if (!templateForm.name) { showToast("Template name is required.", "error"); return; }
   const { error } = await supabase.from("lease_templates").insert([{ ...templateForm, default_deposit_months: Number(templateForm.default_deposit_months || 1), default_lease_months: Number(templateForm.default_lease_months || 12), default_escalation_pct: Number(templateForm.default_escalation_pct || 3), payment_due_day: Math.max(1, Math.min(31, Number(templateForm.payment_due_day || 1))), company_id: companyId }]);
-  if (error) { showToast("Error: " + error.message, "error"); return; }
+  if (error) { pmError("PM-3004", { raw: error, context: "save lease template" }); return; }
   setShowTemplateForm(false); setTemplateForm({ name: "", description: "", clauses: "", special_terms: "", default_deposit_months: "1", default_lease_months: "12", default_escalation_pct: "3", payment_due_day: "1" });
   fetchData();
   } finally { guardRelease("saveTemplate"); }
@@ -12171,7 +12161,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   {showChecklist && (
   <Modal title={(showChecklist.type === "in" ? "Move-In" : "Move-Out") + " Checklist — " + showChecklist.lease.tenant_name} onClose={() => setShowChecklist(null)}>
   <div className="space-y-2">
-  {(() => { let items = []; try { items = JSON.parse(showChecklist.lease[showChecklist.type === "in" ? "move_in_checklist" : "move_out_checklist"] || "[]"); } catch {} return items.map((item, i) => (
+  {(() => { let items = []; try { items = JSON.parse(showChecklist.lease[showChecklist.type === "in" ? "move_in_checklist" : "move_out_checklist"] || "[]"); } catch (_e) { pmError("PM-8006", { raw: _e, context: "parse move checklist JSON", silent: true }); } return items.map((item, i) => (
   <div key={i} onClick={() => toggleChecklistItem(showChecklist.lease, showChecklist.type, i)} className={"flex items-center gap-3 p-2 rounded-lg cursor-pointer border " + (item.checked ? "bg-positive-50 border-positive-200" : "bg-white border-subtle-100 hover:bg-brand-50/30")}>
   <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs " + (item.checked ? "bg-positive-500 border-positive-500 text-white" : "border-brand-200")}>{item.checked ? "✓" : ""}</span>
   <span className={"text-sm " + (item.checked ? "line-through text-neutral-400" : "text-neutral-700")}>{item.item}</span>
@@ -12369,7 +12359,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   const { mi: _mi, ...insertPayload } = payload;
   ({ error } = await supabase.from("vendors").insert([{ ...insertPayload, email: normalizeEmail(payload.email), company_id: companyId }]));
   }
-  if (error) { showToast("Error: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: editingVendor ? "update vendor" : "create vendor" }); return; }
   logAudit(editingVendor ? "update" : "create", "vendors", (editingVendor ? "Updated" : "Added") + " vendor: " + form.name, editingVendor?.id || "", userProfile?.email, userRole, companyId);
   resetVendorForm();
   fetchData();
@@ -12419,7 +12409,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   status: "pending",
   company_id: companyId,
   }]);
-  if (error) { showToast("Error: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: "save vendor invoice" }); return; }
   logAudit("create", "vendor_invoices", "Invoice: $" + invoiceForm.amount + " from " + invoiceForm.vendor_name, "", userProfile?.email, userRole, companyId);
   setShowInvoiceForm(false);
   setInvoiceForm({ vendor_id: "", vendor_name: "", work_order_id: "", property: "", description: "", amount: "", invoice_number: "", invoice_date: formatLocalDate(new Date()), due_date: "", payment_method: "", notes: "" });
@@ -12445,14 +12435,14 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   });
   if (incErr) throw new Error(incErr.message);
   } catch (rpcE) {
-  console.warn("Vendor increment RPC fallback:", rpcE.message);
+  pmError("PM-8006", { raw: rpcE, context: "vendor increment RPC fallback", silent: true });
   const { data: freshVendor } = await supabase.from("vendors").select("total_paid, total_jobs").eq("company_id", companyId).eq("id", vendor.id).maybeSingle();
   if (freshVendor) {
   const { error: _vendErr } = await supabase.from("vendors").update({
   total_paid: safeNum(freshVendor.total_paid) + safeNum(inv.amount),
   total_jobs: (freshVendor.total_jobs || 0) + 1,
   }).eq("company_id", companyId).eq("id", vendor.id);
-  if (_vendErr) console.warn("Vendor totals fallback update failed:", _vendErr.message);
+  if (_vendErr) pmError("PM-8006", { raw: _vendErr, context: "vendor totals fallback update", silent: true });
   }
   }
   }
@@ -12478,7 +12468,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
 
   async function rateVendor(vendor, rating) {
   const { error } = await supabase.from("vendors").update({ rating }).eq("company_id", companyId).eq("id", vendor.id);
-  if (error) { showToast("Failed to update rating: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: "update vendor rating" }); return; }
   fetchData();
   }
 
@@ -12746,7 +12736,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   const { mi: _mi, ...insertPayload } = payload;
   ({ error } = await supabase.from("owners").insert([{ ...insertPayload, email: normalizeEmail(payload.email), company_id: companyId }]));
   }
-  if (error) { showToast("Error: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: editingOwner ? "update owner" : "create owner" }); return; }
   logAudit(editingOwner ? "update" : "create", "owners", (editingOwner ? "Updated" : "Added") + " owner: " + form.name, editingOwner?.id || "", userProfile?.email, userRole, companyId);
   resetForm(); fetchData();
   } finally { guardRelease("saveOwner"); }
@@ -12775,7 +12765,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   options: { data: { name: owner.name, role: "owner" } }
   });
   if (authErr) {
-  showToast("Failed to send invitation email to " + owner.email + ": " + authErr.message + "\n\nPlease verify the email address and try again. No access records were created.", "error");
+  pmError("PM-1007", { raw: authErr, context: "send invitation to " + owner.email });
   return;
   }
   // Create membership as "invited" — placeholder only, grants NO access.
@@ -12849,7 +12839,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   management_fee: mgmtFee, net_to_owner: netToOwner,
   line_items: JSON.stringify(lineItems), status: "draft",
   }]);
-  if (error) { showToast("Error: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: "generate owner statement" }); return; }
   logAudit("create", "owner_statements", "Generated statement for " + owner.name + " — " + genMonth, "", userProfile?.email, userRole, companyId);
   setShowGenerate(false);
   fetchData();
@@ -12857,7 +12847,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
 
   async function markStatementSent(stmt) {
   const { error } = await supabase.from("owner_statements").update({ status: "sent", sent_date: formatLocalDate(new Date()) }).eq("company_id", companyId).eq("id", stmt.id);
-  if (error) { showToast("Failed to mark statement as sent: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: "mark owner statement as sent" }); return; }
   fetchData();
   }
 
@@ -13016,7 +13006,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Net to Owner</div><div className={"text-lg font-bold " + (viewStatement.net_to_owner >= 0 ? "text-brand-700" : "text-danger-600")}>${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
   </div>
   {(() => {
-  let items = []; try { items = JSON.parse(viewStatement.line_items || "[]"); } catch {}
+  let items = []; try { items = JSON.parse(viewStatement.line_items || "[]"); } catch (_e) { pmError("PM-8006", { raw: _e, context: "parse owner statement line items", silent: true }); }
   return items.map((cat, ci) => (
   <div key={ci}>
   <div className="font-semibold text-neutral-700 text-sm mt-2 mb-1">{cat.category}</div>
@@ -13169,7 +13159,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
     const { error } = await supabase.from("accounting_period_lock").upsert({
       company_id: companyId, lock_date: lockDate, locked_by: userProfile?.email || "", notes: "Locked through " + lockDate
     }, { onConflict: "company_id" });
-    if (error) { showToast("Error: " + error.message, "error"); return; }
+    if (error) { pmError("PM-4011", { raw: error, context: "lock accounting period" }); return; }
     logAudit("update", "accounting", `Period locked through ${lockDate}`, "", userProfile?.email, "", companyId);
     showToast(`Accounting period locked through ${lockDate}.`, "success");
     fetchPeriodLock();
@@ -13293,7 +13283,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   unreconciled_items: JSON.stringify(reconItems.filter(i => !i.reconciled)),
   reconciled_by: "",
   }]);
-  if (error) { showToast("Error: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
 
   // Mark journal lines as reconciled in DB
   const reconIds = reconItems.filter(i => i.reconciled).map(i => i.id);
@@ -13323,7 +13313,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
     .eq("company_id", companyId)
     .in("status", ["categorized", "matched", "posted"])
     .gte("posted_date", startDate).lte("posted_date", endDate2);
-  if (lockErr) console.warn("Failed to lock bank feed transactions:", lockErr.message);
+  if (lockErr) pmError("PM-5006", { raw: lockErr, context: "lock bank feed transactions", silent: true });
 
   logAudit("create", "bank_reconciliation", "Bank reconciliation for " + reconPeriod + " — diff: $" + diff + (status === "reconciled" ? " (balanced)" : " (discrepancy)"), "", userProfile?.email || "", "", companyId);
   setShowReconcile(false);
@@ -13435,7 +13425,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Book Balance</div><div className="text-lg font-bold text-brand-700">${safeNum(viewRecon.book_balance).toLocaleString()}</div></div>
   <div className={"rounded-lg p-3 text-center " + (Math.abs(viewRecon.difference) < 0.01 ? "bg-positive-50" : "bg-danger-50")}><div className="text-xs text-neutral-400">Difference</div><div className={"text-lg font-bold " + (Math.abs(viewRecon.difference) < 0.01 ? "text-positive-700" : "text-danger-600")}>${safeNum(viewRecon.difference).toLocaleString()}</div></div>
   </div>
-  {(() => { let items = []; try { items = JSON.parse(viewRecon.unreconciled_items || "[]"); } catch {} return items.length > 0 ? (
+  {(() => { let items = []; try { items = JSON.parse(viewRecon.unreconciled_items || "[]"); } catch (_e) { pmError("PM-8006", { raw: _e, context: "parse reconciliation items", silent: true }); } return items.length > 0 ? (
   <div><div className="font-semibold text-danger-700 text-sm mb-2">Unreconciled Items ({items.length})</div>
   {items.map((it, i) => (<div key={i} className="flex justify-between text-xs py-1 border-b border-brand-50/50"><span className="text-neutral-500">{it.date} — {it.description}</span><span className="font-bold">${it.amount.toLocaleString()}</span></div>))}
   </div>) : null; })()}
@@ -13506,7 +13496,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   failed: items.filter(i => i.status === "failed").length,
   });
   }
-  } catch (e) { console.warn("fetchQueueStatus:", e.message); }
+  } catch (e) { pmError("PM-8006", { raw: e, context: "fetch notification queue status", silent: true }); }
   }
 
   const channels = ["in_app", "email", "push"];
@@ -13542,19 +13532,19 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
 
   async function toggleSetting(setting) {
   const { error: _err6051 } = await supabase.from("notification_settings").update({ enabled: !setting.enabled }).eq("company_id", companyId).eq("id", setting.id);
-  if (_err6051) console.warn("notification_settings write failed:", _err6051.message);
+  if (_err6051) pmError("PM-8006", { raw: _err6051, context: "notification_settings write", silent: true });
   fetchData();
   }
 
   async function updateDaysBefore(setting, days) {
   const { error: _err6056 } = await supabase.from("notification_settings").update({ days_before: Number(days) }).eq("company_id", companyId).eq("id", setting.id);
-  if (_err6056) console.warn("notification_settings write failed:", _err6056.message);
+  if (_err6056) pmError("PM-8006", { raw: _err6056, context: "notification_settings write", silent: true });
   fetchData();
   }
 
   async function updateTemplate(setting, template) {
   const { error: _err6061 } = await supabase.from("notification_settings").update({ template }).eq("company_id", companyId).eq("id", setting.id);
-  if (_err6061) console.warn("notification_settings write failed:", _err6061.message);
+  if (_err6061) pmError("PM-8006", { raw: _err6061, context: "notification_settings write", silent: true });
   }
 
   async function sendTestNotification(setting) {
@@ -13568,7 +13558,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   status: "sent",
   related_id: "test",
   }]);
-  if (_err_notification_log_6067) console.warn("notification_log write failed:", _err_notification_log_6067.message);
+  if (_err_notification_log_6067) pmError("PM-8006", { raw: _err_notification_log_6067, context: "notification_log write", silent: true });
   addNotification("\u2709\ufe0f", "Test notification sent for " + (eventLabels[setting.event_type]?.label || setting.event_type));
   fetchData();
   }
@@ -13609,7 +13599,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   addNotification("💰", "Rent reminder sent to " + tenant.name, { type: "rent_due", recipient: tenant.email });
   // Log
   const { error: _err6104 } = await supabase.from("notification_log").insert([{ company_id: companyId, event_type: "rent_due", recipient_email: normalizeEmail(tenant.email), subject: "Rent Due Reminder", message: msg + " " + monthKey, status: "queued", related_id: lease.id }]);
-  if (_err6104) console.warn("notification_log write failed:", _err6104.message);
+  if (_err6104) pmError("PM-8006", { raw: _err6104, context: "notification_log write", silent: true });
   count++;
   }
   }
@@ -13633,7 +13623,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   queueNotification("lease_expiry", tenant.email, { tenant: lease.tenant_name, property: lease.property, date: lease.end_date, daysLeft }, companyId);
   addNotification("📋", "Lease expiry warning sent to " + tenant.name, { type: "lease_expiry", recipient: tenant.email });
   const { error: _err6121 } = await supabase.from("notification_log").insert([{ company_id: companyId, event_type: "lease_expiring", recipient_email: normalizeEmail(tenant.email), subject: "Lease Expiration Notice", message: msg, status: "queued", related_id: lease.id }]);
-  if (_err6121) console.warn("notification_log write failed:", _err6121.message);
+  if (_err6121) pmError("PM-8006", { raw: _err6121, context: "notification_log write", silent: true });
   count++;
   }
   }
@@ -14312,7 +14302,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Net to You</div><div className="text-lg font-bold text-brand-700">${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
   </div>
   {/* Line items */}
-  {(() => { let items = []; try { items = JSON.parse(viewStatement.line_items || "[]"); } catch {} return items.map((cat, ci) => (
+  {(() => { let items = []; try { items = JSON.parse(viewStatement.line_items || "[]"); } catch (_e) { pmError("PM-8006", { raw: _e, context: "parse statement line items", silent: true }); } return items.map((cat, ci) => (
   <div key={ci} className="mb-3">
   <div className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">{cat.category}</div>
   {(cat.items || []).map((item, ii) => (
@@ -14962,7 +14952,7 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
   if (!await showConfirm({ message: `Restore this ${item._label.toLowerCase()}?` })) return;
   const { error } = await supabase.from(item._table).update({ archived_at: null, archived_by: null }).eq("id", item.id).eq("company_id", companyId);
   if (error) {
-  showToast("Failed to restore: " + error.message, "error");
+  pmError("PM-2004", { raw: error, context: "restore archived item" });
   return;
   }
   // If restoring a property, also offer to restore its archived tenant
@@ -14973,11 +14963,11 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
   if (shouldRestore) {
   for (const t of archivedTenants) {
   const { error: tErr } = await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", t.id).eq("company_id", companyId);
-  if (tErr) console.warn("Failed to restore tenant:", t.name, tErr.message);
+  if (tErr) pmError("PM-3002", { raw: tErr, context: "restore tenant " + t.name, silent: true });
   }
   // Also restore associated leases
   const { error: lErr } = await supabase.from("leases").update({ archived_at: null, status: "active" }).eq("company_id", companyId).eq("property", item.address).not("archived_at", "is", null);
-  if (lErr) console.warn("Failed to restore leases:", lErr.message);
+  if (lErr) pmError("PM-3004", { raw: lErr, context: "restore leases", silent: true });
   addNotification("♻️", `Restored property + ${archivedTenants.length} tenant(s)`);
   }
   }
@@ -14985,7 +14975,7 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
   // If restoring a tenant, update their property back to occupied
   if (item._table === "tenants" && item.property) {
   const { error: propErr } = await supabase.from("properties").update({ status: "occupied", tenant: item.name }).eq("company_id", companyId).eq("address", item.property).is("archived_at", null);
-  if (propErr) console.warn("Failed to update property:", propErr.message);
+  if (propErr) pmError("PM-2002", { raw: propErr, context: "update property on restore", silent: true });
   }
   // Reactivate accounting class if restoring a property
   if (item._table === "properties" && item.address) {
@@ -14998,7 +14988,7 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
   async function permanentDelete(item) {
   if (!await showConfirm({ message: `PERMANENTLY delete this ${item._label.toLowerCase()}? This cannot be undone.`, variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from(item._table).delete().eq("id", item.id).eq("company_id", companyId);
-  if (error) { showToast("Failed to delete: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: "permanent delete" }); return; }
   logAudit("delete", item._table, "Permanently deleted " + item._label + ": " + (item.name || item.address || item.id), item.id, userProfile?.email, userRole, companyId);
   addNotification("🗑️", `Permanently deleted ${item._label}`);
   fetchArchived();
@@ -15132,7 +15122,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   if (!form.start_date) { showToast("Start date is required.", "error"); return; }
   if (!form.day_of_month || Number(form.day_of_month) < 1 || Number(form.day_of_month) > 31 || isNaN(Number(form.day_of_month))) { showToast("Day of month must be between 1 and 31.", "error"); return; }
   const { error } = await supabase.from("autopay_schedules").insert([{ ...form, amount: Number(form.amount), company_id: companyId }]);
-  if (error) { showToast("Error saving schedule: " + error.message, "error"); return; }
+  if (error) { pmError("PM-6001", { raw: error, context: "save autopay schedule" }); return; }
   addNotification("🔄", `Autopay schedule created for ${form.tenant}`);
   logAudit("create", "autopay", `Autopay created: ${form.tenant} $${form.amount}/mo at ${form.property}`, "", userProfile?.email, userRole, companyId);
   setShowForm(false);
@@ -15171,7 +15161,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   const { data: todayPay } = await supabase.from("payments").select("id").eq("company_id", companyId).eq("tenant", s.tenant).eq("date", today).eq("method", s.method).limit(1);
   if (todayPay?.length > 0) { if (!await showConfirm({ message: "A payment from " + s.tenant + " was already recorded today. Run again?" })) { s._processing = false; return; } }
   const { error } = await supabase.from("payments").insert([{ company_id: companyId, tenant: s.tenant, property: s.property, amount: s.amount, type: "rent", method: s.method, status: "paid", date: today }]);
-  if (error) { showToast("Error: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
   // AUTO-POST TO ACCOUNTING: Same smart AR logic as manual payments
   const classId = await getPropertyClassId(s.property, companyId);
   const amt = safeNum(s.amount);
@@ -15365,7 +15355,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   if (isNaN(Number(form.grace_days)) || Number(form.grace_days) < 0) { showToast("Grace days must be a valid number.", "error"); return; }
   if (isNaN(Number(form.fee_amount)) || Number(form.fee_amount) <= 0) { showToast("Fee amount must be a positive number.", "error"); return; }
   const { error } = await supabase.from("late_fee_rules").insert([{ ...form, grace_days: Number(form.grace_days), fee_amount: Number(form.fee_amount), company_id: companyId }]);
-  if (error) { showToast("Error: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
   addNotification("⚠️", `Late fee rule "${form.name}" created`);
   setShowForm(false);
   fetchData();
@@ -15379,7 +15369,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   .eq("company_id", companyId).eq("tenant", payment.tenant)
   .eq("property", payment.property).eq("type", "late_fee").gte("date", thisMonth + "-01").limit(1);
   if (existingFee && existingFee.length > 0) {
-  console.warn("Late fee already applied for " + payment.tenant + " this month");
+  pmError("PM-9005", { raw: { message: "Late fee already applied for " + payment.tenant + " this month" }, context: "late fee duplicate check", silent: true });
   return;
   }
   const tenant = tenants.find(t => t.name === payment.tenant);
@@ -15589,7 +15579,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   window.location.href = data.url;
   return;
   }
-  } catch (stripeErr) { console.warn("Stripe Edge Function not available, using fallback:", stripeErr.message); }
+  } catch (stripeErr) { pmError("PM-8006", { raw: stripeErr, context: "Stripe edge function, using fallback", silent: true }); }
   // Fallback: record payment as pending_approval (no Stripe integration yet)
   const today = formatLocalDate(new Date());
   const { error: payErr } = await supabase.from("payments").insert([{ company_id: companyId,
@@ -15639,7 +15629,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   }
   }
   }
-  if (error) { showToast("Error submitting request: " + error.message, "error"); return; }
+  if (error) { pmError("PM-7001", { raw: error, context: "submit maintenance request" }); return; }
   logAudit("create", "maintenance", "Tenant submitted: " + maintForm.issue, "", currentUser?.email, "tenant", companyId);
   setMaintForm({ issue: "", priority: "normal", notes: "" });
   setMaintPhotos([]);
@@ -15652,7 +15642,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   async function sendMessage() {
   if (!newMessage.trim() || !tenantData) return;
   const { error: _err7538 } = await supabase.from("messages").insert([{ company_id: companyId, tenant: tenantData.name, property: tenantData.property, sender: tenantData.name, message: newMessage, read: false }]);
-  if (_err7538) console.warn("messages write failed:", _err7538.message);
+  if (_err7538) pmError("PM-8006", { raw: _err7538, context: "messages write", silent: true });
   setNewMessage("");
   const { data } = await supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).order("created_at", { ascending: true });
   setMessages(data || []);
@@ -15826,7 +15816,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   setAutopayEnabled(true);
   addNotification("🔄", "Autopay enabled — $" + safeNum(tenantData.rent) + "/month");
   }
-  } catch (e) { showToast("Error: " + e.message, "error"); }
+  } catch (e) { pmError("PM-6001", { raw: e, context: "enable autopay" }); }
   setAutopayLoading(false);
   }} disabled={autopayLoading} className={`relative w-12 h-6 rounded-full transition-colors ${autopayEnabled ? "bg-success-500" : "bg-neutral-300"}`}>
   <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${autopayEnabled ? "tranneutral-x-6" : "tranneutral-x-0.5"}`} />
@@ -16081,19 +16071,19 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   });
   if (rpcErr) throw new Error(rpcErr.message);
   } catch (rpcE) {
-  showToast("Failed to update user email: " + rpcE.message + "\n\nNo changes were made. Please ensure the database is properly configured.", "error");
+  pmError("PM-1009", { raw: rpcE, context: "update user email via RPC" });
   return;
   }
   } else {
   // No email change — just update role/name/pages
   const { error } = await supabase.from("app_users").update({ email: normalizeEmail(payload.email), role: payload.role, name: payload.name, custom_pages: payload.custom_pages, company_id: payload.company_id }).eq("company_id", companyId).eq("id", editingUser.id);
-  if (error) { showToast("Error: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
   await supabase.from("company_members").upsert([{ company_id: companyId, user_email: (form.email || "").toLowerCase(), user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
   }
   addNotification("👥", `${form.name}'s access updated`);
   } else {
   const { error, data: newUser } = await supabase.from("app_users").insert([{ ...payload, email: normalizeEmail(payload.email) }]).select();
-  if (error) { showToast("Error: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
   // Also add to company_members
   await supabase.from("company_members").upsert([{ company_id: companyId, user_email: (form.email || "").toLowerCase(), user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
   addNotification("👥", `${form.name} added as ${ROLES[form.role]?.label}`);
@@ -16138,7 +16128,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   options: { data: { name: user.name, role: user.role } }
   });
   if (authErr) {
-  showToast("Failed to send invitation email to " + user.email + ": " + authErr.message + "\n\nPlease verify the email address and try again. No access records were created.", "error");
+  pmError("PM-1007", { raw: authErr, context: "send team invitation to " + user.email });
   return;
   }
   // Auth succeeded — create membership as "invited" only (no app_users until they sign up)
@@ -16453,7 +16443,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   ]
   });
   await safeLedgerInsert({ company_id: cid, tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: `Rent proration credit (${moveOutDay}/${daysInMoveOutMonth} days)`, amount: -creditBack, type: "adjustment", balance: 0 });
-  if (selectedTenant.id) await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: -creditBack }).catch(e => console.warn("Balance update failed:", e.message));
+  if (selectedTenant.id) await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: -creditBack }).catch(e => pmError("PM-6002", { raw: e, context: "balance update on move-out credit", silent: true }));
   }
   }
   }
@@ -16485,7 +16475,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   completedSteps.push("recurring_deactivated");
   } catch (stepErr) {
   showToast("Move-out partially completed. " + stepErr.message + "\n\nPlease manually verify and fix any inconsistent state.", "error");
-  console.error("Move-out partial failure:", stepErr, "Completed steps:", completedSteps);
+  pmError("PM-3006", { raw: stepErr, context: "move-out partial failure, completed: " + completedSteps.join(", "), silent: true });
   }
 
   // 7. Create ledger entries (fetch fresh balance for accurate ledger trail)
@@ -16754,7 +16744,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   total_costs: 0,
   };
   const { error } = await companyInsert("eviction_cases", caseData, companyId);
-  if (error) { showToast("Error creating eviction case: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: "create eviction case" }); return; }
   // Update tenant status to notice
   if (form.tenant_id) {
   await supabase.from("tenants").update({ lease_status: "notice", move_out: formatLocalDate(noticeDate) }).eq("id", form.tenant_id).eq("company_id", companyId);
@@ -16848,7 +16838,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   if (nextStage === "lockout") updates.lockout_date = stageDate || formatLocalDate(new Date());
 
   const { error } = await supabase.from("eviction_cases").update(updates).eq("id", evCase.id).eq("company_id", companyId);
-  if (error) { showToast("Error updating case: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: "update eviction case stage" }); return; }
 
   // Post legal costs to accounting if any
   if (safeNum(stageCost) > 0) {
@@ -17606,7 +17596,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   created_by: userProfile?.email,
   };
   const { data, error } = await supabase.from("doc_generated").insert([payload]).select().maybeSingle();
-  if (error) { showToast("Error saving document: " + error.message, "error"); return null; }
+  if (error) { pmError("PM-7003", { raw: error, context: "save generated document" }); return null; }
   showToast("Document saved", "success");
   addNotification("📄", "Document created: " + docName);
   logAudit("create", "doc_builder", "Generated: " + docName, data?.id, userProfile?.email, userRole, companyId);
@@ -17666,8 +17656,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   URL.revokeObjectURL(blobUrl);
   showToast("PDF downloaded", "success");
   } catch (err) {
-  console.error("PDF export error:", err);
-  showToast("PDF export failed: " + err.message, "error");
+  pmError("PM-8006", { raw: err, context: "PDF export" });
+  pmError("PM-8006", { raw: err, context: "PDF export" });
   }
   return;
   }
@@ -17792,7 +17782,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const { error } = await supabase.functions.invoke("send-email", {
   body: { to: email, subject: docName, html: '<div style="font-family:Georgia,serif;font-size:14px;line-height:1.6;color:#1a1a1a;max-width:700px;margin:0 auto;">' + rendered + '</div>' },
   });
-  if (error) showToast("Failed to email " + email + ": " + error.message, "error");
+  if (error) pmError("PM-1007", { raw: error, context: "email document to " + email });
   } catch (e) { showToast("Email error: " + e.message, "error"); }
   }
 
@@ -17816,12 +17806,12 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const payload = { ...templateForm, company_id: companyId, updated_at: new Date().toISOString() };
   if (editingTemplate) {
   const { error } = await supabase.from("doc_templates").update(payload).eq("id", editingTemplate.id).eq("company_id", companyId);
-  if (error) { showToast("Error: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: "update document template" }); return; }
   showToast("Template updated", "success");
   } else {
   payload.created_by = userProfile?.email;
   const { error } = await supabase.from("doc_templates").insert([payload]);
-  if (error) { showToast("Error: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: "create document template" }); return; }
   showToast("Template created", "success");
   }
   setShowTemplateEditor(false);
@@ -18613,7 +18603,7 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   wo.filter(x => x.priority === "emergency" && x.status !== "completed").forEach(x => allTasks.push({ icon: "🚨", title: (x.property || "Property") + " — " + x.issue, subtitle: "Emergency · " + x.status, link: "maintenance", priority: "high" }));
   t.filter(x => { const end = x.lease_end_date || x.move_out; if (!end) return false; const days = Math.ceil((parseLocalDate(end) - new Date()) / 86400000); return days > 0 && days <= 30; }).forEach(x => allTasks.push({ icon: "📅", title: x.name + " — lease expires " + (x.lease_end_date || x.move_out), subtitle: x.property, link: "tenants", priority: "high" }));
   hoa.forEach(x => { const daysLeft = Math.ceil((new Date(x.due_date).getTime() - Date.now()) / 86400000); allTasks.push({ icon: "🏘️", title: (x.hoa_name || x.property || "HOA") + " — " + formatCurrency(x.amount) + " due " + x.due_date, subtitle: x.property, link: "hoa", priority: daysLeft <= 3 ? "high" : "medium" }); });
-  } catch (e) { console.warn("Tasks fetch:", e); }
+  } catch (e) { pmError("PM-8006", { raw: e, context: "tasks fetch", silent: true }); }
   setApprovals(allApprovals);
   setTasks(allTasks);
   setLoading(false);
@@ -18936,14 +18926,14 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   async function saveProfile() {
   setSaving(true);
   const { error } = await supabase.auth.updateUser({ data: { name: displayName.trim(), phone: phone.trim(), avatar_url: avatarUrl } });
-  if (error) showToast("Failed to update profile: " + error.message, "error");
+  if (error) pmError("PM-1009", { raw: error, context: "update user profile" });
   else showToast("Profile updated!", "success");
   setSaving(false);
   }
 
   async function sendPasswordReset() {
   const { error } = await supabase.auth.resetPasswordForEmail(currentUser?.email, { redirectTo: window.location.origin });
-  if (error) showToast("Failed to send reset email: " + error.message, "error");
+  if (error) pmError("PM-1004", { raw: error, context: "send password reset email" });
   else { setResetSent(true); showToast("Password reset link sent to " + currentUser?.email, "success"); }
   }
 
@@ -18955,7 +18945,7 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   const ext = file.name.split(".").pop();
   const path = `avatars/${currentUser.id}.${ext}`;
   const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
-  if (error) { showToast("Upload failed: " + error.message, "error"); setUploading(false); return; }
+  if (error) { pmError("PM-7002", { raw: error, context: "upload avatar" }); setUploading(false); return; }
   const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
   const publicUrl = urlData?.publicUrl + "?t=" + Date.now();
   setAvatarUrl(publicUrl);
@@ -19174,7 +19164,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   if (rpcErr) throw new Error(rpcErr.message);
   companyCreated = true;
   } catch (rpcE) {
-  console.warn("RPC create_company_atomic failed, using client-side fallback:", rpcE.message);
+  pmError("PM-8003", { raw: rpcE, context: "create_company_atomic RPC, using client-side fallback", silent: true });
   // Client-side fallback: insert company + membership + default accounts
   try {
   const { error: compErr } = await supabase.from("companies").insert([{
@@ -19213,7 +19203,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   }
   companyCreated = true;
   } catch (fallbackErr) {
-  showToast("Failed to create company: " + userError(fallbackErr.message), "error");
+  pmError("PM-8006", { raw: fallbackErr, context: "create company (client-side fallback)" });
   setCreating(false);
   return;
   }
@@ -19251,7 +19241,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   if (rpcErr) throw new Error(rpcErr.message);
   } catch (e) {
   // RPC mandatory — no client fallback for membership changes
-  showToast("Failed to submit join request: " + e.message + ". Please ensure the membership RPCs are deployed.", "error");
+  pmError("PM-8003", { raw: e, context: "submit company join request" });
   return;
   }
   setJoinMessage("Request sent to join " + company.name + "! An admin will review your request.");
@@ -19482,7 +19472,7 @@ function PendingRequestsPanel({ companyId, addNotification }) {
   else addNotification("\u274c", member.user_name + "'s request rejected");
   } catch (e) {
   // RPC mandatory — no client fallback for membership changes
-  showToast("Failed to process request: " + e.message + ". Please ensure the membership RPCs are deployed.", "error");
+  pmError("PM-8003", { raw: e, context: "process membership request" });
   return;
   }
   fetchRequests();
@@ -19545,7 +19535,7 @@ function PendingPMAssignments({ companyId, addNotification }) {
   const { error } = await supabase.from("pm_assignment_requests").update({
   status: "declined", reviewed_at: new Date().toISOString(),
   }).eq("id", req.id).eq("pm_company_id", companyId);
-  if (error) { showToast("Error declining: " + error.message, "error"); return; }
+  if (error) { pmError("PM-8006", { raw: error, context: "decline membership request" }); return; }
   addNotification("❌", "Declined PM request for " + req.property_address);
   }
   fetchRequests();
@@ -19774,7 +19764,7 @@ function AppInner() {
   const rows = missing.map(a => ({ ...a, company_id: cid, old_text_id: cid + "-" + a.code }));
   for (const row of rows) {
   const { error } = await supabase.from("acct_accounts").insert([row]);
-  if (error) console.warn("ensureDefaultAccounts insert failed for " + row.code + ":", error.message);
+  if (error) pmError("PM-4006", { raw: error, context: "ensureDefaultAccounts insert for " + row.code, silent: true });
   }
   delete _acctIdCache[cid];
   }
@@ -19797,7 +19787,7 @@ function AppInner() {
   _currentUserEmail = currentUser?.email || "";
   _currentUserRole = role || "";
   setActiveCompany(company);
-  try { localStorage.setItem("lastCompanyId", company.id); } catch {}
+  try { localStorage.setItem("lastCompanyId", company.id); } catch (_e) { pmError("PM-8006", { raw: _e, context: "save lastCompanyId to localStorage", silent: true }); }
   checkRPCHealth(company.id).then(m => setMissingRPCs(m)).catch(() => {});
   loadInboxNotifications(company.id);
   registerPushNotifications();
@@ -19807,11 +19797,11 @@ function AppInner() {
   ensureDefaultAccounts(company.id).then(() => {
   if (role !== "tenant" && role !== "owner") {
   // Auto-post rent accruals (idempotent — skips already posted months)
-  autoPostRentCharges(company.id).catch(e => console.warn("Auto rent charges:", e.message));
+  autoPostRentCharges(company.id).catch(e => pmError("PM-4008", { raw: e, context: "auto rent charges on login", silent: true }));
   // Auto-post recurring journal entries (idempotent — skips already posted months)
-  autoPostRecurringEntries(company.id).catch(e => console.warn("Auto recurring entries:", e.message));
+  autoPostRecurringEntries(company.id).catch(e => pmError("PM-4008", { raw: e, context: "auto recurring entries on login", silent: true }));
   }
-  }).catch(e => console.warn("COA seed:", e.message));
+  }).catch(e => pmError("PM-4006", { raw: e, context: "chart of accounts seed", silent: true }));
   setCompanyRole(role);
   setUserRole(role);
   setRoleLoaded(true);
@@ -19830,7 +19820,7 @@ function AppInner() {
   // Backfill auth_user_id for UID-based lookups
   if (data && !data.auth_user_id && user.id) {
   const { error: uidErr } = await supabase.from("company_members").update({ auth_user_id: user.id }).eq("id", data.id);
-  if (uidErr) console.warn("auth_user_id backfill failed:", uidErr.message);
+  if (uidErr) pmError("PM-1009", { raw: uidErr, context: "auth_user_id backfill", silent: true });
   }
   if (data) {
   setUserRole(data.role);
@@ -19858,7 +19848,7 @@ function AppInner() {
   recipient_email: options.recipient || userProfile?.email || "",
   notification_type: options.type || "general",
   read: false,
-  }]).then(({ error }) => { if (error) console.warn("Inbox write:", error.message); });
+  }]).then(({ error }) => { if (error) pmError("PM-8006", { raw: error, context: "inbox write", silent: true }); });
   }
   }
 
@@ -19867,17 +19857,17 @@ function AppInner() {
   async function registerPushNotifications() {
   try {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-  console.warn("Push notifications not supported");
+  pmError("PM-8006", { raw: { message: "Push notifications not supported" }, context: "push registration", silent: true });
   return;
   }
   const registration = await navigator.serviceWorker.register("/sw.js");
   const permission = await Notification.requestPermission();
-  if (permission !== "granted") { console.warn("Push permission denied"); return; }
+  if (permission !== "granted") { pmError("PM-8006", { raw: { message: "Push permission denied" }, context: "push registration", silent: true }); return; }
   
   // Get VAPID public key from Supabase (or use a hardcoded one for now)
   // For production, generate VAPID keys and store the public key here
   const VAPID_PUBLIC_KEY = process.env.REACT_APP_VAPID_PUBLIC_KEY || "";
-  if (!VAPID_PUBLIC_KEY) { console.warn("VAPID key not configured — push disabled"); return; }
+  if (!VAPID_PUBLIC_KEY) { pmError("PM-8006", { raw: { message: "VAPID key not configured" }, context: "push registration", silent: true }); return; }
 
   // Convert base64url to Uint8Array for applicationServerKey
   function urlBase64ToUint8Array(base64String) {
@@ -19899,11 +19889,11 @@ function AppInner() {
   user_email: currentUser.email,
   subscription: JSON.parse(JSON.stringify(subscription)),
   }], { onConflict: "company_id,user_email" }).then(({ error }) => {
-  if (error) console.warn("Push subscription save:", error.message);
+  if (error) pmError("PM-8006", { raw: error, context: "push subscription save", silent: true });
   // Push notifications enabled
   });
   }
-  } catch (e) { console.warn("Push registration failed:", e.message); }
+  } catch (e) { pmError("PM-8006", { raw: e, context: "push registration", silent: true }); }
   }
 
 
@@ -19962,7 +19952,7 @@ function AppInner() {
   }
   
   // Auto notification check complete
-  } catch (e) { console.warn("Auto notification check:", e.message); }
+  } catch (e) { pmError("PM-8006", { raw: e, context: "auto notification check", silent: true }); }
   }
 
   // Load persisted notifications on company select
@@ -19984,7 +19974,7 @@ function AppInner() {
 
   async function handleLogout() {
   await supabase.auth.signOut();
-  try { localStorage.removeItem("lastCompanyId"); } catch {}
+  try { localStorage.removeItem("lastCompanyId"); } catch (_e) { pmError("PM-8006", { raw: _e, context: "remove lastCompanyId from localStorage", silent: true }); }
   setScreen("landing");
   setNotifications([]);
   setUnreadCount(0);
