@@ -19568,15 +19568,7 @@ function AppInner() {
   const { data: company } = await supabase.from("companies").select("*").eq("id", tenantMembership.company_id).maybeSingle();
   if (company) { handleSelectCompany(company, tenantMembership.role); return; }
   }
-  // Try to restore last used company from localStorage
-  const lastCompanyId = (() => { try { return localStorage.getItem("lastCompanyId"); } catch { return null; } })();
-  if (lastCompanyId) {
-    const lastMembership = memberships.find(m => m.company_id === lastCompanyId);
-    if (lastMembership) {
-      const { data: company } = await supabase.from("companies").select("*").eq("id", lastCompanyId).maybeSingle();
-      if (company) { handleSelectCompany(company, lastMembership.role); return; }
-    }
-  }
+  // Always show company selector — removed auto-restore from localStorage
   // If only one company, auto-select it
   if (memberships.length === 1) {
     const { data: company } = await supabase.from("companies").select("*").eq("id", memberships[0].company_id).maybeSingle();
