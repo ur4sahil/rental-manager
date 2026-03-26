@@ -9280,15 +9280,16 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     }]).select("id").maybeSingle();
     if (glErr) { pmError("PM-5001", { raw: glErr, context: "creating GL account for bank feed" }); return; }
     // Create bank_account_feed
-    const { error: feedErr } = await supabase.from("bank_account_feed").insert([{
+    const { data: newFeed, error: feedErr } = await supabase.from("bank_account_feed").insert([{
       company_id: companyId, gl_account_id: glAcct?.id, account_name: newAccountForm.name.trim(),
       masked_number: newAccountForm.masked_number, account_type: newAccountForm.type,
       institution_name: newAccountForm.institution_name, connection_type: "csv"
-    }]);
+    }]).select("id").maybeSingle();
     if (feedErr) { pmError("PM-5002", { raw: feedErr, context: "creating bank account feed" }); return; }
     showToast("Bank account created.", "success");
     setShowNewAccount(false);
     setNewAccountForm({ name: "", type: "checking", masked_number: "", institution_name: "" });
+    if (newFeed?.id) setWizFeedId(newFeed.id);
     fetchAll();
   }
 
@@ -9365,21 +9366,30 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
 
   function wizHandleUpload() {
     if (!wizFile) { showToast("Please select a CSV file.", "error"); return; }
-    if (!wizFeedId) { showToast("Please select a bank account.", "error"); return; }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const parsed = csvParseText(e.target.result);
-      if (parsed.headers.length === 0) { showToast("Could not parse CSV — no headers found.", "error"); return; }
-      const detected = csvDetectFormat(parsed.headers);
-      const m = { date:"",description:"",amount:"",debit:"",credit:"",memo:"",check_number:"",reference:"",payee:"" };
-      if (detected) { Object.entries(detected.mapping).forEach(([k,v])=>{m[k]=v;}); }
-      else { parsed.headers.forEach(h=>{const hl=h.toLowerCase();if(!m.date&&hl.includes("date"))m.date=h;if(!m.description&&(hl.includes("desc")||hl.includes("name")||hl==="payee"))m.description=h;if(!m.amount&&(hl==="amount"||hl==="amt"))m.amount=h;if(!m.debit&&hl.includes("debit"))m.debit=h;if(!m.credit&&hl.includes("credit"))m.credit=h;if(!m.memo&&hl.includes("memo"))m.memo=h;if(!m.payee&&hl==="payee")m.payee=h;}); }
-      setWizMapping(m);
-      setWizParsed(parsed);
-      setWizDetected(detected);
-      setWizStep(3); // skip to mapping
-    };
-    reader.readAsText(wizFile);
+    if (!wizFeedId) { showToast("Please select a bank account first.", "error"); return; }
+    try {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const parsed = csvParseText(e.target.result);
+          if (parsed.headers.length === 0) { showToast("Could not parse CSV — no headers found.", "error"); return; }
+          const detected = csvDetectFormat(parsed.headers);
+          const m = { date:"",description:"",amount:"",debit:"",credit:"",memo:"",check_number:"",reference:"",payee:"" };
+          if (detected) { Object.entries(detected.mapping).forEach(([k,v])=>{m[k]=v;}); }
+          else { parsed.headers.forEach(h=>{const hl=h.toLowerCase();if(!m.date&&hl.includes("date"))m.date=h;if(!m.description&&(hl.includes("desc")||hl.includes("name")||hl==="payee"))m.description=h;if(!m.amount&&(hl==="amount"||hl==="amt"))m.amount=h;if(!m.debit&&hl.includes("debit"))m.debit=h;if(!m.credit&&hl.includes("credit"))m.credit=h;if(!m.memo&&hl.includes("memo"))m.memo=h;if(!m.payee&&hl==="payee")m.payee=h;}); }
+          setWizMapping(m);
+          setWizParsed(parsed);
+          setWizDetected(detected);
+          setWizStep(3); // skip to mapping
+        } catch (parseErr) {
+          pmError("PM-5001", { raw: parseErr, context: "parsing CSV file " + wizFile?.name });
+        }
+      };
+      reader.onerror = () => { pmError("PM-5001", { raw: { message: "FileReader error" }, context: "reading CSV file" }); };
+      reader.readAsText(wizFile);
+    } catch (err) {
+      pmError("PM-5001", { raw: err, context: "CSV upload handler" });
+    }
   }
 
   function wizBuildPreview() {
@@ -10676,7 +10686,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     {/* Step 2: Upload CSV */}
     {wizStep === 2 && (
     <div className="space-y-4">
-      <div onClick={() => fileRef.current?.click()} className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer ${wizFile ? "border-success-300 bg-success-50/50" : "border-neutral-200 hover:border-neutral-400"}`}>
+      <div onClick={() => fileRef.current?.click()} onDragOver={e => { e.preventDefault(); e.stopPropagation(); }} onDragEnter={e => { e.preventDefault(); e.stopPropagation(); }} onDrop={e => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer?.files?.[0]; if (f && (f.name.endsWith(".csv") || f.name.endsWith(".tsv") || f.name.endsWith(".txt"))) setWizFile(f); else if (f) showToast("Please drop a CSV, TSV, or TXT file.", "error"); }} className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer ${wizFile ? "border-success-300 bg-success-50/50" : "border-neutral-200 hover:border-neutral-400"}`}>
         <input ref={fileRef} type="file" accept=".csv,.txt,.tsv" className="hidden" onChange={e => { if (e.target.files[0]) setWizFile(e.target.files[0]); }} />
         {wizFile ? <><p className="text-2xl">📄</p><p className="font-semibold text-success-800">{wizFile.name}</p><p className="text-xs text-success-600">{(wizFile.size/1024).toFixed(1)} KB</p></> : <><p className="text-2xl">📤</p><p className="font-semibold text-neutral-700">Drop CSV here or click to browse</p></>}
       </div>
