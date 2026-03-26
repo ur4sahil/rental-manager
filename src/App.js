@@ -23,11 +23,11 @@ class ErrorBoundary extends React.Component {
   render() {
   if (this.state.hasError) {
   return (
-  <div className="flex items-center justify-center min-h-screen bg-gray-50">
+  <div className="flex items-center justify-center min-h-screen bg-subtle-50">
   <div className="text-center p-8 max-w-md">
   <div className="text-5xl mb-4">⚠️</div>
-  <h2 className="text-xl font-bold text-gray-800 mb-2">Something went wrong</h2>
-  <p className="text-sm text-gray-500 mb-4">{this.state.error?.message || "An unexpected error occurred"}</p>
+  <h2 className="text-xl font-bold text-subtle-800 mb-2">Something went wrong</h2>
+  <p className="text-sm text-subtle-500 mb-4">{this.state.error?.message || "An unexpected error occurred"}</p>
   <button onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }} className="bg-brand-600 text-white px-6 py-2 rounded-lg hover:bg-brand-700">Reload App</button>
   </div>
   </div>
@@ -875,26 +875,26 @@ async function lookupZip(zip) {
 const STATE_NAMES = {AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",CO:"Colorado",CT:"Connecticut",DE:"Delaware",DC:"District of Columbia",FL:"Florida",GA:"Georgia",HI:"Hawaii",ID:"Idaho",IL:"Illinois",IN:"Indiana",IA:"Iowa",KS:"Kansas",KY:"Kentucky",LA:"Louisiana",ME:"Maine",MD:"Maryland",MA:"Massachusetts",MI:"Michigan",MN:"Minnesota",MS:"Mississippi",MO:"Missouri",MT:"Montana",NE:"Nebraska",NV:"Nevada",NH:"New Hampshire",NJ:"New Jersey",NM:"New Mexico",NY:"New York",NC:"North Carolina",ND:"North Dakota",OH:"Ohio",OK:"Oklahoma",OR:"Oregon",PA:"Pennsylvania",RI:"Rhode Island",SC:"South Carolina",SD:"South Dakota",TN:"Tennessee",TX:"Texas",UT:"Utah",VT:"Vermont",VA:"Virginia",WA:"Washington",WV:"West Virginia",WI:"Wisconsin",WY:"Wyoming"};
 
 const statusColors = {
-  occupied: "bg-green-100 text-green-700",
-  vacant: "bg-yellow-100 text-yellow-700",
-  maintenance: "bg-red-100 text-red-700",
-  "notice given": "bg-orange-100 text-orange-700",
-  active: "bg-green-100 text-green-700",
-  notice: "bg-orange-100 text-orange-700",
-  open: "bg-blue-100 text-blue-700",
-  in_progress: "bg-purple-100 text-purple-700",
+  occupied: "bg-positive-100 text-positive-700",
+  vacant: "bg-caution-100 text-caution-700",
+  maintenance: "bg-danger-100 text-danger-700",
+  "notice given": "bg-notice-100 text-notice-700",
+  active: "bg-positive-100 text-positive-700",
+  notice: "bg-notice-100 text-notice-700",
+  open: "bg-info-100 text-info-700",
+  in_progress: "bg-highlight-100 text-highlight-700",
   completed: "bg-neutral-100 text-neutral-500",
-  paid: "bg-green-100 text-green-700",
-  partial: "bg-yellow-100 text-yellow-700",
-  unpaid: "bg-red-100 text-red-700",
-  pending: "bg-yellow-100 text-yellow-700",
-  approved: "bg-green-100 text-green-700",
-  eviction: "bg-red-100 text-red-700",
+  paid: "bg-positive-100 text-positive-700",
+  partial: "bg-caution-100 text-caution-700",
+  unpaid: "bg-danger-100 text-danger-700",
+  pending: "bg-caution-100 text-caution-700",
+  approved: "bg-positive-100 text-positive-700",
+  eviction: "bg-danger-100 text-danger-700",
 };
 
 const priorityColors = {
-  emergency: "bg-red-500 text-white",
-  normal: "bg-blue-100 text-blue-700",
+  emergency: "bg-danger-500 text-white",
+  normal: "bg-info-100 text-info-700",
   low: "bg-neutral-100 text-neutral-500",
 };
 
@@ -942,7 +942,7 @@ function ToastContainer({ toasts, removeToast }) {
   return (
   <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 max-w-sm">
   {toasts.map(t => (
-  <div key={t.id} className={"flex items-start gap-3 px-4 py-3 rounded-2xl shadow-lg border backdrop-blur-md animate-slide-up " + (t.type === "error" ? "bg-red-50 border-red-200 text-red-800" : t.type === "warning" ? "bg-amber-50 border-amber-200 text-amber-800" : t.type === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-white border-brand-100 text-neutral-700")}>
+  <div key={t.id} className={"flex items-start gap-3 px-4 py-3 rounded-2xl shadow-lg border backdrop-blur-md animate-slide-up " + (t.type === "error" ? "bg-danger-50 border-danger-200 text-danger-800" : t.type === "warning" ? "bg-warn-50 border-warn-200 text-warn-800" : t.type === "success" ? "bg-success-50 border-success-200 text-success-800" : "bg-white border-brand-100 text-neutral-700")}>
   <span className="material-icons-outlined text-lg mt-0.5">{t.type === "error" ? "error" : t.type === "warning" ? "warning" : t.type === "success" ? "check_circle" : "info"}</span>
   <div className="flex-1 text-sm">{t.message}</div>
   <button onClick={() => removeToast(t.id)} className="text-neutral-400 hover:text-neutral-600 ml-1"><span className="material-icons-outlined text-sm">close</span></button>
@@ -967,7 +967,7 @@ function ConfirmModal({ config, onConfirm, onCancel }) {
   </div>
   <div className="px-6 py-4 border-t border-brand-50 flex justify-end gap-3">
   <Btn variant="slate" onClick={onCancel}>{config.cancelText || "Cancel"}</Btn>
-  <button onClick={onConfirm} className={"px-4 py-2 text-sm font-semibold text-white rounded-xl transition-colors " + (isDanger ? "bg-red-600 hover:bg-red-700" : "bg-brand-600 hover:bg-brand-700")}>{config.confirmText || (isDanger ? "Delete" : "Confirm")}</button>
+  <button onClick={onConfirm} className={"px-4 py-2 text-sm font-semibold text-white rounded-xl transition-colors " + (isDanger ? "bg-danger-600 hover:bg-danger-700" : "bg-brand-600 hover:bg-brand-700")}>{config.confirmText || (isDanger ? "Delete" : "Confirm")}</button>
   </div>
   </div>
   </div>
@@ -1223,22 +1223,22 @@ function LandingPage({ onGetStarted }) {
   <div className="mt-4 text-brand-600 text-sm font-bold">Get Started →</div>
   </button>
 
-  <button onClick={() => onGetStarted("signup_owner")} className="bg-white rounded-3xl border border-emerald-100 p-8 text-center hover:border-emerald-300 hover:shadow-card transition-all group">
-  <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-  <span className="material-icons-outlined text-emerald-600 text-3xl">home</span>
+  <button onClick={() => onGetStarted("signup_owner")} className="bg-white rounded-3xl border border-success-100 p-8 text-center hover:border-success-300 hover:shadow-card transition-all group">
+  <div className="w-16 h-16 rounded-2xl bg-success-50 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+  <span className="material-icons-outlined text-success-600 text-3xl">home</span>
   </div>
   <div className="text-lg font-manrope font-bold text-neutral-800 mb-2">Property Owner</div>
   <p className="text-sm text-neutral-400">I own properties and want to manage them directly or assign a property manager.</p>
-  <div className="mt-4 text-emerald-600 text-sm font-bold">Get Started →</div>
+  <div className="mt-4 text-success-600 text-sm font-bold">Get Started →</div>
   </button>
 
-  <button onClick={() => onGetStarted("signup_tenant")} className="bg-white rounded-3xl border border-amber-100 p-8 text-center hover:border-amber-300 hover:shadow-card transition-all group">
-  <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-  <span className="material-icons-outlined text-amber-600 text-3xl">vpn_key</span>
+  <button onClick={() => onGetStarted("signup_tenant")} className="bg-white rounded-3xl border border-warn-100 p-8 text-center hover:border-warn-300 hover:shadow-card transition-all group">
+  <div className="w-16 h-16 rounded-2xl bg-warn-50 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+  <span className="material-icons-outlined text-warn-600 text-3xl">vpn_key</span>
   </div>
   <div className="text-lg font-manrope font-bold text-neutral-800 mb-2">Tenant</div>
   <p className="text-sm text-neutral-400">I have an invite code from my landlord or property manager to access my portal.</p>
-  <div className="mt-4 text-amber-600 text-sm font-bold">Enter Invite Code →</div>
+  <div className="mt-4 text-warn-600 text-sm font-bold">Enter Invite Code →</div>
   </button>
   </div>
 
@@ -1408,7 +1408,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   <p className="text-sm text-neutral-400 mb-6">Sign in to your account</p>
   </>
   )}
-  {error && <div className="bg-red-50 text-red-600 text-xs rounded-lg px-3 py-2 mb-4">{error}</div>}
+  {error && <div className="bg-danger-50 text-danger-600 text-xs rounded-lg px-3 py-2 mb-4">{error}</div>}
 
   {isSignup && (
   <div className="mb-4">
@@ -1428,12 +1428,12 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   {mode === "signup_tenant" && (
   <div className="mb-4">
   <label className="text-xs font-medium text-neutral-500 block mb-1">Invite Code *</label>
-  <Input value={inviteCode} onChange={e => setInviteCode(e.target.value.toUpperCase())} placeholder="e.g. TNT-38472916" className="bg-amber-50 font-mono tracking-wider" />
+  <Input value={inviteCode} onChange={e => setInviteCode(e.target.value.toUpperCase())} placeholder="e.g. TNT-38472916" className="bg-warn-50 font-mono tracking-wider" />
   <p className="text-xs text-neutral-400 mt-1">Check your invite email from your landlord or property manager</p>
   </div>
   )}
 
-  <button onClick={isSignup ? () => handleSignup(mode.replace("signup_", "")) : handleLogin} disabled={loading} className={`w-full text-white py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50 ${isSignup ? (mode === "signup_pm" ? "bg-brand-600 hover:bg-brand-700" : mode === "signup_owner" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700") : "bg-brand-600 hover:bg-brand-700"}`}>
+  <button onClick={isSignup ? () => handleSignup(mode.replace("signup_", "")) : handleLogin} disabled={loading} className={`w-full text-white py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50 ${isSignup ? (mode === "signup_pm" ? "bg-brand-600 hover:bg-brand-700" : mode === "signup_owner" ? "bg-success-600 hover:bg-success-700" : "bg-warn-600 hover:bg-warn-700") : "bg-brand-600 hover:bg-brand-700"}`}>
   {loading ? "Please wait..." : isSignup ? "Create Account" : "Sign In"}
   </button>
 
@@ -1538,16 +1538,16 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   {/* Notifications accessible via bell icon in header */}
 
   <div className="grid grid-cols-2 gap-3 mb-4 md:grid-cols-4">
-  <StatCard onClick={() => setPage("properties")} label="Occupancy" value={`${occupied}/${properties.length}`} sub={`${properties.length ? Math.round(occupied / properties.length * 100) : 0}% occupied`} color="text-green-600" />
-  <StatCard onClick={() => setPage("accounting")} label="Revenue (Acctg)" value={`${formatCurrency(acctRevenue)}`} sub="from journal entries" color="text-blue-600" />
-  <StatCard onClick={() => setPage("accounting")} label="Expenses (Acctg)" value={`${formatCurrency(acctExpenses)}`} sub="from journal entries" color="text-red-500" />
-  <StatCard onClick={() => setPage("accounting")} label="Net Income" value={`$${(acctRevenue - acctExpenses).toLocaleString()}`} sub="revenue - expenses" color={acctRevenue - acctExpenses >= 0 ? "text-emerald-600" : "text-red-600"} />
+  <StatCard onClick={() => setPage("properties")} label="Occupancy" value={`${occupied}/${properties.length}`} sub={`${properties.length ? Math.round(occupied / properties.length * 100) : 0}% occupied`} color="text-positive-600" />
+  <StatCard onClick={() => setPage("accounting")} label="Revenue (Acctg)" value={`${formatCurrency(acctRevenue)}`} sub="from journal entries" color="text-info-600" />
+  <StatCard onClick={() => setPage("accounting")} label="Expenses (Acctg)" value={`${formatCurrency(acctExpenses)}`} sub="from journal entries" color="text-danger-500" />
+  <StatCard onClick={() => setPage("accounting")} label="Net Income" value={`$${(acctRevenue - acctExpenses).toLocaleString()}`} sub="revenue - expenses" color={acctRevenue - acctExpenses >= 0 ? "text-success-600" : "text-danger-600"} />
   </div>
   <div className="grid grid-cols-2 gap-3 mb-6 md:grid-cols-4">
   <StatCard onClick={() => setPage("payments")} label="Rent Collected" value={`${formatCurrency(totalRent)}`} sub="payments table" color="text-brand-600" />
-  <StatCard onClick={() => setPage("tenants")} label="Delinquent" value={delinquent} sub="tenants with balance" color="text-orange-500" />
-  <StatCard onClick={() => setPage("maintenance")} label="Open Work Orders" value={openWO} sub={`${workOrders.filter(w => w.priority === "emergency").length} emergency`} color="text-orange-500" />
-  <StatCard onClick={() => setPage("utilities")} label="Pending Utilities" value={utilities.filter(u => u.status === "pending").length} sub="awaiting payment" color="text-yellow-600" />
+  <StatCard onClick={() => setPage("tenants")} label="Delinquent" value={delinquent} sub="tenants with balance" color="text-notice-500" />
+  <StatCard onClick={() => setPage("maintenance")} label="Open Work Orders" value={openWO} sub={`${workOrders.filter(w => w.priority === "emergency").length} emergency`} color="text-notice-500" />
+  <StatCard onClick={() => setPage("utilities")} label="Pending Utilities" value={utilities.filter(u => u.status === "pending").length} sub="awaiting payment" color="text-caution-600" />
   </div>
   {/* Tasks & Approvals summary — click to go to full page */}
   {(() => {
@@ -1557,15 +1557,15 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   + tenants.filter(t => { const end = t.lease_end_date || t.move_out; if (!end) return false; const days = Math.ceil((parseLocalDate(end) - new Date()) / 86400000); return days > 0 && days <= 30; }).length
   + hoaDue.length + pendingApprovalCount;
   return taskCount > 0 ? (
-  <div onClick={() => setPage("tasks")} className="bg-amber-50 rounded-3xl shadow-card border border-amber-200 p-4 mb-6 cursor-pointer hover:bg-amber-100 transition-colors flex items-center justify-between">
+  <div onClick={() => setPage("tasks")} className="bg-warn-50 rounded-3xl shadow-card border border-warn-200 p-4 mb-6 cursor-pointer hover:bg-warn-100 transition-colors flex items-center justify-between">
   <div className="flex items-center gap-3">
-  <div className="w-10 h-10 bg-amber-200 text-amber-800 rounded-full flex items-center justify-center font-bold text-lg">{taskCount}</div>
+  <div className="w-10 h-10 bg-warn-200 text-warn-800 rounded-full flex items-center justify-center font-bold text-lg">{taskCount}</div>
   <div>
-  <div className="font-manrope font-bold text-amber-800">Tasks & Approvals</div>
-  <div className="text-xs text-amber-600">{pendingApprovalCount > 0 ? pendingApprovalCount + " awaiting approval · " : ""}{taskCount - pendingApprovalCount} pending tasks</div>
+  <div className="font-manrope font-bold text-warn-800">Tasks & Approvals</div>
+  <div className="text-xs text-warn-600">{pendingApprovalCount > 0 ? pendingApprovalCount + " awaiting approval · " : ""}{taskCount - pendingApprovalCount} pending tasks</div>
   </div>
   </div>
-  <span className="material-icons-outlined text-amber-500">arrow_forward</span>
+  <span className="material-icons-outlined text-warn-500">arrow_forward</span>
   </div>
   ) : null;
   })()}
@@ -1579,7 +1579,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   <div className="text-sm font-medium text-neutral-800">{t.name}</div>
   <div className="text-xs text-neutral-400">{t.property}</div>
   </div>
-  <div className="text-sm text-orange-500 font-semibold">{t.move_out}</div>
+  <div className="text-sm text-notice-500 font-semibold">{t.move_out}</div>
   </div>
   ))}
   {tenants.filter(t => t.move_out).length === 0 && <div className="text-sm text-neutral-400 text-center py-4">No upcoming expirations</div>}
@@ -1613,19 +1613,19 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   {utilities.filter(u => u.status === "pending").length === 0 && <div className="text-sm text-neutral-400 text-center py-4">No pending utilities</div>}
   </div>
   {hoaDue.length > 0 && (
-  <div className="bg-white rounded-3xl shadow-card border border-amber-100 p-4">
-  <h3 className="font-semibold text-amber-700 mb-3"><span className="material-icons-outlined text-sm align-middle mr-1">holiday_village</span>HOA Payments Due</h3>
+  <div className="bg-white rounded-3xl shadow-card border border-warn-100 p-4">
+  <h3 className="font-semibold text-warn-700 mb-3"><span className="material-icons-outlined text-sm align-middle mr-1">holiday_village</span>HOA Payments Due</h3>
   {hoaDue.map(h => {
   const daysLeft = Math.ceil((new Date(h.due_date).getTime() - Date.now()) / 86400000);
   return (
-  <div key={h.id} className="flex justify-between items-center py-2 border-b border-amber-50 last:border-0">
+  <div key={h.id} className="flex justify-between items-center py-2 border-b border-warn-50 last:border-0">
   <div>
   <div className="text-sm font-medium text-neutral-800">{h.hoa_name}</div>
   <div className="text-xs text-neutral-400">{h.property}</div>
   </div>
   <div className="text-right">
-  <div className="text-sm font-semibold text-amber-700">${safeNum(h.amount).toLocaleString()}</div>
-  <div className={`text-xs ${daysLeft <= 3 ? "text-red-500 font-bold" : "text-amber-500"}`}>{daysLeft <= 0 ? "OVERDUE" : `${daysLeft}d left`}</div>
+  <div className="text-sm font-semibold text-warn-700">${safeNum(h.amount).toLocaleString()}</div>
+  <div className={`text-xs ${daysLeft <= 3 ? "text-danger-500 font-bold" : "text-warn-500"}`}>{daysLeft <= 0 ? "OVERDUE" : `${daysLeft}d left`}</div>
   </div>
   </div>);
   })}
@@ -1635,10 +1635,10 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   <h3 className="font-semibold text-neutral-700 mb-3">Net Operating Income</h3>
   <div className="space-y-2">
   {[
-  ["Gross Rent Collected", `${formatCurrency(totalRent)}`, "text-green-600"],
-  ["Maintenance Costs", `-$${workOrders.reduce((s, w) => s + safeNum(w.cost), 0).toLocaleString()}`, "text-red-500"],
-  ["Utility Expenses", `-$${utilities.reduce((s, u) => s + safeNum(u.amount), 0).toLocaleString()}`, "text-red-500"],
-  ["NOI", `$${(totalRent - workOrders.reduce((s, w) => s + safeNum(w.cost), 0) - utilities.reduce((s, u) => s + safeNum(u.amount), 0)).toLocaleString()}`, "text-blue-700 font-bold"],
+  ["Gross Rent Collected", `${formatCurrency(totalRent)}`, "text-positive-600"],
+  ["Maintenance Costs", `-$${workOrders.reduce((s, w) => s + safeNum(w.cost), 0).toLocaleString()}`, "text-danger-500"],
+  ["Utility Expenses", `-$${utilities.reduce((s, u) => s + safeNum(u.amount), 0).toLocaleString()}`, "text-danger-500"],
+  ["NOI", `$${(totalRent - workOrders.reduce((s, w) => s + safeNum(w.cost), 0) - utilities.reduce((s, u) => s + safeNum(u.amount), 0)).toLocaleString()}`, "text-info-700 font-bold"],
   ].map(([l, v, c]) => (
   <div key={l} className="flex justify-between">
   <span className="text-sm text-neutral-500">{l}</span>
@@ -2295,8 +2295,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         return (
           <div>
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                <span className="material-icons-outlined text-green-600 text-2xl">home</span>
+              <div className="w-12 h-12 bg-positive-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-positive-600 text-2xl">home</span>
               </div>
               <div>
                 <h3 className="text-lg font-manrope font-bold text-neutral-800">Property Details</h3>
@@ -2405,7 +2405,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                       const updates = { tenantCount: tenantForm.tenantCount - 1 };
                       updates["tenant_" + n] = ""; updates["tenant_" + n + "_email"] = ""; updates["tenant_" + n + "_phone"] = "";
                       setTenantForm(f => ({ ...f, ...updates }));
-                    }} className="text-xs text-red-400 hover:text-red-600">Remove</button>
+                    }} className="text-xs text-danger-400 hover:text-danger-600">Remove</button>
                   </div>
                   <div className="grid grid-cols-3 gap-3">
                     <div className="col-span-3">
@@ -2451,8 +2451,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         return (
           <div>
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                <span className="material-icons-outlined text-blue-600 text-2xl">bolt</span>
+              <div className="w-12 h-12 bg-info-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-info-600 text-2xl">bolt</span>
               </div>
               <div>
                 <h3 className="text-lg font-manrope font-bold text-neutral-800">Utilities</h3>
@@ -2465,7 +2465,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-neutral-600">Utility #{idx + 1}</span>
                     {utilities.length > 1 && (
-                      <button onClick={() => removeUtilityRow(idx)} className="text-red-400 hover:text-red-600 text-xs">Remove</button>
+                      <button onClick={() => removeUtilityRow(idx)} className="text-danger-400 hover:text-danger-600 text-xs">Remove</button>
                     )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -2516,8 +2516,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         return (
           <div>
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                <span className="material-icons-outlined text-purple-600 text-2xl">account_balance</span>
+              <div className="w-12 h-12 bg-highlight-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-highlight-600 text-2xl">account_balance</span>
               </div>
               <div>
                 <h3 className="text-lg font-manrope font-bold text-neutral-800">HOA</h3>
@@ -2526,7 +2526,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             </div>
             <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               <label className="flex items-center gap-3 cursor-pointer">
-                <div className={`w-10 h-6 rounded-full transition-colors ${hoa.enabled ? "bg-green-500" : "bg-neutral-200"} relative`} onClick={() => setHoa({ ...hoa, enabled: !hoa.enabled })}>
+                <div className={`w-10 h-6 rounded-full transition-colors ${hoa.enabled ? "bg-positive-500" : "bg-neutral-200"} relative`} onClick={() => setHoa({ ...hoa, enabled: !hoa.enabled })}>
                   <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${hoa.enabled ? "tranneutral-x-4.5 left-0.5" : "left-0.5"}`} />
                 </div>
                 <span className="text-sm font-medium text-neutral-700">Does this property have an HOA?</span>
@@ -2575,8 +2575,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         return (
           <div>
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
-                <span className="material-icons-outlined text-amber-600 text-2xl">real_estate_agent</span>
+              <div className="w-12 h-12 bg-warn-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-warn-600 text-2xl">real_estate_agent</span>
               </div>
               <div>
                 <h3 className="text-lg font-manrope font-bold text-neutral-800">Loan / Mortgage</h3>
@@ -2585,7 +2585,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             </div>
             <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               <label className="flex items-center gap-3 cursor-pointer">
-                <div className={`w-10 h-6 rounded-full transition-colors ${loan.enabled ? "bg-green-500" : "bg-neutral-200"} relative`} onClick={() => setLoan({ ...loan, enabled: !loan.enabled })}>
+                <div className={`w-10 h-6 rounded-full transition-colors ${loan.enabled ? "bg-positive-500" : "bg-neutral-200"} relative`} onClick={() => setLoan({ ...loan, enabled: !loan.enabled })}>
                   <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${loan.enabled ? "tranneutral-x-4.5 left-0.5" : "left-0.5"}`} />
                 </div>
                 <span className="text-sm font-medium text-neutral-700">Does this property have a loan?</span>
@@ -2626,7 +2626,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   </div>
                   <div className="bg-neutral-50 rounded-xl p-3 space-y-3">
                     <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" checked={loan.escrow_included} onChange={e => setLoan({ ...loan, escrow_included: e.target.checked })} className="accent-green-600" />
+                      <input type="checkbox" checked={loan.escrow_included} onChange={e => setLoan({ ...loan, escrow_included: e.target.checked })} className="accent-positive-600" />
                       <span className="font-medium text-neutral-700">Escrow included in payment</span>
                     </label>
                     {loan.escrow_included && (
@@ -2637,13 +2637,13 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                         </div>
                         <div className="flex flex-wrap gap-3">
                           <label className="flex items-center gap-1.5 text-xs text-neutral-600">
-                            <input type="checkbox" checked={loan.escrow_covers.taxes} onChange={e => setLoan({ ...loan, escrow_covers: { ...loan.escrow_covers, taxes: e.target.checked } })} className="accent-green-600" />Taxes
+                            <input type="checkbox" checked={loan.escrow_covers.taxes} onChange={e => setLoan({ ...loan, escrow_covers: { ...loan.escrow_covers, taxes: e.target.checked } })} className="accent-positive-600" />Taxes
                           </label>
                           <label className="flex items-center gap-1.5 text-xs text-neutral-600">
-                            <input type="checkbox" checked={loan.escrow_covers.insurance} onChange={e => setLoan({ ...loan, escrow_covers: { ...loan.escrow_covers, insurance: e.target.checked } })} className="accent-green-600" />Insurance
+                            <input type="checkbox" checked={loan.escrow_covers.insurance} onChange={e => setLoan({ ...loan, escrow_covers: { ...loan.escrow_covers, insurance: e.target.checked } })} className="accent-positive-600" />Insurance
                           </label>
                           <label className="flex items-center gap-1.5 text-xs text-neutral-600">
-                            <input type="checkbox" checked={loan.escrow_covers.pmi} onChange={e => setLoan({ ...loan, escrow_covers: { ...loan.escrow_covers, pmi: e.target.checked } })} className="accent-green-600" />PMI
+                            <input type="checkbox" checked={loan.escrow_covers.pmi} onChange={e => setLoan({ ...loan, escrow_covers: { ...loan.escrow_covers, pmi: e.target.checked } })} className="accent-positive-600" />PMI
                           </label>
                         </div>
                       </div>
@@ -2668,7 +2668,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                     <textarea value={loan.notes} onChange={e => setLoan({ ...loan, notes: e.target.value })} rows={2} placeholder="Optional notes..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                   </div>
                   <label className="flex items-center gap-2 text-sm pt-1">
-                    <input type="checkbox" checked={loan.setup_recurring} onChange={e => setLoan({ ...loan, setup_recurring: e.target.checked })} className="accent-green-600" />
+                    <input type="checkbox" checked={loan.setup_recurring} onChange={e => setLoan({ ...loan, setup_recurring: e.target.checked })} className="accent-positive-600" />
                     <span className="font-medium text-neutral-700">Set up recurring mortgage payment</span>
                   </label>
                   <div className="border-t border-neutral-100 pt-2 mt-2">
@@ -2689,8 +2689,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         return (
           <div>
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
-                <span className="material-icons-outlined text-emerald-600 text-2xl">description</span>
+              <div className="w-12 h-12 bg-success-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-success-600 text-2xl">description</span>
               </div>
               <div>
                 <h3 className="text-lg font-manrope font-bold text-neutral-800">Documents</h3>
@@ -2699,23 +2699,23 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             </div>
             <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               {propForm.status === "occupied" && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
-                  <div className="text-sm font-semibold text-amber-800 mb-2">Required Documents</div>
+                <div className="bg-warn-50 border border-warn-200 rounded-xl p-4 mb-4">
+                  <div className="text-sm font-semibold text-warn-800 mb-2">Required Documents</div>
                   {["Lease", "ID", "Insurance"].map(doc => {
                     const uploaded = uploadedDocs.some(d => d.type === doc);
                     return (
                       <div key={doc} className="flex items-center gap-2 py-1 text-sm">
-                        <span className={uploaded ? "text-green-500" : "text-amber-400"}>{uploaded ? "✅" : "☐"}</span>
-                        <span className={uploaded ? "text-neutral-700" : "text-amber-700"}>
+                        <span className={uploaded ? "text-positive-500" : "text-warn-400"}>{uploaded ? "✅" : "☐"}</span>
+                        <span className={uploaded ? "text-neutral-700" : "text-warn-700"}>
                           {doc === "Lease" ? "Lease Agreement" : doc === "ID" ? "Government-Issued ID" : "Renters Insurance"}
                         </span>
-                        <span className="text-red-500 text-xs">*</span>
-                        {uploaded && <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">Uploaded</span>}
+                        <span className="text-danger-500 text-xs">*</span>
+                        {uploaded && <span className="text-xs text-positive-600 bg-positive-50 px-2 py-0.5 rounded-full">Uploaded</span>}
                       </div>
                     );
                   })}
                   <div className="flex items-center gap-2 py-1 text-sm">
-                    {uploadedDocs.some(d => d.type === "Utility Transfer") ? <span className="text-green-500">✅</span> : <span className="text-neutral-300">☐</span>}
+                    {uploadedDocs.some(d => d.type === "Utility Transfer") ? <span className="text-positive-500">✅</span> : <span className="text-neutral-300">☐</span>}
                     <span className="text-neutral-500">Proof of Utility Transfer</span>
                     <span className="text-xs text-neutral-400">(optional)</span>
                   </div>
@@ -2736,11 +2736,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   ].map(dt => (
                     <button key={dt.id} type="button" onClick={() => setDocUploadType(dt.id)}
                       className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${
-                        docUploadType === dt.id ? "bg-green-50 border-green-300 text-green-700" : "bg-white border-neutral-200 text-neutral-600 hover:border-green-200"
+                        docUploadType === dt.id ? "bg-positive-50 border-positive-300 text-positive-700" : "bg-white border-neutral-200 text-neutral-600 hover:border-positive-200"
                       }`}>
                       <span className="material-icons-outlined text-sm">{dt.icon}</span>
                       {dt.label}
-                      {dt.required && <span className="text-red-500 text-xs">*</span>}
+                      {dt.required && <span className="text-danger-500 text-xs">*</span>}
                     </button>
                   ))}
                 </div>
@@ -2751,7 +2751,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <input type="text" value={docDescription} onChange={e => setDocDescription(e.target.value)} placeholder="Describe this document..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
               )}
-              <div className="border-2 border-dashed border-neutral-200 rounded-xl p-6 text-center hover:border-green-300 transition-colors cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+              <div className="border-2 border-dashed border-neutral-200 rounded-xl p-6 text-center hover:border-positive-300 transition-colors cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                 <span className="material-icons-outlined text-3xl text-neutral-300 mb-2">cloud_upload</span>
                 <p className="text-sm text-neutral-500">Click to upload files</p>
                 <p className="text-xs text-neutral-400 mt-1">PDF, images, Word, Excel, text — up to 25MB each</p>
@@ -2761,10 +2761,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-neutral-500">Uploaded ({uploadedDocs.length}):</p>
                   {uploadedDocs.map((doc, idx) => (
-                    <div key={idx} className="flex items-center gap-2 bg-green-50 rounded-lg px-3 py-2 text-sm">
-                      <span className="material-icons-outlined text-green-500 text-base">check_circle</span>
-                      <span className="text-green-800 font-medium truncate">{doc.name}</span>
-                      <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full ml-auto">{doc.type}</span>
+                    <div key={idx} className="flex items-center gap-2 bg-positive-50 rounded-lg px-3 py-2 text-sm">
+                      <span className="material-icons-outlined text-positive-500 text-base">check_circle</span>
+                      <span className="text-positive-800 font-medium truncate">{doc.name}</span>
+                      <span className="text-xs text-positive-600 bg-positive-100 px-2 py-0.5 rounded-full ml-auto">{doc.type}</span>
                     </div>
                   ))}
                 </div>
@@ -2832,7 +2832,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             </div>
             <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               <label className="flex items-center gap-3 cursor-pointer">
-                <div className={`w-10 h-6 rounded-full transition-colors ${insurance.enabled ? "bg-green-500" : "bg-neutral-200"} relative`} onClick={() => setInsurance({ ...insurance, enabled: !insurance.enabled })}>
+                <div className={`w-10 h-6 rounded-full transition-colors ${insurance.enabled ? "bg-positive-500" : "bg-neutral-200"} relative`} onClick={() => setInsurance({ ...insurance, enabled: !insurance.enabled })}>
                   <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${insurance.enabled ? "tranneutral-x-4.5 left-0.5" : "left-0.5"}`} />
                 </div>
                 <span className="text-sm font-medium text-neutral-700">Does this property have insurance?</span>
@@ -2895,8 +2895,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         return (
           <div>
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                <span className="material-icons-outlined text-green-600 text-2xl">checklist</span>
+              <div className="w-12 h-12 bg-positive-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-positive-600 text-2xl">checklist</span>
               </div>
               <div>
                 <h3 className="text-lg font-manrope font-bold text-neutral-800">Review</h3>
@@ -2909,7 +2909,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold text-neutral-700">Property Details</span>
                   <div className="flex items-center gap-2">
-                    {completedSteps.has("property_details") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    {completedSteps.has("property_details") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
                     <button onClick={() => setStep(steps.indexOf("property_details") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
                   </div>
                 </div>
@@ -2928,7 +2928,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-semibold text-neutral-700">Tenant & Lease</span>
                     <div className="flex items-center gap-2">
-                      {completedSteps.has("tenant_lease") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                      {completedSteps.has("tenant_lease") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
                       <button onClick={() => setStep(steps.indexOf("tenant_lease") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
                     </div>
                   </div>
@@ -2947,7 +2947,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold text-neutral-700">Utilities</span>
                   <div className="flex items-center gap-2">
-                    {completedSteps.has("utilities") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    {completedSteps.has("utilities") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
                     <button onClick={() => setStep(steps.indexOf("utilities") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
                   </div>
                 </div>
@@ -2965,7 +2965,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold text-neutral-700">HOA</span>
                   <div className="flex items-center gap-2">
-                    {completedSteps.has("hoa") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    {completedSteps.has("hoa") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
                     <button onClick={() => setStep(steps.indexOf("hoa") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
                   </div>
                 </div>
@@ -2980,7 +2980,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-semibold text-neutral-700">Loan / Mortgage</span>
                     <div className="flex items-center gap-2">
-                      {completedSteps.has("loan") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                      {completedSteps.has("loan") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
                       <button onClick={() => setStep(steps.indexOf("loan") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
                     </div>
                   </div>
@@ -2988,7 +2988,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                     <div className="text-xs text-neutral-500">
                       <div>{loan.lender_name} — {loan.loan_type}</div>
                       <div>Payment: ${Number(loan.monthly_payment || 0).toLocaleString()}/mo {loan.escrow_included ? "(incl. escrow)" : ""}</div>
-                      {loan.setup_recurring && <div className="text-green-600 font-medium mt-0.5">Recurring payment set up</div>}
+                      {loan.setup_recurring && <div className="text-positive-600 font-medium mt-0.5">Recurring payment set up</div>}
                     </div>
                   ) : completedSteps.has("loan") ? <p className="text-xs text-neutral-400">No loan</p> : null}
                 </div>
@@ -2999,7 +2999,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold text-neutral-700">Documents</span>
                   <div className="flex items-center gap-2">
-                    {uploadedDocs.length > 0 ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">{uploadedDocs.length} uploaded</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    {uploadedDocs.length > 0 ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">{uploadedDocs.length} uploaded</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
                     <button onClick={() => setStep(steps.indexOf("documents") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
                   </div>
                 </div>
@@ -3015,7 +3015,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold text-neutral-700">Insurance</span>
                   <div className="flex items-center gap-2">
-                    {completedSteps.has("insurance") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    {completedSteps.has("insurance") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
                     <button onClick={() => setStep(steps.indexOf("insurance") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
                   </div>
                 </div>
@@ -3034,7 +3034,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-semibold text-neutral-700">Recurring Rent</span>
                     <div className="flex items-center gap-2">
-                      {completedSteps.has("recurring_rent") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                      {completedSteps.has("recurring_rent") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
                       <button onClick={() => setStep(steps.indexOf("recurring_rent") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
                     </div>
                   </div>
@@ -3069,7 +3069,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         </div>
       </div>
       {/* Progress bar */}
-      <div className="h-1 bg-neutral-200"><div className="h-full bg-green-600 transition-all" style={{ width: (step / totalSteps * 100) + "%" }} /></div>
+      <div className="h-1 bg-neutral-200"><div className="h-full bg-positive-600 transition-all" style={{ width: (step / totalSteps * 100) + "%" }} /></div>
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6">
         <div className="max-w-2xl mx-auto">
@@ -3776,8 +3776,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="flex items-center gap-3">
   <Btn variant="secondary" onClick={exportProperties}><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</Btn>
   <div className="flex gap-1">
-  <button onClick={() => setShowArchived(false)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (!showArchived ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>Active ({properties.length})</button>
-  <button onClick={() => { setShowArchived(true); fetchArchivedProperties(); }} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (showArchived ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>Archived ({archivedProperties.length})</button>
+  <button onClick={() => setShowArchived(false)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (!showArchived ? "bg-brand-600 text-white" : "bg-subtle-100 text-subtle-600 hover:bg-subtle-200")}>Active ({properties.length})</button>
+  <button onClick={() => { setShowArchived(true); fetchArchivedProperties(); }} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (showArchived ? "bg-brand-600 text-white" : "bg-subtle-100 text-subtle-600 hover:bg-subtle-200")}>Archived ({archivedProperties.length})</button>
   </div>
   </div>
   </div>
@@ -3785,18 +3785,18 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {showArchived ? (
   <div>
   {archivedProperties.length === 0 ? (
-  <div className="text-center py-12 bg-white rounded-xl border border-gray-100"><div className="text-gray-400">No archived properties</div></div>
+  <div className="text-center py-12 bg-white rounded-xl border border-subtle-100"><div className="text-subtle-400">No archived properties</div></div>
   ) : (
   <div className="space-y-2">
   {archivedProperties.map(p => (
-  <div key={p.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4 opacity-70">
+  <div key={p.id} className="bg-white rounded-xl border border-subtle-200 p-4 flex items-center gap-4 opacity-70">
   <div className="flex-1">
-  <div className="font-semibold text-gray-700 text-sm">{p.address}</div>
-  <div className="text-xs text-gray-400">Archived {p.archived_at ? new Date(p.archived_at).toLocaleDateString() : ""} by {p.archived_by || "unknown"}</div>
-  <div className="text-xs text-amber-600 mt-1">{p.archived_at ? Math.max(0, 180 - Math.floor((Date.now() - new Date(p.archived_at)) / 86400000)) : "?"} days until auto-purge</div>
+  <div className="font-semibold text-subtle-700 text-sm">{p.address}</div>
+  <div className="text-xs text-subtle-400">Archived {p.archived_at ? new Date(p.archived_at).toLocaleDateString() : ""} by {p.archived_by || "unknown"}</div>
+  <div className="text-xs text-warn-600 mt-1">{p.archived_at ? Math.max(0, 180 - Math.floor((Date.now() - new Date(p.archived_at)) / 86400000)) : "?"} days until auto-purge</div>
   </div>
-  <button onClick={() => restoreProperty(p)} className="text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 border border-emerald-200">Restore</button>
-  <button onClick={() => permanentDeleteProperty(p)} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100 border border-red-200">Delete Forever</button>
+  <button onClick={() => restoreProperty(p)} className="text-xs bg-success-50 text-success-700 px-3 py-1.5 rounded-lg hover:bg-success-100 border border-success-200">Restore</button>
+  <button onClick={() => permanentDeleteProperty(p)} className="text-xs bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg hover:bg-danger-100 border border-danger-200">Delete Forever</button>
   </div>
   ))}
   </div>
@@ -3805,14 +3805,14 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   ) : (<>
 
   {isAdmin && pendingRequests.length > 0 && (
-  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 flex items-center justify-between">
-  <span className="text-sm text-amber-800">📋 <strong>{pendingRequests.length}</strong> property change {pendingRequests.length === 1 ? "request" : "requests"} awaiting review</span>
-  <button onClick={() => setShowRequests(!showRequests)} className="text-xs bg-amber-200 text-amber-800 px-3 py-1.5 rounded-lg font-medium hover:bg-amber-300">{showRequests ? "Hide" : "Review"}</button>
+  <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-4 flex items-center justify-between">
+  <span className="text-sm text-warn-800">📋 <strong>{pendingRequests.length}</strong> property change {pendingRequests.length === 1 ? "request" : "requests"} awaiting review</span>
+  <button onClick={() => setShowRequests(!showRequests)} className="text-xs bg-warn-200 text-warn-800 px-3 py-1.5 rounded-lg font-medium hover:bg-warn-300">{showRequests ? "Hide" : "Review"}</button>
   </div>
   )}
   {!isAdmin && changeRequests.filter(r => r.status === "pending").length > 0 && (
-  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
-  <span className="text-sm text-blue-800">📋 You have <strong>{changeRequests.filter(r => r.status === "pending").length}</strong> pending request(s)</span>
+  <div className="bg-info-50 border border-info-200 rounded-xl p-3 mb-4">
+  <span className="text-sm text-info-800">📋 You have <strong>{changeRequests.filter(r => r.status === "pending").length}</strong> pending request(s)</span>
   </div>
   )}
 
@@ -3820,11 +3820,11 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4 mb-4 space-y-3">
   <h3 className="font-semibold text-neutral-800">Pending Approval</h3>
   {pendingRequests.map(req => (
-  <div key={req.id} className="border border-amber-100 rounded-3xl p-4 bg-amber-50/30">
+  <div key={req.id} className="border border-warn-100 rounded-3xl p-4 bg-warn-50/30">
   <div className="flex items-start justify-between gap-3">
   <div>
   <div className="flex items-center gap-2 mb-1">
-  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${req.request_type === "add" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>{req.request_type === "add" ? "New" : "Edit"}</span>
+  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${req.request_type === "add" ? "bg-success-100 text-success-700" : "bg-info-100 text-info-700"}`}>{req.request_type === "add" ? "New" : "Edit"}</span>
   <span className="text-xs text-neutral-400">by {req.requested_by}</span>
   </div>
   <p className="font-semibold text-neutral-800">{req.address}</p>
@@ -3901,7 +3901,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-end">
   <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-2xl overflow-y-auto">
   {/* Header */}
-  <div className={"p-6 text-white " + (selectedProperty.status === "occupied" ? "bg-gradient-to-r from-emerald-600 to-emerald-800" : selectedProperty.status === "vacant" ? "bg-gradient-to-r from-amber-500 to-amber-700" : "bg-gradient-to-r from-gray-600 to-gray-800")}>
+  <div className={"p-6 text-white " + (selectedProperty.status === "occupied" ? "bg-gradient-to-r from-success-600 to-success-800" : selectedProperty.status === "vacant" ? "bg-gradient-to-r from-warn-500 to-warn-700" : "bg-gradient-to-r from-subtle-600 to-subtle-800")}>
   <div className="flex items-center justify-between">
   <div>
   <h2 className="text-lg font-bold">{selectedProperty.address_line_1 || selectedProperty.address}</h2>
@@ -3981,7 +3981,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="grid grid-cols-2 gap-3 text-sm">
   <div><span className="text-neutral-400 text-xs block">Security Deposit</span><span className="font-semibold text-neutral-700">{selectedProperty.security_deposit ? "$" + safeNum(selectedProperty.security_deposit).toLocaleString() : "—"}</span></div>
   <div><span className="text-neutral-400 text-xs block">Lease Start</span><span className="font-semibold text-neutral-700">{selectedProperty.lease_start || "—"}</span></div>
-  {selectedProperty.pm_company_name && <div><span className="text-neutral-400 text-xs block">Property Manager</span><span className="font-semibold text-purple-700">{selectedProperty.pm_company_name}</span></div>}
+  {selectedProperty.pm_company_name && <div><span className="text-neutral-400 text-xs block">Property Manager</span><span className="font-semibold text-highlight-700">{selectedProperty.pm_company_name}</span></div>}
   {selectedProperty.notes && <div className="col-span-2"><span className="text-neutral-400 text-xs block">Notes</span><span className="text-neutral-500">{selectedProperty.notes}</span></div>}
   </div>
   </div>
@@ -4024,7 +4024,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const { data: refreshed } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("property", selectedProperty.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100);
   setPropertyDocs(refreshed || []);
   } finally { guardRelease("delPropDoc", d.id); }
-  }} className="text-xs text-red-400 hover:text-red-600 flex items-center gap-0.5"><span className="material-icons-outlined text-sm">delete</span></button>}
+  }} className="text-xs text-danger-400 hover:text-danger-600 flex items-center gap-0.5"><span className="material-icons-outlined text-sm">delete</span></button>}
   </div>
   </div>
   ))}
@@ -4071,7 +4071,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const hasMissing = ss.missing.length > 0;
   const label = isInProg ? "Resume Property Setup" : hasMissing ? `Complete Setup (${ss.missing.length} remaining)` : "Edit Property Setup";
   const icon = isInProg ? "construction" : hasMissing ? "pending" : "settings";
-  const colors = isInProg || hasMissing ? "bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100" : "bg-white border-neutral-200 text-neutral-700 hover:border-brand-300 hover:bg-brand-50/30";
+  const colors = isInProg || hasMissing ? "bg-warn-50 border-warn-200 text-warn-800 hover:bg-warn-100" : "bg-white border-neutral-200 text-neutral-700 hover:border-brand-300 hover:bg-brand-50/30";
   return (
   <button onClick={() => {
   setShowPropertyWizard({
@@ -4086,7 +4086,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   isEdit: true,
   });
   setSelectedProperty(null);
-  }} className={`w-full flex items-center gap-3 border rounded-xl px-4 py-3 text-sm transition-colors ${colors}`}><span className={`material-icons-outlined ${isInProg || hasMissing ? "text-amber-600" : "text-brand-600"}`}>{icon}</span>{label}</button>
+  }} className={`w-full flex items-center gap-3 border rounded-xl px-4 py-3 text-sm transition-colors ${colors}`}><span className={`material-icons-outlined ${isInProg || hasMissing ? "text-warn-600" : "text-brand-600"}`}>{icon}</span>{label}</button>
   );
   })()}
   </div>
@@ -4172,7 +4172,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div><span className="text-neutral-400 block">Status</span><span className="font-medium text-neutral-700 capitalize">{l.status}</span></div>
   <div><span className="text-neutral-400 block">Rent</span><span className="font-medium text-neutral-700">{l.rent_amount ? formatCurrency(l.rent_amount) : "—"}</span></div>
   <div><span className="text-neutral-400 block">Security Deposit</span><span className="font-medium text-neutral-700">{l.security_deposit ? formatCurrency(l.security_deposit) : "—"}{l.deposit_status ? " · " + l.deposit_status : ""}</span></div>
-  {l.deposit_returned > 0 && <div><span className="text-neutral-400 block">Deposit Returned</span><span className="font-medium text-green-600">{formatCurrency(l.deposit_returned)}</span></div>}
+  {l.deposit_returned > 0 && <div><span className="text-neutral-400 block">Deposit Returned</span><span className="font-medium text-positive-600">{formatCurrency(l.deposit_returned)}</span></div>}
   {l.deposit_deductions && <div className="col-span-2"><span className="text-neutral-400 block">Deductions</span><span className="font-medium text-neutral-700">{l.deposit_deductions}</span></div>}
   </div>
   </div>
@@ -4180,7 +4180,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   )}
   <div className="grid grid-cols-2 gap-3 text-xs">
-  <div><span className="text-neutral-400 block">Final Balance</span><span className={"font-semibold " + (safeNum(historicalTenantDetail.tenant.balance) > 0 ? "text-red-500" : "text-green-600")}>{historicalTenantDetail.tenant.balance != null ? formatCurrency(Math.abs(safeNum(historicalTenantDetail.tenant.balance))) + (safeNum(historicalTenantDetail.tenant.balance) > 0 ? " owed" : " settled") : "—"}</span></div>
+  <div><span className="text-neutral-400 block">Final Balance</span><span className={"font-semibold " + (safeNum(historicalTenantDetail.tenant.balance) > 0 ? "text-danger-500" : "text-positive-600")}>{historicalTenantDetail.tenant.balance != null ? formatCurrency(Math.abs(safeNum(historicalTenantDetail.tenant.balance))) + (safeNum(historicalTenantDetail.tenant.balance) > 0 ? " owed" : " settled") : "—"}</span></div>
   <div><span className="text-neutral-400 block">Move Out</span><span className="font-medium text-neutral-700">{historicalTenantDetail.tenant.move_out || "—"}</span></div>
   </div>
   </div>
@@ -4198,7 +4198,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="text-xs text-neutral-400">{e.date}{e.type ? " · " + e.type : ""}</div>
   </div>
   <div className="text-right">
-  <div className={"font-semibold font-mono " + (e.amount < 0 ? "text-green-600" : "text-red-500")}>{e.amount < 0 ? "+" : "-"}{formatCurrency(Math.abs(e.amount))}</div>
+  <div className={"font-semibold font-mono " + (e.amount < 0 ? "text-positive-600" : "text-danger-500")}>{e.amount < 0 ? "+" : "-"}{formatCurrency(Math.abs(e.amount))}</div>
   {e.balance != null && <div className="text-xs text-neutral-400">Bal: {formatCurrency(e.balance)}</div>}
   </div>
   </div>
@@ -4255,7 +4255,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {showForm && editingProperty && (
   <div className="bg-white p-4 rounded-xl border border-brand-50 shadow-sm mb-4">
   <h3 className="text-sm font-semibold text-neutral-700 mb-3">{editingProperty ? "Edit Property" : "Add Property"}</h3>
-  {!isAdmin && <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 mb-3">Submitted for admin approval.</p>}
+  {!isAdmin && <p className="text-xs text-info-600 bg-info-50 rounded-lg px-3 py-2 mb-3">Submitted for admin approval.</p>}
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
   <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Address Line 1 *</label><Input placeholder="123 Main St" value={form.address_line_1} onChange={e => setForm({ ...form, address_line_1: e.target.value })} autoComplete="address-line1" name="address-line1" required /></div>
   <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Address Line 2</label><Input placeholder="Apt 4B, Suite 200, etc." value={form.address_line_2} onChange={e => setForm({ ...form, address_line_2: e.target.value })} autoComplete="address-line2" name="address-line2" /></div>
@@ -4289,12 +4289,12 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {incompleteWizards.length > 0 && !showPropertyWizard && (
   <div className="mb-4 space-y-2">
   {incompleteWizards.map(w => (
-  <div key={w.id} className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between">
+  <div key={w.id} className="bg-warn-50 border border-warn-200 rounded-xl p-4 flex items-center justify-between">
   <div className="flex items-center gap-3">
-  <span className="material-icons-outlined text-amber-600">construction</span>
+  <span className="material-icons-outlined text-warn-600">construction</span>
   <div>
-  <div className="text-sm font-semibold text-amber-800">Setup incomplete: {w.property_address?.split(",")[0]}</div>
-  <div className="text-xs text-amber-600">Step {w.current_step} of 7 · {(w.completed_steps || []).length} steps completed</div>
+  <div className="text-sm font-semibold text-warn-800">Setup incomplete: {w.property_address?.split(",")[0]}</div>
+  <div className="text-xs text-warn-600">Step {w.current_step} of 7 · {(w.completed_steps || []).length} steps completed</div>
   </div>
   </div>
   <button onClick={() => {
@@ -4309,7 +4309,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   leaseEnd: prop?.lease_end || "",
   securityDeposit: Number(prop?.security_deposit) || 0,
   });
-  }} className="bg-amber-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-amber-700 font-semibold">Resume Setup</button>
+  }} className="bg-warn-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-warn-700 font-semibold">Resume Setup</button>
   </div>
   ))}
   </div>
@@ -4317,15 +4317,15 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
   <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-manrope font-bold text-neutral-800">{properties.length}</div><div className="text-xs text-neutral-400">Total</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-emerald-600">{properties.filter(p => p.status === "occupied").length}</div><div className="text-xs text-neutral-400">Occupied</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-amber-600">{properties.filter(p => p.status === "vacant").length}</div><div className="text-xs text-neutral-400">Vacant</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-success-600">{properties.filter(p => p.status === "occupied").length}</div><div className="text-xs text-neutral-400">Occupied</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-warn-600">{properties.filter(p => p.status === "vacant").length}</div><div className="text-xs text-neutral-400">Vacant</div></div>
   <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-brand-600">${properties.reduce((s, p) => s + safeNum(p.rent), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Total Rent</div></div>
   </div>
 
   {viewMode === "card" && (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
   {filtered.map(p => (
-  <div key={p.id} onClick={() => openPropertyDetail(p)} className={`bg-white rounded-xl border shadow-sm p-4 cursor-pointer hover:shadow-md hover:border-brand-200 transition-all ${isReadOnly(p) ? "border-purple-200 bg-purple-50/30" : "border-brand-50"}`}>
+  <div key={p.id} onClick={() => openPropertyDetail(p)} className={`bg-white rounded-xl border shadow-sm p-4 cursor-pointer hover:shadow-md hover:border-brand-200 transition-all ${isReadOnly(p) ? "border-highlight-200 bg-highlight-50/30" : "border-brand-50"}`}>
   <div className="flex items-start justify-between mb-2">
   <div>
   <h3 className="font-semibold text-neutral-800 text-sm">{p.address_line_1 || p.address}</h3>{(p.city || p.state) && <div className="text-xs text-neutral-400">{[p.city, p.state, p.zip].filter(Boolean).join(", ")}</div>}
@@ -4333,7 +4333,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   <div className="flex flex-col items-end gap-1">
   <Badge status={p.status} label={p.status} />
-  {p.pm_company_name && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">PM: {p.pm_company_name}</span>}
+  {p.pm_company_name && <span className="text-xs bg-highlight-100 text-highlight-700 px-2 py-0.5 rounded-full">PM: {p.pm_company_name}</span>}
   </div>
   </div>
   <div className="text-sm text-neutral-500 space-y-1">
@@ -4341,16 +4341,16 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {p.tenant && <div className="flex justify-between"><span>Tenant:</span><span>{formatAllTenants(p)}</span></div>}
   {p.lease_end && <div className="flex justify-between"><span>Lease End:</span><span>{p.lease_end}</span></div>}
   </div>
-  {isReadOnly(p) && <div className="mt-2 text-xs text-purple-600 bg-purple-50 rounded-lg px-2 py-1">🔒 Managed property — view only</div>}
-  {p.status === "inactive" && <div className="mt-2 text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-1">⏸ Inactive — accounting history preserved</div>}
-  {(() => { const ss = getSetupStatus(p); return (!ss.isComplete && ss.total > 0) ? <div className="mt-2 text-xs text-blue-600 bg-blue-50 rounded-lg px-2 py-1 flex items-center gap-1"><span className="material-icons-outlined text-sm">pending</span>Setup Incomplete — {ss.missing.length} step{ss.missing.length !== 1 ? "s" : ""} remaining</div> : null; })()}
+  {isReadOnly(p) && <div className="mt-2 text-xs text-highlight-600 bg-highlight-50 rounded-lg px-2 py-1">🔒 Managed property — view only</div>}
+  {p.status === "inactive" && <div className="mt-2 text-xs text-warn-600 bg-warn-50 rounded-lg px-2 py-1">⏸ Inactive — accounting history preserved</div>}
+  {(() => { const ss = getSetupStatus(p); return (!ss.isComplete && ss.total > 0) ? <div className="mt-2 text-xs text-info-600 bg-info-50 rounded-lg px-2 py-1 flex items-center gap-1"><span className="material-icons-outlined text-sm">pending</span>Setup Incomplete — {ss.missing.length} step{ss.missing.length !== 1 ? "s" : ""} remaining</div> : null; })()}
   <div className="flex gap-2 mt-3 pt-3 border-t border-brand-50/50 flex-wrap" onClick={e => e.stopPropagation()}>
   {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline">Edit</button>}
-  {!isReadOnly(p) && isAdmin && p.status !== "inactive" && <button onClick={() => deactivateProperty(p)} className="text-xs text-amber-600 hover:underline">Deactivate</button>}
-  {!isReadOnly(p) && isAdmin && p.status === "inactive" && <button onClick={() => reactivateProperty(p)} className="text-xs text-green-600 hover:underline">Reactivate</button>}
-  {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline">Delete</button>}
-  {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline">Assign PM</button>}
-  {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline">Remove PM</button>}
+  {!isReadOnly(p) && isAdmin && p.status !== "inactive" && <button onClick={() => deactivateProperty(p)} className="text-xs text-warn-600 hover:underline">Deactivate</button>}
+  {!isReadOnly(p) && isAdmin && p.status === "inactive" && <button onClick={() => reactivateProperty(p)} className="text-xs text-positive-600 hover:underline">Reactivate</button>}
+  {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-danger-500 hover:underline">Delete</button>}
+  {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-highlight-600 hover:underline">Assign PM</button>}
+  {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-notice-600 hover:underline">Remove PM</button>}
   <button onClick={() => loadTimeline(p)} className="text-xs text-neutral-400 hover:underline ml-auto">Timeline</button>
   </div>
   </div>
@@ -4386,12 +4386,12 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {visibleCols.includes("owner_name") && <td className="px-4 py-2.5 text-neutral-500">{p.owner_name || "—"}</td>}
   {visibleCols.includes("notes") && <td className="px-4 py-2.5 text-xs text-neutral-400 max-w-32 truncate">{p.notes || "—"}</td>}
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
-  {p.pm_company_name && <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded mr-2">PM</span>}
-  {isReadOnly(p) && <span className="text-xs text-purple-500 mr-2">🔒 view only</span>}
+  {p.pm_company_name && <span className="text-xs bg-highlight-100 text-highlight-600 px-1.5 py-0.5 rounded mr-2">PM</span>}
+  {isReadOnly(p) && <span className="text-xs text-highlight-500 mr-2">🔒 view only</span>}
   {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>}
-  {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline mr-2">Delete</button>}
-  {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline mr-2">PM</button>}
-  {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline mr-2">-PM</button>}
+  {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-danger-500 hover:underline mr-2">Delete</button>}
+  {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-highlight-600 hover:underline mr-2">PM</button>}
+  {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-notice-600 hover:underline mr-2">-PM</button>}
   <button onClick={() => loadTimeline(p)} className="text-xs text-neutral-400 hover:underline">TL</button>
   </td>
   </tr>
@@ -4405,18 +4405,18 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {viewMode === "compact" && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 divide-y divide-brand-50/50">
   {filtered.map(p => (
-  <div key={p.id} className={`flex items-center gap-3 px-4 py-2.5 hover:bg-brand-50/30/50 ${isReadOnly(p) ? "bg-purple-50/30" : ""}`}>
-  <div className={`w-2 h-2 rounded-full ${p.status === "occupied" ? "bg-emerald-500" : p.status === "vacant" ? "bg-amber-500" : "bg-red-500"}`} />
+  <div key={p.id} className={`flex items-center gap-3 px-4 py-2.5 hover:bg-brand-50/30/50 ${isReadOnly(p) ? "bg-highlight-50/30" : ""}`}>
+  <div className={`w-2 h-2 rounded-full ${p.status === "occupied" ? "bg-success-500" : p.status === "vacant" ? "bg-warn-500" : "bg-danger-500"}`} />
   <div className="flex-1 min-w-0">
   <span className="text-sm font-medium text-neutral-800">{p.address}</span>
   <span className="text-xs text-neutral-400 ml-2">{p.type}</span>
-  {p.pm_company_name && <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded ml-2">PM: {p.pm_company_name}</span>}
+  {p.pm_company_name && <span className="text-xs bg-highlight-100 text-highlight-600 px-1.5 py-0.5 rounded ml-2">PM: {p.pm_company_name}</span>}
   </div>
   <span className="text-sm font-semibold text-neutral-700">${safeNum(p.rent).toLocaleString()}</span>
   <span className="text-xs text-neutral-400 w-28 truncate">{p.tenant || "—"}</span>
   <Badge status={p.status} label={p.status} />
   {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline">Edit</button>}
-  {isReadOnly(p) && <span className="text-xs text-purple-400">🔒</span>}
+  {isReadOnly(p) && <span className="text-xs text-highlight-400">🔒</span>}
   </div>
   ))}
   {filtered.length === 0 && <div className="text-center py-8 text-neutral-400 text-sm">No properties found</div>}
@@ -4427,9 +4427,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {showPmAssign && (
   <Modal title={`Assign Property Manager — ${showPmAssign.address}`} onClose={() => setShowPmAssign(null)}>
   <div className="space-y-4">
-  <div className="bg-purple-50 rounded-xl p-3 text-sm">
-  <div className="font-semibold text-purple-800 mb-1">What this does:</div>
-  <div className="text-xs text-purple-600 space-y-1">
+  <div className="bg-highlight-50 rounded-xl p-3 text-sm">
+  <div className="font-semibold text-highlight-800 mb-1">What this does:</div>
+  <div className="text-xs text-highlight-600 space-y-1">
   <div>The PM company gets operational control (tenants, leases, maintenance, payments)</div>
   <div>You retain financial oversight and can view statements</div>
   <div>You can remove the PM at any time to regain full control</div>
@@ -4466,18 +4466,18 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {showRecurringSetup && (
   <Modal title="Set Up Recurring Rent" onClose={() => setShowRecurringSetup(null)}>
   <div className="space-y-4">
-  <p className="text-sm text-gray-600">Would you like to set up automatic monthly rent posting for <strong>{showRecurringSetup.tenant}</strong> at <strong>{showRecurringSetup.property}</strong>?</p>
+  <p className="text-sm text-subtle-600">Would you like to set up automatic monthly rent posting for <strong>{showRecurringSetup.tenant}</strong> at <strong>{showRecurringSetup.property}</strong>?</p>
   <div className="bg-brand-50 rounded-lg p-3">
   <div className="grid grid-cols-2 gap-3">
-  <div><div className="text-xs text-gray-500">Monthly Rent</div><div className="font-bold text-gray-800">${safeNum(showRecurringSetup.rent).toLocaleString()}</div></div>
-  <div><div className="text-xs text-gray-500">Posts On</div><div className="font-bold text-gray-800">1st of each month</div></div>
+  <div><div className="text-xs text-subtle-500">Monthly Rent</div><div className="font-bold text-subtle-800">${safeNum(showRecurringSetup.rent).toLocaleString()}</div></div>
+  <div><div className="text-xs text-subtle-500">Posts On</div><div className="font-bold text-subtle-800">1st of each month</div></div>
   </div>
   </div>
-  <div className="bg-amber-50 rounded-lg p-3">
-  <div className="text-xs font-semibold text-amber-700 mb-1">Late Fee Settings</div>
+  <div className="bg-warn-50 rounded-lg p-3">
+  <div className="text-xs font-semibold text-warn-700 mb-1">Late Fee Settings</div>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs text-gray-500">Grace Period (days)</label><Input type="number" defaultValue={5} id="rr-grace" className="mt-1" /></div>
-  <div><label className="text-xs text-gray-500">Late Fee ($)</label><Input type="number" defaultValue={50} id="rr-latefee" className="mt-1" /></div>
+  <div><label className="text-xs text-subtle-500">Grace Period (days)</label><Input type="number" defaultValue={5} id="rr-grace" className="mt-1" /></div>
+  <div><label className="text-xs text-subtle-500">Late Fee ($)</label><Input type="number" defaultValue={50} id="rr-latefee" className="mt-1" /></div>
   </div>
   </div>
   <div className="flex gap-2">
@@ -5173,10 +5173,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* LEDGER */}
   {activePanel === "ledger" && (
   <div className="flex-1 overflow-y-auto p-4">
-  <div className={`rounded-3xl p-4 mb-4 text-center relative ${safeNum(selectedTenant?.balance) > 0 ? "bg-red-50" : safeNum(selectedTenant?.balance) < 0 ? "bg-green-50" : "bg-brand-50/30"}`}>
-  <button onClick={() => exportLedgerPDF(selectedTenant, ledger)} className="absolute top-3 right-3 text-xs text-red-600 border border-red-200 bg-white px-3 py-1.5 rounded-lg hover:bg-red-50 flex items-center gap-1" title="Export ledger as PDF for sharing"><span className="material-icons-outlined text-sm">picture_as_pdf</span>Export PDF</button>
+  <div className={`rounded-3xl p-4 mb-4 text-center relative ${safeNum(selectedTenant?.balance) > 0 ? "bg-danger-50" : safeNum(selectedTenant?.balance) < 0 ? "bg-positive-50" : "bg-brand-50/30"}`}>
+  <button onClick={() => exportLedgerPDF(selectedTenant, ledger)} className="absolute top-3 right-3 text-xs text-danger-600 border border-danger-200 bg-white px-3 py-1.5 rounded-lg hover:bg-danger-50 flex items-center gap-1" title="Export ledger as PDF for sharing"><span className="material-icons-outlined text-sm">picture_as_pdf</span>Export PDF</button>
   <div className="text-xs text-neutral-400 mb-1">Current Balance</div>
-  <div className={`text-3xl font-bold ${safeNum(selectedTenant?.balance) > 0 ? "text-red-500" : safeNum(selectedTenant?.balance) < 0 ? "text-green-600" : "text-neutral-700"}`}>
+  <div className={`text-3xl font-bold ${safeNum(selectedTenant?.balance) > 0 ? "text-danger-500" : safeNum(selectedTenant?.balance) < 0 ? "text-positive-600" : "text-neutral-700"}`}>
   {safeNum(selectedTenant?.balance) > 0 ? `-${formatCurrency(selectedTenant.balance)}` : safeNum(selectedTenant?.balance) < 0 ? `Credit ${formatCurrency(Math.abs(selectedTenant.balance))}` : "$0 Current"}
   </div>
   </div>
@@ -5203,7 +5203,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="text-xs text-neutral-400">{e.date}</div>
   </div>
   <div className="text-right">
-  <div className={`text-sm font-bold ${e.type === "payment" || e.type === "credit" ? "text-green-600" : "text-red-500"}`}>
+  <div className={`text-sm font-bold ${e.type === "payment" || e.type === "credit" ? "text-positive-600" : "text-danger-500"}`}>
   {e.type === "payment" || e.type === "credit" ? "+" + formatCurrency(Math.abs(e.amount)) : "-" + formatCurrency(Math.abs(e.amount))}
   </div>
   <div className="text-xs text-neutral-400">Bal: ${e.balance}</div>
@@ -5271,11 +5271,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   )}
   {leaseModal === "notice" && (
-  <div className="bg-orange-50 rounded-3xl p-4 mb-3 border border-orange-100">
-  <div className="text-sm font-semibold text-orange-700 mb-2">Select Notice Period</div>
+  <div className="bg-notice-50 rounded-3xl p-4 mb-3 border border-notice-100">
+  <div className="text-sm font-semibold text-notice-700 mb-2">Select Notice Period</div>
   <div className="flex gap-2 mb-2">
-  <button onClick={() => setLeaseInput("30")} className={`flex-1 py-2 rounded-lg text-sm font-medium ${leaseInput === "30" ? "bg-orange-500 text-white" : "bg-white border border-orange-200 text-orange-700"}`}>30 Days</button>
-  <button onClick={() => setLeaseInput("60")} className={`flex-1 py-2 rounded-lg text-sm font-medium ${leaseInput === "60" ? "bg-orange-500 text-white" : "bg-white border border-orange-200 text-orange-700"}`}>60 Days</button>
+  <button onClick={() => setLeaseInput("30")} className={`flex-1 py-2 rounded-lg text-sm font-medium ${leaseInput === "30" ? "bg-notice-500 text-white" : "bg-white border border-notice-200 text-notice-700"}`}>30 Days</button>
+  <button onClick={() => setLeaseInput("60")} className={`flex-1 py-2 rounded-lg text-sm font-medium ${leaseInput === "60" ? "bg-notice-500 text-white" : "bg-white border border-notice-200 text-notice-700"}`}>60 Days</button>
   </div>
   <div className="flex gap-2">
   <Btn variant="warning-fill" size="sm" onClick={() => generateMoveOutNotice(leaseInput)}>Generate Notice</Btn>
@@ -5328,7 +5328,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
   <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Rent</div><div className="text-lg font-bold">{selectedTenant.rent ? formatCurrency(selectedTenant.rent) : "—"}</div></div>
-  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Balance</div><div className={"text-lg font-bold " + (selectedTenant.balance > 0 ? "text-red-300" : "text-green-300")}>{selectedTenant.balance > 0 ? formatCurrency(selectedTenant.balance) : "Current"}</div></div>
+  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Balance</div><div className={"text-lg font-bold " + (selectedTenant.balance > 0 ? "text-danger-300" : "text-positive-300")}>{selectedTenant.balance > 0 ? formatCurrency(selectedTenant.balance) : "Current"}</div></div>
   <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Status</div><div className="text-lg font-bold capitalize">{selectedTenant.lease_status}</div></div>
   <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Lease End</div><div className="text-lg font-bold">{selectedTenant.lease_end_date || selectedTenant.move_out || "—"}</div></div>
   </div>
@@ -5367,7 +5367,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {ledger.slice(0, 20).map((e, i) => (
   <div key={i} className="flex items-center justify-between py-2 border-b border-brand-50/50 text-sm">
   <div><div className="font-medium text-neutral-700">{e.description}</div><div className="text-xs text-neutral-400">{e.date}</div></div>
-  <div className={"font-semibold " + (e.type === "payment" || e.type === "credit" ? "text-green-600" : "text-red-500")}>{e.type === "payment" || e.type === "credit" ? "+" : "-"}{formatCurrency(Math.abs(e.amount))}</div>
+  <div className={"font-semibold " + (e.type === "payment" || e.type === "credit" ? "text-positive-600" : "text-danger-500")}>{e.type === "payment" || e.type === "credit" ? "+" : "-"}{formatCurrency(Math.abs(e.amount))}</div>
   </div>
   ))}
   </div>
@@ -5380,15 +5380,15 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div>
   <h3 className="text-sm font-semibold text-neutral-700 mb-3">Tenant Documents</h3>
   {/* Required docs checklist */}
-  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
-  <div className="text-xs font-bold text-amber-800 mb-2">Required Documents</div>
+  <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-4">
+  <div className="text-xs font-bold text-warn-800 mb-2">Required Documents</div>
   {["Signed Lease Agreement", "Government-Issued ID", "Renters Insurance", "Proof of Utility Transfer"].map(doc => {
   const uploaded = tenantDocs.some(d => d.name?.toLowerCase().includes(doc.toLowerCase().split(" ")[0]));
   return (
   <div key={doc} className="flex items-center gap-2 py-1 text-sm">
-  <span className={uploaded ? "text-green-500" : "text-amber-400"}>{uploaded ? "✅" : "☐"}</span>
-  <span className={uploaded ? "text-neutral-700" : "text-amber-700"}>{doc}</span>
-  {uploaded && <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">Uploaded</span>}
+  <span className={uploaded ? "text-positive-500" : "text-warn-400"}>{uploaded ? "✅" : "☐"}</span>
+  <span className={uploaded ? "text-neutral-700" : "text-warn-700"}>{doc}</span>
+  {uploaded && <span className="text-xs text-positive-600 bg-positive-50 px-2 py-0.5 rounded-full">Uploaded</span>}
   </div>
   );
   })}
@@ -5414,7 +5414,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   showToast("Document deleted: " + d.name, "success");
   logAudit("delete", "documents", "Deleted document: " + d.name + " (tenant: " + (selectedTenant?.name || "") + ")", d.id, userProfile?.email, userRole, companyId);
   fetchTenantDocs(selectedTenant);
-  }} className="text-xs text-red-400 hover:text-red-600 flex items-center gap-0.5"><span className="material-icons-outlined text-sm">delete</span></button>}
+  }} className="text-xs text-danger-400 hover:text-danger-600 flex items-center gap-0.5"><span className="material-icons-outlined text-sm">delete</span></button>}
   </div>
   </div>
   ))}
@@ -5449,17 +5449,17 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <button onClick={() => startEdit(selectedTenant)} className="bg-brand-50/30 rounded-3xl p-4 text-center hover:bg-brand-50/50 transition-all">
   <div className="text-2xl mb-1">✏️</div><div className="text-sm font-semibold text-neutral-700">Edit Tenant</div>
   </button>
-  <button onClick={() => inviteTenant(selectedTenant)} className="bg-purple-50 rounded-3xl p-4 text-center hover:bg-purple-100 transition-all">
-  <div className="text-2xl mb-1">✉️</div><div className="text-sm font-semibold text-purple-700">Send Invite</div>
+  <button onClick={() => inviteTenant(selectedTenant)} className="bg-highlight-50 rounded-3xl p-4 text-center hover:bg-highlight-100 transition-all">
+  <div className="text-2xl mb-1">✉️</div><div className="text-sm font-semibold text-highlight-700">Send Invite</div>
   </button>
-  <button onClick={() => { setLeaseModal("renew"); setLeaseInput(""); }} className="bg-green-50 rounded-3xl p-4 text-center hover:bg-green-100 transition-all">
-  <div className="text-2xl mb-1">🔄</div><div className="text-sm font-semibold text-green-700">Renew Lease</div>
+  <button onClick={() => { setLeaseModal("renew"); setLeaseInput(""); }} className="bg-positive-50 rounded-3xl p-4 text-center hover:bg-positive-100 transition-all">
+  <div className="text-2xl mb-1">🔄</div><div className="text-sm font-semibold text-positive-700">Renew Lease</div>
   </button>
-  <button onClick={() => setPage("moveout")} className="bg-orange-50 rounded-3xl p-4 text-center hover:bg-orange-100 transition-all">
-  <div className="text-2xl mb-1"><span className="material-icons-outlined text-orange-600">exit_to_app</span></div><div className="text-sm font-semibold text-orange-700">Move-Out</div>
+  <button onClick={() => setPage("moveout")} className="bg-notice-50 rounded-3xl p-4 text-center hover:bg-notice-100 transition-all">
+  <div className="text-2xl mb-1"><span className="material-icons-outlined text-notice-600">exit_to_app</span></div><div className="text-sm font-semibold text-notice-700">Move-Out</div>
   </button>
-  <button onClick={() => deleteTenant(selectedTenant.id, selectedTenant.name)} className="bg-red-50 rounded-3xl p-4 text-center hover:bg-red-100 transition-all">
-  <div className="text-2xl mb-1">📦</div><div className="text-sm font-semibold text-red-700">Archive Tenant</div>
+  <button onClick={() => deleteTenant(selectedTenant.id, selectedTenant.name)} className="bg-danger-50 rounded-3xl p-4 text-center hover:bg-danger-100 transition-all">
+  <div className="text-2xl mb-1">📦</div><div className="text-sm font-semibold text-danger-700">Archive Tenant</div>
   </button>
   </div>
   )}
@@ -5470,10 +5470,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
 
   {/* Tab Navigation */}
   <div className="flex flex-col md:flex-row md:items-center gap-2 mb-4 border-b border-brand-50 pb-3">
-  <h2 className="text-xl md:text-2xl font-bold text-gray-800">Tenants</h2>
+  <h2 className="text-xl md:text-2xl font-bold text-subtle-800">Tenants</h2>
   <div className="flex gap-1 overflow-x-auto pb-1">
   {[["tenants", "Tenants"], ["leases", "Leases"], ["moveout", "Move-Out"], ["evictions", "Evictions"], ["archived", "Archived"]].map(([id, label]) => (
-  <button key={id} onClick={() => { setTenantTab(id); setTenantSearch(""); if (id === "archived") { supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200).then(({ data }) => setArchivedTenants(data || [])); } }} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (tenantTab === id ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
+  <button key={id} onClick={() => { setTenantTab(id); setTenantSearch(""); if (id === "archived") { supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200).then(({ data }) => setArchivedTenants(data || [])); } }} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (tenantTab === id ? "bg-brand-600 text-white" : "bg-subtle-100 text-subtle-600 hover:bg-subtle-200")}>{label}</button>
   ))}
   </div>
   </div>
@@ -5482,14 +5482,14 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {tenantTab === "archived" && (
   <div>
   {archivedTenants.length === 0 ? (
-  <div className="text-center py-12 bg-white rounded-xl border border-gray-100"><div className="text-gray-400">No archived tenants</div><button onClick={async () => { if (!guardSubmit("refreshArchived")) return; try { const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200); setArchivedTenants(data || []); } finally { guardRelease("refreshArchived"); } }} className="text-xs text-brand-600 mt-2 hover:underline">Refresh</button></div>
+  <div className="text-center py-12 bg-white rounded-xl border border-subtle-100"><div className="text-subtle-400">No archived tenants</div><button onClick={async () => { if (!guardSubmit("refreshArchived")) return; try { const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200); setArchivedTenants(data || []); } finally { guardRelease("refreshArchived"); } }} className="text-xs text-brand-600 mt-2 hover:underline">Refresh</button></div>
   ) : archivedTenants.map(t => (
-  <div key={t.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4 opacity-70 mb-2">
+  <div key={t.id} className="bg-white rounded-xl border border-subtle-200 p-4 flex items-center gap-4 opacity-70 mb-2">
   <div className="flex-1">
-  <div className="font-semibold text-gray-700 text-sm">{t.name}</div>
-  <div className="text-xs text-gray-400">{t.property} · Archived {t.archived_at ? new Date(t.archived_at).toLocaleDateString() : ""}</div>
+  <div className="font-semibold text-subtle-700 text-sm">{t.name}</div>
+  <div className="text-xs text-subtle-400">{t.property} · Archived {t.archived_at ? new Date(t.archived_at).toLocaleDateString() : ""}</div>
   </div>
-  <button onClick={async () => { if (!guardSubmit("restoreTenant", t.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", t.id).eq("company_id", companyId); addNotification("♻️", "Restored: " + t.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); fetchTenants(); } finally { guardRelease("restoreTenant", t.id); } }} className="text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 border border-emerald-200">♻️ Restore</button>
+  <button onClick={async () => { if (!guardSubmit("restoreTenant", t.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", t.id).eq("company_id", companyId); addNotification("♻️", "Restored: " + t.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); fetchTenants(); } finally { guardRelease("restoreTenant", t.id); } }} className="text-xs bg-success-50 text-success-700 px-3 py-1.5 rounded-lg hover:bg-success-100 border border-success-200">♻️ Restore</button>
   </div>
   ))}
   </div>
@@ -5500,16 +5500,16 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {tenantTab === "tenants" && (<>
   {/* Required Documents Prompt */}
   {showTenantDocPrompt && (
-  <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 mb-4">
+  <div className="bg-warn-50 border border-warn-200 rounded-3xl p-4 mb-4">
   <div className="flex items-center justify-between mb-2">
-  <div className="text-sm font-bold text-amber-800">📋 Required Documents for {showTenantDocPrompt}</div>
-  <button onClick={() => setShowTenantDocPrompt(null)} className="text-amber-400 hover:text-amber-600">✕</button>
+  <div className="text-sm font-bold text-warn-800">📋 Required Documents for {showTenantDocPrompt}</div>
+  <button onClick={() => setShowTenantDocPrompt(null)} className="text-warn-400 hover:text-warn-600">✕</button>
   </div>
-  <p className="text-xs text-amber-600 mb-3">Before this tenant can move in, the following documents must be uploaded. These are required for lease compliance.</p>
+  <p className="text-xs text-warn-600 mb-3">Before this tenant can move in, the following documents must be uploaded. These are required for lease compliance.</p>
   <div className="space-y-2">
   {["Signed Lease Agreement", "Government-Issued ID", "Renters Insurance Certificate", "Proof of Utility Transfer"].map(doc => (
-  <div key={doc} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-amber-100">
-  <span className="text-amber-400">☐</span>
+  <div key={doc} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-warn-100">
+  <span className="text-warn-400">☐</span>
   <span className="text-sm text-neutral-700">{doc}</span>
   </div>
   ))}
@@ -5527,11 +5527,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
 
   {/* Document Exception Requests — Admin Panel */}
   {isAdmin && docExceptions.filter(r => r.status === "pending").length > 0 && (
-  <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 mb-4">
-  <div className="text-sm font-bold text-amber-800 mb-2">📋 Pending Document Exception Requests ({docExceptions.filter(r => r.status === "pending").length})</div>
+  <div className="bg-warn-50 border border-warn-200 rounded-3xl p-4 mb-4">
+  <div className="text-sm font-bold text-warn-800 mb-2">📋 Pending Document Exception Requests ({docExceptions.filter(r => r.status === "pending").length})</div>
   <div className="space-y-2">
   {docExceptions.filter(r => r.status === "pending").map(r => (
-  <div key={r.id} className="bg-white rounded-xl border border-amber-100 px-4 py-3 flex items-center justify-between">
+  <div key={r.id} className="bg-white rounded-xl border border-warn-100 px-4 py-3 flex items-center justify-between">
   <div>
   <div className="text-sm font-semibold text-neutral-800">{r.tenant_name}</div>
   <div className="text-xs text-neutral-400">{r.property} · Requested by {r.requested_by} · {new Date(r.created_at).toLocaleDateString()}</div>
@@ -5543,13 +5543,13 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   showToast("Exception approved for " + r.tenant_name, "success");
   logAudit("approve", "tenants", "Document exception approved for " + r.tenant_name, "", userProfile?.email, userRole, companyId);
   fetchDocExceptions(); fetchTenants();
-  }} className="text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 font-medium">Approve</button>
+  }} className="text-xs bg-success-50 text-success-700 px-3 py-1.5 rounded-lg hover:bg-success-100 font-medium">Approve</button>
   <button onClick={async () => {
   await supabase.from("doc_exception_requests").update({ status: "rejected", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() }).eq("id", r.id);
   showToast("Exception rejected for " + r.tenant_name, "info");
   logAudit("reject", "tenants", "Document exception rejected for " + r.tenant_name, "", userProfile?.email, userRole, companyId);
   fetchDocExceptions();
-  }} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100 font-medium">Reject</button>
+  }} className="text-xs bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg hover:bg-danger-100 font-medium">Reject</button>
   </div>
   </div>
   ))}
@@ -5595,10 +5595,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="bg-brand-50 border border-brand-200 rounded-2xl px-4 py-3 mb-4 flex items-center justify-between">
   <span className="text-sm font-medium text-brand-800">{selectedTenants.size} tenant{selectedTenants.size > 1 ? "s" : ""} selected</span>
   <div className="flex gap-2">
-  <button onClick={() => setBulkAction("notice")} className="text-xs bg-orange-100 text-orange-700 px-3 py-1.5 rounded-lg hover:bg-orange-200 font-medium">Send Notice</button>
-  <button onClick={() => setBulkAction("charge")} className="text-xs bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-200 font-medium">Add Charge</button>
-  <button onClick={() => setBulkAction("status")} className="text-xs bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-200 font-medium">Change Status</button>
-  <button onClick={() => setBulkAction("archive")} className="text-xs bg-red-100 text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-200 font-medium">Delete</button>
+  <button onClick={() => setBulkAction("notice")} className="text-xs bg-notice-100 text-notice-700 px-3 py-1.5 rounded-lg hover:bg-notice-200 font-medium">Send Notice</button>
+  <button onClick={() => setBulkAction("charge")} className="text-xs bg-info-100 text-info-700 px-3 py-1.5 rounded-lg hover:bg-info-200 font-medium">Add Charge</button>
+  <button onClick={() => setBulkAction("status")} className="text-xs bg-highlight-100 text-highlight-700 px-3 py-1.5 rounded-lg hover:bg-highlight-200 font-medium">Change Status</button>
+  <button onClick={() => setBulkAction("archive")} className="text-xs bg-danger-100 text-danger-700 px-3 py-1.5 rounded-lg hover:bg-danger-200 font-medium">Delete</button>
   <button onClick={() => setSelectedTenants(new Set())} className="text-xs text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect All</button>
   </div>
   </div>
@@ -5708,8 +5708,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {bulkAction === "archive" && (
   <Modal title={`Archive ${selectedTenants.size} Tenant(s)?`} onClose={() => setBulkAction(null)}>
   <div className="space-y-3">
-  <p className="text-sm text-red-600">This will archive the selected tenants. They can be restored from the Archive page within 180 days.</p>
-  <div className="bg-red-50 rounded-lg p-3 text-xs text-red-700 space-y-1">
+  <p className="text-sm text-danger-600">This will archive the selected tenants. They can be restored from the Archive page within 180 days.</p>
+  <div className="bg-danger-50 rounded-lg p-3 text-xs text-danger-700 space-y-1">
   {[...selectedTenants].map(tid => { const t = tenants.find(x => x.id === tid); return t ? <div key={tid}>{t.name} — {t.property}{safeNum(t.balance) > 0 ? ` (owes ${formatCurrency(t.balance)})` : ""}</div> : null; })}
   </div>
   <button onClick={async () => {
@@ -5726,7 +5726,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   logAudit("archive", "tenants", `Bulk archived ${count} tenants`, "", userProfile?.email, userRole, companyId);
   setBulkAction(null); setSelectedTenants(new Set()); fetchTenants();
   } finally { guardRelease("bulkArchive"); }
-  }} className="w-full bg-red-600 text-white text-sm py-2.5 rounded-lg hover:bg-red-700 font-semibold">Confirm Delete</button>
+  }} className="w-full bg-danger-600 text-white text-sm py-2.5 rounded-lg hover:bg-danger-700 font-semibold">Confirm Delete</button>
   </div>
   </Modal>
   )}
@@ -5792,26 +5792,26 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <button onClick={() => openLedger(t)} className="text-xs text-brand-600 border border-brand-200 px-2 py-1 rounded-lg hover:bg-brand-50">Ledger</button>
   <button onClick={() => openMessages(t)} className="text-xs text-neutral-500 border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Msg</button>
   <button onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="text-xs text-neutral-500 border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Lease</button>
-  <button onClick={() => startEdit(t)} className="text-xs text-blue-600 hover:underline">Edit</button>
-  <button onClick={() => deleteTenant(t.id, t.name)} className="text-xs text-red-500 hover:underline">Delete</button>
-  <button onClick={() => inviteTenant(t)} className="text-xs text-purple-600 hover:underline">Invite</button>
+  <button onClick={() => startEdit(t)} className="text-xs text-info-600 hover:underline">Edit</button>
+  <button onClick={() => deleteTenant(t.id, t.name)} className="text-xs text-danger-500 hover:underline">Delete</button>
+  <button onClick={() => inviteTenant(t)} className="text-xs text-highlight-600 hover:underline">Invite</button>
   </div>
   );
   return <>
   {tenantView === "card" && (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
   {ft.map(t => (
-  <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className={"rounded-3xl shadow-card border p-4 cursor-pointer hover:shadow-md transition-all " + (t.doc_status === "pending_docs" ? "bg-neutral-50 border-amber-200 opacity-60" : "bg-white border-brand-50 hover:border-brand-200")}>
+  <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className={"rounded-3xl shadow-card border p-4 cursor-pointer hover:shadow-md transition-all " + (t.doc_status === "pending_docs" ? "bg-neutral-50 border-warn-200 opacity-60" : "bg-white border-brand-50 hover:border-brand-200")}>
   <div className="flex justify-between items-start mb-2">
   <div className="flex items-center gap-3">
-  <div className={"w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg " + (t.doc_status === "pending_docs" ? "bg-amber-100 text-amber-700" : "bg-brand-100 text-brand-700")}>{t.name?.[0]}</div>
-  <div><div className="font-semibold text-neutral-800">{t.name}</div><div className="text-xs text-neutral-400">{t.property}</div>{t.doc_status === "pending_docs" && <div className="text-xs text-amber-600 font-medium">Pending documents</div>}</div>
+  <div className={"w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg " + (t.doc_status === "pending_docs" ? "bg-warn-100 text-warn-700" : "bg-brand-100 text-brand-700")}>{t.name?.[0]}</div>
+  <div><div className="font-semibold text-neutral-800">{t.name}</div><div className="text-xs text-neutral-400">{t.property}</div>{t.doc_status === "pending_docs" && <div className="text-xs text-warn-600 font-medium">Pending documents</div>}</div>
   </div>
   <Badge status={t.lease_status} />
   </div>
   <div className="grid grid-cols-3 gap-2 text-xs mt-2">
   <div><span className="text-neutral-400">Email</span><div className="font-semibold text-neutral-700 truncate">{t.email || "—"}</div></div>
-  <div><span className="text-neutral-400">Balance</span><div className={`font-semibold ${t.balance > 0 ? "text-red-500" : "text-neutral-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</div></div>
+  <div><span className="text-neutral-400">Balance</span><div className={`font-semibold ${t.balance > 0 ? "text-danger-500" : "text-neutral-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</div></div>
   <div><span className="text-neutral-400">Rent</span><div className="font-semibold text-neutral-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</div></div>
   </div>
   <div className="flex items-center justify-between mt-3 pt-2 border-t border-brand-50">
@@ -5840,7 +5840,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <td className="px-4 py-2.5 text-neutral-400 text-xs">{t.email}</td>
   <td className="px-4 py-2.5"><Badge status={t.lease_status} /></td>
   <td className="px-4 py-2.5 text-right font-semibold">{t.rent ? `${formatCurrency(t.rent)}` : "\u2014"}</td>
-  <td className={`px-4 py-2.5 text-right font-semibold ${t.balance > 0 ? "text-red-500" : "text-neutral-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</td>
+  <td className={`px-4 py-2.5 text-right font-semibold ${t.balance > 0 ? "text-danger-500" : "text-neutral-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</td>
   <td className="px-4 py-2.5 text-right"><TenantActions t={t} /></td>
   </tr>
   ))}
@@ -5855,10 +5855,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold text-xs">{t.name?.[0]}</div>
   <div className="flex-1 min-w-0"><span className="text-sm font-medium text-neutral-800">{t.name}</span><span className="text-xs text-neutral-400 ml-2">{t.property}</span></div>
   <span className="text-sm font-semibold text-neutral-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</span>
-  <span className={`text-xs font-semibold ${t.balance > 0 ? "text-red-500" : "text-neutral-400"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</span>
+  <span className={`text-xs font-semibold ${t.balance > 0 ? "text-danger-500" : "text-neutral-400"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</span>
   <Badge status={t.lease_status} />
   <button onClick={() => openLedger(t)} className="text-xs text-brand-600 hover:underline">Ledger</button>
-  <button onClick={() => startEdit(t)} className="text-xs text-blue-600 hover:underline">Edit</button>
+  <button onClick={() => startEdit(t)} className="text-xs text-info-600 hover:underline">Edit</button>
   </div>
   ))}
   </div>
@@ -5961,7 +5961,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   {payTab === "autopay" && <Autopay addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} showToast={showToast} showConfirm={showConfirm} />}
   {payTab === "payments" && (<>
   <div className="grid grid-cols-2 gap-3 mb-5">
-  <StatCard label="Total Collected" value={formatCurrency(payments.reduce((s, p) => s + p.amount, 0))} color="text-green-600" sub="From journal entries" />
+  <StatCard label="Total Collected" value={formatCurrency(payments.reduce((s, p) => s + p.amount, 0))} color="text-positive-600" sub="From journal entries" />
   <StatCard label="Transactions" value={payments.length} color="text-brand-600" sub="Posted payments" />
   </div>
 
@@ -5990,12 +5990,12 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   </thead>
   <tbody>
   {payments.map(p => (
-  <tr key={p.id} className="border-t border-neutral-100 hover:bg-green-50/40 transition-colors">
+  <tr key={p.id} className="border-t border-neutral-100 hover:bg-positive-50/40 transition-colors">
   <td className="px-4 py-3 text-neutral-500">{p.date}</td>
-  <td className="px-4 py-3 font-mono text-xs text-green-600">{p.number || "—"}</td>
+  <td className="px-4 py-3 font-mono text-xs text-positive-600">{p.number || "—"}</td>
   <td className="px-4 py-3 font-medium text-neutral-800">{p.tenant || "—"}</td>
   <td className="px-4 py-3 text-neutral-400 text-xs">{p.property?.split(",")[0] || "—"}</td>
-  <td className="px-4 py-3 text-right font-semibold font-mono text-green-600">{formatCurrency(p.amount)}</td>
+  <td className="px-4 py-3 text-right font-semibold font-mono text-positive-600">{formatCurrency(p.amount)}</td>
   <td className="px-4 py-3 capitalize text-neutral-500 text-xs">{p.type?.replace("_", " ")}</td>
   <td className="px-4 py-3 text-neutral-400 text-xs">{p.method}</td>
   <td className="px-4 py-3">
@@ -6238,7 +6238,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div key={p.id} className="relative group rounded-3xl overflow-hidden border border-brand-50">
   <img src={p.url} alt={p.caption} className="w-full h-40 object-cover" />
   <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
-  <button onClick={() => deletePhoto(p.id)} className="opacity-0 group-hover:opacity-100 bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg">Delete</button>
+  <button onClick={() => deletePhoto(p.id)} className="opacity-0 group-hover:opacity-100 bg-danger-500 text-white text-xs px-3 py-1.5 rounded-lg">Delete</button>
   </div>
   <div className="p-2 text-xs text-neutral-400 truncate">{p.caption}</div>
   </div>
@@ -6256,7 +6256,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   </div>
   <div className="flex gap-1 overflow-x-auto pb-1">
   {[["workorders", "Work Orders"], ["inspections", "Inspections"], ["vendors", "Vendors"], ["archived", "Archived"]].map(([id, label]) => (
-  <button key={id} onClick={() => setMaintTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap " + (maintTab === id ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
+  <button key={id} onClick={() => setMaintTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap " + (maintTab === id ? "bg-brand-600 text-white" : "bg-subtle-100 text-subtle-600 hover:bg-subtle-200")}>{label}</button>
   ))}
   </div>
   </div>
@@ -6279,7 +6279,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={(v, prop) => {
   setForm({ ...form, property: v, tenant: prop?.tenant || "" });
   }} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant</label><input placeholder={form.property && !form.tenant ? "Vacant — no tenant" : "Tenant name"} value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className={"border rounded-lg px-3 py-2 text-sm w-full " + (!form.tenant && form.property ? "border-gray-100 bg-brand-50/30 text-neutral-400" : "border-brand-100")} readOnly={!!(form.property && !form.tenant)} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant</label><input placeholder={form.property && !form.tenant ? "Vacant — no tenant" : "Tenant name"} value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className={"border rounded-lg px-3 py-2 text-sm w-full " + (!form.tenant && form.property ? "border-subtle-100 bg-brand-50/30 text-neutral-400" : "border-brand-100")} readOnly={!!(form.property && !form.tenant)} /></div>
   <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Issue *</label><Input placeholder="Describe the maintenance issue" value={form.issue} onChange={e => setForm({ ...form, issue: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Priority</label><Select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })}>
   {["normal", "emergency", "low"].map(p => <option key={p}>{p}</option>)}
@@ -6319,8 +6319,8 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div className="bg-brand-50 border border-brand-200 rounded-2xl px-4 py-3 mb-3 flex items-center justify-between">
   <span className="text-sm font-medium text-brand-800">{selectedWOs.size} work order{selectedWOs.size > 1 ? "s" : ""} selected</span>
   <div className="flex gap-2">
-  <button onClick={() => bulkUpdateWOStatus("in_progress")} className="text-xs bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-200 font-medium">In Progress</button>
-  <button onClick={() => bulkUpdateWOStatus("completed")} className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-200 font-medium">Complete</button>
+  <button onClick={() => bulkUpdateWOStatus("in_progress")} className="text-xs bg-highlight-100 text-highlight-700 px-3 py-1.5 rounded-lg hover:bg-highlight-200 font-medium">In Progress</button>
+  <button onClick={() => bulkUpdateWOStatus("completed")} className="text-xs bg-success-100 text-success-700 px-3 py-1.5 rounded-lg hover:bg-success-200 font-medium">Complete</button>
   <button onClick={() => bulkUpdateWOStatus("open")} className="text-xs bg-neutral-100 text-neutral-600 px-3 py-1.5 rounded-lg hover:bg-neutral-200 font-medium">Reopen</button>
   <button onClick={() => setSelectedWOs(new Set())} className="text-xs text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect</button>
   </div>
@@ -6337,7 +6337,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${priorityColors[w.priority]}`}>{w.priority}</span>
   <span className="font-semibold text-neutral-800">{w.issue}</span>
   </div>
-  <div className="text-xs text-neutral-400 mt-1">{w.property} · {w.tenant}{!w.assigned && w.tenant && <span className="ml-1 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Tenant Request</span>}</div>
+  <div className="text-xs text-neutral-400 mt-1">{w.property} · {w.tenant}{!w.assigned && w.tenant && <span className="ml-1 text-xs bg-warn-100 text-warn-700 px-1.5 py-0.5 rounded-full">Tenant Request</span>}</div>
   </div>
   </div>
   <Badge status={w.status} label={w.status?.replace("_", " ")} />
@@ -6349,11 +6349,11 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   </div>
   {w.notes && <div className="mt-2 text-xs text-neutral-400 italic">{w.notes}</div>}
   <div className="mt-3 flex gap-2 flex-wrap">
-  {w.status === "open" && <button onClick={() => updateStatus(w, "in_progress")} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">▶ In Progress</button>}
-  {w.status === "in_progress" && <button onClick={() => updateStatus(w, "completed")} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">✓ Complete</button>}
+  {w.status === "open" && <button onClick={() => updateStatus(w, "in_progress")} className="text-xs text-highlight-600 border border-highlight-200 px-3 py-1 rounded-lg hover:bg-highlight-50">▶ In Progress</button>}
+  {w.status === "in_progress" && <button onClick={() => updateStatus(w, "completed")} className="text-xs text-positive-600 border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">✓ Complete</button>}
   {w.status === "completed" && <button onClick={() => updateStatus(w, "open")} className="text-xs text-neutral-400 border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">↩ Reopen</button>}
-  <button onClick={() => openPhotos(w)} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">📸 Photos</button>
-  <button onClick={() => startEdit(w)} className="text-xs text-blue-600 border border-blue-200 px-3 py-1 rounded-lg hover:bg-blue-50">✏️ Edit</button>
+  <button onClick={() => openPhotos(w)} className="text-xs text-highlight-600 border border-highlight-200 px-3 py-1 rounded-lg hover:bg-highlight-50">📸 Photos</button>
+  <button onClick={() => startEdit(w)} className="text-xs text-info-600 border border-info-200 px-3 py-1 rounded-lg hover:bg-info-50">✏️ Edit</button>
   </div>
   </div>
   ))}
@@ -6616,7 +6616,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {auditLog.map((a, i) => (
   <div key={i} className="bg-brand-50/30 rounded-lg px-4 py-3">
   <div className="flex justify-between">
-  <span className="text-sm font-semibold text-green-600">{a.action}</span>
+  <span className="text-sm font-semibold text-positive-600">{a.action}</span>
   <span className="text-xs text-neutral-400">{new Date(a.paid_at).toLocaleString()}</span>
   </div>
   <div className="text-sm text-neutral-500 mt-1">${a.amount} — {a.property}</div>
@@ -6633,7 +6633,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <Btn variant="secondary" onClick={exportUtilities}><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</Btn>
   <div className="flex gap-1 overflow-x-auto pb-1">
   {[["bills", "Manual Bills"], ["automation", "⚡ Automation"], ["jobs", "Job History"]].map(([id, label]) => (
-  <button key={id} onClick={() => setUtilTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (utilTab === id ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
+  <button key={id} onClick={() => setUtilTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (utilTab === id ? "bg-brand-600 text-white" : "bg-subtle-100 text-subtle-600 hover:bg-subtle-200")}>{label}</button>
   ))}
   </div>
   </div>
@@ -6643,25 +6643,25 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div>
   <div className="flex items-center justify-between mb-4">
   <div>
-  <h3 className="font-semibold text-gray-700">Connected Utility Accounts</h3>
-  <p className="text-xs text-gray-400 mt-0.5">{utilAccounts.length} account{utilAccounts.length !== 1 ? "s" : ""} connected</p>
+  <h3 className="font-semibold text-subtle-700">Connected Utility Accounts</h3>
+  <p className="text-xs text-subtle-400 mt-0.5">{utilAccounts.length} account{utilAccounts.length !== 1 ? "s" : ""} connected</p>
   </div>
   <Btn onClick={() => { setEditingAccount(null); setAccountForm({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "" }); setShowAccountForm(true); }}>+ Add Account</Btn>
   </div>
 
   {showAccountForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
-  <h3 className="font-semibold text-gray-700 mb-3">{editingAccount ? "Edit Account" : "Connect Utility Account"}</h3>
+  <h3 className="font-semibold text-subtle-700 mb-3">{editingAccount ? "Edit Account" : "Connect Utility Account"}</h3>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={accountForm.property} onChange={v => setAccountForm({...accountForm, property: v})} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Provider *</label><Select value={accountForm.provider} onChange={e => { const p = providers.find(x => x.id === e.target.value); setAccountForm({...accountForm, provider: e.target.value, account_type: p?.account_type || "electric"}); }}><option value="">Select provider...</option>{providers.map(p => <option key={p.id} value={p.id}>{p.display_name} ({p.region})</option>)}</Select></div>
-  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Account Number</label><Input placeholder="e.g. 1234567890" value={accountForm.account_number} onChange={e => setAccountForm({...accountForm, account_number: e.target.value})} /></div>
-  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Account Type</label><Select value={accountForm.account_type} onChange={e => setAccountForm({...accountForm, account_type: e.target.value})}><option value="electric">Electric</option><option value="gas">Gas</option><option value="water_sewer">Water/Sewer</option><option value="electric_gas">Electric + Gas</option><option value="trash">Trash</option></Select></div>
-  <div className="col-span-1 sm:col-span-2 bg-amber-50 rounded-lg px-3 py-2"><div className="text-xs font-semibold text-amber-700">🔐 Login Credentials (encrypted before storage)</div></div>
-  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Username / Email *</label><Input placeholder="your-login@email.com" value={accountForm.username} onChange={e => setAccountForm({...accountForm, username: e.target.value})} autoComplete="off" /></div>
-  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Password *</label><Input type="password" placeholder="••••••••" value={accountForm.password} onChange={e => setAccountForm({...accountForm, password: e.target.value})} autoComplete="new-password" /></div>
-  <div><label className="text-xs font-medium text-gray-500 mb-1 block">Check Frequency</label><Select value={accountForm.check_frequency} onChange={e => setAccountForm({...accountForm, check_frequency: e.target.value})}><option value="weekly">Weekly</option><option value="biweekly">Every 2 Weeks</option><option value="monthly">Monthly</option></Select></div>
-  <div><label className="text-xs font-medium text-gray-500 mb-1 block">2FA Method</label><Select value={accountForm.two_factor_method} onChange={e => setAccountForm({...accountForm, two_factor_method: e.target.value})}><option value="none">None</option><option value="sms">SMS</option><option value="email">Email</option></Select></div>
+  <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Property *</label><PropertySelect value={accountForm.property} onChange={v => setAccountForm({...accountForm, property: v})} companyId={companyId} /></div>
+  <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Provider *</label><Select value={accountForm.provider} onChange={e => { const p = providers.find(x => x.id === e.target.value); setAccountForm({...accountForm, provider: e.target.value, account_type: p?.account_type || "electric"}); }}><option value="">Select provider...</option>{providers.map(p => <option key={p.id} value={p.id}>{p.display_name} ({p.region})</option>)}</Select></div>
+  <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Account Number</label><Input placeholder="e.g. 1234567890" value={accountForm.account_number} onChange={e => setAccountForm({...accountForm, account_number: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Account Type</label><Select value={accountForm.account_type} onChange={e => setAccountForm({...accountForm, account_type: e.target.value})}><option value="electric">Electric</option><option value="gas">Gas</option><option value="water_sewer">Water/Sewer</option><option value="electric_gas">Electric + Gas</option><option value="trash">Trash</option></Select></div>
+  <div className="col-span-1 sm:col-span-2 bg-warn-50 rounded-lg px-3 py-2"><div className="text-xs font-semibold text-warn-700">🔐 Login Credentials (encrypted before storage)</div></div>
+  <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Username / Email *</label><Input placeholder="your-login@email.com" value={accountForm.username} onChange={e => setAccountForm({...accountForm, username: e.target.value})} autoComplete="off" /></div>
+  <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Password *</label><Input type="password" placeholder="••••••••" value={accountForm.password} onChange={e => setAccountForm({...accountForm, password: e.target.value})} autoComplete="new-password" /></div>
+  <div><label className="text-xs font-medium text-subtle-500 mb-1 block">Check Frequency</label><Select value={accountForm.check_frequency} onChange={e => setAccountForm({...accountForm, check_frequency: e.target.value})}><option value="weekly">Weekly</option><option value="biweekly">Every 2 Weeks</option><option value="monthly">Monthly</option></Select></div>
+  <div><label className="text-xs font-medium text-subtle-500 mb-1 block">2FA Method</label><Select value={accountForm.two_factor_method} onChange={e => setAccountForm({...accountForm, two_factor_method: e.target.value})}><option value="none">None</option><option value="sms">SMS</option><option value="email">Email</option></Select></div>
   </div>
   <div className="flex gap-2 mt-3">
   <Btn onClick={saveAccount}>Save Account</Btn>
@@ -6671,28 +6671,28 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   )}
 
   {utilAccounts.length === 0 ? (
-  <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
+  <div className="text-center py-12 bg-white rounded-xl border border-subtle-100">
   <div className="text-4xl mb-3">⚡</div>
-  <div className="text-gray-500 font-medium">No utility accounts connected</div>
-  <div className="text-xs text-gray-400 mt-1">Add your first account to start automated bill fetching</div>
+  <div className="text-subtle-500 font-medium">No utility accounts connected</div>
+  <div className="text-xs text-subtle-400 mt-1">Add your first account to start automated bill fetching</div>
   </div>
   ) : (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
   {utilAccounts.map(acct => (
-  <div key={acct.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+  <div key={acct.id} className="bg-white rounded-xl border border-subtle-100 shadow-sm p-4">
   <div className="flex items-start justify-between mb-2">
-  <div><div className="font-semibold text-gray-800 text-sm">{acct.provider_display}</div><div className="text-xs text-gray-400">{acct.property}</div></div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (acct.last_check_status === "success" ? "bg-green-100 text-green-700" : acct.last_check_status === "failed" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-500")}>{acct.last_check_status || "never"}</span>
+  <div><div className="font-semibold text-subtle-800 text-sm">{acct.provider_display}</div><div className="text-xs text-subtle-400">{acct.property}</div></div>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (acct.last_check_status === "success" ? "bg-positive-100 text-positive-700" : acct.last_check_status === "failed" ? "bg-danger-100 text-danger-700" : "bg-subtle-100 text-subtle-500")}>{acct.last_check_status || "never"}</span>
   </div>
   <div className="grid grid-cols-2 gap-2 text-xs mt-2">
-  <div><span className="text-gray-400">Account #</span><div className="font-semibold text-gray-700">{acct.account_number || "—"}</div></div>
-  <div><span className="text-gray-400">Type</span><div className="font-semibold text-gray-700 capitalize">{acct.account_type?.replace("_", "/")}</div></div>
-  <div><span className="text-gray-400">Last Checked</span><div className="font-semibold text-gray-700">{acct.last_checked_at ? new Date(acct.last_checked_at).toLocaleDateString() : "Never"}</div></div>
-  <div><span className="text-gray-400">Frequency</span><div className="font-semibold text-gray-700 capitalize">{acct.check_frequency}</div></div>
+  <div><span className="text-subtle-400">Account #</span><div className="font-semibold text-subtle-700">{acct.account_number || "—"}</div></div>
+  <div><span className="text-subtle-400">Type</span><div className="font-semibold text-subtle-700 capitalize">{acct.account_type?.replace("_", "/")}</div></div>
+  <div><span className="text-subtle-400">Last Checked</span><div className="font-semibold text-subtle-700">{acct.last_checked_at ? new Date(acct.last_checked_at).toLocaleDateString() : "Never"}</div></div>
+  <div><span className="text-subtle-400">Frequency</span><div className="font-semibold text-subtle-700 capitalize">{acct.check_frequency}</div></div>
   </div>
-  <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50">
+  <div className="flex gap-2 mt-3 pt-3 border-t border-subtle-50">
   <button onClick={() => triggerManualCheck(acct)} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">🔄 Check Now</button>
-  <button onClick={() => deleteAccount(acct)} className="text-xs text-red-500 hover:underline ml-auto">Delete</button>
+  <button onClick={() => deleteAccount(acct)} className="text-xs text-danger-500 hover:underline ml-auto">Delete</button>
   </div>
   </div>
   ))}
@@ -6701,14 +6701,14 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
 
   {autoBills.length > 0 && (
   <div>
-  <h3 className="font-semibold text-gray-700 mb-3">Fetched Bills</h3>
+  <h3 className="font-semibold text-subtle-700 mb-3">Fetched Bills</h3>
   <div className="space-y-2">
   {autoBills.map(bill => (
-  <div key={bill.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4">
-  <div className="flex-1"><div className="font-semibold text-gray-800 text-sm">{bill.provider_display || bill.provider}</div><div className="text-xs text-gray-400">{bill.property} · Due {bill.due_date || "—"}</div></div>
-  <div className="text-lg font-bold text-gray-800">${safeNum(bill.amount).toLocaleString()}</div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (bill.status === "paid" ? "bg-green-100 text-green-700" : bill.status === "authorized" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{bill.status?.replace("_", " ")}</span>
-  {bill.status === "pending_review" && <button onClick={() => authorizeBillPayment(bill, "default_on_file")} className="text-xs bg-green-50 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-100 border border-green-200">Authorize Pay</button>}
+  <div key={bill.id} className="bg-white rounded-xl border border-subtle-100 shadow-sm p-4 flex items-center gap-4">
+  <div className="flex-1"><div className="font-semibold text-subtle-800 text-sm">{bill.provider_display || bill.provider}</div><div className="text-xs text-subtle-400">{bill.property} · Due {bill.due_date || "—"}</div></div>
+  <div className="text-lg font-bold text-subtle-800">${safeNum(bill.amount).toLocaleString()}</div>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (bill.status === "paid" ? "bg-positive-100 text-positive-700" : bill.status === "authorized" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{bill.status?.replace("_", " ")}</span>
+  {bill.status === "pending_review" && <button onClick={() => authorizeBillPayment(bill, "default_on_file")} className="text-xs bg-positive-50 text-positive-700 px-3 py-1.5 rounded-lg hover:bg-positive-100 border border-positive-200">Authorize Pay</button>}
   </div>
   ))}
   </div>
@@ -6720,16 +6720,16 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {/* ===== JOB HISTORY TAB ===== */}
   {utilTab === "jobs" && (
   <div>
-  <h3 className="font-semibold text-gray-700 mb-3">Automation Job History</h3>
+  <h3 className="font-semibold text-subtle-700 mb-3">Automation Job History</h3>
   {autoJobs.length === 0 ? (
-  <div className="text-center py-12 bg-white rounded-xl border border-gray-100"><div className="text-gray-400">No automation jobs yet</div></div>
+  <div className="text-center py-12 bg-white rounded-xl border border-subtle-100"><div className="text-subtle-400">No automation jobs yet</div></div>
   ) : (
   <div className="space-y-2">
   {autoJobs.map(job => (
-  <div key={job.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4">
-  <div className="flex-1"><div className="font-semibold text-gray-800 text-sm capitalize">{job.job_type?.replace("_", " ")}</div><div className="text-xs text-gray-400">{job.triggered_by} · {job.created_at ? new Date(job.created_at).toLocaleString() : ""}</div></div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (job.status === "completed" ? "bg-green-100 text-green-700" : job.status === "failed" ? "bg-red-100 text-red-700" : job.status === "running" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500")}>{job.status}</span>
-  {job.error_message && <div className="text-xs text-red-500 max-w-xs truncate">{job.error_message}</div>}
+  <div key={job.id} className="bg-white rounded-xl border border-subtle-100 shadow-sm p-4 flex items-center gap-4">
+  <div className="flex-1"><div className="font-semibold text-subtle-800 text-sm capitalize">{job.job_type?.replace("_", " ")}</div><div className="text-xs text-subtle-400">{job.triggered_by} · {job.created_at ? new Date(job.created_at).toLocaleString() : ""}</div></div>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (job.status === "completed" ? "bg-positive-100 text-positive-700" : job.status === "failed" ? "bg-danger-100 text-danger-700" : job.status === "running" ? "bg-info-100 text-info-700" : "bg-subtle-100 text-subtle-500")}>{job.status}</span>
+  {job.error_message && <div className="text-xs text-danger-500 max-w-xs truncate">{job.error_message}</div>}
   </div>
   ))}
   </div>
@@ -6761,9 +6761,9 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {/* Stats */}
   <div className="flex gap-3 mb-4">
   <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-neutral-800">{utilities.length}</div><div className="text-xs text-neutral-400">Total</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{utilities.filter(u => u.status === "pending").length}</div><div className="text-xs text-neutral-400">Pending</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">${utilities.filter(u => u.status === "paid").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Paid</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-red-500">${utilities.filter(u => u.status === "pending").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Outstanding</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-warn-600">{utilities.filter(u => u.status === "pending").length}</div><div className="text-xs text-neutral-400">Pending</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-success-600">${utilities.filter(u => u.status === "paid").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Paid</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-danger-500">${utilities.filter(u => u.status === "pending").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Outstanding</div></div>
   </div>
 
   {showForm && (
@@ -6812,7 +6812,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div><span className="text-neutral-400">Paid</span><div className="font-semibold text-neutral-700">{u.paid_at ? new Date(u.paid_at).toLocaleDateString() : "—"}</div></div>
   </div>
   <div className="mt-3 flex gap-2">
-  {u.status === "pending" && <button onClick={() => approvePay(u)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">✓ Pay</button>}
+  {u.status === "pending" && <button onClick={() => approvePay(u)} className="text-xs text-positive-600 border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">✓ Pay</button>}
   <button onClick={() => openAuditLog(u)} className="text-xs text-neutral-500 border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Audit</button>
   </div>
   </div>
@@ -6840,7 +6840,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {showCreds.has(u.id) && <div className="text-neutral-600 mt-0.5">{u._decUser || "—"} / {u._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
-  {u.status === "pending" && <button onClick={() => approvePay(u)} className="text-xs text-green-600 hover:underline mr-2">Pay</button>}
+  {u.status === "pending" && <button onClick={() => approvePay(u)} className="text-xs text-positive-600 hover:underline mr-2">Pay</button>}
   <button onClick={() => openAuditLog(u)} className="text-xs text-neutral-400 hover:underline">Audit</button>
   </td>
   </tr>
@@ -6896,23 +6896,23 @@ function ArchivedItems({ tableName, label, fields, companyId, addNotification, o
   return (
   <div>
   {items.length === 0 ? (
-  <div className="text-center py-12 bg-white rounded-xl border border-gray-100"><div className="text-gray-400">No archived {label.toLowerCase()}s</div></div>
+  <div className="text-center py-12 bg-white rounded-xl border border-subtle-100"><div className="text-subtle-400">No archived {label.toLowerCase()}s</div></div>
   ) : (
   <div className="space-y-2">
   {items.map(item => (
-  <div key={item.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4 opacity-70">
+  <div key={item.id} className="bg-white rounded-xl border border-subtle-200 p-4 flex items-center gap-4 opacity-70">
   <div className="flex-1">
-  <div className="font-semibold text-gray-700 text-sm">{item.address || item.name || item.issue || item.tenant || "Item"}</div>
-  <div className="text-xs text-gray-400">
+  <div className="font-semibold text-subtle-700 text-sm">{item.address || item.name || item.issue || item.tenant || "Item"}</div>
+  <div className="text-xs text-subtle-400">
   {item.property && <span>{item.property} · </span>}
   {item.amount && <span>${Number(item.amount).toLocaleString()} · </span>}
   Archived {item.archived_at ? new Date(item.archived_at).toLocaleDateString() : ""}
   {item.archived_by && <span> by {item.archived_by}</span>}
   </div>
-  <div className="text-xs text-amber-600 mt-1">{item.archived_at ? Math.max(0, 180 - Math.floor((Date.now() - new Date(item.archived_at)) / 86400000)) : "?"} days until auto-purge</div>
+  <div className="text-xs text-warn-600 mt-1">{item.archived_at ? Math.max(0, 180 - Math.floor((Date.now() - new Date(item.archived_at)) / 86400000)) : "?"} days until auto-purge</div>
   </div>
-  <button onClick={() => restore(item)} className="text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 border border-emerald-200">♻️ Restore</button>
-  <button onClick={() => permanentDelete(item)} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100 border border-red-200">🗑️ Delete</button>
+  <button onClick={() => restore(item)} className="text-xs bg-success-50 text-success-700 px-3 py-1.5 rounded-lg hover:bg-success-100 border border-success-200">♻️ Restore</button>
+  <button onClick={() => permanentDelete(item)} className="text-xs bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg hover:bg-danger-100 border border-danger-200">🗑️ Delete</button>
   </div>
   ))}
   </div>
@@ -7011,7 +7011,7 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   <div>
   <div className="flex items-center justify-between mb-4">
   <div>
-  <div className="text-sm text-gray-500">{active.length} active · {paused.length} paused</div>
+  <div className="text-sm text-subtle-500">{active.length} active · {paused.length} paused</div>
   </div>
   <div className="flex gap-2">
   <Btn variant="warning-fill" size="xs" onClick={runNow}>⚡ Post Now</Btn>
@@ -7021,24 +7021,24 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
 
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
-  <h3 className="font-semibold text-gray-700 mb-3">{editingEntry ? "Edit Recurring Entry" : "New Recurring Entry"}</h3>
+  <h3 className="font-semibold text-subtle-700 mb-3">{editingEntry ? "Edit Recurring Entry" : "New Recurring Entry"}</h3>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-  <div className="col-span-2"><label className="text-xs text-gray-500 mb-1 block">Description *</label><Input value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Monthly rent — John Doe — 123 Main St" /></div>
-  <div><label className="text-xs text-gray-500 mb-1 block">Amount *</label><Input type="number" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} /></div>
-  <div><label className="text-xs text-gray-500 mb-1 block">Day of Month</label><Input type="number" min="1" max="28" value={form.day_of_month} onChange={e => setForm({...form, day_of_month: e.target.value})} /></div>
-  <div><label className="text-xs text-gray-500 mb-1 block">Tenant</label><Select value={form.tenant_name} onChange={e => { const t = tenants.find(x => x.name === e.target.value); setForm({...form, tenant_name: e.target.value, property: t?.property || form.property, amount: t?.rent ? String(t.rent) : form.amount }); }} ><option value="">Select tenant...</option>{tenants.map(t => <option key={t.id} value={t.name}>{t.name} — {t.property?.split(",")[0]}</option>)}</Select></div>
-  <div><label className="text-xs text-gray-500 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
-  <div><label className="text-xs text-gray-500 mb-1 block">Debit Account</label><Input value={form.debit_account_name} onChange={e => setForm({...form, debit_account_name: e.target.value})} /></div>
-  <div><label className="text-xs text-gray-500 mb-1 block">Credit Account</label><Input value={form.credit_account_name} onChange={e => setForm({...form, credit_account_name: e.target.value})} /></div>
-  <div className="col-span-2 bg-amber-50 rounded-lg p-3">
+  <div className="col-span-2"><label className="text-xs text-subtle-500 mb-1 block">Description *</label><Input value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Monthly rent — John Doe — 123 Main St" /></div>
+  <div><label className="text-xs text-subtle-500 mb-1 block">Amount *</label><Input type="number" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} /></div>
+  <div><label className="text-xs text-subtle-500 mb-1 block">Day of Month</label><Input type="number" min="1" max="28" value={form.day_of_month} onChange={e => setForm({...form, day_of_month: e.target.value})} /></div>
+  <div><label className="text-xs text-subtle-500 mb-1 block">Tenant</label><Select value={form.tenant_name} onChange={e => { const t = tenants.find(x => x.name === e.target.value); setForm({...form, tenant_name: e.target.value, property: t?.property || form.property, amount: t?.rent ? String(t.rent) : form.amount }); }} ><option value="">Select tenant...</option>{tenants.map(t => <option key={t.id} value={t.name}>{t.name} — {t.property?.split(",")[0]}</option>)}</Select></div>
+  <div><label className="text-xs text-subtle-500 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
+  <div><label className="text-xs text-subtle-500 mb-1 block">Debit Account</label><Input value={form.debit_account_name} onChange={e => setForm({...form, debit_account_name: e.target.value})} /></div>
+  <div><label className="text-xs text-subtle-500 mb-1 block">Credit Account</label><Input value={form.credit_account_name} onChange={e => setForm({...form, credit_account_name: e.target.value})} /></div>
+  <div className="col-span-2 bg-warn-50 rounded-lg p-3">
   <div className="flex items-center gap-2 mb-2">
   <input type="checkbox" checked={form.late_fee_enabled} onChange={e => setForm({...form, late_fee_enabled: e.target.checked})} />
-  <span className="text-xs font-semibold text-amber-700">Enable Auto Late Fees</span>
+  <span className="text-xs font-semibold text-warn-700">Enable Auto Late Fees</span>
   </div>
   {form.late_fee_enabled && (
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs text-gray-500 mb-1 block">Grace Period (days)</label><Input type="number" value={form.grace_period_days} onChange={e => setForm({...form, grace_period_days: e.target.value})} /></div>
-  <div><label className="text-xs text-gray-500 mb-1 block">Late Fee ($)</label><Input type="number" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} /></div>
+  <div><label className="text-xs text-subtle-500 mb-1 block">Grace Period (days)</label><Input type="number" value={form.grace_period_days} onChange={e => setForm({...form, grace_period_days: e.target.value})} /></div>
+  <div><label className="text-xs text-subtle-500 mb-1 block">Late Fee ($)</label><Input type="number" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} /></div>
   </div>
   )}
   </div>
@@ -7051,34 +7051,34 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   )}
 
   {entries.length === 0 ? (
-  <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
+  <div className="text-center py-12 bg-white rounded-xl border border-subtle-100">
   <div className="text-4xl mb-3">🔄</div>
-  <div className="text-gray-500 font-medium">No recurring entries</div>
-  <div className="text-xs text-gray-400 mt-1">Recurring entries are created automatically when you add a tenant, or you can add them manually.</div>
+  <div className="text-subtle-500 font-medium">No recurring entries</div>
+  <div className="text-xs text-subtle-400 mt-1">Recurring entries are created automatically when you add a tenant, or you can add them manually.</div>
   </div>
   ) : (
   <div className="space-y-2">
   {entries.map(e => (
-  <div key={e.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (e.status === "paused" ? "opacity-60 border-gray-200" : "border-gray-100")}>
+  <div key={e.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (e.status === "paused" ? "opacity-60 border-subtle-200" : "border-subtle-100")}>
   <div className="flex items-center gap-4">
   <div className="flex-1">
-  <div className="font-semibold text-gray-800 text-sm">{e.description}</div>
-  <div className="text-xs text-gray-400 mt-0.5">
+  <div className="font-semibold text-subtle-800 text-sm">{e.description}</div>
+  <div className="text-xs text-subtle-400 mt-0.5">
   {e.tenant_name && <span>{e.tenant_name} · </span>}
   {e.property && <span>{e.property} · </span>}
   Day {e.day_of_month} · {e.frequency}
   {e.late_fee_enabled && <span> · Late fee: ${safeNum(e.late_fee_amount)} after {e.grace_period_days}d</span>}
   </div>
   </div>
-  <div className="text-lg font-bold text-gray-800">${safeNum(e.amount).toLocaleString()}</div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (e.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500")}>{e.status}</span>
+  <div className="text-lg font-bold text-subtle-800">${safeNum(e.amount).toLocaleString()}</div>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (e.status === "active" ? "bg-positive-100 text-positive-700" : "bg-subtle-100 text-subtle-500")}>{e.status}</span>
   <div className="flex gap-1">
-  <button onClick={() => toggleStatus(e)} className={"text-xs px-2 py-1 rounded-lg " + (e.status === "active" ? "text-amber-600 hover:bg-amber-50" : "text-green-600 hover:bg-green-50")}>{e.status === "active" ? "⏸ Pause" : "▶ Resume"}</button>
+  <button onClick={() => toggleStatus(e)} className={"text-xs px-2 py-1 rounded-lg " + (e.status === "active" ? "text-warn-600 hover:bg-warn-50" : "text-positive-600 hover:bg-positive-50")}>{e.status === "active" ? "⏸ Pause" : "▶ Resume"}</button>
   <button onClick={() => { setEditingEntry(e); setForm({ description: e.description, frequency: e.frequency, day_of_month: e.day_of_month, amount: e.amount, tenant_name: e.tenant_name || "", property: e.property || "", debit_account_id: e.debit_account_id || "1200", debit_account_name: e.debit_account_name || "Accounts Receivable", credit_account_id: e.credit_account_id || "4000", credit_account_name: e.credit_account_name || "Rental Income", late_fee_enabled: e.late_fee_enabled !== false, grace_period_days: e.grace_period_days || 5, late_fee_amount: e.late_fee_amount || 50 }); setShowForm(true); }} className="text-xs text-brand-600 px-2 py-1 rounded-lg hover:bg-brand-50">Edit</button>
-  <button onClick={() => deleteEntry(e)} className="text-xs text-red-500 px-2 py-1 rounded-lg hover:bg-red-50">Delete</button>
+  <button onClick={() => deleteEntry(e)} className="text-xs text-danger-500 px-2 py-1 rounded-lg hover:bg-danger-50">Delete</button>
   </div>
   </div>
-  {e.next_post_date && <div className="text-xs text-gray-400 mt-2">Next post: {e.next_post_date}</div>}
+  {e.next_post_date && <div className="text-xs text-subtle-400 mt-2">Next post: {e.next_post_date}</div>}
   </div>
   ))}
   </div>
@@ -7417,25 +7417,25 @@ function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClos
   <div className="flex flex-wrap items-center gap-3 sm:gap-6 px-4 sm:px-6 py-2 border-b border-brand-50 text-xs text-neutral-500">
   <span>DR: <strong className="text-neutral-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.debit, 0))}</strong></span>
   <span>CR: <strong className="text-neutral-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.credit, 0))}</strong></span>
-  <span>Bal: <strong className={`font-mono ${running >= 0 ? "text-neutral-800" : "text-red-600"}`}>{acctFmt(running, true)}</strong></span>
+  <span>Bal: <strong className={`font-mono ${running >= 0 ? "text-neutral-800" : "text-danger-600"}`}>{acctFmt(running, true)}</strong></span>
   <button onClick={exportCSV} className="text-xs text-brand-600 hover:underline sm:hidden ml-auto">Export</button>
   </div>
   {/* Mobile: Card view */}
   <div className="flex-1 overflow-auto sm:hidden">
   {allLines.length === 0 && <div className="px-4 py-8 text-center text-neutral-400">No transactions found for this period</div>}
   {allLines.map((l, i) => (
-  <div key={i} className="border-b border-neutral-100 px-4 py-3 cursor-pointer hover:bg-green-50/40 transition-colors active:bg-green-50" onClick={() => onViewJE && onViewJE(l.jeId)}>
+  <div key={i} className="border-b border-neutral-100 px-4 py-3 cursor-pointer hover:bg-positive-50/40 transition-colors active:bg-positive-50" onClick={() => onViewJE && onViewJE(l.jeId)}>
   <div className="flex justify-between items-start mb-1">
   <div className="text-xs text-neutral-500">{l.date}</div>
-  <div className={`font-mono text-sm font-semibold ${l.balance < 0 ? "text-red-600" : "text-neutral-800"}`}>{acctFmt(l.balance, true)}</div>
+  <div className={`font-mono text-sm font-semibold ${l.balance < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(l.balance, true)}</div>
   </div>
   <div className="text-sm text-neutral-700 mb-1 leading-tight">{l.description}</div>
   {l.memo && <div className="text-xs text-neutral-400 mb-1">{l.memo}</div>}
   <div className="flex items-center gap-3 text-xs">
-  {l.debit > 0 && <span className="text-emerald-600">DR {acctFmt(l.debit)}</span>}
-  {l.credit > 0 && <span className="text-red-500">CR {acctFmt(l.credit)}</span>}
+  {l.debit > 0 && <span className="text-success-600">DR {acctFmt(l.debit)}</span>}
+  {l.credit > 0 && <span className="text-danger-500">CR {acctFmt(l.credit)}</span>}
   {l.property && <span className="text-neutral-400">{l.property.split(",")[0]}</span>}
-  <span className="text-green-600 font-mono ml-auto">{l.number || "—"}</span>
+  <span className="text-positive-600 font-mono ml-auto">{l.number || "—"}</span>
   </div>
   </div>
   ))}
@@ -7458,16 +7458,16 @@ function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClos
   </thead>
   <tbody>
   {allLines.map((l, i) => (
-  <tr key={i} className="border-t border-neutral-100 hover:bg-green-50/40 transition-colors cursor-pointer" onClick={() => onViewJE && onViewJE(l.jeId)}>
+  <tr key={i} className="border-t border-neutral-100 hover:bg-positive-50/40 transition-colors cursor-pointer" onClick={() => onViewJE && onViewJE(l.jeId)}>
   <td className="px-4 py-2 text-xs text-neutral-500 whitespace-nowrap">{l.date}</td>
-  <td className="px-3 py-2 text-xs text-green-600 font-mono">{l.number || "—"}</td>
+  <td className="px-3 py-2 text-xs text-positive-600 font-mono">{l.number || "—"}</td>
   <td className="px-3 py-2 text-neutral-700 text-xs max-w-xs truncate" title={l.description + (l.memo ? " | " + l.memo : "")}>{l.description}{l.memo && <span className="text-neutral-400 ml-1">({l.memo})</span>}</td>
   <td className="px-3 py-2 text-xs text-neutral-400 font-mono">{l.reference || "—"}</td>
   {ids.length > 1 && <td className="px-3 py-2 text-xs text-neutral-500">{l.accountName}</td>}
   <td className="px-3 py-2 text-xs text-neutral-400">{l.property?.split(",")[0] || "—"}</td>
   <td className="px-3 py-2 text-right font-mono text-xs">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>
   <td className="px-3 py-2 text-right font-mono text-xs">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>
-  <td className={`px-3 py-2 text-right font-mono text-xs font-semibold ${l.balance < 0 ? "text-red-600" : "text-neutral-800"}`}>{acctFmt(l.balance, true)}</td>
+  <td className={`px-3 py-2 text-right font-mono text-xs font-semibold ${l.balance < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(l.balance, true)}</td>
   </tr>
   ))}
   {allLines.length === 0 && <tr><td colSpan={ids.length > 1 ? 9 : 8} className="px-4 py-8 text-center text-neutral-400">No transactions found for this period</td></tr>}
@@ -7499,12 +7499,12 @@ function AcctModal({ isOpen, onClose, title, children, size = "md" }) {
 }
 
 function AcctTypeBadge({ type }) {
-  const map = { Asset:"bg-blue-50 text-blue-700", Liability:"bg-red-50 text-red-700", Equity:"bg-violet-50 text-violet-700", Revenue:"bg-emerald-50 text-emerald-700", Expense:"bg-orange-50 text-orange-700", "Cost of Goods Sold":"bg-orange-50 text-orange-700", "Other Income":"bg-emerald-50 text-emerald-700", "Other Expense":"bg-orange-50 text-orange-700" };
+  const map = { Asset:"bg-info-50 text-info-700", Liability:"bg-danger-50 text-danger-700", Equity:"bg-accent-50 text-accent-700", Revenue:"bg-success-50 text-success-700", Expense:"bg-notice-50 text-notice-700", "Cost of Goods Sold":"bg-notice-50 text-notice-700", "Other Income":"bg-success-50 text-success-700", "Other Expense":"bg-notice-50 text-notice-700" };
   return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[type] || "bg-neutral-100 text-neutral-700"}`}>{type}</span>;
 }
 
 function AcctStatusBadge({ status }) {
-  const map = { posted: "bg-emerald-50 text-emerald-700", draft: "bg-amber-50 text-amber-700", voided: "bg-red-50 text-red-700" };
+  const map = { posted: "bg-success-50 text-success-700", draft: "bg-warn-50 text-warn-700", voided: "bg-danger-50 text-danger-700" };
   return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[status] || "bg-neutral-100 text-neutral-700"}`}>{status}</span>;
 }
 
@@ -7577,7 +7577,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   </div>
   <div className="flex flex-wrap gap-2 mb-4">
   {["All", ...typeOrder.filter((t, i, a) => a.indexOf(t) === i)].map(t => (
-  <button key={t} onClick={() => setFilter(t)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${filter === t ? "bg-green-600 text-white border-green-600" : "bg-white text-neutral-500 border-neutral-200 hover:border-green-300"}`}>{t}</button>
+  <button key={t} onClick={() => setFilter(t)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${filter === t ? "bg-positive-600 text-white border-positive-600" : "bg-white text-neutral-500 border-neutral-200 hover:border-positive-300"}`}>{t}</button>
   ))}
   </div>
   {typeOrder.filter((t, i, a) => a.indexOf(t) === i).map(type => {
@@ -7593,11 +7593,11 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   <thead className="text-xs text-neutral-500 uppercase tracking-wider bg-neutral-50 font-semibold"><tr><th className="px-5 py-3 text-left">Number</th><th className="px-5 py-3 text-left">Name</th><th className="px-5 py-3 text-left">Subtype</th><th className="px-5 py-3 text-right">Balance</th><th className="px-5 py-3 w-20">Actions</th></tr></thead>
   <tbody>
   {accts.map(a => (
-  <tr key={a.id} className={`border-t border-neutral-100 hover:bg-green-50/40 transition-colors cursor-pointer ${a._isSubAccount ? "bg-neutral-50/40" : ""}`} onClick={() => onOpenLedger && onOpenLedger([a.id], (a.code ? a.code + " " : "") + a.name)}>
+  <tr key={a.id} className={`border-t border-neutral-100 hover:bg-positive-50/40 transition-colors cursor-pointer ${a._isSubAccount ? "bg-neutral-50/40" : ""}`} onClick={() => onOpenLedger && onOpenLedger([a.id], (a.code ? a.code + " " : "") + a.name)}>
   <td className={`py-3 font-mono text-xs text-neutral-400 ${a._isSubAccount ? "pl-8 pr-5" : "px-5"}`}>{a._isSubAccount ? "└ " : ""}{a.code || "—"}</td>
   <td className={`px-5 py-3 ${a._isSubAccount ? "text-sm text-neutral-600" : "font-medium"} ${!a.is_active ? "text-neutral-400 line-through" : a._isSubAccount ? "" : "text-neutral-800"}`}>{a.name}</td>
   <td className="px-5 py-3 text-xs text-neutral-400">{a.subtype || ""}</td>
-  <td className={`px-5 py-3 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-red-600" : "text-neutral-800"}`}>{acctFmt(a.computedBalance, true)}</td>
+  <td className={`px-5 py-3 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(a.computedBalance, true)}</td>
   <td className="px-5 py-3 text-center flex items-center gap-2 justify-center">
   <button onClick={e => { e.stopPropagation(); openEdit(a); }} className="text-neutral-400 hover:text-brand-600 text-xs" title="Edit account"><span className="material-icons-outlined text-sm">edit</span></button>
   <button onClick={e => { e.stopPropagation(); onToggle(a.id, a.is_active); }} className="text-neutral-400 hover:text-neutral-700 text-xs">{a.is_active ? "🟢" : "⚪"}</button>
@@ -7742,15 +7742,15 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   <td className="px-2 py-1.5"><input type="text" value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs bg-white focus:border-brand-300 focus:outline-none" /></td>
   <td className="px-2 py-1.5"><input type="text" inputMode="decimal" value={line.debit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], debit: v, ...(v ? { credit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono focus:border-brand-300 focus:outline-none" /></td>
   <td className="px-2 py-1.5"><input type="text" inputMode="decimal" value={line.credit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], credit: v, ...(v ? { debit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono focus:border-brand-300 focus:outline-none" /></td>
-  <td className="px-2 py-1.5"><button onClick={() => removeLine(i)} disabled={form.lines.length<=2} className="text-neutral-300 hover:text-red-500 disabled:opacity-20">✕</button></td>
+  <td className="px-2 py-1.5"><button onClick={() => removeLine(i)} disabled={form.lines.length<=2} className="text-neutral-300 hover:text-danger-500 disabled:opacity-20">✕</button></td>
   </tr>
   ))}
   </tbody>
-  <tfoot><tr className="bg-neutral-50 border-t border-neutral-200"><td colSpan={3} className="px-3 py-2 text-xs font-semibold text-neutral-500 text-right">Totals</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-emerald-700":"text-red-600"}`}>{acctFmt(totalDebit)}</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-emerald-700":"text-red-600"}`}>{acctFmt(totalCredit)}</td><td /></tr></tfoot>
+  <tfoot><tr className="bg-neutral-50 border-t border-neutral-200"><td colSpan={3} className="px-3 py-2 text-xs font-semibold text-neutral-500 text-right">Totals</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-success-700":"text-danger-600"}`}>{acctFmt(totalDebit)}</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-success-700":"text-danger-600"}`}>{acctFmt(totalCredit)}</td><td /></tr></tfoot>
   </table>
   </div>
-  {!validation.isValid && totalDebit > 0 && totalCredit > 0 && <div className="text-xs text-red-600 bg-red-50 rounded-2xl px-3 py-2">⚠ Out of balance by {acctFmt(validation.difference)}</div>}
-  {validation.isValid && totalDebit > 0 && <div className="text-xs text-emerald-600 bg-emerald-50 rounded-2xl px-3 py-2">✓ Balanced — {acctFmt(totalDebit)}</div>}
+  {!validation.isValid && totalDebit > 0 && totalCredit > 0 && <div className="text-xs text-danger-600 bg-danger-50 rounded-2xl px-3 py-2">⚠ Out of balance by {acctFmt(validation.difference)}</div>}
+  {validation.isValid && totalDebit > 0 && <div className="text-xs text-success-600 bg-success-50 rounded-2xl px-3 py-2">✓ Balanced — {acctFmt(totalDebit)}</div>}
   <div className="flex justify-between pt-2">
   <Btn variant="slate" onClick={() => setModal(null)}>Cancel</Btn>
   <div className="flex gap-2">
@@ -7768,7 +7768,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   </div>
   <div className="flex gap-2 mb-4">
   {[{k:"all",l:`All (${counts.all})`},{k:"posted",l:`Posted (${counts.posted})`},{k:"draft",l:`Drafts (${counts.draft})`},{k:"voided",l:`Voided (${counts.voided})`}].map(f => (
-  <button key={f.k} onClick={() => setFilterStatus(f.k)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${filterStatus === f.k ? "bg-green-600 text-white border-green-600" : "bg-white text-neutral-500 border-neutral-200 hover:border-green-300"}`}>{f.l}</button>
+  <button key={f.k} onClick={() => setFilterStatus(f.k)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${filterStatus === f.k ? "bg-positive-600 text-white border-positive-600" : "bg-white text-neutral-500 border-neutral-200 hover:border-positive-300"}`}>{f.l}</button>
   ))}
   <Select value={searchProperty} onChange={e => setSearchProperty(e.target.value)} className="text-xs py-1.5 rounded-xl ml-auto">
   <option value="">All Properties</option>
@@ -7777,7 +7777,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-neutral-200 bg-white text-neutral-500" title="From date" />
   <span className="text-xs text-neutral-400">to</span>
   <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-neutral-200 bg-white text-neutral-500" title="To date" />
-  {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-red-400 hover:text-red-600">Clear</button>}
+  {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-danger-400 hover:text-danger-600">Clear</button>}
   </div>
   <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
   <table className="w-full text-sm">
@@ -7786,7 +7786,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   {filtered.map(je => {
   const total = (je.lines || []).reduce((s,l) => s + safeNum(l.debit), 0);
   return (
-  <tr key={je.id} className="border-t border-neutral-100 hover:bg-green-50/40 transition-colors cursor-pointer" onClick={() => openView(je)}>
+  <tr key={je.id} className="border-t border-neutral-100 hover:bg-positive-50/40 transition-colors cursor-pointer" onClick={() => openView(je)}>
   <td className="px-5 py-3 font-mono text-xs font-semibold text-neutral-700">{je.number}</td>
   <td className="px-5 py-3 text-neutral-500">{acctFmtDate(je.date)}</td>
   <td className="px-5 py-3 text-xs text-neutral-500">{je.property || "—"}</td>
@@ -7796,8 +7796,8 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   <td className="px-5 py-3 text-right font-mono text-sm font-semibold">{acctFmt(total)}</td>
   <td className="px-5 py-3 text-center">
   <div className="flex gap-1 justify-center" onClick={e => e.stopPropagation()}>
-  {je.status === "draft" && <button onClick={() => onPost(je.id)} className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-100 text-xs">Post</button>}
-  {je.status === "posted" && <button onClick={() => onVoid(je.id)} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-100 text-xs">Void</button>}
+  {je.status === "draft" && <button onClick={() => onPost(je.id)} className="bg-success-50 text-success-700 px-3 py-1.5 rounded-lg border border-success-200 hover:bg-success-100 text-xs">Post</button>}
+  {je.status === "posted" && <button onClick={() => onVoid(je.id)} className="bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg border border-danger-200 hover:bg-danger-100 text-xs">Void</button>}
   {je.status !== "voided" && <button onClick={() => openEdit(je)} className="text-xs text-brand-600 hover:underline">Edit</button>}
   <button onClick={() => openDuplicate(je)} className="text-xs text-neutral-400 hover:text-neutral-700 hover:underline">Duplicate</button>
   </div>
@@ -7842,8 +7842,8 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   </tbody>
   </table>
   <div className="flex gap-2">
-  {modal.je.status === "draft" && <button onClick={() => { onPost(modal.je.id); setModal(null); }} className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-100 text-xs">Post</button>}
-  {modal.je.status === "posted" && <button onClick={() => { onVoid(modal.je.id); setModal(null); }} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-100 text-xs">Void</button>}
+  {modal.je.status === "draft" && <button onClick={() => { onPost(modal.je.id); setModal(null); }} className="bg-success-50 text-success-700 px-3 py-1.5 rounded-lg border border-success-200 hover:bg-success-100 text-xs">Post</button>}
+  {modal.je.status === "posted" && <button onClick={() => { onVoid(modal.je.id); setModal(null); }} className="bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg border border-danger-200 hover:bg-danger-100 text-xs">Void</button>}
   {modal.je.status !== "voided" && <button onClick={() => openEdit(modal.je)} className="bg-neutral-200 text-neutral-700 text-xs px-3 py-1.5 rounded-lg">Edit</button>}
   <button onClick={() => { openDuplicate(modal.je); }} className="bg-neutral-100 text-neutral-500 text-xs px-3 py-1.5 rounded-lg hover:bg-neutral-200">Duplicate</button>
   </div>
@@ -7888,24 +7888,24 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   <Btn variant="success-fill" size="sm" onClick={openAdd}>+ New Class</Btn>
   </div>
   <div className="flex flex-wrap gap-2 mb-4">
-  {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${period === p ? "bg-green-600 text-white border-green-600" : "bg-white text-neutral-500 border-neutral-200 hover:border-green-300"}`}>{p}</button>)}
+  {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${period === p ? "bg-positive-600 text-white border-positive-600" : "bg-white text-neutral-500 border-neutral-200 hover:border-positive-300"}`}>{p}</button>)}
   </div>
   <div className="grid grid-cols-3 gap-3 mb-4">
-  <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4"><p className="text-xs text-emerald-600 font-medium">Revenue</p><p className="text-xl font-bold text-emerald-800 font-mono mt-1">{acctFmt(totalRev)}</p></div>
-  <div className="bg-red-50 border border-red-100 rounded-xl p-4"><p className="text-xs text-red-600 font-medium">Expenses</p><p className="text-xl font-bold text-red-800 font-mono mt-1">{acctFmt(totalExp)}</p></div>
-  <div className={`border rounded-xl p-4 ${totalNet >= 0 ? "bg-blue-50 border-blue-100" : "bg-orange-50 border-orange-100"}`}><p className={`text-xs font-medium ${totalNet >= 0 ? "text-blue-600" : "text-orange-600"}`}>Net Income</p><p className={`text-xl font-bold font-mono mt-1 ${totalNet >= 0 ? "text-blue-800" : "text-orange-800"}`}>{acctFmt(totalNet, true)}</p></div>
+  <div className="bg-success-50 border border-success-100 rounded-xl p-4"><p className="text-xs text-success-600 font-medium">Revenue</p><p className="text-xl font-bold text-success-800 font-mono mt-1">{acctFmt(totalRev)}</p></div>
+  <div className="bg-danger-50 border border-danger-100 rounded-xl p-4"><p className="text-xs text-danger-600 font-medium">Expenses</p><p className="text-xl font-bold text-danger-800 font-mono mt-1">{acctFmt(totalExp)}</p></div>
+  <div className={`border rounded-xl p-4 ${totalNet >= 0 ? "bg-info-50 border-info-100" : "bg-notice-50 border-notice-100"}`}><p className={`text-xs font-medium ${totalNet >= 0 ? "text-info-600" : "text-notice-600"}`}>Net Income</p><p className={`text-xl font-bold font-mono mt-1 ${totalNet >= 0 ? "text-info-800" : "text-notice-800"}`}>{acctFmt(totalNet, true)}</p></div>
   </div>
   <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
   <table className="w-full text-sm">
   <thead className="text-xs text-neutral-500 uppercase tracking-wider bg-neutral-50 font-semibold"><tr><th className="px-5 py-3 text-left">Class</th><th className="px-5 py-3 text-left">Description</th><th className="px-5 py-3 text-right">Revenue</th><th className="px-5 py-3 text-right">Expenses</th><th className="px-5 py-3 text-right">Net Income</th><th className="px-5 py-3 w-16" /></tr></thead>
   <tbody>
   {classReport.map(c => (
-  <tr key={c.id} className="border-t border-neutral-100 hover:bg-green-50/40 transition-colors">
+  <tr key={c.id} className="border-t border-neutral-100 hover:bg-positive-50/40 transition-colors">
   <td className="px-5 py-3"><div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{background:c.color}} /><span className={`font-medium ${!c.is_active?"text-neutral-400 line-through":"text-neutral-800"}`}>{c.name}</span></div></td>
   <td className="px-5 py-3 text-xs text-neutral-400">{c.description}</td>
-  <td className="px-5 py-3 text-right font-mono text-sm text-emerald-700">{c.revenue > 0 ? acctFmt(c.revenue) : "—"}</td>
-  <td className="px-5 py-3 text-right font-mono text-sm text-red-600">{c.expenses > 0 ? acctFmt(c.expenses) : "—"}</td>
-  <td className={`px-5 py-3 text-right font-mono text-sm font-bold ${c.netIncome >= 0 ? "text-blue-700" : "text-red-700"}`}>{acctFmt(c.netIncome, true)}</td>
+  <td className="px-5 py-3 text-right font-mono text-sm text-success-700">{c.revenue > 0 ? acctFmt(c.revenue) : "—"}</td>
+  <td className="px-5 py-3 text-right font-mono text-sm text-danger-600">{c.expenses > 0 ? acctFmt(c.expenses) : "—"}</td>
+  <td className={`px-5 py-3 text-right font-mono text-sm font-bold ${c.netIncome >= 0 ? "text-info-700" : "text-danger-700"}`}>{acctFmt(c.netIncome, true)}</td>
   <td className="px-5 py-3 flex gap-1"><button onClick={() => openEdit(c)} className="text-xs text-brand-600 hover:underline">Edit</button><button onClick={() => onToggle(c.id, c.is_active)} className="text-xs">{c.is_active ? "🟢" : "⚪"}</button></td>
   </tr>
   ))}
@@ -7916,7 +7916,7 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   <div className="space-y-3">
   <div><label className="text-xs font-medium text-neutral-500">Name *</label><Input placeholder="e.g. 123 Main St" value={form.name} onChange={e => setForm({...form,name:e.target.value})} className="mt-1" /></div>
   <div><label className="text-xs font-medium text-neutral-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form,description:e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
-  <div><label className="text-xs font-medium text-neutral-500 block mb-2">Color</label><div className="flex gap-2 flex-wrap">{COLORS.map(c => <button key={c} type="button" onClick={() => setForm({...form,color:c})} className={`w-7 h-7 rounded-full border-2 ${form.color===c?"border-gray-800 scale-110":"border-transparent"}`} style={{background:c}} />)}</div></div>
+  <div><label className="text-xs font-medium text-neutral-500 block mb-2">Color</label><div className="flex gap-2 flex-wrap">{COLORS.map(c => <button key={c} type="button" onClick={() => setForm({...form,color:c})} className={`w-7 h-7 rounded-full border-2 ${form.color===c?"border-subtle-800 scale-110":"border-transparent"}`} style={{background:c}} />)}</div></div>
   <div className="flex justify-end gap-2 pt-2">
   <Btn variant="slate" onClick={() => setModal(null)}>Cancel</Btn>
   <Btn variant="success-fill" onClick={saveClass}>{modal === "add" ? "Create" : "Save"}</Btn>
@@ -8449,13 +8449,13 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       <div className="relative mb-5">
         <span className="material-icons-outlined absolute left-3 top-1/2 -tranneutral-y-1/2 text-neutral-300">search</span>
         <input type="text" placeholder="Find report by name..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-3 border border-neutral-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-green-200 focus:border-green-400 transition-all" />
+          className="w-full pl-10 pr-4 py-3 border border-neutral-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-positive-200 focus:border-positive-400 transition-all" />
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-neutral-200">
         {[["standard","Standard Reports"],["favorites",`Favorites (${favReports.length})`],["custom","Custom Reports"]].map(([id,label]) => (
-          <button key={id} onClick={() => setCatalogTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 ${catalogTab === id ? "border-green-600 text-green-700" : "border-transparent text-neutral-400 hover:text-neutral-600"}`}>{label}</button>
+          <button key={id} onClick={() => setCatalogTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 ${catalogTab === id ? "border-positive-600 text-positive-700" : "border-transparent text-neutral-400 hover:text-neutral-600"}`}>{label}</button>
         ))}
       </div>
 
@@ -8463,13 +8463,13 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       {searchQuery && filteredReports && (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {filteredReports.map(r => (
-        <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-green-300 hover:shadow-md transition-all bg-white">
+        <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-positive-300 hover:shadow-md transition-all bg-white">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
-              <span className="material-icons-outlined text-neutral-400 group-hover:text-green-600 text-xl">{r.icon}</span>
-              <div><p className="text-sm font-semibold text-neutral-800 group-hover:text-green-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div>
+              <span className="material-icons-outlined text-neutral-400 group-hover:text-positive-600 text-xl">{r.icon}</span>
+              <div><p className="text-sm font-semibold text-neutral-800 group-hover:text-positive-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div>
             </div>
-            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className="text-neutral-300 hover:text-amber-400"><span className="material-icons-outlined text-lg">{favorites.includes(r.id) ? "star" : "star_outline"}</span></button>
+            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className="text-neutral-300 hover:text-warn-400"><span className="material-icons-outlined text-lg">{favorites.includes(r.id) ? "star" : "star_outline"}</span></button>
           </div>
         </div>
         ))}
@@ -8482,9 +8482,9 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       <div>{favReports.length === 0 ? <div className="text-center py-12 text-neutral-400"><span className="material-icons-outlined text-4xl mb-2 block">star_outline</span><p className="text-sm">No favorite reports yet. Click the star on any report to add it here.</p></div> : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {favReports.map(r => (
-          <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-green-300 hover:shadow-md transition-all bg-white">
-            <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-neutral-400 group-hover:text-green-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-neutral-800 group-hover:text-green-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div></div>
-            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className="text-amber-400 hover:text-amber-500"><span className="material-icons-outlined text-lg">star</span></button></div>
+          <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-positive-300 hover:shadow-md transition-all bg-white">
+            <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-neutral-400 group-hover:text-positive-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-neutral-800 group-hover:text-positive-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div></div>
+            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className="text-warn-400 hover:text-warn-500"><span className="material-icons-outlined text-lg">star</span></button></div>
           </div>))}
         </div>
       )}</div>
@@ -8495,14 +8495,14 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       <div>{customReports.length === 0 ? <div className="text-center py-12 text-neutral-400"><span className="material-icons-outlined text-4xl mb-2 block">tune</span><p className="text-sm">No saved report configurations yet.</p><p className="text-xs mt-1">Open any report, configure filters, then click "Save Config" in the toolbar.</p></div> : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {customReports.map(c => (
-          <div key={c.id} className="group border border-neutral-200 rounded-xl p-4 hover:border-green-300 hover:shadow-md transition-all bg-white">
+          <div key={c.id} className="group border border-neutral-200 rounded-xl p-4 hover:border-positive-300 hover:shadow-md transition-all bg-white">
             <div className="flex items-start justify-between">
               <div className="cursor-pointer flex-1" onClick={() => loadCustomReport(c)}>
-                <p className="text-sm font-semibold text-neutral-800 group-hover:text-green-700">{c.name}</p>
+                <p className="text-sm font-semibold text-neutral-800 group-hover:text-positive-700">{c.name}</p>
                 <p className="text-xs text-neutral-400 mt-0.5">{c.reportTitle} · {c.period}</p>
                 <p className="text-xs text-neutral-300 mt-0.5">Saved {new Date(c.savedAt).toLocaleDateString()}</p>
               </div>
-              <button onClick={() => deleteCustomReport(c.id)} className="text-neutral-300 hover:text-red-500"><span className="material-icons-outlined text-sm">close</span></button>
+              <button onClick={() => deleteCustomReport(c.id)} className="text-neutral-300 hover:text-danger-500"><span className="material-icons-outlined text-sm">close</span></button>
             </div>
           </div>
           ))}
@@ -8521,9 +8521,9 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
         {!collapsedCats[cat.category] && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {cat.reports.map(r => (
-          <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-green-300 hover:shadow-md transition-all bg-white">
-            <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-neutral-400 group-hover:text-green-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-neutral-800 group-hover:text-green-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div></div>
-            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className={favorites.includes(r.id) ? "text-amber-400 hover:text-amber-500" : "text-neutral-300 hover:text-amber-400"}><span className="material-icons-outlined text-lg">{favorites.includes(r.id) ? "star" : "star_outline"}</span></button></div>
+          <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-positive-300 hover:shadow-md transition-all bg-white">
+            <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-neutral-400 group-hover:text-positive-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-neutral-800 group-hover:text-positive-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div></div>
+            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className={favorites.includes(r.id) ? "text-warn-400 hover:text-warn-500" : "text-neutral-300 hover:text-warn-400"}><span className="material-icons-outlined text-lg">{favorites.includes(r.id) ? "star" : "star_outline"}</span></button></div>
           </div>))}
         </div>
         )}
@@ -8564,7 +8564,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
         <h3 className="text-lg font-semibold text-neutral-900">{currentReport?.title}</h3>
       </div>
       <div className="flex gap-2">
-        <button onClick={() => toggleFavorite(reportId)} className={favorites.includes(reportId) ? "text-amber-400" : "text-neutral-300 hover:text-amber-400"}><span className="material-icons-outlined text-lg">{favorites.includes(reportId) ? "star" : "star_outline"}</span></button>
+        <button onClick={() => toggleFavorite(reportId)} className={favorites.includes(reportId) ? "text-warn-400" : "text-neutral-300 hover:text-warn-400"}><span className="material-icons-outlined text-lg">{favorites.includes(reportId) ? "star" : "star_outline"}</span></button>
         <button onClick={exportCSV} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">download</span>Export</button>
         <button onClick={exportPDF} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">picture_as_pdf</span>PDF</button>
         <button onClick={printReport} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">print</span>Print</button>
@@ -8601,13 +8601,13 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     <div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Profit & Loss</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       <div className="cursor-pointer hover:bg-neutral-50 rounded py-1 flex items-center gap-1" onClick={() => setShowIncome(!showIncome)}><span className="material-icons-outlined text-sm text-neutral-400">{showIncome ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-neutral-900">Income</span></div>
-      {showIncome && plData.revenue.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-green-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><span className="text-sm text-neutral-700">{a.name}</span><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
+      {showIncome && plData.revenue.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-positive-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><span className="text-sm text-neutral-700">{a.name}</span><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
       {showIncome && <div className="flex justify-between py-1.5 border-t border-neutral-300 font-bold mt-1" style={{paddingLeft:24}}><span className="text-sm">Total Income</span><span className="font-mono text-sm tabular-nums">{acctFmt(plData.totalRevenue)}</span></div>}
       <div className="flex justify-between py-2 border-t-2 border-neutral-800 font-black mt-2"><span className="text-sm">Gross Profit</span><span className="font-mono text-sm tabular-nums">{acctFmt(plData.totalRevenue)}</span></div>
       <div className="cursor-pointer hover:bg-neutral-50 rounded py-1 mt-3 flex items-center gap-1" onClick={() => setShowExpenses(!showExpenses)}><span className="material-icons-outlined text-sm text-neutral-400">{showExpenses ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-neutral-900">Expenses</span></div>
-      {showExpenses && plData.expenses.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-green-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><span className="text-sm text-neutral-700">{a.name}</span><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
+      {showExpenses && plData.expenses.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-positive-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><span className="text-sm text-neutral-700">{a.name}</span><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
       {showExpenses && <div className="flex justify-between py-1.5 border-t border-neutral-300 font-bold mt-1" style={{paddingLeft:24}}><span className="text-sm">Total Expenses</span><span className="font-mono text-sm tabular-nums">{acctFmt(plData.totalExpenses)}</span></div>}
-      <div className="flex justify-between py-3 border-t-2 border-b-2 border-neutral-800 font-black mt-3"><span className="text-sm">NET INCOME</span><span className={`font-mono text-sm tabular-nums ${plData.netIncome < 0 ? "text-red-600" : ""}`}>{acctFmt(plData.netIncome)}</span></div>
+      <div className="flex justify-between py-3 border-t-2 border-b-2 border-neutral-800 font-black mt-3"><span className="text-sm">NET INCOME</span><span className={`font-mono text-sm tabular-nums ${plData.netIncome < 0 ? "text-danger-600" : ""}`}>{acctFmt(plData.netIncome)}</span></div>
       <div className="text-xs text-neutral-400 mt-4 flex justify-between"><span>Accrual basis</span><span>{new Date().toLocaleString()}</span></div>
     </div>
     )}
@@ -8619,10 +8619,10 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     const arSubAccounts = bsData.assets.filter(a => (a.code || "").startsWith("1100-"));
     const arAllIds = new Set([...arParentAccounts, ...arSubAccounts].map(a => a.id));
     const otherAssets = bsData.assets.filter(a => !bankAccounts.includes(a) && !arAllIds.has(a.id));
-    const BSRow = ({ name, amount, indent = 0, bold, total, onClick, italic }) => (<div className={`flex justify-between py-1 ${total ? "border-t border-neutral-300 font-bold mt-1" : ""} ${bold ? "font-semibold" : ""} ${onClick ? "cursor-pointer hover:bg-blue-50/50 rounded" : ""}`} style={{ paddingLeft: indent * 24 }} onClick={onClick}><span className={`text-sm ${total ? "text-neutral-900" : "text-neutral-700"} ${italic ? "italic" : ""}`}>{name}</span><span className={`font-mono text-sm tabular-nums ${amount < 0 ? "text-red-600" : total ? "text-neutral-900" : "text-neutral-700"}`}>{acctFmt(amount, true)}</span></div>);
+    const BSRow = ({ name, amount, indent = 0, bold, total, onClick, italic }) => (<div className={`flex justify-between py-1 ${total ? "border-t border-neutral-300 font-bold mt-1" : ""} ${bold ? "font-semibold" : ""} ${onClick ? "cursor-pointer hover:bg-info-50/50 rounded" : ""}`} style={{ paddingLeft: indent * 24 }} onClick={onClick}><span className={`text-sm ${total ? "text-neutral-900" : "text-neutral-700"} ${italic ? "italic" : ""}`}>{name}</span><span className={`font-mono text-sm tabular-nums ${amount < 0 ? "text-danger-600" : total ? "text-neutral-900" : "text-neutral-700"}`}>{acctFmt(amount, true)}</span></div>);
     const BSSection = ({ title, children, show, toggle, total, totalLabel }) => (<div className="mb-2"><div className="cursor-pointer hover:bg-neutral-50 rounded py-1 flex items-center gap-1" onClick={toggle}><span className="material-icons-outlined text-sm text-neutral-400">{show ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-neutral-900">{title}</span></div>{show && children}{show && total !== undefined && (<div className="flex justify-between py-1.5 border-t border-b border-neutral-300 font-bold mt-1" style={{ paddingLeft: 24 }}><span className="text-sm text-neutral-900">{totalLabel || "Total " + title}</span><span className="font-mono text-sm text-neutral-900 tabular-nums">{acctFmt(total)}</span></div>)}</div>);
     return (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Balance Sheet</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p><div className="mt-2">{bsBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1 rounded-full">Out of Balance</span>}</div></div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Balance Sheet</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p><div className="mt-2">{bsBalanced ? <span className="text-xs text-success-600 bg-success-50 px-3 py-1 rounded-full">Balanced</span> : <span className="text-xs text-danger-600 bg-danger-50 px-3 py-1 rounded-full">Out of Balance</span>}</div></div>
       <div className="flex justify-end mb-2 border-b border-neutral-200 pb-1"><span className="text-xs font-semibold text-neutral-500 uppercase">Total</span></div>
       <BSSection title="Assets" show={showAssets} toggle={() => setShowAssets(!showAssets)} total={bsData.totalAssets} totalLabel="TOTAL ASSETS">{bankAccounts.length > 0 && <div className="mb-1"><div className="text-xs font-semibold text-neutral-500 uppercase tracking-wide py-1" style={{paddingLeft:24}}>Bank Accounts</div>{bankAccounts.map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={2} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}<div className="flex justify-between py-1 border-t border-neutral-200 font-semibold" style={{paddingLeft:48}}><span className="text-xs text-neutral-700">Total for Bank Accounts</span><span className="font-mono text-xs text-neutral-900 tabular-nums">{acctFmt(bankAccounts.reduce((s,a)=>s+a.amount,0))}</span></div></div>}{(arParentAccounts.length > 0 || arSubAccounts.length > 0) && <div className="mb-1"><div className="cursor-pointer text-xs font-semibold text-neutral-500 uppercase tracking-wide py-1 flex items-center gap-1" style={{paddingLeft:24}} onClick={() => setShowARSub(!showARSub)}><span className="material-icons-outlined text-xs">{showARSub ? "expand_more" : "chevron_right"}</span>Accounts Receivable</div>{showARSub && arSubAccounts.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name.replace("AR - ","")} amount={a.amount} indent={3} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}<div className="flex justify-between py-1 border-t border-neutral-200 font-semibold" style={{paddingLeft:48}}><span className="text-xs text-neutral-700">Total for AR</span><span className="font-mono text-xs text-neutral-900 tabular-nums">{acctFmt(arSubAccounts.length > 0 ? arSubAccounts.reduce((s,a)=>s+a.amount,0) : arParentAccounts.reduce((s,a)=>s+a.amount,0))}</span></div></div>}{otherAssets.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}</BSSection>
       <BSSection title="Liabilities" show={showLiabilities} toggle={() => setShowLiabilities(!showLiabilities)} total={bsData.totalLiabilities} totalLabel="Total Liabilities">{bsData.liabilities.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}</BSSection>
@@ -8636,7 +8636,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     {reportId === "tb" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Trial Balance</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
       <table className="w-full text-sm"><thead className="bg-neutral-50 border-b border-neutral-200"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Account</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Debit</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Credit</th></tr></thead>
-      <tbody>{tbData.filter(a => a.debitBalance !== 0 || a.creditBalance !== 0).map(a => <tr key={a.id} className="border-t border-neutral-100 hover:bg-green-50/30 cursor-pointer" onClick={() => { setSelectedAccountId(a.id); setCurrentReport({ id: "gl", title: "General Ledger" }); }}><td className="px-4 py-2 text-neutral-700">{a.code ? a.code + " " : ""}{a.name}</td><td className="px-4 py-2 text-right font-mono">{a.debitBalance > 0 ? acctFmt(a.debitBalance) : ""}</td><td className="px-4 py-2 text-right font-mono">{a.creditBalance > 0 ? acctFmt(a.creditBalance) : ""}</td></tr>)}</tbody>
+      <tbody>{tbData.filter(a => a.debitBalance !== 0 || a.creditBalance !== 0).map(a => <tr key={a.id} className="border-t border-neutral-100 hover:bg-positive-50/30 cursor-pointer" onClick={() => { setSelectedAccountId(a.id); setCurrentReport({ id: "gl", title: "General Ledger" }); }}><td className="px-4 py-2 text-neutral-700">{a.code ? a.code + " " : ""}{a.name}</td><td className="px-4 py-2 text-right font-mono">{a.debitBalance > 0 ? acctFmt(a.debitBalance) : ""}</td><td className="px-4 py-2 text-right font-mono">{a.creditBalance > 0 ? acctFmt(a.creditBalance) : ""}</td></tr>)}</tbody>
       <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTALS</td><td className="px-4 py-2 text-right font-mono">{acctFmt(tbData.reduce((s,a) => s + a.debitBalance, 0))}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(tbData.reduce((s,a) => s + a.creditBalance, 0))}</td></tr></tfoot></table>
     </div>)}
 
@@ -8646,13 +8646,13 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       {glLines.length > 0 && <div className="flex justify-end mb-3"><div className="text-right"><p className="text-xs text-neutral-400">Ending Balance</p><p className="font-mono font-bold">{acctFmt(glLines[glLines.length-1].balance, true)}</p></div></div>}
       <div className="flex justify-end mb-2 relative"><button onClick={() => setShowColPicker(!showColPicker)} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">view_column</span>Columns</button>{showColPicker && <div className="absolute right-0 top-8 bg-white border border-neutral-200 rounded-xl shadow-lg p-3 z-20 w-48">{[["date","Date"],["entry","Entry #"],["description","Description"],["memo","Memo"],["debit","Debit"],["credit","Credit"],["balance","Balance"]].map(([id,label]) => <label key={id} className="flex items-center gap-2 py-1 cursor-pointer text-sm text-neutral-700"><input type="checkbox" checked={glColumns[id]} onChange={() => toggleGlCol(id)} className="accent-brand-600" />{label}</label>)}</div>}</div>
       <table className="w-full text-sm border border-neutral-200 rounded-xl overflow-hidden"><thead className="bg-neutral-50"><tr>{glColumns.date && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Date</th>}{glColumns.entry && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Entry #</th>}{glColumns.description && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Description</th>}{glColumns.memo && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Memo</th>}{glColumns.debit && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Debit</th>}{glColumns.credit && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Credit</th>}{glColumns.balance && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Balance</th>}</tr></thead>
-      <tbody>{glLines.length === 0 ? <tr><td colSpan={7} className="px-4 py-8 text-center text-neutral-400">No transactions</td></tr> : glLines.map((l,i) => <tr key={l.jeId+"-"+i} className="border-t border-neutral-100 hover:bg-green-50/40">{glColumns.date && <td className="px-4 py-2 text-xs text-neutral-400">{acctFmtDate(l.date)}</td>}{glColumns.entry && <td className="px-4 py-2 font-mono text-xs text-brand-600">{l.jeNumber||"—"}</td>}{glColumns.description && <td className="px-4 py-2 text-neutral-700">{l.description}</td>}{glColumns.memo && <td className="px-4 py-2 text-xs text-neutral-400">{l.memo||"—"}</td>}{glColumns.debit && <td className="px-4 py-2 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>}{glColumns.credit && <td className="px-4 py-2 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>}{glColumns.balance && <td className={`px-4 py-2 text-right font-mono font-semibold ${l.balance < 0 ? "text-red-600" : ""}`}>{acctFmt(l.balance, true)}</td>}</tr>)}</tbody></table>
+      <tbody>{glLines.length === 0 ? <tr><td colSpan={7} className="px-4 py-8 text-center text-neutral-400">No transactions</td></tr> : glLines.map((l,i) => <tr key={l.jeId+"-"+i} className="border-t border-neutral-100 hover:bg-positive-50/40">{glColumns.date && <td className="px-4 py-2 text-xs text-neutral-400">{acctFmtDate(l.date)}</td>}{glColumns.entry && <td className="px-4 py-2 font-mono text-xs text-brand-600">{l.jeNumber||"—"}</td>}{glColumns.description && <td className="px-4 py-2 text-neutral-700">{l.description}</td>}{glColumns.memo && <td className="px-4 py-2 text-xs text-neutral-400">{l.memo||"—"}</td>}{glColumns.debit && <td className="px-4 py-2 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>}{glColumns.credit && <td className="px-4 py-2 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>}{glColumns.balance && <td className={`px-4 py-2 text-right font-mono font-semibold ${l.balance < 0 ? "text-danger-600" : ""}`}>{acctFmt(l.balance, true)}</td>}</tr>)}</tbody></table>
     </div>)}
 
     {/* AR Aging Summary */}
     {reportId === "ar_aging_summary" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">AR Aging Summary</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
-      <table className="w-full text-sm"><thead className="bg-neutral-50 border-b border-neutral-200"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-emerald-600">Current</th><th className="px-4 py-2 text-right text-xs font-semibold text-amber-600">1-30</th><th className="px-4 py-2 text-right text-xs font-semibold text-orange-600">31-60</th><th className="px-4 py-2 text-right text-xs font-semibold text-red-600">61-90</th><th className="px-4 py-2 text-right text-xs font-semibold text-red-800">91+</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-700">Total</th></tr></thead>
+      <table className="w-full text-sm"><thead className="bg-neutral-50 border-b border-neutral-200"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-success-600">Current</th><th className="px-4 py-2 text-right text-xs font-semibold text-warn-600">1-30</th><th className="px-4 py-2 text-right text-xs font-semibold text-notice-600">31-60</th><th className="px-4 py-2 text-right text-xs font-semibold text-danger-600">61-90</th><th className="px-4 py-2 text-right text-xs font-semibold text-danger-800">91+</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-700">Total</th></tr></thead>
       <tbody>{(bsData.arAgingByTenant || []).filter(t => Math.abs(t.current + t.days30 + t.days60 + t.days90 + t.over90) > 0.01).map((t,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{t.tenant}</td><td className="px-4 py-2 text-right font-mono">{t.current ? acctFmt(t.current) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.days30 ? acctFmt(t.days30) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.days60 ? acctFmt(t.days60) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.days90 ? acctFmt(t.days90) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.over90 ? acctFmt(t.over90) : ""}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(t.current + t.days30 + t.days60 + t.days90 + t.over90)}</td></tr>)}</tbody>
       <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTALS</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.current||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.days30||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.days60||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.days90||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.over90||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt((bsData.arAging?.current||0)+(bsData.arAging?.days30||0)+(bsData.arAging?.days60||0)+(bsData.arAging?.days90||0)+(bsData.arAging?.over90||0))}</td></tr></tfoot></table>
     </div>)}
@@ -8661,7 +8661,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     {reportId === "customer_balance_summary" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Tenant Balance Summary</p></div>
       <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Balance</th></tr></thead>
-      <tbody>{(bsData.arByTenant||[]).map((t,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{t.tenant}</td><td className={`px-4 py-2 text-right font-mono font-semibold ${t.balance < 0 ? "text-green-600" : t.balance > 0 ? "text-red-600" : ""}`}>{acctFmt(t.balance, true)}</td></tr>)}</tbody></table>
+      <tbody>{(bsData.arByTenant||[]).map((t,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{t.tenant}</td><td className={`px-4 py-2 text-right font-mono font-semibold ${t.balance < 0 ? "text-positive-600" : t.balance > 0 ? "text-danger-600" : ""}`}>{acctFmt(t.balance, true)}</td></tr>)}</tbody></table>
     </div>)}
 
     {/* Journal */}
@@ -8689,14 +8689,14 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     {reportId === "expenses_by_category" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Expenses by Category</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {(() => { const data = getExpensesByCategory(start, end); return (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Category</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Amount</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500 w-48">% of Total</th></tr></thead>
-      <tbody>{data.map(a => <tr key={a.id} className="border-t border-neutral-100 cursor-pointer hover:bg-green-50/30" onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><td className="px-4 py-2 text-neutral-700">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-neutral-100 rounded-full h-2"><div className="bg-green-500 rounded-full h-2" style={{width: Math.min(100, a.percentage) + "%"}} /></div><span className="text-xs text-neutral-500 w-8">{a.percentage}%</span></div></td></tr>)}</tbody></table>); })()}
+      <tbody>{data.map(a => <tr key={a.id} className="border-t border-neutral-100 cursor-pointer hover:bg-positive-50/30" onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><td className="px-4 py-2 text-neutral-700">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-neutral-100 rounded-full h-2"><div className="bg-positive-500 rounded-full h-2" style={{width: Math.min(100, a.percentage) + "%"}} /></div><span className="text-xs text-neutral-500 w-8">{a.percentage}%</span></div></td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* P&L by Property */}
     {reportId === "pl_by_class" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Profit & Loss by Property</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {(() => { const data = getClassReport(accounts, journalEntries, classes, start, end); return (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Revenue</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Expenses</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Net Income</th></tr></thead>
-      <tbody>{Object.entries(data).map(([name, d]) => <tr key={name} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{name}</td><td className="px-4 py-2 text-right font-mono text-emerald-700">{acctFmt(d.revenue||0)}</td><td className="px-4 py-2 text-right font-mono text-red-600">{acctFmt(d.expenses||0)}</td><td className={`px-4 py-2 text-right font-mono font-bold ${(d.revenue||0)-(d.expenses||0) < 0 ? "text-red-600" : "text-emerald-700"}`}>{acctFmt((d.revenue||0)-(d.expenses||0))}</td></tr>)}</tbody></table>); })()}
+      <tbody>{Object.entries(data).map(([name, d]) => <tr key={name} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{name}</td><td className="px-4 py-2 text-right font-mono text-success-700">{acctFmt(d.revenue||0)}</td><td className="px-4 py-2 text-right font-mono text-danger-600">{acctFmt(d.expenses||0)}</td><td className={`px-4 py-2 text-right font-mono font-bold ${(d.revenue||0)-(d.expenses||0) < 0 ? "text-danger-600" : "text-success-700"}`}>{acctFmt((d.revenue||0)-(d.expenses||0))}</td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* Cash Flow */}
@@ -8713,68 +8713,68 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     {/* Rent Roll */}
     {reportId === "rent_roll" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Rent Roll</p></div>
-      {(() => { const data = getRentRoll(); const occ = data.filter(r=>r.status==="occupied").length; return (<><div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-neutral-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.length}</div><div className="text-xs text-neutral-400">Total Units</div></div><div className="bg-emerald-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-emerald-700">{occ}</div><div className="text-xs text-neutral-400">Occupied</div></div><div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-red-600">{data.length-occ}</div><div className="text-xs text-neutral-400">Vacant</div></div><div className="bg-blue-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-blue-700">{acctFmt(data.reduce((s,r)=>s+r.rent,0))}</div><div className="text-xs text-neutral-400">Monthly Rent</div></div></div>
+      {(() => { const data = getRentRoll(); const occ = data.filter(r=>r.status==="occupied").length; return (<><div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-neutral-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.length}</div><div className="text-xs text-neutral-400">Total Units</div></div><div className="bg-success-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-success-700">{occ}</div><div className="text-xs text-neutral-400">Occupied</div></div><div className="bg-danger-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-danger-600">{data.length-occ}</div><div className="text-xs text-neutral-400">Vacant</div></div><div className="bg-info-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-info-700">{acctFmt(data.reduce((s,r)=>s+r.rent,0))}</div><div className="text-xs text-neutral-400">Monthly Rent</div></div></div>
       <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Rent</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Lease End</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Status</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700">{r.property}</td><td className="px-3 py-2">{r.tenant === "VACANT" ? <span className="text-red-500 font-medium">VACANT</span> : r.tenant}</td><td className="px-3 py-2 text-right font-mono">{r.rent > 0 ? acctFmt(r.rent) : "—"}</td><td className="px-3 py-2 text-xs text-neutral-400">{r.leaseEnd||"—"}</td><td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="occupied"?"bg-emerald-100 text-emerald-700":r.status==="vacant"?"bg-red-100 text-red-600":"bg-amber-100 text-amber-700"}`}>{r.status}</span></td></tr>)}</tbody></table></>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700">{r.property}</td><td className="px-3 py-2">{r.tenant === "VACANT" ? <span className="text-danger-500 font-medium">VACANT</span> : r.tenant}</td><td className="px-3 py-2 text-right font-mono">{r.rent > 0 ? acctFmt(r.rent) : "—"}</td><td className="px-3 py-2 text-xs text-neutral-400">{r.leaseEnd||"—"}</td><td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="occupied"?"bg-success-100 text-success-700":r.status==="vacant"?"bg-danger-100 text-danger-600":"bg-warn-100 text-warn-700"}`}>{r.status}</span></td></tr>)}</tbody></table></>); })()}
     </div>)}
 
     {/* NOI by Property */}
     {reportId === "noi_by_property" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">NOI by Property</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {(() => { const data = getNOIByProperty(start, end); return (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Revenue</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Expenses</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">NOI</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Margin</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.property}</td><td className="px-4 py-2 text-right font-mono text-emerald-700">{acctFmt(r.revenue)}</td><td className="px-4 py-2 text-right font-mono text-red-600">{acctFmt(r.expenses)}</td><td className={`px-4 py-2 text-right font-mono font-bold ${r.noi < 0 ? "text-red-600" : "text-emerald-700"}`}>{acctFmt(r.noi)}</td><td className="px-4 py-2 text-right text-sm">{r.noiMargin}%</td></tr>)}</tbody></table>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.property}</td><td className="px-4 py-2 text-right font-mono text-success-700">{acctFmt(r.revenue)}</td><td className="px-4 py-2 text-right font-mono text-danger-600">{acctFmt(r.expenses)}</td><td className={`px-4 py-2 text-right font-mono font-bold ${r.noi < 0 ? "text-danger-600" : "text-success-700"}`}>{acctFmt(r.noi)}</td><td className="px-4 py-2 text-right text-sm">{r.noiMargin}%</td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* Vacancy Report */}
     {reportId === "vacancy" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Vacancy Report</p></div>
       {(() => { const data = getVacancyReport(); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No vacant properties</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Last Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Days Vacant</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Est. Lost Revenue</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.property}</td><td className="px-4 py-2 text-neutral-500">{r.lastTenant}</td><td className="px-4 py-2 text-right font-mono">{r.daysVacant}</td><td className="px-4 py-2 text-right font-mono text-red-600">{acctFmt(r.estimatedLost)}</td></tr>)}</tbody></table>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.property}</td><td className="px-4 py-2 text-neutral-500">{r.lastTenant}</td><td className="px-4 py-2 text-right font-mono">{r.daysVacant}</td><td className="px-4 py-2 text-right font-mono text-danger-600">{acctFmt(r.estimatedLost)}</td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* Lease Expirations */}
     {reportId === "lease_expirations" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Lease Expiration Schedule</p></div>
       {(() => { const data = getLeaseExpirations(180); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No leases expiring in the next 180 days</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Lease End</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Days Left</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Rent</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.tenant}</td><td className="px-4 py-2 text-neutral-500">{r.property}</td><td className="px-4 py-2 text-neutral-500">{r.leaseEnd}</td><td className={`px-4 py-2 text-right font-mono ${r.daysUntilExpiration <= 30 ? "text-red-600 font-bold" : r.daysUntilExpiration <= 60 ? "text-amber-600" : ""}`}>{r.daysUntilExpiration}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.rent)}</td></tr>)}</tbody></table>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.tenant}</td><td className="px-4 py-2 text-neutral-500">{r.property}</td><td className="px-4 py-2 text-neutral-500">{r.leaseEnd}</td><td className={`px-4 py-2 text-right font-mono ${r.daysUntilExpiration <= 30 ? "text-danger-600 font-bold" : r.daysUntilExpiration <= 60 ? "text-warn-600" : ""}`}>{r.daysUntilExpiration}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.rent)}</td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* Work Order Summary */}
     {reportId === "work_orders_summary" && (() => { const data = getWorkOrderSummary(start, end); return (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Work Order Summary</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      <div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-neutral-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.total}</div><div className="text-xs text-neutral-400">Total</div></div><div className="bg-amber-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-amber-600">{data.byStatus.open}</div><div className="text-xs text-neutral-400">Open</div></div><div className="bg-purple-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-purple-600">{data.byStatus.in_progress}</div><div className="text-xs text-neutral-400">In Progress</div></div><div className="bg-emerald-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-emerald-600">{data.byStatus.completed}</div><div className="text-xs text-neutral-400">Completed</div></div></div>
+      <div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-neutral-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.total}</div><div className="text-xs text-neutral-400">Total</div></div><div className="bg-warn-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-warn-600">{data.byStatus.open}</div><div className="text-xs text-neutral-400">Open</div></div><div className="bg-highlight-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-highlight-600">{data.byStatus.in_progress}</div><div className="text-xs text-neutral-400">In Progress</div></div><div className="bg-success-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-success-600">{data.byStatus.completed}</div><div className="text-xs text-neutral-400">Completed</div></div></div>
       <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Issue</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Status</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Cost</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Days</th></tr></thead>
-      <tbody>{data.items.map(w => <tr key={w.id} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700">{w.property}</td><td className="px-3 py-2 text-neutral-600">{w.issue}</td><td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${w.status==="open"?"bg-amber-100 text-amber-700":w.status==="in_progress"?"bg-purple-100 text-purple-700":"bg-emerald-100 text-emerald-700"}`}>{w.status}</span></td><td className="px-3 py-2 text-right font-mono">{w.cost ? acctFmt(w.cost) : "—"}</td><td className="px-3 py-2 text-right font-mono text-neutral-500">{w.daysOpen}</td></tr>)}</tbody></table>
+      <tbody>{data.items.map(w => <tr key={w.id} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700">{w.property}</td><td className="px-3 py-2 text-neutral-600">{w.issue}</td><td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${w.status==="open"?"bg-warn-100 text-warn-700":w.status==="in_progress"?"bg-highlight-100 text-highlight-700":"bg-success-100 text-success-700"}`}>{w.status}</span></td><td className="px-3 py-2 text-right font-mono">{w.cost ? acctFmt(w.cost) : "—"}</td><td className="px-3 py-2 text-right font-mono text-neutral-500">{w.daysOpen}</td></tr>)}</tbody></table>
     </div>); })()}
 
     {/* Open Invoices */}
     {reportId === "open_invoices" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Open Invoices / Unpaid Charges</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
       {(() => { const data = getOpenInvoices(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No unpaid charges</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Date</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Description</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Original</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Paid</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Due</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Days</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700">{r.tenant}</td><td className="px-3 py-2 text-xs text-neutral-400">{r.date}</td><td className="px-3 py-2 text-xs text-neutral-500 max-w-48 truncate">{r.description}</td><td className="px-3 py-2 text-right font-mono">{acctFmt(r.originalAmount)}</td><td className="px-3 py-2 text-right font-mono text-emerald-600">{acctFmt(r.amountPaid)}</td><td className="px-3 py-2 text-right font-mono font-semibold text-red-600">{acctFmt(r.amountDue)}</td><td className={`px-3 py-2 text-right font-mono ${r.daysOutstanding > 60 ? "text-red-600 font-bold" : r.daysOutstanding > 30 ? "text-amber-600" : ""}`}>{r.daysOutstanding}</td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td colSpan={5} className="px-3 py-2">TOTAL</td><td className="px-3 py-2 text-right font-mono text-red-600">{acctFmt(data.reduce((s,r)=>s+r.amountDue,0))}</td><td></td></tr></tfoot></table>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700">{r.tenant}</td><td className="px-3 py-2 text-xs text-neutral-400">{r.date}</td><td className="px-3 py-2 text-xs text-neutral-500 max-w-48 truncate">{r.description}</td><td className="px-3 py-2 text-right font-mono">{acctFmt(r.originalAmount)}</td><td className="px-3 py-2 text-right font-mono text-success-600">{acctFmt(r.amountPaid)}</td><td className="px-3 py-2 text-right font-mono font-semibold text-danger-600">{acctFmt(r.amountDue)}</td><td className={`px-3 py-2 text-right font-mono ${r.daysOutstanding > 60 ? "text-danger-600 font-bold" : r.daysOutstanding > 30 ? "text-warn-600" : ""}`}>{r.daysOutstanding}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td colSpan={5} className="px-3 py-2">TOTAL</td><td className="px-3 py-2 text-right font-mono text-danger-600">{acctFmt(data.reduce((s,r)=>s+r.amountDue,0))}</td><td></td></tr></tfoot></table>); })()}
     </div>)}
 
     {/* Collections Report */}
     {reportId === "collections" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Collections Report</p></div>
       {(() => { const data = getCollectionsReport(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No outstanding balances</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Contact</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Total Owed</th><th className="px-3 py-2 text-center text-xs font-semibold text-neutral-500">Severity</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700 font-medium">{r.tenant}</td><td className="px-3 py-2 text-xs text-neutral-500">{r.property}</td><td className="px-3 py-2 text-xs text-neutral-400">{r.email && <span className="block">{r.email}</span>}{r.phone && <span>{r.phone}</span>}</td><td className="px-3 py-2 text-right font-mono font-bold text-red-600">{acctFmt(r.total)}</td><td className="px-3 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.severity==="critical"?"bg-red-100 text-red-700":r.severity==="warning"?"bg-amber-100 text-amber-700":"bg-neutral-100 text-neutral-500"}`}>{r.severity}</span></td></tr>)}</tbody></table>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700 font-medium">{r.tenant}</td><td className="px-3 py-2 text-xs text-neutral-500">{r.property}</td><td className="px-3 py-2 text-xs text-neutral-400">{r.email && <span className="block">{r.email}</span>}{r.phone && <span>{r.phone}</span>}</td><td className="px-3 py-2 text-right font-mono font-bold text-danger-600">{acctFmt(r.total)}</td><td className="px-3 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.severity==="critical"?"bg-danger-100 text-danger-700":r.severity==="warning"?"bg-warn-100 text-warn-700":"bg-neutral-100 text-neutral-500"}`}>{r.severity}</span></td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* Customer Balance Detail */}
     {reportId === "customer_balance_detail" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Tenant Balance Detail</p></div>
-      {(() => { const data = getCustomerBalanceDetail(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No tenant balances</p> : data.map(t => (<div key={t.name} className="mb-6"><div className="flex justify-between items-center border-b border-neutral-200 pb-1 mb-2"><span className="text-sm font-bold text-neutral-800">{t.name}</span><span className={`font-mono text-sm font-bold ${t.totalBalance < 0 ? "text-green-600" : "text-red-600"}`}>{acctFmt(t.totalBalance, true)}</span></div>
+      {(() => { const data = getCustomerBalanceDetail(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No tenant balances</p> : data.map(t => (<div key={t.name} className="mb-6"><div className="flex justify-between items-center border-b border-neutral-200 pb-1 mb-2"><span className="text-sm font-bold text-neutral-800">{t.name}</span><span className={`font-mono text-sm font-bold ${t.totalBalance < 0 ? "text-positive-600" : "text-danger-600"}`}>{acctFmt(t.totalBalance, true)}</span></div>
       <table className="w-full text-xs"><thead><tr><th className="px-2 py-1 text-left text-neutral-400">Date</th><th className="px-2 py-1 text-left text-neutral-400">Entry</th><th className="px-2 py-1 text-left text-neutral-400">Description</th><th className="px-2 py-1 text-right text-neutral-400">Debit</th><th className="px-2 py-1 text-right text-neutral-400">Credit</th><th className="px-2 py-1 text-right text-neutral-400">Balance</th></tr></thead>
-      <tbody>{t.transactions.map((tx,i) => <tr key={i} className="border-t border-neutral-50"><td className="px-2 py-1 text-neutral-400">{tx.date}</td><td className="px-2 py-1 text-brand-600 font-mono">{tx.jeNumber||""}</td><td className="px-2 py-1 text-neutral-600 truncate max-w-40">{tx.description}</td><td className="px-2 py-1 text-right font-mono">{tx.debit > 0 ? acctFmt(tx.debit) : ""}</td><td className="px-2 py-1 text-right font-mono">{tx.credit > 0 ? acctFmt(tx.credit) : ""}</td><td className={`px-2 py-1 text-right font-mono font-semibold ${tx.balance < 0 ? "text-green-600" : ""}`}>{acctFmt(tx.balance, true)}</td></tr>)}</tbody></table></div>)); })()}
+      <tbody>{t.transactions.map((tx,i) => <tr key={i} className="border-t border-neutral-50"><td className="px-2 py-1 text-neutral-400">{tx.date}</td><td className="px-2 py-1 text-brand-600 font-mono">{tx.jeNumber||""}</td><td className="px-2 py-1 text-neutral-600 truncate max-w-40">{tx.description}</td><td className="px-2 py-1 text-right font-mono">{tx.debit > 0 ? acctFmt(tx.debit) : ""}</td><td className="px-2 py-1 text-right font-mono">{tx.credit > 0 ? acctFmt(tx.credit) : ""}</td><td className={`px-2 py-1 text-right font-mono font-semibold ${tx.balance < 0 ? "text-positive-600" : ""}`}>{acctFmt(tx.balance, true)}</td></tr>)}</tbody></table></div>)); })()}
     </div>)}
 
     {/* Expenses by Vendor */}
     {reportId === "expenses_by_vendor" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Expenses by Vendor</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {(() => { const data = getExpensesByVendor(start, end); return (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Vendor</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Amount</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500 w-48">% of Total</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.vendor}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.total)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-neutral-100 rounded-full h-2"><div className="bg-orange-500 rounded-full h-2" style={{width: Math.min(100, r.percentage) + "%"}} /></div><span className="text-xs text-neutral-500 w-8">{r.percentage}%</span></div></td></tr>)}</tbody>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.vendor}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.total)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-neutral-100 rounded-full h-2"><div className="bg-notice-500 rounded-full h-2" style={{width: Math.min(100, r.percentage) + "%"}} /></div><span className="text-xs text-neutral-500 w-8">{r.percentage}%</span></div></td></tr>)}</tbody>
       <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTAL</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.total,0))}</td><td></td></tr></tfoot></table>); })()}
     </div>)}
 
@@ -8782,7 +8782,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     {reportId === "security_deposits" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Security Deposit Ledger</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
       {(() => { const data = getSecurityDepositLedger(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No security deposits held</p> : (<><table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Received</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Returned</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Net Held</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.tenant}</td><td className="px-4 py-2 text-xs text-neutral-500">{r.property}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.received)}</td><td className="px-4 py-2 text-right font-mono text-red-600">{r.returned > 0 ? acctFmt(r.returned) : ""}</td><td className="px-4 py-2 text-right font-mono font-bold">{acctFmt(r.netHeld)}</td></tr>)}</tbody>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.tenant}</td><td className="px-4 py-2 text-xs text-neutral-500">{r.property}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.received)}</td><td className="px-4 py-2 text-right font-mono text-danger-600">{r.returned > 0 ? acctFmt(r.returned) : ""}</td><td className="px-4 py-2 text-right font-mono font-bold">{acctFmt(r.netHeld)}</td></tr>)}</tbody>
       <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td colSpan={4} className="px-4 py-2">TOTAL HELD</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.netHeld,0))}</td></tr></tfoot></table></>); })()}
     </div>)}
 
@@ -8790,7 +8790,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     {reportId === "late_fees" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Late Fee Report</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {(() => { const data = getLateFeeReport(start, end); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No late fees in this period</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Assessed</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Collected</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Outstanding</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Count</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.tenant}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.feesAssessed)}</td><td className="px-4 py-2 text-right font-mono text-emerald-600">{acctFmt(r.feesCollected)}</td><td className="px-4 py-2 text-right font-mono font-bold text-red-600">{r.feesOutstanding > 0 ? acctFmt(r.feesOutstanding) : ""}</td><td className="px-4 py-2 text-right">{r.count}</td></tr>)}</tbody></table>); })()}
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.tenant}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.feesAssessed)}</td><td className="px-4 py-2 text-right font-mono text-success-600">{acctFmt(r.feesCollected)}</td><td className="px-4 py-2 text-right font-mono font-bold text-danger-600">{r.feesOutstanding > 0 ? acctFmt(r.feesOutstanding) : ""}</td><td className="px-4 py-2 text-right">{r.count}</td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* Owner Distributions */}
@@ -8804,9 +8804,9 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     {/* Rent Collection Summary */}
     {reportId === "rent_collection" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Rent Collection Summary</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      {(() => { const data = getRentCollectionSummary(start, end); return (<><div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-blue-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-blue-700">{acctFmt(data.totals.charged)}</div><div className="text-xs text-neutral-400">Charged</div></div><div className="bg-emerald-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-emerald-700">{acctFmt(data.totals.collected)}</div><div className="text-xs text-neutral-400">Collected</div></div><div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-red-600">{acctFmt(data.totals.outstanding)}</div><div className="text-xs text-neutral-400">Outstanding</div></div><div className="bg-neutral-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.totals.collectionRate}%</div><div className="text-xs text-neutral-400">Collection Rate</div></div></div>
+      {(() => { const data = getRentCollectionSummary(start, end); return (<><div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-info-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-info-700">{acctFmt(data.totals.charged)}</div><div className="text-xs text-neutral-400">Charged</div></div><div className="bg-success-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-success-700">{acctFmt(data.totals.collected)}</div><div className="text-xs text-neutral-400">Collected</div></div><div className="bg-danger-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-danger-600">{acctFmt(data.totals.outstanding)}</div><div className="text-xs text-neutral-400">Outstanding</div></div><div className="bg-neutral-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.totals.collectionRate}%</div><div className="text-xs text-neutral-400">Collection Rate</div></div></div>
       <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Charged</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Collected</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Outstanding</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Rate</th></tr></thead>
-      <tbody>{data.byProperty.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.property}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.charged)}</td><td className="px-4 py-2 text-right font-mono text-emerald-600">{acctFmt(r.collected)}</td><td className="px-4 py-2 text-right font-mono text-red-600">{r.outstanding > 0 ? acctFmt(r.outstanding) : ""}</td><td className="px-4 py-2 text-right">{r.collectionRate}%</td></tr>)}</tbody></table></>); })()}
+      <tbody>{data.byProperty.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.property}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.charged)}</td><td className="px-4 py-2 text-right font-mono text-success-600">{acctFmt(r.collected)}</td><td className="px-4 py-2 text-right font-mono text-danger-600">{r.outstanding > 0 ? acctFmt(r.outstanding) : ""}</td><td className="px-4 py-2 text-right">{r.collectionRate}%</td></tr>)}</tbody></table></>); })()}
     </div>)}
 
     {/* Transaction Detail by Account */}
@@ -8819,22 +8819,22 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     {/* P&L Comparison */}
     {reportId === "pl_compare" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Profit & Loss Comparison</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}{compareData ? " vs Prior" : ""}</p></div>
-      {!compareData && <p className="text-center py-4 text-amber-600 text-sm">Select "Compare to" in the toolbar above to see a comparison.</p>}
+      {!compareData && <p className="text-center py-4 text-warn-600 text-sm">Select "Compare to" in the toolbar above to see a comparison.</p>}
       <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Account</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Current</th>{compareData && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Prior</th>}{compareData && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Change</th>}</tr></thead>
       <tbody><tr className="bg-neutral-50 font-bold"><td className="px-4 py-2" colSpan={compareData ? 4 : 2}>Income</td></tr>
-      {plData.revenue.filter(a=>a.amount!==0).map(a => { const prior = compareData?.revenue.find(p=>p.id===a.id); return <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700 pl-8">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-neutral-400">{prior ? acctFmt(prior.amount) : "—"}</td>}{compareData && <td className={`px-4 py-2 text-right font-mono ${a.amount-(prior?.amount||0) > 0 ? "text-emerald-600" : a.amount-(prior?.amount||0) < 0 ? "text-red-600" : ""}`}>{acctFmt(a.amount - (prior?.amount||0), true)}</td>}</tr>; })}
+      {plData.revenue.filter(a=>a.amount!==0).map(a => { const prior = compareData?.revenue.find(p=>p.id===a.id); return <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700 pl-8">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-neutral-400">{prior ? acctFmt(prior.amount) : "—"}</td>}{compareData && <td className={`px-4 py-2 text-right font-mono ${a.amount-(prior?.amount||0) > 0 ? "text-success-600" : a.amount-(prior?.amount||0) < 0 ? "text-danger-600" : ""}`}>{acctFmt(a.amount - (prior?.amount||0), true)}</td>}</tr>; })}
       <tr className="border-t border-neutral-300 font-bold"><td className="px-4 py-2 pl-8">Total Income</td><td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalRevenue)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-neutral-400">{acctFmt(compareData.totalRevenue)}</td>}{compareData && <td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalRevenue - compareData.totalRevenue, true)}</td>}</tr>
       <tr className="bg-neutral-50 font-bold"><td className="px-4 py-2" colSpan={compareData ? 4 : 2}>Expenses</td></tr>
-      {plData.expenses.filter(a=>a.amount!==0).map(a => { const prior = compareData?.expenses.find(p=>p.id===a.id); return <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700 pl-8">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-neutral-400">{prior ? acctFmt(prior.amount) : "—"}</td>}{compareData && <td className={`px-4 py-2 text-right font-mono ${a.amount-(prior?.amount||0) < 0 ? "text-emerald-600" : a.amount-(prior?.amount||0) > 0 ? "text-red-600" : ""}`}>{acctFmt(a.amount - (prior?.amount||0), true)}</td>}</tr>; })}
+      {plData.expenses.filter(a=>a.amount!==0).map(a => { const prior = compareData?.expenses.find(p=>p.id===a.id); return <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700 pl-8">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-neutral-400">{prior ? acctFmt(prior.amount) : "—"}</td>}{compareData && <td className={`px-4 py-2 text-right font-mono ${a.amount-(prior?.amount||0) < 0 ? "text-success-600" : a.amount-(prior?.amount||0) > 0 ? "text-danger-600" : ""}`}>{acctFmt(a.amount - (prior?.amount||0), true)}</td>}</tr>; })}
       <tr className="border-t border-neutral-300 font-bold"><td className="px-4 py-2 pl-8">Total Expenses</td><td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalExpenses)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-neutral-400">{acctFmt(compareData.totalExpenses)}</td>}{compareData && <td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalExpenses - compareData.totalExpenses, true)}</td>}</tr>
-      <tr className="border-t-2 border-b-2 border-neutral-800 font-black"><td className="px-4 py-2">NET INCOME</td><td className="px-4 py-2 text-right font-mono">{acctFmt(plData.netIncome)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-neutral-400">{acctFmt(compareData.netIncome)}</td>}{compareData && <td className={`px-4 py-2 text-right font-mono ${plData.netIncome-compareData.netIncome > 0 ? "text-emerald-600" : "text-red-600"}`}>{acctFmt(plData.netIncome - compareData.netIncome, true)}</td>}</tr>
+      <tr className="border-t-2 border-b-2 border-neutral-800 font-black"><td className="px-4 py-2">NET INCOME</td><td className="px-4 py-2 text-right font-mono">{acctFmt(plData.netIncome)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-neutral-400">{acctFmt(compareData.netIncome)}</td>}{compareData && <td className={`px-4 py-2 text-right font-mono ${plData.netIncome-compareData.netIncome > 0 ? "text-success-600" : "text-danger-600"}`}>{acctFmt(plData.netIncome - compareData.netIncome, true)}</td>}</tr>
       </tbody></table>
     </div>)}
 
     {/* AP Aging Summary */}
     {reportId === "ap_aging_summary" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">AP Aging Summary</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
-      {(() => { const data = getAPAgingData(asOfDate); const vendors = Object.entries(data.byVendor).filter(([,d]) => Math.abs(d.total) > 0.01); return vendors.length === 0 ? <p className="text-center py-8 text-neutral-400">No outstanding payables</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Vendor</th><th className="px-4 py-2 text-right text-xs font-semibold text-emerald-600">Current</th><th className="px-4 py-2 text-right text-xs font-semibold text-amber-600">1-30</th><th className="px-4 py-2 text-right text-xs font-semibold text-orange-600">31-60</th><th className="px-4 py-2 text-right text-xs font-semibold text-red-600">61-90</th><th className="px-4 py-2 text-right text-xs font-semibold text-red-800">91+</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-700">Total</th></tr></thead>
+      {(() => { const data = getAPAgingData(asOfDate); const vendors = Object.entries(data.byVendor).filter(([,d]) => Math.abs(d.total) > 0.01); return vendors.length === 0 ? <p className="text-center py-8 text-neutral-400">No outstanding payables</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Vendor</th><th className="px-4 py-2 text-right text-xs font-semibold text-success-600">Current</th><th className="px-4 py-2 text-right text-xs font-semibold text-warn-600">1-30</th><th className="px-4 py-2 text-right text-xs font-semibold text-notice-600">31-60</th><th className="px-4 py-2 text-right text-xs font-semibold text-danger-600">61-90</th><th className="px-4 py-2 text-right text-xs font-semibold text-danger-800">91+</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-700">Total</th></tr></thead>
       <tbody>{vendors.map(([vendor, d]) => <tr key={vendor} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{vendor}</td><td className="px-4 py-2 text-right font-mono">{d.current ? acctFmt(d.current) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.days30 ? acctFmt(d.days30) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.days60 ? acctFmt(d.days60) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.days90 ? acctFmt(d.days90) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.over90 ? acctFmt(d.over90) : ""}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(d.total)}</td></tr>)}</tbody>
       <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTALS</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.current)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.days30)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.days60)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.days90)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.over90)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.total)}</td></tr></tfoot></table>); })()}
     </div>)}
@@ -8860,7 +8860,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Audit Log</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       <button onClick={async () => { const d = await getAuditLog(start, end); setAuditData(d); }} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 mb-3">Refresh</button>
       {auditData.length === 0 ? <p className="text-center py-8 text-neutral-400">No audit entries in this period</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Time</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">User</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Module</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Action</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Details</th></tr></thead>
-      <tbody>{auditData.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-xs text-neutral-400 whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</td><td className="px-3 py-2 text-xs text-neutral-600">{r.user_email}</td><td className="px-3 py-2 text-xs"><span className="bg-neutral-100 text-neutral-600 px-1.5 py-0.5 rounded">{r.module}</span></td><td className="px-3 py-2 text-xs"><span className={`px-1.5 py-0.5 rounded ${r.action==="create"?"bg-emerald-100 text-emerald-700":r.action==="delete"?"bg-red-100 text-red-600":r.action==="update"?"bg-blue-100 text-blue-700":"bg-neutral-100 text-neutral-600"}`}>{r.action}</span></td><td className="px-3 py-2 text-xs text-neutral-500 max-w-64 truncate">{r.details}</td></tr>)}</tbody></table>)}
+      <tbody>{auditData.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-xs text-neutral-400 whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</td><td className="px-3 py-2 text-xs text-neutral-600">{r.user_email}</td><td className="px-3 py-2 text-xs"><span className="bg-neutral-100 text-neutral-600 px-1.5 py-0.5 rounded">{r.module}</span></td><td className="px-3 py-2 text-xs"><span className={`px-1.5 py-0.5 rounded ${r.action==="create"?"bg-success-100 text-success-700":r.action==="delete"?"bg-danger-100 text-danger-600":r.action==="update"?"bg-info-100 text-info-700":"bg-neutral-100 text-neutral-600"}`}>{r.action}</span></td><td className="px-3 py-2 text-xs text-neutral-500 max-w-64 truncate">{r.details}</td></tr>)}</tbody></table>)}
     </div>)}
 
     {/* Reconciliation Summary */}
@@ -8868,7 +8868,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Reconciliation Summary</p></div>
       <button onClick={async () => { const d = await getReconSummary(); setReconData(d); }} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 mb-3">Refresh</button>
       {reconData.length === 0 ? <p className="text-center py-8 text-neutral-400">No reconciliations found</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Period</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Bank Balance</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Book Balance</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Difference</th><th className="px-4 py-2 text-center text-xs font-semibold text-neutral-500">Status</th></tr></thead>
-      <tbody>{reconData.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.period}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(safeNum(r.bank_ending_balance))}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(safeNum(r.book_balance))}</td><td className={`px-4 py-2 text-right font-mono ${Math.abs(safeNum(r.difference)) < 0.01 ? "text-emerald-600" : "text-red-600"}`}>{acctFmt(safeNum(r.difference))}</td><td className="px-4 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="reconciled"?"bg-emerald-100 text-emerald-700":"bg-amber-100 text-amber-700"}`}>{r.status}</span></td></tr>)}</tbody></table>)}
+      <tbody>{reconData.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.period}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(safeNum(r.bank_ending_balance))}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(safeNum(r.book_balance))}</td><td className={`px-4 py-2 text-right font-mono ${Math.abs(safeNum(r.difference)) < 0.01 ? "text-success-600" : "text-danger-600"}`}>{acctFmt(safeNum(r.difference))}</td><td className="px-4 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="reconciled"?"bg-success-100 text-success-700":"bg-warn-100 text-warn-700"}`}>{r.status}</span></td></tr>)}</tbody></table>)}
     </div>)}
 
     {/* Budget vs Actuals */}
@@ -8886,7 +8886,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
         })}</div>
       </div>)}
       {(() => { const data = getBudgetVsActual(start, end); const hasAnyBudget = data.some(a => a.budget > 0); return !hasAnyBudget ? <p className="text-center py-8 text-neutral-400">No budgets set. Click "Edit Budgets" to set monthly amounts.</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Account</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Actual</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Budget</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Variance ($)</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Variance (%)</th></tr></thead>
-      <tbody>{data.filter(a => a.budget > 0).map(a => { const favorable = a.isExpense ? a.variance < 0 : a.variance > 0; return <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2 text-right font-mono text-neutral-400">{acctFmt(a.budget)}</td><td className={`px-4 py-2 text-right font-mono font-semibold ${favorable ? "text-emerald-600" : "text-red-600"}`}>{acctFmt(a.variance, true)}</td><td className={`px-4 py-2 text-right ${favorable ? "text-emerald-600" : "text-red-600"}`}>{a.variancePct > 0 ? "+" : ""}{a.variancePct}%</td></tr>; })}</tbody></table>); })()}
+      <tbody>{data.filter(a => a.budget > 0).map(a => { const favorable = a.isExpense ? a.variance < 0 : a.variance > 0; return <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2 text-right font-mono text-neutral-400">{acctFmt(a.budget)}</td><td className={`px-4 py-2 text-right font-mono font-semibold ${favorable ? "text-success-600" : "text-danger-600"}`}>{acctFmt(a.variance, true)}</td><td className={`px-4 py-2 text-right ${favorable ? "text-success-600" : "text-danger-600"}`}>{a.variancePct > 0 ? "+" : ""}{a.variancePct}%</td></tr>; })}</tbody></table>); })()}
     </div>)}
     )}
 
@@ -10022,22 +10022,22 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   <div className="flex items-center justify-between">
     <div><h3 className="text-lg font-semibold text-neutral-900">Bank Transactions</h3><p className="text-sm text-neutral-400">Import, review, and categorize bank transactions</p></div>
     <div className="flex gap-2 flex-wrap">
-      {connections.some(c => c.connection_status === "active") && <button onClick={syncTransactions} disabled={syncing} className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg font-semibold hover:bg-emerald-200 disabled:opacity-50">{syncing ? "Syncing..." : "Sync"}</button>}
-      <button onClick={connectBank} disabled={plaidConnecting} className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">link</span>{plaidConnecting ? "Connecting..." : "Connect Bank"}</button>
+      {connections.some(c => c.connection_status === "active") && <button onClick={syncTransactions} disabled={syncing} className="text-xs bg-success-100 text-success-700 px-3 py-1.5 rounded-lg font-semibold hover:bg-success-200 disabled:opacity-50">{syncing ? "Syncing..." : "Sync"}</button>}
+      <button onClick={connectBank} disabled={plaidConnecting} className="bg-info-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-info-700 disabled:opacity-50 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">link</span>{plaidConnecting ? "Connecting..." : "Connect Bank"}</button>
       <button onClick={startImport} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-neutral-700 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">upload_file</span>Import CSV</button>
     </div>
   </div>
 
   {/* Connection Banners */}
   {connections.filter(c => c.connection_status === "needs_reauth").length > 0 && (
-  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between">
-    <div className="text-sm text-amber-800"><strong>Action needed:</strong> {connections.filter(c => c.connection_status === "needs_reauth").length} bank connection(s) need re-authentication.</div>
-    <button onClick={connectBank} className="text-xs bg-amber-200 text-amber-800 px-3 py-1.5 rounded-lg font-medium hover:bg-amber-300">Fix Now</button>
+  <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 flex items-center justify-between">
+    <div className="text-sm text-warn-800"><strong>Action needed:</strong> {connections.filter(c => c.connection_status === "needs_reauth").length} bank connection(s) need re-authentication.</div>
+    <button onClick={connectBank} className="text-xs bg-warn-200 text-warn-800 px-3 py-1.5 rounded-lg font-medium hover:bg-warn-300">Fix Now</button>
   </div>
   )}
   {connections.filter(c => c.connection_status === "errored").length > 0 && (
-  <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-    <div className="text-sm text-red-800"><strong>Sync errors:</strong> {connections.filter(c => c.connection_status === "errored").map(c => `${c.institution_name}: ${c.last_error_message || "Unknown error"}`).join("; ")}</div>
+  <div className="bg-danger-50 border border-danger-200 rounded-xl p-3">
+    <div className="text-sm text-danger-800"><strong>Sync errors:</strong> {connections.filter(c => c.connection_status === "errored").map(c => `${c.institution_name}: ${c.last_error_message || "Unknown error"}`).join("; ")}</div>
   </div>
   )}
 
@@ -10054,9 +10054,9 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
         <div className="font-semibold text-neutral-800 truncate">{feed.account_name}</div>
         {feed.masked_number && <div className="text-xs text-neutral-400">••••{feed.masked_number}</div>}
         <div className="flex justify-between mt-2">
-          <span className={`text-xs px-1.5 py-0.5 rounded ${feed.connection_type === "teller" ? "bg-blue-100 text-blue-700" : feed.connection_type === "plaid" ? "bg-blue-100 text-blue-700" : "bg-neutral-100 text-neutral-500"}`}>{feed.connection_type === "teller" ? "Teller" : feed.connection_type === "plaid" ? "Plaid" : "CSV"}</span>
+          <span className={`text-xs px-1.5 py-0.5 rounded ${feed.connection_type === "teller" ? "bg-info-100 text-info-700" : feed.connection_type === "plaid" ? "bg-info-100 text-info-700" : "bg-neutral-100 text-neutral-500"}`}>{feed.connection_type === "teller" ? "Teller" : feed.connection_type === "plaid" ? "Plaid" : "CSV"}</span>
           {feed.last_synced_at && <span className="text-xs text-neutral-400">{new Date(feed.last_synced_at).toLocaleDateString()}</span>}
-          {reviewCount > 0 && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold">{reviewCount}</span>}
+          {reviewCount > 0 && <span className="text-xs bg-warn-100 text-warn-700 px-1.5 py-0.5 rounded-full font-bold">{reviewCount}</span>}
         </div>
       </button>
       );
@@ -10091,7 +10091,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   <div className="space-y-4">
     <div className="flex items-center justify-between">
       <p className="text-sm text-neutral-500">Rules run in priority order. First matching rule wins.</p>
-      <button onClick={() => { resetRuleForm(); setShowRuleDrawer(true); }} className="bg-violet-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-violet-700 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">add</span>New Rule</button>
+      <button onClick={() => { resetRuleForm(); setShowRuleDrawer(true); }} className="bg-accent-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-accent-700 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">add</span>New Rule</button>
     </div>
     <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
       <table className="w-full text-sm">
@@ -10115,24 +10115,24 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
             return (
             <tr key={r.id} className="border-b border-neutral-100 hover:bg-neutral-50">
               <td className="px-3 py-3 text-center"><span className="font-mono text-xs text-neutral-400">{r.priority}</span></td>
-              <td className="px-3 py-3"><span className="font-semibold text-neutral-800">{r.name}</span>{r.auto_accept && <span className="ml-2 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">auto-add</span>}</td>
+              <td className="px-3 py-3"><span className="font-semibold text-neutral-800">{r.name}</span>{r.auto_accept && <span className="ml-2 text-xs bg-warn-100 text-warn-700 px-1.5 py-0.5 rounded">auto-add</span>}</td>
               <td className="px-3 py-3 text-xs text-neutral-500 max-w-48">
-                <span className="text-violet-600 font-medium">{(cond.logic || "all").toUpperCase()}</span>{" of: "}
+                <span className="text-accent-600 font-medium">{(cond.logic || "all").toUpperCase()}</span>{" of: "}
                 {conditions.map((c, i) => <span key={i}>{i > 0 && ", "}{c.field} {c.operator} "{c.value}"</span>)}
                 {cond.direction !== "all" && <span className="ml-1">· {cond.direction}</span>}
               </td>
               <td className="px-3 py-3 text-xs">
-                {act.type === "exclude" ? <span className="text-red-600 font-medium">Exclude ({act.exclude_reason})</span>
-                  : <span className="text-blue-600">{lines.map(l => l.account_name).join(" + ") || "—"}{act.split && <span className="text-purple-500 ml-1">(split)</span>}</span>}
+                {act.type === "exclude" ? <span className="text-danger-600 font-medium">Exclude ({act.exclude_reason})</span>
+                  : <span className="text-info-600">{lines.map(l => l.account_name).join(" + ") || "—"}{act.split && <span className="text-highlight-500 ml-1">(split)</span>}</span>}
               </td>
               <td className="px-3 py-3 text-center text-xs text-neutral-400">{r.apply_count || 0}</td>
               <td className="px-3 py-3 text-center">
-                <button onClick={() => toggleRule(r)} className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.enabled ? "bg-emerald-100 text-emerald-700" : "bg-neutral-100 text-neutral-400"}`}>{r.enabled ? "On" : "Off"}</button>
+                <button onClick={() => toggleRule(r)} className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.enabled ? "bg-success-100 text-success-700" : "bg-neutral-100 text-neutral-400"}`}>{r.enabled ? "On" : "Off"}</button>
               </td>
               <td className="px-3 py-3 text-right">
                 <button onClick={() => startEditRule(r)} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>
                 <button onClick={() => duplicateRule(r)} className="text-xs text-neutral-400 hover:underline mr-2">Copy</button>
-                <button onClick={() => deleteRule(r.id)} className="text-xs text-red-400 hover:text-red-600">Delete</button>
+                <button onClick={() => deleteRule(r.id)} className="text-xs text-danger-400 hover:text-danger-600">Delete</button>
               </td>
             </tr>
             );
@@ -10146,11 +10146,11 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
           <p className="text-xs mt-1 mb-4">Rules auto-categorize imported transactions. Start with a template or create your own!</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-left max-w-3xl mx-auto">
             {RENTAL_RULE_PRESETS.map((preset, i) => (
-              <button key={i} onClick={() => applyPreset(preset)} className="bg-white border border-violet-100 rounded-xl p-3 hover:border-violet-300 hover:shadow-sm transition-all text-left">
+              <button key={i} onClick={() => applyPreset(preset)} className="bg-white border border-accent-100 rounded-xl p-3 hover:border-accent-300 hover:shadow-sm transition-all text-left">
                 <p className="text-sm font-semibold text-neutral-700">{preset.name}</p>
                 <p className="text-xs text-neutral-400 mt-1">{preset.description}</p>
                 <div className="flex gap-1 mt-2">
-                  {preset.action.type === "exclude" ? <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">Exclude</span> : <span className="text-xs bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded">Assign</span>}
+                  {preset.action.type === "exclude" ? <span className="text-xs bg-danger-100 text-danger-600 px-1.5 py-0.5 rounded">Exclude</span> : <span className="text-xs bg-accent-100 text-accent-600 px-1.5 py-0.5 rounded">Assign</span>}
                   <span className="text-xs bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded">{preset.conditions.length} condition{preset.conditions.length > 1 ? "s" : ""}</span>
                 </div>
               </button>
@@ -10160,7 +10160,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       )}
     </div>
     {rules.length > 0 && counts.for_review > 0 && (
-      <button onClick={async () => { const ids = transactions.filter(t => t.status === "for_review").map(t => t.id); const n = await applyRulesToTransactions(ids); showToast(`Rules applied to ${n} transaction(s).`, "success"); }} className="text-sm text-violet-600 hover:underline">Re-apply all rules to {counts.for_review} "For Review" transactions</button>
+      <button onClick={async () => { const ids = transactions.filter(t => t.status === "for_review").map(t => t.id); const n = await applyRulesToTransactions(ids); showToast(`Rules applied to ${n} transaction(s).`, "success"); }} className="text-sm text-accent-600 hover:underline">Re-apply all rules to {counts.for_review} "For Review" transactions</button>
     )}
   </div>
   )}
@@ -10183,7 +10183,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-3 flex items-center justify-between">
     <span className="text-sm font-medium text-brand-800">{selectedTxns.size} selected</span>
     <div className="flex gap-2">
-      <button onClick={() => bulkExclude("duplicate")} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100">Exclude All</button>
+      <button onClick={() => bulkExclude("duplicate")} className="text-xs bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg hover:bg-danger-100">Exclude All</button>
       <button onClick={() => setSelectedTxns(new Set())} className="text-xs text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect</button>
     </div>
   </div>
@@ -10214,17 +10214,17 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       <td className="px-3 py-2.5 text-neutral-600 whitespace-nowrap">{txn.posted_date}</td>
       <td className="px-3 py-2.5 text-neutral-800 max-w-xs truncate">
         {txn.bank_description_clean || txn.bank_description_raw}
-        {txn.suggestion_status === "suggested_rule" && (() => { const sug = txn.raw_payload_json?._suggestion; const sugType = sug?.type || "assign"; return <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${sugType === "split" ? "bg-purple-100 text-purple-600" : "bg-violet-100 text-violet-600"}`}>{sugType === "split" ? "Rule: Split" : "Rule"}</span>; })()}
-        {txn.suggestion_status === "suggested_exclude" && <span className="ml-1.5 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">Rule: Exclude</span>}
+        {txn.suggestion_status === "suggested_rule" && (() => { const sug = txn.raw_payload_json?._suggestion; const sugType = sug?.type || "assign"; return <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${sugType === "split" ? "bg-highlight-100 text-highlight-600" : "bg-accent-100 text-accent-600"}`}>{sugType === "split" ? "Rule: Split" : "Rule"}</span>; })()}
+        {txn.suggestion_status === "suggested_exclude" && <span className="ml-1.5 text-xs bg-danger-100 text-danger-600 px-1.5 py-0.5 rounded-full">Rule: Exclude</span>}
       </td>
       <td className="px-3 py-2.5 text-neutral-500 truncate max-w-32">{txn.payee_normalized || "—"}</td>
-      {activeTab === "categorized" && <td className="px-3 py-2.5 text-xs"><span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">Posted</span></td>}
-      {activeTab === "excluded" && <td className="px-3 py-2.5 text-xs text-red-600">{txn.exclusion_reason || "—"}</td>}
-      <td className={`px-3 py-2.5 text-right font-mono font-semibold ${txn.direction === "inflow" ? "text-emerald-700" : "text-red-600"}`}>{txn.direction === "inflow" ? "+" : "-"}${safeNum(txn.amount).toFixed(2)}</td>
+      {activeTab === "categorized" && <td className="px-3 py-2.5 text-xs"><span className="bg-success-100 text-success-700 px-2 py-0.5 rounded-full">Posted</span></td>}
+      {activeTab === "excluded" && <td className="px-3 py-2.5 text-xs text-danger-600">{txn.exclusion_reason || "—"}</td>}
+      <td className={`px-3 py-2.5 text-right font-mono font-semibold ${txn.direction === "inflow" ? "text-success-700" : "text-danger-600"}`}>{txn.direction === "inflow" ? "+" : "-"}${safeNum(txn.amount).toFixed(2)}</td>
       <td className="px-3 py-2.5 text-right whitespace-nowrap">
         {txn.status === "for_review" && <button onClick={e => { e.stopPropagation(); if (isExpanded) { setExpandedTxn(null); } else { setExpandedTxn(txn.id); const sug = txn.raw_payload_json?._suggestion; if (sug?.type === "split" && sug.lines?.length >= 2) { setActionMode("split"); const abs = Math.abs(txn.amount); setSplitLines(sug.lines.map(l => ({ accountId: l.account_id || "", accountName: l.account_name || "", classId: l.class_id || "", memo: sug.memo || "", amount: sug.splitBy === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0) }))); } else if (sug) { setActionMode("add"); setAddForm({ accountId: sug.accountId || "", accountName: sug.accountName || "", memo: sug.memo || "", classId: sug.classId || "" }); } else { setActionMode("add"); setAddForm({ accountId: "", accountName: "", memo: "", classId: "" }); } }}} className="text-xs text-brand-600 font-semibold hover:underline">{txn.suggestion_status === "suggested_rule" || txn.suggestion_status === "suggested_exclude" ? "Review" : "Add"}</button>}
         {["categorized", "matched", "posted"].includes(txn.status) && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-neutral-400 hover:underline">Undo</button>}
-        {txn.status === "excluded" && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-blue-600 hover:underline">Restore</button>}
+        {txn.status === "excluded" && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-info-600 hover:underline">Restore</button>}
       </td>
     </tr>
     {/* Inline Action Panel */}
@@ -10237,12 +10237,12 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
             className={`px-3 py-1 text-xs font-medium rounded-lg ${actionMode === id ? "bg-brand-600 text-white" : "bg-white text-neutral-500 hover:bg-neutral-50 border border-neutral-200"}`}>{label}</button>
         ))}
         <button onClick={() => { const reason = prompt("Exclude reason: duplicate / personal / noise / error"); if (reason) excludeTransaction(txn, reason); }}
-          className="px-3 py-1 text-xs text-red-500 hover:bg-red-50 rounded-lg ml-auto border border-red-200">Exclude</button>
+          className="px-3 py-1 text-xs text-danger-500 hover:bg-danger-50 rounded-lg ml-auto border border-danger-200">Exclude</button>
       </div>
       {/* Rule Suggestion Indicator */}
       {txn.raw_payload_json?._suggestion?.ruleName && (
-        <div className="text-xs text-violet-600 mb-2 flex items-center gap-1"><span className="material-icons-outlined text-sm">auto_fix_high</span>Suggested by rule: <strong>{txn.raw_payload_json._suggestion.ruleName}</strong>
-        {txn.suggestion_status === "suggested_exclude" && <span className="ml-2 text-red-500">— This rule suggests excluding this transaction ({txn.raw_payload_json._suggestion.reason || "auto-rule"}). <button onClick={() => excludeTransaction(txn, txn.raw_payload_json._suggestion.reason || "auto-rule")} className="text-red-600 font-semibold hover:underline ml-1">Confirm Exclude</button></span>}
+        <div className="text-xs text-accent-600 mb-2 flex items-center gap-1"><span className="material-icons-outlined text-sm">auto_fix_high</span>Suggested by rule: <strong>{txn.raw_payload_json._suggestion.ruleName}</strong>
+        {txn.suggestion_status === "suggested_exclude" && <span className="ml-2 text-danger-500">— This rule suggests excluding this transaction ({txn.raw_payload_json._suggestion.reason || "auto-rule"}). <button onClick={() => excludeTransaction(txn, txn.raw_payload_json._suggestion.reason || "auto-rule")} className="text-danger-600 font-semibold hover:underline ml-1">Confirm Exclude</button></span>}
         </div>
       )}
 
@@ -10259,7 +10259,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
           <select value={addForm.classId} onChange={e => setAddForm({...addForm, classId: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
             <option value="">No class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select></div>
-        <button onClick={() => acceptTransaction(txn, addForm.accountId, addForm.accountName, addForm.memo, addForm.classId)} disabled={!addForm.accountId} className="bg-emerald-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-emerald-700">Add & Post</button>
+        <button onClick={() => acceptTransaction(txn, addForm.accountId, addForm.accountName, addForm.memo, addForm.classId)} disabled={!addForm.accountId} className="bg-success-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-success-700">Add & Post</button>
       </div>
       )}
 
@@ -10294,7 +10294,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
           </select></div>
         <div><label className="text-xs font-medium text-neutral-500 block mb-1">Memo</label>
           <input type="text" value={transferForm.memo} onChange={e => setTransferForm({...transferForm, memo: e.target.value})} placeholder="e.g. Transfer to savings" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
-        <button onClick={() => acceptTransfer(txn, transferForm.accountId, transferForm.accountName, transferForm.memo)} disabled={!transferForm.accountId} className="bg-blue-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-blue-700">Post Transfer</button>
+        <button onClick={() => acceptTransfer(txn, transferForm.accountId, transferForm.accountName, transferForm.memo)} disabled={!transferForm.accountId} className="bg-info-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-info-700">Post Transfer</button>
       </div>
       )}
 
@@ -10316,15 +10316,15 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
             <select value={line.classId} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], classId: e.target.value}; setSplitLines(l); }} className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
               <option value="">Class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            {splitLines.length > 2 && <button onClick={() => setSplitLines(prev => prev.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600 text-xs">✕</button>}
+            {splitLines.length > 2 && <button onClick={() => setSplitLines(prev => prev.filter((_, j) => j !== i))} className="text-danger-400 hover:text-danger-600 text-xs">✕</button>}
           </div>
           ))}
         </div>
         <div className="flex items-center justify-between mt-2">
-          <span className={`text-xs font-mono ${Math.abs(splitLines.reduce((s,l) => s + safeNum(l.amount), 0) - Math.abs(txn.amount)) < 0.01 ? "text-emerald-600" : "text-red-500"}`}>
+          <span className={`text-xs font-mono ${Math.abs(splitLines.reduce((s,l) => s + safeNum(l.amount), 0) - Math.abs(txn.amount)) < 0.01 ? "text-success-600" : "text-danger-500"}`}>
             Total: ${splitLines.reduce((s,l) => s + safeNum(l.amount), 0).toFixed(2)} / ${Math.abs(txn.amount).toFixed(2)}
           </span>
-          <button onClick={() => acceptSplit(txn, splitLines)} disabled={splitLines.filter(l => l.accountId && safeNum(l.amount) > 0).length < 2} className="bg-purple-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-purple-700">Post Split</button>
+          <button onClick={() => acceptSplit(txn, splitLines)} disabled={splitLines.filter(l => l.accountId && safeNum(l.amount) > 0).length < 2} className="bg-highlight-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-highlight-700">Post Split</button>
         </div>
       </div>
       )}
@@ -10339,7 +10339,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       </div>
       {/* Create Rule from Transaction */}
       <div className="mt-2 pt-2 border-t border-brand-100">
-        <button onClick={() => createRuleFromTransaction(txn)} className="text-xs text-violet-600 hover:text-violet-800 hover:underline flex items-center gap-1">
+        <button onClick={() => createRuleFromTransaction(txn)} className="text-xs text-accent-600 hover:text-accent-800 hover:underline flex items-center gap-1">
           <span className="material-icons-outlined text-sm">auto_fix_high</span>Create a rule from this transaction
         </button>
       </div>
@@ -10394,10 +10394,10 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     {[{n:1,l:"Account"},{n:2,l:"Upload"},{n:3,l:"Map"},{n:4,l:"Preview"},{n:5,l:"Options"},{n:6,l:"Done"}].map((s,i)=>(
       <div key={s.n} className="flex items-center flex-1">
       <div className="flex flex-col items-center gap-1">
-        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 ${wizStep>s.n?"bg-emerald-500 border-emerald-500 text-white":wizStep===s.n?"bg-neutral-800 border-neutral-800 text-white":"bg-white border-neutral-200 text-neutral-400"}`}>{wizStep>s.n?"✓":s.n}</div>
+        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 ${wizStep>s.n?"bg-success-500 border-success-500 text-white":wizStep===s.n?"bg-neutral-800 border-neutral-800 text-white":"bg-white border-neutral-200 text-neutral-400"}`}>{wizStep>s.n?"✓":s.n}</div>
         <span className={`text-xs ${wizStep===s.n?"text-neutral-800 font-medium":"text-neutral-400"}`}>{s.l}</span>
       </div>
-      {i<5&&<div className={`flex-1 h-0.5 mb-4 mx-1 ${wizStep>s.n?"bg-emerald-400":"bg-neutral-200"}`}/>}
+      {i<5&&<div className={`flex-1 h-0.5 mb-4 mx-1 ${wizStep>s.n?"bg-success-400":"bg-neutral-200"}`}/>}
       </div>
     ))}
     </div>
@@ -10418,11 +10418,11 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     {/* Step 2: Upload CSV */}
     {wizStep === 2 && (
     <div className="space-y-4">
-      <div onClick={() => fileRef.current?.click()} className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer ${wizFile ? "border-emerald-300 bg-emerald-50/50" : "border-neutral-200 hover:border-neutral-400"}`}>
+      <div onClick={() => fileRef.current?.click()} className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer ${wizFile ? "border-success-300 bg-success-50/50" : "border-neutral-200 hover:border-neutral-400"}`}>
         <input ref={fileRef} type="file" accept=".csv,.txt,.tsv" className="hidden" onChange={e => { if (e.target.files[0]) setWizFile(e.target.files[0]); }} />
-        {wizFile ? <><p className="text-2xl">📄</p><p className="font-semibold text-emerald-800">{wizFile.name}</p><p className="text-xs text-emerald-600">{(wizFile.size/1024).toFixed(1)} KB</p></> : <><p className="text-2xl">📤</p><p className="font-semibold text-neutral-700">Drop CSV here or click to browse</p></>}
+        {wizFile ? <><p className="text-2xl">📄</p><p className="font-semibold text-success-800">{wizFile.name}</p><p className="text-xs text-success-600">{(wizFile.size/1024).toFixed(1)} KB</p></> : <><p className="text-2xl">📤</p><p className="font-semibold text-neutral-700">Drop CSV here or click to browse</p></>}
       </div>
-      <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700"><strong>Supported:</strong> Chase, Bank of America, Wells Fargo, Citibank, Capital One, US Bank, and generic CSV</div>
+      <div className="bg-info-50 border border-info-100 rounded-xl p-3 text-xs text-info-700"><strong>Supported:</strong> Chase, Bank of America, Wells Fargo, Citibank, Capital One, US Bank, and generic CSV</div>
       <div className="flex justify-between"><button onClick={() => setWizStep(1)} className="text-sm text-neutral-400">← Back</button><button onClick={wizHandleUpload} disabled={!wizFile} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Parse & Continue →</button></div>
     </div>
     )}
@@ -10430,7 +10430,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     {/* Step 3: Map Columns */}
     {wizStep === 3 && wizParsed && (
     <div className="space-y-4">
-      {wizDetected && <div className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-full inline-block">Auto-detected: {wizDetected.name}</div>}
+      {wizDetected && <div className="text-xs bg-success-100 text-success-700 px-3 py-1.5 rounded-full inline-block">Auto-detected: {wizDetected.name}</div>}
       <div className="bg-neutral-50 rounded-xl p-3"><p className="text-xs text-neutral-400 mb-2">Headers found:</p><div className="flex flex-wrap gap-1.5">{wizParsed.headers.map(h => <span key={h} className="text-xs bg-white border border-neutral-200 text-neutral-700 px-2 py-0.5 rounded-lg font-mono">{h}</span>)}</div></div>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {[{f:"date",l:"Date *"},{f:"description",l:"Description *"},{f:"amount",l:"Amount"},{f:"debit",l:"Debit"},{f:"credit",l:"Credit"},{f:"memo",l:"Memo"},{f:"payee",l:"Payee"},{f:"check_number",l:"Check #"},{f:"reference",l:"Reference"}].map(({f,l})=>(
@@ -10438,7 +10438,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
         ))}
       </div>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={wizInvertSign} onChange={e => setWizInvertSign(e.target.checked)} className="accent-brand-600" /> Invert sign (negative = inflow)</label>
-      {!(wizMapping.date && wizMapping.description && (wizMapping.amount || wizMapping.debit || wizMapping.credit)) && <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">Date, Description, and at least one amount column required</p>}
+      {!(wizMapping.date && wizMapping.description && (wizMapping.amount || wizMapping.debit || wizMapping.credit)) && <p className="text-xs text-warn-600 bg-warn-50 rounded-lg px-3 py-2">Date, Description, and at least one amount column required</p>}
       <div className="flex justify-between"><button onClick={() => setWizStep(2)} className="text-sm text-neutral-400">← Back</button><button onClick={wizBuildPreview} disabled={!(wizMapping.date && wizMapping.description && (wizMapping.amount || wizMapping.debit || wizMapping.credit))} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Preview →</button></div>
     </div>
     )}
@@ -10447,19 +10447,19 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     {wizStep === 4 && (
     <div className="space-y-4">
       <div className="flex gap-3 text-sm">
-        <div className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg"><strong>{wizPreview.filter(r=>r.valid).length}</strong> valid</div>
-        <div className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg"><strong>{wizPreview.filter(r=>!r.valid).length}</strong> invalid</div>
-        <div className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg"><strong>{wizPreview.length}</strong> total</div>
+        <div className="bg-success-50 text-success-700 px-3 py-1.5 rounded-lg"><strong>{wizPreview.filter(r=>r.valid).length}</strong> valid</div>
+        <div className="bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg"><strong>{wizPreview.filter(r=>!r.valid).length}</strong> invalid</div>
+        <div className="bg-info-50 text-info-600 px-3 py-1.5 rounded-lg"><strong>{wizPreview.length}</strong> total</div>
       </div>
       <div className="max-h-64 overflow-y-auto rounded-xl border border-neutral-200">
         <table className="w-full text-xs">
           <thead className="bg-neutral-50 sticky top-0"><tr><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Description</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2">Status</th></tr></thead>
           <tbody>{wizPreview.slice(0, 50).map((r, i) => (
-            <tr key={i} className={`border-t ${r.valid ? "" : "bg-red-50/50"}`}>
+            <tr key={i} className={`border-t ${r.valid ? "" : "bg-danger-50/50"}`}>
               <td className="px-3 py-1.5">{r.date || "—"}</td>
               <td className="px-3 py-1.5 truncate max-w-48">{r.description}</td>
-              <td className={`px-3 py-1.5 text-right font-mono ${r.amount >= 0 ? "text-emerald-700" : "text-red-600"}`}>{r.amount >= 0 ? "+" : ""}{r.amount.toFixed(2)}</td>
-              <td className="px-3 py-1.5 text-center">{r.valid ? <span className="text-emerald-600">✓</span> : <span className="text-red-500" title="Invalid date or amount">✗</span>}</td>
+              <td className={`px-3 py-1.5 text-right font-mono ${r.amount >= 0 ? "text-success-700" : "text-danger-600"}`}>{r.amount >= 0 ? "+" : ""}{r.amount.toFixed(2)}</td>
+              <td className="px-3 py-1.5 text-center">{r.valid ? <span className="text-success-600">✓</span> : <span className="text-danger-500" title="Invalid date or amount">✗</span>}</td>
             </tr>
           ))}</tbody>
         </table>
@@ -10488,7 +10488,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       </div>
       <div className="bg-white rounded-xl border border-neutral-200 p-4">
         <div className="flex justify-between text-sm"><span className="text-neutral-400">Valid rows</span><span className="font-bold text-neutral-800">{wizPreview.filter(r=>r.valid).length}</span></div>
-        <div className="flex justify-between text-sm mt-1"><span className="text-neutral-400">Will skip (invalid)</span><span className="text-red-500">{wizPreview.filter(r=>!r.valid).length}</span></div>
+        <div className="flex justify-between text-sm mt-1"><span className="text-neutral-400">Will skip (invalid)</span><span className="text-danger-500">{wizPreview.filter(r=>!r.valid).length}</span></div>
       </div>
       <div className="flex justify-between"><button onClick={() => setWizStep(4)} className="text-sm text-neutral-400">← Back</button><Btn variant="success-fill" onClick={wizExecuteImport}>Import {wizPreview.filter(r=>r.valid).length} Transactions</Btn></div>
     </div>
@@ -10497,13 +10497,13 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     {/* Step 6: Done */}
     {wizStep === 6 && wizResult && (
     <div className="text-center py-8">
-      <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">✓</div>
+      <div className="w-16 h-16 bg-success-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">✓</div>
       <h4 className="text-xl font-bold text-neutral-900 mb-2">Import Complete</h4>
       <div className="space-y-1 text-sm text-neutral-500 mb-6">
         <p><strong>{wizResult.imported}</strong> transactions imported</p>
         {wizResult.duplicates > 0 && <p>{wizResult.duplicates} duplicates skipped</p>}
         {wizResult.skipped > 0 && <p>{wizResult.skipped} rows skipped (errors)</p>}
-        {wizResult.ruleApplied > 0 && <p className="text-violet-600">{wizResult.ruleApplied} auto-categorized by rules</p>}
+        {wizResult.ruleApplied > 0 && <p className="text-accent-600">{wizResult.ruleApplied} auto-categorized by rules</p>}
       </div>
       <button onClick={() => { setShowImportWizard(false); setActiveTab("for_review"); }} className="bg-neutral-800 text-white text-sm px-6 py-2 rounded-lg">Review Transactions</button>
     </div>
@@ -10528,20 +10528,20 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       {/* Rule Name */}
       <div>
         <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Rule Name *</label>
-        <input type="text" value={ruleForm.name} onChange={e => setRuleForm({...ruleForm, name: e.target.value})} placeholder="e.g. Home Depot Supplies" className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:border-violet-400 focus:outline-none" />
+        <input type="text" value={ruleForm.name} onChange={e => setRuleForm({...ruleForm, name: e.target.value})} placeholder="e.g. Home Depot Supplies" className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm focus:border-accent-400 focus:outline-none" />
       </div>
 
       {/* Direction + Bank Account Scope */}
       <div className="flex gap-3">
         <div className="flex-1">
           <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Apply to</label>
-          <select value={ruleForm.condDirection} onChange={e => setRuleForm({...ruleForm, condDirection: e.target.value})} className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm">
+          <select value={ruleForm.condDirection} onChange={e => setRuleForm({...ruleForm, condDirection: e.target.value})} className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm">
             <option value="all">All transactions</option><option value="outflow">Money out</option><option value="inflow">Money in</option>
           </select>
         </div>
         <div className="flex-1">
           <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Bank Account</label>
-          <select value={ruleForm.bankAccountFeedId} onChange={e => setRuleForm({...ruleForm, bankAccountFeedId: e.target.value})} className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm">
+          <select value={ruleForm.bankAccountFeedId} onChange={e => setRuleForm({...ruleForm, bankAccountFeedId: e.target.value})} className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm">
             <option value="">All bank accounts</option>{feeds.map(f => <option key={f.id} value={f.id}>{f.account_name}</option>)}
           </select>
         </div>
@@ -10551,7 +10551,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       <div>
         <div className="flex items-center gap-2 mb-2">
           <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest">When transaction meets</label>
-          <select value={ruleForm.condLogic} onChange={e => setRuleForm({...ruleForm, condLogic: e.target.value})} className="border border-violet-200 rounded-lg px-2 py-1 text-xs font-semibold text-violet-700">
+          <select value={ruleForm.condLogic} onChange={e => setRuleForm({...ruleForm, condLogic: e.target.value})} className="border border-accent-200 rounded-lg px-2 py-1 text-xs font-semibold text-accent-700">
             <option value="all">ALL</option><option value="any">ANY</option>
           </select>
           <span className="text-xs text-neutral-400">conditions:</span>
@@ -10563,23 +10563,23 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
           const ops = isAmount ? amtOps : textOps;
           return (
           <div key={idx} className="flex items-center gap-2 mb-2">
-            <select value={cond.field} onChange={e => { updateCondition(idx, "field", e.target.value); updateCondition(idx, "operator", e.target.value === "amount" ? "greater_than" : "contains"); }} className="border border-violet-200 rounded-lg px-2 py-1.5 text-xs min-w-[120px]">
+            <select value={cond.field} onChange={e => { updateCondition(idx, "field", e.target.value); updateCondition(idx, "operator", e.target.value === "amount" ? "greater_than" : "contains"); }} className="border border-accent-200 rounded-lg px-2 py-1.5 text-xs min-w-[120px]">
               <option value="description">Description</option><option value="bank_text">Bank text</option><option value="amount">Amount</option>
             </select>
-            <select value={cond.operator} onChange={e => updateCondition(idx, "operator", e.target.value)} className="border border-violet-200 rounded-lg px-2 py-1.5 text-xs min-w-[130px]">
+            <select value={cond.operator} onChange={e => updateCondition(idx, "operator", e.target.value)} className="border border-accent-200 rounded-lg px-2 py-1.5 text-xs min-w-[130px]">
               {ops.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
             </select>
-            <input type={isAmount ? "number" : "text"} value={cond.value} onChange={e => updateCondition(idx, "value", e.target.value)} placeholder={isAmount ? "0.00" : "Enter text..."} className="flex-1 border border-violet-200 rounded-lg px-2 py-1.5 text-xs" />
+            <input type={isAmount ? "number" : "text"} value={cond.value} onChange={e => updateCondition(idx, "value", e.target.value)} placeholder={isAmount ? "0.00" : "Enter text..."} className="flex-1 border border-accent-200 rounded-lg px-2 py-1.5 text-xs" />
             {cond.operator === "between" && <>
               <span className="text-xs text-neutral-400">and</span>
-              <input type="number" value={cond.value2 || ""} onChange={e => updateCondition(idx, "value2", e.target.value)} placeholder="0.00" className="w-24 border border-violet-200 rounded-lg px-2 py-1.5 text-xs" />
+              <input type="number" value={cond.value2 || ""} onChange={e => updateCondition(idx, "value2", e.target.value)} placeholder="0.00" className="w-24 border border-accent-200 rounded-lg px-2 py-1.5 text-xs" />
             </>}
-            {ruleForm.conditions.length > 1 && <button onClick={() => removeCondition(idx)} className="text-red-400 hover:text-red-600 text-sm shrink-0">✕</button>}
+            {ruleForm.conditions.length > 1 && <button onClick={() => removeCondition(idx)} className="text-danger-400 hover:text-danger-600 text-sm shrink-0">✕</button>}
           </div>
           );
         })}
         {ruleForm.conditions.length < 5 && (
-          <button onClick={addCondition} className="text-xs text-violet-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">add</span>Add a condition</button>
+          <button onClick={addCondition} className="text-xs text-accent-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">add</span>Add a condition</button>
         )}
       </div>
 
@@ -10588,15 +10588,15 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
 
       {/* Assign vs Exclude */}
       <div className="flex gap-4">
-        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="ruleType" checked={ruleForm.ruleType === "assign"} onChange={() => setRuleForm({...ruleForm, ruleType: "assign"})} className="accent-violet-600" /><span className="font-medium text-neutral-700">Assign</span></label>
-        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="ruleType" checked={ruleForm.ruleType === "exclude"} onChange={() => setRuleForm({...ruleForm, ruleType: "exclude"})} className="accent-violet-600" /><span className="font-medium text-neutral-700">Exclude</span></label>
+        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="ruleType" checked={ruleForm.ruleType === "assign"} onChange={() => setRuleForm({...ruleForm, ruleType: "assign"})} className="accent-accent-600" /><span className="font-medium text-neutral-700">Assign</span></label>
+        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="ruleType" checked={ruleForm.ruleType === "exclude"} onChange={() => setRuleForm({...ruleForm, ruleType: "exclude"})} className="accent-accent-600" /><span className="font-medium text-neutral-700">Exclude</span></label>
       </div>
 
       {/* Assign Fields */}
       {ruleForm.ruleType === "assign" && (<>
         <div>
           <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Transaction Type</label>
-          <select value={ruleForm.transactionType} onChange={e => setRuleForm({...ruleForm, transactionType: e.target.value})} className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm">
+          <select value={ruleForm.transactionType} onChange={e => setRuleForm({...ruleForm, transactionType: e.target.value})} className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm">
             <option value="expense">Expense</option><option value="deposit">Deposit</option><option value="transfer">Transfer</option><option value="check">Check</option>
           </select>
         </div>
@@ -10605,38 +10605,38 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
         <div>
           <div className="flex items-center justify-between mb-1">
             <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest">Category *</label>
-            {!ruleForm.split && <button onClick={addSplitLine} className="text-xs text-violet-600 hover:underline">+ Add a split</button>}
+            {!ruleForm.split && <button onClick={addSplitLine} className="text-xs text-accent-600 hover:underline">+ Add a split</button>}
           </div>
           {ruleForm.split && ruleForm.lines.length >= 2 && (
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs text-neutral-400">Split by:</span>
-              <select value={ruleForm.splitBy || "percentage"} onChange={e => setRuleForm({...ruleForm, splitBy: e.target.value})} className="border border-violet-200 rounded-lg px-2 py-1 text-xs">
+              <select value={ruleForm.splitBy || "percentage"} onChange={e => setRuleForm({...ruleForm, splitBy: e.target.value})} className="border border-accent-200 rounded-lg px-2 py-1 text-xs">
                 <option value="percentage">Percentage</option><option value="amount">Amount</option>
               </select>
             </div>
           )}
           {ruleForm.lines.map((line, idx) => (
           <div key={idx} className="flex items-center gap-2 mb-2">
-            <select value={line.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); updateLine(idx, "accountId", e.target.value); updateLine(idx, "accountName", a?.name || ""); }} className="flex-1 border border-violet-200 rounded-lg px-2 py-1.5 text-xs">
+            <select value={line.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); updateLine(idx, "accountId", e.target.value); updateLine(idx, "accountName", a?.name || ""); }} className="flex-1 border border-accent-200 rounded-lg px-2 py-1.5 text-xs">
               <option value="">Select account...</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a => a.type === type && a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}
             </select>
             {ruleForm.split && ruleForm.splitBy === "percentage" && (
-              <input type="number" value={line.percentage ?? ""} onChange={e => updateLine(idx, "percentage", e.target.value)} placeholder="%" className="w-20 border border-violet-200 rounded-lg px-2 py-1.5 text-xs text-right" />
+              <input type="number" value={line.percentage ?? ""} onChange={e => updateLine(idx, "percentage", e.target.value)} placeholder="%" className="w-20 border border-accent-200 rounded-lg px-2 py-1.5 text-xs text-right" />
             )}
             {ruleForm.split && ruleForm.splitBy === "amount" && (
-              <input type="number" value={line.amount ?? ""} onChange={e => updateLine(idx, "amount", e.target.value)} placeholder="$" className="w-24 border border-violet-200 rounded-lg px-2 py-1.5 text-xs text-right" />
+              <input type="number" value={line.amount ?? ""} onChange={e => updateLine(idx, "amount", e.target.value)} placeholder="$" className="w-24 border border-accent-200 rounded-lg px-2 py-1.5 text-xs text-right" />
             )}
-            <select value={line.classId} onChange={e => updateLine(idx, "classId", e.target.value)} className="w-36 border border-violet-200 rounded-lg px-2 py-1.5 text-xs">
+            <select value={line.classId} onChange={e => updateLine(idx, "classId", e.target.value)} className="w-36 border border-accent-200 rounded-lg px-2 py-1.5 text-xs">
               <option value="">No class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            {ruleForm.lines.length > 1 && <button onClick={() => removeSplitLine(idx)} className="text-red-400 hover:text-red-600 text-sm shrink-0">✕</button>}
+            {ruleForm.lines.length > 1 && <button onClick={() => removeSplitLine(idx)} className="text-danger-400 hover:text-danger-600 text-sm shrink-0">✕</button>}
           </div>
           ))}
           {ruleForm.split && ruleForm.lines.length < 5 && (
-            <button onClick={addSplitLine} className="text-xs text-violet-600 hover:underline">+ Add line</button>
+            <button onClick={addSplitLine} className="text-xs text-accent-600 hover:underline">+ Add line</button>
           )}
           {ruleForm.split && ruleForm.splitBy === "percentage" && (
-            <div className={`text-xs mt-1 ${Math.abs(ruleForm.lines.reduce((s, l) => s + (Number(l.percentage) || 0), 0) - 100) < 0.01 ? "text-emerald-600" : "text-red-500"}`}>
+            <div className={`text-xs mt-1 ${Math.abs(ruleForm.lines.reduce((s, l) => s + (Number(l.percentage) || 0), 0) - 100) < 0.01 ? "text-success-600" : "text-danger-500"}`}>
               Total: {ruleForm.lines.reduce((s, l) => s + (Number(l.percentage) || 0), 0)}%
             </div>
           )}
@@ -10646,11 +10646,11 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Payee</label>
-            <input type="text" value={ruleForm.actionPayee} onChange={e => setRuleForm({...ruleForm, actionPayee: e.target.value})} placeholder="Optional" className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm" />
+            <input type="text" value={ruleForm.actionPayee} onChange={e => setRuleForm({...ruleForm, actionPayee: e.target.value})} placeholder="Optional" className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm" />
           </div>
           <div>
             <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Memo</label>
-            <input type="text" value={ruleForm.actionMemo} onChange={e => setRuleForm({...ruleForm, actionMemo: e.target.value})} placeholder="Optional" className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm" />
+            <input type="text" value={ruleForm.actionMemo} onChange={e => setRuleForm({...ruleForm, actionMemo: e.target.value})} placeholder="Optional" className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm" />
           </div>
         </div>
       </>)}
@@ -10659,7 +10659,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       {ruleForm.ruleType === "exclude" && (
         <div>
           <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Exclude Reason</label>
-          <select value={ruleForm.excludeReason} onChange={e => setRuleForm({...ruleForm, excludeReason: e.target.value})} className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm">
+          <select value={ruleForm.excludeReason} onChange={e => setRuleForm({...ruleForm, excludeReason: e.target.value})} className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm">
             <option value="personal">Personal</option><option value="duplicate">Duplicate</option><option value="noise">Noise</option><option value="other">Other</option>
           </select>
         </div>
@@ -10669,20 +10669,20 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       <div>
         <div className="flex items-center gap-2 mb-2"><div className="flex-1 border-t border-neutral-200" /><span className="text-xs font-semibold text-neutral-400 uppercase">How to apply</span><div className="flex-1 border-t border-neutral-200" /></div>
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="autoAccept" checked={!ruleForm.autoAccept} onChange={() => setRuleForm({...ruleForm, autoAccept: false})} className="accent-violet-600" /><span className="text-neutral-700">Auto-categorize, then I'll review manually</span></label>
-          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="autoAccept" checked={ruleForm.autoAccept} onChange={() => setRuleForm({...ruleForm, autoAccept: true})} className="accent-violet-600" /><span className="text-neutral-700">Auto-add (skip review entirely)</span></label>
+          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="autoAccept" checked={!ruleForm.autoAccept} onChange={() => setRuleForm({...ruleForm, autoAccept: false})} className="accent-accent-600" /><span className="text-neutral-700">Auto-categorize, then I'll review manually</span></label>
+          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="autoAccept" checked={ruleForm.autoAccept} onChange={() => setRuleForm({...ruleForm, autoAccept: true})} className="accent-accent-600" /><span className="text-neutral-700">Auto-add (skip review entirely)</span></label>
         </div>
       </div>
 
       {/* Priority */}
       <div>
         <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Priority (lower = runs first)</label>
-        <input type="number" value={ruleForm.priority} onChange={e => setRuleForm({...ruleForm, priority: e.target.value})} min="1" max="999" className="w-24 border border-violet-200 rounded-lg px-3 py-2 text-sm" />
+        <input type="number" value={ruleForm.priority} onChange={e => setRuleForm({...ruleForm, priority: e.target.value})} min="1" max="999" className="w-24 border border-accent-200 rounded-lg px-3 py-2 text-sm" />
       </div>
 
       {/* Actions */}
       <div className="flex gap-3 pt-2 border-t border-neutral-200">
-        <button onClick={saveRule} className="bg-violet-600 text-white text-sm px-6 py-2.5 rounded-lg hover:bg-violet-700 font-semibold">{editingRule ? "Update Rule" : "Save Rule"}</button>
+        <button onClick={saveRule} className="bg-accent-600 text-white text-sm px-6 py-2.5 rounded-lg hover:bg-accent-700 font-semibold">{editingRule ? "Update Rule" : "Save Rule"}</button>
         <button onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }} className="text-sm text-neutral-500 px-4 py-2.5 hover:text-neutral-700">Cancel</button>
       </div>
     </div>
@@ -11050,10 +11050,10 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   <div key={group.section}>
     <p className="text-[10px] uppercase tracking-widest text-neutral-400 font-semibold px-3 mt-4 mb-1">{group.section}</p>
     {group.items.map(item => (
-      <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === item.id ? "bg-green-50 text-green-700 border-l-3 border-green-600" : "text-neutral-600 hover:bg-neutral-50"}`}>
+      <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === item.id ? "bg-positive-50 text-positive-700 border-l-3 border-positive-600" : "text-neutral-600 hover:bg-neutral-50"}`}>
         <span className="material-icons-outlined text-lg">{item.icon}</span>
         <span className="truncate">{item.label}</span>
-        {item.badge > 0 && <span className="ml-auto bg-amber-100 text-amber-700 text-xs px-1.5 py-0.5 rounded-full">{item.badge}</span>}
+        {item.badge > 0 && <span className="ml-auto bg-warn-100 text-warn-700 text-xs px-1.5 py-0.5 rounded-full">{item.badge}</span>}
       </button>
     ))}
   </div>
@@ -11063,10 +11063,10 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   {/* Mobile horizontal tab bar */}
   <div className="md:hidden flex gap-2 px-4 py-2 border-b border-neutral-200 overflow-x-auto w-full bg-white">
   {acctSidebarItems.flatMap(g => g.items).map(item => (
-    <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${activeTab === item.id ? "bg-green-50 text-green-700" : "text-neutral-500 hover:bg-neutral-50"}`}>
+    <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${activeTab === item.id ? "bg-positive-50 text-positive-700" : "text-neutral-500 hover:bg-neutral-50"}`}>
       <span className="material-icons-outlined text-base">{item.icon}</span>
       {item.label}
-      {item.badge > 0 && <span className="ml-1 bg-amber-100 text-amber-700 text-xs px-1.5 py-0.5 rounded-full">{item.badge}</span>}
+      {item.badge > 0 && <span className="ml-1 bg-warn-100 text-warn-700 text-xs px-1.5 py-0.5 rounded-full">{item.badge}</span>}
     </button>
   ))}
   </div>
@@ -11081,8 +11081,8 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
     <div className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-medium text-neutral-500">Total Revenue</span>
-        <span className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
-          <span className="material-icons-outlined text-emerald-600 text-xl">trending_up</span>
+        <span className="w-10 h-10 rounded-lg bg-success-50 flex items-center justify-center">
+          <span className="material-icons-outlined text-success-600 text-xl">trending_up</span>
         </span>
       </div>
       <p className="text-2xl font-bold text-neutral-900 font-mono">{acctFmt(plData.totalRevenue)}</p>
@@ -11091,8 +11091,8 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
     <div className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-medium text-neutral-500">Total Expenses</span>
-        <span className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
-          <span className="material-icons-outlined text-red-600 text-xl">trending_down</span>
+        <span className="w-10 h-10 rounded-lg bg-danger-50 flex items-center justify-center">
+          <span className="material-icons-outlined text-danger-600 text-xl">trending_down</span>
         </span>
       </div>
       <p className="text-2xl font-bold text-neutral-900 font-mono">{acctFmt(plData.totalExpenses)}</p>
@@ -11101,18 +11101,18 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
     <div className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-medium text-neutral-500">Net Income</span>
-        <span className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-          <span className="material-icons-outlined text-blue-600 text-xl">account_balance</span>
+        <span className="w-10 h-10 rounded-lg bg-info-50 flex items-center justify-center">
+          <span className="material-icons-outlined text-info-600 text-xl">account_balance</span>
         </span>
       </div>
-      <p className={`text-2xl font-bold font-mono ${plData.netIncome >= 0 ? "text-neutral-900" : "text-red-600"}`}>{acctFmt(plData.netIncome)}</p>
+      <p className={`text-2xl font-bold font-mono ${plData.netIncome >= 0 ? "text-neutral-900" : "text-danger-600"}`}>{acctFmt(plData.netIncome)}</p>
       <p className="text-xs text-neutral-400 mt-1">Year to date</p>
     </div>
     <div className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-medium text-neutral-500">Total Assets</span>
-        <span className="w-10 h-10 rounded-lg bg-violet-50 flex items-center justify-center">
-          <span className="material-icons-outlined text-violet-600 text-xl">business</span>
+        <span className="w-10 h-10 rounded-lg bg-accent-50 flex items-center justify-center">
+          <span className="material-icons-outlined text-accent-600 text-xl">business</span>
         </span>
       </div>
       <p className="text-2xl font-bold text-neutral-900 font-mono">{acctFmt(bsData.totalAssets)}</p>
@@ -11122,16 +11122,16 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
 
   {/* Quick Actions */}
   <div className="flex gap-3 mb-6 overflow-x-auto">
-    <button onClick={() => setActiveTab("journal")} className="flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-green-300 hover:shadow-sm transition-all whitespace-nowrap">
-      <span className="material-icons-outlined text-green-600 text-lg">add_circle</span>
+    <button onClick={() => setActiveTab("journal")} className="flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-positive-300 hover:shadow-sm transition-all whitespace-nowrap">
+      <span className="material-icons-outlined text-positive-600 text-lg">add_circle</span>
       New Journal Entry
     </button>
-    <button onClick={() => setActiveTab("recurring")} className="flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-green-300 hover:shadow-sm transition-all whitespace-nowrap">
-      <span className="material-icons-outlined text-green-600 text-lg">autorenew</span>
+    <button onClick={() => setActiveTab("recurring")} className="flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-positive-300 hover:shadow-sm transition-all whitespace-nowrap">
+      <span className="material-icons-outlined text-positive-600 text-lg">autorenew</span>
       Recurring Entries
     </button>
-    <button onClick={() => setActiveTab("reports")} className="flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-green-300 hover:shadow-sm transition-all whitespace-nowrap">
-      <span className="material-icons-outlined text-green-600 text-lg">assessment</span>
+    <button onClick={() => setActiveTab("reports")} className="flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-positive-300 hover:shadow-sm transition-all whitespace-nowrap">
+      <span className="material-icons-outlined text-positive-600 text-lg">assessment</span>
       Run Reports
     </button>
   </div>
@@ -11142,7 +11142,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
     <div className="lg:col-span-2 bg-white rounded-xl border border-neutral-200">
       <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
         <h3 className="font-semibold text-neutral-800">Recent Journal Entries</h3>
-        <button onClick={() => setActiveTab("journal")} className="text-xs text-green-600 hover:underline">View All</button>
+        <button onClick={() => setActiveTab("journal")} className="text-xs text-positive-600 hover:underline">View All</button>
       </div>
       <div className="divide-y divide-neutral-100">
         {journalEntries.slice(0, 8).map(je => {
@@ -11150,7 +11150,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
         return (
           <div key={je.id} className="flex items-center justify-between px-5 py-3 hover:bg-neutral-50 transition-colors">
             <div className="flex items-center gap-3">
-              <span className={`w-2.5 h-2.5 rounded-full ${je.status==="posted"?"bg-emerald-400":je.status==="draft"?"bg-amber-400":"bg-neutral-300"}`} />
+              <span className={`w-2.5 h-2.5 rounded-full ${je.status==="posted"?"bg-success-400":je.status==="draft"?"bg-warn-400":"bg-neutral-300"}`} />
               <div>
                 <p className="text-sm text-neutral-700">{je.description}</p>
                 <p className="text-xs text-neutral-400">{je.number} · {je.date}{je.property ? " · " + je.property.split(",")[0] : ""}</p>
@@ -11170,13 +11170,13 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
     {/* Right: Account Summary + Pending (1/3) */}
     <div className="space-y-4">
       {pendingCount > 0 && (
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+      <div className="bg-warn-50 border border-warn-200 rounded-xl p-4">
         <div className="flex items-center gap-2 mb-1">
-          <span className="material-icons-outlined text-amber-600 text-lg">pending_actions</span>
-          <span className="font-semibold text-amber-800 text-sm">Pending Actions</span>
+          <span className="material-icons-outlined text-warn-600 text-lg">pending_actions</span>
+          <span className="font-semibold text-warn-800 text-sm">Pending Actions</span>
         </div>
-        <p className="text-sm text-amber-700">{pendingCount} draft journal {pendingCount === 1 ? "entry" : "entries"} awaiting review</p>
-        <button onClick={() => setActiveTab("journal")} className="text-xs text-amber-700 font-semibold hover:underline mt-2">Review Now →</button>
+        <p className="text-sm text-warn-700">{pendingCount} draft journal {pendingCount === 1 ? "entry" : "entries"} awaiting review</p>
+        <button onClick={() => setActiveTab("journal")} className="text-xs text-warn-700 font-semibold hover:underline mt-2">Review Now →</button>
       </div>
       )}
       <div className="bg-white rounded-xl border border-neutral-200">
@@ -11186,14 +11186,14 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
         <div className="p-4 space-y-2">
           {["Asset","Liability","Equity","Revenue","Expense"].map(type => {
           const total = calcAllBalances(acctAccounts, journalEntries).filter(a => a.type === type && a.is_active).reduce((s,a) => s + a.computedBalance, 0);
-          const colors = { Asset: "bg-blue-500", Liability: "bg-red-500", Equity: "bg-violet-500", Revenue: "bg-emerald-500", Expense: "bg-orange-500" };
+          const colors = { Asset: "bg-info-500", Liability: "bg-danger-500", Equity: "bg-accent-500", Revenue: "bg-success-500", Expense: "bg-notice-500" };
           return (
             <div key={type} className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-neutral-50">
               <div className="flex items-center gap-2.5">
                 <span className={`w-2.5 h-2.5 rounded-full ${colors[type]}`} />
                 <span className="text-sm text-neutral-700">{type}</span>
               </div>
-              <span className={`font-mono text-sm font-semibold ${total < 0 ? "text-red-600" : "text-neutral-800"}`}>{acctFmt(total, true)}</span>
+              <span className={`font-mono text-sm font-semibold ${total < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(total, true)}</span>
             </div>
           );
           })}
@@ -11321,7 +11321,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   <div className="flex items-center justify-between mb-5">
   <PageHeader title="Document Management" />
   <div className="flex gap-2">
-  <Btn variant="warning-fill" className="bg-amber-500 hover:bg-amber-600" onClick={repairUrls} title="Fix broken View links for existing documents">🔧 Repair URLs</Btn>
+  <Btn variant="warning-fill" className="bg-warn-500 hover:bg-warn-600" onClick={repairUrls} title="Fix broken View links for existing documents">🔧 Repair URLs</Btn>
   <button onClick={() => setShowForm(!showForm)} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ Upload Document</button>
   </div>
   </div>
@@ -11390,7 +11390,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   if (!path) return;
   const url = await getSignedUrl("documents", path);
   if (url) window.open(url, "_blank", "noopener,noreferrer");
-  }} className="text-xs text-green-600 hover:underline">Download</button>
+  }} className="text-xs text-positive-600 hover:underline">Download</button>
   </>
   ) : d.file_name ? (
   <>
@@ -11403,7 +11403,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   ) : (
   <span className="text-xs text-neutral-400">No file</span>
   )}
-  <button onClick={() => deleteDoc(d.id, d.name, d.file_name)} className="text-xs text-red-400 hover:underline">Delete</button>
+  <button onClick={() => deleteDoc(d.id, d.name, d.file_name)} className="text-xs text-danger-400 hover:underline">Delete</button>
   </div>
   </td>
   </tr>
@@ -11503,7 +11503,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   {Object.entries(cl).map(([item, val]) => (
   <div key={item} className="flex items-center justify-between text-sm py-1 border-b border-brand-50/50">
   <span className="text-neutral-700">{item}</span>
-  <span className={val.pass === true ? "text-green-600 font-semibold" : val.pass === false ? "text-red-500 font-semibold" : "text-neutral-400"}>
+  <span className={val.pass === true ? "text-positive-600 font-semibold" : val.pass === false ? "text-danger-500 font-semibold" : "text-neutral-400"}>
   {val.pass === true ? "✓ Pass" : val.pass === false ? "✗ Fail" : "—"}
   </span>
   </div>
@@ -11543,8 +11543,8 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   {Object.entries(checklist).map(([item, val]) => (
   <div key={item} className="flex items-center gap-3 bg-brand-50/30 rounded-lg px-3 py-2">
   <span className="text-sm text-neutral-700 flex-1">{item}</span>
-  <button onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: true } })} className={`text-xs px-2 py-1 rounded ${val.pass === true ? "bg-green-500 text-white" : "bg-neutral-200 text-neutral-500"}`}>Pass</button>
-  <button onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: false } })} className={`text-xs px-2 py-1 rounded ${val.pass === false ? "bg-red-500 text-white" : "bg-neutral-200 text-neutral-500"}`}>Fail</button>
+  <button onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: true } })} className={`text-xs px-2 py-1 rounded ${val.pass === true ? "bg-positive-500 text-white" : "bg-neutral-200 text-neutral-500"}`}>Pass</button>
+  <button onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: false } })} className={`text-xs px-2 py-1 rounded ${val.pass === false ? "bg-danger-500 text-white" : "bg-neutral-200 text-neutral-500"}`}>Fail</button>
   <input placeholder="Note" value={val.notes} onChange={e => setChecklist({ ...checklist, [item]: { ...val, notes: e.target.value } })} className="border border-brand-100 rounded px-2 py-1 text-xs w-32" />
   </div>
   ))}
@@ -11939,19 +11939,19 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
 
   <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
-  <StatCard label="Active Leases" value={active.length} color="text-green-600" sub="current" />
-  <StatCard label="Expiring (90d)" value={expiringSoon.length} color={expiringSoon.length > 0 ? "text-amber-600" : "text-neutral-400"} sub="need attention" />
-  <StatCard label="Total Deposits" value={"$" + totalDeposits.toLocaleString()} color="text-purple-600" sub="held" />
-  <StatCard label="Avg Rent" value={"$" + (active.length > 0 ? Math.round(active.reduce((s, l) => s + safeNum(l.rent_amount), 0) / active.length) : 0)} color="text-blue-600" sub="per lease" />
+  <StatCard label="Active Leases" value={active.length} color="text-positive-600" sub="current" />
+  <StatCard label="Expiring (90d)" value={expiringSoon.length} color={expiringSoon.length > 0 ? "text-warn-600" : "text-neutral-400"} sub="need attention" />
+  <StatCard label="Total Deposits" value={"$" + totalDeposits.toLocaleString()} color="text-highlight-600" sub="held" />
+  <StatCard label="Avg Rent" value={"$" + (active.length > 0 ? Math.round(active.reduce((s, l) => s + safeNum(l.rent_amount), 0) / active.length) : 0)} color="text-info-600" sub="per lease" />
   </div>
 
   {expiringSoon.length > 0 && (
-  <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 mb-4">
-  <div className="font-semibold text-amber-800 text-sm mb-2">Leases Expiring Soon</div>
+  <div className="bg-warn-50 border border-warn-200 rounded-3xl p-4 mb-4">
+  <div className="font-semibold text-warn-800 text-sm mb-2">Leases Expiring Soon</div>
   {expiringSoon.map(l => { const d = Math.ceil((parseLocalDate(l.end_date) - new Date()) / 86400000); return (
   <div key={l.id} className="flex justify-between items-center py-1 text-sm">
-  <span className="text-amber-700">{l.tenant_name} — {l.property}</span>
-  <div className="flex items-center gap-2"><span className="text-amber-600 font-bold">{d} days</span><Btn variant="warning-fill" size="xs" onClick={() => renewLease(l)}>Renew</Btn></div>
+  <span className="text-warn-700">{l.tenant_name} — {l.property}</span>
+  <div className="flex items-center gap-2"><span className="text-warn-600 font-bold">{d} days</span><Btn variant="warning-fill" size="xs" onClick={() => renewLease(l)}>Renew</Btn></div>
   </div>
   ); })}
   </div>
@@ -11984,12 +11984,12 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   {showDepositModal && (
   <Modal title={"Return Deposit — " + showDepositModal.tenant_name} onClose={() => setShowDepositModal(null)}>
   <div className="space-y-3">
-  <div className="bg-purple-50 rounded-lg p-3 text-sm"><div className="flex justify-between"><span className="text-neutral-400">Original Deposit:</span><span className="font-bold">${safeNum(showDepositModal.security_deposit).toLocaleString()}</span></div></div>
+  <div className="bg-highlight-50 rounded-lg p-3 text-sm"><div className="flex justify-between"><span className="text-neutral-400">Original Deposit:</span><span className="font-bold">${safeNum(showDepositModal.security_deposit).toLocaleString()}</span></div></div>
   <div><label className="text-xs text-neutral-400">Amount to Return ($)</label><Input type="number" value={depositForm.amount_returned} onChange={e => setDepositForm({...depositForm, amount_returned: e.target.value})} placeholder={String(showDepositModal.security_deposit)} /></div>
   <div><label className="text-xs text-neutral-400">Deduction Reasons</label><Textarea value={depositForm.deductions} onChange={e => setDepositForm({...depositForm, deductions: e.target.value})} placeholder="Cleaning, damages, unpaid rent..." className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={3} /></div>
   <div><label className="text-xs text-neutral-400">Return Date</label><Input type="date" value={depositForm.return_date} onChange={e => setDepositForm({...depositForm, return_date: e.target.value})} /></div>
   {Number(depositForm.amount_returned || 0) < safeNum(showDepositModal.security_deposit) && depositForm.amount_returned && (
-  <div className="bg-red-50 rounded-lg p-2 text-xs text-red-700">Deducting ${(safeNum(showDepositModal.security_deposit) - Number(depositForm.amount_returned)).toLocaleString()} from deposit</div>
+  <div className="bg-danger-50 rounded-lg p-2 text-xs text-danger-700">Deducting ${(safeNum(showDepositModal.security_deposit) - Number(depositForm.amount_returned)).toLocaleString()} from deposit</div>
   )}
   <Btn variant="purple" onClick={() => processDepositReturn(showDepositModal)}>Process Return</Btn>
   </div>
@@ -12000,8 +12000,8 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <Modal title={(showChecklist.type === "in" ? "Move-In" : "Move-Out") + " Checklist — " + showChecklist.lease.tenant_name} onClose={() => setShowChecklist(null)}>
   <div className="space-y-2">
   {(() => { let items = []; try { items = JSON.parse(showChecklist.lease[showChecklist.type === "in" ? "move_in_checklist" : "move_out_checklist"] || "[]"); } catch {} return items.map((item, i) => (
-  <div key={i} onClick={() => toggleChecklistItem(showChecklist.lease, showChecklist.type, i)} className={"flex items-center gap-3 p-2 rounded-lg cursor-pointer border " + (item.checked ? "bg-green-50 border-green-200" : "bg-white border-gray-100 hover:bg-brand-50/30")}>
-  <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs " + (item.checked ? "bg-green-500 border-green-500 text-white" : "border-brand-200")}>{item.checked ? "✓" : ""}</span>
+  <div key={i} onClick={() => toggleChecklistItem(showChecklist.lease, showChecklist.type, i)} className={"flex items-center gap-3 p-2 rounded-lg cursor-pointer border " + (item.checked ? "bg-positive-50 border-positive-200" : "bg-white border-subtle-100 hover:bg-brand-50/30")}>
+  <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs " + (item.checked ? "bg-positive-500 border-positive-500 text-white" : "border-brand-200")}>{item.checked ? "✓" : ""}</span>
   <span className={"text-sm " + (item.checked ? "line-through text-neutral-400" : "text-neutral-700")}>{item.item}</span>
   </div>
   )); })()}
@@ -12039,14 +12039,14 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <div><label className="text-xs text-neutral-400 mb-1 block">Renewal Notice (days)</label><Input type="number" min="0" max="180" placeholder="60" value={form.renewal_notice_days} onChange={e => setForm({...form, renewal_notice_days: e.target.value})} /></div>
   </div>
   {/* Late Fee Settings */}
-  <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 mb-4">
-  <div className="text-sm font-semibold text-amber-800 mb-2">⚠️ Late Fee Settings</div>
+  <div className="bg-warn-50 border border-warn-200 rounded-3xl p-4 mb-4">
+  <div className="text-sm font-semibold text-warn-800 mb-2">⚠️ Late Fee Settings</div>
   <div className="grid grid-cols-3 gap-3">
-  <div><label className="text-xs text-neutral-400 mb-1 block">Grace Period (days)</label><Input type="number" min="0" max="30" placeholder="5" value={form.late_fee_grace_days} onChange={e => setForm({...form, late_fee_grace_days: e.target.value})} className="border-amber-200 bg-white" /></div>
-  <div><label className="text-xs text-neutral-400 mb-1 block">Fee Type</label><Select value={form.late_fee_type} onChange={e => setForm({...form, late_fee_type: e.target.value})} className="border-amber-200 bg-white"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></Select></div>
-  <div><label className="text-xs text-neutral-400 mb-1 block">{form.late_fee_type === "flat" ? "Fee Amount ($)" : "Fee Percentage (%)"}</label><Input type="number" step="0.01" min="0" placeholder="50.00" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} className="border-amber-200 bg-white" /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Grace Period (days)</label><Input type="number" min="0" max="30" placeholder="5" value={form.late_fee_grace_days} onChange={e => setForm({...form, late_fee_grace_days: e.target.value})} className="border-warn-200 bg-white" /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Fee Type</label><Select value={form.late_fee_type} onChange={e => setForm({...form, late_fee_type: e.target.value})} className="border-warn-200 bg-white"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></Select></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">{form.late_fee_type === "flat" ? "Fee Amount ($)" : "Fee Percentage (%)"}</label><Input type="number" step="0.01" min="0" placeholder="50.00" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} className="border-warn-200 bg-white" /></div>
   </div>
-  <p className="text-xs text-amber-600 mt-2">Late fees auto-apply to tenant ledger after grace period. Admin can waive from ledger.</p>
+  <p className="text-xs text-warn-600 mt-2">Late fees auto-apply to tenant ledger after grace period. Admin can waive from ledger.</p>
   </div>
   <div className="flex items-center gap-2 mb-4"><input type="checkbox" checked={form.auto_renew} onChange={e => setForm({...form, auto_renew: e.target.checked})} className="rounded" /><label className="text-sm text-neutral-500">Auto-renew at end of term</label></div>
   <div className="mb-3"><label className="text-xs text-neutral-400 mb-1 block">Lease Clauses</label><Textarea value={form.clauses} onChange={e => setForm({...form, clauses: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={3} placeholder="Standard clauses..." /></div>
@@ -12062,15 +12062,15 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   {filteredLeases.map(l => {
   const daysLeft = Math.ceil((parseLocalDate(l.end_date) - new Date()) / 86400000);
   const isExpired = daysLeft <= 0 && l.status === "active";
-  const sc = { active: "bg-green-100 text-green-700", expired: "bg-red-100 text-red-700", renewed: "bg-blue-100 text-blue-700", terminated: "bg-neutral-100 text-neutral-500", draft: "bg-amber-100 text-amber-700" };
-  const dc = { held: "bg-purple-100 text-purple-700", partial_return: "bg-amber-100 text-amber-700", returned: "bg-green-100 text-green-700", forfeited: "bg-red-100 text-red-700" };
+  const sc = { active: "bg-positive-100 text-positive-700", expired: "bg-danger-100 text-danger-700", renewed: "bg-info-100 text-info-700", terminated: "bg-neutral-100 text-neutral-500", draft: "bg-warn-100 text-warn-700" };
+  const dc = { held: "bg-highlight-100 text-highlight-700", partial_return: "bg-warn-100 text-warn-700", returned: "bg-positive-100 text-positive-700", forfeited: "bg-danger-100 text-danger-700" };
   return (
-  <div key={l.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (isExpired ? "border-red-200" : "border-brand-50")}>
+  <div key={l.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (isExpired ? "border-danger-200" : "border-brand-50")}>
   <div className="flex justify-between items-start mb-3">
   <div><div className="text-sm font-bold text-neutral-800">{l.tenant_name}</div><div className="text-xs text-neutral-400">{l.property}</div></div>
   <div className="flex items-center gap-2">
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[isExpired ? "expired" : l.status] || "bg-neutral-100")}>{isExpired ? "EXPIRED" : l.status}</span>
-  {l.lease_type === "renewal" && <span className="px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-600">Renewal</span>}
+  {l.lease_type === "renewal" && <span className="px-2 py-0.5 rounded-full text-xs bg-info-50 text-info-600">Renewal</span>}
   </div>
   </div>
   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-3 md:grid-cols-4">
@@ -12078,19 +12078,19 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <div><span className="text-neutral-400">Rent:</span> <span className="font-bold text-neutral-800">${safeNum(l.rent_amount).toLocaleString()}/mo</span></div>
   <div><span className="text-neutral-400">Deposit:</span> <span className="font-medium">${safeNum(l.security_deposit).toLocaleString()}</span>{l.security_deposit > 0 && <span className={"ml-1 px-1 py-0.5 rounded text-xs " + (dc[l.deposit_status] || "")}>{l.deposit_status}</span>}</div>
   <div><span className="text-neutral-400">Escalation:</span> <span className="font-medium">{l.rent_escalation_pct || 0}%/yr</span></div>
-  {l.status === "active" && <div><span className="text-neutral-400">Days Left:</span> <span className={"font-bold " + (daysLeft <= 30 ? "text-red-600" : daysLeft <= 90 ? "text-amber-600" : "text-green-600")}>{daysLeft}</span></div>}
+  {l.status === "active" && <div><span className="text-neutral-400">Days Left:</span> <span className={"font-bold " + (daysLeft <= 30 ? "text-danger-600" : daysLeft <= 90 ? "text-warn-600" : "text-positive-600")}>{daysLeft}</span></div>}
   <div><span className="text-neutral-400">Due Day:</span> <span className="font-medium">{l.payment_due_day || 1}th</span></div>
   <div><span className="text-neutral-400">Type:</span> <span className="font-medium capitalize">{(l.lease_type || "fixed").replace("_"," ")}</span></div>
   <div><span className="text-neutral-400">Auto-Renew:</span> <span className="font-medium">{l.auto_renew ? "Yes" : "No"}</span></div>
   </div>
   <div className="flex flex-wrap gap-2 pt-2 border-t border-brand-50/50">
   <Btn variant="secondary" size="xs" onClick={() => startEdit(l)}>Edit</Btn>
-  <button onClick={() => setShowESign(l)} className={"text-xs border px-3 py-1 rounded-lg " + (l.signature_status === "fully_signed" ? "text-green-600 border-green-200 bg-green-50" : "text-purple-600 border-purple-200 hover:bg-purple-50")}>{l.signature_status === "fully_signed" ? "✓ Signed" : "\u270d\ufe0f E-Sign"}</button>
+  <button onClick={() => setShowESign(l)} className={"text-xs border px-3 py-1 rounded-lg " + (l.signature_status === "fully_signed" ? "text-positive-600 border-positive-200 bg-positive-50" : "text-highlight-600 border-highlight-200 hover:bg-highlight-50")}>{l.signature_status === "fully_signed" ? "✓ Signed" : "\u270d\ufe0f E-Sign"}</button>
   {l.status === "active" && <Btn variant="success-fill" size="xs" onClick={() => renewLease(l)}>Renew</Btn>}
   {l.status === "active" && <Btn variant="secondary" size="xs" onClick={() => { setShowRentIncrease(l); setRentIncreaseForm({ new_amount: String(l.rent_amount), effective_date: formatLocalDate(new Date()), reason: "" }); }}>📈 Rent Increase</Btn>}
   {l.status === "active" && <Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>Terminate</Btn>}
-  <button onClick={() => setShowChecklist({ lease: l, type: "in" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_in_completed ? "text-green-600 border-green-200 bg-green-50" : "text-neutral-400 border-brand-100 hover:bg-brand-50/30")}>Move-In {l.move_in_completed ? "✓" : ""}</button>
-  <button onClick={() => setShowChecklist({ lease: l, type: "out" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_out_completed ? "text-green-600 border-green-200 bg-green-50" : "text-neutral-400 border-brand-100 hover:bg-brand-50/30")}>Move-Out {l.move_out_completed ? "✓" : ""}</button>
+  <button onClick={() => setShowChecklist({ lease: l, type: "in" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_in_completed ? "text-positive-600 border-positive-200 bg-positive-50" : "text-neutral-400 border-brand-100 hover:bg-brand-50/30")}>Move-In {l.move_in_completed ? "✓" : ""}</button>
+  <button onClick={() => setShowChecklist({ lease: l, type: "out" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_out_completed ? "text-positive-600 border-positive-200 bg-positive-50" : "text-neutral-400 border-brand-100 hover:bg-brand-50/30")}>Move-Out {l.move_out_completed ? "✓" : ""}</button>
   {safeNum(l.security_deposit) > 0 && l.deposit_status === "held" && (l.status === "terminated" || l.status === "expired" || isExpired) && (
   <Btn variant="purple" size="xs" onClick={() => { setShowDepositModal(l); setDepositForm({ amount_returned: String(l.security_deposit), deductions: "", return_date: formatLocalDate(new Date()) }); }}>Return Deposit</Btn>
   )}
@@ -12113,7 +12113,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <div><label className="text-xs text-neutral-400 mb-1 block">Effective Date *</label><Input type="date" value={rentIncreaseForm.effective_date} onChange={e => setRentIncreaseForm({...rentIncreaseForm, effective_date: e.target.value})} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Reason</label><Input value={rentIncreaseForm.reason} onChange={e => setRentIncreaseForm({...rentIncreaseForm, reason: e.target.value})} placeholder="Market adjustment, annual increase..." /></div>
   {rentIncreaseForm.new_amount && Number(rentIncreaseForm.new_amount) !== showRentIncrease.rent_amount && (
-  <div className={`text-sm font-semibold rounded-lg p-2 text-center ${Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
+  <div className={`text-sm font-semibold rounded-lg p-2 text-center ${Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "bg-danger-50 text-danger-600" : "bg-positive-50 text-positive-600"}`}>
   {Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "+" : ""}{Math.round((Number(rentIncreaseForm.new_amount) - showRentIncrease.rent_amount) / showRentIncrease.rent_amount * 100)}% ({Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "+" : ""}${Number(rentIncreaseForm.new_amount) - showRentIncrease.rent_amount}/mo)
   </div>
   )}
@@ -12338,17 +12338,17 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   </div>
 
   <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
-  <StatCard label="Active Vendors" value={activeVendors.length} color="text-green-600" sub="available" />
-  <StatCard label="Pending Invoices" value={pendingInvoices.length} color={pendingInvoices.length > 0 ? "text-amber-600" : "text-neutral-400"} sub={"$" + totalOwed.toLocaleString() + " owed"} />
-  <StatCard label="Total Paid (YTD)" value={"$" + totalPaidAll.toLocaleString()} color="text-blue-600" sub="all vendors" />
-  <StatCard label="Insurance Alerts" value={insuranceExpiring.length} color={insuranceExpiring.length > 0 ? "text-red-500" : "text-neutral-400"} sub="expiring < 30d" />
+  <StatCard label="Active Vendors" value={activeVendors.length} color="text-positive-600" sub="available" />
+  <StatCard label="Pending Invoices" value={pendingInvoices.length} color={pendingInvoices.length > 0 ? "text-warn-600" : "text-neutral-400"} sub={"$" + totalOwed.toLocaleString() + " owed"} />
+  <StatCard label="Total Paid (YTD)" value={"$" + totalPaidAll.toLocaleString()} color="text-info-600" sub="all vendors" />
+  <StatCard label="Insurance Alerts" value={insuranceExpiring.length} color={insuranceExpiring.length > 0 ? "text-danger-500" : "text-neutral-400"} sub="expiring < 30d" />
   </div>
 
   {insuranceExpiring.length > 0 && (
-  <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
-  <div className="font-semibold text-red-800 text-sm mb-1">Insurance Expiring Soon</div>
+  <div className="bg-danger-50 border border-danger-200 rounded-xl p-3 mb-4">
+  <div className="font-semibold text-danger-800 text-sm mb-1">Insurance Expiring Soon</div>
   {insuranceExpiring.map(v => (
-  <div key={v.id} className="text-xs text-red-700">{v.name} ({v.specialty}) — expires {v.insurance_expiry}</div>
+  <div key={v.id} className="text-xs text-danger-700">{v.name} ({v.specialty}) — expires {v.insurance_expiry}</div>
   ))}
   </div>
   )}
@@ -12435,7 +12435,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   {filteredVendors.map(v => {
   const insExpired = v.insurance_expiry && parseLocalDate(v.insurance_expiry) < new Date();
   const insExpiring = v.insurance_expiry && !insExpired && Math.ceil((parseLocalDate(v.insurance_expiry) - new Date()) / 86400000) <= 30;
-  const sc = { active: "bg-green-100 text-green-700", preferred: "bg-brand-100 text-brand-700", inactive: "bg-neutral-100 text-neutral-400", blocked: "bg-red-100 text-red-700" };
+  const sc = { active: "bg-positive-100 text-positive-700", preferred: "bg-brand-100 text-brand-700", inactive: "bg-neutral-100 text-neutral-400", blocked: "bg-danger-100 text-danger-700" };
   return (
   <div key={v.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <div className="flex justify-between items-start mb-2">
@@ -12445,7 +12445,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   </div>
   <div className="flex items-center gap-2">
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[v.status] || "bg-neutral-100")}>{v.status}</span>
-  {v.rating > 0 && <span className="text-xs text-amber-500">{"\u2605".repeat(v.rating)}{"\u2606".repeat(5 - v.rating)}</span>}
+  {v.rating > 0 && <span className="text-xs text-warn-500">{"\u2605".repeat(v.rating)}{"\u2606".repeat(5 - v.rating)}</span>}
   </div>
   </div>
   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-2 md:grid-cols-4">
@@ -12455,7 +12455,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   {v.flat_rate > 0 && <div><span className="text-neutral-400">Flat:</span> <span className="font-medium">${v.flat_rate}</span></div>}
   <div><span className="text-neutral-400">Jobs:</span> <span className="font-medium">{v.total_jobs || 0}</span></div>
   <div><span className="text-neutral-400">Total Paid:</span> <span className="font-medium">${safeNum(v.total_paid).toLocaleString()}</span></div>
-  {v.insurance_expiry && <div><span className="text-neutral-400">Insurance:</span> <span className={"font-medium " + (insExpired ? "text-red-600" : insExpiring ? "text-amber-600" : "text-green-600")}>{v.insurance_expiry}{insExpired ? " (EXPIRED)" : ""}</span></div>}
+  {v.insurance_expiry && <div><span className="text-neutral-400">Insurance:</span> <span className={"font-medium " + (insExpired ? "text-danger-600" : insExpiring ? "text-warn-600" : "text-positive-600")}>{v.insurance_expiry}{insExpired ? " (EXPIRED)" : ""}</span></div>}
   </div>
   {v.notes && <div className="text-xs text-neutral-400 mb-2">{v.notes}</div>}
   <div className="flex flex-wrap gap-2 pt-2 border-t border-brand-50/50">
@@ -12463,7 +12463,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <Btn variant="danger" size="xs" onClick={() => deleteVendor(v.id, v.name)}>Delete</Btn>
   <div className="flex items-center gap-0.5 ml-2">
   {[1,2,3,4,5].map(star => (
-  <button key={star} onClick={() => rateVendor(v, star)} className={"text-sm " + (star <= (v.rating || 0) ? "text-amber-400" : "text-neutral-300")}>{star <= (v.rating || 0) ? "\u2605" : "\u2606"}</button>
+  <button key={star} onClick={() => rateVendor(v, star)} className={"text-sm " + (star <= (v.rating || 0) ? "text-warn-400" : "text-neutral-300")}>{star <= (v.rating || 0) ? "\u2605" : "\u2606"}</button>
   ))}
   </div>
   </div>
@@ -12480,9 +12480,9 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div className="space-y-3">
   {invoices.map(inv => {
   const isOverdue = inv.status === "pending" && inv.due_date && parseLocalDate(inv.due_date) < new Date();
-  const sc = { pending: "bg-amber-100 text-amber-700", approved: "bg-blue-100 text-blue-700", paid: "bg-green-100 text-green-700", disputed: "bg-red-100 text-red-700" };
+  const sc = { pending: "bg-warn-100 text-warn-700", approved: "bg-info-100 text-info-700", paid: "bg-positive-100 text-positive-700", disputed: "bg-danger-100 text-danger-700" };
   return (
-  <div key={inv.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (isOverdue ? "border-red-200" : "border-brand-50")}>
+  <div key={inv.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (isOverdue ? "border-danger-200" : "border-brand-50")}>
   <div className="flex justify-between items-start mb-2">
   <div>
   <div className="text-sm font-bold text-neutral-800">{inv.vendor_name}</div>
@@ -12496,8 +12496,8 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div className="grid grid-cols-2 gap-x-4 text-xs md:grid-cols-4">
   {inv.property && <div><span className="text-neutral-400">Property:</span> <span className="font-medium">{inv.property}</span></div>}
   <div><span className="text-neutral-400">Date:</span> <span className="font-medium">{inv.invoice_date}</span></div>
-  {inv.due_date && <div><span className="text-neutral-400">Due:</span> <span className={"font-medium " + (isOverdue ? "text-red-600" : "")}>{inv.due_date}</span></div>}
-  {inv.paid_date && <div><span className="text-neutral-400">Paid:</span> <span className="font-medium text-green-600">{inv.paid_date}</span></div>}
+  {inv.due_date && <div><span className="text-neutral-400">Due:</span> <span className={"font-medium " + (isOverdue ? "text-danger-600" : "")}>{inv.due_date}</span></div>}
+  {inv.paid_date && <div><span className="text-neutral-400">Paid:</span> <span className="font-medium text-positive-600">{inv.paid_date}</span></div>}
   </div>
   {(inv.status === "pending" || inv.status === "approved") && (
   <div className="flex gap-2 pt-2 mt-2 border-t border-brand-50/50">
@@ -12759,10 +12759,10 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
 
   <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
-  <StatCard label="Active Owners" value={activeOwners.length} color="text-green-600" sub={properties.filter(p => p.owner_id).length + " properties assigned"} />
-  <StatCard label="Pending Statements" value={pendingStatements.length} color={pendingStatements.length > 0 ? "text-amber-600" : "text-neutral-400"} sub={"$" + pendingAmount.toLocaleString() + " owed"} />
-  <StatCard label="Total Distributed" value={"$" + totalDistributed.toLocaleString()} color="text-blue-600" sub="all time" />
-  <StatCard label="Unassigned Props" value={properties.filter(p => !p.owner_id).length} color={properties.filter(p => !p.owner_id).length > 0 ? "text-orange-500" : "text-neutral-400"} sub="no owner" />
+  <StatCard label="Active Owners" value={activeOwners.length} color="text-positive-600" sub={properties.filter(p => p.owner_id).length + " properties assigned"} />
+  <StatCard label="Pending Statements" value={pendingStatements.length} color={pendingStatements.length > 0 ? "text-warn-600" : "text-neutral-400"} sub={"$" + pendingAmount.toLocaleString() + " owed"} />
+  <StatCard label="Total Distributed" value={"$" + totalDistributed.toLocaleString()} color="text-info-600" sub="all time" />
+  <StatCard label="Unassigned Props" value={properties.filter(p => !p.owner_id).length} color={properties.filter(p => !p.owner_id).length > 0 ? "text-notice-500" : "text-neutral-400"} sub="no owner" />
   </div>
 
   <div className="flex gap-1 mb-4 border-b border-brand-50">
@@ -12788,7 +12788,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="bg-brand-50/30 rounded-lg p-3 mb-4 text-xs text-neutral-500">
   <div className="font-semibold mb-1">Properties included:</div>
   {properties.filter(p => String(p.owner_id) === String(genOwner)).map(p => <div key={p.id}>{p.address}</div>)}
-  {properties.filter(p => String(p.owner_id) === String(genOwner)).length === 0 && <div className="text-amber-600">No properties assigned to this owner</div>}
+  {properties.filter(p => String(p.owner_id) === String(genOwner)).length === 0 && <div className="text-warn-600">No properties assigned to this owner</div>}
   </div>
   )}
   <div className="flex gap-2">
@@ -12838,10 +12838,10 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <Modal title={"Statement — " + viewStatement.owner_name + " — " + viewStatement.period} onClose={() => setViewStatement(null)}>
   <div className="space-y-3">
   <div className="grid grid-cols-2 gap-3">
-  <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Income</div><div className="text-lg font-bold text-green-700">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
-  <div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Expenses</div><div className="text-lg font-bold text-red-600">${safeNum(viewStatement.total_expenses).toLocaleString()}</div></div>
-  <div className="bg-purple-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Mgmt Fee</div><div className="text-lg font-bold text-purple-700">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
-  <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Net to Owner</div><div className={"text-lg font-bold " + (viewStatement.net_to_owner >= 0 ? "text-brand-700" : "text-red-600")}>${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
+  <div className="bg-positive-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Income</div><div className="text-lg font-bold text-positive-700">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
+  <div className="bg-danger-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Expenses</div><div className="text-lg font-bold text-danger-600">${safeNum(viewStatement.total_expenses).toLocaleString()}</div></div>
+  <div className="bg-highlight-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Mgmt Fee</div><div className="text-lg font-bold text-highlight-700">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
+  <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Net to Owner</div><div className={"text-lg font-bold " + (viewStatement.net_to_owner >= 0 ? "text-brand-700" : "text-danger-600")}>${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
   </div>
   {(() => {
   let items = []; try { items = JSON.parse(viewStatement.line_items || "[]"); } catch {}
@@ -12851,7 +12851,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   {(cat.items || []).map((item, ii) => (
   <div key={ii} className="flex justify-between text-xs py-1 border-b border-brand-50/50">
   <div className="text-neutral-500">{item.description}<span className="text-neutral-400 ml-2">{item.date}</span></div>
-  <div className={"font-bold " + (item.amount >= 0 ? "text-green-600" : "text-red-600")}>{item.amount >= 0 ? "+" : ""}${Math.abs(item.amount).toLocaleString()}</div>
+  <div className={"font-bold " + (item.amount >= 0 ? "text-positive-600" : "text-danger-600")}>{item.amount >= 0 ? "+" : ""}${Math.abs(item.amount).toLocaleString()}</div>
   </div>
   ))}
   {(cat.items || []).length === 0 && <div className="text-xs text-neutral-400 py-1">None</div>}
@@ -12879,7 +12879,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="text-sm font-bold text-neutral-800">{o.name}{o.company ? " — " + o.company : ""}</div>
   <div className="text-xs text-neutral-400">{o.email}{o.phone ? " · " + o.phone : ""}</div>
   </div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (o.status === "active" ? "bg-green-100 text-green-700" : "bg-neutral-100 text-neutral-400")}>{o.status}</span>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (o.status === "active" ? "bg-positive-100 text-positive-700" : "bg-neutral-100 text-neutral-400")}>{o.status}</span>
   </div>
   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-2 md:grid-cols-4">
   <div><span className="text-neutral-400">Properties:</span> <span className="font-bold">{ownerProps.length}</span></div>
@@ -12925,7 +12925,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   {activeTab === "statements" && (
   <div className="space-y-3">
   {statements.map(s => {
-  const sc = { draft: "bg-amber-100 text-amber-700", sent: "bg-blue-100 text-blue-700", paid: "bg-green-100 text-green-700" };
+  const sc = { draft: "bg-warn-100 text-warn-700", sent: "bg-info-100 text-info-700", paid: "bg-positive-100 text-positive-700" };
   return (
   <div key={s.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4 cursor-pointer hover:border-brand-200" onClick={() => setViewStatement(s)}>
   <div className="flex justify-between items-start mb-2">
@@ -12939,9 +12939,9 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
   </div>
   <div className="grid grid-cols-3 gap-2 text-xs">
-  <div><span className="text-neutral-400">Income:</span> <span className="text-green-600 font-medium">${safeNum(s.total_income).toLocaleString()}</span></div>
-  <div><span className="text-neutral-400">Expenses:</span> <span className="text-red-600 font-medium">${safeNum(s.total_expenses).toLocaleString()}</span></div>
-  <div><span className="text-neutral-400">Mgmt Fee:</span> <span className="text-purple-600 font-medium">${safeNum(s.management_fee).toLocaleString()}</span></div>
+  <div><span className="text-neutral-400">Income:</span> <span className="text-positive-600 font-medium">${safeNum(s.total_income).toLocaleString()}</span></div>
+  <div><span className="text-neutral-400">Expenses:</span> <span className="text-danger-600 font-medium">${safeNum(s.total_expenses).toLocaleString()}</span></div>
+  <div><span className="text-neutral-400">Mgmt Fee:</span> <span className="text-highlight-600 font-medium">${safeNum(s.management_fee).toLocaleString()}</span></div>
   </div>
   </div>
   );
@@ -12959,7 +12959,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="text-sm font-medium text-neutral-800">{owners.find(o => String(o.id) === String(d.owner_id))?.name || "Unknown"}</div>
   <div className="text-xs text-neutral-400">{d.date} · {d.method} · {d.reference}</div>
   </div>
-  <div className="text-sm font-bold text-green-600">${safeNum(d.amount).toLocaleString()}</div>
+  <div className="text-sm font-bold text-positive-600">${safeNum(d.amount).toLocaleString()}</div>
   </div>
   ))}
   {distributions.length === 0 && <div className="text-center py-10 text-neutral-400">No distributions yet</div>}
@@ -13183,19 +13183,19 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
       <h3 className="font-semibold text-neutral-800 mb-1">Accounting Period Lock</h3>
       <p className="text-sm text-neutral-400 mb-4">Lock past periods to prevent any changes to transactions on or before the lock date.</p>
       {periodLock ? (
-      <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
+      <div className="bg-danger-50 border border-danger-200 rounded-xl p-4 mb-4">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-semibold text-red-800">Period locked through {periodLock.lock_date}</div>
-            <div className="text-xs text-red-600 mt-1">Locked by {periodLock.locked_by || "admin"} on {new Date(periodLock.locked_at).toLocaleDateString()}</div>
-            {periodLock.notes && <div className="text-xs text-red-500 mt-1">{periodLock.notes}</div>}
+            <div className="text-sm font-semibold text-danger-800">Period locked through {periodLock.lock_date}</div>
+            <div className="text-xs text-danger-600 mt-1">Locked by {periodLock.locked_by || "admin"} on {new Date(periodLock.locked_at).toLocaleDateString()}</div>
+            {periodLock.notes && <div className="text-xs text-danger-500 mt-1">{periodLock.notes}</div>}
           </div>
           <Btn variant="danger" size="sm" onClick={removePeriodLock}>Remove Lock</Btn>
         </div>
       </div>
       ) : (
-      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4">
-        <div className="text-sm text-emerald-800">No period lock active. All periods are open for modifications.</div>
+      <div className="bg-success-50 border border-success-200 rounded-xl p-4 mb-4">
+        <div className="text-sm text-success-800">No period lock active. All periods are open for modifications.</div>
       </div>
       )}
       <div className="grid grid-cols-2 gap-3">
@@ -13225,7 +13225,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   <h3 className="font-semibold text-neutral-700 mb-3">Previous Reconciliations</h3>
   <div className="space-y-2">
   {reconciliations.map(r => {
-  const sc = { reconciled: "bg-green-100 text-green-700", in_progress: "bg-amber-100 text-amber-700", discrepancy: "bg-red-100 text-red-700" };
+  const sc = { reconciled: "bg-positive-100 text-positive-700", in_progress: "bg-warn-100 text-warn-700", discrepancy: "bg-danger-100 text-danger-700" };
   return (
   <div key={r.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-brand-200" onClick={() => setViewRecon(r)}>
   <div>
@@ -13238,7 +13238,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   <div>Book: <span className="font-bold">${safeNum(r.book_balance).toLocaleString()}</span></div>
   </div>
   <div className="text-right">
-  {Math.abs(r.difference) > 0.01 && <div className="text-xs font-bold text-red-600">Diff: ${safeNum(r.difference).toLocaleString()}</div>}
+  {Math.abs(r.difference) > 0.01 && <div className="text-xs font-bold text-danger-600">Diff: ${safeNum(r.difference).toLocaleString()}</div>}
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[r.status] || "")}>{r.status.replace("_"," ")}</span>
   </div>
   </div>
@@ -13256,15 +13256,15 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   <div className="bg-white rounded-3xl border border-brand-50 p-5">
   <div className="flex justify-between items-start mb-4">
   <div><h3 className="font-semibold text-neutral-800">Reconciliation — {viewRecon.period}</h3><div className="text-xs text-neutral-400">{new Date(viewRecon.created_at).toLocaleDateString()}</div></div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewRecon.status === "reconciled" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")}>{viewRecon.status}</span>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewRecon.status === "reconciled" ? "bg-positive-100 text-positive-700" : "bg-danger-100 text-danger-700")}>{viewRecon.status}</span>
   </div>
   <div className="grid grid-cols-3 gap-3 mb-4">
-  <div className="bg-blue-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Bank Balance</div><div className="text-lg font-bold text-blue-700">${safeNum(viewRecon.bank_ending_balance).toLocaleString()}</div></div>
+  <div className="bg-info-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Bank Balance</div><div className="text-lg font-bold text-info-700">${safeNum(viewRecon.bank_ending_balance).toLocaleString()}</div></div>
   <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Book Balance</div><div className="text-lg font-bold text-brand-700">${safeNum(viewRecon.book_balance).toLocaleString()}</div></div>
-  <div className={"rounded-lg p-3 text-center " + (Math.abs(viewRecon.difference) < 0.01 ? "bg-green-50" : "bg-red-50")}><div className="text-xs text-neutral-400">Difference</div><div className={"text-lg font-bold " + (Math.abs(viewRecon.difference) < 0.01 ? "text-green-700" : "text-red-600")}>${safeNum(viewRecon.difference).toLocaleString()}</div></div>
+  <div className={"rounded-lg p-3 text-center " + (Math.abs(viewRecon.difference) < 0.01 ? "bg-positive-50" : "bg-danger-50")}><div className="text-xs text-neutral-400">Difference</div><div className={"text-lg font-bold " + (Math.abs(viewRecon.difference) < 0.01 ? "text-positive-700" : "text-danger-600")}>${safeNum(viewRecon.difference).toLocaleString()}</div></div>
   </div>
   {(() => { let items = []; try { items = JSON.parse(viewRecon.unreconciled_items || "[]"); } catch {} return items.length > 0 ? (
-  <div><div className="font-semibold text-red-700 text-sm mb-2">Unreconciled Items ({items.length})</div>
+  <div><div className="font-semibold text-danger-700 text-sm mb-2">Unreconciled Items ({items.length})</div>
   {items.map((it, i) => (<div key={i} className="flex justify-between text-xs py-1 border-b border-brand-50/50"><span className="text-neutral-500">{it.date} — {it.description}</span><span className="font-bold">${it.amount.toLocaleString()}</span></div>))}
   </div>) : null; })()}
   </div>
@@ -13282,9 +13282,9 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   </div>
 
   <div className="grid grid-cols-3 gap-3 mb-4">
-  <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Reconciled ({reconciledCount})</div><div className="text-lg font-bold text-green-700">${reconciledTotal.toLocaleString()}</div></div>
-  <div className="bg-amber-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Unreconciled ({reconItems.length - reconciledCount})</div><div className="text-lg font-bold text-amber-700">${unreconciledTotal.toLocaleString()}</div></div>
-  <div className={"rounded-lg p-3 text-center " + (Math.abs(Number(bankBalance) - reconciledTotal) < 0.01 ? "bg-green-50" : "bg-red-50")}><div className="text-xs text-neutral-400">Remaining Diff</div><div className={"text-lg font-bold " + (Math.abs(Number(bankBalance) - reconciledTotal) < 0.01 ? "text-green-700" : "text-red-600")}>${(Number(bankBalance) - reconciledTotal).toLocaleString()}</div></div>
+  <div className="bg-positive-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Reconciled ({reconciledCount})</div><div className="text-lg font-bold text-positive-700">${reconciledTotal.toLocaleString()}</div></div>
+  <div className="bg-warn-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Unreconciled ({reconItems.length - reconciledCount})</div><div className="text-lg font-bold text-warn-700">${unreconciledTotal.toLocaleString()}</div></div>
+  <div className={"rounded-lg p-3 text-center " + (Math.abs(Number(bankBalance) - reconciledTotal) < 0.01 ? "bg-positive-50" : "bg-danger-50")}><div className="text-xs text-neutral-400">Remaining Diff</div><div className={"text-lg font-bold " + (Math.abs(Number(bankBalance) - reconciledTotal) < 0.01 ? "text-positive-700" : "text-danger-600")}>${(Number(bankBalance) - reconciledTotal).toLocaleString()}</div></div>
   </div>
 
   <div className="mb-3 flex items-center gap-2">
@@ -13295,13 +13295,13 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
 
   <div className="space-y-1 mb-4">
   {reconItems.map((item, i) => (
-  <div key={i} onClick={() => toggleReconItem(i)} className={"flex items-center gap-3 px-4 py-2.5 rounded-lg cursor-pointer border " + (item.reconciled ? "bg-green-50 border-green-200" : "bg-white border-gray-100 hover:bg-brand-50/30")}>
-  <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs flex-shrink-0 " + (item.reconciled ? "bg-green-500 border-green-500 text-white" : "border-brand-200")}>{item.reconciled ? "✓" : ""}</span>
+  <div key={i} onClick={() => toggleReconItem(i)} className={"flex items-center gap-3 px-4 py-2.5 rounded-lg cursor-pointer border " + (item.reconciled ? "bg-positive-50 border-positive-200" : "bg-white border-subtle-100 hover:bg-brand-50/30")}>
+  <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs flex-shrink-0 " + (item.reconciled ? "bg-positive-500 border-positive-500 text-white" : "border-brand-200")}>{item.reconciled ? "✓" : ""}</span>
   <div className="flex-1 min-w-0">
   <div className="text-sm text-neutral-800 truncate">{item.description}</div>
   <div className="text-xs text-neutral-400">{item.date} · {item.reference} · {item.memo}</div>
   </div>
-  <div className={"text-sm font-bold flex-shrink-0 " + (item.amount >= 0 ? "text-green-600" : "text-red-600")}>{item.amount >= 0 ? "+" : ""}${item.amount.toLocaleString()}</div>
+  <div className={"text-sm font-bold flex-shrink-0 " + (item.amount >= 0 ? "text-positive-600" : "text-danger-600")}>{item.amount >= 0 ? "+" : ""}${item.amount.toLocaleString()}</div>
   </div>
   ))}
   </div>
@@ -13488,26 +13488,26 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   </div>
 
   <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
-  <StatCard label="Active Rules" value={enabledCount + "/" + settings.length} color="text-green-600" sub="notification types" />
-  <StatCard label="Sent Today" value={sentToday} color="text-blue-600" sub="notifications" />
+  <StatCard label="Active Rules" value={enabledCount + "/" + settings.length} color="text-positive-600" sub="notification types" />
+  <StatCard label="Sent Today" value={sentToday} color="text-info-600" sub="notifications" />
   <StatCard label="Total Sent" value={logs.length} color="text-brand-600" sub="all time" />
-  <StatCard label="Failed" value={logs.filter(l => l.status === "failed").length} color={logs.filter(l => l.status === "failed").length > 0 ? "text-red-500" : "text-neutral-400"} sub="delivery errors" />
+  <StatCard label="Failed" value={logs.filter(l => l.status === "failed").length} color={logs.filter(l => l.status === "failed").length > 0 ? "text-danger-500" : "text-neutral-400"} sub="delivery errors" />
   </div>
 
-  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5 text-sm text-amber-800">
+  <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-5 text-sm text-warn-800">
   <span className="font-semibold">Note:</span> Notifications are currently logged to the database. To send actual emails, connect a Supabase Edge Function with SendGrid, Resend, or Postmark. The templates and triggers are ready to wire up.
   </div>
 
   {/* Queue Delivery Status */}
-  <div className="bg-white rounded-xl border border-gray-100 p-4 mb-5">
-  <div className="text-sm font-semibold text-gray-700 mb-2">📬 Notification Queue</div>
+  <div className="bg-white rounded-xl border border-subtle-100 p-4 mb-5">
+  <div className="text-sm font-semibold text-subtle-700 mb-2">📬 Notification Queue</div>
   <div className="grid grid-cols-3 gap-3">
-  <div className="text-center"><div className="text-lg font-bold text-amber-600">{queueStats.pending}</div><div className="text-xs text-gray-400">Pending</div></div>
-  <div className="text-center"><div className="text-lg font-bold text-green-600">{queueStats.sent}</div><div className="text-xs text-gray-400">Delivered</div></div>
-  <div className="text-center"><div className="text-lg font-bold text-red-600">{queueStats.failed}</div><div className="text-xs text-gray-400">Failed</div></div>
+  <div className="text-center"><div className="text-lg font-bold text-warn-600">{queueStats.pending}</div><div className="text-xs text-subtle-400">Pending</div></div>
+  <div className="text-center"><div className="text-lg font-bold text-positive-600">{queueStats.sent}</div><div className="text-xs text-subtle-400">Delivered</div></div>
+  <div className="text-center"><div className="text-lg font-bold text-danger-600">{queueStats.failed}</div><div className="text-xs text-subtle-400">Failed</div></div>
   </div>
-  {queueStats.failed > 0 && <div className="bg-red-50 rounded-lg px-3 py-2 mt-3 text-xs text-red-700">⚠️ {queueStats.failed} notification(s) failed. Check that your delivery worker is running.</div>}
-  {queueStats.pending > 10 && <div className="bg-amber-50 rounded-lg px-3 py-2 mt-3 text-xs text-amber-700">📬 {queueStats.pending} queued — delivery service may be behind.</div>}
+  {queueStats.failed > 0 && <div className="bg-danger-50 rounded-lg px-3 py-2 mt-3 text-xs text-danger-700">⚠️ {queueStats.failed} notification(s) failed. Check that your delivery worker is running.</div>}
+  {queueStats.pending > 10 && <div className="bg-warn-50 rounded-lg px-3 py-2 mt-3 text-xs text-warn-700">📬 {queueStats.pending} queued — delivery service may be behind.</div>}
   </div>
 
   <div className="flex gap-1 mb-4 border-b border-brand-50">
@@ -13531,7 +13531,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   <div className="text-xs text-neutral-400">{info.desc}</div>
   </div>
   </div>
-  <button onClick={() => toggleSetting(s)} className={"relative w-10 h-5 rounded-full transition-colors " + (s.enabled ? "bg-green-500" : "bg-neutral-300")}>
+  <button onClick={() => toggleSetting(s)} className={"relative w-10 h-5 rounded-full transition-colors " + (s.enabled ? "bg-positive-500" : "bg-neutral-300")}>
   <span className={"absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow " + (s.enabled ? "left-5" : "left-0.5")} />
   </button>
   </div>
@@ -13541,7 +13541,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   <Select value={s.recipient_filter || "all"} onChange={async (e) => {
   await supabase.from("notification_settings").update({ recipient_filter: e.target.value }).eq("id", s.id).eq("company_id", companyId);
   fetchData();
-  }} className="text-xs border border-gray-200 rounded px-1.5 py-0.5 mr-2">
+  }} className="text-xs border border-subtle-200 rounded px-1.5 py-0.5 mr-2">
   <option value="all">All</option>
   <option value="tenant_only">Tenant Only</option>
   <option value="admin_only">Admin Only</option>
@@ -13554,7 +13554,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   currentChannels[ch] = !currentChannels[ch];
   await supabase.from("notification_settings").update({ channels: JSON.stringify(currentChannels) }).eq("id", s.id).eq("company_id", companyId);
   fetchData();
-  }} className={"text-xs px-2 py-0.5 rounded " + ((s.channels ? JSON.parse(s.channels) : { in_app: true, email: true, push: false })[ch] ? "bg-brand-100 text-brand-700" : "bg-gray-100 text-gray-400")}>{channelLabels[ch]}</button>
+  }} className={"text-xs px-2 py-0.5 rounded " + ((s.channels ? JSON.parse(s.channels) : { in_app: true, email: true, push: false })[ch] ? "bg-brand-100 text-brand-700" : "bg-subtle-100 text-subtle-400")}>{channelLabels[ch]}</button>
   ))}
   </div>
   {s.days_before > 0 && (
@@ -13583,7 +13583,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   <div className="text-sm text-neutral-800">{l.subject}</div>
   <div className="text-xs text-neutral-400">{l.recipient_email} · {new Date(l.created_at).toLocaleString()}</div>
   </div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (l.status === "sent" ? "bg-green-100 text-green-700" : l.status === "failed" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700")}>{l.status}</span>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (l.status === "sent" ? "bg-positive-100 text-positive-700" : l.status === "failed" ? "bg-danger-100 text-danger-700" : "bg-warn-100 text-warn-700")}>{l.status}</span>
   </div>
   ))}
   {logs.length === 0 && <div className="text-center py-8 text-neutral-400">No notifications sent yet</div>}
@@ -13612,9 +13612,9 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   <td className="px-4 py-2 font-medium text-neutral-800">{t.name}</td>
   <td className="px-4 py-2 text-neutral-500">{t.property}</td>
   <td className="px-4 py-2 text-right font-bold">${safeNum(t.rent).toLocaleString()}</td>
-  <td className={"px-4 py-2 text-right font-bold " + (safeNum(t.balance) > 0 ? "text-red-600" : "text-green-600")}>${safeNum(t.balance).toLocaleString()}</td>
+  <td className={"px-4 py-2 text-right font-bold " + (safeNum(t.balance) > 0 ? "text-danger-600" : "text-positive-600")}>${safeNum(t.balance).toLocaleString()}</td>
   <td className="px-4 py-2 text-neutral-500">{t.move_out || "—"}</td>
-  <td className="px-4 py-2"><span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (t.lease_status === "active" ? "bg-green-100 text-green-700" : "bg-neutral-100 text-neutral-400")}>{t.lease_status || "active"}</span></td>
+  <td className="px-4 py-2"><span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (t.lease_status === "active" ? "bg-positive-100 text-positive-700" : "bg-neutral-100 text-neutral-400")}>{t.lease_status || "active"}</span></td>
   </tr>
   ))}
   </tbody>
@@ -13788,7 +13788,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   </div>
   )}
   {signers.map(s => (
-  <div key={s.id} className={"flex items-center justify-between px-3 py-2 rounded-lg mb-2 " + (s.status === "signed" ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200")}>
+  <div key={s.id} className={"flex items-center justify-between px-3 py-2 rounded-lg mb-2 " + (s.status === "signed" ? "bg-positive-50 border border-positive-200" : "bg-warn-50 border border-warn-200")}>
   <div>
   <div className="text-sm font-medium text-neutral-800">{s.signer_name}</div>
   <div className="text-xs text-neutral-400 capitalize">{s.signer_role}</div>
@@ -13796,12 +13796,12 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   <div className="flex items-center gap-2">
   {s.status === "signed" ? (
   <div className="text-right">
-  <span className={"text-xs font-bold px-2 py-0.5 rounded-full " + (s.verified_server_side ? "text-green-700 bg-green-100" : "text-amber-700 bg-amber-100")}>{s.verified_server_side ? "🔒 Verified" : "✓ Signed"}</span>
+  <span className={"text-xs font-bold px-2 py-0.5 rounded-full " + (s.verified_server_side ? "text-positive-700 bg-positive-100" : "text-warn-700 bg-warn-100")}>{s.verified_server_side ? "🔒 Verified" : "✓ Signed"}</span>
   <div className="text-xs text-neutral-400 mt-0.5">{new Date(s.signed_at).toLocaleDateString()}</div>
   {s.integrity_hash && <div className="text-xs text-neutral-300 font-mono mt-0.5">{s.integrity_hash.slice(0, 12)}...</div>}
   </div>
   ) : (
-  <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">Pending</span>
+  <span className="text-xs font-bold text-warn-700 bg-warn-100 px-2 py-0.5 rounded-full">Pending</span>
   )}
   </div>
   </div>
@@ -13837,7 +13837,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   </div>
   )}
 
-  <div className="flex items-start gap-2 mt-3 mb-3 bg-amber-50 rounded-lg p-2">
+  <div className="flex items-start gap-2 mt-3 mb-3 bg-warn-50 rounded-lg p-2">
   <input type="checkbox" checked={consentAgreed} onChange={(e) => setConsentAgreed(e.target.checked)} className="mt-1" />
   <label className="text-xs text-neutral-500">I agree that my electronic signature is the legal equivalent of my manual/handwritten signature and I consent to be legally bound by this lease agreement.</label>
   </div>
@@ -13859,10 +13859,10 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   )}
 
   {allSigned && (
-  <div className="bg-green-50 border border-green-200 rounded-3xl p-4 text-center">
+  <div className="bg-positive-50 border border-positive-200 rounded-3xl p-4 text-center">
   <div className="text-2xl mb-1">\u2705</div>
-  <div className="text-sm font-bold text-green-700">Lease Fully Signed</div>
-  <div className="text-xs text-green-600">All parties have signed this lease agreement.</div>
+  <div className="text-sm font-bold text-positive-700">Lease Fully Signed</div>
+  <div className="text-xs text-positive-600">All parties have signed this lease agreement.</div>
   </div>
   )}
   </div>
@@ -13959,7 +13959,7 @@ function OwnerMaintenanceView({ companyId, properties }) {
   </div>
   <div className="text-right">
   <span className="text-xs">{statusIcon[wo.status] || "⚪"} {wo.status}</span>
-  {wo.cost > 0 && <div className="text-xs font-bold text-red-500 mt-0.5">${safeNum(wo.cost).toLocaleString()}</div>}
+  {wo.cost > 0 && <div className="text-xs font-bold text-danger-500 mt-0.5">${safeNum(wo.cost).toLocaleString()}</div>}
   </div>
   </div>
   {wo.notes && <div className="text-xs text-neutral-400 mt-1">{wo.notes}</div>}
@@ -14018,7 +14018,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   return (
   <div className="max-w-4xl mx-auto">
   {/* Header */}
-  <div className="bg-gradient-to-r from-brand-600 to-purple-600 rounded-2xl p-6 mb-6 text-white">
+  <div className="bg-gradient-to-r from-brand-600 to-highlight-600 rounded-2xl p-6 mb-6 text-white">
   <div className="flex justify-between items-start">
   <div>
   <h1 className="text-2xl font-bold mb-1">Welcome, {ownerData.name}</h1>
@@ -14035,11 +14035,11 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="grid grid-cols-2 gap-3 mb-6 md:grid-cols-4">
   <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center">
   <div className="text-xs text-neutral-400 mb-1">Total Income</div>
-  <div className="text-lg font-bold text-green-600">${totalIncome.toLocaleString()}</div>
+  <div className="text-lg font-bold text-positive-600">${totalIncome.toLocaleString()}</div>
   </div>
   <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center">
   <div className="text-xs text-neutral-400 mb-1">Total Expenses</div>
-  <div className="text-lg font-bold text-red-500">${totalExpenses.toLocaleString()}</div>
+  <div className="text-lg font-bold text-danger-500">${totalExpenses.toLocaleString()}</div>
   </div>
   <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center">
   <div className="text-xs text-neutral-400 mb-1">Distributions</div>
@@ -14047,7 +14047,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   </div>
   <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center">
   <div className="text-xs text-neutral-400 mb-1">Pending</div>
-  <div className="text-lg font-bold text-amber-600">{pendingStatements.length}</div>
+  <div className="text-lg font-bold text-warn-600">{pendingStatements.length}</div>
   </div>
   </div>
 
@@ -14070,9 +14070,9 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="font-semibold text-neutral-800 text-sm">{p.address}</div>
   <div className="text-xs text-neutral-400">{p.type || "Residential"}</div>
   </div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (p.status === "occupied" ? "bg-green-100 text-green-700" : p.status === "vacant" ? "bg-amber-100 text-amber-700" : "bg-neutral-100 text-neutral-400")}>{p.status || "active"}</span>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (p.status === "occupied" ? "bg-positive-100 text-positive-700" : p.status === "vacant" ? "bg-warn-100 text-warn-700" : "bg-neutral-100 text-neutral-400")}>{p.status || "active"}</span>
   </div>
-  {p.rent && <div className="text-sm font-bold text-green-600 mt-2">${safeNum(p.rent).toLocaleString()}/mo</div>}
+  {p.rent && <div className="text-sm font-bold text-positive-600 mt-2">${safeNum(p.rent).toLocaleString()}/mo</div>}
   </div>
   ))}
   {properties.length === 0 && <div className="text-center py-8 text-neutral-400">No properties assigned yet</div>}
@@ -14088,7 +14088,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="text-sm font-medium text-neutral-800">{s.period}</div>
   <div className="text-xs text-neutral-400">Net: ${safeNum(s.net_to_owner).toLocaleString()}</div>
   </div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (s.status === "paid" ? "bg-green-100 text-green-700" : s.status === "sent" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{s.status}</span>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (s.status === "paid" ? "bg-positive-100 text-positive-700" : s.status === "sent" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{s.status}</span>
   </div>
   ))}
   </div>
@@ -14107,10 +14107,10 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   </div>
   <div className="flex items-center gap-4">
   <div className="text-right">
-  <div className="text-xs text-neutral-400">Income: <span className="text-green-600 font-bold">${safeNum(s.total_income).toLocaleString()}</span></div>
+  <div className="text-xs text-neutral-400">Income: <span className="text-positive-600 font-bold">${safeNum(s.total_income).toLocaleString()}</span></div>
   <div className="text-xs text-neutral-400">Net: <span className="text-brand-600 font-bold">${safeNum(s.net_to_owner).toLocaleString()}</span></div>
   </div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (s.status === "paid" ? "bg-green-100 text-green-700" : s.status === "sent" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{s.status}</span>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (s.status === "paid" ? "bg-positive-100 text-positive-700" : s.status === "sent" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{s.status}</span>
   </div>
   </div>
   ))}
@@ -14130,13 +14130,13 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   </div>
   <div className="flex items-center gap-2">
   <Btn onClick={() => { const w = window.open("", "_blank", "noopener,noreferrer"); w.document.write("<pre>" + escapeHtml(JSON.stringify(viewStatement, null, 2)) + "</pre>"); w.document.title = "Statement " + sanitizeForPrint(viewStatement.period); setTimeout(() => w.print(), 300); }} variant="secondary" size="xs"><span className="material-icons-outlined text-xs align-middle">print</span></Btn>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewStatement.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{viewStatement.status}</span>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewStatement.status === "paid" ? "bg-positive-100 text-positive-700" : "bg-warn-100 text-warn-700")}>{viewStatement.status}</span>
   </div>
   </div>
   <div className="grid grid-cols-4 gap-3 mb-4">
-  <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Income</div><div className="text-lg font-bold text-green-600">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
-  <div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Expenses</div><div className="text-lg font-bold text-red-500">${safeNum(viewStatement.total_expenses).toLocaleString()}</div></div>
-  <div className="bg-purple-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Mgmt Fee</div><div className="text-lg font-bold text-purple-600">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
+  <div className="bg-positive-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Income</div><div className="text-lg font-bold text-positive-600">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
+  <div className="bg-danger-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Expenses</div><div className="text-lg font-bold text-danger-500">${safeNum(viewStatement.total_expenses).toLocaleString()}</div></div>
+  <div className="bg-highlight-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Mgmt Fee</div><div className="text-lg font-bold text-highlight-600">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
   <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Net to You</div><div className="text-lg font-bold text-brand-700">${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
   </div>
   {/* Line items */}
@@ -14146,7 +14146,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   {(cat.items || []).map((item, ii) => (
   <div key={ii} className="flex justify-between text-xs py-1 border-b border-brand-50/50">
   <span className="text-neutral-500">{item.date} — {item.description}</span>
-  <span className={"font-bold " + (item.amount >= 0 ? "text-green-600" : "text-red-500")}>${Math.abs(item.amount).toLocaleString()}</span>
+  <span className={"font-bold " + (item.amount >= 0 ? "text-positive-600" : "text-danger-500")}>${Math.abs(item.amount).toLocaleString()}</span>
   </div>
   ))}
   </div>
@@ -14165,7 +14165,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="text-xs text-neutral-400">{d.reference} · {new Date(d.date).toLocaleDateString()}</div>
   </div>
   <div className="text-right">
-  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700">{d.method?.toUpperCase()}</span>
+  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-positive-100 text-positive-700">{d.method?.toUpperCase()}</span>
   </div>
   </div>
   ))}
@@ -14191,9 +14191,9 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="font-semibold text-neutral-800">{p.address}</div>
   <div className="text-xs text-neutral-400">{p.type || "Residential"} · {p.bedrooms || "?"} bd / {p.bathrooms || "?"} ba · {p.sqft || "?"} sqft</div>
   </div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (p.status === "occupied" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{p.status}</span>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (p.status === "occupied" ? "bg-positive-100 text-positive-700" : "bg-warn-100 text-warn-700")}>{p.status}</span>
   </div>
-  {p.rent && <div className="text-sm">Rent: <span className="font-bold text-green-600">${safeNum(p.rent).toLocaleString()}/mo</span></div>}
+  {p.rent && <div className="text-sm">Rent: <span className="font-bold text-positive-600">${safeNum(p.rent).toLocaleString()}/mo</span></div>}
   </div>
   ))}
   {properties.length === 0 && <div className="text-center py-8 text-neutral-400">No properties assigned</div>}
@@ -14309,8 +14309,8 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   {/* Stats */}
   <div className="flex gap-3 mb-4">
   <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-neutral-800">{hoaPayments.length}</div><div className="text-xs text-neutral-400">Total</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{hoaPayments.filter(h => h.status === "pending").length}</div><div className="text-xs text-neutral-400">Pending</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">${hoaPayments.filter(h => h.status === "paid").reduce((s, h) => s + safeNum(h.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Paid</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-warn-600">{hoaPayments.filter(h => h.status === "pending").length}</div><div className="text-xs text-neutral-400">Pending</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-success-600">${hoaPayments.filter(h => h.status === "paid").reduce((s, h) => s + safeNum(h.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Paid</div></div>
   </div>
 
   {showForm && (
@@ -14359,9 +14359,9 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   {showCreds.has(h.id) && <div className="text-neutral-600 mt-0.5">{h._decUser || "—"} / {h._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
-  {h.status === "pending" && <button onClick={() => payHOA(h)} className="text-xs text-green-600 hover:underline mr-2">Pay</button>}
+  {h.status === "pending" && <button onClick={() => payHOA(h)} className="text-xs text-positive-600 hover:underline mr-2">Pay</button>}
   <button onClick={() => { setEditingHoa(h); setForm({ property: h.property, hoa_name: h.hoa_name, amount: String(h.amount), due_date: h.due_date, frequency: h.frequency || "monthly", status: h.status, notes: h.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>
-  <button onClick={() => deleteHOA(h.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+  <button onClick={() => deleteHOA(h.id)} className="text-xs text-danger-500 hover:underline">Delete</button>
   </td>
   </tr>
   ))}
@@ -14495,8 +14495,8 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   {/* Stats */}
   <div className="flex gap-3 mb-4">
   <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-neutral-800">{activeLoans.length}</div><div className="text-xs text-neutral-400">Active Loans</div></div>
-  <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{formatCurrency(totalMonthly)}</div><div className="text-xs text-neutral-400">Total Monthly Payments</div></div>
-  <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">{formatCurrency(totalBalance)}</div><div className="text-xs text-neutral-400">Total Outstanding Balance</div></div>
+  <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-warn-600">{formatCurrency(totalMonthly)}</div><div className="text-xs text-neutral-400">Total Monthly Payments</div></div>
+  <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-success-600">{formatCurrency(totalBalance)}</div><div className="text-xs text-neutral-400">Total Outstanding Balance</div></div>
   </div>
 
   {showForm && (
@@ -14548,7 +14548,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   </thead>
   <tbody>
   {filtered.map(l => (
-  <tr key={l.id} className="border-t border-neutral-100 hover:bg-green-50/40">
+  <tr key={l.id} className="border-t border-neutral-100 hover:bg-positive-50/40">
   <td className="px-4 py-2.5 text-neutral-800">{l.property}</td>
   <td className="px-4 py-2.5 font-medium text-neutral-800">{l.lender_name}</td>
   <td className="px-4 py-2.5 text-neutral-500">{l.loan_type}</td>
@@ -14562,9 +14562,9 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   {showCreds.has(l.id) && <div className="text-neutral-600 mt-0.5">{l._decUser || "—"} / {l._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
-  {l.status === "active" && <button onClick={() => recordPayment(l)} className="text-xs text-green-600 hover:underline mr-2">Record Payment</button>}
+  {l.status === "active" && <button onClick={() => recordPayment(l)} className="text-xs text-positive-600 hover:underline mr-2">Record Payment</button>}
   <button onClick={() => { setEditingLoan(l); setForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), escrow_covers: l.escrow_covers || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", property: l.property || "", notes: l.notes || "", status: l.status || "active" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>
-  <button onClick={() => deleteLoan(l.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+  <button onClick={() => deleteLoan(l.id)} className="text-xs text-danger-500 hover:underline">Delete</button>
   </td>
   </tr>
   ))}
@@ -14661,8 +14661,8 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   function expiryClass(expDate) {
   if (!expDate) return "";
   const exp = parseLocalDate(expDate);
-  if (exp < today) return "bg-red-50";
-  if (exp <= in90) return "bg-amber-50";
+  if (exp < today) return "bg-danger-50";
+  if (exp <= in90) return "bg-warn-50";
   return "";
   }
 
@@ -14680,8 +14680,8 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   {/* Stats */}
   <div className="flex gap-3 mb-4">
   <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-neutral-800">{activePolicies.length}</div><div className="text-xs text-neutral-400">Active Policies</div></div>
-  <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{formatCurrency(totalAnnualPremium)}</div><div className="text-xs text-neutral-400">Total Premium (Annual)</div></div>
-  <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">{expiringSoon}</div><div className="text-xs text-neutral-400">Expiring Soon (90 days)</div></div>
+  <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-warn-600">{formatCurrency(totalAnnualPremium)}</div><div className="text-xs text-neutral-400">Total Premium (Annual)</div></div>
+  <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-success-600">{expiringSoon}</div><div className="text-xs text-neutral-400">Expiring Soon (90 days)</div></div>
   </div>
 
   {showForm && (
@@ -14718,7 +14718,7 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   </thead>
   <tbody>
   {filtered.map(p => (
-  <tr key={p.id} className={`border-t border-neutral-100 hover:bg-green-50/40 ${expiryClass(p.expiration_date)}`}>
+  <tr key={p.id} className={`border-t border-neutral-100 hover:bg-positive-50/40 ${expiryClass(p.expiration_date)}`}>
   <td className="px-4 py-2.5 text-neutral-800">{p.property}</td>
   <td className="px-4 py-2.5 font-medium text-neutral-800">{p.provider}</td>
   <td className="px-4 py-2.5 text-neutral-500">{p.policy_number || "—"}</td>
@@ -14733,7 +14733,7 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
   <button onClick={() => { setEditingPolicy(p); setForm({ property: p.property || "", provider: p.provider || "", policy_number: p.policy_number || "", premium_amount: String(p.premium_amount || ""), premium_frequency: p.premium_frequency || "Annual", coverage_amount: String(p.coverage_amount || ""), expiration_date: p.expiration_date || "", notes: p.notes || "", website: p.website || "", username: "", password: "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>
-  <button onClick={() => deletePolicy(p.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+  <button onClick={() => deletePolicy(p.id)} className="text-xs text-danger-500 hover:underline">Delete</button>
   </td>
   </tr>
   ))}
@@ -14879,11 +14879,11 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
   <div className="flex-1 min-w-0">
   <div className="font-semibold text-neutral-800 text-sm">{getItemTitle(item)}</div>
   <div className="text-xs text-neutral-400">{item._label} · {getItemSubtitle(item)}</div>
-  <div className="text-xs text-neutral-300 mt-0.5">Archived {new Date(item.archived_at).toLocaleDateString()} {item.archived_by ? "by " + item.archived_by : ""} · <span className={daysUntilPurge(item) < 30 ? "text-red-400 font-semibold" : "text-neutral-400"}>{daysUntilPurge(item)} days until auto-purge</span></div>
+  <div className="text-xs text-neutral-300 mt-0.5">Archived {new Date(item.archived_at).toLocaleDateString()} {item.archived_by ? "by " + item.archived_by : ""} · <span className={daysUntilPurge(item) < 30 ? "text-danger-400 font-semibold" : "text-neutral-400"}>{daysUntilPurge(item)} days until auto-purge</span></div>
   </div>
   <div className="flex gap-2 shrink-0">
-  <button onClick={() => restoreItem(item)} className="text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 font-medium">♻️ Restore</button>
-  <button onClick={() => permanentDelete(item)} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100 font-medium">🗑️ Delete</button>
+  <button onClick={() => restoreItem(item)} className="text-xs bg-success-50 text-success-700 px-3 py-1.5 rounded-lg hover:bg-success-100 font-medium">♻️ Restore</button>
+  <button onClick={() => permanentDelete(item)} className="text-xs bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg hover:bg-danger-100 font-medium">🗑️ Delete</button>
   </div>
   </div>
   ))}
@@ -14896,11 +14896,11 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
   admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","insurance","accounting","owners","notifications","admin","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
-  office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","accounting","notifications","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
-  accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
-  maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
+  office_assistant: { label: "Office Assistant", color: "bg-info-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","accounting","notifications","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
+  accountant: { label: "Accountant", color: "bg-positive-600", pages: ["dashboard","accounting","payments","utilities"] },
+  maintenance: { label: "Maintenance", color: "bg-notice-500", pages: ["maintenance","vendors"] },
   tenant: { label: "Tenant", color: "bg-brand-50/300", pages: ["tenant_portal"] },
-  owner: { label: "Owner", color: "bg-purple-600", pages: ["owner_portal","loans"] },
+  owner: { label: "Owner", color: "bg-highlight-600", pages: ["owner_portal","loans"] },
 };
 
 const ALL_NAV = [
@@ -15114,7 +15114,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   <div className="text-xs text-neutral-400">{s.property}</div>
   </div>
   <div className="flex items-center gap-2">
-  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${s.enabled ? "bg-green-100 text-green-700" : "bg-neutral-100 text-neutral-400"}`}>{s.enabled ? "Active" : "Paused"}</span>
+  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${s.enabled ? "bg-positive-100 text-positive-700" : "bg-neutral-100 text-neutral-400"}`}>{s.enabled ? "Active" : "Paused"}</span>
   <span className="text-lg font-manrope font-bold text-neutral-800">${s.amount}</span>
   </div>
   </div>
@@ -15128,7 +15128,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   <div className="text-xs text-brand-600 font-medium">Next due: {nextDue(s)}</div>
   <div className="flex gap-2">
   <Btn variant="secondary" size="xs" onClick={() => runNow(s)}>▶ Run Now</Btn>
-  <button onClick={() => toggleActive(s)} className={`text-xs border px-3 py-1 rounded-lg ${s.enabled ? "text-orange-500 border-orange-200 hover:bg-orange-50" : "text-green-600 border-green-200 hover:bg-green-50"}`}>{s.enabled ? "⏸ Pause" : "▶ Resume"}</button>
+  <button onClick={() => toggleActive(s)} className={`text-xs border px-3 py-1 rounded-lg ${s.enabled ? "text-notice-500 border-notice-200 hover:bg-notice-50" : "text-positive-600 border-positive-200 hover:bg-positive-50"}`}>{s.enabled ? "⏸ Pause" : "▶ Resume"}</button>
   <Btn variant="danger" size="xs" onClick={() => deleteSchedule(s.id, s.tenant)}>🗑️</Btn>
   </div>
   </div>
@@ -15254,7 +15254,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   <p className="text-xs text-neutral-400 mt-0.5">Auto-flag overdue payments and apply fees after grace period</p>
   </div>
   <div className="flex gap-2">
-  {afterGrace.length > 0 && <Btn variant="danger-fill" className="bg-red-500 hover:bg-red-600" onClick={applyAllFees}>⚡ Apply All ({afterGrace.length})</Btn>}
+  {afterGrace.length > 0 && <Btn variant="danger-fill" className="bg-danger-500 hover:bg-danger-600" onClick={applyAllFees}>⚡ Apply All ({afterGrace.length})</Btn>}
   <Btn onClick={() => setShowForm(!showForm)}>+ New Rule</Btn>
   </div>
   </div>
@@ -15267,7 +15267,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   <div className="font-semibold text-brand-800 text-sm">{r.name}</div>
   <div className="text-xs text-brand-500">{r.grace_days} day grace · {r.fee_type === "flat" ? `${formatCurrency(r.fee_amount)} flat` : `${r.fee_amount}% of rent`}</div>
   </div>
-  <button onClick={async () => { if(!guardSubmit("delLateFee",r.id))return; try{ if(!await showConfirm({ message: "Delete this late fee rule?" }))return; await supabase.from("late_fee_rules").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", r.id).eq("company_id", companyId); fetchData(); }finally{guardRelease("delLateFee",r.id);} }} className="text-xs text-red-400 hover:text-red-600">Delete</button>
+  <button onClick={async () => { if(!guardSubmit("delLateFee",r.id))return; try{ if(!await showConfirm({ message: "Delete this late fee rule?" }))return; await supabase.from("late_fee_rules").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", r.id).eq("company_id", companyId); fetchData(); }finally{guardRelease("delLateFee",r.id);} }} className="text-xs text-danger-400 hover:text-danger-600">Delete</button>
   </div>
   ))}
   </div>
@@ -15288,22 +15288,22 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   </div>
   )}
   <div className="grid grid-cols-3 gap-3 mb-5">
-  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center"><div className="text-2xl font-bold text-orange-500">{flagged.length}</div><div className="text-xs text-neutral-400 mt-1">Overdue</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center"><div className="text-2xl font-bold text-red-500">{afterGrace.length}</div><div className="text-xs text-neutral-400 mt-1">Past Grace Period</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center"><div className="text-2xl font-bold text-notice-500">{flagged.length}</div><div className="text-xs text-neutral-400 mt-1">Overdue</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center"><div className="text-2xl font-bold text-danger-500">{afterGrace.length}</div><div className="text-xs text-neutral-400 mt-1">Past Grace Period</div></div>
   <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center"><div className="text-2xl font-bold text-neutral-700">${flagged.reduce((s, p) => s + safeNum(p.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400 mt-1">Total Overdue</div></div>
   </div>
   <div className="space-y-3">
   {flagged.map(p => {
   const pastGrace = rules.length > 0 && p.daysLate > rules[0]?.grace_days;
   return (
-  <div key={p.id} className={`bg-white rounded-xl border shadow-sm p-4 ${pastGrace ? "border-red-200" : "border-orange-100"}`}>
+  <div key={p.id} className={`bg-white rounded-xl border shadow-sm p-4 ${pastGrace ? "border-danger-200" : "border-notice-100"}`}>
   <div className="flex justify-between items-start">
   <div><div className="font-semibold text-neutral-800">{p.tenant}</div><div className="text-xs text-neutral-400">{p.property}</div></div>
-  <div className="text-right"><div className="font-bold text-red-500">${p.amount}</div><div className={`text-xs font-semibold ${pastGrace ? "text-red-500" : "text-orange-500"}`}>{p.daysLate} days late</div></div>
+  <div className="text-right"><div className="font-bold text-danger-500">${p.amount}</div><div className={`text-xs font-semibold ${pastGrace ? "text-danger-500" : "text-notice-500"}`}>{p.daysLate} days late</div></div>
   </div>
   <div className="mt-3 flex gap-2">
   {pastGrace && rules.length > 0 && <Btn variant="danger" size="xs" onClick={() => applyLateFee(p, rules[0])}>Apply ${rules[0].fee_type === "flat" ? rules[0].fee_amount : Math.round(p.amount * rules[0].fee_amount / 100)} Late Fee</Btn>}
-  {!pastGrace && <span className="text-xs text-orange-500 bg-orange-50 px-3 py-1 rounded-lg">Within grace period</span>}
+  {!pastGrace && <span className="text-xs text-notice-500 bg-notice-50 px-3 py-1 rounded-lg">Within grace period</span>}
   </div>
   </div>
   );
@@ -15523,7 +15523,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="mt-3 grid grid-cols-3 gap-3">
   <div className="bg-white/10 backdrop-blur rounded-lg p-3 text-center">
   <div className="text-xs text-brand-200">Balance Due</div>
-  <div className={"text-xl font-bold " + (safeNum(tenantData.balance) > 0 ? "text-red-300" : "text-green-300")}>
+  <div className={"text-xl font-bold " + (safeNum(tenantData.balance) > 0 ? "text-danger-300" : "text-positive-300")}>
   {safeNum(tenantData.balance) > 0 ? "$" + safeNum(tenantData.balance).toLocaleString() : "$0.00"}
   </div>
   </div>
@@ -15555,10 +15555,10 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   ))}
   </div>
   {safeNum(tenantData.balance) > 0 && (
-  <div className="bg-red-50 border border-red-100 rounded-3xl p-4 flex items-center justify-between">
+  <div className="bg-danger-50 border border-danger-100 rounded-3xl p-4 flex items-center justify-between">
   <div>
-  <div className="text-sm font-semibold text-red-800">Balance Due: ${safeNum(tenantData.balance).toLocaleString()}</div>
-  <div className="text-xs text-red-600">Please make a payment to avoid late fees.</div>
+  <div className="text-sm font-semibold text-danger-800">Balance Due: ${safeNum(tenantData.balance).toLocaleString()}</div>
+  <div className="text-xs text-danger-600">Please make a payment to avoid late fees.</div>
   </div>
   <Btn variant="danger-fill" size="xs" onClick={() => setActiveTab("pay")}>Pay Now</Btn>
   </div>
@@ -15567,14 +15567,14 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <h3 className="font-semibold text-neutral-700 mb-3">Recent Activity</h3>
   {payments.slice(0, 3).map(p => (
   <div key={p.id} className="flex justify-between py-2 border-b border-brand-50/50 last:border-0 text-sm">
-  <div><span className="text-green-600 font-medium">Payment</span> <span className="text-neutral-400">— {p.date}</span></div>
+  <div><span className="text-positive-600 font-medium">Payment</span> <span className="text-neutral-400">— {p.date}</span></div>
   <span className="font-semibold text-neutral-800">${safeNum(p.amount).toLocaleString()}</span>
   </div>
   ))}
   {workOrders.slice(0, 2).map(w => (
   <div key={w.id} className="flex justify-between py-2 border-b border-brand-50/50 last:border-0 text-sm">
-  <div><span className="text-orange-600 font-medium">Maintenance</span> <span className="text-neutral-400">— {w.issue}</span></div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (w.status === "completed" ? "bg-green-100 text-green-700" : w.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{w.status}</span>
+  <div><span className="text-notice-600 font-medium">Maintenance</span> <span className="text-neutral-400">— {w.issue}</span></div>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (w.status === "completed" ? "bg-positive-100 text-positive-700" : w.status === "in_progress" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{w.status}</span>
   </div>
   ))}
   {payments.length === 0 && workOrders.length === 0 && <div className="text-center py-4 text-neutral-400 text-sm">No recent activity</div>}
@@ -15586,10 +15586,10 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   {activeTab === "pay" && (
   <div className="max-w-md mx-auto">
   {paymentSuccess && (
-  <div className="bg-green-50 border border-green-200 rounded-3xl p-4 mb-4 text-center">
+  <div className="bg-positive-50 border border-positive-200 rounded-3xl p-4 mb-4 text-center">
   <div className="text-2xl mb-1">✅</div>
-  <div className="text-green-800 font-semibold">Payment Successful!</div>
-  <div className="text-green-600 text-sm">Your payment has been recorded and your balance updated.</div>
+  <div className="text-positive-800 font-semibold">Payment Successful!</div>
+  <div className="text-positive-600 text-sm">Your payment has been recorded and your balance updated.</div>
   </div>
   )}
   <div className="bg-white rounded-3xl border border-brand-50 p-6">
@@ -15597,7 +15597,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <p className="text-sm text-neutral-400 mb-5">Pay securely with Stripe</p>
   <div className="mb-4">
   <label className="text-xs text-neutral-400 mb-1 block">Current Balance</label>
-  <div className={"text-2xl font-bold " + (safeNum(tenantData.balance) > 0 ? "text-red-600" : "text-green-600")}>
+  <div className={"text-2xl font-bold " + (safeNum(tenantData.balance) > 0 ? "text-danger-600" : "text-positive-600")}>
   ${safeNum(tenantData.balance).toLocaleString()}
   </div>
   </div>
@@ -15609,12 +15609,12 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   </div>
   <div className="flex gap-2 mt-2">
   <button onClick={() => setPaymentAmount(String(tenantData.rent || 0))} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1 rounded-2xl hover:bg-neutral-100">Full Rent (${safeNum(tenantData.rent)})</button>
-  {safeNum(tenantData.balance) > 0 && <button onClick={() => setPaymentAmount(String(tenantData.balance))} className="text-xs bg-red-50 text-red-600 px-3 py-1 rounded-lg hover:bg-red-100">Full Balance (${safeNum(tenantData.balance)})</button>}
+  {safeNum(tenantData.balance) > 0 && <button onClick={() => setPaymentAmount(String(tenantData.balance))} className="text-xs bg-danger-50 text-danger-600 px-3 py-1 rounded-lg hover:bg-danger-100">Full Balance (${safeNum(tenantData.balance)})</button>}
   </div>
   </div>
   <div className="mb-4 p-3 bg-brand-50/30 rounded-lg">
   <div className="flex items-center gap-2 mb-2">
-  <div className="w-8 h-5 bg-gradient-to-r from-brand-600 to-purple-600 rounded text-white text-xs flex items-center justify-center font-bold">S</div>
+  <div className="w-8 h-5 bg-gradient-to-r from-brand-600 to-highlight-600 rounded text-white text-xs flex items-center justify-center font-bold">S</div>
   <span className="text-sm text-neutral-500">Powered by Stripe</span>
   </div>
   <div className="text-xs text-neutral-400">Secure payment processing. Your card information is encrypted and never stored on our servers.</div>
@@ -15656,13 +15656,13 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   }
   } catch (e) { showToast("Error: " + e.message, "error"); }
   setAutopayLoading(false);
-  }} disabled={autopayLoading} className={`relative w-12 h-6 rounded-full transition-colors ${autopayEnabled ? "bg-emerald-500" : "bg-neutral-300"}`}>
+  }} disabled={autopayLoading} className={`relative w-12 h-6 rounded-full transition-colors ${autopayEnabled ? "bg-success-500" : "bg-neutral-300"}`}>
   <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${autopayEnabled ? "tranneutral-x-6" : "tranneutral-x-0.5"}`} />
   </button>
   </div>
   {autopayEnabled && (
-  <div className="bg-emerald-50 rounded-2xl p-4 space-y-2">
-  <div className="flex justify-between text-sm"><span className="text-neutral-400">Amount</span><span className="font-bold text-emerald-700">${safeNum(tenantData.rent).toLocaleString()}/month</span></div>
+  <div className="bg-success-50 rounded-2xl p-4 space-y-2">
+  <div className="flex justify-between text-sm"><span className="text-neutral-400">Amount</span><span className="font-bold text-success-700">${safeNum(tenantData.rent).toLocaleString()}/month</span></div>
   <div className="flex justify-between text-sm"><span className="text-neutral-400">Payment Day</span><span className="font-medium text-neutral-700">1st of each month</span></div>
   <div className="flex justify-between text-sm"><span className="text-neutral-400">Method</span><span className="font-medium text-neutral-700">Stripe</span></div>
   </div>
@@ -15697,8 +15697,8 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="flex items-center gap-3">
   {p.status === "paid" && <Btn variant="secondary" size="xs" onClick={() => generatePaymentReceipt(p)}>Receipt</Btn>}
   <div className="text-right">
-  <div className="text-sm font-bold text-green-600">${safeNum(p.amount).toLocaleString()}</div>
-  <span className={"text-xs px-2 py-0.5 rounded-full " + (p.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{p.status}</span>
+  <div className="text-sm font-bold text-positive-600">${safeNum(p.amount).toLocaleString()}</div>
+  <span className={"text-xs px-2 py-0.5 rounded-full " + (p.status === "paid" ? "bg-positive-100 text-positive-700" : "bg-warn-100 text-warn-700")}>{p.status}</span>
   </div>
   </div>
   </div>
@@ -15713,7 +15713,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="flex justify-between">
   <div><div className="text-sm font-medium text-neutral-800">{e.description}</div><div className="text-xs text-neutral-400">{e.date}</div></div>
   <div className="text-right">
-  <div className={"text-sm font-bold " + (e.type === "payment" || e.type === "credit" ? "text-green-600" : "text-red-500")}>{e.type === "payment" || e.type === "credit" ? "+" + formatCurrency(Math.abs(e.amount)) : "-" + formatCurrency(Math.abs(e.amount))}</div>
+  <div className={"text-sm font-bold " + (e.type === "payment" || e.type === "credit" ? "text-positive-600" : "text-danger-500")}>{e.type === "payment" || e.type === "credit" ? "+" + formatCurrency(Math.abs(e.amount)) : "-" + formatCurrency(Math.abs(e.amount))}</div>
   <div className="text-xs text-neutral-400">Bal: ${e.balance}</div>
   </div>
   </div>
@@ -15761,8 +15761,8 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   {w.notes && <div className="text-xs text-neutral-400 mt-1">{w.notes}</div>}
   </div>
   <div className="text-right">
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (w.status === "completed" ? "bg-green-100 text-green-700" : w.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{w.status.replace("_", " ")}</span>
-  <div className={"text-xs mt-1 " + (w.priority === "emergency" ? "text-red-500 font-bold" : w.priority === "urgent" ? "text-orange-500" : "text-neutral-400")}>{w.priority}</div>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (w.status === "completed" ? "bg-positive-100 text-positive-700" : w.status === "in_progress" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{w.status.replace("_", " ")}</span>
+  <div className={"text-xs mt-1 " + (w.priority === "emergency" ? "text-danger-500 font-bold" : w.priority === "urgent" ? "text-notice-500" : "text-neutral-400")}>{w.priority}</div>
   </div>
   </div>
   </div>
@@ -16091,7 +16091,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
 
   {/* Admin / Maintenance / Tenant — fixed access notice */}
   {!isCustomizable && (
-  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700">
+  <div className="bg-info-50 border border-info-100 rounded-xl p-3 text-xs text-info-700">
   <strong>{ROLES[form.role]?.label}</strong> has fixed access and cannot be customized.
   {form.role === "admin" && " Admins always have full access to everything."}
   {form.role === "maintenance" && " Maintenance staff can only see the Maintenance page."}
@@ -16346,7 +16346,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
 
   if (completed) return (
   <div className="max-w-xl mx-auto text-center py-20">
-  <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto mb-4">
+  <div className="w-16 h-16 bg-success-50 text-success-600 rounded-3xl flex items-center justify-center mx-auto mb-4">
   <span className="material-icons-outlined text-3xl">check_circle</span>
   </div>
   <PageHeader title="Move-Out Complete" />
@@ -16393,7 +16393,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <div className="bg-brand-50/30 rounded-2xl p-4 space-y-2 text-sm">
   <div className="flex justify-between"><span className="text-neutral-400">Property</span><span className="font-medium text-neutral-700">{selectedTenant.property}</span></div>
   <div className="flex justify-between"><span className="text-neutral-400">Monthly Rent</span><span className="font-medium text-neutral-700">${safeNum(selectedTenant.rent)}</span></div>
-  <div className="flex justify-between"><span className="text-neutral-400">Balance</span><span className={`font-bold ${outstandingBalance > 0 ? "text-red-600" : "text-emerald-600"}`}>${outstandingBalance.toFixed(2)}</span></div>
+  <div className="flex justify-between"><span className="text-neutral-400">Balance</span><span className={`font-bold ${outstandingBalance > 0 ? "text-danger-600" : "text-success-600"}`}>${outstandingBalance.toFixed(2)}</span></div>
   {selectedLease && <div className="flex justify-between"><span className="text-neutral-400">Security Deposit</span><span className="font-medium text-neutral-700">${depositAmount.toFixed(2)}</span></div>}
   </div>
   </>
@@ -16411,9 +16411,9 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <h3 className="text-lg font-manrope font-bold text-neutral-800 mb-4">Move-Out Inspection</h3>
   <div className="space-y-2">
   {checklist.map((item, i) => (
-  <div key={i} className={`flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-colors ${item.checked ? "bg-emerald-50 border-emerald-200" : "bg-white border-brand-50 hover:bg-brand-50/30"}`} onClick={() => { const c = [...checklist]; c[i] = { ...c[i], checked: !c[i].checked }; setChecklist(c); }}>
-  <span className={`material-icons-outlined text-lg ${item.checked ? "text-emerald-600" : "text-neutral-300"}`}>{item.checked ? "check_circle" : "radio_button_unchecked"}</span>
-  <span className={`flex-1 text-sm ${item.checked ? "text-emerald-700 font-medium" : "text-neutral-500"}`}>{item.label}</span>
+  <div key={i} className={`flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-colors ${item.checked ? "bg-success-50 border-success-200" : "bg-white border-brand-50 hover:bg-brand-50/30"}`} onClick={() => { const c = [...checklist]; c[i] = { ...c[i], checked: !c[i].checked }; setChecklist(c); }}>
+  <span className={`material-icons-outlined text-lg ${item.checked ? "text-success-600" : "text-neutral-300"}`}>{item.checked ? "check_circle" : "radio_button_unchecked"}</span>
+  <span className={`flex-1 text-sm ${item.checked ? "text-success-700 font-medium" : "text-neutral-500"}`}>{item.label}</span>
   </div>
   ))}
   </div>
@@ -16436,8 +16436,8 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <div key={i} className="flex items-center justify-between py-2 border-b border-brand-50/50">
   <span className="text-sm text-neutral-700">{d.desc}</span>
   <div className="flex items-center gap-2">
-  <span className="text-sm font-semibold text-red-600">-${d.amount.toFixed(2)}</span>
-  <button onClick={() => setDeductions(deductions.filter((_, j) => j !== i))} className="text-neutral-300 hover:text-red-500"><span className="material-icons-outlined text-sm">close</span></button>
+  <span className="text-sm font-semibold text-danger-600">-${d.amount.toFixed(2)}</span>
+  <button onClick={() => setDeductions(deductions.filter((_, j) => j !== i))} className="text-neutral-300 hover:text-danger-500"><span className="material-icons-outlined text-sm">close</span></button>
   </div>
   </div>
   ))}
@@ -16446,9 +16446,9 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <Input placeholder="$" type="number" value={newDeductionAmt} onChange={e => setNewDeductionAmt(e.target.value)} className="w-24" />
   <Btn onClick={addDeduction}>Add</Btn>
   </div>
-  <div className="bg-emerald-50 rounded-2xl p-4 mt-4 space-y-1">
-  <div className="flex justify-between text-sm"><span className="text-neutral-400">Total Deductions</span><span className="font-semibold text-red-600">-${totalDeductions.toFixed(2)}</span></div>
-  <div className="flex justify-between text-sm font-bold"><span className="text-emerald-700">Return to Tenant</span><span className="text-emerald-700">${depositReturn.toFixed(2)}</span></div>
+  <div className="bg-success-50 rounded-2xl p-4 mt-4 space-y-1">
+  <div className="flex justify-between text-sm"><span className="text-neutral-400">Total Deductions</span><span className="font-semibold text-danger-600">-${totalDeductions.toFixed(2)}</span></div>
+  <div className="flex justify-between text-sm font-bold"><span className="text-success-700">Return to Tenant</span><span className="text-success-700">${depositReturn.toFixed(2)}</span></div>
   </div>
   <div className="flex justify-between mt-6">
   <Btn variant="ghost" onClick={() => setStep(2)}>← Back</Btn>
@@ -16461,9 +16461,9 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   {step === 4 && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
   <h3 className="text-lg font-manrope font-bold text-neutral-800 mb-4">Outstanding Balance</h3>
-  <div className={`rounded-2xl p-4 mb-4 ${outstandingBalance > 0 ? "bg-red-50" : "bg-emerald-50"}`}>
+  <div className={`rounded-2xl p-4 mb-4 ${outstandingBalance > 0 ? "bg-danger-50" : "bg-success-50"}`}>
   <div className="text-sm text-neutral-400">Current Balance</div>
-  <div className={`text-2xl font-manrope font-bold ${outstandingBalance > 0 ? "text-red-600" : "text-emerald-600"}`}>${outstandingBalance.toFixed(2)}</div>
+  <div className={`text-2xl font-manrope font-bold ${outstandingBalance > 0 ? "text-danger-600" : "text-success-600"}`}>${outstandingBalance.toFixed(2)}</div>
   </div>
   {outstandingBalance > 0 && (
   <div className="space-y-2">
@@ -16479,7 +16479,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   ))}
   </div>
   )}
-  {outstandingBalance <= 0 && <p className="text-sm text-emerald-600 font-medium">No outstanding balance — tenant is settled.</p>}
+  {outstandingBalance <= 0 && <p className="text-sm text-success-600 font-medium">No outstanding balance — tenant is settled.</p>}
   <div className="flex justify-between mt-6">
   <Btn variant="ghost" onClick={() => setStep(3)}>← Back</Btn>
   <Btn onClick={() => setStep(5)}>Next →</Btn>
@@ -16495,12 +16495,12 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Tenant</span><span className="font-semibold text-neutral-700">{selectedTenant?.name}</span></div>
   <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Property</span><span className="font-semibold text-neutral-700">{selectedLease?.property}</span></div>
   <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Move-Out Date</span><span className="font-semibold text-neutral-700">{moveOutDate}</span></div>
-  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Inspection Items</span><span className="font-semibold text-emerald-600">{checklist.filter(c => c.checked).length}/{checklist.length} checked</span></div>
-  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Deposit Return</span><span className="font-semibold text-emerald-600">${depositReturn.toFixed(2)}</span></div>
-  {totalDeductions > 0 && <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Deductions</span><span className="font-semibold text-red-600">-${totalDeductions.toFixed(2)}</span></div>}
+  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Inspection Items</span><span className="font-semibold text-success-600">{checklist.filter(c => c.checked).length}/{checklist.length} checked</span></div>
+  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Deposit Return</span><span className="font-semibold text-success-600">${depositReturn.toFixed(2)}</span></div>
+  {totalDeductions > 0 && <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Deductions</span><span className="font-semibold text-danger-600">-${totalDeductions.toFixed(2)}</span></div>}
   <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">AR Action</span><span className="font-semibold text-neutral-700 capitalize">{outstandingBalance > 0 ? arAction.replace("_", " ") : "Settled"}</span></div>
   </div>
-  <div className="bg-amber-50 rounded-2xl p-3 mt-4 text-xs text-amber-700">
+  <div className="bg-warn-50 rounded-2xl p-3 mt-4 text-xs text-warn-700">
   <span className="material-icons-outlined text-sm align-middle mr-1">warning</span>
   This will terminate the lease, update property to vacant, and post all accounting entries. This cannot be undone.
   </div>
@@ -16518,13 +16518,13 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
 
 // ============ EVICTION WORKFLOW ============
 const EVICTION_STAGES = [
-  { id: "notice", label: "Notice to Cure/Quit", icon: "mail", color: "bg-amber-500" },
-  { id: "cure_period", label: "Cure Period", icon: "schedule", color: "bg-orange-500" },
-  { id: "filing", label: "Court Filing", icon: "gavel", color: "bg-red-400" },
-  { id: "hearing", label: "Hearing", icon: "event", color: "bg-red-500" },
-  { id: "judgment", label: "Judgment", icon: "description", color: "bg-red-600" },
-  { id: "writ", label: "Writ of Restitution", icon: "assignment", color: "bg-red-700" },
-  { id: "lockout", label: "Lockout", icon: "lock", color: "bg-red-800" },
+  { id: "notice", label: "Notice to Cure/Quit", icon: "mail", color: "bg-warn-500" },
+  { id: "cure_period", label: "Cure Period", icon: "schedule", color: "bg-notice-500" },
+  { id: "filing", label: "Court Filing", icon: "gavel", color: "bg-danger-400" },
+  { id: "hearing", label: "Hearing", icon: "event", color: "bg-danger-500" },
+  { id: "judgment", label: "Judgment", icon: "description", color: "bg-danger-600" },
+  { id: "writ", label: "Writ of Restitution", icon: "assignment", color: "bg-danger-700" },
+  { id: "lockout", label: "Lockout", icon: "lock", color: "bg-danger-800" },
   { id: "closed", label: "Closed", icon: "check_circle", color: "bg-neutral-500" },
 ];
 
@@ -16760,14 +16760,14 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
 
   {/* Stats */}
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-  <StatCard label="Active Cases" value={activeCases.length} color="text-red-600" />
-  <StatCard label="In Court" value={activeCases.filter(c => ["filing","hearing","judgment","writ"].includes(c.current_stage)).length} color="text-orange-600" />
+  <StatCard label="Active Cases" value={activeCases.length} color="text-danger-600" />
+  <StatCard label="In Court" value={activeCases.filter(c => ["filing","hearing","judgment","writ"].includes(c.current_stage)).length} color="text-notice-600" />
   <StatCard label="Total Costs" value={formatCurrency(cases.reduce((s, c) => s + safeNum(c.total_costs), 0))} color="text-neutral-700" />
   <StatCard label="Closed" value={cases.filter(c => c.status === "closed").length} color="text-neutral-500" />
   </div>
 
   {showForm && (
-  <div className="bg-white rounded-xl border border-red-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-danger-100 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Start Eviction Case</h3>
   <div className="grid grid-cols-2 gap-3">
   <div className="col-span-2">
@@ -16828,7 +16828,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   {selectedCase && (
   <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-end">
   <div className="bg-white w-full max-w-xl h-full flex flex-col shadow-2xl overflow-y-auto">
-  <div className="bg-gradient-to-r from-red-600 to-red-800 p-6 text-white">
+  <div className="bg-gradient-to-r from-danger-600 to-danger-800 p-6 text-white">
   <div className="flex items-center justify-between">
   <div>
   <h2 className="text-lg font-bold">{selectedCase.tenant_name}</h2>
@@ -16854,8 +16854,8 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   const isCurrent = i === currentIdx;
   return (
   <div key={s.id} className="flex-1">
-  <div className={`h-2 rounded-full ${isComplete ? "bg-red-500" : isCurrent ? "bg-red-300" : "bg-neutral-100"}`} />
-  <div className={`text-center mt-1 text-[10px] ${isCurrent ? "text-red-600 font-bold" : isComplete ? "text-red-400" : "text-neutral-300"}`}>{s.label.split(" ")[0]}</div>
+  <div className={`h-2 rounded-full ${isComplete ? "bg-danger-500" : isCurrent ? "bg-danger-300" : "bg-neutral-100"}`} />
+  <div className={`text-center mt-1 text-[10px] ${isCurrent ? "text-danger-600 font-bold" : isComplete ? "text-danger-400" : "text-neutral-300"}`}>{s.label.split(" ")[0]}</div>
   </div>
   );
   })}
@@ -16867,7 +16867,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <div className="text-xs font-semibold text-neutral-400 uppercase mb-2">Key Dates</div>
   <div className="grid grid-cols-2 gap-2 text-sm">
   <div><span className="text-neutral-400 text-xs block">Notice Sent</span><span className="font-semibold text-neutral-700">{selectedCase.notice_date || "—"}</span></div>
-  <div><span className="text-neutral-400 text-xs block">Cure Deadline</span><span className="font-semibold text-red-600">{selectedCase.cure_deadline || "—"}</span></div>
+  <div><span className="text-neutral-400 text-xs block">Cure Deadline</span><span className="font-semibold text-danger-600">{selectedCase.cure_deadline || "—"}</span></div>
   {selectedCase.filing_date && <div><span className="text-neutral-400 text-xs block">Filed</span><span className="font-semibold text-neutral-700">{selectedCase.filing_date}</span></div>}
   {selectedCase.hearing_date && <div><span className="text-neutral-400 text-xs block">Hearing</span><span className="font-semibold text-neutral-700">{selectedCase.hearing_date}</span></div>}
   {selectedCase.judgment_date && <div><span className="text-neutral-400 text-xs block">Judgment</span><span className="font-semibold text-neutral-700">{selectedCase.judgment_date}</span></div>}
@@ -16890,7 +16890,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <div className="text-sm font-semibold text-neutral-800 capitalize">{h.stage?.replace(/_/g, " ")}</div>
   <div className="text-xs text-neutral-400">{h.date} · {h.by}</div>
   {h.note && <div className="text-xs text-neutral-500 mt-0.5">{h.note}</div>}
-  {safeNum(h.cost) > 0 && <div className="text-xs text-red-500 font-semibold mt-0.5">Cost: {formatCurrency(h.cost)}</div>}
+  {safeNum(h.cost) > 0 && <div className="text-xs text-danger-500 font-semibold mt-0.5">Cost: {formatCurrency(h.cost)}</div>}
   </div>
   </div>
   );
@@ -16900,7 +16900,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
 
   {/* Generate Legal Notice */}
   <div className="px-6 py-3 border-b border-brand-50 flex gap-2">
-  <button onClick={() => generateEvictionNotice(selectedCase)} className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-lg hover:bg-amber-100 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">print</span>Generate Legal Notice</button>
+  <button onClick={() => generateEvictionNotice(selectedCase)} className="text-xs bg-warn-50 text-warn-700 border border-warn-200 px-4 py-2 rounded-lg hover:bg-warn-100 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">print</span>Generate Legal Notice</button>
   </div>
 
   {/* Advance Stage */}
@@ -16930,10 +16930,10 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <div className="flex gap-2 flex-wrap">
   {selectedCase.status === "active" && (
   <>
-  <button onClick={() => closeCase(selectedCase, "tenant_cured")} className="text-xs bg-green-100 text-green-700 px-3 py-2 rounded-lg hover:bg-green-200 font-medium">Tenant Cured</button>
-  <button onClick={() => closeCase(selectedCase, "settled")} className="text-xs bg-blue-100 text-blue-700 px-3 py-2 rounded-lg hover:bg-blue-200 font-medium">Settled / Agreement</button>
+  <button onClick={() => closeCase(selectedCase, "tenant_cured")} className="text-xs bg-positive-100 text-positive-700 px-3 py-2 rounded-lg hover:bg-positive-200 font-medium">Tenant Cured</button>
+  <button onClick={() => closeCase(selectedCase, "settled")} className="text-xs bg-info-100 text-info-700 px-3 py-2 rounded-lg hover:bg-info-200 font-medium">Settled / Agreement</button>
   <button onClick={() => closeCase(selectedCase, "dismissed")} className="text-xs bg-neutral-100 text-neutral-700 px-3 py-2 rounded-lg hover:bg-neutral-200 font-medium">Dismissed</button>
-  <button onClick={() => closeCase(selectedCase, "completed")} className="text-xs bg-red-100 text-red-700 px-3 py-2 rounded-lg hover:bg-red-200 font-medium">Eviction Complete</button>
+  <button onClick={() => closeCase(selectedCase, "completed")} className="text-xs bg-danger-100 text-danger-700 px-3 py-2 rounded-lg hover:bg-danger-200 font-medium">Eviction Complete</button>
   </>
   )}
   </div>
@@ -16956,7 +16956,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   const curIdx = stageIdx(c.current_stage);
   const daysActive = Math.ceil((new Date() - new Date(c.created_at)) / 86400000);
   return (
-  <div key={c.id} onClick={() => setSelectedCase(c)} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4 cursor-pointer hover:border-red-200 hover:shadow-md transition-all">
+  <div key={c.id} onClick={() => setSelectedCase(c)} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4 cursor-pointer hover:border-danger-200 hover:shadow-md transition-all">
   <div className="flex justify-between items-start">
   <div>
   <div className="flex items-center gap-2 mb-1">
@@ -16969,20 +16969,20 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <div className="text-xs text-neutral-400">{c.property} · {c.reason?.replace(/_/g, " ")}</div>
   </div>
   <div className="text-right">
-  <div className={`text-xs font-semibold capitalize px-2.5 py-1 rounded-full ${c.status === "active" ? "bg-red-100 text-red-700" : "bg-neutral-100 text-neutral-500"}`}>{currentStage?.label || c.current_stage}</div>
+  <div className={`text-xs font-semibold capitalize px-2.5 py-1 rounded-full ${c.status === "active" ? "bg-danger-100 text-danger-700" : "bg-neutral-100 text-neutral-500"}`}>{currentStage?.label || c.current_stage}</div>
   <div className="text-xs text-neutral-400 mt-1">{daysActive}d active</div>
   </div>
   </div>
   {/* Mini progress bar */}
   <div className="flex gap-0.5 mt-3">
   {EVICTION_STAGES.map((s, i) => (
-  <div key={s.id} className={`h-1.5 flex-1 rounded-full ${i < curIdx ? "bg-red-400" : i === curIdx ? "bg-red-200" : "bg-neutral-100"}`} />
+  <div key={s.id} className={`h-1.5 flex-1 rounded-full ${i < curIdx ? "bg-danger-400" : i === curIdx ? "bg-danger-200" : "bg-neutral-100"}`} />
   ))}
   </div>
   <div className="flex gap-4 mt-2 text-xs text-neutral-400">
   <span>Notice: {c.notice_date}</span>
   <span>Cure by: {c.cure_deadline}</span>
-  {safeNum(c.total_costs) > 0 && <span className="text-red-500">Costs: {formatCurrency(c.total_costs)}</span>}
+  {safeNum(c.total_costs) > 0 && <span className="text-danger-500">Costs: {formatCurrency(c.total_costs)}</span>}
   </div>
   </div>
   );
@@ -17768,7 +17768,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="flex items-center gap-2">
   <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={f.required} onChange={e => updateField(i, "required", e.target.checked)} className="accent-brand-600" />Required</label>
   <button onClick={() => insertMergeField(f.name || f.label.toLowerCase().replace(/[^a-z0-9]+/g, "_"))} className="text-xs text-brand-600 hover:underline" title="Insert into body">{"{{}}"}</button>
-  <button onClick={() => removeField(i)} className="text-xs text-red-400 hover:text-red-600 ml-auto">✕</button>
+  <button onClick={() => removeField(i)} className="text-xs text-danger-400 hover:text-danger-600 ml-auto">✕</button>
   </div>
   </div>
   {f.type === "select" && (
@@ -17788,25 +17788,25 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {/* Calculated Fields */}
   <div className="mb-4">
   <div className="flex items-center justify-between mb-2">
-  <h4 className="text-xs font-semibold text-amber-700 uppercase tracking-wide flex items-center gap-1"><span className="material-icons-outlined text-sm">calculate</span>Calculated Fields</h4>
+  <h4 className="text-xs font-semibold text-warn-700 uppercase tracking-wide flex items-center gap-1"><span className="material-icons-outlined text-sm">calculate</span>Calculated Fields</h4>
   <button onClick={() => {
   const name = prompt("Field name to make calculated (must match an existing field):");
   if (!name?.trim()) return;
   const formula = prompt("Formula (use field names, e.g. rent + late_fee):");
   if (!formula?.trim()) return;
   setTemplateForm(prev => ({ ...prev, field_config: { ...prev.field_config, calculated: { ...(prev.field_config?.calculated || {}), [name.trim()]: { formula: formula.trim() } } } }));
-  }} className="text-xs text-amber-600 hover:text-amber-800">+ Add</button>
+  }} className="text-xs text-warn-600 hover:text-warn-800">+ Add</button>
   </div>
   {Object.entries(templateForm.field_config?.calculated || {}).map(([name, cfg]) => (
-  <div key={name} className="flex items-center gap-2 text-xs bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-1">
-  <span className="font-mono font-semibold text-amber-800">{name}</span>
-  <span className="text-amber-500">=</span>
-  <span className="font-mono text-amber-700 flex-1">{cfg.formula}</span>
+  <div key={name} className="flex items-center gap-2 text-xs bg-warn-50 border border-warn-100 rounded-lg px-3 py-2 mb-1">
+  <span className="font-mono font-semibold text-warn-800">{name}</span>
+  <span className="text-warn-500">=</span>
+  <span className="font-mono text-warn-700 flex-1">{cfg.formula}</span>
   <button onClick={() => {
   const calc = { ...(templateForm.field_config?.calculated || {}) };
   delete calc[name];
   setTemplateForm(prev => ({ ...prev, field_config: { ...prev.field_config, calculated: calc } }));
-  }} className="text-red-400 hover:text-red-600">✕</button>
+  }} className="text-danger-400 hover:text-danger-600">✕</button>
   </div>
   ))}
   {Object.keys(templateForm.field_config?.calculated || {}).length === 0 && <p className="text-xs text-neutral-400 italic">No calculated fields. Use formulas like <code className="bg-neutral-100 px-1 rounded">rent * days / 30</code></p>}
@@ -17815,7 +17815,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {/* Conditional Fields */}
   <div className="mb-4">
   <div className="flex items-center justify-between mb-2">
-  <h4 className="text-xs font-semibold text-violet-700 uppercase tracking-wide flex items-center gap-1"><span className="material-icons-outlined text-sm">visibility</span>Conditional Visibility</h4>
+  <h4 className="text-xs font-semibold text-accent-700 uppercase tracking-wide flex items-center gap-1"><span className="material-icons-outlined text-sm">visibility</span>Conditional Visibility</h4>
   <button onClick={() => {
   const name = prompt("Field to show/hide conditionally:");
   if (!name?.trim()) return;
@@ -17824,18 +17824,18 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const eqVal = prompt("...equals what value?");
   if (eqVal === null) return;
   setTemplateForm(prev => ({ ...prev, field_config: { ...prev.field_config, conditional: { ...(prev.field_config?.conditional || {}), [name.trim()]: { visible_when: { field: depField.trim(), eq: eqVal } } } } }));
-  }} className="text-xs text-violet-600 hover:text-violet-800">+ Add</button>
+  }} className="text-xs text-accent-600 hover:text-accent-800">+ Add</button>
   </div>
   {Object.entries(templateForm.field_config?.conditional || {}).map(([name, cfg]) => (
-  <div key={name} className="flex items-center gap-2 text-xs bg-violet-50 border border-violet-100 rounded-lg px-3 py-2 mb-1">
-  <span className="font-mono font-semibold text-violet-800">{name}</span>
-  <span className="text-violet-500">visible when</span>
-  <span className="font-mono text-violet-700">{cfg.visible_when?.field} = "{cfg.visible_when?.eq}"</span>
+  <div key={name} className="flex items-center gap-2 text-xs bg-accent-50 border border-accent-100 rounded-lg px-3 py-2 mb-1">
+  <span className="font-mono font-semibold text-accent-800">{name}</span>
+  <span className="text-accent-500">visible when</span>
+  <span className="font-mono text-accent-700">{cfg.visible_when?.field} = "{cfg.visible_when?.eq}"</span>
   <button onClick={() => {
   const cond = { ...(templateForm.field_config?.conditional || {}) };
   delete cond[name];
   setTemplateForm(prev => ({ ...prev, field_config: { ...prev.field_config, conditional: cond } }));
-  }} className="text-red-400 hover:text-red-600 ml-auto">✕</button>
+  }} className="text-danger-400 hover:text-danger-600 ml-auto">✕</button>
   </div>
   ))}
   {Object.keys(templateForm.field_config?.conditional || {}).length === 0 && <p className="text-xs text-neutral-400 italic">No conditions. Show/hide fields based on other field values.</p>}
@@ -17875,7 +17875,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <span className="text-xs text-neutral-500">{templateForm.pdf_field_placements.length} placements</span>
   <span className="text-xs text-neutral-300">|</span>
   {placingField ? (
-  <span className="text-xs text-emerald-600 font-semibold">Click on PDF to place: {placingField} <button onClick={() => setPlacingField(null)} className="text-red-400 ml-1">✕ Cancel</button></span>
+  <span className="text-xs text-success-600 font-semibold">Click on PDF to place: {placingField} <button onClick={() => setPlacingField(null)} className="text-danger-400 ml-1">✕ Cancel</button></span>
   ) : (
   <Select onChange={e => { if (e.target.value) setPlacingField(e.target.value); e.target.value = ""; }} className="text-xs">
   <option value="">+ Place field on PDF...</option>
@@ -17899,7 +17899,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   fields: [...prev.fields, ...newFields],
   }));
   showToast(detected.length + " fields detected", "info");
-  }} className="text-xs text-amber-600 hover:text-amber-800 ml-auto">Re-detect</button>
+  }} className="text-xs text-warn-600 hover:text-warn-800 ml-auto">Re-detect</button>
   <label className="text-xs text-neutral-500 hover:text-neutral-700 cursor-pointer">
   Replace PDF
   <input type="file" accept=".pdf" className="hidden" onChange={e => handlePdfUpload(e.target.files[0])} />
@@ -17926,7 +17926,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }}>
   {/* Render placements */}
   {pagePlacements.map(p => (
-  <div key={p._idx} className={"absolute border-2 rounded " + (p.auto_detected ? "border-amber-400 bg-amber-100/40" : "border-brand-400 bg-brand-100/40")}
+  <div key={p._idx} className={"absolute border-2 rounded " + (p.auto_detected ? "border-warn-400 bg-warn-100/40" : "border-brand-400 bg-brand-100/40")}
   style={{ left: p.x + "%", top: p.y + "%", width: p.width + "%", height: p.height + "%", cursor: "move" }}
   onMouseDown={e => {
   e.stopPropagation();
@@ -17942,7 +17942,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }}>
   <div className="flex items-center justify-between px-1">
   <span className="text-[9px] font-mono font-semibold truncate" style={{ color: p.auto_detected ? "#92400e" : "#3730a3" }}>{p.field_name}</span>
-  <button onClick={e => { e.stopPropagation(); removePlacement(p._idx); }} className="text-red-400 hover:text-red-600 text-xs leading-none">✕</button>
+  <button onClick={e => { e.stopPropagation(); removePlacement(p._idx); }} className="text-danger-400 hover:text-danger-600 text-xs leading-none">✕</button>
   </div>
   </div>
   ))}
@@ -18005,7 +18005,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   return (
   <div className="flex items-center gap-2">
   <div className={base + " bg-neutral-50 text-neutral-600"}>{displayVal}</div>
-  <span className="material-icons-outlined text-sm text-amber-500" title={"Formula: " + fc.calculated[f.name].formula}>calculate</span>
+  <span className="material-icons-outlined text-sm text-warn-500" title={"Formula: " + fc.calculated[f.name].formula}>calculate</span>
   </div>
   );
   }
@@ -18051,7 +18051,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {f.type !== "checkbox" && (
   <label className="text-xs font-medium text-neutral-500 block mb-1">
   {f.label} {f.required && !isCalc(f.name) && "*"}
-  {isCalc(f.name) && <span className="text-amber-500 ml-1">(calculated)</span>}
+  {isCalc(f.name) && <span className="text-warn-500 ml-1">(calculated)</span>}
   </label>
   )}
   {renderField(f)}
@@ -18274,10 +18274,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   <p className="text-sm text-neutral-400">Start with an empty form. Fill everything out manually.</p>
   </button>
-  <div className={"rounded-3xl border-2 p-6 transition-all " + (mode === "prefill" ? "border-emerald-600 bg-emerald-50" : "border-brand-100 bg-white")}>
+  <div className={"rounded-3xl border-2 p-6 transition-all " + (mode === "prefill" ? "border-success-600 bg-success-50" : "border-brand-100 bg-white")}>
   <button onClick={() => setMode("prefill")} className="w-full text-left">
   <div className="flex items-center gap-3 mb-2">
-  <span className="w-10 h-10 rounded-2xl bg-emerald-100 flex items-center justify-center"><span className="material-icons-outlined text-emerald-600">auto_fix_high</span></span>
+  <span className="w-10 h-10 rounded-2xl bg-success-100 flex items-center justify-center"><span className="material-icons-outlined text-success-600">auto_fix_high</span></span>
   <h3 className="font-manrope font-bold text-neutral-800">Prefill from Property</h3>
   </div>
   <p className="text-sm text-neutral-400">Select a property to auto-fill tenant, lease, and property data.</p>
@@ -18362,7 +18362,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div>
   <div className="font-semibold text-neutral-800 text-sm">{d.name}</div>
   <div className="flex items-center gap-2 mt-1">
-  <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (d.status === "sent" ? "bg-emerald-50 text-emerald-700" : d.status === "final" ? "bg-blue-50 text-blue-700" : "bg-neutral-50 text-neutral-500")}>{d.status}</span>
+  <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (d.status === "sent" ? "bg-success-50 text-success-700" : d.status === "final" ? "bg-info-50 text-info-700" : "bg-neutral-50 text-neutral-500")}>{d.status}</span>
   {d.tenant_name && <span className="text-xs text-neutral-400">{d.tenant_name}</span>}
   {d.property_address && <span className="text-xs text-neutral-400">· {d.property_address}</span>}
   <span className="text-xs text-neutral-400">· {new Date(d.created_at).toLocaleDateString()}</span>
@@ -18376,7 +18376,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   setSendModal(d);
   setSendTo({ self: false, tenant: false, custom: "" });
   }}>Email</Btn>
-  <button onClick={() => deleteGeneratedDoc(d)} className="text-xs text-red-400 hover:text-red-600">✕</button>
+  <button onClick={() => deleteGeneratedDoc(d)} className="text-xs text-danger-400 hover:text-danger-600">✕</button>
   </div>
   </div>
   ))}
@@ -18498,7 +18498,7 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
 
   <div className="flex gap-2 mb-5">
   {[["all", "All (" + (approvals.length + tasks.length) + ")"], ["approvals", "Approvals (" + approvals.length + ")"], ["tasks", "Tasks (" + tasks.length + ")"]].map(([id, label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium rounded-xl " + (activeTab === id ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
+  <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium rounded-xl " + (activeTab === id ? "bg-brand-600 text-white" : "bg-subtle-100 text-subtle-600 hover:bg-subtle-200")}>{label}</button>
   ))}
   </div>
 
@@ -18508,7 +18508,7 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   {activeTab === "all" && <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-wide mb-3">Awaiting Approval</h3>}
   <div className="space-y-3">
   {approvals.map(a => (
-  <div key={a.id} className="bg-white rounded-xl border border-amber-200 p-4 flex items-center justify-between">
+  <div key={a.id} className="bg-white rounded-xl border border-warn-200 p-4 flex items-center justify-between">
   <div className="flex items-center gap-3 flex-1 min-w-0">
   <span className="text-2xl">{a.icon}</span>
   <div className="min-w-0">
@@ -18538,7 +18538,7 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   <div className="text-sm font-semibold text-neutral-800 truncate">{t.title}</div>
   <div className="text-xs text-neutral-400">{t.subtitle}</div>
   </div>
-  <span className={"text-xs px-2 py-0.5 rounded-full font-bold " + (t.priority === "high" ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-700")}>{t.priority}</span>
+  <span className={"text-xs px-2 py-0.5 rounded-full font-bold " + (t.priority === "high" ? "bg-danger-100 text-danger-600" : "bg-warn-100 text-warn-700")}>{t.priority}</span>
   <span className="material-icons-outlined text-neutral-300 text-sm">arrow_forward</span>
   </div>
   ))}
@@ -18650,12 +18650,12 @@ function AuditTrail({ companyId }) {
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const actionColors = {
-  create: "bg-emerald-100 text-emerald-700",
-  update: "bg-blue-100 text-blue-700",
-  delete: "bg-red-100 text-red-700",
-  request: "bg-amber-100 text-amber-700",
-  approve: "bg-emerald-100 text-emerald-700",
-  reject: "bg-red-100 text-red-700",
+  create: "bg-success-100 text-success-700",
+  update: "bg-info-100 text-info-700",
+  delete: "bg-danger-100 text-danger-700",
+  request: "bg-warn-100 text-warn-700",
+  approve: "bg-success-100 text-success-700",
+  reject: "bg-danger-100 text-danger-700",
   };
 
   const moduleIcons = {
@@ -18696,11 +18696,11 @@ function AuditTrail({ companyId }) {
   <p className="text-xs text-neutral-400">Users Active</p>
   </div>
   <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
-  <p className="text-lg font-bold text-emerald-600">{logs.filter(l => l.action === "create").length}</p>
+  <p className="text-lg font-bold text-success-600">{logs.filter(l => l.action === "create").length}</p>
   <p className="text-xs text-neutral-400">Created</p>
   </div>
   <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
-  <p className="text-lg font-bold text-red-500">{logs.filter(l => l.action === "delete").length}</p>
+  <p className="text-lg font-bold text-danger-500">{logs.filter(l => l.action === "delete").length}</p>
   <p className="text-xs text-neutral-400">Deleted</p>
   </div>
   </div>
@@ -18899,15 +18899,15 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   </div>
 
   {/* Delete Account */}
-  <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-6">
-  <h3 className="font-semibold text-red-600 mb-2">Delete Account</h3>
+  <div className="bg-white rounded-2xl border border-danger-100 shadow-sm p-6">
+  <h3 className="font-semibold text-danger-600 mb-2">Delete Account</h3>
   <p className="text-xs text-neutral-400 mb-3">This will deactivate your account and remove you from all companies. This action cannot be undone.</p>
   {!showDeleteConfirm ? (
   <Btn variant="danger" size="sm" onClick={() => setShowDeleteConfirm(true)}>Delete My Account</Btn>
   ) : (
   <div className="space-y-3">
-  <p className="text-sm text-red-600 font-medium">Type "DELETE" to confirm:</p>
-  <Input value={deleteText} onChange={e => setDeleteText(e.target.value.toUpperCase())} placeholder="Type DELETE" className="border-red-200" />
+  <p className="text-sm text-danger-600 font-medium">Type "DELETE" to confirm:</p>
+  <Input value={deleteText} onChange={e => setDeleteText(e.target.value.toUpperCase())} placeholder="Type DELETE" className="border-danger-200" />
   <div className="flex gap-2">
   <Btn variant="danger-fill" onClick={deleteAccount} disabled={deleteText !== "DELETE" || deleting}>{deleting ? "Deleting..." : "Permanently Delete"}</Btn>
   <Btn variant="slate" size="sm" onClick={() => { setShowDeleteConfirm(false); setDeleteText(""); }}>Cancel</Btn>
@@ -19177,7 +19177,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
   <div className="flex items-center gap-2 shrink-0 ml-3">
   <a href={window.location.origin + window.location.pathname + "?company=" + encodeURIComponent(c.id) + "#dashboard"} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.stopPropagation(); }} className="text-brand-600 text-xs font-medium hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>Open</a>
-  {!["tenant", "owner"].includes(c.memberRole) && <button onClick={(e) => { e.stopPropagation(); deleteCompany(c); }} disabled={deleting === c.id} className="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors disabled:opacity-50">{deleting === c.id ? "Deleting..." : "Delete"}</button>}
+  {!["tenant", "owner"].includes(c.memberRole) && <button onClick={(e) => { e.stopPropagation(); deleteCompany(c); }} disabled={deleting === c.id} className="text-xs text-danger-400 hover:text-danger-600 hover:bg-danger-50 px-2 py-1 rounded-lg transition-colors disabled:opacity-50">{deleting === c.id ? "Deleting..." : "Delete"}</button>}
   </div>
   </div>
   ))}
@@ -19187,14 +19187,14 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
 
   {/* Pending Requests */}
   {pendingRequests.length > 0 && (
-  <div className="mb-6 bg-amber-50 border border-amber-200 rounded-3xl p-4">
-  <div className="text-sm font-semibold text-amber-800 mb-1">⏳ Pending Requests</div>
-  <div className="text-xs text-amber-600">You have {pendingRequests.length} pending request(s) waiting for admin approval.</div>
+  <div className="mb-6 bg-warn-50 border border-warn-200 rounded-3xl p-4">
+  <div className="text-sm font-semibold text-warn-800 mb-1">⏳ Pending Requests</div>
+  <div className="text-xs text-warn-600">You have {pendingRequests.length} pending request(s) waiting for admin approval.</div>
   </div>
   )}
 
   {joinMessage && (
-  <div className="mb-4 bg-green-50 border border-green-200 rounded-3xl p-4 text-sm text-green-700">{joinMessage}</div>
+  <div className="mb-4 bg-positive-50 border border-positive-200 rounded-3xl p-4 text-sm text-positive-700">{joinMessage}</div>
   )}
 
   {/* Actions */}
@@ -19228,7 +19228,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   <div className="text-sm font-semibold text-neutral-800">Property Management</div>
   <div className="text-xs text-neutral-400">I manage properties for owners</div>
   </button>
-  <button type="button" onClick={() => setCreateForm({...createForm, company_role: "owner"})} className={`p-3 rounded-xl border-2 text-left transition-all ${createForm.company_role === "owner" ? "border-emerald-500 bg-emerald-50" : "border-brand-100 hover:border-brand-200"}`}>
+  <button type="button" onClick={() => setCreateForm({...createForm, company_role: "owner"})} className={`p-3 rounded-xl border-2 text-left transition-all ${createForm.company_role === "owner" ? "border-success-500 bg-success-50" : "border-brand-100 hover:border-brand-200"}`}>
   <div className="text-lg mb-1">🏠</div>
   <div className="text-sm font-semibold text-neutral-800">Property Owner</div>
   <div className="text-xs text-neutral-400">I own and manage my properties</div>
@@ -19319,9 +19319,9 @@ function PendingRequestsPanel({ companyId, addNotification }) {
   if (loading || requests.length === 0) return null;
 
   return (
-  <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 mb-4">
+  <div className="bg-warn-50 border border-warn-200 rounded-3xl p-4 mb-4">
   <div className="flex items-center justify-between mb-3">
-  <div className="text-sm font-bold text-amber-800">⏳ Pending Join Requests ({requests.length})</div>
+  <div className="text-sm font-bold text-warn-800">⏳ Pending Join Requests ({requests.length})</div>
   </div>
   <div className="space-y-2">
   {requests.map(r => (
@@ -19382,9 +19382,9 @@ function PendingPMAssignments({ companyId, addNotification }) {
   if (loading || requests.length === 0) return null;
 
   return (
-  <div className="bg-blue-50 border border-blue-200 rounded-3xl p-4 mb-4">
+  <div className="bg-info-50 border border-info-200 rounded-3xl p-4 mb-4">
   <div className="flex items-center justify-between mb-3">
-  <div className="text-sm font-bold text-blue-800">📨 PM Assignment Requests ({requests.length})</div>
+  <div className="text-sm font-bold text-info-800">📨 PM Assignment Requests ({requests.length})</div>
   </div>
   <div className="space-y-2">
   {requests.map(r => (
@@ -19932,7 +19932,7 @@ function AppInner() {
     <button onClick={() => { setShowUserMenu(false); switchCompany(); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">swap_horiz</span>Switch Company</button>
     <button onClick={() => { setShowUserMenu(false); setPage("admin"); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">settings</span>Settings</button>
     <div className="border-t border-neutral-100 my-1" />
-    <button onClick={() => { setShowUserMenu(false); handleLogout(); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 text-left"><span className="material-icons-outlined text-base">logout</span>Logout</button>
+    <button onClick={() => { setShowUserMenu(false); handleLogout(); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-danger-500 hover:bg-danger-50 text-left"><span className="material-icons-outlined text-base">logout</span>Logout</button>
   </div>
   </>}
   </div>
@@ -19951,7 +19951,7 @@ function AppInner() {
   }} className="relative w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center text-brand-600 hover:bg-brand-100 transition-colors">
   <span className="material-icons-outlined">notifications</span>
   {unreadCount > 0 && (
-  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-white"></span>
+  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-danger-500 rounded-full ring-2 ring-white"></span>
   )}
   </button>
   {showNotifications && (
@@ -19960,7 +19960,7 @@ function AppInner() {
   <span className="font-manrope font-bold text-neutral-700 text-sm">Notifications</span>
   <div className="flex gap-2">
   <button onClick={() => { setPage("notifications"); setShowNotifications(false); }} className="text-xs text-brand-600 hover:underline">View All</button>
-  <button onClick={() => { setNotifications([]); setShowNotifications(false); }} className="text-xs text-neutral-400 hover:text-red-500">Clear</button>
+  <button onClick={() => { setNotifications([]); setShowNotifications(false); }} className="text-xs text-neutral-400 hover:text-danger-500">Clear</button>
   </div>
   </div>
   <div className="max-h-72 overflow-y-auto">
@@ -19985,9 +19985,9 @@ function AppInner() {
 
   <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
   {missingRPCs.length > 0 && userRole === "admin" && (
-  <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
-  <div className="text-sm font-semibold text-amber-800">⚠️ Missing Database Functions</div>
-  <div className="text-xs text-amber-600 mt-1">The following RPCs need to be deployed: {missingRPCs.join(", ")}. Some features may not work until these are installed.</div>
+  <div className="bg-warn-50 border border-warn-200 rounded-xl px-4 py-3 mb-4">
+  <div className="text-sm font-semibold text-warn-800">⚠️ Missing Database Functions</div>
+  <div className="text-xs text-warn-600 mt-1">The following RPCs need to be deployed: {missingRPCs.join(", ")}. Some features may not work until these are installed.</div>
   </div>
   )}
   {userRole === "admin" && activeCompany && <PendingRequestsPanel companyId={activeCompany.id} addNotification={addNotification} />}

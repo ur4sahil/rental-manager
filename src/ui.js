@@ -11,14 +11,14 @@ const BTN_BASE = "inline-flex items-center justify-center font-semibold transiti
 const BTN_VARIANTS = {
   primary:   "bg-brand-600 text-white hover:bg-brand-700",
   secondary: "text-brand-600 border border-brand-200 hover:bg-brand-50 bg-white",
-  danger:    "text-red-600 border border-red-200 hover:bg-red-50 bg-white",
-  "danger-fill": "bg-red-600 text-white hover:bg-red-700",
-  success:   "text-emerald-600 border border-emerald-200 hover:bg-emerald-50 bg-white",
-  "success-fill": "bg-emerald-600 text-white hover:bg-emerald-700",
+  danger:    "text-danger-600 border border-danger-200 hover:bg-danger-50 bg-white",
+  "danger-fill": "bg-danger-600 text-white hover:bg-danger-700",
+  success:   "text-success-600 border border-success-200 hover:bg-success-50 bg-white",
+  "success-fill": "bg-success-600 text-white hover:bg-success-700",
   ghost:     "text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100",
-  purple:    "text-purple-600 border border-purple-200 hover:bg-purple-50 bg-white",
-  amber:     "text-amber-600 border border-amber-200 hover:bg-amber-50 bg-white",
-  "warning-fill": "bg-amber-600 text-white hover:bg-amber-700",
+  purple:    "text-highlight-600 border border-highlight-200 hover:bg-highlight-50 bg-white",
+  amber:     "text-warn-600 border border-warn-200 hover:bg-warn-50 bg-white",
+  "warning-fill": "bg-warn-600 text-white hover:bg-warn-700",
   slate:     "text-neutral-600 bg-neutral-100 hover:bg-neutral-200",
 };
 const BTN_SIZES = {
@@ -95,11 +95,11 @@ export function FormField({ label, required, className = "", children }) {
 
 // ---- BADGE ----
 const BADGE_COLORS = {
-  green:  "bg-emerald-50 text-emerald-700 border-emerald-200",
-  red:    "bg-red-50 text-red-700 border-red-200",
-  yellow: "bg-amber-50 text-amber-700 border-amber-200",
-  blue:   "bg-blue-50 text-blue-700 border-blue-200",
-  purple: "bg-purple-50 text-purple-700 border-purple-200",
+  green:  "bg-success-50 text-success-700 border-success-200",
+  red:    "bg-danger-50 text-danger-700 border-danger-200",
+  yellow: "bg-warn-50 text-warn-700 border-warn-200",
+  blue:   "bg-info-50 text-info-700 border-info-200",
+  purple: "bg-highlight-50 text-highlight-700 border-highlight-200",
   gray:   "bg-neutral-50 text-neutral-600 border-neutral-200",
   indigo: "bg-brand-50 text-brand-700 border-brand-200",
 };
@@ -167,8 +167,8 @@ export function TabBar({ tabs, active, onChange, size = "md" }) {
 
 // ---- STAT CARD (dashboard) ----
 export function StatCard({ label, value, icon, color = "indigo", trend }) {
-  const bgMap = { indigo: "bg-brand-50", green: "bg-emerald-50", red: "bg-red-50", amber: "bg-amber-50", purple: "bg-purple-50" };
-  const textMap = { indigo: "text-brand-600", green: "text-emerald-600", red: "text-red-600", amber: "text-amber-600", purple: "text-purple-600" };
+  const bgMap = { indigo: "bg-brand-50", green: "bg-success-50", red: "bg-danger-50", amber: "bg-warn-50", purple: "bg-highlight-50" };
+  const textMap = { indigo: "text-brand-600", green: "text-success-600", red: "text-danger-600", amber: "text-warn-600", purple: "text-highlight-600" };
   return (
     <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
       <div className="flex items-center gap-3">
@@ -178,7 +178,7 @@ export function StatCard({ label, value, icon, color = "indigo", trend }) {
         <div>
           <div className="text-xs text-neutral-400 font-medium">{label}</div>
           <div className="text-xl font-manrope font-bold text-neutral-800">{value}</div>
-          {trend && <div className="text-xs text-emerald-600 font-medium">{trend}</div>}
+          {trend && <div className="text-xs text-success-600 font-medium">{trend}</div>}
         </div>
       </div>
     </div>
