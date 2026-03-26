@@ -592,7 +592,7 @@ async function queueNotification(type, recipientEmail, data, companyId) {
   // Push delivery would be handled by the Edge Function
   // For now, log that push was requested
   if (subs?.length > 0) {
-  console.log("Push queued for", recipientEmail, "type:", type);
+  // Push queued (debug removed)
   }
   }
   } catch (e) { console.warn("queueNotification failed:", e.message); }
@@ -10266,7 +10266,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   if (insErr) console.warn("Default account insert failed for " + acct.code + ":", insErr.message);
   }
   const { data: freshAccts, error: fetchErr } = await supabase.from("acct_accounts").select("*").eq("company_id", companyId).order("code");
-  console.log("Default accounts created. Re-fetched:", freshAccts?.length || 0, "accounts. Error:", fetchErr?.message || "none");
+  // Default accounts created (debug removed)
   accounts = (freshAccts || []).map(a => ({ ...a, type: _typeNorm[(a.type || "").toLowerCase()] || a.type }));
   if (accounts.length === 0) showToast("Failed to create default accounts. Check browser console for details.", "error");
   }
@@ -10342,7 +10342,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   }
   }
   }
-  if (patched > 0) console.log("Backfilled class_id on " + patched + " JE lines via property→class_id");
+  if (patched > 0) console.warn("Backfilled class_id on " + patched + " JE lines via property→class_id");
   }
 
   // Backfill: renumber old JEs with hash-style numbers (JE-MN2L16YX → JE-0001)
@@ -19245,7 +19245,7 @@ function AppInner() {
   subscription: JSON.parse(JSON.stringify(subscription)),
   }], { onConflict: "company_id,user_email" }).then(({ error }) => {
   if (error) console.warn("Push subscription save:", error.message);
-  else console.log("Push notifications enabled");
+  // Push notifications enabled
   });
   }
   } catch (e) { console.warn("Push registration failed:", e.message); }
@@ -19306,7 +19306,7 @@ function AppInner() {
   }
   }
   
-  if (queued > 0) console.log("Auto notification check: queued", queued, "notifications");
+  // Auto notification check complete
   } catch (e) { console.warn("Auto notification check:", e.message); }
   }
 
