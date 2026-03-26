@@ -8401,7 +8401,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
               <span className="material-icons-outlined text-slate-400 group-hover:text-green-600 text-xl">{r.icon}</span>
               <div><p className="text-sm font-semibold text-slate-800 group-hover:text-green-700">{r.title}</p><p className="text-xs text-slate-400 mt-0.5">{r.description}</p></div>
             </div>
-            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className="text-slate-300 hover:text-amber-400"><span className="material-icons text-lg">{favorites.includes(r.id) ? "star" : "star_border"}</span></button>
+            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className="text-slate-300 hover:text-amber-400"><span className="material-icons-outlined text-lg">{favorites.includes(r.id) ? "star" : "star_outline"}</span></button>
           </div>
         </div>
         ))}
@@ -8411,12 +8411,12 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
 
       {/* Favorites tab */}
       {!searchQuery && catalogTab === "favorites" && (
-      <div>{favReports.length === 0 ? <div className="text-center py-12 text-slate-400"><span className="material-icons-outlined text-4xl mb-2 block">star_border</span><p className="text-sm">No favorite reports yet. Click the star on any report to add it here.</p></div> : (
+      <div>{favReports.length === 0 ? <div className="text-center py-12 text-slate-400"><span className="material-icons-outlined text-4xl mb-2 block">star_outline</span><p className="text-sm">No favorite reports yet. Click the star on any report to add it here.</p></div> : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {favReports.map(r => (
           <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-slate-200 rounded-xl p-4 hover:border-green-300 hover:shadow-md transition-all bg-white">
             <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-slate-400 group-hover:text-green-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-slate-800 group-hover:text-green-700">{r.title}</p><p className="text-xs text-slate-400 mt-0.5">{r.description}</p></div></div>
-            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className="text-amber-400 hover:text-amber-500"><span className="material-icons text-lg">star</span></button></div>
+            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className="text-amber-400 hover:text-amber-500"><span className="material-icons-outlined text-lg">star</span></button></div>
           </div>))}
         </div>
       )}</div>
@@ -8434,7 +8434,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
                 <p className="text-xs text-slate-400 mt-0.5">{c.reportTitle} · {c.period}</p>
                 <p className="text-xs text-slate-300 mt-0.5">Saved {new Date(c.savedAt).toLocaleDateString()}</p>
               </div>
-              <button onClick={() => deleteCustomReport(c.id)} className="text-slate-300 hover:text-red-500"><span className="material-icons text-sm">close</span></button>
+              <button onClick={() => deleteCustomReport(c.id)} className="text-slate-300 hover:text-red-500"><span className="material-icons-outlined text-sm">close</span></button>
             </div>
           </div>
           ))}
@@ -8455,7 +8455,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
           {cat.reports.map(r => (
           <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-slate-200 rounded-xl p-4 hover:border-green-300 hover:shadow-md transition-all bg-white">
             <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-slate-400 group-hover:text-green-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-slate-800 group-hover:text-green-700">{r.title}</p><p className="text-xs text-slate-400 mt-0.5">{r.description}</p></div></div>
-            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className={favorites.includes(r.id) ? "text-amber-400 hover:text-amber-500" : "text-slate-300 hover:text-amber-400"}><span className="material-icons text-lg">{favorites.includes(r.id) ? "star" : "star_border"}</span></button></div>
+            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className={favorites.includes(r.id) ? "text-amber-400 hover:text-amber-500" : "text-slate-300 hover:text-amber-400"}><span className="material-icons-outlined text-lg">{favorites.includes(r.id) ? "star" : "star_outline"}</span></button></div>
           </div>))}
         </div>
         )}
@@ -8496,7 +8496,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
         <h3 className="text-lg font-semibold text-slate-900">{currentReport?.title}</h3>
       </div>
       <div className="flex gap-2">
-        <button onClick={() => toggleFavorite(reportId)} className={favorites.includes(reportId) ? "text-amber-400" : "text-slate-300 hover:text-amber-400"}><span className="material-icons text-lg">{favorites.includes(reportId) ? "star" : "star_border"}</span></button>
+        <button onClick={() => toggleFavorite(reportId)} className={favorites.includes(reportId) ? "text-amber-400" : "text-slate-300 hover:text-amber-400"}><span className="material-icons-outlined text-lg">{favorites.includes(reportId) ? "star" : "star_outline"}</span></button>
         <button onClick={exportCSV} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">download</span>Export</button>
         <button onClick={exportPDF} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">picture_as_pdf</span>PDF</button>
         <button onClick={printReport} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">print</span>Print</button>
