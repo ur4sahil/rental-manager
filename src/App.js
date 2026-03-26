@@ -9191,27 +9191,30 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     if (linesErr) { showToast("JE lines error: " + linesErr.message, "error"); return; }
 
     // Create posting decision record
-    const { data: decision } = await supabase.from("bank_posting_decision").insert([{
+    const { data: decision, error: decErr } = await supabase.from("bank_posting_decision").insert([{
       company_id: companyId, bank_feed_transaction_id: txn.id,
       decision_type: "add", payee: txn.payee_normalized || "", memo: memo || "",
       header_class_id: classId || null, status: "posted", created_by: userProfile?.email || ""
     }]).select("id").maybeSingle();
+    if (decErr) { showToast("Error saving posting decision: " + decErr.message, "error"); return; }
 
     // Create decision line
     if (decision) {
-      await supabase.from("bank_posting_decision_line").insert([{
+      const { error: dlErr } = await supabase.from("bank_posting_decision_line").insert([{
         company_id: companyId, bank_posting_decision_id: decision.id,
         gl_account_id: accountId, gl_account_name: accountName,
         amount: abs, entry_side: isInflow ? "credit" : "debit", memo: memo || ""
       }]);
+      if (dlErr) { showToast("Error saving decision line: " + dlErr.message, "error"); return; }
     }
 
     // Create link
-    await supabase.from("bank_feed_transaction_link").insert([{
+    const { error: linkErr } = await supabase.from("bank_feed_transaction_link").insert([{
       company_id: companyId, bank_feed_transaction_id: txn.id,
       linked_object_type: "journal_entry", linked_object_id: jeRow.id,
       link_role: "created_from"
     }]);
+    if (linkErr) { showToast("Error linking transaction: " + linkErr.message, "error"); return; }
 
     // Update transaction status
     await supabase.from("bank_feed_transaction").update({
@@ -9239,11 +9242,12 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       excluded_at: new Date().toISOString(), excluded_by: userProfile?.email || ""
     }).eq("id", txn.id).eq("company_id", companyId);
 
-    await supabase.from("bank_posting_decision").insert([{
+    const { error: decErr } = await supabase.from("bank_posting_decision").insert([{
       company_id: companyId, bank_feed_transaction_id: txn.id,
       decision_type: "exclude", memo: reason, status: "posted",
       created_by: userProfile?.email || ""
     }]);
+    if (decErr) { showToast("Error saving exclusion decision: " + decErr.message, "error"); return; }
 
     logAudit("update", "banking", `Excluded bank txn: ${txn.bank_description_clean} (${reason})`, txn.id, userProfile?.email, "", companyId);
     showToast("Transaction excluded.", "success");
@@ -9296,16 +9300,18 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     if (!guardSubmit("bankMatch", txn.id)) return;
     try {
     // Link bank transaction to existing JE without creating a new one
-    await supabase.from("bank_feed_transaction_link").insert([{
+    const { error: linkErr } = await supabase.from("bank_feed_transaction_link").insert([{
       company_id: companyId, bank_feed_transaction_id: txn.id,
       linked_object_type: "journal_entry", linked_object_id: targetJE.id,
       link_role: "matched_to"
     }]);
-    await supabase.from("bank_posting_decision").insert([{
+    if (linkErr) { showToast("Error linking transaction: " + linkErr.message, "error"); return; }
+    const { error: decErr } = await supabase.from("bank_posting_decision").insert([{
       company_id: companyId, bank_feed_transaction_id: txn.id,
       decision_type: "match", memo: `Matched to ${targetJE.number}`,
       status: "posted", created_by: userProfile?.email || ""
     }]);
+    if (decErr) { showToast("Error saving match decision: " + decErr.message, "error"); return; }
     await supabase.from("bank_feed_transaction").update({
       status: "matched", accepted_at: new Date().toISOString(),
       accepted_by: userProfile?.email || "", journal_entry_id: targetJE.id,
@@ -9347,22 +9353,25 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     }]).select("id").maybeSingle();
     if (jeErr || !jeRow) { showToast("Error creating JE: " + (jeErr?.message || ""), "error"); return; }
 
-    await supabase.from("acct_journal_lines").insert(lines.map(l => ({
+    const { error: xlErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({
       journal_entry_id: jeRow.id, company_id: companyId,
       account_id: l.account_id, account_name: l.account_name,
       debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: null, memo: l.memo || "",
       bank_feed_transaction_id: txn.id
     })));
+    if (xlErr) { showToast("Error saving transfer JE lines: " + xlErr.message, "error"); return; }
 
-    await supabase.from("bank_posting_decision").insert([{
+    const { error: xdErr } = await supabase.from("bank_posting_decision").insert([{
       company_id: companyId, bank_feed_transaction_id: txn.id,
       decision_type: "transfer", memo: memo || "", transfer_gl_account_id: toAccountId,
       status: "posted", created_by: userProfile?.email || ""
     }]);
-    await supabase.from("bank_feed_transaction_link").insert([{
+    if (xdErr) { showToast("Error saving transfer decision: " + xdErr.message, "error"); return; }
+    const { error: xkErr } = await supabase.from("bank_feed_transaction_link").insert([{
       company_id: companyId, bank_feed_transaction_id: txn.id,
       linked_object_type: "journal_entry", linked_object_id: jeRow.id, link_role: "created_from"
     }]);
+    if (xkErr) { showToast("Error linking transfer: " + xkErr.message, "error"); return; }
     await supabase.from("bank_feed_transaction").update({
       status: "categorized", accepted_at: new Date().toISOString(),
       accepted_by: userProfile?.email || "", journal_entry_id: jeRow.id
@@ -9418,27 +9427,31 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
         class_id: l.classId || null, memo: l.memo || "", bank_feed_transaction_id: txn.id
       });
     }
-    await supabase.from("acct_journal_lines").insert(jeLines);
+    const { error: slErr } = await supabase.from("acct_journal_lines").insert(jeLines);
+    if (slErr) { showToast("Error saving split JE lines: " + slErr.message, "error"); return; }
 
     // Decision + lines
-    const { data: decision } = await supabase.from("bank_posting_decision").insert([{
+    const { data: decision, error: sdErr } = await supabase.from("bank_posting_decision").insert([{
       company_id: companyId, bank_feed_transaction_id: txn.id,
       decision_type: "split", memo: `Split into ${validLines.length} lines`,
       status: "posted", created_by: userProfile?.email || ""
     }]).select("id").maybeSingle();
+    if (sdErr) { showToast("Error saving split decision: " + sdErr.message, "error"); return; }
     if (decision) {
-      await supabase.from("bank_posting_decision_line").insert(validLines.map((l, i) => ({
+      const { error: sdlErr } = await supabase.from("bank_posting_decision_line").insert(validLines.map((l, i) => ({
         company_id: companyId, bank_posting_decision_id: decision.id,
         line_no: i + 1, gl_account_id: l.accountId, gl_account_name: l.accountName,
         amount: safeNum(l.amount), entry_side: isInflow ? "credit" : "debit",
         memo: l.memo || "", class_id: l.classId || null
       })));
+      if (sdlErr) { showToast("Error saving split lines: " + sdlErr.message, "error"); return; }
     }
 
-    await supabase.from("bank_feed_transaction_link").insert([{
+    const { error: skErr } = await supabase.from("bank_feed_transaction_link").insert([{
       company_id: companyId, bank_feed_transaction_id: txn.id,
       linked_object_type: "journal_entry", linked_object_id: jeRow.id, link_role: "created_from"
     }]);
+    if (skErr) { showToast("Error linking split: " + skErr.message, "error"); return; }
     await supabase.from("bank_feed_transaction").update({
       status: "categorized", accepted_at: new Date().toISOString(),
       accepted_by: userProfile?.email || "", journal_entry_id: jeRow.id,
