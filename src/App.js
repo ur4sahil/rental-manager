@@ -8038,7 +8038,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   </div>
   <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
   <table className="w-full text-sm">
-  <thead className="text-xs text-neutral-500 uppercase tracking-wider bg-neutral-50 font-semibold"><tr><th className="px-5 py-3 text-left">Entry #</th><th className="px-5 py-3 text-left">Date</th><th className="px-5 py-3 text-left">Property</th><th className="px-5 py-3 text-left">Description</th><th className="px-5 py-3 text-left">Ref</th><th className="px-5 py-3 text-left">Status</th><th className="px-5 py-3 text-right">Amount</th><th className="px-5 py-3">Actions</th></tr></thead>
+  <thead className="text-xs text-neutral-500 uppercase tracking-wider bg-neutral-50 font-semibold"><tr><th className="px-5 py-3 text-left">Entry #</th><th className="px-5 py-3 text-left">Date</th><th className="px-5 py-3 text-left">Property</th><th className="px-5 py-3 text-left">Description</th><th className="px-5 py-3 text-left">Source</th><th className="px-5 py-3 text-left">Status</th><th className="px-5 py-3 text-right">Amount</th><th className="px-5 py-3">Actions</th></tr></thead>
   <tbody>
   {filtered.map(je => {
   const total = (je.lines || []).reduce((s,l) => s + safeNum(l.debit), 0);
@@ -8048,7 +8048,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   <td className="px-5 py-3 text-neutral-500">{acctFmtDate(je.date)}</td>
   <td className="px-5 py-3 text-xs text-neutral-500">{je.property || "—"}</td>
   <td className="px-5 py-3 font-medium text-neutral-800">{je.description}</td>
-  <td className="px-5 py-3 text-xs text-neutral-400">{je.reference || "—"}</td>
+  <td className="px-5 py-3 text-xs text-neutral-400">{(() => { const r = je.reference || ""; if (r.startsWith("BANK-")) return "Bank Import"; if (r.startsWith("XFER-")) return "Bank Transfer"; if (r.startsWith("SPLIT-")) return "Bank Split"; if (r.startsWith("PAY-")) return "Payment"; if (r.startsWith("STRIPE-")) return "Stripe"; if (r.startsWith("RECUR-")) return "Recurring"; if (r.startsWith("DEP-")) return "Deposit"; if (r.startsWith("PRORENT-")) return "Prorated Rent"; if (r.startsWith("RENT-")) return "Rent Charge"; if (r.startsWith("LATEFEE-")) return "Late Fee"; if (r.startsWith("VINV-")) return "Vendor Invoice"; if (r.startsWith("WO-")) return "Work Order"; if (r.startsWith("DEPRET-")) return "Deposit Return"; if (r.startsWith("DEPFORF-")) return "Deposit Forfeiture"; if (r.startsWith("MOVEOUT-")) return "Move-Out"; if (r) return "Manual"; return "—"; })()}</td>
   <td className="px-5 py-3"><AcctStatusBadge status={je.status} /></td>
   <td className="px-5 py-3 text-right font-mono text-sm font-semibold">{acctFmt(total)}</td>
   <td className="px-5 py-3 text-center">
@@ -9535,10 +9535,13 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     if (maxJE?.number) { const parsed = parseInt(maxJE.number.replace("JE-",""), 10); if (!isNaN(parsed)) nextNum = parsed + 1; }
     const jeNumber = `JE-${String(nextNum).padStart(4,"0")}`;
 
+    // Resolve property from class if selected
+    const classProperty = classId ? (classes.find(c => c.id === classId)?.name || "") : "";
+
     const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
       company_id: companyId, number: jeNumber, date: txn.posted_date,
       description: memo || txn.bank_description_clean,
-      reference: `BANK-${txn.id}`, property: "", status: "posted"
+      reference: `BANK-${txn.id}`, property: classProperty, status: "posted"
     }]).select("id").maybeSingle();
 
     if (jeErr || !jeRow) { showToast("Error creating JE: " + (jeErr?.message || "no ID"), "error"); return; }
@@ -9715,7 +9718,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
       company_id: companyId, number: `JE-${String(nextNum).padStart(4,"0")}`, date: txn.posted_date,
       description: memo || `Transfer — ${txn.bank_description_clean}`,
-      reference: `XFER-${txn.id}`, property: "", status: "posted"
+      reference: `XFER-${txn.id}`, property: "", status: "posted" // transfers don't have a class/property
     }]).select("id").maybeSingle();
     if (jeErr || !jeRow) { showToast("Error creating JE: " + (jeErr?.message || ""), "error"); return; }
 
@@ -9770,10 +9773,14 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     const { data: maxJE } = await supabase.from("acct_journal_entries").select("number").eq("company_id", companyId).order("number", { ascending: false }).limit(1).maybeSingle();
     let nextNum = 1; if (maxJE?.number) { const p = parseInt(maxJE.number.replace("JE-",""), 10); if (!isNaN(p)) nextNum = p + 1; }
 
+    // Resolve property from first split line's class if available
+    const splitClassId = lines.find(l => l.classId)?.classId;
+    const splitProperty = splitClassId ? (classes.find(c => c.id === splitClassId)?.name || "") : "";
+
     const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
       company_id: companyId, number: `JE-${String(nextNum).padStart(4,"0")}`, date: txn.posted_date,
       description: `Split — ${txn.bank_description_clean}`,
-      reference: `SPLIT-${txn.id}`, property: "", status: "posted"
+      reference: `SPLIT-${txn.id}`, property: splitProperty, status: "posted"
     }]).select("id").maybeSingle();
     if (jeErr || !jeRow) { pmError("PM-4002", { raw: jeErr, context: "create journal entry" }); return; }
 
