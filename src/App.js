@@ -8946,7 +8946,6 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   const [selectedTxns, setSelectedTxns] = useState(new Set());
   const [expandedTxn, setExpandedTxn] = useState(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
-  const [showRules, setShowRules] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
   const [plaidConnecting, setPlaidConnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -9902,8 +9901,10 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   // --- Filtering ---
   const filtered = transactions.filter(t => {
     if (activeTab === "for_review" && t.status !== "for_review") return false;
+    if (activeTab === "recognized" && !(t.status === "for_review" && t.suggestion_status === "suggested_rule")) return false;
     if (activeTab === "categorized" && !["categorized", "matched", "posted"].includes(t.status)) return false;
     if (activeTab === "excluded" && t.status !== "excluded") return false;
+    if (activeTab === "rules") return false; // Rules tab shows rules, not transactions
     if (selectedFeed !== "all" && t.bank_account_feed_id !== selectedFeed) return false;
     if (directionFilter !== "all" && t.direction !== directionFilter) return false;
     if (dateFrom && t.posted_date < dateFrom) return false;
@@ -9920,6 +9921,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
 
   const counts = {
     for_review: transactions.filter(t => t.status === "for_review").length,
+    recognized: transactions.filter(t => t.status === "for_review" && t.suggestion_status === "suggested_rule").length,
     categorized: transactions.filter(t => ["categorized", "matched", "posted"].includes(t.status)).length,
     excluded: transactions.filter(t => t.status === "excluded").length,
   };
@@ -9933,7 +9935,6 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   <div className="flex items-center justify-between">
     <div><h3 className="text-lg font-semibold text-slate-900">Bank Transactions</h3><p className="text-sm text-slate-400">Import, review, and categorize bank transactions</p></div>
     <div className="flex gap-2 flex-wrap">
-      <button onClick={() => setShowRules(!showRules)} className="text-xs bg-violet-100 text-violet-700 px-3 py-1.5 rounded-lg font-semibold hover:bg-violet-200">Rules ({rules.length})</button>
       {connections.some(c => c.connection_status === "active") && <button onClick={syncTransactions} disabled={syncing} className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg font-semibold hover:bg-emerald-200 disabled:opacity-50">{syncing ? "Syncing..." : "Sync"}</button>}
       <button onClick={connectBank} disabled={plaidConnecting} className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">link</span>{plaidConnecting ? "Connecting..." : "Connect Bank"}</button>
       <button onClick={startImport} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-slate-700 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">upload_file</span>Import CSV</button>
@@ -9992,13 +9993,81 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   {/* Tabs */}
   {feeds.length > 0 && (<>
   <div className="flex gap-1 border-b border-slate-200">
-    {[["for_review", `For Review (${counts.for_review})`], ["categorized", `Categorized (${counts.categorized})`], ["excluded", `Excluded (${counts.excluded})`]].map(([id, label]) => (
+    {[["for_review", `For Review (${counts.for_review})`], ["recognized", `Recognized (${counts.recognized})`], ["categorized", `Categorized (${counts.categorized})`], ["excluded", `Excluded (${counts.excluded})`], ["rules", `Rules (${rules.length})`]].map(([id, label]) => (
     <button key={id} onClick={() => { setActiveTab(id); setSelectedTxns(new Set()); }}
       className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-600"}`}>{label}</button>
     ))}
   </div>
 
-  {/* Filters */}
+  {/* Rules Tab Content */}
+  {activeTab === "rules" && (
+  <div className="space-y-4">
+    <div className="flex items-center justify-between">
+      <p className="text-sm text-slate-500">Rules run in priority order. First matching rule wins.</p>
+      <button onClick={() => { resetRuleForm(); setShowRuleDrawer(true); }} className="bg-violet-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-violet-700 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">add</span>New Rule</button>
+    </div>
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <table className="w-full text-sm">
+        <thead className="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th className="px-3 py-2.5 w-12 text-center text-xs font-semibold text-slate-500">#</th>
+            <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500">RULE NAME</th>
+            <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500">CONDITIONS</th>
+            <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500">ACTION</th>
+            <th className="px-3 py-2.5 text-center text-xs font-semibold text-slate-500">MATCHED</th>
+            <th className="px-3 py-2.5 text-center text-xs font-semibold text-slate-500">STATUS</th>
+            <th className="px-3 py-2.5 text-right text-xs font-semibold text-slate-500">ACTIONS</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rules.map(r => {
+            const cond = r.condition_json || {};
+            const act = r.action_json || {};
+            const conditions = cond.conditions || [];
+            const lines = act.lines || [];
+            return (
+            <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50">
+              <td className="px-3 py-3 text-center"><span className="font-mono text-xs text-slate-400">{r.priority}</span></td>
+              <td className="px-3 py-3"><span className="font-semibold text-slate-800">{r.name}</span>{r.auto_accept && <span className="ml-2 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">auto-add</span>}</td>
+              <td className="px-3 py-3 text-xs text-slate-500 max-w-48">
+                <span className="text-violet-600 font-medium">{(cond.logic || "all").toUpperCase()}</span>{" of: "}
+                {conditions.map((c, i) => <span key={i}>{i > 0 && ", "}{c.field} {c.operator} "{c.value}"</span>)}
+                {cond.direction !== "all" && <span className="ml-1">· {cond.direction}</span>}
+              </td>
+              <td className="px-3 py-3 text-xs">
+                {act.type === "exclude" ? <span className="text-red-600 font-medium">Exclude ({act.exclude_reason})</span>
+                  : <span className="text-blue-600">{lines.map(l => l.account_name).join(" + ") || "—"}{act.split && <span className="text-purple-500 ml-1">(split)</span>}</span>}
+              </td>
+              <td className="px-3 py-3 text-center text-xs text-slate-400">{r.apply_count || 0}</td>
+              <td className="px-3 py-3 text-center">
+                <button onClick={() => toggleRule(r)} className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.enabled ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>{r.enabled ? "On" : "Off"}</button>
+              </td>
+              <td className="px-3 py-3 text-right">
+                <button onClick={() => startEditRule(r)} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>
+                <button onClick={() => duplicateRule(r)} className="text-xs text-slate-400 hover:underline mr-2">Copy</button>
+                <button onClick={() => deleteRule(r.id)} className="text-xs text-red-400 hover:text-red-600">Delete</button>
+              </td>
+            </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {rules.length === 0 && (
+        <div className="py-12 text-center text-slate-400">
+          <div className="text-3xl mb-2">📋</div>
+          <p className="font-medium">No rules yet</p>
+          <p className="text-xs mt-1">Rules auto-categorize imported transactions. Create your first one!</p>
+        </div>
+      )}
+    </div>
+    {rules.length > 0 && counts.for_review > 0 && (
+      <button onClick={async () => { const ids = transactions.filter(t => t.status === "for_review").map(t => t.id); const n = await applyRulesToTransactions(ids); showToast(`Rules applied to ${n} transaction(s).`, "success"); }} className="text-sm text-violet-600 hover:underline">Re-apply all rules to {counts.for_review} "For Review" transactions</button>
+    )}
+  </div>
+  )}
+
+  {/* Filters (hidden on Rules tab) */}
+  {activeTab !== "rules" && (
   <div className="flex flex-wrap gap-2">
     <Input placeholder="Search description, payee, amount..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="flex-1 min-w-48" />
     <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-36" />
@@ -10007,7 +10076,9 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       <option value="all">All</option><option value="inflow">Money In</option><option value="outflow">Money Out</option>
     </select>
   </div>
+  )}
 
+  {activeTab !== "rules" && (<>
   {/* Bulk Action Bar */}
   {selectedTxns.size > 0 && activeTab === "for_review" && (
   <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-3 flex items-center justify-between">
@@ -10177,6 +10248,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   </div>
   <div className="text-xs text-slate-400">{filtered.length} of {transactions.length} transactions</div>
   </>)}
+  </>)}
 
   {/* New Account Modal */}
   {showNewAccount && (
@@ -10335,90 +10407,6 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   </div>
   )}
 
-  {/* Rules Panel */}
-  {showRules && (
-  <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 space-y-3">
-    <div className="flex items-center justify-between">
-      <div><p className="text-sm font-bold text-violet-900">Auto-Categorization Rules</p><p className="text-xs text-violet-600">Rules run in priority order on new imports. Lower number = higher priority.</p></div>
-      <button onClick={() => setShowRules(false)} className="text-violet-400 hover:text-violet-700 text-lg">✕</button>
-    </div>
-
-    {/* Existing Rules */}
-    {rules.length === 0 && <p className="text-sm text-violet-500 text-center py-2">No rules yet. Create one below.</p>}
-    <div className="max-h-48 overflow-y-auto space-y-1.5">
-    {rules.map(r => {
-      const c = r.condition_json || {};
-      const a = r.action_json || {};
-      return (
-      <div key={r.id} className={`text-xs bg-white rounded-lg p-2.5 border ${r.enabled ? "border-violet-100" : "border-slate-200 opacity-50"} flex items-center gap-2`}>
-        <span className="text-slate-400 shrink-0 w-6 text-center font-mono">{r.priority}</span>
-        <div className="flex-1 min-w-0">
-          <span className="font-semibold text-slate-700">{r.name}</span>
-          <div className="text-slate-400 mt-0.5">If {c.field || "desc"} <span className="text-violet-600">{c.operator || "contains"}</span> "<span className="font-mono">{c.value}</span>"
-          {c.direction && c.direction !== "all" && <span> · {c.direction}</span>}
-          {c.amount_min && <span> · min ${c.amount_min}</span>}
-          {c.amount_max && <span> · max ${c.amount_max}</span>}
-          → <span className="text-blue-600">{a.account_name || a.account_id || "no category"}</span>
-          {r.auto_accept && <span className="ml-1 bg-amber-100 text-amber-700 px-1 py-0.5 rounded">auto-accept</span>}
-          </div>
-        </div>
-        <div className="flex gap-1 shrink-0">
-          <button onClick={() => toggleRule(r)} className={`px-1.5 py-0.5 rounded text-xs ${r.enabled ? "text-emerald-600" : "text-slate-400"}`}>{r.enabled ? "On" : "Off"}</button>
-          <button onClick={() => startEditRule(r)} className="text-brand-500 hover:underline">Edit</button>
-          <button onClick={() => deleteRule(r.id)} className="text-red-400 hover:text-red-600">✕</button>
-        </div>
-      </div>
-      );
-    })}
-    </div>
-
-    {/* Add/Edit Rule Form */}
-    <div className="border-t border-violet-200 pt-3">
-      <p className="text-xs font-semibold text-violet-700 mb-2">{editingRule ? "Edit Rule" : "New Rule"}</p>
-      <div className="grid grid-cols-2 gap-2 mb-2">
-        <div><label className="text-xs text-slate-500 block mb-0.5">Rule Name *</label>
-          <input type="text" value={ruleForm.name} onChange={e => setRuleForm({...ruleForm, name: e.target.value})} placeholder="e.g. Rent payments" className="w-full border border-violet-200 rounded-lg px-2 py-1.5 text-xs" /></div>
-        <div><label className="text-xs text-slate-500 block mb-0.5">Priority</label>
-          <input type="number" value={ruleForm.priority} onChange={e => setRuleForm({...ruleForm, priority: e.target.value})} min="1" max="999" className="w-full border border-violet-200 rounded-lg px-2 py-1.5 text-xs" /></div>
-      </div>
-      <p className="text-xs text-slate-400 mb-1">Conditions</p>
-      <div className="grid grid-cols-3 gap-2 mb-2">
-        <select value={ruleForm.condOp} onChange={e => setRuleForm({...ruleForm, condOp: e.target.value})} className="border border-violet-200 rounded-lg px-2 py-1.5 text-xs">
-          <option value="contains">Contains</option><option value="starts_with">Starts with</option><option value="ends_with">Ends with</option><option value="equals">Equals</option><option value="regex">Regex</option>
-        </select>
-        <input type="text" value={ruleForm.condValue} onChange={e => setRuleForm({...ruleForm, condValue: e.target.value})} placeholder="e.g. rent, mortgage..." className="border border-violet-200 rounded-lg px-2 py-1.5 text-xs col-span-2" />
-      </div>
-      <div className="grid grid-cols-3 gap-2 mb-2">
-        <select value={ruleForm.condDirection} onChange={e => setRuleForm({...ruleForm, condDirection: e.target.value})} className="border border-violet-200 rounded-lg px-2 py-1.5 text-xs">
-          <option value="all">Any direction</option><option value="inflow">Money In</option><option value="outflow">Money Out</option>
-        </select>
-        <input type="number" value={ruleForm.condAmountMin} onChange={e => setRuleForm({...ruleForm, condAmountMin: e.target.value})} placeholder="Min $" className="border border-violet-200 rounded-lg px-2 py-1.5 text-xs" />
-        <input type="number" value={ruleForm.condAmountMax} onChange={e => setRuleForm({...ruleForm, condAmountMax: e.target.value})} placeholder="Max $" className="border border-violet-200 rounded-lg px-2 py-1.5 text-xs" />
-      </div>
-      <p className="text-xs text-slate-400 mb-1">Actions</p>
-      <div className="grid grid-cols-2 gap-2 mb-2">
-        <div><label className="text-xs text-slate-500 block mb-0.5">Category / Account</label>
-          <select value={ruleForm.actionAccountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); setRuleForm({...ruleForm, actionAccountId: e.target.value, actionAccountName: a?.name || ""}); }} className="w-full border border-violet-200 rounded-lg px-2 py-1.5 text-xs">
-            <option value="">Select...</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a => a.type === type && a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}
-          </select></div>
-        <div><label className="text-xs text-slate-500 block mb-0.5">Class</label>
-          <select value={ruleForm.actionClassId} onChange={e => setRuleForm({...ruleForm, actionClassId: e.target.value})} className="w-full border border-violet-200 rounded-lg px-2 py-1.5 text-xs">
-            <option value="">No class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select></div>
-        <div><label className="text-xs text-slate-500 block mb-0.5">Payee</label>
-          <input type="text" value={ruleForm.actionPayee} onChange={e => setRuleForm({...ruleForm, actionPayee: e.target.value})} placeholder="Optional" className="w-full border border-violet-200 rounded-lg px-2 py-1.5 text-xs" /></div>
-        <div><label className="text-xs text-slate-500 block mb-0.5">Memo</label>
-          <input type="text" value={ruleForm.actionMemo} onChange={e => setRuleForm({...ruleForm, actionMemo: e.target.value})} placeholder="Optional" className="w-full border border-violet-200 rounded-lg px-2 py-1.5 text-xs" /></div>
-      </div>
-      <label className="flex items-center gap-2 text-xs mb-3"><input type="checkbox" checked={ruleForm.autoAccept} onChange={e => setRuleForm({...ruleForm, autoAccept: e.target.checked})} className="accent-violet-600" /> <span className="text-slate-600">Auto-accept (skip review — use with caution)</span></label>
-      <div className="flex gap-2">
-        <button onClick={saveRule} className="bg-violet-600 text-white text-xs px-4 py-1.5 rounded-lg hover:bg-violet-700">{editingRule ? "Update Rule" : "Create Rule"}</button>
-        {editingRule && <button onClick={() => resetRuleForm()} className="text-xs text-slate-400">Cancel</button>}
-        {transactions.filter(t => t.status === "for_review").length > 0 && <button onClick={async () => { const ids = transactions.filter(t => t.status === "for_review").map(t => t.id); const n = await applyRulesToTransactions(ids); showToast(`Rules applied to ${n} transaction(s).`, "success"); }} className="text-xs text-violet-600 hover:underline ml-auto">Re-apply rules to all For Review</button>}
-      </div>
-    </div>
-  </div>
-  )}
 
   {/* ========== RULE DRAWER (slide from right) ========== */}
   {showRuleDrawer && (
