@@ -9576,7 +9576,8 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
 
   async function deleteRule(ruleId) {
     if (!await showConfirm({ message: "Delete this rule?" })) return;
-    await supabase.from("bank_transaction_rule").delete().eq("id", ruleId);
+    const { error } = await supabase.from("bank_transaction_rule").delete().eq("id", ruleId).eq("company_id", companyId);
+    if (error) { showToast("Error deleting rule: " + error.message, "error"); return; }
     showToast("Rule deleted.", "success");
     fetchAll();
   }
