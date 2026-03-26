@@ -883,7 +883,7 @@ const statusColors = {
   notice: "bg-orange-100 text-orange-700",
   open: "bg-blue-100 text-blue-700",
   in_progress: "bg-purple-100 text-purple-700",
-  completed: "bg-slate-100 text-slate-500",
+  completed: "bg-neutral-100 text-neutral-500",
   paid: "bg-green-100 text-green-700",
   partial: "bg-yellow-100 text-yellow-700",
   unpaid: "bg-red-100 text-red-700",
@@ -895,21 +895,21 @@ const statusColors = {
 const priorityColors = {
   emergency: "bg-red-500 text-white",
   normal: "bg-blue-100 text-blue-700",
-  low: "bg-slate-100 text-slate-500",
+  low: "bg-neutral-100 text-neutral-500",
 };
 
 // ============ SHARED COMPONENTS ============
 function Badge({ status, label }) {
-  const color = statusColors[status] || "bg-slate-100 text-slate-600";
+  const color = statusColors[status] || "bg-neutral-100 text-neutral-600";
   return <span className={`px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wide ${color}`}>{label || status}</span>;
 }
 
-function StatCard({ label, value, sub, color = "text-slate-800", onClick }) {
+function StatCard({ label, value, sub, color = "text-neutral-800", onClick }) {
   return (
   <div onClick={onClick} className={"bg-white rounded-3xl shadow-card border border-brand-50 p-5" + (onClick ? " cursor-pointer hover:border-brand-200 hover:shadow-md transition-all" : "")}>
-  <div className="text-xs text-slate-400 font-medium uppercase tracking-widest mb-1">{label}</div>
+  <div className="text-xs text-neutral-400 font-medium uppercase tracking-widest mb-1">{label}</div>
   <div className={`text-2xl font-manrope font-bold ${color}`}>{value}</div>
-  {sub && <div className="text-xs text-slate-400 mt-1">{sub}</div>}
+  {sub && <div className="text-xs text-neutral-400 mt-1">{sub}</div>}
   </div>
   );
 }
@@ -927,8 +927,8 @@ function Modal({ title, onClose, children }) {
   <div className="fixed inset-0 bg-black bg-opacity-40 z-[60] flex items-center justify-center p-4">
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 w-full max-w-lg max-h-[90vh] overflow-y-auto">
   <div className="flex items-center justify-between px-6 py-4 border-b border-brand-50 sticky top-0 bg-white rounded-t-3xl">
-  <h3 className="font-manrope font-bold text-slate-800 text-lg">{title}</h3>
-  <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 transition-colors"><span className="material-icons-outlined text-lg">close</span></button>
+  <h3 className="font-manrope font-bold text-neutral-800 text-lg">{title}</h3>
+  <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-neutral-400 hover:bg-neutral-100 transition-colors"><span className="material-icons-outlined text-lg">close</span></button>
   </div>
   <div className="p-6">{children}</div>
   </div>
@@ -942,10 +942,10 @@ function ToastContainer({ toasts, removeToast }) {
   return (
   <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 max-w-sm">
   {toasts.map(t => (
-  <div key={t.id} className={"flex items-start gap-3 px-4 py-3 rounded-2xl shadow-lg border backdrop-blur-md animate-slide-up " + (t.type === "error" ? "bg-red-50 border-red-200 text-red-800" : t.type === "warning" ? "bg-amber-50 border-amber-200 text-amber-800" : t.type === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-white border-brand-100 text-slate-700")}>
+  <div key={t.id} className={"flex items-start gap-3 px-4 py-3 rounded-2xl shadow-lg border backdrop-blur-md animate-slide-up " + (t.type === "error" ? "bg-red-50 border-red-200 text-red-800" : t.type === "warning" ? "bg-amber-50 border-amber-200 text-amber-800" : t.type === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-white border-brand-100 text-neutral-700")}>
   <span className="material-icons-outlined text-lg mt-0.5">{t.type === "error" ? "error" : t.type === "warning" ? "warning" : t.type === "success" ? "check_circle" : "info"}</span>
   <div className="flex-1 text-sm">{t.message}</div>
-  <button onClick={() => removeToast(t.id)} className="text-slate-400 hover:text-slate-600 ml-1"><span className="material-icons-outlined text-sm">close</span></button>
+  <button onClick={() => removeToast(t.id)} className="text-neutral-400 hover:text-neutral-600 ml-1"><span className="material-icons-outlined text-sm">close</span></button>
   </div>
   ))}
   </div>
@@ -960,10 +960,10 @@ function ConfirmModal({ config, onConfirm, onCancel }) {
   <div className="fixed inset-0 bg-black bg-opacity-40 z-[90] flex items-center justify-center p-4">
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 w-full max-w-md">
   <div className="px-6 py-4 border-b border-brand-50">
-  <h3 className="font-manrope font-bold text-slate-800 text-lg">{config.title || (isDanger ? "Confirm Action" : "Are you sure?")}</h3>
+  <h3 className="font-manrope font-bold text-neutral-800 text-lg">{config.title || (isDanger ? "Confirm Action" : "Are you sure?")}</h3>
   </div>
   <div className="px-6 py-5">
-  <p className="text-sm text-slate-600 whitespace-pre-line">{config.message}</p>
+  <p className="text-sm text-neutral-600 whitespace-pre-line">{config.message}</p>
   </div>
   <div className="px-6 py-4 border-t border-brand-50 flex justify-end gap-3">
   <Btn variant="slate" onClick={onCancel}>{config.cancelText || "Cancel"}</Btn>
@@ -982,7 +982,7 @@ function PropertyDropdown({ value, onChange, className = "", required = false, l
   }, [companyId]);
   return (
   <div>
-  {label && <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">{label} {required && "*"}</label>}
+  {label && <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">{label} {required && "*"}</label>}
   <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel ? sel.id : null); }} className={`border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full focus:border-brand-300 focus:outline-none transition-colors ${className}`} required={required}>
   <option value="">Select property...</option>
   {properties.map(p => <option key={p.id} value={p.address}>{p.address} ({p.type})</option>)}
@@ -1092,32 +1092,32 @@ function RecurringEntryModal({ entry, companyId, showToast, onComplete }) {
   <div className="w-14 h-14 bg-brand-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
   <span className="material-icons-outlined text-brand-600 text-2xl">autorenew</span>
   </div>
-  <h3 className="text-lg font-manrope font-bold text-slate-800">Set Up Recurring Rent</h3>
-  <p className="text-sm text-slate-400 mt-1">Schedule automatic rent charges for <strong>{entry.tenantName}</strong></p>
+  <h3 className="text-lg font-manrope font-bold text-neutral-800">Set Up Recurring Rent</h3>
+  <p className="text-sm text-neutral-400 mt-1">Schedule automatic rent charges for <strong>{entry.tenantName}</strong></p>
   </div>
   <div className="space-y-3">
   <div className="bg-brand-50 rounded-xl p-3">
-  <div className="flex justify-between text-sm"><span className="text-slate-500">Property</span><span className="font-medium text-slate-800">{entry.property?.split(",")[0]}</span></div>
-  <div className="flex justify-between text-sm mt-1"><span className="text-slate-500">Lease Period</span><span className="font-medium text-slate-800">{entry.leaseStart} → {entry.leaseEnd}</span></div>
+  <div className="flex justify-between text-sm"><span className="text-neutral-500">Property</span><span className="font-medium text-neutral-800">{entry.property?.split(",")[0]}</span></div>
+  <div className="flex justify-between text-sm mt-1"><span className="text-neutral-500">Lease Period</span><span className="font-medium text-neutral-800">{entry.leaseStart} → {entry.leaseEnd}</span></div>
   </div>
   <div>
-  <label className="text-xs font-medium text-slate-500 block mb-1">Monthly Rent Amount ($)</label>
+  <label className="text-xs font-medium text-neutral-500 block mb-1">Monthly Rent Amount ($)</label>
   <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full border border-brand-100 rounded-xl px-3 py-2 text-sm" />
   </div>
   <div className="grid grid-cols-2 gap-3">
   <div>
-  <label className="text-xs font-medium text-slate-500 block mb-1">Frequency</label>
+  <label className="text-xs font-medium text-neutral-500 block mb-1">Frequency</label>
   <select value={freq} onChange={e => setFreq(e.target.value)} className="w-full border border-brand-100 rounded-xl px-3 py-2 text-sm">
   <option value="monthly">Monthly</option>
   <option value="quarterly">Quarterly</option>
   </select>
   </div>
   <div>
-  <label className="text-xs font-medium text-slate-500 block mb-1">Day of Month</label>
+  <label className="text-xs font-medium text-neutral-500 block mb-1">Day of Month</label>
   <input type="number" min="1" max="28" value={dayOfMonth} onChange={e => setDayOfMonth(Math.min(28, Math.max(1, Number(e.target.value))))} title="Day of month (1-28, to ensure valid date in all months)" className="w-full border border-brand-100 rounded-xl px-3 py-2 text-sm" />
   </div>
   </div>
-  <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-500">
+  <div className="bg-neutral-50 rounded-xl p-3 text-xs text-neutral-500">
   <div className="flex justify-between"><span>Debit</span><span className="font-medium">AR - {entry.tenantName}</span></div>
   <div className="flex justify-between mt-1"><span>Credit</span><span className="font-medium">4000 Rental Income</span></div>
   <div className="flex justify-between mt-1"><span>Next charge</span><span className="font-medium">{nextPostDate}</span></div>
@@ -1127,7 +1127,7 @@ function RecurringEntryModal({ entry, companyId, showToast, onComplete }) {
   <Btn size="lg" className="flex-1" onClick={handleCreate} disabled={saving || !amount || Number(amount) <= 0}>
   {saving ? "Creating..." : "Create Recurring Entry"}
   </Btn>
-  <button onClick={onComplete} className="flex-1 bg-slate-100 text-slate-600 text-sm py-2.5 rounded-xl font-semibold hover:bg-slate-200">Skip for Now</button>
+  <button onClick={onComplete} className="flex-1 bg-neutral-100 text-neutral-600 text-sm py-2.5 rounded-xl font-semibold hover:bg-neutral-200">Skip for Now</button>
   </div>
   </div>
   </div>
@@ -1171,20 +1171,20 @@ function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUpl
   return (
   <Modal title="Upload Document" onClose={onClose}>
   <div className="space-y-3">
-  {property && <div className="text-xs text-slate-400">Property: <span className="font-semibold text-slate-600">{property}</span></div>}
-  {tenant && <div className="text-xs text-slate-400">Tenant: <span className="font-semibold text-slate-600">{tenant}</span></div>}
+  {property && <div className="text-xs text-neutral-400">Property: <span className="font-semibold text-neutral-600">{property}</span></div>}
+  {tenant && <div className="text-xs text-neutral-400">Tenant: <span className="font-semibold text-neutral-600">{tenant}</span></div>}
   <div>
-  <label className="text-xs font-medium text-slate-400 block mb-1">Document Name *</label>
+  <label className="text-xs font-medium text-neutral-400 block mb-1">Document Name *</label>
   <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Signed Lease Agreement" />
   </div>
   <div>
-  <label className="text-xs font-medium text-slate-400 block mb-1">Type</label>
+  <label className="text-xs font-medium text-neutral-400 block mb-1">Type</label>
   <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm">
   {["Lease","Notice","ID","Insurance","Inspection","Receipt","Other"].map(t => <option key={t} value={t}>{t}</option>)}
   </select>
   </div>
   <div>
-  <label className="text-xs font-medium text-slate-400 block mb-1">File *</label>
+  <label className="text-xs font-medium text-neutral-400 block mb-1">File *</label>
   <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv" className="text-sm" />
   </div>
   {!isTenantUpload && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} className="accent-brand-600" />Visible to tenant</label>}
@@ -1209,17 +1209,17 @@ function LandingPage({ onGetStarted }) {
   </nav>
   <div className="bg-gradient-to-br from-brand-50/50 to-[#fcf8ff] px-8 py-16 text-center">
   <p className="text-brand-600 font-semibold text-sm uppercase tracking-widest mb-3">Property Management Platform</p>
-  <h1 className="text-4xl md:text-5xl font-manrope font-extrabold text-slate-900 mb-4 leading-tight">Property Management<br />Made Simple</h1>
-  <p className="text-lg text-slate-400 mb-12 max-w-xl mx-auto">Manage properties, tenants, rent, maintenance, and accounting — all in one place.</p>
+  <h1 className="text-4xl md:text-5xl font-manrope font-extrabold text-neutral-900 mb-4 leading-tight">Property Management<br />Made Simple</h1>
+  <p className="text-lg text-neutral-400 mb-12 max-w-xl mx-auto">Manage properties, tenants, rent, maintenance, and accounting — all in one place.</p>
 
-  <h2 className="text-lg font-manrope font-manrope font-bold text-slate-700 mb-6">I am a...</h2>
+  <h2 className="text-lg font-manrope font-manrope font-bold text-neutral-700 mb-6">I am a...</h2>
   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
   <button onClick={() => onGetStarted("signup_pm")} className="bg-white rounded-3xl border border-brand-100 p-8 text-center hover:border-brand-300 hover:shadow-card transition-all group">
   <div className="w-16 h-16 rounded-2xl bg-brand-50 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
   <span className="material-icons-outlined text-brand-600 text-3xl">business</span>
   </div>
-  <div className="text-lg font-manrope font-bold text-slate-800 mb-2">Property Manager</div>
-  <p className="text-sm text-slate-400">I manage properties on behalf of owners. Full access to all management tools.</p>
+  <div className="text-lg font-manrope font-bold text-neutral-800 mb-2">Property Manager</div>
+  <p className="text-sm text-neutral-400">I manage properties on behalf of owners. Full access to all management tools.</p>
   <div className="mt-4 text-brand-600 text-sm font-bold">Get Started →</div>
   </button>
 
@@ -1227,8 +1227,8 @@ function LandingPage({ onGetStarted }) {
   <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
   <span className="material-icons-outlined text-emerald-600 text-3xl">home</span>
   </div>
-  <div className="text-lg font-manrope font-bold text-slate-800 mb-2">Property Owner</div>
-  <p className="text-sm text-slate-400">I own properties and want to manage them directly or assign a property manager.</p>
+  <div className="text-lg font-manrope font-bold text-neutral-800 mb-2">Property Owner</div>
+  <p className="text-sm text-neutral-400">I own properties and want to manage them directly or assign a property manager.</p>
   <div className="mt-4 text-emerald-600 text-sm font-bold">Get Started →</div>
   </button>
 
@@ -1236,19 +1236,19 @@ function LandingPage({ onGetStarted }) {
   <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
   <span className="material-icons-outlined text-amber-600 text-3xl">vpn_key</span>
   </div>
-  <div className="text-lg font-manrope font-bold text-slate-800 mb-2">Tenant</div>
-  <p className="text-sm text-slate-400">I have an invite code from my landlord or property manager to access my portal.</p>
+  <div className="text-lg font-manrope font-bold text-neutral-800 mb-2">Tenant</div>
+  <p className="text-sm text-neutral-400">I have an invite code from my landlord or property manager to access my portal.</p>
   <div className="mt-4 text-amber-600 text-sm font-bold">Enter Invite Code →</div>
   </button>
   </div>
 
   <div className="mt-10">
-  <button onClick={() => onGetStarted("login")} className="text-sm text-slate-400 hover:text-brand-600 transition-colors">Already have an account? <span className="font-bold">Sign In</span></button>
+  <button onClick={() => onGetStarted("login")} className="text-sm text-neutral-400 hover:text-brand-600 transition-colors">Already have an account? <span className="font-bold">Sign In</span></button>
   </div>
   </div>
 
   <div className="px-8 py-16 bg-white/50">
-  <h2 className="text-2xl font-manrope font-bold text-center text-slate-800 mb-10">Everything You Need</h2>
+  <h2 className="text-2xl font-manrope font-bold text-center text-neutral-800 mb-10">Everything You Need</h2>
   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
   {[
   { icon: "apartment", title: "Property Management", desc: "Track all your properties, units, and their status in one place." },
@@ -1262,13 +1262,13 @@ function LandingPage({ onGetStarted }) {
   <div className="w-12 h-12 bg-brand-50 text-brand-600 rounded-2xl flex items-center justify-center mb-3">
   <span className="material-icons-outlined text-xl">{f.icon}</span>
   </div>
-  <div className="font-manrope font-bold text-slate-800 mb-1">{f.title}</div>
-  <div className="text-sm text-slate-400">{f.desc}</div>
+  <div className="font-manrope font-bold text-neutral-800 mb-1">{f.title}</div>
+  <div className="text-sm text-neutral-400">{f.desc}</div>
   </div>
   ))}
   </div>
   </div>
-  <footer className="border-t border-brand-50 px-8 py-6 text-center text-xs text-slate-400">
+  <footer className="border-t border-brand-50 px-8 py-6 text-center text-xs text-neutral-400">
   © 2025 Estate Logic by Sigma Housing LLC. All rights reserved.
   </footer>
   </div>
@@ -1377,7 +1377,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 w-full max-w-sm text-center">
   <div className="text-4xl mb-3">✅</div>
   <PageHeader title="Account Created!" />
-  <p className="text-sm text-slate-400 mb-4">Check your email for a confirmation link. Once confirmed, you can sign in.</p>
+  <p className="text-sm text-neutral-400 mb-4">Check your email for a confirmation link. Once confirmed, you can sign in.</p>
   <button onClick={() => { setSignupSuccess(false); setMode("login"); setError(""); }} className="bg-brand-600 text-white py-2.5 px-6 rounded-lg font-semibold text-sm hover:bg-brand-700">Back to Sign In</button>
   </div>
   </div>
@@ -1399,37 +1399,37 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   <div className="text-center mb-4">
   <span className="text-3xl">{typeInfo.icon}</span>
   <PageHeader title="{typeInfo.title}" />
-  <p className="text-sm text-slate-400">{typeInfo.subtitle}</p>
+  <p className="text-sm text-neutral-400">{typeInfo.subtitle}</p>
   </div>
   )}
   {!isSignup && (
   <>
   <PageHeader title="Welcome back" />
-  <p className="text-sm text-slate-400 mb-6">Sign in to your account</p>
+  <p className="text-sm text-neutral-400 mb-6">Sign in to your account</p>
   </>
   )}
   {error && <div className="bg-red-50 text-red-600 text-xs rounded-lg px-3 py-2 mb-4">{error}</div>}
 
   {isSignup && (
   <div className="mb-4">
-  <label className="text-xs font-medium text-slate-500 block mb-1">Full Name</label>
+  <label className="text-xs font-medium text-neutral-500 block mb-1">Full Name</label>
   <Input value={name} onChange={e => setName(e.target.value)} placeholder="John Smith" />
   </div>
   )}
   <div className="mb-4">
-  <label className="text-xs font-medium text-slate-500 block mb-1">Email</label>
+  <label className="text-xs font-medium text-neutral-500 block mb-1">Email</label>
   <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
   </div>
   <div className="mb-4">
-  <label className="text-xs font-medium text-slate-500 block mb-1">Password</label>
+  <label className="text-xs font-medium text-neutral-500 block mb-1">Password</label>
   <Input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && (isSignup ? handleSignup(mode.replace("signup_", "")) : handleLogin())} />
   </div>
 
   {mode === "signup_tenant" && (
   <div className="mb-4">
-  <label className="text-xs font-medium text-slate-500 block mb-1">Invite Code *</label>
+  <label className="text-xs font-medium text-neutral-500 block mb-1">Invite Code *</label>
   <Input value={inviteCode} onChange={e => setInviteCode(e.target.value.toUpperCase())} placeholder="e.g. TNT-38472916" className="bg-amber-50 font-mono tracking-wider" />
-  <p className="text-xs text-slate-400 mt-1">Check your invite email from your landlord or property manager</p>
+  <p className="text-xs text-neutral-400 mt-1">Check your invite email from your landlord or property manager</p>
   </div>
   )}
 
@@ -1572,45 +1572,45 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
 
   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
-  <h3 className="font-semibold text-slate-700 mb-3">Lease Expirations</h3>
+  <h3 className="font-semibold text-neutral-700 mb-3">Lease Expirations</h3>
   {tenants.filter(t => (t.lease_end_date || t.move_out) && parseLocalDate(t.lease_end_date || t.move_out) >= new Date() && Math.ceil((parseLocalDate(t.lease_end_date || t.move_out) - new Date()) / 86400000) <= 90).map(t => (
   <div key={t.id} className="flex justify-between items-center py-2 border-b border-brand-50/50 last:border-0">
   <div>
-  <div className="text-sm font-medium text-slate-800">{t.name}</div>
-  <div className="text-xs text-slate-400">{t.property}</div>
+  <div className="text-sm font-medium text-neutral-800">{t.name}</div>
+  <div className="text-xs text-neutral-400">{t.property}</div>
   </div>
   <div className="text-sm text-orange-500 font-semibold">{t.move_out}</div>
   </div>
   ))}
-  {tenants.filter(t => t.move_out).length === 0 && <div className="text-sm text-slate-400 text-center py-4">No upcoming expirations</div>}
+  {tenants.filter(t => t.move_out).length === 0 && <div className="text-sm text-neutral-400 text-center py-4">No upcoming expirations</div>}
   </div>
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
-  <h3 className="font-semibold text-slate-700 mb-3">Recent Maintenance</h3>
+  <h3 className="font-semibold text-neutral-700 mb-3">Recent Maintenance</h3>
   {workOrders.slice(0, 3).map(w => (
   <div key={w.id} className="flex justify-between items-center py-2 border-b border-brand-50/50 last:border-0">
   <div>
-  <div className="text-sm font-medium text-slate-800">{w.issue}</div>
-  <div className="text-xs text-slate-400">{w.property}</div>
+  <div className="text-sm font-medium text-neutral-800">{w.issue}</div>
+  <div className="text-xs text-neutral-400">{w.property}</div>
   </div>
   <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${priorityColors[w.priority]}`}>{w.priority}</span>
   </div>
   ))}
   </div>
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
-  <h3 className="font-semibold text-slate-700 mb-3">Utilities Due</h3>
+  <h3 className="font-semibold text-neutral-700 mb-3">Utilities Due</h3>
   {utilities.filter(u => u.status === "pending").map(u => (
   <div key={u.id} className="flex justify-between items-center py-2 border-b border-brand-50/50 last:border-0">
   <div>
-  <div className="text-sm font-medium text-slate-800">{u.provider}</div>
-  <div className="text-xs text-slate-400">{u.property} · {u.responsibility}</div>
+  <div className="text-sm font-medium text-neutral-800">{u.provider}</div>
+  <div className="text-xs text-neutral-400">{u.property} · {u.responsibility}</div>
   </div>
   <div className="text-right">
-  <div className="text-sm font-semibold text-slate-800">${u.amount}</div>
+  <div className="text-sm font-semibold text-neutral-800">${u.amount}</div>
   <Badge status={u.status} />
   </div>
   </div>
   ))}
-  {utilities.filter(u => u.status === "pending").length === 0 && <div className="text-sm text-slate-400 text-center py-4">No pending utilities</div>}
+  {utilities.filter(u => u.status === "pending").length === 0 && <div className="text-sm text-neutral-400 text-center py-4">No pending utilities</div>}
   </div>
   {hoaDue.length > 0 && (
   <div className="bg-white rounded-3xl shadow-card border border-amber-100 p-4">
@@ -1620,8 +1620,8 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   return (
   <div key={h.id} className="flex justify-between items-center py-2 border-b border-amber-50 last:border-0">
   <div>
-  <div className="text-sm font-medium text-slate-800">{h.hoa_name}</div>
-  <div className="text-xs text-slate-400">{h.property}</div>
+  <div className="text-sm font-medium text-neutral-800">{h.hoa_name}</div>
+  <div className="text-xs text-neutral-400">{h.property}</div>
   </div>
   <div className="text-right">
   <div className="text-sm font-semibold text-amber-700">${safeNum(h.amount).toLocaleString()}</div>
@@ -1632,7 +1632,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   </div>
   )}
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
-  <h3 className="font-semibold text-slate-700 mb-3">Net Operating Income</h3>
+  <h3 className="font-semibold text-neutral-700 mb-3">Net Operating Income</h3>
   <div className="space-y-2">
   {[
   ["Gross Rent Collected", `${formatCurrency(totalRent)}`, "text-green-600"],
@@ -1641,7 +1641,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   ["NOI", `$${(totalRent - workOrders.reduce((s, w) => s + safeNum(w.cost), 0) - utilities.reduce((s, u) => s + safeNum(u.amount), 0)).toLocaleString()}`, "text-blue-700 font-bold"],
   ].map(([l, v, c]) => (
   <div key={l} className="flex justify-between">
-  <span className="text-sm text-slate-500">{l}</span>
+  <span className="text-sm text-neutral-500">{l}</span>
   <span className={`text-sm ${c}`}>{v}</span>
   </div>
   ))}
@@ -2299,46 +2299,46 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <span className="material-icons-outlined text-green-600 text-2xl">home</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-slate-800">Property Details</h3>
-                <p className="text-sm text-slate-400">Enter the property address and basic info</p>
+                <h3 className="text-lg font-manrope font-bold text-neutral-800">Property Details</h3>
+                <p className="text-sm text-neutral-400">Enter the property address and basic info</p>
               </div>
             </div>
-            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+            <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               <div>
-                <label className="text-xs font-medium text-slate-500 block mb-1">Address Line 1 *</label>
-                <input type="text" value={propForm.address_line_1} onChange={e => setPropForm({ ...propForm, address_line_1: e.target.value })} placeholder="123 Main Street" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                <label className="text-xs font-medium text-neutral-500 block mb-1">Address Line 1 *</label>
+                <input type="text" value={propForm.address_line_1} onChange={e => setPropForm({ ...propForm, address_line_1: e.target.value })} placeholder="123 Main Street" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-500 block mb-1">Address Line 2</label>
-                <input type="text" value={propForm.address_line_2} onChange={e => setPropForm({ ...propForm, address_line_2: e.target.value })} placeholder="Apt, Suite, Unit (optional)" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                <label className="text-xs font-medium text-neutral-500 block mb-1">Address Line 2</label>
+                <input type="text" value={propForm.address_line_2} onChange={e => setPropForm({ ...propForm, address_line_2: e.target.value })} placeholder="Apt, Suite, Unit (optional)" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-slate-500 block mb-1">City *</label>
-                  <input type="text" value={propForm.city} onChange={e => setPropForm({ ...propForm, city: e.target.value })} placeholder="City" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">City *</label>
+                  <input type="text" value={propForm.city} onChange={e => setPropForm({ ...propForm, city: e.target.value })} placeholder="City" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-slate-500 block mb-1">State *</label>
-                  <select value={propForm.state} onChange={e => setPropForm({ ...propForm, state: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">State *</label>
+                  <select value={propForm.state} onChange={e => setPropForm({ ...propForm, state: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
                     <option value="">Select</option>
                     {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-slate-500 block mb-1">ZIP *</label>
-                  <input type="text" value={propForm.zip} onChange={e => setPropForm({ ...propForm, zip: e.target.value.replace(/\D/g, "").slice(0, 5) })} placeholder="00000" maxLength={5} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">ZIP *</label>
+                  <input type="text" value={propForm.zip} onChange={e => setPropForm({ ...propForm, zip: e.target.value.replace(/\D/g, "").slice(0, 5) })} placeholder="00000" maxLength={5} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-slate-500 block mb-1">Property Type</label>
-                  <select value={propForm.type} onChange={e => setPropForm({ ...propForm, type: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">Property Type</label>
+                  <select value={propForm.type} onChange={e => setPropForm({ ...propForm, type: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
                     {["Single Family", "Multi-Family", "Apartment", "Townhouse", "Commercial"].map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-slate-500 block mb-1">Status</label>
-                  <select value={propForm.status} onChange={e => setPropForm({ ...propForm, status: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">Status</label>
+                  <select value={propForm.status} onChange={e => setPropForm({ ...propForm, status: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
                     <option value="vacant">Vacant</option>
                     <option value="occupied">Occupied</option>
                     <option value="maintenance">Maintenance</option>
@@ -2346,8 +2346,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-500 block mb-1">Notes</label>
-                <textarea value={propForm.notes} onChange={e => setPropForm({ ...propForm, notes: e.target.value })} rows={2} placeholder="Optional notes about this property..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                <label className="text-xs font-medium text-neutral-500 block mb-1">Notes</label>
+                <textarea value={propForm.notes} onChange={e => setPropForm({ ...propForm, notes: e.target.value })} rows={2} placeholder="Optional notes about this property..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
               </div>
             </div>
           </div>
@@ -2361,33 +2361,33 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <span className="material-icons-outlined text-cyan-600 text-2xl">person</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-slate-800">Tenant & Lease</h3>
-                <p className="text-sm text-slate-400">Enter tenant information and lease terms</p>
+                <h3 className="text-lg font-manrope font-bold text-neutral-800">Tenant & Lease</h3>
+                <p className="text-sm text-neutral-400">Enter tenant information and lease terms</p>
               </div>
             </div>
-            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+            <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               <div className="grid grid-cols-6 gap-3">
                 <div className="col-span-2">
-                  <label className="text-xs font-medium text-slate-500 block mb-1">First Name *</label>
-                  <input type="text" value={tenantForm.tenant_first} onChange={e => { const v = e.target.value; setTenantForm(f => ({ ...f, tenant_first: v, tenant: formatPersonName(v, f.tenant_mi, f.tenant_last) })); }} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" placeholder="First" />
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">First Name *</label>
+                  <input type="text" value={tenantForm.tenant_first} onChange={e => { const v = e.target.value; setTenantForm(f => ({ ...f, tenant_first: v, tenant: formatPersonName(v, f.tenant_mi, f.tenant_last) })); }} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" placeholder="First" />
                 </div>
                 <div className="col-span-1">
-                  <label className="text-xs font-medium text-slate-500 block mb-1">MI</label>
-                  <input type="text" maxLength={1} value={tenantForm.tenant_mi} onChange={e => { const v = e.target.value.toUpperCase(); setTenantForm(f => ({ ...f, tenant_mi: v, tenant: formatPersonName(f.tenant_first, v, f.tenant_last) })); }} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-center" placeholder="M" />
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">MI</label>
+                  <input type="text" maxLength={1} value={tenantForm.tenant_mi} onChange={e => { const v = e.target.value.toUpperCase(); setTenantForm(f => ({ ...f, tenant_mi: v, tenant: formatPersonName(f.tenant_first, v, f.tenant_last) })); }} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm text-center" placeholder="M" />
                 </div>
                 <div className="col-span-3">
-                  <label className="text-xs font-medium text-slate-500 block mb-1">Last Name *</label>
-                  <input type="text" value={tenantForm.tenant_last} onChange={e => { const v = e.target.value; setTenantForm(f => ({ ...f, tenant_last: v, tenant: formatPersonName(f.tenant_first, f.tenant_mi, v) })); }} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" placeholder="Last" />
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">Last Name *</label>
+                  <input type="text" value={tenantForm.tenant_last} onChange={e => { const v = e.target.value; setTenantForm(f => ({ ...f, tenant_last: v, tenant: formatPersonName(f.tenant_first, f.tenant_mi, v) })); }} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" placeholder="Last" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-slate-500 block mb-1">Email *</label>
-                  <input type="email" value={tenantForm.tenant_email} onChange={e => setTenantForm({ ...tenantForm, tenant_email: e.target.value })} placeholder="tenant@email.com" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">Email *</label>
+                  <input type="email" value={tenantForm.tenant_email} onChange={e => setTenantForm({ ...tenantForm, tenant_email: e.target.value })} placeholder="tenant@email.com" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-slate-500 block mb-1">Phone *</label>
-                  <input type="tel" value={tenantForm.tenant_phone} onChange={e => setTenantForm({ ...tenantForm, tenant_phone: formatPhoneInput(e.target.value) })} placeholder="(555) 123-4567" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">Phone *</label>
+                  <input type="tel" value={tenantForm.tenant_phone} onChange={e => setTenantForm({ ...tenantForm, tenant_phone: formatPhoneInput(e.target.value) })} placeholder="(555) 123-4567" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
               </div>
               {/* Additional tenants */}
@@ -2398,9 +2398,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 </button>
               )}
               {[2, 3, 4, 5].filter(n => n <= tenantForm.tenantCount).map(n => (
-                <div key={n} className="border-t border-slate-200 pt-4 mt-4">
+                <div key={n} className="border-t border-neutral-200 pt-4 mt-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-semibold text-slate-600">Tenant {n}</span>
+                    <span className="text-sm font-semibold text-neutral-600">Tenant {n}</span>
                     <button type="button" onClick={() => {
                       const updates = { tenantCount: tenantForm.tenantCount - 1 };
                       updates["tenant_" + n] = ""; updates["tenant_" + n + "_email"] = ""; updates["tenant_" + n + "_phone"] = "";
@@ -2409,38 +2409,38 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   </div>
                   <div className="grid grid-cols-3 gap-3">
                     <div className="col-span-3">
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Full Name</label>
-                      <input type="text" value={tenantForm["tenant_" + n] || ""} onChange={e => setTenantForm(f => ({ ...f, ["tenant_" + n]: e.target.value }))} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" placeholder="Full name" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Full Name</label>
+                      <input type="text" value={tenantForm["tenant_" + n] || ""} onChange={e => setTenantForm(f => ({ ...f, ["tenant_" + n]: e.target.value }))} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" placeholder="Full name" />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Email</label>
-                      <input type="email" value={tenantForm["tenant_" + n + "_email"] || ""} onChange={e => setTenantForm(f => ({ ...f, ["tenant_" + n + "_email"]: e.target.value }))} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" placeholder="Email" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Email</label>
+                      <input type="email" value={tenantForm["tenant_" + n + "_email"] || ""} onChange={e => setTenantForm(f => ({ ...f, ["tenant_" + n + "_email"]: e.target.value }))} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" placeholder="Email" />
                     </div>
                     <div className="col-span-2">
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Phone</label>
-                      <input type="tel" value={tenantForm["tenant_" + n + "_phone"] || ""} onChange={e => setTenantForm(f => ({ ...f, ["tenant_" + n + "_phone"]: e.target.value }))} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" placeholder="Phone" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Phone</label>
+                      <input type="tel" value={tenantForm["tenant_" + n + "_phone"] || ""} onChange={e => setTenantForm(f => ({ ...f, ["tenant_" + n + "_phone"]: e.target.value }))} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" placeholder="Phone" />
                     </div>
                   </div>
                 </div>
               ))}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-slate-500 block mb-1">Monthly Rent ($) *</label>
-                  <input type="number" value={tenantForm.rent} onChange={e => setTenantForm({ ...tenantForm, rent: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">Monthly Rent ($) *</label>
+                  <input type="number" value={tenantForm.rent} onChange={e => setTenantForm({ ...tenantForm, rent: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-slate-500 block mb-1">Security Deposit ($)</label>
-                  <input type="number" value={tenantForm.security_deposit} onChange={e => setTenantForm({ ...tenantForm, security_deposit: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">Security Deposit ($)</label>
+                  <input type="number" value={tenantForm.security_deposit} onChange={e => setTenantForm({ ...tenantForm, security_deposit: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-slate-500 block mb-1">Lease Start *</label>
-                  <input type="date" value={tenantForm.lease_start} onChange={e => setTenantForm({ ...tenantForm, lease_start: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">Lease Start *</label>
+                  <input type="date" value={tenantForm.lease_start} onChange={e => setTenantForm({ ...tenantForm, lease_start: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-slate-500 block mb-1">Lease End *</label>
-                  <input type="date" value={tenantForm.lease_end} onChange={e => setTenantForm({ ...tenantForm, lease_end: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">Lease End *</label>
+                  <input type="date" value={tenantForm.lease_end} onChange={e => setTenantForm({ ...tenantForm, lease_end: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
               </div>
             </div>
@@ -2455,57 +2455,57 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <span className="material-icons-outlined text-blue-600 text-2xl">bolt</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-slate-800">Utilities</h3>
-                <p className="text-sm text-slate-400">Set up utility accounts for this property</p>
+                <h3 className="text-lg font-manrope font-bold text-neutral-800">Utilities</h3>
+                <p className="text-sm text-neutral-400">Set up utility accounts for this property</p>
               </div>
             </div>
             <div className="space-y-4">
               {utilities.map((u, idx) => (
-                <div key={idx} className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+                <div key={idx} className="bg-white rounded-xl border border-neutral-200 p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-slate-600">Utility #{idx + 1}</span>
+                    <span className="text-sm font-semibold text-neutral-600">Utility #{idx + 1}</span>
                     {utilities.length > 1 && (
                       <button onClick={() => removeUtilityRow(idx)} className="text-red-400 hover:text-red-600 text-xs">Remove</button>
                     )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Provider *</label>
-                      <input type="text" value={u.provider} onChange={e => updateUtility(idx, "provider", e.target.value)} placeholder="e.g. BGE, Pepco" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Provider *</label>
+                      <input type="text" value={u.provider} onChange={e => updateUtility(idx, "provider", e.target.value)} placeholder="e.g. BGE, Pepco" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Type</label>
-                      <select value={u.type} onChange={e => updateUtility(idx, "type", e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Type</label>
+                      <select value={u.type} onChange={e => updateUtility(idx, "type", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
                         {["Electric", "Gas", "Water-Sewer", "Trash", "Internet", "Other"].map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Account #</label>
-                      <input type="text" value={u.account_number} onChange={e => updateUtility(idx, "account_number", e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Account #</label>
+                      <input type="text" value={u.account_number} onChange={e => updateUtility(idx, "account_number", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Due Date (day)</label>
-                      <input type="number" min="1" max="28" value={u.due_date} onChange={e => updateUtility(idx, "due_date", Math.min(28, Math.max(1, Number(e.target.value))))} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Due Date (day)</label>
+                      <input type="number" min="1" max="28" value={u.due_date} onChange={e => updateUtility(idx, "due_date", Math.min(28, Math.max(1, Number(e.target.value))))} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Responsibility</label>
-                      <select value={u.responsibility} onChange={e => updateUtility(idx, "responsibility", e.target.value)} disabled={propForm.status !== "occupied"} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm disabled:opacity-50">
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Responsibility</label>
+                      <select value={u.responsibility} onChange={e => updateUtility(idx, "responsibility", e.target.value)} disabled={propForm.status !== "occupied"} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm disabled:opacity-50">
                         <option value="owner_pays">Owner Pays</option>
                         <option value="tenant_pays">Tenant Pays</option>
                       </select>
                     </div>
-                    <div className="col-span-2 border-t border-slate-100 pt-2 mt-1">
-                      <p className="text-xs text-slate-400 mb-2">Portal Login (encrypted)</p>
+                    <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1">
+                      <p className="text-xs text-neutral-400 mb-2">Portal Login (encrypted)</p>
                       <div className="grid grid-cols-3 gap-2">
-                        <div><label className="text-xs font-medium text-slate-500 block mb-1">Website</label><input type="url" value={u.website||""} onChange={e => updateUtility(idx, "website", e.target.value)} placeholder="https://..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
-                        <div><label className="text-xs font-medium text-slate-500 block mb-1">Username</label><input type="text" value={u.username||""} onChange={e => updateUtility(idx, "username", e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
-                        <div><label className="text-xs font-medium text-slate-500 block mb-1">Password</label><input type="password" value={u.password||""} onChange={e => updateUtility(idx, "password", e.target.value)} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
+                        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Website</label><input type="url" value={u.website||""} onChange={e => updateUtility(idx, "website", e.target.value)} placeholder="https://..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Username</label><input type="text" value={u.username||""} onChange={e => updateUtility(idx, "username", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Password</label><input type="password" value={u.password||""} onChange={e => updateUtility(idx, "password", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
                       </div>
                     </div>
                   </div>
                 </div>
               ))}
-              <button onClick={addUtilityRow} className="w-full border-2 border-dashed border-slate-200 rounded-xl py-3 text-sm text-slate-400 hover:text-slate-600 hover:border-slate-300 transition-colors">
+              <button onClick={addUtilityRow} className="w-full border-2 border-dashed border-neutral-200 rounded-xl py-3 text-sm text-neutral-400 hover:text-neutral-600 hover:border-neutral-300 transition-colors">
                 <span className="material-icons-outlined text-sm align-middle mr-1">add</span>Add Another Utility
               </button>
             </div>
@@ -2520,49 +2520,49 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <span className="material-icons-outlined text-purple-600 text-2xl">account_balance</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-slate-800">HOA</h3>
-                <p className="text-sm text-slate-400">Homeowners Association dues</p>
+                <h3 className="text-lg font-manrope font-bold text-neutral-800">HOA</h3>
+                <p className="text-sm text-neutral-400">Homeowners Association dues</p>
               </div>
             </div>
-            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+            <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               <label className="flex items-center gap-3 cursor-pointer">
-                <div className={`w-10 h-6 rounded-full transition-colors ${hoa.enabled ? "bg-green-500" : "bg-slate-200"} relative`} onClick={() => setHoa({ ...hoa, enabled: !hoa.enabled })}>
-                  <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${hoa.enabled ? "translate-x-4.5 left-0.5" : "left-0.5"}`} />
+                <div className={`w-10 h-6 rounded-full transition-colors ${hoa.enabled ? "bg-green-500" : "bg-neutral-200"} relative`} onClick={() => setHoa({ ...hoa, enabled: !hoa.enabled })}>
+                  <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${hoa.enabled ? "tranneutral-x-4.5 left-0.5" : "left-0.5"}`} />
                 </div>
-                <span className="text-sm font-medium text-slate-700">Does this property have an HOA?</span>
+                <span className="text-sm font-medium text-neutral-700">Does this property have an HOA?</span>
               </label>
               {hoa.enabled && (
                 <div className="space-y-3 pt-2">
                   <div>
-                    <label className="text-xs font-medium text-slate-500 block mb-1">HOA Name *</label>
-                    <input type="text" value={hoa.hoa_name} onChange={e => setHoa({ ...hoa, hoa_name: e.target.value })} placeholder="e.g. Riverside HOA" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    <label className="text-xs font-medium text-neutral-500 block mb-1">HOA Name *</label>
+                    <input type="text" value={hoa.hoa_name} onChange={e => setHoa({ ...hoa, hoa_name: e.target.value })} placeholder="e.g. Riverside HOA" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Amount ($) *</label>
-                      <input type="number" value={hoa.amount} onChange={e => setHoa({ ...hoa, amount: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Amount ($) *</label>
+                      <input type="number" value={hoa.amount} onChange={e => setHoa({ ...hoa, amount: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Due Date (day)</label>
-                      <input type="number" min="1" max="28" value={hoa.due_date} onChange={e => setHoa({ ...hoa, due_date: Math.min(28, Math.max(1, Number(e.target.value))) })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Due Date (day)</label>
+                      <input type="number" min="1" max="28" value={hoa.due_date} onChange={e => setHoa({ ...hoa, due_date: Math.min(28, Math.max(1, Number(e.target.value))) })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-500 block mb-1">Frequency</label>
-                    <select value={hoa.frequency} onChange={e => setHoa({ ...hoa, frequency: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                    <label className="text-xs font-medium text-neutral-500 block mb-1">Frequency</label>
+                    <select value={hoa.frequency} onChange={e => setHoa({ ...hoa, frequency: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
                       {["Monthly", "Quarterly", "Annual"].map(f => <option key={f} value={f}>{f}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-500 block mb-1">Notes</label>
-                    <textarea value={hoa.notes} onChange={e => setHoa({ ...hoa, notes: e.target.value })} rows={2} placeholder="Optional notes..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    <label className="text-xs font-medium text-neutral-500 block mb-1">Notes</label>
+                    <textarea value={hoa.notes} onChange={e => setHoa({ ...hoa, notes: e.target.value })} rows={2} placeholder="Optional notes..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                   </div>
-                  <div className="border-t border-slate-100 pt-2 mt-1">
-                    <p className="text-xs text-slate-400 mb-2">Portal Login (encrypted)</p>
+                  <div className="border-t border-neutral-100 pt-2 mt-1">
+                    <p className="text-xs text-neutral-400 mb-2">Portal Login (encrypted)</p>
                     <div className="grid grid-cols-3 gap-2">
-                      <div><label className="text-xs font-medium text-slate-500 block mb-1">Website</label><input type="url" value={hoa.website||""} onChange={e => setHoa({...hoa, website: e.target.value})} placeholder="https://..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
-                      <div><label className="text-xs font-medium text-slate-500 block mb-1">Username</label><input type="text" value={hoa.username||""} onChange={e => setHoa({...hoa, username: e.target.value})} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
-                      <div><label className="text-xs font-medium text-slate-500 block mb-1">Password</label><input type="password" value={hoa.password||""} onChange={e => setHoa({...hoa, password: e.target.value})} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Website</label><input type="url" value={hoa.website||""} onChange={e => setHoa({...hoa, website: e.target.value})} placeholder="https://..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Username</label><input type="text" value={hoa.username||""} onChange={e => setHoa({...hoa, username: e.target.value})} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Password</label><input type="password" value={hoa.password||""} onChange={e => setHoa({...hoa, password: e.target.value})} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
                     </div>
                   </div>
                 </div>
@@ -2579,70 +2579,70 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <span className="material-icons-outlined text-amber-600 text-2xl">real_estate_agent</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-slate-800">Loan / Mortgage</h3>
-                <p className="text-sm text-slate-400">Property financing details</p>
+                <h3 className="text-lg font-manrope font-bold text-neutral-800">Loan / Mortgage</h3>
+                <p className="text-sm text-neutral-400">Property financing details</p>
               </div>
             </div>
-            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+            <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               <label className="flex items-center gap-3 cursor-pointer">
-                <div className={`w-10 h-6 rounded-full transition-colors ${loan.enabled ? "bg-green-500" : "bg-slate-200"} relative`} onClick={() => setLoan({ ...loan, enabled: !loan.enabled })}>
-                  <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${loan.enabled ? "translate-x-4.5 left-0.5" : "left-0.5"}`} />
+                <div className={`w-10 h-6 rounded-full transition-colors ${loan.enabled ? "bg-green-500" : "bg-neutral-200"} relative`} onClick={() => setLoan({ ...loan, enabled: !loan.enabled })}>
+                  <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${loan.enabled ? "tranneutral-x-4.5 left-0.5" : "left-0.5"}`} />
                 </div>
-                <span className="text-sm font-medium text-slate-700">Does this property have a loan?</span>
+                <span className="text-sm font-medium text-neutral-700">Does this property have a loan?</span>
               </label>
               {loan.enabled && (
                 <div className="space-y-3 pt-2">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Lender Name *</label>
-                      <input type="text" value={loan.lender_name} onChange={e => setLoan({ ...loan, lender_name: e.target.value })} placeholder="e.g. Wells Fargo" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Lender Name *</label>
+                      <input type="text" value={loan.lender_name} onChange={e => setLoan({ ...loan, lender_name: e.target.value })} placeholder="e.g. Wells Fargo" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Loan Type</label>
-                      <select value={loan.loan_type} onChange={e => setLoan({ ...loan, loan_type: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Loan Type</label>
+                      <select value={loan.loan_type} onChange={e => setLoan({ ...loan, loan_type: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
                         {["Conventional", "FHA", "VA", "USDA", "ARM", "Interest-Only", "HELOC", "Commercial", "Other"].map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Original Amount ($)</label>
-                      <input type="number" value={loan.original_amount} onChange={e => setLoan({ ...loan, original_amount: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Original Amount ($)</label>
+                      <input type="number" value={loan.original_amount} onChange={e => setLoan({ ...loan, original_amount: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Current Balance ($)</label>
-                      <input type="number" value={loan.current_balance} onChange={e => setLoan({ ...loan, current_balance: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Current Balance ($)</label>
+                      <input type="number" value={loan.current_balance} onChange={e => setLoan({ ...loan, current_balance: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Interest Rate (%)</label>
-                      <input type="number" step="0.01" value={loan.interest_rate} onChange={e => setLoan({ ...loan, interest_rate: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Interest Rate (%)</label>
+                      <input type="number" step="0.01" value={loan.interest_rate} onChange={e => setLoan({ ...loan, interest_rate: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Monthly Payment ($) *</label>
-                      <input type="number" value={loan.monthly_payment} onChange={e => setLoan({ ...loan, monthly_payment: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Monthly Payment ($) *</label>
+                      <input type="number" value={loan.monthly_payment} onChange={e => setLoan({ ...loan, monthly_payment: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                   </div>
-                  <div className="bg-slate-50 rounded-xl p-3 space-y-3">
+                  <div className="bg-neutral-50 rounded-xl p-3 space-y-3">
                     <label className="flex items-center gap-2 text-sm">
                       <input type="checkbox" checked={loan.escrow_included} onChange={e => setLoan({ ...loan, escrow_included: e.target.checked })} className="accent-green-600" />
-                      <span className="font-medium text-slate-700">Escrow included in payment</span>
+                      <span className="font-medium text-neutral-700">Escrow included in payment</span>
                     </label>
                     {loan.escrow_included && (
                       <div className="space-y-2 pl-6">
                         <div>
-                          <label className="text-xs font-medium text-slate-500 block mb-1">Escrow Amount ($)</label>
-                          <input type="number" value={loan.escrow_amount} onChange={e => setLoan({ ...loan, escrow_amount: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                          <label className="text-xs font-medium text-neutral-500 block mb-1">Escrow Amount ($)</label>
+                          <input type="number" value={loan.escrow_amount} onChange={e => setLoan({ ...loan, escrow_amount: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                         </div>
                         <div className="flex flex-wrap gap-3">
-                          <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                          <label className="flex items-center gap-1.5 text-xs text-neutral-600">
                             <input type="checkbox" checked={loan.escrow_covers.taxes} onChange={e => setLoan({ ...loan, escrow_covers: { ...loan.escrow_covers, taxes: e.target.checked } })} className="accent-green-600" />Taxes
                           </label>
-                          <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                          <label className="flex items-center gap-1.5 text-xs text-neutral-600">
                             <input type="checkbox" checked={loan.escrow_covers.insurance} onChange={e => setLoan({ ...loan, escrow_covers: { ...loan.escrow_covers, insurance: e.target.checked } })} className="accent-green-600" />Insurance
                           </label>
-                          <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                          <label className="flex items-center gap-1.5 text-xs text-neutral-600">
                             <input type="checkbox" checked={loan.escrow_covers.pmi} onChange={e => setLoan({ ...loan, escrow_covers: { ...loan.escrow_covers, pmi: e.target.checked } })} className="accent-green-600" />PMI
                           </label>
                         </div>
@@ -2651,32 +2651,32 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Loan Start Date</label>
-                      <input type="date" value={loan.loan_start_date} onChange={e => setLoan({ ...loan, loan_start_date: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Loan Start Date</label>
+                      <input type="date" value={loan.loan_start_date} onChange={e => setLoan({ ...loan, loan_start_date: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Maturity Date</label>
-                      <input type="date" value={loan.maturity_date} onChange={e => setLoan({ ...loan, maturity_date: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Maturity Date</label>
+                      <input type="date" value={loan.maturity_date} onChange={e => setLoan({ ...loan, maturity_date: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-500 block mb-1">Account Number</label>
-                    <input type="text" value={loan.account_number} onChange={e => setLoan({ ...loan, account_number: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    <label className="text-xs font-medium text-neutral-500 block mb-1">Account Number</label>
+                    <input type="text" value={loan.account_number} onChange={e => setLoan({ ...loan, account_number: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-500 block mb-1">Notes</label>
-                    <textarea value={loan.notes} onChange={e => setLoan({ ...loan, notes: e.target.value })} rows={2} placeholder="Optional notes..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    <label className="text-xs font-medium text-neutral-500 block mb-1">Notes</label>
+                    <textarea value={loan.notes} onChange={e => setLoan({ ...loan, notes: e.target.value })} rows={2} placeholder="Optional notes..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                   </div>
                   <label className="flex items-center gap-2 text-sm pt-1">
                     <input type="checkbox" checked={loan.setup_recurring} onChange={e => setLoan({ ...loan, setup_recurring: e.target.checked })} className="accent-green-600" />
-                    <span className="font-medium text-slate-700">Set up recurring mortgage payment</span>
+                    <span className="font-medium text-neutral-700">Set up recurring mortgage payment</span>
                   </label>
-                  <div className="border-t border-slate-100 pt-2 mt-2">
-                    <p className="text-xs text-slate-400 mb-2">Lender Portal Login (encrypted)</p>
+                  <div className="border-t border-neutral-100 pt-2 mt-2">
+                    <p className="text-xs text-neutral-400 mb-2">Lender Portal Login (encrypted)</p>
                     <div className="grid grid-cols-3 gap-2">
-                      <div><label className="text-xs font-medium text-slate-500 block mb-1">Website</label><input type="url" value={loan.website||""} onChange={e => setLoan({...loan, website: e.target.value})} placeholder="https://..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
-                      <div><label className="text-xs font-medium text-slate-500 block mb-1">Username</label><input type="text" value={loan.username||""} onChange={e => setLoan({...loan, username: e.target.value})} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
-                      <div><label className="text-xs font-medium text-slate-500 block mb-1">Password</label><input type="password" value={loan.password||""} onChange={e => setLoan({...loan, password: e.target.value})} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Website</label><input type="url" value={loan.website||""} onChange={e => setLoan({...loan, website: e.target.value})} placeholder="https://..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Username</label><input type="text" value={loan.username||""} onChange={e => setLoan({...loan, username: e.target.value})} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Password</label><input type="password" value={loan.password||""} onChange={e => setLoan({...loan, password: e.target.value})} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
                     </div>
                   </div>
                 </div>
@@ -2693,11 +2693,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <span className="material-icons-outlined text-emerald-600 text-2xl">description</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-slate-800">Documents</h3>
-                <p className="text-sm text-slate-400">Upload property-related documents</p>
+                <h3 className="text-lg font-manrope font-bold text-neutral-800">Documents</h3>
+                <p className="text-sm text-neutral-400">Upload property-related documents</p>
               </div>
             </div>
-            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+            <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               {propForm.status === "occupied" && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
                   <div className="text-sm font-semibold text-amber-800 mb-2">Required Documents</div>
@@ -2706,7 +2706,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                     return (
                       <div key={doc} className="flex items-center gap-2 py-1 text-sm">
                         <span className={uploaded ? "text-green-500" : "text-amber-400"}>{uploaded ? "✅" : "☐"}</span>
-                        <span className={uploaded ? "text-slate-700" : "text-amber-700"}>
+                        <span className={uploaded ? "text-neutral-700" : "text-amber-700"}>
                           {doc === "Lease" ? "Lease Agreement" : doc === "ID" ? "Government-Issued ID" : "Renters Insurance"}
                         </span>
                         <span className="text-red-500 text-xs">*</span>
@@ -2715,17 +2715,17 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                     );
                   })}
                   <div className="flex items-center gap-2 py-1 text-sm">
-                    {uploadedDocs.some(d => d.type === "Utility Transfer") ? <span className="text-green-500">✅</span> : <span className="text-slate-300">☐</span>}
-                    <span className="text-slate-500">Proof of Utility Transfer</span>
-                    <span className="text-xs text-slate-400">(optional)</span>
+                    {uploadedDocs.some(d => d.type === "Utility Transfer") ? <span className="text-green-500">✅</span> : <span className="text-neutral-300">☐</span>}
+                    <span className="text-neutral-500">Proof of Utility Transfer</span>
+                    <span className="text-xs text-neutral-400">(optional)</span>
                   </div>
                 </div>
               )}
               {propForm.status !== "occupied" && (
-                <p className="text-sm text-slate-500">Upload property documents (deed, insurance, inspection reports, etc.)</p>
+                <p className="text-sm text-neutral-500">Upload property documents (deed, insurance, inspection reports, etc.)</p>
               )}
               <div className="mb-4">
-                <label className="text-xs font-medium text-slate-500 block mb-2">Document Type *</label>
+                <label className="text-xs font-medium text-neutral-500 block mb-2">Document Type *</label>
                 <div className="flex flex-wrap gap-2">
                   {[
                     { id: "Lease", label: "Lease Agreement", icon: "description", required: true },
@@ -2736,7 +2736,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   ].map(dt => (
                     <button key={dt.id} type="button" onClick={() => setDocUploadType(dt.id)}
                       className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${
-                        docUploadType === dt.id ? "bg-green-50 border-green-300 text-green-700" : "bg-white border-slate-200 text-slate-600 hover:border-green-200"
+                        docUploadType === dt.id ? "bg-green-50 border-green-300 text-green-700" : "bg-white border-neutral-200 text-neutral-600 hover:border-green-200"
                       }`}>
                       <span className="material-icons-outlined text-sm">{dt.icon}</span>
                       {dt.label}
@@ -2747,19 +2747,19 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
               </div>
               {docUploadType === "Other" && (
                 <div className="mb-4">
-                  <label className="text-xs font-medium text-slate-500 block mb-1">Description *</label>
-                  <input type="text" value={docDescription} onChange={e => setDocDescription(e.target.value)} placeholder="Describe this document..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">Description *</label>
+                  <input type="text" value={docDescription} onChange={e => setDocDescription(e.target.value)} placeholder="Describe this document..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
               )}
-              <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 text-center hover:border-green-300 transition-colors cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                <span className="material-icons-outlined text-3xl text-slate-300 mb-2">cloud_upload</span>
-                <p className="text-sm text-slate-500">Click to upload files</p>
-                <p className="text-xs text-slate-400 mt-1">PDF, images, Word, Excel, text — up to 25MB each</p>
+              <div className="border-2 border-dashed border-neutral-200 rounded-xl p-6 text-center hover:border-green-300 transition-colors cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                <span className="material-icons-outlined text-3xl text-neutral-300 mb-2">cloud_upload</span>
+                <p className="text-sm text-neutral-500">Click to upload files</p>
+                <p className="text-xs text-neutral-400 mt-1">PDF, images, Word, Excel, text — up to 25MB each</p>
                 <input ref={fileInputRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv" onChange={handleFileUpload} className="hidden" />
               </div>
               {uploadedDocs.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs font-medium text-slate-500">Uploaded ({uploadedDocs.length}):</p>
+                  <p className="text-xs font-medium text-neutral-500">Uploaded ({uploadedDocs.length}):</p>
                   {uploadedDocs.map((doc, idx) => (
                     <div key={idx} className="flex items-center gap-2 bg-green-50 rounded-lg px-3 py-2 text-sm">
                       <span className="material-icons-outlined text-green-500 text-base">check_circle</span>
@@ -2781,36 +2781,36 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <span className="material-icons-outlined text-brand-600 text-2xl">autorenew</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-slate-800">Recurring Rent</h3>
-                <p className="text-sm text-slate-400">Set up automatic rent charges</p>
+                <h3 className="text-lg font-manrope font-bold text-neutral-800">Recurring Rent</h3>
+                <p className="text-sm text-neutral-400">Set up automatic rent charges</p>
               </div>
             </div>
-            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+            <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               <div className="bg-brand-50 rounded-xl p-3 space-y-1">
-                <div className="flex justify-between text-sm"><span className="text-slate-500">Tenant</span><span className="font-medium text-slate-800">{tenantForm.tenant}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-slate-500">Property</span><span className="font-medium text-slate-800">{savedAddress.split(",")[0]}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-neutral-500">Tenant</span><span className="font-medium text-neutral-800">{tenantForm.tenant}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-neutral-500">Property</span><span className="font-medium text-neutral-800">{savedAddress.split(",")[0]}</span></div>
                 {tenantForm.lease_start && tenantForm.lease_end && (
-                  <div className="flex justify-between text-sm"><span className="text-slate-500">Lease</span><span className="font-medium text-slate-800">{tenantForm.lease_start} - {tenantForm.lease_end}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-neutral-500">Lease</span><span className="font-medium text-neutral-800">{tenantForm.lease_start} - {tenantForm.lease_end}</span></div>
                 )}
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-500 block mb-1">Monthly Rent Amount ($) *</label>
-                <input type="number" value={recurring.amount} onChange={e => setRecurring({ ...recurring, amount: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                <label className="text-xs font-medium text-neutral-500 block mb-1">Monthly Rent Amount ($) *</label>
+                <input type="number" value={recurring.amount} onChange={e => setRecurring({ ...recurring, amount: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-slate-500 block mb-1">Frequency</label>
-                  <select value={recurring.frequency} onChange={e => setRecurring({ ...recurring, frequency: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">Frequency</label>
+                  <select value={recurring.frequency} onChange={e => setRecurring({ ...recurring, frequency: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
                     <option value="monthly">Monthly</option>
                     <option value="quarterly">Quarterly</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-slate-500 block mb-1">Day of Month</label>
-                  <input type="number" min="1" max="28" value={recurring.day_of_month} onChange={e => setRecurring({ ...recurring, day_of_month: Math.min(28, Math.max(1, Number(e.target.value))) })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                  <label className="text-xs font-medium text-neutral-500 block mb-1">Day of Month</label>
+                  <input type="number" min="1" max="28" value={recurring.day_of_month} onChange={e => setRecurring({ ...recurring, day_of_month: Math.min(28, Math.max(1, Number(e.target.value))) })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
               </div>
-              <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-500">
+              <div className="bg-neutral-50 rounded-xl p-3 text-xs text-neutral-500">
                 <div className="flex justify-between"><span>Debit</span><span className="font-medium">AR - {tenantForm.tenant}</span></div>
                 <div className="flex justify-between mt-1"><span>Credit</span><span className="font-medium">4000 Rental Income</span></div>
               </div>
@@ -2826,37 +2826,37 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <span className="material-icons-outlined text-rose-600 text-2xl">shield</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-slate-800">Insurance</h3>
-                <p className="text-sm text-slate-400">Property insurance coverage</p>
+                <h3 className="text-lg font-manrope font-bold text-neutral-800">Insurance</h3>
+                <p className="text-sm text-neutral-400">Property insurance coverage</p>
               </div>
             </div>
-            <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+            <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               <label className="flex items-center gap-3 cursor-pointer">
-                <div className={`w-10 h-6 rounded-full transition-colors ${insurance.enabled ? "bg-green-500" : "bg-slate-200"} relative`} onClick={() => setInsurance({ ...insurance, enabled: !insurance.enabled })}>
-                  <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${insurance.enabled ? "translate-x-4.5 left-0.5" : "left-0.5"}`} />
+                <div className={`w-10 h-6 rounded-full transition-colors ${insurance.enabled ? "bg-green-500" : "bg-neutral-200"} relative`} onClick={() => setInsurance({ ...insurance, enabled: !insurance.enabled })}>
+                  <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${insurance.enabled ? "tranneutral-x-4.5 left-0.5" : "left-0.5"}`} />
                 </div>
-                <span className="text-sm font-medium text-slate-700">Does this property have insurance?</span>
+                <span className="text-sm font-medium text-neutral-700">Does this property have insurance?</span>
               </label>
               {insurance.enabled && (
                 <div className="space-y-3 pt-2">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Provider *</label>
-                      <input type="text" value={insurance.provider} onChange={e => setInsurance({ ...insurance, provider: e.target.value })} placeholder="e.g. State Farm" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Provider *</label>
+                      <input type="text" value={insurance.provider} onChange={e => setInsurance({ ...insurance, provider: e.target.value })} placeholder="e.g. State Farm" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Policy Number</label>
-                      <input type="text" value={insurance.policy_number} onChange={e => setInsurance({ ...insurance, policy_number: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Policy Number</label>
+                      <input type="text" value={insurance.policy_number} onChange={e => setInsurance({ ...insurance, policy_number: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Premium Amount ($) *</label>
-                      <input type="number" value={insurance.premium_amount} onChange={e => setInsurance({ ...insurance, premium_amount: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Premium Amount ($) *</label>
+                      <input type="number" value={insurance.premium_amount} onChange={e => setInsurance({ ...insurance, premium_amount: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Premium Frequency</label>
-                      <select value={insurance.premium_frequency} onChange={e => setInsurance({ ...insurance, premium_frequency: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Premium Frequency</label>
+                      <select value={insurance.premium_frequency} onChange={e => setInsurance({ ...insurance, premium_frequency: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
                         <option value="monthly">Monthly</option>
                         <option value="quarterly">Quarterly</option>
                         <option value="annual">Annual</option>
@@ -2865,24 +2865,24 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Coverage Amount ($)</label>
-                      <input type="number" value={insurance.coverage_amount} onChange={e => setInsurance({ ...insurance, coverage_amount: e.target.value })} placeholder="0.00" className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Coverage Amount ($)</label>
+                      <input type="number" value={insurance.coverage_amount} onChange={e => setInsurance({ ...insurance, coverage_amount: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-slate-500 block mb-1">Expiration Date</label>
-                      <input type="date" value={insurance.expiration_date} onChange={e => setInsurance({ ...insurance, expiration_date: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Expiration Date</label>
+                      <input type="date" value={insurance.expiration_date} onChange={e => setInsurance({ ...insurance, expiration_date: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-slate-500 block mb-1">Notes</label>
-                    <textarea value={insurance.notes} onChange={e => setInsurance({ ...insurance, notes: e.target.value })} rows={2} placeholder="Optional notes..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+                    <label className="text-xs font-medium text-neutral-500 block mb-1">Notes</label>
+                    <textarea value={insurance.notes} onChange={e => setInsurance({ ...insurance, notes: e.target.value })} rows={2} placeholder="Optional notes..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                   </div>
-                  <div className="border-t border-slate-100 pt-2 mt-1">
-                    <p className="text-xs text-slate-400 mb-2">Insurance Portal Login (encrypted)</p>
+                  <div className="border-t border-neutral-100 pt-2 mt-1">
+                    <p className="text-xs text-neutral-400 mb-2">Insurance Portal Login (encrypted)</p>
                     <div className="grid grid-cols-3 gap-2">
-                      <div><label className="text-xs font-medium text-slate-500 block mb-1">Website</label><input type="url" value={insurance.website||""} onChange={e => setInsurance({...insurance, website: e.target.value})} placeholder="https://..." className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
-                      <div><label className="text-xs font-medium text-slate-500 block mb-1">Username</label><input type="text" value={insurance.username||""} onChange={e => setInsurance({...insurance, username: e.target.value})} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
-                      <div><label className="text-xs font-medium text-slate-500 block mb-1">Password</label><input type="password" value={insurance.password||""} onChange={e => setInsurance({...insurance, password: e.target.value})} className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Website</label><input type="url" value={insurance.website||""} onChange={e => setInsurance({...insurance, website: e.target.value})} placeholder="https://..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Username</label><input type="text" value={insurance.username||""} onChange={e => setInsurance({...insurance, username: e.target.value})} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Password</label><input type="password" value={insurance.password||""} onChange={e => setInsurance({...insurance, password: e.target.value})} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
                     </div>
                   </div>
                 </div>
@@ -2899,41 +2899,41 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <span className="material-icons-outlined text-green-600 text-2xl">checklist</span>
               </div>
               <div>
-                <h3 className="text-lg font-manrope font-bold text-slate-800">Review</h3>
-                <p className="text-sm text-slate-400">Summary of your property setup</p>
+                <h3 className="text-lg font-manrope font-bold text-neutral-800">Review</h3>
+                <p className="text-sm text-neutral-400">Summary of your property setup</p>
               </div>
             </div>
             <div className="space-y-3">
               {/* Property Details summary */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <div className="bg-white rounded-xl border border-neutral-200 p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-slate-700">Property Details</span>
+                  <span className="text-sm font-semibold text-neutral-700">Property Details</span>
                   <div className="flex items-center gap-2">
-                    {completedSteps.has("property_details") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
-                    <button onClick={() => setStep(steps.indexOf("property_details") + 1)} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-slate-200 transition-colors">Edit</button>
+                    {completedSteps.has("property_details") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    <button onClick={() => setStep(steps.indexOf("property_details") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
                   </div>
                 </div>
                 {completedSteps.has("property_details") ? (
-                  <div className="text-xs text-slate-500 space-y-0.5">
+                  <div className="text-xs text-neutral-500 space-y-0.5">
                     <div>{savedAddress}</div>
                     <div>{propForm.type} — {propForm.status}</div>
-                    {propForm.notes && <div className="text-slate-400 italic">{propForm.notes}</div>}
+                    {propForm.notes && <div className="text-neutral-400 italic">{propForm.notes}</div>}
                   </div>
                 ) : null}
               </div>
 
               {/* Tenant & Lease summary */}
               {propForm.status === "occupied" && (
-                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <div className="bg-white rounded-xl border border-neutral-200 p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-semibold text-slate-700">Tenant & Lease</span>
+                    <span className="text-sm font-semibold text-neutral-700">Tenant & Lease</span>
                     <div className="flex items-center gap-2">
-                      {completedSteps.has("tenant_lease") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
-                      <button onClick={() => setStep(steps.indexOf("tenant_lease") + 1)} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-slate-200 transition-colors">Edit</button>
+                      {completedSteps.has("tenant_lease") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                      <button onClick={() => setStep(steps.indexOf("tenant_lease") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
                     </div>
                   </div>
                   {completedSteps.has("tenant_lease") ? (
-                    <div className="text-xs text-slate-500 space-y-0.5">
+                    <div className="text-xs text-neutral-500 space-y-0.5">
                       <div>{tenantForm.tenant} — {tenantForm.tenant_email}</div>
                       <div>Rent: ${Number(tenantForm.rent || 0).toLocaleString()}/mo — Deposit: ${Number(tenantForm.security_deposit || 0).toLocaleString()}</div>
                       <div>Lease: {tenantForm.lease_start} to {tenantForm.lease_end}</div>
@@ -2943,103 +2943,103 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
               )}
 
               {/* Utilities summary */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <div className="bg-white rounded-xl border border-neutral-200 p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-slate-700">Utilities</span>
+                  <span className="text-sm font-semibold text-neutral-700">Utilities</span>
                   <div className="flex items-center gap-2">
-                    {completedSteps.has("utilities") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
-                    <button onClick={() => setStep(steps.indexOf("utilities") + 1)} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-slate-200 transition-colors">Edit</button>
+                    {completedSteps.has("utilities") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    <button onClick={() => setStep(steps.indexOf("utilities") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
                   </div>
                 </div>
                 {completedSteps.has("utilities") && utilities.filter(u => u.provider.trim()).length > 0 ? (
-                  <div className="text-xs text-slate-500 space-y-0.5">
+                  <div className="text-xs text-neutral-500 space-y-0.5">
                     {utilities.filter(u => u.provider.trim()).map((u, i) => (
                       <div key={i}>{u.type} — {u.provider} — ${Number(u.amount || 0).toLocaleString()}/mo ({u.responsibility === "owner_pays" ? "Owner" : "Tenant"})</div>
                     ))}
                   </div>
-                ) : completedSteps.has("utilities") ? <p className="text-xs text-slate-400">No utilities added</p> : null}
+                ) : completedSteps.has("utilities") ? <p className="text-xs text-neutral-400">No utilities added</p> : null}
               </div>
 
               {/* HOA summary */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <div className="bg-white rounded-xl border border-neutral-200 p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-slate-700">HOA</span>
+                  <span className="text-sm font-semibold text-neutral-700">HOA</span>
                   <div className="flex items-center gap-2">
-                    {completedSteps.has("hoa") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
-                    <button onClick={() => setStep(steps.indexOf("hoa") + 1)} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-slate-200 transition-colors">Edit</button>
+                    {completedSteps.has("hoa") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    <button onClick={() => setStep(steps.indexOf("hoa") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
                   </div>
                 </div>
                 {completedSteps.has("hoa") && hoa.enabled ? (
-                  <div className="text-xs text-slate-500">{hoa.hoa_name} — ${Number(hoa.amount || 0).toLocaleString()} {hoa.frequency}</div>
-                ) : completedSteps.has("hoa") ? <p className="text-xs text-slate-400">No HOA</p> : null}
+                  <div className="text-xs text-neutral-500">{hoa.hoa_name} — ${Number(hoa.amount || 0).toLocaleString()} {hoa.frequency}</div>
+                ) : completedSteps.has("hoa") ? <p className="text-xs text-neutral-400">No HOA</p> : null}
               </div>
 
               {/* Loan summary */}
               {steps.includes("loan") && (
-                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <div className="bg-white rounded-xl border border-neutral-200 p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-semibold text-slate-700">Loan / Mortgage</span>
+                    <span className="text-sm font-semibold text-neutral-700">Loan / Mortgage</span>
                     <div className="flex items-center gap-2">
-                      {completedSteps.has("loan") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
-                      <button onClick={() => setStep(steps.indexOf("loan") + 1)} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-slate-200 transition-colors">Edit</button>
+                      {completedSteps.has("loan") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                      <button onClick={() => setStep(steps.indexOf("loan") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
                     </div>
                   </div>
                   {completedSteps.has("loan") && loan.enabled ? (
-                    <div className="text-xs text-slate-500">
+                    <div className="text-xs text-neutral-500">
                       <div>{loan.lender_name} — {loan.loan_type}</div>
                       <div>Payment: ${Number(loan.monthly_payment || 0).toLocaleString()}/mo {loan.escrow_included ? "(incl. escrow)" : ""}</div>
                       {loan.setup_recurring && <div className="text-green-600 font-medium mt-0.5">Recurring payment set up</div>}
                     </div>
-                  ) : completedSteps.has("loan") ? <p className="text-xs text-slate-400">No loan</p> : null}
+                  ) : completedSteps.has("loan") ? <p className="text-xs text-neutral-400">No loan</p> : null}
                 </div>
               )}
 
               {/* Documents summary */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <div className="bg-white rounded-xl border border-neutral-200 p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-slate-700">Documents</span>
+                  <span className="text-sm font-semibold text-neutral-700">Documents</span>
                   <div className="flex items-center gap-2">
-                    {uploadedDocs.length > 0 ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">{uploadedDocs.length} uploaded</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
-                    <button onClick={() => setStep(steps.indexOf("documents") + 1)} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-slate-200 transition-colors">Edit</button>
+                    {uploadedDocs.length > 0 ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">{uploadedDocs.length} uploaded</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    <button onClick={() => setStep(steps.indexOf("documents") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
                   </div>
                 </div>
                 {uploadedDocs.length > 0 && (
-                  <div className="text-xs text-slate-500 space-y-0.5">
+                  <div className="text-xs text-neutral-500 space-y-0.5">
                     {uploadedDocs.map((d, i) => <div key={i}>{d.name}</div>)}
                   </div>
                 )}
               </div>
 
               {/* Insurance summary */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <div className="bg-white rounded-xl border border-neutral-200 p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-slate-700">Insurance</span>
+                  <span className="text-sm font-semibold text-neutral-700">Insurance</span>
                   <div className="flex items-center gap-2">
-                    {completedSteps.has("insurance") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
-                    <button onClick={() => setStep(steps.indexOf("insurance") + 1)} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-slate-200 transition-colors">Edit</button>
+                    {completedSteps.has("insurance") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    <button onClick={() => setStep(steps.indexOf("insurance") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
                   </div>
                 </div>
                 {completedSteps.has("insurance") && insurance.enabled ? (
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-neutral-500">
                     <div>{insurance.provider} — Policy #{insurance.policy_number || "N/A"}</div>
                     <div>Premium: ${Number(insurance.premium_amount || 0).toLocaleString()} {insurance.premium_frequency}</div>
                     {insurance.expiration_date && <div>Expires: {insurance.expiration_date}</div>}
                   </div>
-                ) : completedSteps.has("insurance") ? <p className="text-xs text-slate-400">No insurance</p> : null}
+                ) : completedSteps.has("insurance") ? <p className="text-xs text-neutral-400">No insurance</p> : null}
               </div>
 
               {/* Recurring rent summary */}
               {propForm.status === "occupied" && (
-                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <div className="bg-white rounded-xl border border-neutral-200 p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-semibold text-slate-700">Recurring Rent</span>
+                    <span className="text-sm font-semibold text-neutral-700">Recurring Rent</span>
                     <div className="flex items-center gap-2">
-                      {completedSteps.has("recurring_rent") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">Skipped</span>}
-                      <button onClick={() => setStep(steps.indexOf("recurring_rent") + 1)} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-slate-200 transition-colors">Edit</button>
+                      {completedSteps.has("recurring_rent") ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                      <button onClick={() => setStep(steps.indexOf("recurring_rent") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
                     </div>
                   </div>
                   {completedSteps.has("recurring_rent") ? (
-                    <div className="text-xs text-slate-500">
+                    <div className="text-xs text-neutral-500">
                       <div>{tenantForm.tenant} — ${Number(recurring.amount || 0).toLocaleString()}/{recurring.frequency}</div>
                       <div>Charges on day {recurring.day_of_month} of each month</div>
                     </div>
@@ -3058,18 +3058,18 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   return (
     <div className="fixed inset-0 z-[70] bg-[#fcf8ff] flex flex-col">
       {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+      <div className="bg-white border-b border-neutral-200 px-6 py-4 flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-manrope font-bold text-slate-800">Property Setup</h2>
-          <p className="text-sm text-slate-400">{savedAddress || "New Property"}</p>
+          <h2 className="text-lg font-manrope font-bold text-neutral-800">Property Setup</h2>
+          <p className="text-sm text-neutral-400">{savedAddress || "New Property"}</p>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-slate-500">Step {step} of {totalSteps}</span>
+          <span className="text-sm text-neutral-500">Step {step} of {totalSteps}</span>
           <IconBtn icon="close" onClick={handleDismiss} />
         </div>
       </div>
       {/* Progress bar */}
-      <div className="h-1 bg-slate-200"><div className="h-full bg-green-600 transition-all" style={{ width: (step / totalSteps * 100) + "%" }} /></div>
+      <div className="h-1 bg-neutral-200"><div className="h-full bg-green-600 transition-all" style={{ width: (step / totalSteps * 100) + "%" }} /></div>
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6">
         <div className="max-w-2xl mx-auto">
@@ -3077,11 +3077,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         </div>
       </div>
       {/* Footer */}
-      <div className="bg-white border-t border-slate-200 px-6 py-4 flex items-center justify-between">
-        <button onClick={handleBack} disabled={step === 1} className="text-sm text-slate-500 hover:text-slate-700 disabled:opacity-30">&#8592; Back</button>
+      <div className="bg-white border-t border-neutral-200 px-6 py-4 flex items-center justify-between">
+        <button onClick={handleBack} disabled={step === 1} className="text-sm text-neutral-500 hover:text-neutral-700 disabled:opacity-30">&#8592; Back</button>
         <div className="flex gap-3">
           {currentStepId !== "review" && currentStepId !== "property_details" && (
-            <button onClick={handleSkip} className="text-sm text-slate-400 hover:text-slate-600">Skip</button>
+            <button onClick={handleSkip} className="text-sm text-neutral-400 hover:text-neutral-600">Skip</button>
           )}
           {step < totalSteps ? (
             <Btn variant="success-fill" onClick={handleNext} disabled={saving}>{saving ? "Saving..." : "Next \u2192"}</Btn>
@@ -3818,17 +3818,17 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   {isAdmin && showRequests && pendingRequests.length > 0 && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4 mb-4 space-y-3">
-  <h3 className="font-semibold text-slate-800">Pending Approval</h3>
+  <h3 className="font-semibold text-neutral-800">Pending Approval</h3>
   {pendingRequests.map(req => (
   <div key={req.id} className="border border-amber-100 rounded-3xl p-4 bg-amber-50/30">
   <div className="flex items-start justify-between gap-3">
   <div>
   <div className="flex items-center gap-2 mb-1">
   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${req.request_type === "add" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>{req.request_type === "add" ? "New" : "Edit"}</span>
-  <span className="text-xs text-slate-400">by {req.requested_by}</span>
+  <span className="text-xs text-neutral-400">by {req.requested_by}</span>
   </div>
-  <p className="font-semibold text-slate-800">{req.address}</p>
-  <p className="text-xs text-slate-400 mt-1">{req.type} · ${req.rent}/mo</p>
+  <p className="font-semibold text-neutral-800">{req.address}</p>
+  <p className="text-xs text-neutral-400 mt-1">{req.type} · ${req.rent}/mo</p>
   </div>
   <div className="flex flex-col gap-2 shrink-0">
   <Input value={reviewNotes[req.id] || ""} onChange={e => setReviewNotes(prev => ({...prev, [req.id]: e.target.value}))} placeholder="Note" className="text-xs w-32" />
@@ -3873,16 +3873,16 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
   <div className="flex bg-brand-50 rounded-2xl p-0.5">
   {[["card","▦"],["table","☰"],["compact","≡"]].map(([m,icon]) => (
-  <button key={m} onClick={() => setViewMode(m)} className={`px-3 py-1.5 text-sm rounded-md ${viewMode === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-slate-400"}`} title={m}>{icon}</button>
+  <button key={m} onClick={() => setViewMode(m)} className={`px-3 py-1.5 text-sm rounded-md ${viewMode === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-neutral-400"}`} title={m}>{icon}</button>
   ))}
   </div>
   {viewMode === "table" && (
   <div className="relative">
-  <button onClick={() => setShowColPicker(!showColPicker)} className="border border-brand-100 rounded-2xl px-3 py-2 text-xs text-slate-400 hover:bg-brand-50/30">⚙️ Columns</button>
+  <button onClick={() => setShowColPicker(!showColPicker)} className="border border-brand-100 rounded-2xl px-3 py-2 text-xs text-neutral-400 hover:bg-brand-50/30">⚙️ Columns</button>
   {showColPicker && (
   <div className="absolute right-0 top-10 bg-white border border-brand-100 rounded-3xl shadow-lg p-3 z-50 w-48 max-w-[calc(100vw-2rem)]">
   {allCols.map(c => (
-  <label key={c.id} className="flex items-center gap-2 py-1 text-xs text-slate-700 cursor-pointer">
+  <label key={c.id} className="flex items-center gap-2 py-1 text-xs text-neutral-700 cursor-pointer">
   <input type="checkbox" checked={visibleCols.includes(c.id)} onChange={() => setVisibleCols(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id])} className="rounded" />
   {c.label}
   </label>
@@ -3921,20 +3921,20 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {/* Tenant Info */}
   {selectedProperty.tenant && (
   <div className="px-6 py-4 border-b border-brand-50">
-  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Current Tenant{(selectedProperty.tenant_2 || selectedProperty.tenant_3 || selectedProperty.tenant_4 || selectedProperty.tenant_5) ? "s" : ""}</div>
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-2">Current Tenant{(selectedProperty.tenant_2 || selectedProperty.tenant_3 || selectedProperty.tenant_4 || selectedProperty.tenant_5) ? "s" : ""}</div>
   <div className="flex items-center gap-3">
   <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold">{selectedProperty.tenant?.[0]}</div>
   <div>
-  <div className="font-semibold text-slate-800">{selectedProperty.tenant}</div>
-  <div className="text-xs text-slate-400">{selectedProperty._tenantEmail || ""} · {selectedProperty._tenantPhone || ""}</div>
+  <div className="font-semibold text-neutral-800">{selectedProperty.tenant}</div>
+  <div className="text-xs text-neutral-400">{selectedProperty._tenantEmail || ""} · {selectedProperty._tenantPhone || ""}</div>
   </div>
   </div>
   {selectedProperty.tenant_2 && (
   <div className="flex items-center gap-3 mt-2">
   <div className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center text-brand-500 font-bold text-sm">{selectedProperty.tenant_2?.[0]}</div>
   <div>
-  <div className="font-medium text-slate-700 text-sm">{selectedProperty.tenant_2}</div>
-  <div className="text-xs text-slate-400">{selectedProperty.tenant_2_email || ""} · {selectedProperty.tenant_2_phone || ""}</div>
+  <div className="font-medium text-neutral-700 text-sm">{selectedProperty.tenant_2}</div>
+  <div className="text-xs text-neutral-400">{selectedProperty.tenant_2_email || ""} · {selectedProperty.tenant_2_phone || ""}</div>
   </div>
   </div>
   )}
@@ -3942,8 +3942,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="flex items-center gap-3 mt-2">
   <div className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center text-brand-500 font-bold text-sm">{selectedProperty.tenant_3?.[0]}</div>
   <div>
-  <div className="font-medium text-slate-700 text-sm">{selectedProperty.tenant_3}</div>
-  <div className="text-xs text-slate-400">{selectedProperty.tenant_3_email || ""} · {selectedProperty.tenant_3_phone || ""}</div>
+  <div className="font-medium text-neutral-700 text-sm">{selectedProperty.tenant_3}</div>
+  <div className="text-xs text-neutral-400">{selectedProperty.tenant_3_email || ""} · {selectedProperty.tenant_3_phone || ""}</div>
   </div>
   </div>
   )}
@@ -3951,8 +3951,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="flex items-center gap-3 mt-2">
   <div className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center text-brand-500 font-bold text-sm">{selectedProperty.tenant_4?.[0]}</div>
   <div>
-  <div className="font-medium text-slate-700 text-sm">{selectedProperty.tenant_4}</div>
-  <div className="text-xs text-slate-400">{selectedProperty.tenant_4_email || ""} · {selectedProperty.tenant_4_phone || ""}</div>
+  <div className="font-medium text-neutral-700 text-sm">{selectedProperty.tenant_4}</div>
+  <div className="text-xs text-neutral-400">{selectedProperty.tenant_4_email || ""} · {selectedProperty.tenant_4_phone || ""}</div>
   </div>
   </div>
   )}
@@ -3960,8 +3960,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="flex items-center gap-3 mt-2">
   <div className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center text-brand-500 font-bold text-sm">{selectedProperty.tenant_5?.[0]}</div>
   <div>
-  <div className="font-medium text-slate-700 text-sm">{selectedProperty.tenant_5}</div>
-  <div className="text-xs text-slate-400">{selectedProperty.tenant_5_email || ""} · {selectedProperty.tenant_5_phone || ""}</div>
+  <div className="font-medium text-neutral-700 text-sm">{selectedProperty.tenant_5}</div>
+  <div className="text-xs text-neutral-400">{selectedProperty.tenant_5_email || ""} · {selectedProperty.tenant_5_phone || ""}</div>
   </div>
   </div>
   )}
@@ -3969,9 +3969,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
 
   {/* Tab Navigation */}
-  <div className="flex border-b border-slate-200 px-6 overflow-x-auto">
+  <div className="flex border-b border-neutral-200 px-6 overflow-x-auto">
   {[["overview","Overview"],["documents","Documents"],["workorders","Work Orders"],["actions","Actions"],["history","Historical Tenants"]].map(([id, label]) => (
-  <button key={id} onClick={() => { setPropertyDetailTab(id); if (id === "history") setHistoricalTenantDetail(null); }} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + (propertyDetailTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}{id === "documents" ? ` (${propertyDocs.length})` : id === "workorders" ? ` (${propertyWorkOrders.length})` : id === "history" ? ` (${historicalTenants.length})` : ""}</button>
+  <button key={id} onClick={() => { setPropertyDetailTab(id); if (id === "history") setHistoricalTenantDetail(null); }} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + (propertyDetailTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}{id === "documents" ? ` (${propertyDocs.length})` : id === "workorders" ? ` (${propertyWorkOrders.length})` : id === "history" ? ` (${historicalTenants.length})` : ""}</button>
   ))}
   </div>
 
@@ -3979,10 +3979,10 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {propertyDetailTab === "overview" && (
   <div className="px-6 py-4">
   <div className="grid grid-cols-2 gap-3 text-sm">
-  <div><span className="text-slate-400 text-xs block">Security Deposit</span><span className="font-semibold text-slate-700">{selectedProperty.security_deposit ? "$" + safeNum(selectedProperty.security_deposit).toLocaleString() : "—"}</span></div>
-  <div><span className="text-slate-400 text-xs block">Lease Start</span><span className="font-semibold text-slate-700">{selectedProperty.lease_start || "—"}</span></div>
-  {selectedProperty.pm_company_name && <div><span className="text-slate-400 text-xs block">Property Manager</span><span className="font-semibold text-purple-700">{selectedProperty.pm_company_name}</span></div>}
-  {selectedProperty.notes && <div className="col-span-2"><span className="text-slate-400 text-xs block">Notes</span><span className="text-slate-500">{selectedProperty.notes}</span></div>}
+  <div><span className="text-neutral-400 text-xs block">Security Deposit</span><span className="font-semibold text-neutral-700">{selectedProperty.security_deposit ? "$" + safeNum(selectedProperty.security_deposit).toLocaleString() : "—"}</span></div>
+  <div><span className="text-neutral-400 text-xs block">Lease Start</span><span className="font-semibold text-neutral-700">{selectedProperty.lease_start || "—"}</span></div>
+  {selectedProperty.pm_company_name && <div><span className="text-neutral-400 text-xs block">Property Manager</span><span className="font-semibold text-purple-700">{selectedProperty.pm_company_name}</span></div>}
+  {selectedProperty.notes && <div className="col-span-2"><span className="text-neutral-400 text-xs block">Notes</span><span className="text-neutral-500">{selectedProperty.notes}</span></div>}
   </div>
   </div>
   )}
@@ -3991,24 +3991,24 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {propertyDetailTab === "documents" && (
   <div className="px-6 py-4 flex-1">
   <div className="flex items-center justify-between mb-3">
-  <div className="text-sm font-semibold text-slate-700">Documents</div>
+  <div className="text-sm font-semibold text-neutral-700">Documents</div>
   <Btn variant="primary" size="sm" onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })}><span className="material-icons-outlined text-sm">upload</span>Upload</Btn>
   </div>
   {propertyDocs.length === 0 ? (
   <div className="text-center py-8">
-  <span className="material-icons-outlined text-4xl text-slate-300 mb-2">folder_open</span>
-  <div className="text-sm text-slate-400">No documents uploaded yet</div>
+  <span className="material-icons-outlined text-4xl text-neutral-300 mb-2">folder_open</span>
+  <div className="text-sm text-neutral-400">No documents uploaded yet</div>
   <button onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })} className="mt-3 text-xs text-brand-600 hover:underline">Upload your first document</button>
   </div>
   ) : (
   <div className="space-y-2">
   {propertyDocs.map(d => (
-  <div key={d.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3 hover:bg-slate-100 transition-colors">
+  <div key={d.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3 hover:bg-neutral-100 transition-colors">
   <div className="flex items-center gap-3">
-  <span className="material-icons-outlined text-slate-400 text-lg">{d.type === "Lease" ? "description" : d.type === "ID" ? "badge" : d.type === "Insurance" ? "verified_user" : d.type === "Inspection" ? "search" : "insert_drive_file"}</span>
+  <span className="material-icons-outlined text-neutral-400 text-lg">{d.type === "Lease" ? "description" : d.type === "ID" ? "badge" : d.type === "Insurance" ? "verified_user" : d.type === "Inspection" ? "search" : "insert_drive_file"}</span>
   <div>
-  <div className="text-sm font-medium text-slate-700">{d.name}</div>
-  <div className="text-xs text-slate-400">{d.type} · {d.uploaded_at?.slice(0, 10)}{d.tenant ? " · " + d.tenant : ""}{d.archived_by ? " · deleted by " + d.archived_by : ""}</div>
+  <div className="text-sm font-medium text-neutral-700">{d.name}</div>
+  <div className="text-xs text-neutral-400">{d.type} · {d.uploaded_at?.slice(0, 10)}{d.tenant ? " · " + d.tenant : ""}{d.archived_by ? " · deleted by " + d.archived_by : ""}</div>
   </div>
   </div>
   <div className="flex items-center gap-2">
@@ -4037,19 +4037,19 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {propertyDetailTab === "workorders" && (
   <div className="px-6 py-4">
   <div className="flex items-center justify-between mb-3">
-  <div className="text-sm font-semibold text-slate-700">Work Orders</div>
+  <div className="text-sm font-semibold text-neutral-700">Work Orders</div>
   <Btn variant="primary" size="sm" onClick={() => { setPage("maintenance"); setSelectedProperty(null); }}><span className="material-icons-outlined text-sm">add</span>New</Btn>
   </div>
   {propertyWorkOrders.length === 0 ? (
   <div className="text-center py-8">
-  <span className="material-icons-outlined text-4xl text-slate-300 mb-2">build</span>
-  <div className="text-sm text-slate-400">No work orders</div>
+  <span className="material-icons-outlined text-4xl text-neutral-300 mb-2">build</span>
+  <div className="text-sm text-neutral-400">No work orders</div>
   </div>
   ) : (
   <div className="space-y-2">
   {propertyWorkOrders.map(w => (
-  <div key={w.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3">
-  <div><div className="text-sm font-medium text-slate-700">{w.issue}</div><div className="text-xs text-slate-400">{w.priority} · {w.created_at?.slice(0, 10)}</div></div>
+  <div key={w.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3">
+  <div><div className="text-sm font-medium text-neutral-700">{w.issue}</div><div className="text-xs text-neutral-400">{w.priority} · {w.created_at?.slice(0, 10)}</div></div>
   <Badge status={w.status} />
   </div>
   ))}
@@ -4062,16 +4062,16 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {propertyDetailTab === "actions" && (
   <div className="px-6 py-4">
   <div className="space-y-2">
-  {!isReadOnly(selectedProperty) && <button onClick={() => { setEditingProperty(selectedProperty); setForm({ address_line_1: selectedProperty.address_line_1 || selectedProperty.address || "", address_line_2: selectedProperty.address_line_2 || "", city: selectedProperty.city || "", state: selectedProperty.state || "", zip: selectedProperty.zip || "", type: selectedProperty.type, status: selectedProperty.status, rent: selectedProperty.rent || "", security_deposit: selectedProperty.security_deposit || "", tenant: selectedProperty.tenant || "", tenant_email: selectedProperty._tenantEmail || "", tenant_phone: selectedProperty._tenantPhone || "", lease_start: selectedProperty.lease_start || "", lease_end: selectedProperty.lease_end || "", notes: selectedProperty.notes || "" }); setShowForm(true); setSelectedProperty(null); }} className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-brand-300 hover:bg-brand-50/30 transition-colors"><span className="material-icons-outlined text-brand-600">edit</span>Edit Property</button>}
-  <button onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })} className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-brand-300 hover:bg-brand-50/30 transition-colors"><span className="material-icons-outlined text-brand-600">upload_file</span>Upload Document</button>
-  <button onClick={() => { setPage("maintenance"); setSelectedProperty(null); }} className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-brand-300 hover:bg-brand-50/30 transition-colors"><span className="material-icons-outlined text-brand-600">build</span>New Work Order</button>
+  {!isReadOnly(selectedProperty) && <button onClick={() => { setEditingProperty(selectedProperty); setForm({ address_line_1: selectedProperty.address_line_1 || selectedProperty.address || "", address_line_2: selectedProperty.address_line_2 || "", city: selectedProperty.city || "", state: selectedProperty.state || "", zip: selectedProperty.zip || "", type: selectedProperty.type, status: selectedProperty.status, rent: selectedProperty.rent || "", security_deposit: selectedProperty.security_deposit || "", tenant: selectedProperty.tenant || "", tenant_email: selectedProperty._tenantEmail || "", tenant_phone: selectedProperty._tenantPhone || "", lease_start: selectedProperty.lease_start || "", lease_end: selectedProperty.lease_end || "", notes: selectedProperty.notes || "" }); setShowForm(true); setSelectedProperty(null); }} className="w-full flex items-center gap-3 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-brand-300 hover:bg-brand-50/30 transition-colors"><span className="material-icons-outlined text-brand-600">edit</span>Edit Property</button>}
+  <button onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })} className="w-full flex items-center gap-3 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-brand-300 hover:bg-brand-50/30 transition-colors"><span className="material-icons-outlined text-brand-600">upload_file</span>Upload Document</button>
+  <button onClick={() => { setPage("maintenance"); setSelectedProperty(null); }} className="w-full flex items-center gap-3 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-brand-300 hover:bg-brand-50/30 transition-colors"><span className="material-icons-outlined text-brand-600">build</span>New Work Order</button>
   {(() => {
   const ss = getSetupStatus(selectedProperty);
   const isInProg = ss.isInProgress;
   const hasMissing = ss.missing.length > 0;
   const label = isInProg ? "Resume Property Setup" : hasMissing ? `Complete Setup (${ss.missing.length} remaining)` : "Edit Property Setup";
   const icon = isInProg ? "construction" : hasMissing ? "pending" : "settings";
-  const colors = isInProg || hasMissing ? "bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100" : "bg-white border-slate-200 text-slate-700 hover:border-brand-300 hover:bg-brand-50/30";
+  const colors = isInProg || hasMissing ? "bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100" : "bg-white border-neutral-200 text-neutral-700 hover:border-brand-300 hover:bg-brand-50/30";
   return (
   <button onClick={() => {
   setShowPropertyWizard({
@@ -4096,11 +4096,11 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {/* Historical Tenants Tab */}
   {propertyDetailTab === "history" && !historicalTenantDetail && (
   <div className="px-6 py-4 flex-1">
-  <div className="text-sm font-semibold text-slate-700 mb-3">Previous Tenants</div>
+  <div className="text-sm font-semibold text-neutral-700 mb-3">Previous Tenants</div>
   {historicalTenants.length === 0 ? (
   <div className="text-center py-8">
-  <span className="material-icons-outlined text-4xl text-slate-300 mb-2">history</span>
-  <div className="text-sm text-slate-400">No previous tenants at this property</div>
+  <span className="material-icons-outlined text-4xl text-neutral-300 mb-2">history</span>
+  <div className="text-sm text-neutral-400">No previous tenants at this property</div>
   </div>
   ) : (
   <div className="space-y-3">
@@ -4115,24 +4115,24 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   supabase.from("messages").select("*").eq("company_id", companyId).ilike("tenant", t.name).order("created_at", { ascending: true }).limit(100),
   ]);
   setHistoricalTenantDetail({ tenant: t, ledger: ledgerRes.data || [], docs: docsRes.data || [], messages: msgsRes.data || [], leases: t._leases || [], activeTab: "overview" });
-  }} className="bg-white border border-slate-200 rounded-xl p-4 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all">
+  }} className="bg-white border border-neutral-200 rounded-xl p-4 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all">
   <div className="flex items-center justify-between mb-2">
   <div className="flex items-center gap-3">
-  <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold">{t.name?.[0]}</div>
+  <div className="w-10 h-10 rounded-full bg-neutral-200 flex items-center justify-center text-neutral-500 font-bold">{t.name?.[0]}</div>
   <div>
-  <div className="font-semibold text-slate-800">{t.name}</div>
-  <div className="text-xs text-slate-400">{t.email || ""}{t.phone ? " · " + t.phone : ""}</div>
+  <div className="font-semibold text-neutral-800">{t.name}</div>
+  <div className="text-xs text-neutral-400">{t.email || ""}{t.phone ? " · " + t.phone : ""}</div>
   </div>
   </div>
-  <span className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded-full">{lease?.status || t.lease_status || "archived"}</span>
+  <span className="text-xs bg-neutral-100 text-neutral-500 px-2 py-1 rounded-full">{lease?.status || t.lease_status || "archived"}</span>
   </div>
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-  <div><span className="text-slate-400 block">Move In</span><span className="font-medium text-slate-700">{lease?.start_date || t.lease_start || t.move_in || "—"}</span></div>
-  <div><span className="text-slate-400 block">Move Out</span><span className="font-medium text-slate-700">{lease?.end_date || t.move_out || "—"}</span></div>
-  <div><span className="text-slate-400 block">Rent</span><span className="font-medium text-slate-700">{lease?.rent_amount ? formatCurrency(lease.rent_amount) : t.rent ? formatCurrency(t.rent) : "—"}</span></div>
-  <div><span className="text-slate-400 block">Deposit</span><span className="font-medium text-slate-700">{lease?.security_deposit ? formatCurrency(lease.security_deposit) : "—"}{lease?.deposit_status ? " · " + lease.deposit_status : ""}</span></div>
+  <div><span className="text-neutral-400 block">Move In</span><span className="font-medium text-neutral-700">{lease?.start_date || t.lease_start || t.move_in || "—"}</span></div>
+  <div><span className="text-neutral-400 block">Move Out</span><span className="font-medium text-neutral-700">{lease?.end_date || t.move_out || "—"}</span></div>
+  <div><span className="text-neutral-400 block">Rent</span><span className="font-medium text-neutral-700">{lease?.rent_amount ? formatCurrency(lease.rent_amount) : t.rent ? formatCurrency(t.rent) : "—"}</span></div>
+  <div><span className="text-neutral-400 block">Deposit</span><span className="font-medium text-neutral-700">{lease?.security_deposit ? formatCurrency(lease.security_deposit) : "—"}{lease?.deposit_status ? " · " + lease.deposit_status : ""}</span></div>
   </div>
-  {t.archived_at && <div className="text-xs text-slate-400 mt-2">Archived {new Date(t.archived_at).toLocaleDateString()}{t.archived_by ? " by " + t.archived_by : ""}</div>}
+  {t.archived_at && <div className="text-xs text-neutral-400 mt-2">Archived {new Date(t.archived_at).toLocaleDateString()}{t.archived_by ? " by " + t.archived_by : ""}</div>}
   </div>
   );
   })}
@@ -4146,16 +4146,16 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="px-6 py-4 flex-1">
   <button onClick={() => setHistoricalTenantDetail(null)} className="text-xs text-brand-600 hover:underline mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">arrow_back</span>Back to Previous Tenants</button>
   <div className="flex items-center gap-3 mb-4">
-  <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-lg">{historicalTenantDetail.tenant.name?.[0]}</div>
+  <div className="w-12 h-12 rounded-full bg-neutral-200 flex items-center justify-center text-neutral-500 font-bold text-lg">{historicalTenantDetail.tenant.name?.[0]}</div>
   <div>
-  <div className="font-bold text-slate-800 text-lg">{historicalTenantDetail.tenant.name}</div>
-  <div className="text-xs text-slate-400">{historicalTenantDetail.tenant.email || ""}{historicalTenantDetail.tenant.phone ? " · " + historicalTenantDetail.tenant.phone : ""}</div>
+  <div className="font-bold text-neutral-800 text-lg">{historicalTenantDetail.tenant.name}</div>
+  <div className="text-xs text-neutral-400">{historicalTenantDetail.tenant.email || ""}{historicalTenantDetail.tenant.phone ? " · " + historicalTenantDetail.tenant.phone : ""}</div>
   </div>
   </div>
   {/* Sub-tabs */}
-  <div className="flex border-b border-slate-200 mb-4">
+  <div className="flex border-b border-neutral-200 mb-4">
   {[["overview","Overview"],["ledger","Ledger"],["docs","Documents"],["messages","Messages"]].map(([id, label]) => (
-  <button key={id} onClick={() => setHistoricalTenantDetail(prev => ({ ...prev, activeTab: id }))} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap " + (historicalTenantDetail.activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}{id === "ledger" ? ` (${historicalTenantDetail.ledger.length})` : id === "docs" ? ` (${historicalTenantDetail.docs.length})` : ""}</button>
+  <button key={id} onClick={() => setHistoricalTenantDetail(prev => ({ ...prev, activeTab: id }))} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap " + (historicalTenantDetail.activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}{id === "ledger" ? ` (${historicalTenantDetail.ledger.length})` : id === "docs" ? ` (${historicalTenantDetail.docs.length})` : ""}</button>
   ))}
   </div>
 
@@ -4164,24 +4164,24 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div>
   {historicalTenantDetail.leases.length > 0 && (
   <div className="mb-4">
-  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Lease History</div>
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-2">Lease History</div>
   {historicalTenantDetail.leases.map((l, i) => (
-  <div key={l.id || i} className="bg-slate-50 rounded-lg p-3 mb-2">
+  <div key={l.id || i} className="bg-neutral-50 rounded-lg p-3 mb-2">
   <div className="grid grid-cols-2 gap-2 text-xs">
-  <div><span className="text-slate-400 block">Period</span><span className="font-medium text-slate-700">{l.start_date || "—"} → {l.end_date || "—"}</span></div>
-  <div><span className="text-slate-400 block">Status</span><span className="font-medium text-slate-700 capitalize">{l.status}</span></div>
-  <div><span className="text-slate-400 block">Rent</span><span className="font-medium text-slate-700">{l.rent_amount ? formatCurrency(l.rent_amount) : "—"}</span></div>
-  <div><span className="text-slate-400 block">Security Deposit</span><span className="font-medium text-slate-700">{l.security_deposit ? formatCurrency(l.security_deposit) : "—"}{l.deposit_status ? " · " + l.deposit_status : ""}</span></div>
-  {l.deposit_returned > 0 && <div><span className="text-slate-400 block">Deposit Returned</span><span className="font-medium text-green-600">{formatCurrency(l.deposit_returned)}</span></div>}
-  {l.deposit_deductions && <div className="col-span-2"><span className="text-slate-400 block">Deductions</span><span className="font-medium text-slate-700">{l.deposit_deductions}</span></div>}
+  <div><span className="text-neutral-400 block">Period</span><span className="font-medium text-neutral-700">{l.start_date || "—"} → {l.end_date || "—"}</span></div>
+  <div><span className="text-neutral-400 block">Status</span><span className="font-medium text-neutral-700 capitalize">{l.status}</span></div>
+  <div><span className="text-neutral-400 block">Rent</span><span className="font-medium text-neutral-700">{l.rent_amount ? formatCurrency(l.rent_amount) : "—"}</span></div>
+  <div><span className="text-neutral-400 block">Security Deposit</span><span className="font-medium text-neutral-700">{l.security_deposit ? formatCurrency(l.security_deposit) : "—"}{l.deposit_status ? " · " + l.deposit_status : ""}</span></div>
+  {l.deposit_returned > 0 && <div><span className="text-neutral-400 block">Deposit Returned</span><span className="font-medium text-green-600">{formatCurrency(l.deposit_returned)}</span></div>}
+  {l.deposit_deductions && <div className="col-span-2"><span className="text-neutral-400 block">Deductions</span><span className="font-medium text-neutral-700">{l.deposit_deductions}</span></div>}
   </div>
   </div>
   ))}
   </div>
   )}
   <div className="grid grid-cols-2 gap-3 text-xs">
-  <div><span className="text-slate-400 block">Final Balance</span><span className={"font-semibold " + (safeNum(historicalTenantDetail.tenant.balance) > 0 ? "text-red-500" : "text-green-600")}>{historicalTenantDetail.tenant.balance != null ? formatCurrency(Math.abs(safeNum(historicalTenantDetail.tenant.balance))) + (safeNum(historicalTenantDetail.tenant.balance) > 0 ? " owed" : " settled") : "—"}</span></div>
-  <div><span className="text-slate-400 block">Move Out</span><span className="font-medium text-slate-700">{historicalTenantDetail.tenant.move_out || "—"}</span></div>
+  <div><span className="text-neutral-400 block">Final Balance</span><span className={"font-semibold " + (safeNum(historicalTenantDetail.tenant.balance) > 0 ? "text-red-500" : "text-green-600")}>{historicalTenantDetail.tenant.balance != null ? formatCurrency(Math.abs(safeNum(historicalTenantDetail.tenant.balance))) + (safeNum(historicalTenantDetail.tenant.balance) > 0 ? " owed" : " settled") : "—"}</span></div>
+  <div><span className="text-neutral-400 block">Move Out</span><span className="font-medium text-neutral-700">{historicalTenantDetail.tenant.move_out || "—"}</span></div>
   </div>
   </div>
   )}
@@ -4189,17 +4189,17 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {/* Ledger */}
   {historicalTenantDetail.activeTab === "ledger" && (
   <div>
-  {historicalTenantDetail.ledger.length === 0 ? <div className="text-center py-6 text-slate-400 text-sm">No transaction history</div> : (
+  {historicalTenantDetail.ledger.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No transaction history</div> : (
   <div className="space-y-1">
   {historicalTenantDetail.ledger.map((e, i) => (
-  <div key={item.id || i} className="flex items-center justify-between py-2.5 border-b border-slate-100 text-sm">
+  <div key={item.id || i} className="flex items-center justify-between py-2.5 border-b border-neutral-100 text-sm">
   <div>
-  <div className="font-medium text-slate-700">{e.description}</div>
-  <div className="text-xs text-slate-400">{e.date}{e.type ? " · " + e.type : ""}</div>
+  <div className="font-medium text-neutral-700">{e.description}</div>
+  <div className="text-xs text-neutral-400">{e.date}{e.type ? " · " + e.type : ""}</div>
   </div>
   <div className="text-right">
   <div className={"font-semibold font-mono " + (e.amount < 0 ? "text-green-600" : "text-red-500")}>{e.amount < 0 ? "+" : "-"}{formatCurrency(Math.abs(e.amount))}</div>
-  {e.balance != null && <div className="text-xs text-slate-400">Bal: {formatCurrency(e.balance)}</div>}
+  {e.balance != null && <div className="text-xs text-neutral-400">Bal: {formatCurrency(e.balance)}</div>}
   </div>
   </div>
   ))}
@@ -4211,15 +4211,15 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {/* Documents */}
   {historicalTenantDetail.activeTab === "docs" && (
   <div>
-  {historicalTenantDetail.docs.length === 0 ? <div className="text-center py-6 text-slate-400 text-sm">No documents</div> : (
+  {historicalTenantDetail.docs.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No documents</div> : (
   <div className="space-y-2">
   {historicalTenantDetail.docs.map(d => (
-  <div key={d.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3 hover:bg-slate-100 transition-colors">
+  <div key={d.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3 hover:bg-neutral-100 transition-colors">
   <div className="flex items-center gap-3">
-  <span className="material-icons-outlined text-slate-400 text-lg">{d.type === "Lease" ? "description" : d.type === "ID" ? "badge" : d.type === "Insurance" ? "verified_user" : "insert_drive_file"}</span>
+  <span className="material-icons-outlined text-neutral-400 text-lg">{d.type === "Lease" ? "description" : d.type === "ID" ? "badge" : d.type === "Insurance" ? "verified_user" : "insert_drive_file"}</span>
   <div>
-  <div className="text-sm font-medium text-slate-700">{d.name}</div>
-  <div className="text-xs text-slate-400">{d.type} · {d.uploaded_at?.slice(0, 10)}</div>
+  <div className="text-sm font-medium text-neutral-700">{d.name}</div>
+  <div className="text-xs text-neutral-400">{d.type} · {d.uploaded_at?.slice(0, 10)}</div>
   </div>
   </div>
   <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-brand-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</button>
@@ -4233,12 +4233,12 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {/* Messages */}
   {historicalTenantDetail.activeTab === "messages" && (
   <div>
-  {historicalTenantDetail.messages.length === 0 ? <div className="text-center py-6 text-slate-400 text-sm">No messages</div> : (
+  {historicalTenantDetail.messages.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No messages</div> : (
   <div className="space-y-2 max-h-64 overflow-y-auto">
   {historicalTenantDetail.messages.map((m, i) => (
-  <div key={i} className={"rounded-xl px-3 py-2 max-w-[85%] text-sm " + (m.sender === "admin" ? "bg-brand-50 text-brand-800 ml-auto" : "bg-slate-100 text-slate-700")}>
+  <div key={i} className={"rounded-xl px-3 py-2 max-w-[85%] text-sm " + (m.sender === "admin" ? "bg-brand-50 text-brand-800 ml-auto" : "bg-neutral-100 text-neutral-700")}>
   <div>{m.message}</div>
-  <div className="text-xs text-slate-400 mt-1">{m.sender} · {m.created_at?.slice(0, 16).replace("T", " ")}</div>
+  <div className="text-xs text-neutral-400 mt-1">{m.sender} · {m.created_at?.slice(0, 16).replace("T", " ")}</div>
   </div>
   ))}
   </div>
@@ -4254,30 +4254,30 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   {showForm && editingProperty && (
   <div className="bg-white p-4 rounded-xl border border-brand-50 shadow-sm mb-4">
-  <h3 className="text-sm font-semibold text-slate-700 mb-3">{editingProperty ? "Edit Property" : "Add Property"}</h3>
+  <h3 className="text-sm font-semibold text-neutral-700 mb-3">{editingProperty ? "Edit Property" : "Add Property"}</h3>
   {!isAdmin && <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 mb-3">Submitted for admin approval.</p>}
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address Line 1 *</label><Input placeholder="123 Main St" value={form.address_line_1} onChange={e => setForm({ ...form, address_line_1: e.target.value })} autoComplete="address-line1" name="address-line1" required /></div>
-  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address Line 2</label><Input placeholder="Apt 4B, Suite 200, etc." value={form.address_line_2} onChange={e => setForm({ ...form, address_line_2: e.target.value })} autoComplete="address-line2" name="address-line2" /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">City *</label><Input placeholder="Greenbelt" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} autoComplete="address-level2" name="city" required /></div>
+  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Address Line 1 *</label><Input placeholder="123 Main St" value={form.address_line_1} onChange={e => setForm({ ...form, address_line_1: e.target.value })} autoComplete="address-line1" name="address-line1" required /></div>
+  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Address Line 2</label><Input placeholder="Apt 4B, Suite 200, etc." value={form.address_line_2} onChange={e => setForm({ ...form, address_line_2: e.target.value })} autoComplete="address-line2" name="address-line2" /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">City *</label><Input placeholder="Greenbelt" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} autoComplete="address-level2" name="city" required /></div>
   <div className="grid grid-cols-2 gap-2">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">State *</label><Select value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} autoComplete="address-level1" name="state" required><option value="">--</option>{US_STATES.map(s => <option key={s} value={s}>{s}</option>)}</Select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">ZIP *</label><Input placeholder="20770" value={form.zip} onChange={async e => { const z = e.target.value.replace(/\D/g, "").slice(0, 5); setForm(f => ({ ...f, zip: z })); if (z.length === 5) { const loc = await lookupZip(z); if (loc) setForm(f => ({ ...f, city: f.city || loc.city, state: f.state || loc.state })); } }} maxLength={5} autoComplete="postal-code" name="postal-code" required /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">State *</label><Select value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} autoComplete="address-level1" name="state" required><option value="">--</option>{US_STATES.map(s => <option key={s} value={s}>{s}</option>)}</Select></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">ZIP *</label><Input placeholder="20770" value={form.zip} onChange={async e => { const z = e.target.value.replace(/\D/g, "").slice(0, 5); setForm(f => ({ ...f, zip: z })); if (z.length === 5) { const loc = await lookupZip(z); if (loc) setForm(f => ({ ...f, city: f.city || loc.city, state: f.state || loc.state })); } }} maxLength={5} autoComplete="postal-code" name="postal-code" required /></div>
   </div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Type *</label><Select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></Select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status *</label><Select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option><option value="inactive">Inactive</option></Select></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Type *</label><Select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></Select></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Status *</label><Select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option><option value="inactive">Inactive</option></Select></div>
   {form.status === "occupied" && (<>
   <div className="col-span-1 sm:col-span-2 bg-brand-50 rounded-lg px-3 py-2"><div className="text-xs font-semibold text-brand-700">Tenant Information</div></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant Name *</label><Input placeholder="Jane Doe" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} required /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant Email *</label><Input type="email" placeholder="tenant@email.com" value={form.tenant_email} onChange={e => setForm({ ...form, tenant_email: e.target.value })} required /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant Phone *</label><Input type="tel" placeholder="(555) 123-4567" value={form.tenant_phone} onChange={e => setForm({ ...form, tenant_phone: formatPhoneInput(e.target.value) })} maxLength={14} required /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant Name *</label><Input placeholder="Jane Doe" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} required /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant Email *</label><Input type="email" placeholder="tenant@email.com" value={form.tenant_email} onChange={e => setForm({ ...form, tenant_email: e.target.value })} required /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant Phone *</label><Input type="tel" placeholder="(555) 123-4567" value={form.tenant_phone} onChange={e => setForm({ ...form, tenant_phone: formatPhoneInput(e.target.value) })} maxLength={14} required /></div>
   <div className="col-span-1 sm:col-span-2 bg-brand-50 rounded-lg px-3 py-2 mt-1"><div className="text-xs font-semibold text-brand-700">Lease Details</div></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Monthly Rent ($) *</label><Input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} required /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Security Deposit ($) *</label><Input placeholder="1500" value={form.security_deposit} onChange={e => setForm({ ...form, security_deposit: e.target.value })} required /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Start Date *</label><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} required /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease End Date *</label><Input type="date" value={form.lease_end} min={form.lease_start || undefined} onChange={e => setForm({ ...form, lease_end: e.target.value })} required /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Monthly Rent ($) *</label><Input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} required /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Security Deposit ($) *</label><Input placeholder="1500" value={form.security_deposit} onChange={e => setForm({ ...form, security_deposit: e.target.value })} required /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lease Start Date *</label><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} required /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lease End Date *</label><Input type="date" value={form.lease_end} min={form.lease_start || undefined} onChange={e => setForm({ ...form, lease_end: e.target.value })} required /></div>
   </>)}
-  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="Any additional notes" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
+  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Textarea placeholder="Any additional notes" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
   </div>
   <div className="flex gap-2 mt-3">
   <Btn onClick={saveProperty} disabled={_submitGuards["saveProperty"]}>{_submitGuards["saveProperty"] ? "Saving..." : (isAdmin ? "Save" : "Submit")}</Btn>
@@ -4316,10 +4316,10 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
 
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-manrope font-bold text-slate-800">{properties.length}</div><div className="text-xs text-slate-400">Total</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-emerald-600">{properties.filter(p => p.status === "occupied").length}</div><div className="text-xs text-slate-400">Occupied</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-amber-600">{properties.filter(p => p.status === "vacant").length}</div><div className="text-xs text-slate-400">Vacant</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-brand-600">${properties.reduce((s, p) => s + safeNum(p.rent), 0).toLocaleString()}</div><div className="text-xs text-slate-400">Total Rent</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-manrope font-bold text-neutral-800">{properties.length}</div><div className="text-xs text-neutral-400">Total</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-emerald-600">{properties.filter(p => p.status === "occupied").length}</div><div className="text-xs text-neutral-400">Occupied</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-amber-600">{properties.filter(p => p.status === "vacant").length}</div><div className="text-xs text-neutral-400">Vacant</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-brand-600">${properties.reduce((s, p) => s + safeNum(p.rent), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Total Rent</div></div>
   </div>
 
   {viewMode === "card" && (
@@ -4328,15 +4328,15 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div key={p.id} onClick={() => openPropertyDetail(p)} className={`bg-white rounded-xl border shadow-sm p-4 cursor-pointer hover:shadow-md hover:border-brand-200 transition-all ${isReadOnly(p) ? "border-purple-200 bg-purple-50/30" : "border-brand-50"}`}>
   <div className="flex items-start justify-between mb-2">
   <div>
-  <h3 className="font-semibold text-slate-800 text-sm">{p.address_line_1 || p.address}</h3>{(p.city || p.state) && <div className="text-xs text-slate-400">{[p.city, p.state, p.zip].filter(Boolean).join(", ")}</div>}
-  <p className="text-xs text-slate-400">{p.type}</p>
+  <h3 className="font-semibold text-neutral-800 text-sm">{p.address_line_1 || p.address}</h3>{(p.city || p.state) && <div className="text-xs text-neutral-400">{[p.city, p.state, p.zip].filter(Boolean).join(", ")}</div>}
+  <p className="text-xs text-neutral-400">{p.type}</p>
   </div>
   <div className="flex flex-col items-end gap-1">
   <Badge status={p.status} label={p.status} />
   {p.pm_company_name && <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">PM: {p.pm_company_name}</span>}
   </div>
   </div>
-  <div className="text-sm text-slate-500 space-y-1">
+  <div className="text-sm text-neutral-500 space-y-1">
   <div className="flex justify-between"><span>Rent:</span><span className="font-semibold">${safeNum(p.rent).toLocaleString()}</span></div>
   {p.tenant && <div className="flex justify-between"><span>Tenant:</span><span>{formatAllTenants(p)}</span></div>}
   {p.lease_end && <div className="flex justify-between"><span>Lease End:</span><span>{p.lease_end}</span></div>}
@@ -4351,7 +4351,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline">Delete</button>}
   {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline">Assign PM</button>}
   {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline">Remove PM</button>}
-  <button onClick={() => loadTimeline(p)} className="text-xs text-slate-400 hover:underline ml-auto">Timeline</button>
+  <button onClick={() => loadTimeline(p)} className="text-xs text-neutral-400 hover:underline ml-auto">Timeline</button>
   </div>
   </div>
   ))}
@@ -4361,7 +4361,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {viewMode === "table" && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-x-auto">
   <table className="w-full text-sm">
-  <thead className="bg-brand-50/30 text-xs text-slate-400 uppercase">
+  <thead className="bg-brand-50/30 text-xs text-neutral-400 uppercase">
   <tr>
   {visibleCols.includes("address") && <th className="px-4 py-3 text-left">Address</th>}
   {visibleCols.includes("type") && <th className="px-4 py-3 text-left">Type</th>}
@@ -4377,14 +4377,14 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <tbody>
   {filtered.map(p => (
   <tr key={p.id} className="border-t border-brand-50/50 hover:bg-brand-50/30/50">
-  {visibleCols.includes("address") && <td className="px-4 py-2.5 font-medium text-slate-800">{p.address}</td>}
-  {visibleCols.includes("type") && <td className="px-4 py-2.5 text-slate-500">{p.type}</td>}
+  {visibleCols.includes("address") && <td className="px-4 py-2.5 font-medium text-neutral-800">{p.address}</td>}
+  {visibleCols.includes("type") && <td className="px-4 py-2.5 text-neutral-500">{p.type}</td>}
   {visibleCols.includes("status") && <td className="px-4 py-2.5"><Badge status={p.status} label={p.status} /></td>}
   {visibleCols.includes("rent") && <td className="px-4 py-2.5 text-right font-semibold">${safeNum(p.rent).toLocaleString()}</td>}
-  {visibleCols.includes("tenant") && <td className="px-4 py-2.5 text-slate-500">{formatAllTenants(p) || "—"}</td>}
-  {visibleCols.includes("lease_end") && <td className="px-4 py-2.5 text-slate-400">{p.lease_end || "—"}</td>}
-  {visibleCols.includes("owner_name") && <td className="px-4 py-2.5 text-slate-500">{p.owner_name || "—"}</td>}
-  {visibleCols.includes("notes") && <td className="px-4 py-2.5 text-xs text-slate-400 max-w-32 truncate">{p.notes || "—"}</td>}
+  {visibleCols.includes("tenant") && <td className="px-4 py-2.5 text-neutral-500">{formatAllTenants(p) || "—"}</td>}
+  {visibleCols.includes("lease_end") && <td className="px-4 py-2.5 text-neutral-400">{p.lease_end || "—"}</td>}
+  {visibleCols.includes("owner_name") && <td className="px-4 py-2.5 text-neutral-500">{p.owner_name || "—"}</td>}
+  {visibleCols.includes("notes") && <td className="px-4 py-2.5 text-xs text-neutral-400 max-w-32 truncate">{p.notes || "—"}</td>}
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
   {p.pm_company_name && <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded mr-2">PM</span>}
   {isReadOnly(p) && <span className="text-xs text-purple-500 mr-2">🔒 view only</span>}
@@ -4392,13 +4392,13 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline mr-2">Delete</button>}
   {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline mr-2">PM</button>}
   {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline mr-2">-PM</button>}
-  <button onClick={() => loadTimeline(p)} className="text-xs text-slate-400 hover:underline">TL</button>
+  <button onClick={() => loadTimeline(p)} className="text-xs text-neutral-400 hover:underline">TL</button>
   </td>
   </tr>
   ))}
   </tbody>
   </table>
-  {filtered.length === 0 && <div className="text-center py-8 text-slate-400 text-sm">No properties found</div>}
+  {filtered.length === 0 && <div className="text-center py-8 text-neutral-400 text-sm">No properties found</div>}
   </div>
   )}
 
@@ -4408,18 +4408,18 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div key={p.id} className={`flex items-center gap-3 px-4 py-2.5 hover:bg-brand-50/30/50 ${isReadOnly(p) ? "bg-purple-50/30" : ""}`}>
   <div className={`w-2 h-2 rounded-full ${p.status === "occupied" ? "bg-emerald-500" : p.status === "vacant" ? "bg-amber-500" : "bg-red-500"}`} />
   <div className="flex-1 min-w-0">
-  <span className="text-sm font-medium text-slate-800">{p.address}</span>
-  <span className="text-xs text-slate-400 ml-2">{p.type}</span>
+  <span className="text-sm font-medium text-neutral-800">{p.address}</span>
+  <span className="text-xs text-neutral-400 ml-2">{p.type}</span>
   {p.pm_company_name && <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded ml-2">PM: {p.pm_company_name}</span>}
   </div>
-  <span className="text-sm font-semibold text-slate-700">${safeNum(p.rent).toLocaleString()}</span>
-  <span className="text-xs text-slate-400 w-28 truncate">{p.tenant || "—"}</span>
+  <span className="text-sm font-semibold text-neutral-700">${safeNum(p.rent).toLocaleString()}</span>
+  <span className="text-xs text-neutral-400 w-28 truncate">{p.tenant || "—"}</span>
   <Badge status={p.status} label={p.status} />
   {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline">Edit</button>}
   {isReadOnly(p) && <span className="text-xs text-purple-400">🔒</span>}
   </div>
   ))}
-  {filtered.length === 0 && <div className="text-center py-8 text-slate-400 text-sm">No properties found</div>}
+  {filtered.length === 0 && <div className="text-center py-8 text-neutral-400 text-sm">No properties found</div>}
   </div>
   )}
 
@@ -4436,9 +4436,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   </div>
   <div>
-  <label className="text-xs font-medium text-slate-500 block mb-1">PM Company's 8-Digit Code</label>
+  <label className="text-xs font-medium text-neutral-500 block mb-1">PM Company's 8-Digit Code</label>
   <Input value={pmCode} onChange={e => setPmCode(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="e.g. 12345678" maxLength={8} className="font-mono tracking-wider" />
-  <p className="text-xs text-slate-400 mt-1">Ask the property manager for their company code</p>
+  <p className="text-xs text-neutral-400 mt-1">Ask the property manager for their company code</p>
   </div>
   <Btn variant="purple" className="w-full" onClick={() => assignPM(showPmAssign)}>Assign Property Manager</Btn>
   </div>
@@ -4452,12 +4452,12 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div key={i} className="flex gap-3 items-start">
   <span className="text-lg">{item._type === "payment" ? "💰" : item._type === "work_order" ? "🔧" : "📄"}</span>
   <div>
-  <p className="text-sm font-medium text-slate-800">{item._type === "payment" ? `${formatCurrency(item.amount)} - ${item.type}` : item._type === "work_order" ? item.issue : item.name}</p>
-  <p className="text-xs text-slate-400">{new Date(item._date).toLocaleDateString()}</p>
+  <p className="text-sm font-medium text-neutral-800">{item._type === "payment" ? `${formatCurrency(item.amount)} - ${item.type}` : item._type === "work_order" ? item.issue : item.name}</p>
+  <p className="text-xs text-neutral-400">{new Date(item._date).toLocaleDateString()}</p>
   </div>
   </div>
   ))}
-  {timelineData.length === 0 && <p className="text-sm text-slate-400 text-center py-4">No activity found.</p>}
+  {timelineData.length === 0 && <p className="text-sm text-neutral-400 text-center py-4">No activity found.</p>}
   </div>
   </Modal>
   )}
@@ -4521,8 +4521,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60] flex items-center justify-center">
   <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
   <div className="w-10 h-10 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin" />
-  <div className="text-sm font-medium text-slate-700">Setting up property...</div>
-  <div className="text-xs text-slate-400">Creating tenant, lease & posting entries</div>
+  <div className="text-sm font-medium text-neutral-700">Setting up property...</div>
+  <div className="text-xs text-neutral-400">Creating tenant, lease & posting entries</div>
   </div>
   </div>
   )}
@@ -5166,7 +5166,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   setActivePanel(id);
   if (id === "ledger") openLedger(selectedTenant);
   if (id === "messages") openMessages(selectedTenant);
-  }} className={`flex-1 py-2.5 text-xs font-medium ${activePanel === id ? "border-b-2 border-brand-600 text-brand-700" : "text-slate-400 hover:text-slate-700"}`}>{label}</button>
+  }} className={`flex-1 py-2.5 text-xs font-medium ${activePanel === id ? "border-b-2 border-brand-600 text-brand-700" : "text-neutral-400 hover:text-neutral-700"}`}>{label}</button>
   ))}
   </div>
 
@@ -5175,13 +5175,13 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="flex-1 overflow-y-auto p-4">
   <div className={`rounded-3xl p-4 mb-4 text-center relative ${safeNum(selectedTenant?.balance) > 0 ? "bg-red-50" : safeNum(selectedTenant?.balance) < 0 ? "bg-green-50" : "bg-brand-50/30"}`}>
   <button onClick={() => exportLedgerPDF(selectedTenant, ledger)} className="absolute top-3 right-3 text-xs text-red-600 border border-red-200 bg-white px-3 py-1.5 rounded-lg hover:bg-red-50 flex items-center gap-1" title="Export ledger as PDF for sharing"><span className="material-icons-outlined text-sm">picture_as_pdf</span>Export PDF</button>
-  <div className="text-xs text-slate-400 mb-1">Current Balance</div>
-  <div className={`text-3xl font-bold ${safeNum(selectedTenant?.balance) > 0 ? "text-red-500" : safeNum(selectedTenant?.balance) < 0 ? "text-green-600" : "text-slate-700"}`}>
+  <div className="text-xs text-neutral-400 mb-1">Current Balance</div>
+  <div className={`text-3xl font-bold ${safeNum(selectedTenant?.balance) > 0 ? "text-red-500" : safeNum(selectedTenant?.balance) < 0 ? "text-green-600" : "text-neutral-700"}`}>
   {safeNum(selectedTenant?.balance) > 0 ? `-${formatCurrency(selectedTenant.balance)}` : safeNum(selectedTenant?.balance) < 0 ? `Credit ${formatCurrency(Math.abs(selectedTenant.balance))}` : "$0 Current"}
   </div>
   </div>
   <div className="bg-brand-50/30 rounded-xl p-3 mb-4">
-  <div className="text-xs font-semibold text-slate-500 mb-2">Add Transaction</div>
+  <div className="text-xs font-semibold text-neutral-500 mb-2">Add Transaction</div>
   <div className="grid grid-cols-3 gap-2">
   <Select value={newCharge.type} onChange={e => setNewCharge({ ...newCharge, type: e.target.value })}>
   <option value="charge">Charge</option>
@@ -5199,19 +5199,19 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div key={e.id} className="bg-white border border-brand-50 rounded-lg px-3 py-2.5">
   <div className="flex justify-between items-start">
   <div>
-  <div className="text-sm font-medium text-slate-800">{e.description}</div>
-  <div className="text-xs text-slate-400">{e.date}</div>
+  <div className="text-sm font-medium text-neutral-800">{e.description}</div>
+  <div className="text-xs text-neutral-400">{e.date}</div>
   </div>
   <div className="text-right">
   <div className={`text-sm font-bold ${e.type === "payment" || e.type === "credit" ? "text-green-600" : "text-red-500"}`}>
   {e.type === "payment" || e.type === "credit" ? "+" + formatCurrency(Math.abs(e.amount)) : "-" + formatCurrency(Math.abs(e.amount))}
   </div>
-  <div className="text-xs text-slate-400">Bal: ${e.balance}</div>
+  <div className="text-xs text-neutral-400">Bal: ${e.balance}</div>
   </div>
   </div>
   </div>
   ))}
-  {ledger.length === 0 && <div className="text-center py-6 text-slate-400 text-sm">No ledger entries yet</div>}
+  {ledger.length === 0 && <div className="text-center py-6 text-neutral-400 text-sm">No ledger entries yet</div>}
   </div>
   </div>
   )}
@@ -5222,15 +5222,15 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="flex-1 overflow-y-auto p-4 space-y-3">
   {messages.map(m => (
   <div key={m.id} className={`flex ${m.sender === "admin" ? "justify-end" : "justify-start"}`}>
-  <div className={`max-w-xs rounded-2xl px-4 py-2.5 ${m.sender === "admin" ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-800"}`}>
+  <div className={`max-w-xs rounded-2xl px-4 py-2.5 ${m.sender === "admin" ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-800"}`}>
   <div className="text-sm">{m.message}</div>
-  <div className={`text-xs mt-1 ${m.sender === "admin" ? "text-brand-200" : "text-slate-400"}`}>
+  <div className={`text-xs mt-1 ${m.sender === "admin" ? "text-brand-200" : "text-neutral-400"}`}>
   {m.sender === "admin" ? "You" : selectedTenant.name} · {new Date(m.created_at).toLocaleDateString()}
   </div>
   </div>
   </div>
   ))}
-  {messages.length === 0 && <div className="text-center py-6 text-slate-400 text-sm">No messages yet</div>}
+  {messages.length === 0 && <div className="text-center py-6 text-neutral-400 text-sm">No messages yet</div>}
   </div>
   <div className="p-4 border-t border-brand-50 flex gap-2">
   <Input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} placeholder="Type a message..." className="flex-1" />
@@ -5243,7 +5243,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {activePanel === "lease" && (
   <div className="flex-1 overflow-y-auto p-4">
   <div className="bg-white border border-brand-50 rounded-3xl p-4 mb-4">
-  <h4 className="font-semibold text-slate-700 mb-3">Lease Details</h4>
+  <h4 className="font-semibold text-neutral-700 mb-3">Lease Details</h4>
   <div className="space-y-2 text-sm">
   {[
   ["Tenant", selectedTenant.name],
@@ -5254,8 +5254,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ["Lease Status", selectedTenant.lease_status],
   ].map(([l, v]) => (
   <div key={l} className="flex justify-between py-1.5 border-b border-brand-50/50">
-  <span className="text-slate-400">{l}</span>
-  <span className="font-medium text-slate-800 capitalize">{v}</span>
+  <span className="text-neutral-400">{l}</span>
+  <span className="font-medium text-neutral-800 capitalize">{v}</span>
   </div>
   ))}
   </div>
@@ -5297,10 +5297,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ].map(item => (
   <button key={item.label} onClick={() => { setLeaseModal(item.modal); setLeaseInput(""); }} className="w-full flex items-center justify-between bg-brand-50/30 hover:bg-brand-50 border border-brand-50 hover:border-brand-200 rounded-2xl px-4 py-3 text-left">
   <div>
-  <div className="text-sm font-medium text-slate-800">{item.label}</div>
-  <div className="text-xs text-slate-400">{item.desc}</div>
+  <div className="text-sm font-medium text-neutral-800">{item.label}</div>
+  <div className="text-xs text-neutral-400">{item.desc}</div>
   </div>
-  <span className="text-slate-300">→</span>
+  <span className="text-neutral-300">→</span>
   </button>
   ))}
   </div>
@@ -5337,10 +5337,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* Contact Info */}
   <div className="px-6 py-4 border-b border-brand-50">
   <div className="space-y-2 text-sm">
-  <div><span className="text-xs text-slate-400 block">Email</span><a href={"mailto:" + selectedTenant.email} className="text-brand-600 hover:underline break-all">{selectedTenant.email || "—"}</a></div>
+  <div><span className="text-xs text-neutral-400 block">Email</span><a href={"mailto:" + selectedTenant.email} className="text-brand-600 hover:underline break-all">{selectedTenant.email || "—"}</a></div>
   <div className="grid grid-cols-2 gap-3">
-  <div><span className="text-xs text-slate-400 block">Phone</span><a href={"tel:" + selectedTenant.phone} className="text-brand-600 hover:underline">{selectedTenant.phone || "—"}</a></div>
-  <div><span className="text-xs text-slate-400 block">Lease Start</span><span className="text-slate-700">{selectedTenant.lease_start || selectedTenant.move_in || "—"}</span></div>
+  <div><span className="text-xs text-neutral-400 block">Phone</span><a href={"tel:" + selectedTenant.phone} className="text-brand-600 hover:underline">{selectedTenant.phone || "—"}</a></div>
+  <div><span className="text-xs text-neutral-400 block">Lease Start</span><span className="text-neutral-700">{selectedTenant.lease_start || selectedTenant.move_in || "—"}</span></div>
   </div>
   </div>
   </div>
@@ -5348,7 +5348,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* Tab navigation */}
   <div className="flex border-b border-brand-50 px-6 overflow-x-auto">
   {[["ledger","Ledger"],["documents","Documents"],["messages","Messages"],["actions","Actions"]].map(([id, label]) => (
-  <button key={id} onClick={() => { setActivePanel(id); if (id === "documents" && selectedTenant) fetchTenantDocs(selectedTenant); if (id === "ledger" && selectedTenant) openLedger(selectedTenant); if (id === "messages" && selectedTenant) openMessages(selectedTenant); }} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + ((activePanel === id || (id === "ledger" && activePanel === "detail")) ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}</button>
+  <button key={id} onClick={() => { setActivePanel(id); if (id === "documents" && selectedTenant) fetchTenantDocs(selectedTenant); if (id === "ledger" && selectedTenant) openLedger(selectedTenant); if (id === "messages" && selectedTenant) openMessages(selectedTenant); }} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + ((activePanel === id || (id === "ledger" && activePanel === "detail")) ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}</button>
   ))}
   </div>
 
@@ -5359,14 +5359,14 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {(activePanel === "detail" || activePanel === "ledger") && (
   <div>
   <div className="flex items-center justify-between mb-3">
-  <h3 className="text-sm font-semibold text-slate-700">Transaction History</h3>
+  <h3 className="text-sm font-semibold text-neutral-700">Transaction History</h3>
   <Btn variant="primary" size="sm" onClick={() => setPage("accounting", "newJE")}><span className="material-icons-outlined text-sm">add_circle</span>New Entry</Btn>
   </div>
-  {ledger.length === 0 ? <div className="text-center py-6 text-slate-400 text-sm">No transactions yet</div> : (
+  {ledger.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No transactions yet</div> : (
   <div className="space-y-1">
   {ledger.slice(0, 20).map((e, i) => (
   <div key={i} className="flex items-center justify-between py-2 border-b border-brand-50/50 text-sm">
-  <div><div className="font-medium text-slate-700">{e.description}</div><div className="text-xs text-slate-400">{e.date}</div></div>
+  <div><div className="font-medium text-neutral-700">{e.description}</div><div className="text-xs text-neutral-400">{e.date}</div></div>
   <div className={"font-semibold " + (e.type === "payment" || e.type === "credit" ? "text-green-600" : "text-red-500")}>{e.type === "payment" || e.type === "credit" ? "+" : "-"}{formatCurrency(Math.abs(e.amount))}</div>
   </div>
   ))}
@@ -5378,7 +5378,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* Documents tab */}
   {activePanel === "documents" && (
   <div>
-  <h3 className="text-sm font-semibold text-slate-700 mb-3">Tenant Documents</h3>
+  <h3 className="text-sm font-semibold text-neutral-700 mb-3">Tenant Documents</h3>
   {/* Required docs checklist */}
   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
   <div className="text-xs font-bold text-amber-800 mb-2">Required Documents</div>
@@ -5387,22 +5387,22 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   return (
   <div key={doc} className="flex items-center gap-2 py-1 text-sm">
   <span className={uploaded ? "text-green-500" : "text-amber-400"}>{uploaded ? "✅" : "☐"}</span>
-  <span className={uploaded ? "text-slate-700" : "text-amber-700"}>{doc}</span>
+  <span className={uploaded ? "text-neutral-700" : "text-amber-700"}>{doc}</span>
   {uploaded && <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">Uploaded</span>}
   </div>
   );
   })}
   </div>
   {/* Uploaded docs list */}
-  {tenantDocs.length === 0 ? <div className="text-center py-4 text-slate-400 text-sm">No documents uploaded for this tenant</div> : (
+  {tenantDocs.length === 0 ? <div className="text-center py-4 text-neutral-400 text-sm">No documents uploaded for this tenant</div> : (
   <div className="space-y-2">
   {tenantDocs.map(d => (
-  <div key={d.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3 hover:bg-slate-100 transition-colors">
+  <div key={d.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3 hover:bg-neutral-100 transition-colors">
   <div className="flex items-center gap-3">
-  <span className="material-icons-outlined text-slate-400 text-lg">{d.type === "Lease" ? "description" : d.type === "ID" ? "badge" : d.type === "Insurance" ? "verified_user" : d.type === "Inspection" ? "search" : "insert_drive_file"}</span>
+  <span className="material-icons-outlined text-neutral-400 text-lg">{d.type === "Lease" ? "description" : d.type === "ID" ? "badge" : d.type === "Insurance" ? "verified_user" : d.type === "Inspection" ? "search" : "insert_drive_file"}</span>
   <div>
-  <div className="text-sm font-medium text-slate-700">{d.name}</div>
-  <div className="text-xs text-slate-400">{d.type} · {d.uploaded_at?.slice(0, 10)}</div>
+  <div className="text-sm font-medium text-neutral-700">{d.name}</div>
+  <div className="text-xs text-neutral-400">{d.type} · {d.uploaded_at?.slice(0, 10)}</div>
   </div>
   </div>
   <div className="flex items-center gap-2">
@@ -5427,10 +5427,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* Messages tab */}
   {activePanel === "messages" && (
   <div>
-  <h3 className="text-sm font-semibold text-slate-700 mb-3">Messages</h3>
+  <h3 className="text-sm font-semibold text-neutral-700 mb-3">Messages</h3>
   <div className="space-y-2 max-h-48 overflow-y-auto mb-3">
-  {messages.length === 0 ? <div className="text-center py-4 text-slate-400 text-sm">No messages</div> : messages.map((m, i) => (
-  <div key={i} className={"rounded-2xl px-3 py-2 text-sm max-w-xs " + (m.sender === selectedTenant.name ? "bg-slate-100 text-slate-700 mr-auto" : "bg-brand-600 text-white ml-auto")}>
+  {messages.length === 0 ? <div className="text-center py-4 text-neutral-400 text-sm">No messages</div> : messages.map((m, i) => (
+  <div key={i} className={"rounded-2xl px-3 py-2 text-sm max-w-xs " + (m.sender === selectedTenant.name ? "bg-neutral-100 text-neutral-700 mr-auto" : "bg-brand-600 text-white ml-auto")}>
   <div className="text-xs opacity-60 mb-0.5">{m.sender}</div>
   {m.message}
   </div>
@@ -5447,7 +5447,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {activePanel === "actions" && (
   <div className="grid grid-cols-2 gap-3">
   <button onClick={() => startEdit(selectedTenant)} className="bg-brand-50/30 rounded-3xl p-4 text-center hover:bg-brand-50/50 transition-all">
-  <div className="text-2xl mb-1">✏️</div><div className="text-sm font-semibold text-slate-700">Edit Tenant</div>
+  <div className="text-2xl mb-1">✏️</div><div className="text-sm font-semibold text-neutral-700">Edit Tenant</div>
   </button>
   <button onClick={() => inviteTenant(selectedTenant)} className="bg-purple-50 rounded-3xl p-4 text-center hover:bg-purple-100 transition-all">
   <div className="text-2xl mb-1">✉️</div><div className="text-sm font-semibold text-purple-700">Send Invite</div>
@@ -5510,7 +5510,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {["Signed Lease Agreement", "Government-Issued ID", "Renters Insurance Certificate", "Proof of Utility Transfer"].map(doc => (
   <div key={doc} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-amber-100">
   <span className="text-amber-400">☐</span>
-  <span className="text-sm text-slate-700">{doc}</span>
+  <span className="text-sm text-neutral-700">{doc}</span>
   </div>
   ))}
   </div>
@@ -5533,8 +5533,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {docExceptions.filter(r => r.status === "pending").map(r => (
   <div key={r.id} className="bg-white rounded-xl border border-amber-100 px-4 py-3 flex items-center justify-between">
   <div>
-  <div className="text-sm font-semibold text-slate-800">{r.tenant_name}</div>
-  <div className="text-xs text-slate-400">{r.property} · Requested by {r.requested_by} · {new Date(r.created_at).toLocaleDateString()}</div>
+  <div className="text-sm font-semibold text-neutral-800">{r.tenant_name}</div>
+  <div className="text-xs text-neutral-400">{r.property} · Requested by {r.requested_by} · {new Date(r.created_at).toLocaleDateString()}</div>
   </div>
   <div className="flex gap-2">
   <button onClick={async () => {
@@ -5563,7 +5563,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="flex gap-2 items-center">
   <div className="flex bg-brand-50 rounded-2xl p-0.5">
   {[["card","\u25a6"],["table","\u2630"],["compact","\u2261"]].map(([m,icon]) => (
-  <button key={m} onClick={() => setTenantView(m)} className={`px-3 py-1.5 text-sm rounded-md ${tenantView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-slate-400"}`}>{icon}</button>
+  <button key={m} onClick={() => setTenantView(m)} className={`px-3 py-1.5 text-sm rounded-md ${tenantView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-neutral-400"}`}>{icon}</button>
   ))}
   </div>
   <Btn variant="secondary" onClick={exportTenants}><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</Btn>
@@ -5599,7 +5599,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <button onClick={() => setBulkAction("charge")} className="text-xs bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-200 font-medium">Add Charge</button>
   <button onClick={() => setBulkAction("status")} className="text-xs bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-200 font-medium">Change Status</button>
   <button onClick={() => setBulkAction("archive")} className="text-xs bg-red-100 text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-200 font-medium">Delete</button>
-  <button onClick={() => setSelectedTenants(new Set())} className="text-xs text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-100">Deselect All</button>
+  <button onClick={() => setSelectedTenants(new Set())} className="text-xs text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect All</button>
   </div>
   </div>
   )}
@@ -5607,8 +5607,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {bulkAction === "notice" && (
   <Modal title={`Send Notice to ${selectedTenants.size} Tenant(s)`} onClose={() => setBulkAction(null)}>
   <div className="space-y-3">
-  <p className="text-sm text-slate-500">This will set the selected tenants' status to "notice" and generate a move-out date.</p>
-  <div><label className="text-xs font-medium text-slate-400 block mb-1">Notice Period (days)</label>
+  <p className="text-sm text-neutral-500">This will set the selected tenants' status to "notice" and generate a move-out date.</p>
+  <div><label className="text-xs font-medium text-neutral-400 block mb-1">Notice Period (days)</label>
   <Select id="bulk-notice-days" >
   <option value="30">30 days</option><option value="60">60 days</option><option value="90">90 days</option>
   </Select>
@@ -5635,9 +5635,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {bulkAction === "charge" && (
   <Modal title={`Add Charge to ${selectedTenants.size} Tenant(s)`} onClose={() => setBulkAction(null)}>
   <div className="space-y-3">
-  <div><label className="text-xs font-medium text-slate-400 block mb-1">Description</label><Input id="bulk-charge-desc" placeholder="Late fee, utility charge, etc." /></div>
-  <div><label className="text-xs font-medium text-slate-400 block mb-1">Amount ($)</label><Input id="bulk-charge-amt" type="number" placeholder="50.00" /></div>
-  <div><label className="text-xs font-medium text-slate-400 block mb-1">Revenue Account</label>
+  <div><label className="text-xs font-medium text-neutral-400 block mb-1">Description</label><Input id="bulk-charge-desc" placeholder="Late fee, utility charge, etc." /></div>
+  <div><label className="text-xs font-medium text-neutral-400 block mb-1">Amount ($)</label><Input id="bulk-charge-amt" type="number" placeholder="50.00" /></div>
+  <div><label className="text-xs font-medium text-neutral-400 block mb-1">Revenue Account</label>
   <Select id="bulk-charge-acct" >
   <option value="4100">4100 — Other Income</option>
   <option value="4000">4000 — Rental Income</option>
@@ -5683,7 +5683,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {bulkAction === "status" && (
   <Modal title={`Change Status — ${selectedTenants.size} Tenant(s)`} onClose={() => setBulkAction(null)}>
   <div className="space-y-3">
-  <div><label className="text-xs font-medium text-slate-400 block mb-1">New Status</label>
+  <div><label className="text-xs font-medium text-neutral-400 block mb-1">New Status</label>
   <Select id="bulk-status-val"  >
   <option value="active">Active</option><option value="notice">Notice</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
   </Select>
@@ -5733,23 +5733,23 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
 
   {showForm && editingTenant && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
-  <h3 className="font-semibold text-slate-700 mb-3">{editingTenant ? "Edit Tenant" : "New Tenant"}</h3>
+  <h3 className="font-semibold text-neutral-700 mb-3">{editingTenant ? "Edit Tenant" : "New Tenant"}</h3>
   <div className="grid grid-cols-2 gap-3">
   <div className="col-span-2 grid grid-cols-6 gap-3">
-    <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">First Name *</label><Input placeholder="First" value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} /></div>
-    <div className="col-span-1"><label className="text-xs font-medium text-slate-400 mb-1 block">MI</label><Input maxLength={1} placeholder="M" value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} className="text-center" /></div>
-    <div className="col-span-3"><label className="text-xs font-medium text-slate-400 mb-1 block">Last Name *</label><Input placeholder="Last" value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} /></div>
+    <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">First Name *</label><Input placeholder="First" value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} /></div>
+    <div className="col-span-1"><label className="text-xs font-medium text-neutral-400 mb-1 block">MI</label><Input maxLength={1} placeholder="M" value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} className="text-center" /></div>
+    <div className="col-span-3"><label className="text-xs font-medium text-neutral-400 mb-1 block">Last Name *</label><Input placeholder="Last" value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} /></div>
   </div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Email</label><Input type="email" placeholder="tenant@email.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({ ...form, phone: formatPhoneInput(e.target.value) })} maxLength={14} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Monthly Rent ($)</label><Input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Status</label><Select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })}>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Email</label><Input type="email" placeholder="tenant@email.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({ ...form, phone: formatPhoneInput(e.target.value) })} maxLength={14} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Monthly Rent ($)</label><Input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lease Status</label><Select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })}>
   {["active", "notice", "expired"].map(s => <option key={s}>{s}</option>)}
   </Select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Start / Move-in</label><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease End / Move-out</label><Input type="date" value={form.lease_end} onChange={e => setForm({ ...form, lease_end: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Security Deposit ($)</label><Input placeholder="0" value={form.security_deposit || ""} onChange={e => setForm({ ...form, security_deposit: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lease Start / Move-in</label><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lease End / Move-out</label><Input type="date" value={form.lease_end} onChange={e => setForm({ ...form, lease_end: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Security Deposit ($)</label><Input placeholder="0" value={form.security_deposit || ""} onChange={e => setForm({ ...form, security_deposit: e.target.value })} /></div>
   </div>
   {form.lease_start && form.lease_end && form.rent && (
   <div className="bg-brand-50 border border-brand-200 rounded-xl p-3 mt-2 text-xs text-brand-700">
@@ -5790,8 +5790,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const TenantActions = ({t}) => (
   <div className="flex gap-1.5 flex-wrap">
   <button onClick={() => openLedger(t)} className="text-xs text-brand-600 border border-brand-200 px-2 py-1 rounded-lg hover:bg-brand-50">Ledger</button>
-  <button onClick={() => openMessages(t)} className="text-xs text-slate-500 border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Msg</button>
-  <button onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="text-xs text-slate-500 border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Lease</button>
+  <button onClick={() => openMessages(t)} className="text-xs text-neutral-500 border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Msg</button>
+  <button onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="text-xs text-neutral-500 border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Lease</button>
   <button onClick={() => startEdit(t)} className="text-xs text-blue-600 hover:underline">Edit</button>
   <button onClick={() => deleteTenant(t.id, t.name)} className="text-xs text-red-500 hover:underline">Delete</button>
   <button onClick={() => inviteTenant(t)} className="text-xs text-purple-600 hover:underline">Invite</button>
@@ -5801,22 +5801,22 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {tenantView === "card" && (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
   {ft.map(t => (
-  <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className={"rounded-3xl shadow-card border p-4 cursor-pointer hover:shadow-md transition-all " + (t.doc_status === "pending_docs" ? "bg-slate-50 border-amber-200 opacity-60" : "bg-white border-brand-50 hover:border-brand-200")}>
+  <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className={"rounded-3xl shadow-card border p-4 cursor-pointer hover:shadow-md transition-all " + (t.doc_status === "pending_docs" ? "bg-neutral-50 border-amber-200 opacity-60" : "bg-white border-brand-50 hover:border-brand-200")}>
   <div className="flex justify-between items-start mb-2">
   <div className="flex items-center gap-3">
   <div className={"w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg " + (t.doc_status === "pending_docs" ? "bg-amber-100 text-amber-700" : "bg-brand-100 text-brand-700")}>{t.name?.[0]}</div>
-  <div><div className="font-semibold text-slate-800">{t.name}</div><div className="text-xs text-slate-400">{t.property}</div>{t.doc_status === "pending_docs" && <div className="text-xs text-amber-600 font-medium">Pending documents</div>}</div>
+  <div><div className="font-semibold text-neutral-800">{t.name}</div><div className="text-xs text-neutral-400">{t.property}</div>{t.doc_status === "pending_docs" && <div className="text-xs text-amber-600 font-medium">Pending documents</div>}</div>
   </div>
   <Badge status={t.lease_status} />
   </div>
   <div className="grid grid-cols-3 gap-2 text-xs mt-2">
-  <div><span className="text-slate-400">Email</span><div className="font-semibold text-slate-700 truncate">{t.email || "—"}</div></div>
-  <div><span className="text-slate-400">Balance</span><div className={`font-semibold ${t.balance > 0 ? "text-red-500" : "text-slate-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</div></div>
-  <div><span className="text-slate-400">Rent</span><div className="font-semibold text-slate-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</div></div>
+  <div><span className="text-neutral-400">Email</span><div className="font-semibold text-neutral-700 truncate">{t.email || "—"}</div></div>
+  <div><span className="text-neutral-400">Balance</span><div className={`font-semibold ${t.balance > 0 ? "text-red-500" : "text-neutral-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</div></div>
+  <div><span className="text-neutral-400">Rent</span><div className="font-semibold text-neutral-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</div></div>
   </div>
   <div className="flex items-center justify-between mt-3 pt-2 border-t border-brand-50">
   <button onClick={e => { e.stopPropagation(); setSelectedTenant(t); setActivePanel("ledger"); openLedger(t); }} className="text-xs text-brand-600 hover:text-brand-800 font-medium">View Ledger</button>
-  <span className="text-xs text-slate-300">Click for details →</span>
+  <span className="text-xs text-neutral-300">Click for details →</span>
   </div>
   </div>
   ))}
@@ -5825,7 +5825,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {tenantView === "table" && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-x-auto">
   <table className="w-full text-sm">
-  <thead className="bg-brand-50/30 text-xs text-slate-400 uppercase">
+  <thead className="bg-brand-50/30 text-xs text-neutral-400 uppercase">
   <tr>
   <th className="px-3 py-3 text-left w-8"><input type="checkbox" checked={ft.length > 0 && ft.every(t => selectedTenants.has(t.id))} onChange={e => { if (e.target.checked) setSelectedTenants(new Set(ft.map(t => t.id))); else setSelectedTenants(new Set()); }} className="rounded" /></th>
   <th className="px-4 py-3 text-left">Name</th><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Email</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-right">Rent</th><th className="px-4 py-3 text-right">Balance</th><th className="px-4 py-3 text-right">Actions</th>
@@ -5836,11 +5836,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <tr key={t.id} className={`border-t border-brand-50/50 hover:bg-brand-50/50 cursor-pointer ${selectedTenants.has(t.id) ? "bg-brand-50/60" : ""}`}>
   <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><input type="checkbox" checked={selectedTenants.has(t.id)} onChange={e => { const next = new Set(selectedTenants); if (e.target.checked) next.add(t.id); else next.delete(t.id); setSelectedTenants(next); }} className="rounded" /></td>
   <td className="px-4 py-2.5 font-medium text-brand-600" onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }}>{t.name}</td>
-  <td className="px-4 py-2.5 text-slate-500">{t.property}</td>
-  <td className="px-4 py-2.5 text-slate-400 text-xs">{t.email}</td>
+  <td className="px-4 py-2.5 text-neutral-500">{t.property}</td>
+  <td className="px-4 py-2.5 text-neutral-400 text-xs">{t.email}</td>
   <td className="px-4 py-2.5"><Badge status={t.lease_status} /></td>
   <td className="px-4 py-2.5 text-right font-semibold">{t.rent ? `${formatCurrency(t.rent)}` : "\u2014"}</td>
-  <td className={`px-4 py-2.5 text-right font-semibold ${t.balance > 0 ? "text-red-500" : "text-slate-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</td>
+  <td className={`px-4 py-2.5 text-right font-semibold ${t.balance > 0 ? "text-red-500" : "text-neutral-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</td>
   <td className="px-4 py-2.5 text-right"><TenantActions t={t} /></td>
   </tr>
   ))}
@@ -5853,9 +5853,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {ft.map(t => (
   <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className="flex items-center gap-3 px-4 py-2.5 hover:bg-brand-50/50 cursor-pointer">
   <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold text-xs">{t.name?.[0]}</div>
-  <div className="flex-1 min-w-0"><span className="text-sm font-medium text-slate-800">{t.name}</span><span className="text-xs text-slate-400 ml-2">{t.property}</span></div>
-  <span className="text-sm font-semibold text-slate-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</span>
-  <span className={`text-xs font-semibold ${t.balance > 0 ? "text-red-500" : "text-slate-400"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</span>
+  <div className="flex-1 min-w-0"><span className="text-sm font-medium text-neutral-800">{t.name}</span><span className="text-xs text-neutral-400 ml-2">{t.property}</span></div>
+  <span className="text-sm font-semibold text-neutral-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</span>
+  <span className={`text-xs font-semibold ${t.balance > 0 ? "text-red-500" : "text-neutral-400"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</span>
   <Badge status={t.lease_status} />
   <button onClick={() => openLedger(t)} className="text-xs text-brand-600 hover:underline">Ledger</button>
   <button onClick={() => startEdit(t)} className="text-xs text-blue-600 hover:underline">Edit</button>
@@ -5863,7 +5863,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ))}
   </div>
   )}
-  {ft.length === 0 && <div className="text-center py-8 text-slate-400">No tenants found</div>}
+  {ft.length === 0 && <div className="text-center py-8 text-neutral-400">No tenants found</div>}
   </>;
   })()}
   </>)}
@@ -5872,8 +5872,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60] flex items-center justify-center">
   <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
   <div className="w-10 h-10 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin" />
-  <div className="text-sm font-medium text-slate-700">Setting up tenant...</div>
-  <div className="text-xs text-slate-400">Creating accounts, lease & posting entries</div>
+  <div className="text-sm font-medium text-neutral-700">Setting up tenant...</div>
+  <div className="text-xs text-neutral-400">Creating accounts, lease & posting entries</div>
   </div>
   </div>
   )}
@@ -5954,7 +5954,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
 
   <div className="flex gap-1 mb-4 border-b border-brand-50">
   {[["payments", "Payments"], ["autopay", "Autopay & Recurring"]].map(([id, label]) => (
-  <button key={id} onClick={() => setPayTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (payTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}</button>
+  <button key={id} onClick={() => setPayTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (payTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}</button>
   ))}
   </div>
 
@@ -5976,7 +5976,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
 
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-hidden">
   <table className="w-full text-sm">
-  <thead className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wider">
+  <thead className="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wider">
   <tr>
   <th className="px-4 py-3 text-left">Date</th>
   <th className="px-4 py-3 text-left">JE #</th>
@@ -5990,14 +5990,14 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   </thead>
   <tbody>
   {payments.map(p => (
-  <tr key={p.id} className="border-t border-slate-100 hover:bg-green-50/40 transition-colors">
-  <td className="px-4 py-3 text-slate-500">{p.date}</td>
+  <tr key={p.id} className="border-t border-neutral-100 hover:bg-green-50/40 transition-colors">
+  <td className="px-4 py-3 text-neutral-500">{p.date}</td>
   <td className="px-4 py-3 font-mono text-xs text-green-600">{p.number || "—"}</td>
-  <td className="px-4 py-3 font-medium text-slate-800">{p.tenant || "—"}</td>
-  <td className="px-4 py-3 text-slate-400 text-xs">{p.property?.split(",")[0] || "—"}</td>
+  <td className="px-4 py-3 font-medium text-neutral-800">{p.tenant || "—"}</td>
+  <td className="px-4 py-3 text-neutral-400 text-xs">{p.property?.split(",")[0] || "—"}</td>
   <td className="px-4 py-3 text-right font-semibold font-mono text-green-600">{formatCurrency(p.amount)}</td>
-  <td className="px-4 py-3 capitalize text-slate-500 text-xs">{p.type?.replace("_", " ")}</td>
-  <td className="px-4 py-3 text-slate-400 text-xs">{p.method}</td>
+  <td className="px-4 py-3 capitalize text-neutral-500 text-xs">{p.type?.replace("_", " ")}</td>
+  <td className="px-4 py-3 text-neutral-400 text-xs">{p.method}</td>
   <td className="px-4 py-3">
   <Btn variant="success-fill" size="xs" onClick={() => generatePaymentReceipt({ tenant: p.tenant, property: p.property, amount: p.amount, date: p.date, method: p.method, type: p.type })} className="py-0.5">Receipt</Btn>
   </td>
@@ -6005,7 +6005,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   ))}
   </tbody>
   </table>
-  {payments.length === 0 && <div className="text-center py-8 text-slate-400 text-sm">No payment transactions found</div>}
+  {payments.length === 0 && <div className="text-center py-8 text-neutral-400 text-sm">No payment transactions found</div>}
   </div>
   </>)}
   </div>
@@ -6219,19 +6219,19 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
   <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
   <div className="flex items-center justify-between px-6 py-4 border-b border-brand-50 sticky top-0 bg-white">
-  <div><h3 className="font-bold text-slate-800">📸 Photos — {viewingPhotos.issue}</h3><p className="text-xs text-slate-400">{viewingPhotos.property}</p></div>
-  <button onClick={() => setViewingPhotos(null)} className="text-slate-400 hover:text-slate-500 text-xl">✕</button>
+  <div><h3 className="font-bold text-neutral-800">📸 Photos — {viewingPhotos.issue}</h3><p className="text-xs text-neutral-400">{viewingPhotos.property}</p></div>
+  <button onClick={() => setViewingPhotos(null)} className="text-neutral-400 hover:text-neutral-500 text-xl">✕</button>
   </div>
   <div className="p-6">
   <div className="bg-brand-50/30 rounded-3xl p-4 mb-4">
-  <div className="text-xs font-semibold text-slate-500 mb-2">Upload New Photo</div>
+  <div className="text-xs font-semibold text-neutral-500 mb-2">Upload New Photo</div>
   <div className="flex gap-2">
   <Input type="file" accept="image/*" ref={photoRef} className="flex-1" />
   <Btn onClick={uploadPhoto} disabled={uploadingPhoto}>{uploadingPhoto ? "Uploading..." : "Upload"}</Btn>
   </div>
   </div>
   {woPhotos.length === 0 ? (
-  <div className="text-center py-8 text-slate-400">No photos yet.</div>
+  <div className="text-center py-8 text-neutral-400">No photos yet.</div>
   ) : (
   <div className="grid grid-cols-2 gap-3">
   {woPhotos.map(p => (
@@ -6240,7 +6240,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
   <button onClick={() => deletePhoto(p.id)} className="opacity-0 group-hover:opacity-100 bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg">Delete</button>
   </div>
-  <div className="p-2 text-xs text-slate-400 truncate">{p.caption}</div>
+  <div className="p-2 text-xs text-neutral-400 truncate">{p.caption}</div>
   </div>
   ))}
   </div>
@@ -6274,22 +6274,22 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
 
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
-  <h3 className="font-semibold text-slate-700 mb-3">{editingWO ? "Edit Work Order" : "New Work Order"}</h3>
+  <h3 className="font-semibold text-neutral-700 mb-3">{editingWO ? "Edit Work Order" : "New Work Order"}</h3>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={(v, prop) => {
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={(v, prop) => {
   setForm({ ...form, property: v, tenant: prop?.tenant || "" });
   }} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant</label><input placeholder={form.property && !form.tenant ? "Vacant — no tenant" : "Tenant name"} value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className={"border rounded-lg px-3 py-2 text-sm w-full " + (!form.tenant && form.property ? "border-gray-100 bg-brand-50/30 text-slate-400" : "border-brand-100")} readOnly={!!(form.property && !form.tenant)} /></div>
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Issue *</label><Input placeholder="Describe the maintenance issue" value={form.issue} onChange={e => setForm({ ...form, issue: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Priority</label><Select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })}>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant</label><input placeholder={form.property && !form.tenant ? "Vacant — no tenant" : "Tenant name"} value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className={"border rounded-lg px-3 py-2 text-sm w-full " + (!form.tenant && form.property ? "border-gray-100 bg-brand-50/30 text-neutral-400" : "border-brand-100")} readOnly={!!(form.property && !form.tenant)} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Issue *</label><Input placeholder="Describe the maintenance issue" value={form.issue} onChange={e => setForm({ ...form, issue: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Priority</label><Select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })}>
   {["normal", "emergency", "low"].map(p => <option key={p}>{p}</option>)}
   </Select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status</label><Select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Status</label><Select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
   {["open", "in_progress", "completed"].map(s => <option key={s}>{s}</option>)}
   </Select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Assigned To</label><Input placeholder="Vendor or staff name" value={form.assigned} onChange={e => setForm({ ...form, assigned: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Cost ($)</label><Input placeholder="0.00" type="number" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} /></div>
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="Completion details, parts used, etc." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Assigned To</label><Input placeholder="Vendor or staff name" value={form.assigned} onChange={e => setForm({ ...form, assigned: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Cost ($)</label><Input placeholder="0.00" type="number" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Textarea placeholder="Completion details, parts used, etc." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
   </div>
   <div className="flex gap-2 mt-3">
   <Btn onClick={saveWorkOrder}>Save</Btn>
@@ -6300,7 +6300,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
 
   <div className="flex flex-wrap gap-2 mb-4">
   {["all", "open", "in_progress", "completed", "emergency"].map(s => (
-  <button key={s} onClick={() => setFilter(s)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === s ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{s.replace("_", " ")}</button>
+  <button key={s} onClick={() => setFilter(s)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === s ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"}`}>{s.replace("_", " ")}</button>
   ))}
   <div className="flex-1" />
   <Input placeholder="Search issue, property, tenant..." value={woSearch} onChange={e => setWoSearch(e.target.value)} className="flex-1 min-w-0 sm:min-w-40" />
@@ -6313,7 +6313,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   {[...new Set(workOrders.map(w => w.assigned).filter(Boolean))].sort().map(a => <option key={a} value={a}>{a}</option>)}
   </Select>
   </div>
-  <div className="text-xs text-slate-400 mb-3">{filtered.length} of {workOrders.length} work orders</div>
+  <div className="text-xs text-neutral-400 mb-3">{filtered.length} of {workOrders.length} work orders</div>
   {/* WO Bulk Action Bar */}
   {selectedWOs.size > 0 && (
   <div className="bg-brand-50 border border-brand-200 rounded-2xl px-4 py-3 mb-3 flex items-center justify-between">
@@ -6321,8 +6321,8 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div className="flex gap-2">
   <button onClick={() => bulkUpdateWOStatus("in_progress")} className="text-xs bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-200 font-medium">In Progress</button>
   <button onClick={() => bulkUpdateWOStatus("completed")} className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-200 font-medium">Complete</button>
-  <button onClick={() => bulkUpdateWOStatus("open")} className="text-xs bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-200 font-medium">Reopen</button>
-  <button onClick={() => setSelectedWOs(new Set())} className="text-xs text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-100">Deselect</button>
+  <button onClick={() => bulkUpdateWOStatus("open")} className="text-xs bg-neutral-100 text-neutral-600 px-3 py-1.5 rounded-lg hover:bg-neutral-200 font-medium">Reopen</button>
+  <button onClick={() => setSelectedWOs(new Set())} className="text-xs text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect</button>
   </div>
   </div>
   )}
@@ -6335,23 +6335,23 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div>
   <div className="flex items-center gap-2">
   <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${priorityColors[w.priority]}`}>{w.priority}</span>
-  <span className="font-semibold text-slate-800">{w.issue}</span>
+  <span className="font-semibold text-neutral-800">{w.issue}</span>
   </div>
-  <div className="text-xs text-slate-400 mt-1">{w.property} · {w.tenant}{!w.assigned && w.tenant && <span className="ml-1 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Tenant Request</span>}</div>
+  <div className="text-xs text-neutral-400 mt-1">{w.property} · {w.tenant}{!w.assigned && w.tenant && <span className="ml-1 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Tenant Request</span>}</div>
   </div>
   </div>
   <Badge status={w.status} label={w.status?.replace("_", " ")} />
   </div>
   <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-  <div><span className="text-slate-400">Assigned</span><div className="font-semibold text-slate-700">{w.assigned || "Unassigned"}</div></div>
-  <div><span className="text-slate-400">Created</span><div className="font-semibold text-slate-700">{w.created_at ? new Date(w.created_at).toLocaleDateString() : w.created || "—"}</div></div>
-  <div><span className="text-slate-400">Cost</span><div className="font-semibold text-slate-700">{w.cost ? `${formatCurrency(w.cost)}` : "—"}</div></div>
+  <div><span className="text-neutral-400">Assigned</span><div className="font-semibold text-neutral-700">{w.assigned || "Unassigned"}</div></div>
+  <div><span className="text-neutral-400">Created</span><div className="font-semibold text-neutral-700">{w.created_at ? new Date(w.created_at).toLocaleDateString() : w.created || "—"}</div></div>
+  <div><span className="text-neutral-400">Cost</span><div className="font-semibold text-neutral-700">{w.cost ? `${formatCurrency(w.cost)}` : "—"}</div></div>
   </div>
-  {w.notes && <div className="mt-2 text-xs text-slate-400 italic">{w.notes}</div>}
+  {w.notes && <div className="mt-2 text-xs text-neutral-400 italic">{w.notes}</div>}
   <div className="mt-3 flex gap-2 flex-wrap">
   {w.status === "open" && <button onClick={() => updateStatus(w, "in_progress")} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">▶ In Progress</button>}
   {w.status === "in_progress" && <button onClick={() => updateStatus(w, "completed")} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">✓ Complete</button>}
-  {w.status === "completed" && <button onClick={() => updateStatus(w, "open")} className="text-xs text-slate-400 border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">↩ Reopen</button>}
+  {w.status === "completed" && <button onClick={() => updateStatus(w, "open")} className="text-xs text-neutral-400 border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">↩ Reopen</button>}
   <button onClick={() => openPhotos(w)} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">📸 Photos</button>
   <button onClick={() => startEdit(w)} className="text-xs text-blue-600 border border-blue-200 px-3 py-1 rounded-lg hover:bg-blue-50">✏️ Edit</button>
   </div>
@@ -6610,16 +6610,16 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {showAudit && (
   <Modal title={`Audit Log — ${showAudit.provider}`} onClose={() => setShowAudit(null)}>
   {auditLog.length === 0 ? (
-  <div className="text-center text-slate-400 py-6">No audit entries yet</div>
+  <div className="text-center text-neutral-400 py-6">No audit entries yet</div>
   ) : (
   <div className="space-y-3">
   {auditLog.map((a, i) => (
   <div key={i} className="bg-brand-50/30 rounded-lg px-4 py-3">
   <div className="flex justify-between">
   <span className="text-sm font-semibold text-green-600">{a.action}</span>
-  <span className="text-xs text-slate-400">{new Date(a.paid_at).toLocaleString()}</span>
+  <span className="text-xs text-neutral-400">{new Date(a.paid_at).toLocaleString()}</span>
   </div>
-  <div className="text-sm text-slate-500 mt-1">${a.amount} — {a.property}</div>
+  <div className="text-sm text-neutral-500 mt-1">${a.amount} — {a.property}</div>
   </div>
   ))}
   </div>
@@ -6752,7 +6752,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </Select>
   <div className="flex bg-brand-50 rounded-2xl p-0.5">
   {[["card","▦"],["table","☰"]].map(([m,icon]) => (
-  <button key={m} onClick={() => setUtilView(m)} className={`px-3 py-1.5 text-sm rounded-md ${utilView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-slate-400"}`}>{icon}</button>
+  <button key={m} onClick={() => setUtilView(m)} className={`px-3 py-1.5 text-sm rounded-md ${utilView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-neutral-400"}`}>{icon}</button>
   ))}
   </div>
   <Btn onClick={() => setShowForm(!showForm)}>+ Add Bill</Btn>
@@ -6760,28 +6760,28 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
 
   {/* Stats */}
   <div className="flex gap-3 mb-4">
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-slate-800">{utilities.length}</div><div className="text-xs text-slate-400">Total</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{utilities.filter(u => u.status === "pending").length}</div><div className="text-xs text-slate-400">Pending</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">${utilities.filter(u => u.status === "paid").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-slate-400">Paid</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-red-500">${utilities.filter(u => u.status === "pending").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-slate-400">Outstanding</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-neutral-800">{utilities.length}</div><div className="text-xs text-neutral-400">Total</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{utilities.filter(u => u.status === "pending").length}</div><div className="text-xs text-neutral-400">Pending</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">${utilities.filter(u => u.status === "paid").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Paid</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-red-500">${utilities.filter(u => u.status === "pending").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Outstanding</div></div>
   </div>
 
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
-  <h3 className="font-semibold text-slate-700 mb-3">New Utility Bill</h3>
+  <h3 className="font-semibold text-neutral-700 mb-3">New Utility Bill</h3>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Provider</label><Input placeholder="e.g. PEPCO, Washington Gas" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($)</label><Input placeholder="150.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Due Date</label><Input type="date" value={form.due} onChange={e => setForm({ ...form, due: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Responsibility</label><Select value={form.responsibility} onChange={e => setForm({ ...form, responsibility: e.target.value })}>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Provider</label><Input placeholder="e.g. PEPCO, Washington Gas" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Amount ($)</label><Input placeholder="150.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Due Date</label><Input type="date" value={form.due} onChange={e => setForm({ ...form, due: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Responsibility</label><Select value={form.responsibility} onChange={e => setForm({ ...form, responsibility: e.target.value })}>
   {["owner", "tenant", "shared"].map(r => <option key={r}>{r}</option>)}
   </Select></div>
-  <div className="col-span-2 border-t border-slate-100 pt-2 mt-1"><p className="text-xs text-slate-400 mb-2">Portal Login (encrypted)</p>
+  <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1"><p className="text-xs text-neutral-400 mb-2">Portal Login (encrypted)</p>
   <div className="grid grid-cols-3 gap-2">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Website</label><Input type="url" value={form.website||""} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Username</label><Input value={form.username||""} onChange={e => setForm({...form, username: e.target.value})} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Password</label><Input type="password" value={form.password||""} onChange={e => setForm({...form, password: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Website</label><Input type="url" value={form.website||""} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Username</label><Input value={form.username||""} onChange={e => setForm({...form, username: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Password</label><Input type="password" value={form.password||""} onChange={e => setForm({...form, password: e.target.value})} /></div>
   </div></div>
   </div>
   <div className="flex gap-2 mt-3">
@@ -6803,17 +6803,17 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {fu.map(u => (
   <div key={u.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <div className="flex justify-between items-start">
-  <div><div className="font-semibold text-slate-800">{u.provider}</div><div className="text-xs text-slate-400 mt-0.5">{u.property}</div></div>
-  <div className="text-right"><div className="text-lg font-manrope font-bold text-slate-800">${u.amount}</div><Badge status={u.status} /></div>
+  <div><div className="font-semibold text-neutral-800">{u.provider}</div><div className="text-xs text-neutral-400 mt-0.5">{u.property}</div></div>
+  <div className="text-right"><div className="text-lg font-manrope font-bold text-neutral-800">${u.amount}</div><Badge status={u.status} /></div>
   </div>
   <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-  <div><span className="text-slate-400">Due</span><div className="font-semibold text-slate-700">{u.due}</div></div>
-  <div><span className="text-slate-400">Responsibility</span><div className="font-semibold capitalize text-slate-700">{u.responsibility}</div></div>
-  <div><span className="text-slate-400">Paid</span><div className="font-semibold text-slate-700">{u.paid_at ? new Date(u.paid_at).toLocaleDateString() : "—"}</div></div>
+  <div><span className="text-neutral-400">Due</span><div className="font-semibold text-neutral-700">{u.due}</div></div>
+  <div><span className="text-neutral-400">Responsibility</span><div className="font-semibold capitalize text-neutral-700">{u.responsibility}</div></div>
+  <div><span className="text-neutral-400">Paid</span><div className="font-semibold text-neutral-700">{u.paid_at ? new Date(u.paid_at).toLocaleDateString() : "—"}</div></div>
   </div>
   <div className="mt-3 flex gap-2">
   {u.status === "pending" && <button onClick={() => approvePay(u)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">✓ Pay</button>}
-  <button onClick={() => openAuditLog(u)} className="text-xs text-slate-500 border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Audit</button>
+  <button onClick={() => openAuditLog(u)} className="text-xs text-neutral-500 border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Audit</button>
   </div>
   </div>
   ))}
@@ -6822,26 +6822,26 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {utilView === "table" && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-x-auto">
   <table className="w-full text-sm">
-  <thead className="bg-brand-50/30 text-xs text-slate-400 uppercase">
+  <thead className="bg-brand-50/30 text-xs text-neutral-400 uppercase">
   <tr><th className="px-4 py-3 text-left">Provider</th><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-left">Due</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Resp.</th><th className="px-4 py-3 text-left">Portal</th><th className="px-4 py-3 text-right">Actions</th></tr>
   </thead>
   <tbody>
   {fu.map(u => (
   <tr key={u.id} className="border-t border-brand-50/50 hover:bg-brand-50/30/50">
-  <td className="px-4 py-2.5 font-medium text-slate-800">{u.provider}</td>
-  <td className="px-4 py-2.5 text-slate-500">{u.property}</td>
+  <td className="px-4 py-2.5 font-medium text-neutral-800">{u.provider}</td>
+  <td className="px-4 py-2.5 text-neutral-500">{u.property}</td>
   <td className="px-4 py-2.5 text-right font-semibold">${u.amount}</td>
-  <td className="px-4 py-2.5 text-slate-400">{u.due}</td>
+  <td className="px-4 py-2.5 text-neutral-400">{u.due}</td>
   <td className="px-4 py-2.5"><Badge status={u.status} /></td>
-  <td className="px-4 py-2.5 text-slate-500 capitalize">{u.responsibility}</td>
+  <td className="px-4 py-2.5 text-neutral-500 capitalize">{u.responsibility}</td>
   <td className="px-4 py-2.5 text-xs">
-  {u.website ? <a href={u.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{u.website.replace(/^https?:\/\//, "")}</a> : <span className="text-slate-300">—</span>}
+  {u.website ? <a href={u.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{u.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
   {u.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(s); } else { u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv, companyId); u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId); s.add(u.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(u.id) ? "Hide" : "Show"} login</button>}
-  {showCreds.has(u.id) && <div className="text-slate-600 mt-0.5">{u._decUser || "—"} / {u._decPass || "—"}</div>}
+  {showCreds.has(u.id) && <div className="text-neutral-600 mt-0.5">{u._decUser || "—"} / {u._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
   {u.status === "pending" && <button onClick={() => approvePay(u)} className="text-xs text-green-600 hover:underline mr-2">Pay</button>}
-  <button onClick={() => openAuditLog(u)} className="text-xs text-slate-400 hover:underline">Audit</button>
+  <button onClick={() => openAuditLog(u)} className="text-xs text-neutral-400 hover:underline">Audit</button>
   </td>
   </tr>
   ))}
@@ -6849,7 +6849,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </table>
   </div>
   )}
-  {fu.length === 0 && <div className="text-center py-8 text-slate-400">No utility bills found</div>}
+  {fu.length === 0 && <div className="text-center py-8 text-neutral-400">No utility bills found</div>}
   </>;
   })()}
   </>)}
@@ -7399,42 +7399,42 @@ function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClos
   {/* Header */}
   <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-brand-50">
   <div className="min-w-0 flex-1">
-  <h3 className="text-base sm:text-lg font-manrope font-bold text-slate-800 truncate">{title || acctNames}</h3>
-  {acctCodes && <p className="text-xs text-slate-400">Account {acctCodes} · {allLines.length} entries</p>}
+  <h3 className="text-base sm:text-lg font-manrope font-bold text-neutral-800 truncate">{title || acctNames}</h3>
+  {acctCodes && <p className="text-xs text-neutral-400">Account {acctCodes} · {allLines.length} entries</p>}
   </div>
   <div className="flex items-center gap-2 shrink-0 ml-2">
-  <button onClick={exportCSV} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-xl hover:bg-slate-200 hidden sm:block">Export CSV</button>
-  <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100"><span className="material-icons-outlined text-lg">close</span></button>
+  <button onClick={exportCSV} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-xl hover:bg-neutral-200 hidden sm:block">Export CSV</button>
+  <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-neutral-400 hover:bg-neutral-100"><span className="material-icons-outlined text-lg">close</span></button>
   </div>
   </div>
   {/* Filters */}
-  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 px-4 sm:px-6 py-2 sm:py-3 border-b border-brand-50 bg-slate-50/50 overflow-x-auto">
-  {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border font-medium whitespace-nowrap ${period === p ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-400 border-brand-100"}`}>{p}</button>)}
-  {period === "Custom" && <><Input type="date" value={customDates.start} onChange={e => setCustomDates(d => ({...d, start: e.target.value}))} className="text-xs w-auto" /><span className="text-xs text-slate-400">to</span><Input type="date" value={customDates.end} onChange={e => setCustomDates(d => ({...d, end: e.target.value}))} className="text-xs w-auto" /></>}
+  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 px-4 sm:px-6 py-2 sm:py-3 border-b border-brand-50 bg-neutral-50/50 overflow-x-auto">
+  {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border font-medium whitespace-nowrap ${period === p ? "bg-neutral-800 text-white border-neutral-800" : "bg-white text-neutral-400 border-brand-100"}`}>{p}</button>)}
+  {period === "Custom" && <><Input type="date" value={customDates.start} onChange={e => setCustomDates(d => ({...d, start: e.target.value}))} className="text-xs w-auto" /><span className="text-xs text-neutral-400">to</span><Input type="date" value={customDates.end} onChange={e => setCustomDates(d => ({...d, end: e.target.value}))} className="text-xs w-auto" /></>}
   {properties.length > 1 && <Select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)} className="text-xs py-1.5 rounded-xl"><option value="">All Properties</option>{properties.map(p => <option key={p} value={p}>{p.split(",")[0]}</option>)}</Select>}
   </div>
   {/* Summary bar */}
-  <div className="flex flex-wrap items-center gap-3 sm:gap-6 px-4 sm:px-6 py-2 border-b border-brand-50 text-xs text-slate-500">
-  <span>DR: <strong className="text-slate-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.debit, 0))}</strong></span>
-  <span>CR: <strong className="text-slate-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.credit, 0))}</strong></span>
-  <span>Bal: <strong className={`font-mono ${running >= 0 ? "text-slate-800" : "text-red-600"}`}>{acctFmt(running, true)}</strong></span>
+  <div className="flex flex-wrap items-center gap-3 sm:gap-6 px-4 sm:px-6 py-2 border-b border-brand-50 text-xs text-neutral-500">
+  <span>DR: <strong className="text-neutral-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.debit, 0))}</strong></span>
+  <span>CR: <strong className="text-neutral-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.credit, 0))}</strong></span>
+  <span>Bal: <strong className={`font-mono ${running >= 0 ? "text-neutral-800" : "text-red-600"}`}>{acctFmt(running, true)}</strong></span>
   <button onClick={exportCSV} className="text-xs text-brand-600 hover:underline sm:hidden ml-auto">Export</button>
   </div>
   {/* Mobile: Card view */}
   <div className="flex-1 overflow-auto sm:hidden">
-  {allLines.length === 0 && <div className="px-4 py-8 text-center text-slate-400">No transactions found for this period</div>}
+  {allLines.length === 0 && <div className="px-4 py-8 text-center text-neutral-400">No transactions found for this period</div>}
   {allLines.map((l, i) => (
-  <div key={i} className="border-b border-slate-100 px-4 py-3 cursor-pointer hover:bg-green-50/40 transition-colors active:bg-green-50" onClick={() => onViewJE && onViewJE(l.jeId)}>
+  <div key={i} className="border-b border-neutral-100 px-4 py-3 cursor-pointer hover:bg-green-50/40 transition-colors active:bg-green-50" onClick={() => onViewJE && onViewJE(l.jeId)}>
   <div className="flex justify-between items-start mb-1">
-  <div className="text-xs text-slate-500">{l.date}</div>
-  <div className={`font-mono text-sm font-semibold ${l.balance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(l.balance, true)}</div>
+  <div className="text-xs text-neutral-500">{l.date}</div>
+  <div className={`font-mono text-sm font-semibold ${l.balance < 0 ? "text-red-600" : "text-neutral-800"}`}>{acctFmt(l.balance, true)}</div>
   </div>
-  <div className="text-sm text-slate-700 mb-1 leading-tight">{l.description}</div>
-  {l.memo && <div className="text-xs text-slate-400 mb-1">{l.memo}</div>}
+  <div className="text-sm text-neutral-700 mb-1 leading-tight">{l.description}</div>
+  {l.memo && <div className="text-xs text-neutral-400 mb-1">{l.memo}</div>}
   <div className="flex items-center gap-3 text-xs">
   {l.debit > 0 && <span className="text-emerald-600">DR {acctFmt(l.debit)}</span>}
   {l.credit > 0 && <span className="text-red-500">CR {acctFmt(l.credit)}</span>}
-  {l.property && <span className="text-slate-400">{l.property.split(",")[0]}</span>}
+  {l.property && <span className="text-neutral-400">{l.property.split(",")[0]}</span>}
   <span className="text-green-600 font-mono ml-auto">{l.number || "—"}</span>
   </div>
   </div>
@@ -7443,7 +7443,7 @@ function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClos
   {/* Desktop: Table view */}
   <div className="flex-1 overflow-auto hidden sm:block">
   <table className="w-full text-sm">
-  <thead className="bg-brand-50/30 text-xs text-slate-400 uppercase sticky top-0">
+  <thead className="bg-brand-50/30 text-xs text-neutral-400 uppercase sticky top-0">
   <tr>
   <th className="px-4 py-2.5 text-left">Date</th>
   <th className="px-3 py-2.5 text-left">JE #</th>
@@ -7458,19 +7458,19 @@ function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClos
   </thead>
   <tbody>
   {allLines.map((l, i) => (
-  <tr key={i} className="border-t border-slate-100 hover:bg-green-50/40 transition-colors cursor-pointer" onClick={() => onViewJE && onViewJE(l.jeId)}>
-  <td className="px-4 py-2 text-xs text-slate-500 whitespace-nowrap">{l.date}</td>
+  <tr key={i} className="border-t border-neutral-100 hover:bg-green-50/40 transition-colors cursor-pointer" onClick={() => onViewJE && onViewJE(l.jeId)}>
+  <td className="px-4 py-2 text-xs text-neutral-500 whitespace-nowrap">{l.date}</td>
   <td className="px-3 py-2 text-xs text-green-600 font-mono">{l.number || "—"}</td>
-  <td className="px-3 py-2 text-slate-700 text-xs max-w-xs truncate" title={l.description + (l.memo ? " | " + l.memo : "")}>{l.description}{l.memo && <span className="text-slate-400 ml-1">({l.memo})</span>}</td>
-  <td className="px-3 py-2 text-xs text-slate-400 font-mono">{l.reference || "—"}</td>
-  {ids.length > 1 && <td className="px-3 py-2 text-xs text-slate-500">{l.accountName}</td>}
-  <td className="px-3 py-2 text-xs text-slate-400">{l.property?.split(",")[0] || "—"}</td>
+  <td className="px-3 py-2 text-neutral-700 text-xs max-w-xs truncate" title={l.description + (l.memo ? " | " + l.memo : "")}>{l.description}{l.memo && <span className="text-neutral-400 ml-1">({l.memo})</span>}</td>
+  <td className="px-3 py-2 text-xs text-neutral-400 font-mono">{l.reference || "—"}</td>
+  {ids.length > 1 && <td className="px-3 py-2 text-xs text-neutral-500">{l.accountName}</td>}
+  <td className="px-3 py-2 text-xs text-neutral-400">{l.property?.split(",")[0] || "—"}</td>
   <td className="px-3 py-2 text-right font-mono text-xs">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>
   <td className="px-3 py-2 text-right font-mono text-xs">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>
-  <td className={`px-3 py-2 text-right font-mono text-xs font-semibold ${l.balance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(l.balance, true)}</td>
+  <td className={`px-3 py-2 text-right font-mono text-xs font-semibold ${l.balance < 0 ? "text-red-600" : "text-neutral-800"}`}>{acctFmt(l.balance, true)}</td>
   </tr>
   ))}
-  {allLines.length === 0 && <tr><td colSpan={ids.length > 1 ? 9 : 8} className="px-4 py-8 text-center text-slate-400">No transactions found for this period</td></tr>}
+  {allLines.length === 0 && <tr><td colSpan={ids.length > 1 ? 9 : 8} className="px-4 py-8 text-center text-neutral-400">No transactions found for this period</td></tr>}
   </tbody>
   </table>
   </div>
@@ -7487,10 +7487,10 @@ function AcctModal({ isOpen, onClose, title, children, size = "md" }) {
   const sizes = { sm:"max-w-md", md:"max-w-xl", lg:"max-w-3xl", xl:"max-w-5xl" };
   return (
   <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background:"rgba(0,0,0,0.5)" }} onClick={e => e.target === e.currentTarget && onClose()}>
-  <div className={`bg-white rounded-xl shadow-sm border border-slate-200 w-full ${sizes[size]} flex flex-col`} style={{ maxHeight:"90vh" }}>
-  <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
-  <h2 className="text-lg font-manrope font-bold text-slate-900">{title}</h2>
-  <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:bg-brand-50/50 transition-colors"><span className="material-icons-outlined text-lg">close</span></button>
+  <div className={`bg-white rounded-xl shadow-sm border border-neutral-200 w-full ${sizes[size]} flex flex-col`} style={{ maxHeight:"90vh" }}>
+  <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 shrink-0">
+  <h2 className="text-lg font-manrope font-bold text-neutral-900">{title}</h2>
+  <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-neutral-400 hover:bg-brand-50/50 transition-colors"><span className="material-icons-outlined text-lg">close</span></button>
   </div>
   <div className="overflow-y-auto flex-1 px-6 py-4">{children}</div>
   </div>
@@ -7500,12 +7500,12 @@ function AcctModal({ isOpen, onClose, title, children, size = "md" }) {
 
 function AcctTypeBadge({ type }) {
   const map = { Asset:"bg-blue-50 text-blue-700", Liability:"bg-red-50 text-red-700", Equity:"bg-violet-50 text-violet-700", Revenue:"bg-emerald-50 text-emerald-700", Expense:"bg-orange-50 text-orange-700", "Cost of Goods Sold":"bg-orange-50 text-orange-700", "Other Income":"bg-emerald-50 text-emerald-700", "Other Expense":"bg-orange-50 text-orange-700" };
-  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[type] || "bg-slate-100 text-slate-700"}`}>{type}</span>;
+  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[type] || "bg-neutral-100 text-neutral-700"}`}>{type}</span>;
 }
 
 function AcctStatusBadge({ status }) {
   const map = { posted: "bg-emerald-50 text-emerald-700", draft: "bg-amber-50 text-amber-700", voided: "bg-red-50 text-red-700" };
-  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[status] || "bg-slate-100 text-slate-700"}`}>{status}</span>;
+  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[status] || "bg-neutral-100 text-neutral-700"}`}>{status}</span>;
 }
 
 // --- Chart of Accounts Sub-Page ---
@@ -7567,40 +7567,40 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   <div className="space-y-4">
   <div className="flex items-center justify-between mb-4">
   <div>
-  <h3 className="text-lg font-semibold text-slate-900">Chart of Accounts</h3>
-  <p className="text-sm text-slate-400">Manage your account structure</p>
+  <h3 className="text-lg font-semibold text-neutral-900">Chart of Accounts</h3>
+  <p className="text-sm text-neutral-400">Manage your account structure</p>
   </div>
   <div className="flex gap-2">
-  <button onClick={() => setShowInactive(!showInactive)} className={`text-xs px-3 py-1.5 rounded-lg border ${showInactive ? "bg-brand-50 border-brand-200" : "border-brand-100 text-slate-400"}`}>{showInactive ? "Hide Inactive" : "Show Inactive"}</button>
+  <button onClick={() => setShowInactive(!showInactive)} className={`text-xs px-3 py-1.5 rounded-lg border ${showInactive ? "bg-brand-50 border-brand-200" : "border-brand-100 text-neutral-400"}`}>{showInactive ? "Hide Inactive" : "Show Inactive"}</button>
   <Btn variant="success-fill" size="sm" onClick={openAdd}>+ New Account</Btn>
   </div>
   </div>
   <div className="flex flex-wrap gap-2 mb-4">
   {["All", ...typeOrder.filter((t, i, a) => a.indexOf(t) === i)].map(t => (
-  <button key={t} onClick={() => setFilter(t)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${filter === t ? "bg-green-600 text-white border-green-600" : "bg-white text-slate-500 border-slate-200 hover:border-green-300"}`}>{t}</button>
+  <button key={t} onClick={() => setFilter(t)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${filter === t ? "bg-green-600 text-white border-green-600" : "bg-white text-neutral-500 border-neutral-200 hover:border-green-300"}`}>{t}</button>
   ))}
   </div>
   {typeOrder.filter((t, i, a) => a.indexOf(t) === i).map(type => {
   const accts = grouped[type];
   if (!accts?.length) return null;
   return (
-  <div key={type} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-3">
-  <div className="px-5 py-3 bg-slate-50 flex items-center justify-between">
-  <div className="flex items-center gap-2"><AcctTypeBadge type={type} /><span className="text-xs text-slate-400">{accts.length} accounts</span></div>
-  <span className="font-mono text-xs font-semibold text-slate-500">{acctFmt(accts.filter(a=>a.is_active).reduce((s,a)=>s+a.computedBalance,0))}</span>
+  <div key={type} className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden mb-3">
+  <div className="px-5 py-3 bg-neutral-50 flex items-center justify-between">
+  <div className="flex items-center gap-2"><AcctTypeBadge type={type} /><span className="text-xs text-neutral-400">{accts.length} accounts</span></div>
+  <span className="font-mono text-xs font-semibold text-neutral-500">{acctFmt(accts.filter(a=>a.is_active).reduce((s,a)=>s+a.computedBalance,0))}</span>
   </div>
   <table className="w-full text-sm">
-  <thead className="text-xs text-slate-500 uppercase tracking-wider bg-slate-50 font-semibold"><tr><th className="px-5 py-3 text-left">Number</th><th className="px-5 py-3 text-left">Name</th><th className="px-5 py-3 text-left">Subtype</th><th className="px-5 py-3 text-right">Balance</th><th className="px-5 py-3 w-20">Actions</th></tr></thead>
+  <thead className="text-xs text-neutral-500 uppercase tracking-wider bg-neutral-50 font-semibold"><tr><th className="px-5 py-3 text-left">Number</th><th className="px-5 py-3 text-left">Name</th><th className="px-5 py-3 text-left">Subtype</th><th className="px-5 py-3 text-right">Balance</th><th className="px-5 py-3 w-20">Actions</th></tr></thead>
   <tbody>
   {accts.map(a => (
-  <tr key={a.id} className={`border-t border-slate-100 hover:bg-green-50/40 transition-colors cursor-pointer ${a._isSubAccount ? "bg-slate-50/40" : ""}`} onClick={() => onOpenLedger && onOpenLedger([a.id], (a.code ? a.code + " " : "") + a.name)}>
-  <td className={`py-3 font-mono text-xs text-slate-400 ${a._isSubAccount ? "pl-8 pr-5" : "px-5"}`}>{a._isSubAccount ? "└ " : ""}{a.code || "—"}</td>
-  <td className={`px-5 py-3 ${a._isSubAccount ? "text-sm text-slate-600" : "font-medium"} ${!a.is_active ? "text-slate-400 line-through" : a._isSubAccount ? "" : "text-slate-800"}`}>{a.name}</td>
-  <td className="px-5 py-3 text-xs text-slate-400">{a.subtype || ""}</td>
-  <td className={`px-5 py-3 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(a.computedBalance, true)}</td>
+  <tr key={a.id} className={`border-t border-neutral-100 hover:bg-green-50/40 transition-colors cursor-pointer ${a._isSubAccount ? "bg-neutral-50/40" : ""}`} onClick={() => onOpenLedger && onOpenLedger([a.id], (a.code ? a.code + " " : "") + a.name)}>
+  <td className={`py-3 font-mono text-xs text-neutral-400 ${a._isSubAccount ? "pl-8 pr-5" : "px-5"}`}>{a._isSubAccount ? "└ " : ""}{a.code || "—"}</td>
+  <td className={`px-5 py-3 ${a._isSubAccount ? "text-sm text-neutral-600" : "font-medium"} ${!a.is_active ? "text-neutral-400 line-through" : a._isSubAccount ? "" : "text-neutral-800"}`}>{a.name}</td>
+  <td className="px-5 py-3 text-xs text-neutral-400">{a.subtype || ""}</td>
+  <td className={`px-5 py-3 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-red-600" : "text-neutral-800"}`}>{acctFmt(a.computedBalance, true)}</td>
   <td className="px-5 py-3 text-center flex items-center gap-2 justify-center">
-  <button onClick={e => { e.stopPropagation(); openEdit(a); }} className="text-slate-400 hover:text-brand-600 text-xs" title="Edit account"><span className="material-icons-outlined text-sm">edit</span></button>
-  <button onClick={e => { e.stopPropagation(); onToggle(a.id, a.is_active); }} className="text-slate-400 hover:text-slate-700 text-xs">{a.is_active ? "🟢" : "⚪"}</button>
+  <button onClick={e => { e.stopPropagation(); openEdit(a); }} className="text-neutral-400 hover:text-brand-600 text-xs" title="Edit account"><span className="material-icons-outlined text-sm">edit</span></button>
+  <button onClick={e => { e.stopPropagation(); onToggle(a.id, a.is_active); }} className="text-neutral-400 hover:text-neutral-700 text-xs">{a.is_active ? "🟢" : "⚪"}</button>
   </td>
   </tr>
   ))}
@@ -7611,10 +7611,10 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   })}
   <AcctModal isOpen={!!modal} onClose={() => setModal(null)} title={modal === "add" ? "New Account" : "Edit Account"} size="md">
   <div className="space-y-3">
-  <div><label className="text-xs font-medium text-slate-500">Account Name *</label><Input value={form.name} onChange={e => setForm({...form, name:e.target.value})} className="mt-1" placeholder="e.g. Operating Checking" /></div>
+  <div><label className="text-xs font-medium text-neutral-500">Account Name *</label><Input value={form.name} onChange={e => setForm({...form, name:e.target.value})} className="mt-1" placeholder="e.g. Operating Checking" /></div>
   <div className="grid grid-cols-2 gap-3">
   <div>
-  <label className="text-xs font-medium text-slate-500">Type *</label>
+  <label className="text-xs font-medium text-neutral-500">Type *</label>
   <Select value={form.type} onChange={e => { const v = e.target.value; setForm({...form, type: v, subtype: v === "__custom__" ? "" : (getAccountSubtypes(accounts, v)[0] || ""), customType: v === "__custom__" ? form.customType : "" }); }} className="mt-1">
   {dynamicTypes.map(t => <option key={t} value={t}>{t}</option>)}
   <option value="__custom__">+ Add Custom Type...</option>
@@ -7622,7 +7622,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   {form.type === "__custom__" && <Input value={form.customType} onChange={e => setForm({...form, customType: e.target.value})} className="mt-1 bg-brand-50" placeholder="Enter new account type" autoFocus />}
   </div>
   <div>
-  <label className="text-xs font-medium text-slate-500">Subtype</label>
+  <label className="text-xs font-medium text-neutral-500">Subtype</label>
   <Select value={form.subtype} onChange={e => setForm({...form, subtype: e.target.value, customSubtype: e.target.value === "__custom__" ? form.customSubtype : ""})} className="mt-1">
   {(form.type === "__custom__" ? [] : dynamicSubtypes).map(s => <option key={s} value={s}>{s}</option>)}
   <option value="__custom__">+ Add Custom Subtype...</option>
@@ -7631,7 +7631,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   {form.subtype === "__custom__" && <Input value={form.customSubtype} onChange={e => setForm({...form, customSubtype: e.target.value})} className="mt-1 bg-brand-50" placeholder="Enter new subtype" />}
   </div>
   </div>
-  <div><label className="text-xs font-medium text-slate-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
+  <div><label className="text-xs font-medium text-neutral-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
   <div className="flex justify-end gap-2 pt-2">
   <Btn variant="slate" onClick={() => setModal(null)}>Cancel</Btn>
   <Btn variant="success-fill" onClick={saveAccount}>{modal === "add" ? "Create" : "Save"}</Btn>
@@ -7721,32 +7721,32 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   const JEFormUI = () => (
   <div className="space-y-4">
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-500">Date *</label><Input type="date" value={form.date} onChange={e => setForm({...form, date:e.target.value})} className="mt-1" /></div>
-  <div><label className="text-xs font-medium text-slate-500">Reference</label><Input value={form.reference} onChange={e => setForm({...form, reference:e.target.value})} className="mt-1" placeholder="Invoice #, Check #..." /></div>
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-500">Description *</label><Input value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="mt-1" placeholder="What is this entry for?" /></div>
+  <div><label className="text-xs font-medium text-neutral-500">Date *</label><Input type="date" value={form.date} onChange={e => setForm({...form, date:e.target.value})} className="mt-1" /></div>
+  <div><label className="text-xs font-medium text-neutral-500">Reference</label><Input value={form.reference} onChange={e => setForm({...form, reference:e.target.value})} className="mt-1" placeholder="Invoice #, Check #..." /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-500">Description *</label><Input value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="mt-1" placeholder="What is this entry for?" /></div>
   </div>
   {/* Property is selected per-line via Class, not at header level */}
   <input type="hidden" value={form.property} />
   <div className="flex items-center justify-between mb-2">
-  <p className="text-xs font-semibold text-slate-500 uppercase">Journal Entry Lines</p>
-  <button onClick={addLine} className="text-xs text-slate-600 hover:text-slate-800">+ Add Line</button>
+  <p className="text-xs font-semibold text-neutral-500 uppercase">Journal Entry Lines</p>
+  <button onClick={addLine} className="text-xs text-neutral-600 hover:text-neutral-800">+ Add Line</button>
   </div>
   <div className="rounded-xl border border-brand-100 overflow-x-auto">
   <table className="w-full text-sm">
-  <thead><tr className="bg-slate-50 border-b border-slate-200"><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 w-48">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 w-32">Class</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 min-w-[140px]">Memo</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500 w-28">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500 w-28">Credit</th><th className="px-3 py-2 w-8" /></tr></thead>
+  <thead><tr className="bg-neutral-50 border-b border-neutral-200"><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-48">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-32">Class</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 min-w-[140px]">Memo</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 w-28">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 w-28">Credit</th><th className="px-3 py-2 w-8" /></tr></thead>
   <tbody>
   {form.lines.map((line, i) => (
-  <tr key={i} className="border-b border-slate-100">
+  <tr key={i} className="border-b border-neutral-100">
   <td className="px-2 py-1.5"><Select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}</Select></td>
   <td className="px-2 py-1.5"><Select value={line.class_id || ""} onChange={e => { setLine(i,"class_id",e.target.value||null); const cls = classes.find(c=>c.id===e.target.value); if (cls && !form.property) setForm(f=>({...f, property: cls.name})); }} className="px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></td>
   <td className="px-2 py-1.5"><input type="text" value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs bg-white focus:border-brand-300 focus:outline-none" /></td>
   <td className="px-2 py-1.5"><input type="text" inputMode="decimal" value={line.debit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], debit: v, ...(v ? { credit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono focus:border-brand-300 focus:outline-none" /></td>
   <td className="px-2 py-1.5"><input type="text" inputMode="decimal" value={line.credit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], credit: v, ...(v ? { debit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono focus:border-brand-300 focus:outline-none" /></td>
-  <td className="px-2 py-1.5"><button onClick={() => removeLine(i)} disabled={form.lines.length<=2} className="text-slate-300 hover:text-red-500 disabled:opacity-20">✕</button></td>
+  <td className="px-2 py-1.5"><button onClick={() => removeLine(i)} disabled={form.lines.length<=2} className="text-neutral-300 hover:text-red-500 disabled:opacity-20">✕</button></td>
   </tr>
   ))}
   </tbody>
-  <tfoot><tr className="bg-slate-50 border-t border-slate-200"><td colSpan={3} className="px-3 py-2 text-xs font-semibold text-slate-500 text-right">Totals</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-emerald-700":"text-red-600"}`}>{acctFmt(totalDebit)}</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-emerald-700":"text-red-600"}`}>{acctFmt(totalCredit)}</td><td /></tr></tfoot>
+  <tfoot><tr className="bg-neutral-50 border-t border-neutral-200"><td colSpan={3} className="px-3 py-2 text-xs font-semibold text-neutral-500 text-right">Totals</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-emerald-700":"text-red-600"}`}>{acctFmt(totalDebit)}</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-emerald-700":"text-red-600"}`}>{acctFmt(totalCredit)}</td><td /></tr></tfoot>
   </table>
   </div>
   {!validation.isValid && totalDebit > 0 && totalCredit > 0 && <div className="text-xs text-red-600 bg-red-50 rounded-2xl px-3 py-2">⚠ Out of balance by {acctFmt(validation.difference)}</div>}
@@ -7763,35 +7763,35 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   return (
   <div className="space-y-4">
   <div className="flex items-center justify-between mb-4">
-  <div><h3 className="text-lg font-semibold text-slate-900">Journal Entries</h3><p className="text-sm text-slate-400">Record and manage financial transactions</p></div>
+  <div><h3 className="text-lg font-semibold text-neutral-900">Journal Entries</h3><p className="text-sm text-neutral-400">Record and manage financial transactions</p></div>
   <Btn variant="success-fill" size="sm" onClick={openAdd}>+ New Entry</Btn>
   </div>
   <div className="flex gap-2 mb-4">
   {[{k:"all",l:`All (${counts.all})`},{k:"posted",l:`Posted (${counts.posted})`},{k:"draft",l:`Drafts (${counts.draft})`},{k:"voided",l:`Voided (${counts.voided})`}].map(f => (
-  <button key={f.k} onClick={() => setFilterStatus(f.k)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${filterStatus === f.k ? "bg-green-600 text-white border-green-600" : "bg-white text-slate-500 border-slate-200 hover:border-green-300"}`}>{f.l}</button>
+  <button key={f.k} onClick={() => setFilterStatus(f.k)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${filterStatus === f.k ? "bg-green-600 text-white border-green-600" : "bg-white text-neutral-500 border-neutral-200 hover:border-green-300"}`}>{f.l}</button>
   ))}
   <Select value={searchProperty} onChange={e => setSearchProperty(e.target.value)} className="text-xs py-1.5 rounded-xl ml-auto">
   <option value="">All Properties</option>
   {jeProperties.map(p => <option key={p} value={p}>{p.split(",")[0]}</option>)}
   </Select>
-  <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-500" title="From date" />
-  <span className="text-xs text-slate-400">to</span>
-  <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-500" title="To date" />
+  <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-neutral-200 bg-white text-neutral-500" title="From date" />
+  <span className="text-xs text-neutral-400">to</span>
+  <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-neutral-200 bg-white text-neutral-500" title="To date" />
   {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-red-400 hover:text-red-600">Clear</button>}
   </div>
-  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+  <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
   <table className="w-full text-sm">
-  <thead className="text-xs text-slate-500 uppercase tracking-wider bg-slate-50 font-semibold"><tr><th className="px-5 py-3 text-left">Entry #</th><th className="px-5 py-3 text-left">Date</th><th className="px-5 py-3 text-left">Property</th><th className="px-5 py-3 text-left">Description</th><th className="px-5 py-3 text-left">Ref</th><th className="px-5 py-3 text-left">Status</th><th className="px-5 py-3 text-right">Amount</th><th className="px-5 py-3">Actions</th></tr></thead>
+  <thead className="text-xs text-neutral-500 uppercase tracking-wider bg-neutral-50 font-semibold"><tr><th className="px-5 py-3 text-left">Entry #</th><th className="px-5 py-3 text-left">Date</th><th className="px-5 py-3 text-left">Property</th><th className="px-5 py-3 text-left">Description</th><th className="px-5 py-3 text-left">Ref</th><th className="px-5 py-3 text-left">Status</th><th className="px-5 py-3 text-right">Amount</th><th className="px-5 py-3">Actions</th></tr></thead>
   <tbody>
   {filtered.map(je => {
   const total = (je.lines || []).reduce((s,l) => s + safeNum(l.debit), 0);
   return (
-  <tr key={je.id} className="border-t border-slate-100 hover:bg-green-50/40 transition-colors cursor-pointer" onClick={() => openView(je)}>
-  <td className="px-5 py-3 font-mono text-xs font-semibold text-slate-700">{je.number}</td>
-  <td className="px-5 py-3 text-slate-500">{acctFmtDate(je.date)}</td>
-  <td className="px-5 py-3 text-xs text-slate-500">{je.property || "—"}</td>
-  <td className="px-5 py-3 font-medium text-slate-800">{je.description}</td>
-  <td className="px-5 py-3 text-xs text-slate-400">{je.reference || "—"}</td>
+  <tr key={je.id} className="border-t border-neutral-100 hover:bg-green-50/40 transition-colors cursor-pointer" onClick={() => openView(je)}>
+  <td className="px-5 py-3 font-mono text-xs font-semibold text-neutral-700">{je.number}</td>
+  <td className="px-5 py-3 text-neutral-500">{acctFmtDate(je.date)}</td>
+  <td className="px-5 py-3 text-xs text-neutral-500">{je.property || "—"}</td>
+  <td className="px-5 py-3 font-medium text-neutral-800">{je.description}</td>
+  <td className="px-5 py-3 text-xs text-neutral-400">{je.reference || "—"}</td>
   <td className="px-5 py-3"><AcctStatusBadge status={je.status} /></td>
   <td className="px-5 py-3 text-right font-mono text-sm font-semibold">{acctFmt(total)}</td>
   <td className="px-5 py-3 text-center">
@@ -7799,13 +7799,13 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   {je.status === "draft" && <button onClick={() => onPost(je.id)} className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-100 text-xs">Post</button>}
   {je.status === "posted" && <button onClick={() => onVoid(je.id)} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-100 text-xs">Void</button>}
   {je.status !== "voided" && <button onClick={() => openEdit(je)} className="text-xs text-brand-600 hover:underline">Edit</button>}
-  <button onClick={() => openDuplicate(je)} className="text-xs text-slate-400 hover:text-slate-700 hover:underline">Duplicate</button>
+  <button onClick={() => openDuplicate(je)} className="text-xs text-neutral-400 hover:text-neutral-700 hover:underline">Duplicate</button>
   </div>
   </td>
   </tr>
   );
   })}
-  {filtered.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">No journal entries found</td></tr>}
+  {filtered.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-neutral-400">No journal entries found</td></tr>}
   </tbody>
   </table>
   </div>
@@ -7817,23 +7817,23 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   {modal?.mode === "view" && (
   <AcctModal isOpen={true} onClose={() => setModal(null)} title={`Journal Entry: ${modal.je.number}`} size="xl">
   <div className="space-y-4">
-  <div className="grid grid-cols-3 gap-3 bg-slate-50 rounded-xl p-4">
-  <div><p className="text-xs text-slate-400">Entry #</p><p className="font-mono font-semibold">{modal.je.number}</p></div>
-  <div><p className="text-xs text-slate-400">Date</p><p className="font-semibold">{acctFmtDate(modal.je.date)}</p></div>
-  <div><p className="text-xs text-slate-400">Property</p><p className="font-semibold">{modal.je.property || "—"}</p></div>
-  <div className="col-span-2"><p className="text-xs text-slate-400">Description</p><p className="font-semibold">{modal.je.description}</p></div>
-  <div><p className="text-xs text-slate-400">Status</p><AcctStatusBadge status={modal.je.status} /></div>
+  <div className="grid grid-cols-3 gap-3 bg-neutral-50 rounded-xl p-4">
+  <div><p className="text-xs text-neutral-400">Entry #</p><p className="font-mono font-semibold">{modal.je.number}</p></div>
+  <div><p className="text-xs text-neutral-400">Date</p><p className="font-semibold">{acctFmtDate(modal.je.date)}</p></div>
+  <div><p className="text-xs text-neutral-400">Property</p><p className="font-semibold">{modal.je.property || "—"}</p></div>
+  <div className="col-span-2"><p className="text-xs text-neutral-400">Description</p><p className="font-semibold">{modal.je.description}</p></div>
+  <div><p className="text-xs text-neutral-400">Status</p><AcctStatusBadge status={modal.je.status} /></div>
   </div>
-  <table className="w-full text-sm rounded-xl border border-slate-200 overflow-hidden">
-  <thead><tr className="bg-slate-50"><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Account</th><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Class</th><th className="px-5 py-3 text-left text-xs font-semibold text-slate-500">Memo</th><th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Debit</th><th className="px-5 py-3 text-right text-xs font-semibold text-slate-500">Credit</th></tr></thead>
+  <table className="w-full text-sm rounded-xl border border-neutral-200 overflow-hidden">
+  <thead><tr className="bg-neutral-50"><th className="px-5 py-3 text-left text-xs font-semibold text-neutral-500">Account</th><th className="px-5 py-3 text-left text-xs font-semibold text-neutral-500">Class</th><th className="px-5 py-3 text-left text-xs font-semibold text-neutral-500">Memo</th><th className="px-5 py-3 text-right text-xs font-semibold text-neutral-500">Debit</th><th className="px-5 py-3 text-right text-xs font-semibold text-neutral-500">Credit</th></tr></thead>
   <tbody>
   {(modal.je.lines || []).map((l,i) => {
   const cls = classes.find(c => c.id === l.class_id);
   return (
-  <tr key={i} className="border-t border-slate-100">
-  <td className="px-5 py-3">{(() => { const acct = accounts.find(a => a.id === l.account_id); const code = acct?.code || ""; const name = l.account_name || acct?.name || "Unknown Account"; return <>{code && <span className="font-mono text-xs text-slate-400 mr-1">{code}</span>}{name}</>; })()}</td>
+  <tr key={i} className="border-t border-neutral-100">
+  <td className="px-5 py-3">{(() => { const acct = accounts.find(a => a.id === l.account_id); const code = acct?.code || ""; const name = l.account_name || acct?.name || "Unknown Account"; return <>{code && <span className="font-mono text-xs text-neutral-400 mr-1">{code}</span>}{name}</>; })()}</td>
   <td className="px-4 py-2 text-xs">{cls ? <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background:cls.color}} />{cls.name}</span> : "—"}</td>
-  <td className="px-4 py-2 text-xs text-slate-400">{l.memo || "—"}</td>
+  <td className="px-4 py-2 text-xs text-neutral-400">{l.memo || "—"}</td>
   <td className="px-4 py-2 text-right font-mono">{safeNum(l.debit) > 0 ? acctFmt(l.debit) : ""}</td>
   <td className="px-4 py-2 text-right font-mono">{safeNum(l.credit) > 0 ? acctFmt(l.credit) : ""}</td>
   </tr>
@@ -7844,8 +7844,8 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   <div className="flex gap-2">
   {modal.je.status === "draft" && <button onClick={() => { onPost(modal.je.id); setModal(null); }} className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-100 text-xs">Post</button>}
   {modal.je.status === "posted" && <button onClick={() => { onVoid(modal.je.id); setModal(null); }} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-100 text-xs">Void</button>}
-  {modal.je.status !== "voided" && <button onClick={() => openEdit(modal.je)} className="bg-slate-200 text-slate-700 text-xs px-3 py-1.5 rounded-lg">Edit</button>}
-  <button onClick={() => { openDuplicate(modal.je); }} className="bg-slate-100 text-slate-500 text-xs px-3 py-1.5 rounded-lg hover:bg-slate-200">Duplicate</button>
+  {modal.je.status !== "voided" && <button onClick={() => openEdit(modal.je)} className="bg-neutral-200 text-neutral-700 text-xs px-3 py-1.5 rounded-lg">Edit</button>}
+  <button onClick={() => { openDuplicate(modal.je); }} className="bg-neutral-100 text-neutral-500 text-xs px-3 py-1.5 rounded-lg hover:bg-neutral-200">Duplicate</button>
   </div>
   </div>
   </AcctModal>
@@ -7884,25 +7884,25 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   return (
   <div className="space-y-4">
   <div className="flex items-center justify-between mb-4">
-  <div><h3 className="text-lg font-semibold text-slate-900">Class Tracking</h3><p className="text-sm text-slate-400">Track by unit, property, or department</p></div>
+  <div><h3 className="text-lg font-semibold text-neutral-900">Class Tracking</h3><p className="text-sm text-neutral-400">Track by unit, property, or department</p></div>
   <Btn variant="success-fill" size="sm" onClick={openAdd}>+ New Class</Btn>
   </div>
   <div className="flex flex-wrap gap-2 mb-4">
-  {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${period === p ? "bg-green-600 text-white border-green-600" : "bg-white text-slate-500 border-slate-200 hover:border-green-300"}`}>{p}</button>)}
+  {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${period === p ? "bg-green-600 text-white border-green-600" : "bg-white text-neutral-500 border-neutral-200 hover:border-green-300"}`}>{p}</button>)}
   </div>
   <div className="grid grid-cols-3 gap-3 mb-4">
   <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4"><p className="text-xs text-emerald-600 font-medium">Revenue</p><p className="text-xl font-bold text-emerald-800 font-mono mt-1">{acctFmt(totalRev)}</p></div>
   <div className="bg-red-50 border border-red-100 rounded-xl p-4"><p className="text-xs text-red-600 font-medium">Expenses</p><p className="text-xl font-bold text-red-800 font-mono mt-1">{acctFmt(totalExp)}</p></div>
   <div className={`border rounded-xl p-4 ${totalNet >= 0 ? "bg-blue-50 border-blue-100" : "bg-orange-50 border-orange-100"}`}><p className={`text-xs font-medium ${totalNet >= 0 ? "text-blue-600" : "text-orange-600"}`}>Net Income</p><p className={`text-xl font-bold font-mono mt-1 ${totalNet >= 0 ? "text-blue-800" : "text-orange-800"}`}>{acctFmt(totalNet, true)}</p></div>
   </div>
-  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+  <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
   <table className="w-full text-sm">
-  <thead className="text-xs text-slate-500 uppercase tracking-wider bg-slate-50 font-semibold"><tr><th className="px-5 py-3 text-left">Class</th><th className="px-5 py-3 text-left">Description</th><th className="px-5 py-3 text-right">Revenue</th><th className="px-5 py-3 text-right">Expenses</th><th className="px-5 py-3 text-right">Net Income</th><th className="px-5 py-3 w-16" /></tr></thead>
+  <thead className="text-xs text-neutral-500 uppercase tracking-wider bg-neutral-50 font-semibold"><tr><th className="px-5 py-3 text-left">Class</th><th className="px-5 py-3 text-left">Description</th><th className="px-5 py-3 text-right">Revenue</th><th className="px-5 py-3 text-right">Expenses</th><th className="px-5 py-3 text-right">Net Income</th><th className="px-5 py-3 w-16" /></tr></thead>
   <tbody>
   {classReport.map(c => (
-  <tr key={c.id} className="border-t border-slate-100 hover:bg-green-50/40 transition-colors">
-  <td className="px-5 py-3"><div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{background:c.color}} /><span className={`font-medium ${!c.is_active?"text-slate-400 line-through":"text-slate-800"}`}>{c.name}</span></div></td>
-  <td className="px-5 py-3 text-xs text-slate-400">{c.description}</td>
+  <tr key={c.id} className="border-t border-neutral-100 hover:bg-green-50/40 transition-colors">
+  <td className="px-5 py-3"><div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{background:c.color}} /><span className={`font-medium ${!c.is_active?"text-neutral-400 line-through":"text-neutral-800"}`}>{c.name}</span></div></td>
+  <td className="px-5 py-3 text-xs text-neutral-400">{c.description}</td>
   <td className="px-5 py-3 text-right font-mono text-sm text-emerald-700">{c.revenue > 0 ? acctFmt(c.revenue) : "—"}</td>
   <td className="px-5 py-3 text-right font-mono text-sm text-red-600">{c.expenses > 0 ? acctFmt(c.expenses) : "—"}</td>
   <td className={`px-5 py-3 text-right font-mono text-sm font-bold ${c.netIncome >= 0 ? "text-blue-700" : "text-red-700"}`}>{acctFmt(c.netIncome, true)}</td>
@@ -7914,9 +7914,9 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   </div>
   <AcctModal isOpen={!!modal} onClose={() => setModal(null)} title={modal === "add" ? "New Class" : "Edit Class"} size="sm">
   <div className="space-y-3">
-  <div><label className="text-xs font-medium text-slate-500">Name *</label><Input placeholder="e.g. 123 Main St" value={form.name} onChange={e => setForm({...form,name:e.target.value})} className="mt-1" /></div>
-  <div><label className="text-xs font-medium text-slate-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form,description:e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
-  <div><label className="text-xs font-medium text-slate-500 block mb-2">Color</label><div className="flex gap-2 flex-wrap">{COLORS.map(c => <button key={c} type="button" onClick={() => setForm({...form,color:c})} className={`w-7 h-7 rounded-full border-2 ${form.color===c?"border-gray-800 scale-110":"border-transparent"}`} style={{background:c}} />)}</div></div>
+  <div><label className="text-xs font-medium text-neutral-500">Name *</label><Input placeholder="e.g. 123 Main St" value={form.name} onChange={e => setForm({...form,name:e.target.value})} className="mt-1" /></div>
+  <div><label className="text-xs font-medium text-neutral-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form,description:e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
+  <div><label className="text-xs font-medium text-neutral-500 block mb-2">Color</label><div className="flex gap-2 flex-wrap">{COLORS.map(c => <button key={c} type="button" onClick={() => setForm({...form,color:c})} className={`w-7 h-7 rounded-full border-2 ${form.color===c?"border-gray-800 scale-110":"border-transparent"}`} style={{background:c}} />)}</div></div>
   <div className="flex justify-end gap-2 pt-2">
   <Btn variant="slate" onClick={() => setModal(null)}>Cancel</Btn>
   <Btn variant="success-fill" onClick={saveClass}>{modal === "add" ? "Create" : "Save"}</Btn>
@@ -8442,20 +8442,20 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <div><h3 className="text-lg font-semibold text-slate-900">Reports</h3><p className="text-sm text-slate-400">Run financial and property reports</p></div>
+        <div><h3 className="text-lg font-semibold text-neutral-900">Reports</h3><p className="text-sm text-neutral-400">Run financial and property reports</p></div>
       </div>
 
       {/* Search */}
       <div className="relative mb-5">
-        <span className="material-icons-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-300">search</span>
+        <span className="material-icons-outlined absolute left-3 top-1/2 -tranneutral-y-1/2 text-neutral-300">search</span>
         <input type="text" placeholder="Find report by name..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-green-200 focus:border-green-400 transition-all" />
+          className="w-full pl-10 pr-4 py-3 border border-neutral-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-green-200 focus:border-green-400 transition-all" />
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-slate-200">
+      <div className="flex gap-1 mb-6 border-b border-neutral-200">
         {[["standard","Standard Reports"],["favorites",`Favorites (${favReports.length})`],["custom","Custom Reports"]].map(([id,label]) => (
-          <button key={id} onClick={() => setCatalogTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 ${catalogTab === id ? "border-green-600 text-green-700" : "border-transparent text-slate-400 hover:text-slate-600"}`}>{label}</button>
+          <button key={id} onClick={() => setCatalogTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 ${catalogTab === id ? "border-green-600 text-green-700" : "border-transparent text-neutral-400 hover:text-neutral-600"}`}>{label}</button>
         ))}
       </div>
 
@@ -8463,27 +8463,27 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       {searchQuery && filteredReports && (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {filteredReports.map(r => (
-        <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-slate-200 rounded-xl p-4 hover:border-green-300 hover:shadow-md transition-all bg-white">
+        <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-green-300 hover:shadow-md transition-all bg-white">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
-              <span className="material-icons-outlined text-slate-400 group-hover:text-green-600 text-xl">{r.icon}</span>
-              <div><p className="text-sm font-semibold text-slate-800 group-hover:text-green-700">{r.title}</p><p className="text-xs text-slate-400 mt-0.5">{r.description}</p></div>
+              <span className="material-icons-outlined text-neutral-400 group-hover:text-green-600 text-xl">{r.icon}</span>
+              <div><p className="text-sm font-semibold text-neutral-800 group-hover:text-green-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div>
             </div>
-            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className="text-slate-300 hover:text-amber-400"><span className="material-icons-outlined text-lg">{favorites.includes(r.id) ? "star" : "star_outline"}</span></button>
+            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className="text-neutral-300 hover:text-amber-400"><span className="material-icons-outlined text-lg">{favorites.includes(r.id) ? "star" : "star_outline"}</span></button>
           </div>
         </div>
         ))}
-        {filteredReports.length === 0 && <p className="col-span-4 text-center text-slate-400 py-8">No reports match "{searchQuery}"</p>}
+        {filteredReports.length === 0 && <p className="col-span-4 text-center text-neutral-400 py-8">No reports match "{searchQuery}"</p>}
       </div>
       )}
 
       {/* Favorites tab */}
       {!searchQuery && catalogTab === "favorites" && (
-      <div>{favReports.length === 0 ? <div className="text-center py-12 text-slate-400"><span className="material-icons-outlined text-4xl mb-2 block">star_outline</span><p className="text-sm">No favorite reports yet. Click the star on any report to add it here.</p></div> : (
+      <div>{favReports.length === 0 ? <div className="text-center py-12 text-neutral-400"><span className="material-icons-outlined text-4xl mb-2 block">star_outline</span><p className="text-sm">No favorite reports yet. Click the star on any report to add it here.</p></div> : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {favReports.map(r => (
-          <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-slate-200 rounded-xl p-4 hover:border-green-300 hover:shadow-md transition-all bg-white">
-            <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-slate-400 group-hover:text-green-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-slate-800 group-hover:text-green-700">{r.title}</p><p className="text-xs text-slate-400 mt-0.5">{r.description}</p></div></div>
+          <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-green-300 hover:shadow-md transition-all bg-white">
+            <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-neutral-400 group-hover:text-green-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-neutral-800 group-hover:text-green-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div></div>
             <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className="text-amber-400 hover:text-amber-500"><span className="material-icons-outlined text-lg">star</span></button></div>
           </div>))}
         </div>
@@ -8492,17 +8492,17 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
 
       {/* Custom reports tab */}
       {!searchQuery && catalogTab === "custom" && (
-      <div>{customReports.length === 0 ? <div className="text-center py-12 text-slate-400"><span className="material-icons-outlined text-4xl mb-2 block">tune</span><p className="text-sm">No saved report configurations yet.</p><p className="text-xs mt-1">Open any report, configure filters, then click "Save Config" in the toolbar.</p></div> : (
+      <div>{customReports.length === 0 ? <div className="text-center py-12 text-neutral-400"><span className="material-icons-outlined text-4xl mb-2 block">tune</span><p className="text-sm">No saved report configurations yet.</p><p className="text-xs mt-1">Open any report, configure filters, then click "Save Config" in the toolbar.</p></div> : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {customReports.map(c => (
-          <div key={c.id} className="group border border-slate-200 rounded-xl p-4 hover:border-green-300 hover:shadow-md transition-all bg-white">
+          <div key={c.id} className="group border border-neutral-200 rounded-xl p-4 hover:border-green-300 hover:shadow-md transition-all bg-white">
             <div className="flex items-start justify-between">
               <div className="cursor-pointer flex-1" onClick={() => loadCustomReport(c)}>
-                <p className="text-sm font-semibold text-slate-800 group-hover:text-green-700">{c.name}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{c.reportTitle} · {c.period}</p>
-                <p className="text-xs text-slate-300 mt-0.5">Saved {new Date(c.savedAt).toLocaleDateString()}</p>
+                <p className="text-sm font-semibold text-neutral-800 group-hover:text-green-700">{c.name}</p>
+                <p className="text-xs text-neutral-400 mt-0.5">{c.reportTitle} · {c.period}</p>
+                <p className="text-xs text-neutral-300 mt-0.5">Saved {new Date(c.savedAt).toLocaleDateString()}</p>
               </div>
-              <button onClick={() => deleteCustomReport(c.id)} className="text-slate-300 hover:text-red-500"><span className="material-icons-outlined text-sm">close</span></button>
+              <button onClick={() => deleteCustomReport(c.id)} className="text-neutral-300 hover:text-red-500"><span className="material-icons-outlined text-sm">close</span></button>
             </div>
           </div>
           ))}
@@ -8514,16 +8514,16 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       {!searchQuery && catalogTab === "standard" && REPORT_CATALOG.map(cat => (
       <div key={cat.category} className="mb-6">
         <button onClick={() => setCollapsedCats(prev => ({...prev, [cat.category]: !prev[cat.category]}))} className="flex items-center gap-2 w-full text-left mb-3">
-          <span className="material-icons-outlined text-sm text-slate-400">{collapsedCats[cat.category] ? "chevron_right" : "expand_more"}</span>
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">{cat.category}</h3>
-          <span className="text-xs text-slate-300 ml-1">({cat.reports.length})</span>
+          <span className="material-icons-outlined text-sm text-neutral-400">{collapsedCats[cat.category] ? "chevron_right" : "expand_more"}</span>
+          <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-wider">{cat.category}</h3>
+          <span className="text-xs text-neutral-300 ml-1">({cat.reports.length})</span>
         </button>
         {!collapsedCats[cat.category] && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {cat.reports.map(r => (
-          <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-slate-200 rounded-xl p-4 hover:border-green-300 hover:shadow-md transition-all bg-white">
-            <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-slate-400 group-hover:text-green-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-slate-800 group-hover:text-green-700">{r.title}</p><p className="text-xs text-slate-400 mt-0.5">{r.description}</p></div></div>
-            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className={favorites.includes(r.id) ? "text-amber-400 hover:text-amber-500" : "text-slate-300 hover:text-amber-400"}><span className="material-icons-outlined text-lg">{favorites.includes(r.id) ? "star" : "star_outline"}</span></button></div>
+          <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-green-300 hover:shadow-md transition-all bg-white">
+            <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-neutral-400 group-hover:text-green-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-neutral-800 group-hover:text-green-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div></div>
+            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className={favorites.includes(r.id) ? "text-amber-400 hover:text-amber-500" : "text-neutral-300 hover:text-amber-400"}><span className="material-icons-outlined text-lg">{favorites.includes(r.id) ? "star" : "star_outline"}</span></button></div>
           </div>))}
         </div>
         )}
@@ -8560,55 +8560,55 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     {/* Viewer Header */}
     <div className="flex items-center justify-between mb-4">
       <div className="flex items-center gap-3">
-        <button onClick={() => setActiveView("catalog")} className="text-sm text-slate-400 hover:text-slate-700 flex items-center gap-1"><span className="material-icons-outlined text-sm">arrow_back</span>Back to Reports</button>
-        <h3 className="text-lg font-semibold text-slate-900">{currentReport?.title}</h3>
+        <button onClick={() => setActiveView("catalog")} className="text-sm text-neutral-400 hover:text-neutral-700 flex items-center gap-1"><span className="material-icons-outlined text-sm">arrow_back</span>Back to Reports</button>
+        <h3 className="text-lg font-semibold text-neutral-900">{currentReport?.title}</h3>
       </div>
       <div className="flex gap-2">
-        <button onClick={() => toggleFavorite(reportId)} className={favorites.includes(reportId) ? "text-amber-400" : "text-slate-300 hover:text-amber-400"}><span className="material-icons-outlined text-lg">{favorites.includes(reportId) ? "star" : "star_outline"}</span></button>
-        <button onClick={exportCSV} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">download</span>Export</button>
-        <button onClick={exportPDF} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">picture_as_pdf</span>PDF</button>
-        <button onClick={printReport} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">print</span>Print</button>
+        <button onClick={() => toggleFavorite(reportId)} className={favorites.includes(reportId) ? "text-amber-400" : "text-neutral-300 hover:text-amber-400"}><span className="material-icons-outlined text-lg">{favorites.includes(reportId) ? "star" : "star_outline"}</span></button>
+        <button onClick={exportCSV} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">download</span>Export</button>
+        <button onClick={exportPDF} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">picture_as_pdf</span>PDF</button>
+        <button onClick={printReport} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">print</span>Print</button>
       </div>
     </div>
 
     {/* Toolbar */}
-    <div className="bg-slate-50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-end">
+    <div className="bg-neutral-50 rounded-xl p-4 mb-4 flex flex-wrap gap-3 items-end">
       {SHOW_PERIOD && (
-      <div><label className="text-xs text-slate-500 block mb-1">Period</label>
+      <div><label className="text-xs text-neutral-500 block mb-1">Period</label>
         <Select value={period} onChange={e => setPeriod(e.target.value)} className="py-1.5">
           {["This Month","Last Month","This Quarter","Last Quarter","This Year","Last Year","Custom"].map(p => <option key={p}>{p}</option>)}
         </Select></div>
       )}
       {period === "Custom" && <>
-        <div><label className="text-xs text-slate-500 block mb-1">From</label><Input type="date" value={start} onChange={e => setCustomDates({...customDates, start: e.target.value})} className="w-36" /></div>
-        <div><label className="text-xs text-slate-500 block mb-1">To</label><Input type="date" value={end} onChange={e => setCustomDates({...customDates, end: e.target.value})} className="w-36" /></div>
+        <div><label className="text-xs text-neutral-500 block mb-1">From</label><Input type="date" value={start} onChange={e => setCustomDates({...customDates, start: e.target.value})} className="w-36" /></div>
+        <div><label className="text-xs text-neutral-500 block mb-1">To</label><Input type="date" value={end} onChange={e => setCustomDates({...customDates, end: e.target.value})} className="w-36" /></div>
       </>}
-      {SHOW_AS_OF && <div><label className="text-xs text-slate-500 block mb-1">As of</label><Input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="w-36" /></div>}
-      {SHOW_COMPARE && <div><label className="text-xs text-slate-500 block mb-1">Compare to</label><select value={compareTo} onChange={e => setCompareTo(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white"><option value="">No comparison</option><option value="prior_period">Prior Period</option><option value="prior_year">Prior Year</option></select></div>}
-      {SHOW_CLASS && <div><label className="text-xs text-slate-500 block mb-1">Property</label><select value={classFilter} onChange={e => setClassFilter(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white"><option value="">All Properties</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>}
-      {SHOW_ACCOUNT && <div><label className="text-xs text-slate-500 block mb-1">Account</label><select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white min-w-48">{accounts.filter(a=>a.is_active).map(a => <option key={a.id} value={a.id}>{a.code||"•"} {a.name}</option>)}</select></div>}
+      {SHOW_AS_OF && <div><label className="text-xs text-neutral-500 block mb-1">As of</label><Input type="date" value={asOfDate} onChange={e => setAsOfDate(e.target.value)} className="w-36" /></div>}
+      {SHOW_COMPARE && <div><label className="text-xs text-neutral-500 block mb-1">Compare to</label><select value={compareTo} onChange={e => setCompareTo(e.target.value)} className="border border-neutral-200 rounded-lg px-3 py-1.5 text-sm bg-white"><option value="">No comparison</option><option value="prior_period">Prior Period</option><option value="prior_year">Prior Year</option></select></div>}
+      {SHOW_CLASS && <div><label className="text-xs text-neutral-500 block mb-1">Property</label><select value={classFilter} onChange={e => setClassFilter(e.target.value)} className="border border-neutral-200 rounded-lg px-3 py-1.5 text-sm bg-white"><option value="">All Properties</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>}
+      {SHOW_ACCOUNT && <div><label className="text-xs text-neutral-500 block mb-1">Account</label><select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} className="border border-neutral-200 rounded-lg px-3 py-1.5 text-sm bg-white min-w-48">{accounts.filter(a=>a.is_active).map(a => <option key={a.id} value={a.id}>{a.code||"•"} {a.name}</option>)}</select></div>}
       <div className="flex items-end gap-2 ml-auto">
-        <input type="text" value={saveReportName} onChange={e => setSaveReportName(e.target.value)} placeholder="Save as..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-32" />
+        <input type="text" value={saveReportName} onChange={e => setSaveReportName(e.target.value)} placeholder="Save as..." className="border border-neutral-200 rounded-lg px-3 py-1.5 text-sm w-32" />
         <Btn variant="success-fill" size="sm" className="disabled:opacity-40 whitespace-nowrap" onClick={saveCustomReport} disabled={!saveReportName.trim()}>Save Config</Btn>
       </div>
     </div>
 
     {/* Report Content */}
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6" data-report-content>
+    <div className="bg-white rounded-xl shadow-sm border border-neutral-200 p-6" data-report-content>
 
     {/* P&L */}
     {reportId === "pl" && (
     <div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Profit & Loss</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      <div className="cursor-pointer hover:bg-slate-50 rounded py-1 flex items-center gap-1" onClick={() => setShowIncome(!showIncome)}><span className="material-icons-outlined text-sm text-slate-400">{showIncome ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-slate-900">Income</span></div>
-      {showIncome && plData.revenue.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-green-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><span className="text-sm text-slate-700">{a.name}</span><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
-      {showIncome && <div className="flex justify-between py-1.5 border-t border-slate-300 font-bold mt-1" style={{paddingLeft:24}}><span className="text-sm">Total Income</span><span className="font-mono text-sm tabular-nums">{acctFmt(plData.totalRevenue)}</span></div>}
-      <div className="flex justify-between py-2 border-t-2 border-slate-800 font-black mt-2"><span className="text-sm">Gross Profit</span><span className="font-mono text-sm tabular-nums">{acctFmt(plData.totalRevenue)}</span></div>
-      <div className="cursor-pointer hover:bg-slate-50 rounded py-1 mt-3 flex items-center gap-1" onClick={() => setShowExpenses(!showExpenses)}><span className="material-icons-outlined text-sm text-slate-400">{showExpenses ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-slate-900">Expenses</span></div>
-      {showExpenses && plData.expenses.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-green-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><span className="text-sm text-slate-700">{a.name}</span><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
-      {showExpenses && <div className="flex justify-between py-1.5 border-t border-slate-300 font-bold mt-1" style={{paddingLeft:24}}><span className="text-sm">Total Expenses</span><span className="font-mono text-sm tabular-nums">{acctFmt(plData.totalExpenses)}</span></div>}
-      <div className="flex justify-between py-3 border-t-2 border-b-2 border-slate-800 font-black mt-3"><span className="text-sm">NET INCOME</span><span className={`font-mono text-sm tabular-nums ${plData.netIncome < 0 ? "text-red-600" : ""}`}>{acctFmt(plData.netIncome)}</span></div>
-      <div className="text-xs text-slate-400 mt-4 flex justify-between"><span>Accrual basis</span><span>{new Date().toLocaleString()}</span></div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Profit & Loss</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      <div className="cursor-pointer hover:bg-neutral-50 rounded py-1 flex items-center gap-1" onClick={() => setShowIncome(!showIncome)}><span className="material-icons-outlined text-sm text-neutral-400">{showIncome ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-neutral-900">Income</span></div>
+      {showIncome && plData.revenue.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-green-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><span className="text-sm text-neutral-700">{a.name}</span><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
+      {showIncome && <div className="flex justify-between py-1.5 border-t border-neutral-300 font-bold mt-1" style={{paddingLeft:24}}><span className="text-sm">Total Income</span><span className="font-mono text-sm tabular-nums">{acctFmt(plData.totalRevenue)}</span></div>}
+      <div className="flex justify-between py-2 border-t-2 border-neutral-800 font-black mt-2"><span className="text-sm">Gross Profit</span><span className="font-mono text-sm tabular-nums">{acctFmt(plData.totalRevenue)}</span></div>
+      <div className="cursor-pointer hover:bg-neutral-50 rounded py-1 mt-3 flex items-center gap-1" onClick={() => setShowExpenses(!showExpenses)}><span className="material-icons-outlined text-sm text-neutral-400">{showExpenses ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-neutral-900">Expenses</span></div>
+      {showExpenses && plData.expenses.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-green-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><span className="text-sm text-neutral-700">{a.name}</span><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
+      {showExpenses && <div className="flex justify-between py-1.5 border-t border-neutral-300 font-bold mt-1" style={{paddingLeft:24}}><span className="text-sm">Total Expenses</span><span className="font-mono text-sm tabular-nums">{acctFmt(plData.totalExpenses)}</span></div>}
+      <div className="flex justify-between py-3 border-t-2 border-b-2 border-neutral-800 font-black mt-3"><span className="text-sm">NET INCOME</span><span className={`font-mono text-sm tabular-nums ${plData.netIncome < 0 ? "text-red-600" : ""}`}>{acctFmt(plData.netIncome)}</span></div>
+      <div className="text-xs text-neutral-400 mt-4 flex justify-between"><span>Accrual basis</span><span>{new Date().toLocaleString()}</span></div>
     </div>
     )}
 
@@ -8619,274 +8619,274 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     const arSubAccounts = bsData.assets.filter(a => (a.code || "").startsWith("1100-"));
     const arAllIds = new Set([...arParentAccounts, ...arSubAccounts].map(a => a.id));
     const otherAssets = bsData.assets.filter(a => !bankAccounts.includes(a) && !arAllIds.has(a.id));
-    const BSRow = ({ name, amount, indent = 0, bold, total, onClick, italic }) => (<div className={`flex justify-between py-1 ${total ? "border-t border-slate-300 font-bold mt-1" : ""} ${bold ? "font-semibold" : ""} ${onClick ? "cursor-pointer hover:bg-blue-50/50 rounded" : ""}`} style={{ paddingLeft: indent * 24 }} onClick={onClick}><span className={`text-sm ${total ? "text-slate-900" : "text-slate-700"} ${italic ? "italic" : ""}`}>{name}</span><span className={`font-mono text-sm tabular-nums ${amount < 0 ? "text-red-600" : total ? "text-slate-900" : "text-slate-700"}`}>{acctFmt(amount, true)}</span></div>);
-    const BSSection = ({ title, children, show, toggle, total, totalLabel }) => (<div className="mb-2"><div className="cursor-pointer hover:bg-slate-50 rounded py-1 flex items-center gap-1" onClick={toggle}><span className="material-icons-outlined text-sm text-slate-400">{show ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-slate-900">{title}</span></div>{show && children}{show && total !== undefined && (<div className="flex justify-between py-1.5 border-t border-b border-slate-300 font-bold mt-1" style={{ paddingLeft: 24 }}><span className="text-sm text-slate-900">{totalLabel || "Total " + title}</span><span className="font-mono text-sm text-slate-900 tabular-nums">{acctFmt(total)}</span></div>)}</div>);
+    const BSRow = ({ name, amount, indent = 0, bold, total, onClick, italic }) => (<div className={`flex justify-between py-1 ${total ? "border-t border-neutral-300 font-bold mt-1" : ""} ${bold ? "font-semibold" : ""} ${onClick ? "cursor-pointer hover:bg-blue-50/50 rounded" : ""}`} style={{ paddingLeft: indent * 24 }} onClick={onClick}><span className={`text-sm ${total ? "text-neutral-900" : "text-neutral-700"} ${italic ? "italic" : ""}`}>{name}</span><span className={`font-mono text-sm tabular-nums ${amount < 0 ? "text-red-600" : total ? "text-neutral-900" : "text-neutral-700"}`}>{acctFmt(amount, true)}</span></div>);
+    const BSSection = ({ title, children, show, toggle, total, totalLabel }) => (<div className="mb-2"><div className="cursor-pointer hover:bg-neutral-50 rounded py-1 flex items-center gap-1" onClick={toggle}><span className="material-icons-outlined text-sm text-neutral-400">{show ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-neutral-900">{title}</span></div>{show && children}{show && total !== undefined && (<div className="flex justify-between py-1.5 border-t border-b border-neutral-300 font-bold mt-1" style={{ paddingLeft: 24 }}><span className="text-sm text-neutral-900">{totalLabel || "Total " + title}</span><span className="font-mono text-sm text-neutral-900 tabular-nums">{acctFmt(total)}</span></div>)}</div>);
     return (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Balance Sheet</p><p className="text-sm text-slate-500 mt-1">As of {acctFmtDate(asOfDate)}</p><div className="mt-2">{bsBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1 rounded-full">Out of Balance</span>}</div></div>
-      <div className="flex justify-end mb-2 border-b border-slate-200 pb-1"><span className="text-xs font-semibold text-slate-500 uppercase">Total</span></div>
-      <BSSection title="Assets" show={showAssets} toggle={() => setShowAssets(!showAssets)} total={bsData.totalAssets} totalLabel="TOTAL ASSETS">{bankAccounts.length > 0 && <div className="mb-1"><div className="text-xs font-semibold text-slate-500 uppercase tracking-wide py-1" style={{paddingLeft:24}}>Bank Accounts</div>{bankAccounts.map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={2} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}<div className="flex justify-between py-1 border-t border-slate-200 font-semibold" style={{paddingLeft:48}}><span className="text-xs text-slate-700">Total for Bank Accounts</span><span className="font-mono text-xs text-slate-900 tabular-nums">{acctFmt(bankAccounts.reduce((s,a)=>s+a.amount,0))}</span></div></div>}{(arParentAccounts.length > 0 || arSubAccounts.length > 0) && <div className="mb-1"><div className="cursor-pointer text-xs font-semibold text-slate-500 uppercase tracking-wide py-1 flex items-center gap-1" style={{paddingLeft:24}} onClick={() => setShowARSub(!showARSub)}><span className="material-icons-outlined text-xs">{showARSub ? "expand_more" : "chevron_right"}</span>Accounts Receivable</div>{showARSub && arSubAccounts.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name.replace("AR - ","")} amount={a.amount} indent={3} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}<div className="flex justify-between py-1 border-t border-slate-200 font-semibold" style={{paddingLeft:48}}><span className="text-xs text-slate-700">Total for AR</span><span className="font-mono text-xs text-slate-900 tabular-nums">{acctFmt(arSubAccounts.length > 0 ? arSubAccounts.reduce((s,a)=>s+a.amount,0) : arParentAccounts.reduce((s,a)=>s+a.amount,0))}</span></div></div>}{otherAssets.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}</BSSection>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Balance Sheet</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p><div className="mt-2">{bsBalanced ? <span className="text-xs text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">Balanced</span> : <span className="text-xs text-red-600 bg-red-50 px-3 py-1 rounded-full">Out of Balance</span>}</div></div>
+      <div className="flex justify-end mb-2 border-b border-neutral-200 pb-1"><span className="text-xs font-semibold text-neutral-500 uppercase">Total</span></div>
+      <BSSection title="Assets" show={showAssets} toggle={() => setShowAssets(!showAssets)} total={bsData.totalAssets} totalLabel="TOTAL ASSETS">{bankAccounts.length > 0 && <div className="mb-1"><div className="text-xs font-semibold text-neutral-500 uppercase tracking-wide py-1" style={{paddingLeft:24}}>Bank Accounts</div>{bankAccounts.map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={2} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}<div className="flex justify-between py-1 border-t border-neutral-200 font-semibold" style={{paddingLeft:48}}><span className="text-xs text-neutral-700">Total for Bank Accounts</span><span className="font-mono text-xs text-neutral-900 tabular-nums">{acctFmt(bankAccounts.reduce((s,a)=>s+a.amount,0))}</span></div></div>}{(arParentAccounts.length > 0 || arSubAccounts.length > 0) && <div className="mb-1"><div className="cursor-pointer text-xs font-semibold text-neutral-500 uppercase tracking-wide py-1 flex items-center gap-1" style={{paddingLeft:24}} onClick={() => setShowARSub(!showARSub)}><span className="material-icons-outlined text-xs">{showARSub ? "expand_more" : "chevron_right"}</span>Accounts Receivable</div>{showARSub && arSubAccounts.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name.replace("AR - ","")} amount={a.amount} indent={3} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}<div className="flex justify-between py-1 border-t border-neutral-200 font-semibold" style={{paddingLeft:48}}><span className="text-xs text-neutral-700">Total for AR</span><span className="font-mono text-xs text-neutral-900 tabular-nums">{acctFmt(arSubAccounts.length > 0 ? arSubAccounts.reduce((s,a)=>s+a.amount,0) : arParentAccounts.reduce((s,a)=>s+a.amount,0))}</span></div></div>}{otherAssets.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}</BSSection>
       <BSSection title="Liabilities" show={showLiabilities} toggle={() => setShowLiabilities(!showLiabilities)} total={bsData.totalLiabilities} totalLabel="Total Liabilities">{bsData.liabilities.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}</BSSection>
       <BSSection title="Equity" show={showEquity} toggle={() => setShowEquity(!showEquity)} total={bsData.totalEquity} totalLabel="Total Equity">{bsData.equity.filter(a=>a.amount!==0).map(a => <BSRow key={a.id} name={a.name} amount={a.amount} indent={1} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)} />)}{bsData.netIncome !== 0 && <BSRow name="Net Income (Current Period)" amount={bsData.netIncome} indent={1} italic />}</BSSection>
-      <div className="flex justify-between py-3 border-t-2 border-b-2 border-slate-800 mt-4 font-black"><span className="text-sm">TOTAL LIABILITIES AND EQUITY</span><span className="font-mono text-sm tabular-nums">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</span></div>
-      <div className="text-xs text-slate-400 mt-4 flex justify-between"><span>Accrual basis</span><span>{new Date().toLocaleString()}</span></div>
+      <div className="flex justify-between py-3 border-t-2 border-b-2 border-neutral-800 mt-4 font-black"><span className="text-sm">TOTAL LIABILITIES AND EQUITY</span><span className="font-mono text-sm tabular-nums">{acctFmt(bsData.totalLiabilities + bsData.totalEquity)}</span></div>
+      <div className="text-xs text-neutral-400 mt-4 flex justify-between"><span>Accrual basis</span><span>{new Date().toLocaleString()}</span></div>
     </div>);
     })()}
 
     {/* Trial Balance */}
     {reportId === "tb" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Trial Balance</p><p className="text-sm text-slate-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
-      <table className="w-full text-sm"><thead className="bg-slate-50 border-b border-slate-200"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Account</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Debit</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Credit</th></tr></thead>
-      <tbody>{tbData.filter(a => a.debitBalance !== 0 || a.creditBalance !== 0).map(a => <tr key={a.id} className="border-t border-slate-100 hover:bg-green-50/30 cursor-pointer" onClick={() => { setSelectedAccountId(a.id); setCurrentReport({ id: "gl", title: "General Ledger" }); }}><td className="px-4 py-2 text-slate-700">{a.code ? a.code + " " : ""}{a.name}</td><td className="px-4 py-2 text-right font-mono">{a.debitBalance > 0 ? acctFmt(a.debitBalance) : ""}</td><td className="px-4 py-2 text-right font-mono">{a.creditBalance > 0 ? acctFmt(a.creditBalance) : ""}</td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td className="px-4 py-2">TOTALS</td><td className="px-4 py-2 text-right font-mono">{acctFmt(tbData.reduce((s,a) => s + a.debitBalance, 0))}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(tbData.reduce((s,a) => s + a.creditBalance, 0))}</td></tr></tfoot></table>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Trial Balance</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
+      <table className="w-full text-sm"><thead className="bg-neutral-50 border-b border-neutral-200"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Account</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Debit</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Credit</th></tr></thead>
+      <tbody>{tbData.filter(a => a.debitBalance !== 0 || a.creditBalance !== 0).map(a => <tr key={a.id} className="border-t border-neutral-100 hover:bg-green-50/30 cursor-pointer" onClick={() => { setSelectedAccountId(a.id); setCurrentReport({ id: "gl", title: "General Ledger" }); }}><td className="px-4 py-2 text-neutral-700">{a.code ? a.code + " " : ""}{a.name}</td><td className="px-4 py-2 text-right font-mono">{a.debitBalance > 0 ? acctFmt(a.debitBalance) : ""}</td><td className="px-4 py-2 text-right font-mono">{a.creditBalance > 0 ? acctFmt(a.creditBalance) : ""}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTALS</td><td className="px-4 py-2 text-right font-mono">{acctFmt(tbData.reduce((s,a) => s + a.debitBalance, 0))}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(tbData.reduce((s,a) => s + a.creditBalance, 0))}</td></tr></tfoot></table>
     </div>)}
 
     {/* General Ledger */}
     {reportId === "gl" && glAccount && (<div>
-      <div className="text-center mb-4"><p className="text-xs text-slate-400 uppercase tracking-widest">General Ledger</p><h4 className="text-base font-bold text-slate-900 mt-1">{glAccount.name}</h4><p className="text-sm text-slate-400">#{glAccount.code} · {glAccount.type}</p><p className="text-sm text-slate-400">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      {glLines.length > 0 && <div className="flex justify-end mb-3"><div className="text-right"><p className="text-xs text-slate-400">Ending Balance</p><p className="font-mono font-bold">{acctFmt(glLines[glLines.length-1].balance, true)}</p></div></div>}
-      <div className="flex justify-end mb-2 relative"><button onClick={() => setShowColPicker(!showColPicker)} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">view_column</span>Columns</button>{showColPicker && <div className="absolute right-0 top-8 bg-white border border-slate-200 rounded-xl shadow-lg p-3 z-20 w-48">{[["date","Date"],["entry","Entry #"],["description","Description"],["memo","Memo"],["debit","Debit"],["credit","Credit"],["balance","Balance"]].map(([id,label]) => <label key={id} className="flex items-center gap-2 py-1 cursor-pointer text-sm text-slate-700"><input type="checkbox" checked={glColumns[id]} onChange={() => toggleGlCol(id)} className="accent-brand-600" />{label}</label>)}</div>}</div>
-      <table className="w-full text-sm border border-slate-200 rounded-xl overflow-hidden"><thead className="bg-slate-50"><tr>{glColumns.date && <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Date</th>}{glColumns.entry && <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Entry #</th>}{glColumns.description && <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Description</th>}{glColumns.memo && <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Memo</th>}{glColumns.debit && <th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Debit</th>}{glColumns.credit && <th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Credit</th>}{glColumns.balance && <th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Balance</th>}</tr></thead>
-      <tbody>{glLines.length === 0 ? <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">No transactions</td></tr> : glLines.map((l,i) => <tr key={l.jeId+"-"+i} className="border-t border-slate-100 hover:bg-green-50/40">{glColumns.date && <td className="px-4 py-2 text-xs text-slate-400">{acctFmtDate(l.date)}</td>}{glColumns.entry && <td className="px-4 py-2 font-mono text-xs text-brand-600">{l.jeNumber||"—"}</td>}{glColumns.description && <td className="px-4 py-2 text-slate-700">{l.description}</td>}{glColumns.memo && <td className="px-4 py-2 text-xs text-slate-400">{l.memo||"—"}</td>}{glColumns.debit && <td className="px-4 py-2 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>}{glColumns.credit && <td className="px-4 py-2 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>}{glColumns.balance && <td className={`px-4 py-2 text-right font-mono font-semibold ${l.balance < 0 ? "text-red-600" : ""}`}>{acctFmt(l.balance, true)}</td>}</tr>)}</tbody></table>
+      <div className="text-center mb-4"><p className="text-xs text-neutral-400 uppercase tracking-widest">General Ledger</p><h4 className="text-base font-bold text-neutral-900 mt-1">{glAccount.name}</h4><p className="text-sm text-neutral-400">#{glAccount.code} · {glAccount.type}</p><p className="text-sm text-neutral-400">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {glLines.length > 0 && <div className="flex justify-end mb-3"><div className="text-right"><p className="text-xs text-neutral-400">Ending Balance</p><p className="font-mono font-bold">{acctFmt(glLines[glLines.length-1].balance, true)}</p></div></div>}
+      <div className="flex justify-end mb-2 relative"><button onClick={() => setShowColPicker(!showColPicker)} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">view_column</span>Columns</button>{showColPicker && <div className="absolute right-0 top-8 bg-white border border-neutral-200 rounded-xl shadow-lg p-3 z-20 w-48">{[["date","Date"],["entry","Entry #"],["description","Description"],["memo","Memo"],["debit","Debit"],["credit","Credit"],["balance","Balance"]].map(([id,label]) => <label key={id} className="flex items-center gap-2 py-1 cursor-pointer text-sm text-neutral-700"><input type="checkbox" checked={glColumns[id]} onChange={() => toggleGlCol(id)} className="accent-brand-600" />{label}</label>)}</div>}</div>
+      <table className="w-full text-sm border border-neutral-200 rounded-xl overflow-hidden"><thead className="bg-neutral-50"><tr>{glColumns.date && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Date</th>}{glColumns.entry && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Entry #</th>}{glColumns.description && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Description</th>}{glColumns.memo && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Memo</th>}{glColumns.debit && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Debit</th>}{glColumns.credit && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Credit</th>}{glColumns.balance && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Balance</th>}</tr></thead>
+      <tbody>{glLines.length === 0 ? <tr><td colSpan={7} className="px-4 py-8 text-center text-neutral-400">No transactions</td></tr> : glLines.map((l,i) => <tr key={l.jeId+"-"+i} className="border-t border-neutral-100 hover:bg-green-50/40">{glColumns.date && <td className="px-4 py-2 text-xs text-neutral-400">{acctFmtDate(l.date)}</td>}{glColumns.entry && <td className="px-4 py-2 font-mono text-xs text-brand-600">{l.jeNumber||"—"}</td>}{glColumns.description && <td className="px-4 py-2 text-neutral-700">{l.description}</td>}{glColumns.memo && <td className="px-4 py-2 text-xs text-neutral-400">{l.memo||"—"}</td>}{glColumns.debit && <td className="px-4 py-2 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>}{glColumns.credit && <td className="px-4 py-2 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>}{glColumns.balance && <td className={`px-4 py-2 text-right font-mono font-semibold ${l.balance < 0 ? "text-red-600" : ""}`}>{acctFmt(l.balance, true)}</td>}</tr>)}</tbody></table>
     </div>)}
 
     {/* AR Aging Summary */}
     {reportId === "ar_aging_summary" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">AR Aging Summary</p><p className="text-sm text-slate-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
-      <table className="w-full text-sm"><thead className="bg-slate-50 border-b border-slate-200"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-emerald-600">Current</th><th className="px-4 py-2 text-right text-xs font-semibold text-amber-600">1-30</th><th className="px-4 py-2 text-right text-xs font-semibold text-orange-600">31-60</th><th className="px-4 py-2 text-right text-xs font-semibold text-red-600">61-90</th><th className="px-4 py-2 text-right text-xs font-semibold text-red-800">91+</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-700">Total</th></tr></thead>
-      <tbody>{(bsData.arAgingByTenant || []).filter(t => Math.abs(t.current + t.days30 + t.days60 + t.days90 + t.over90) > 0.01).map((t,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{t.tenant}</td><td className="px-4 py-2 text-right font-mono">{t.current ? acctFmt(t.current) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.days30 ? acctFmt(t.days30) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.days60 ? acctFmt(t.days60) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.days90 ? acctFmt(t.days90) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.over90 ? acctFmt(t.over90) : ""}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(t.current + t.days30 + t.days60 + t.days90 + t.over90)}</td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td className="px-4 py-2">TOTALS</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.current||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.days30||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.days60||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.days90||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.over90||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt((bsData.arAging?.current||0)+(bsData.arAging?.days30||0)+(bsData.arAging?.days60||0)+(bsData.arAging?.days90||0)+(bsData.arAging?.over90||0))}</td></tr></tfoot></table>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">AR Aging Summary</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
+      <table className="w-full text-sm"><thead className="bg-neutral-50 border-b border-neutral-200"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-emerald-600">Current</th><th className="px-4 py-2 text-right text-xs font-semibold text-amber-600">1-30</th><th className="px-4 py-2 text-right text-xs font-semibold text-orange-600">31-60</th><th className="px-4 py-2 text-right text-xs font-semibold text-red-600">61-90</th><th className="px-4 py-2 text-right text-xs font-semibold text-red-800">91+</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-700">Total</th></tr></thead>
+      <tbody>{(bsData.arAgingByTenant || []).filter(t => Math.abs(t.current + t.days30 + t.days60 + t.days90 + t.over90) > 0.01).map((t,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{t.tenant}</td><td className="px-4 py-2 text-right font-mono">{t.current ? acctFmt(t.current) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.days30 ? acctFmt(t.days30) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.days60 ? acctFmt(t.days60) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.days90 ? acctFmt(t.days90) : ""}</td><td className="px-4 py-2 text-right font-mono">{t.over90 ? acctFmt(t.over90) : ""}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(t.current + t.days30 + t.days60 + t.days90 + t.over90)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTALS</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.current||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.days30||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.days60||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.days90||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(bsData.arAging?.over90||0)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt((bsData.arAging?.current||0)+(bsData.arAging?.days30||0)+(bsData.arAging?.days60||0)+(bsData.arAging?.days90||0)+(bsData.arAging?.over90||0))}</td></tr></tfoot></table>
     </div>)}
 
     {/* Tenant Balance Summary */}
     {reportId === "customer_balance_summary" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Tenant Balance Summary</p></div>
-      <table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Balance</th></tr></thead>
-      <tbody>{(bsData.arByTenant||[]).map((t,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{t.tenant}</td><td className={`px-4 py-2 text-right font-mono font-semibold ${t.balance < 0 ? "text-green-600" : t.balance > 0 ? "text-red-600" : ""}`}>{acctFmt(t.balance, true)}</td></tr>)}</tbody></table>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Tenant Balance Summary</p></div>
+      <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Balance</th></tr></thead>
+      <tbody>{(bsData.arByTenant||[]).map((t,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{t.tenant}</td><td className={`px-4 py-2 text-right font-mono font-semibold ${t.balance < 0 ? "text-green-600" : t.balance > 0 ? "text-red-600" : ""}`}>{acctFmt(t.balance, true)}</td></tr>)}</tbody></table>
     </div>)}
 
     {/* Journal */}
     {reportId === "journal" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Journal</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      {getJournalReport(start, end).map(je => <div key={je.jeId} className="mb-4 border border-slate-100 rounded-lg p-3"><div className="flex justify-between items-start mb-2"><div><span className="font-mono text-xs text-brand-600 mr-2">{je.jeNumber}</span><span className="text-sm font-semibold text-slate-800">{je.description}</span></div><span className="text-xs text-slate-400">{acctFmtDate(je.date)}</span></div>
-      <table className="w-full text-xs"><tbody>{je.lines.map((l,i) => <tr key={i} className="border-t border-slate-50"><td className="py-1 text-slate-600">{l.accountName}</td><td className="py-1 text-slate-400">{l.memo||""}</td><td className="py-1 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td><td className="py-1 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td></tr>)}</tbody></table></div>)}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Journal</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {getJournalReport(start, end).map(je => <div key={je.jeId} className="mb-4 border border-neutral-100 rounded-lg p-3"><div className="flex justify-between items-start mb-2"><div><span className="font-mono text-xs text-brand-600 mr-2">{je.jeNumber}</span><span className="text-sm font-semibold text-neutral-800">{je.description}</span></div><span className="text-xs text-neutral-400">{acctFmtDate(je.date)}</span></div>
+      <table className="w-full text-xs"><tbody>{je.lines.map((l,i) => <tr key={i} className="border-t border-neutral-50"><td className="py-1 text-neutral-600">{l.accountName}</td><td className="py-1 text-neutral-400">{l.memo||""}</td><td className="py-1 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td><td className="py-1 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td></tr>)}</tbody></table></div>)}
     </div>)}
 
     {/* Transaction List by Date */}
     {reportId === "txn_by_date" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Transaction List by Date</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      <table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Date</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Entry</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Description</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Credit</th></tr></thead>
-      <tbody>{getTransactionsByDate(start, end).map((t,i) => <tr key={i} className="border-t border-slate-100"><td className="px-3 py-1.5 text-xs text-slate-400">{t.date}</td><td className="px-3 py-1.5 text-xs text-brand-600 font-mono">{t.jeNumber||""}</td><td className="px-3 py-1.5 text-slate-700">{t.accountName}</td><td className="px-3 py-1.5 text-xs text-slate-500">{t.description}</td><td className="px-3 py-1.5 text-right font-mono">{t.debit > 0 ? acctFmt(t.debit) : ""}</td><td className="px-3 py-1.5 text-right font-mono">{t.credit > 0 ? acctFmt(t.credit) : ""}</td></tr>)}</tbody></table>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Transaction List by Date</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Date</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Entry</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Description</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Credit</th></tr></thead>
+      <tbody>{getTransactionsByDate(start, end).map((t,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-1.5 text-xs text-neutral-400">{t.date}</td><td className="px-3 py-1.5 text-xs text-brand-600 font-mono">{t.jeNumber||""}</td><td className="px-3 py-1.5 text-neutral-700">{t.accountName}</td><td className="px-3 py-1.5 text-xs text-neutral-500">{t.description}</td><td className="px-3 py-1.5 text-right font-mono">{t.debit > 0 ? acctFmt(t.debit) : ""}</td><td className="px-3 py-1.5 text-right font-mono">{t.credit > 0 ? acctFmt(t.credit) : ""}</td></tr>)}</tbody></table>
     </div>)}
 
     {/* Account Listing */}
     {reportId === "account_list" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Account Listing</p></div>
-      <table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Code</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Name</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Type</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Subtype</th><th className="px-4 py-2 text-center text-xs font-semibold text-slate-500">Active</th></tr></thead>
-      <tbody>{accounts.sort((a,b) => (a.code||"").localeCompare(b.code||"")).map(a => <tr key={a.id} className="border-t border-slate-100"><td className="px-4 py-2 font-mono text-xs text-slate-600">{a.code||"—"}</td><td className="px-4 py-2 text-slate-800">{a.name}</td><td className="px-4 py-2 text-slate-500">{a.type}</td><td className="px-4 py-2 text-xs text-slate-400">{a.subtype||"—"}</td><td className="px-4 py-2 text-center">{a.is_active ? "✓" : "✗"}</td></tr>)}</tbody></table>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Account Listing</p></div>
+      <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Code</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Name</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Type</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Subtype</th><th className="px-4 py-2 text-center text-xs font-semibold text-neutral-500">Active</th></tr></thead>
+      <tbody>{accounts.sort((a,b) => (a.code||"").localeCompare(b.code||"")).map(a => <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 font-mono text-xs text-neutral-600">{a.code||"—"}</td><td className="px-4 py-2 text-neutral-800">{a.name}</td><td className="px-4 py-2 text-neutral-500">{a.type}</td><td className="px-4 py-2 text-xs text-neutral-400">{a.subtype||"—"}</td><td className="px-4 py-2 text-center">{a.is_active ? "✓" : "✗"}</td></tr>)}</tbody></table>
     </div>)}
 
     {/* Expenses by Category */}
     {reportId === "expenses_by_category" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Expenses by Category</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      {(() => { const data = getExpensesByCategory(start, end); return (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Category</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Amount</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 w-48">% of Total</th></tr></thead>
-      <tbody>{data.map(a => <tr key={a.id} className="border-t border-slate-100 cursor-pointer hover:bg-green-50/30" onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><td className="px-4 py-2 text-slate-700">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-slate-100 rounded-full h-2"><div className="bg-green-500 rounded-full h-2" style={{width: Math.min(100, a.percentage) + "%"}} /></div><span className="text-xs text-slate-500 w-8">{a.percentage}%</span></div></td></tr>)}</tbody></table>); })()}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Expenses by Category</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {(() => { const data = getExpensesByCategory(start, end); return (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Category</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Amount</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500 w-48">% of Total</th></tr></thead>
+      <tbody>{data.map(a => <tr key={a.id} className="border-t border-neutral-100 cursor-pointer hover:bg-green-50/30" onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><td className="px-4 py-2 text-neutral-700">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-neutral-100 rounded-full h-2"><div className="bg-green-500 rounded-full h-2" style={{width: Math.min(100, a.percentage) + "%"}} /></div><span className="text-xs text-neutral-500 w-8">{a.percentage}%</span></div></td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* P&L by Property */}
     {reportId === "pl_by_class" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Profit & Loss by Property</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      {(() => { const data = getClassReport(accounts, journalEntries, classes, start, end); return (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Revenue</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Expenses</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Net Income</th></tr></thead>
-      <tbody>{Object.entries(data).map(([name, d]) => <tr key={name} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{name}</td><td className="px-4 py-2 text-right font-mono text-emerald-700">{acctFmt(d.revenue||0)}</td><td className="px-4 py-2 text-right font-mono text-red-600">{acctFmt(d.expenses||0)}</td><td className={`px-4 py-2 text-right font-mono font-bold ${(d.revenue||0)-(d.expenses||0) < 0 ? "text-red-600" : "text-emerald-700"}`}>{acctFmt((d.revenue||0)-(d.expenses||0))}</td></tr>)}</tbody></table>); })()}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Profit & Loss by Property</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {(() => { const data = getClassReport(accounts, journalEntries, classes, start, end); return (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Revenue</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Expenses</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Net Income</th></tr></thead>
+      <tbody>{Object.entries(data).map(([name, d]) => <tr key={name} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{name}</td><td className="px-4 py-2 text-right font-mono text-emerald-700">{acctFmt(d.revenue||0)}</td><td className="px-4 py-2 text-right font-mono text-red-600">{acctFmt(d.expenses||0)}</td><td className={`px-4 py-2 text-right font-mono font-bold ${(d.revenue||0)-(d.expenses||0) < 0 ? "text-red-600" : "text-emerald-700"}`}>{acctFmt((d.revenue||0)-(d.expenses||0))}</td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* Cash Flow */}
     {reportId === "cash_flow" && (() => { const cf = getCashFlowData(start, end); return (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Statement of Cash Flows</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      <div className="text-sm font-bold text-slate-900 py-1">Operating Activities</div>
-      {cf.operating.items.map((item,i) => <div key={i} className="flex justify-between py-1" style={{paddingLeft:24}}><span className="text-sm text-slate-700">{item.name}</span><span className="font-mono text-sm tabular-nums">{acctFmt(item.amount, true)}</span></div>)}
-      <div className="flex justify-between py-1.5 border-t border-slate-300 font-bold" style={{paddingLeft:24}}><span className="text-sm">Net Cash from Operations</span><span className="font-mono text-sm tabular-nums">{acctFmt(cf.operating.total)}</span></div>
-      <div className="flex justify-between py-3 border-t-2 border-b-2 border-slate-800 font-black mt-4"><span className="text-sm">NET CHANGE IN CASH</span><span className="font-mono text-sm tabular-nums">{acctFmt(cf.netChange, true)}</span></div>
-      <div className="flex justify-between py-1 mt-2"><span className="text-sm text-slate-500">Beginning Cash</span><span className="font-mono text-sm">{acctFmt(cf.beginningCash)}</span></div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Statement of Cash Flows</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      <div className="text-sm font-bold text-neutral-900 py-1">Operating Activities</div>
+      {cf.operating.items.map((item,i) => <div key={i} className="flex justify-between py-1" style={{paddingLeft:24}}><span className="text-sm text-neutral-700">{item.name}</span><span className="font-mono text-sm tabular-nums">{acctFmt(item.amount, true)}</span></div>)}
+      <div className="flex justify-between py-1.5 border-t border-neutral-300 font-bold" style={{paddingLeft:24}}><span className="text-sm">Net Cash from Operations</span><span className="font-mono text-sm tabular-nums">{acctFmt(cf.operating.total)}</span></div>
+      <div className="flex justify-between py-3 border-t-2 border-b-2 border-neutral-800 font-black mt-4"><span className="text-sm">NET CHANGE IN CASH</span><span className="font-mono text-sm tabular-nums">{acctFmt(cf.netChange, true)}</span></div>
+      <div className="flex justify-between py-1 mt-2"><span className="text-sm text-neutral-500">Beginning Cash</span><span className="font-mono text-sm">{acctFmt(cf.beginningCash)}</span></div>
       <div className="flex justify-between py-1 font-bold"><span className="text-sm">Ending Cash</span><span className="font-mono text-sm">{acctFmt(cf.endingCash)}</span></div>
     </div>); })()}
 
     {/* Rent Roll */}
     {reportId === "rent_roll" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Rent Roll</p></div>
-      {(() => { const data = getRentRoll(); const occ = data.filter(r=>r.status==="occupied").length; return (<><div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-slate-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.length}</div><div className="text-xs text-slate-400">Total Units</div></div><div className="bg-emerald-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-emerald-700">{occ}</div><div className="text-xs text-slate-400">Occupied</div></div><div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-red-600">{data.length-occ}</div><div className="text-xs text-slate-400">Vacant</div></div><div className="bg-blue-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-blue-700">{acctFmt(data.reduce((s,r)=>s+r.rent,0))}</div><div className="text-xs text-slate-400">Monthly Rent</div></div></div>
-      <table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Property</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Tenant</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Rent</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Lease End</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Status</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-3 py-2 text-slate-700">{r.property}</td><td className="px-3 py-2">{r.tenant === "VACANT" ? <span className="text-red-500 font-medium">VACANT</span> : r.tenant}</td><td className="px-3 py-2 text-right font-mono">{r.rent > 0 ? acctFmt(r.rent) : "—"}</td><td className="px-3 py-2 text-xs text-slate-400">{r.leaseEnd||"—"}</td><td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="occupied"?"bg-emerald-100 text-emerald-700":r.status==="vacant"?"bg-red-100 text-red-600":"bg-amber-100 text-amber-700"}`}>{r.status}</span></td></tr>)}</tbody></table></>); })()}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Rent Roll</p></div>
+      {(() => { const data = getRentRoll(); const occ = data.filter(r=>r.status==="occupied").length; return (<><div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-neutral-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.length}</div><div className="text-xs text-neutral-400">Total Units</div></div><div className="bg-emerald-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-emerald-700">{occ}</div><div className="text-xs text-neutral-400">Occupied</div></div><div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-red-600">{data.length-occ}</div><div className="text-xs text-neutral-400">Vacant</div></div><div className="bg-blue-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-blue-700">{acctFmt(data.reduce((s,r)=>s+r.rent,0))}</div><div className="text-xs text-neutral-400">Monthly Rent</div></div></div>
+      <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Rent</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Lease End</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Status</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700">{r.property}</td><td className="px-3 py-2">{r.tenant === "VACANT" ? <span className="text-red-500 font-medium">VACANT</span> : r.tenant}</td><td className="px-3 py-2 text-right font-mono">{r.rent > 0 ? acctFmt(r.rent) : "—"}</td><td className="px-3 py-2 text-xs text-neutral-400">{r.leaseEnd||"—"}</td><td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="occupied"?"bg-emerald-100 text-emerald-700":r.status==="vacant"?"bg-red-100 text-red-600":"bg-amber-100 text-amber-700"}`}>{r.status}</span></td></tr>)}</tbody></table></>); })()}
     </div>)}
 
     {/* NOI by Property */}
     {reportId === "noi_by_property" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">NOI by Property</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      {(() => { const data = getNOIByProperty(start, end); return (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Revenue</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Expenses</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">NOI</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Margin</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.property}</td><td className="px-4 py-2 text-right font-mono text-emerald-700">{acctFmt(r.revenue)}</td><td className="px-4 py-2 text-right font-mono text-red-600">{acctFmt(r.expenses)}</td><td className={`px-4 py-2 text-right font-mono font-bold ${r.noi < 0 ? "text-red-600" : "text-emerald-700"}`}>{acctFmt(r.noi)}</td><td className="px-4 py-2 text-right text-sm">{r.noiMargin}%</td></tr>)}</tbody></table>); })()}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">NOI by Property</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {(() => { const data = getNOIByProperty(start, end); return (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Revenue</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Expenses</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">NOI</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Margin</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.property}</td><td className="px-4 py-2 text-right font-mono text-emerald-700">{acctFmt(r.revenue)}</td><td className="px-4 py-2 text-right font-mono text-red-600">{acctFmt(r.expenses)}</td><td className={`px-4 py-2 text-right font-mono font-bold ${r.noi < 0 ? "text-red-600" : "text-emerald-700"}`}>{acctFmt(r.noi)}</td><td className="px-4 py-2 text-right text-sm">{r.noiMargin}%</td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* Vacancy Report */}
     {reportId === "vacancy" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Vacancy Report</p></div>
-      {(() => { const data = getVacancyReport(); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No vacant properties</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Property</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Last Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Days Vacant</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Est. Lost Revenue</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.property}</td><td className="px-4 py-2 text-slate-500">{r.lastTenant}</td><td className="px-4 py-2 text-right font-mono">{r.daysVacant}</td><td className="px-4 py-2 text-right font-mono text-red-600">{acctFmt(r.estimatedLost)}</td></tr>)}</tbody></table>); })()}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Vacancy Report</p></div>
+      {(() => { const data = getVacancyReport(); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No vacant properties</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Last Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Days Vacant</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Est. Lost Revenue</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.property}</td><td className="px-4 py-2 text-neutral-500">{r.lastTenant}</td><td className="px-4 py-2 text-right font-mono">{r.daysVacant}</td><td className="px-4 py-2 text-right font-mono text-red-600">{acctFmt(r.estimatedLost)}</td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* Lease Expirations */}
     {reportId === "lease_expirations" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Lease Expiration Schedule</p></div>
-      {(() => { const data = getLeaseExpirations(180); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No leases expiring in the next 180 days</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Tenant</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Property</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Lease End</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Days Left</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Rent</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.tenant}</td><td className="px-4 py-2 text-slate-500">{r.property}</td><td className="px-4 py-2 text-slate-500">{r.leaseEnd}</td><td className={`px-4 py-2 text-right font-mono ${r.daysUntilExpiration <= 30 ? "text-red-600 font-bold" : r.daysUntilExpiration <= 60 ? "text-amber-600" : ""}`}>{r.daysUntilExpiration}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.rent)}</td></tr>)}</tbody></table>); })()}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Lease Expiration Schedule</p></div>
+      {(() => { const data = getLeaseExpirations(180); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No leases expiring in the next 180 days</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Lease End</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Days Left</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Rent</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.tenant}</td><td className="px-4 py-2 text-neutral-500">{r.property}</td><td className="px-4 py-2 text-neutral-500">{r.leaseEnd}</td><td className={`px-4 py-2 text-right font-mono ${r.daysUntilExpiration <= 30 ? "text-red-600 font-bold" : r.daysUntilExpiration <= 60 ? "text-amber-600" : ""}`}>{r.daysUntilExpiration}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.rent)}</td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* Work Order Summary */}
     {reportId === "work_orders_summary" && (() => { const data = getWorkOrderSummary(start, end); return (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Work Order Summary</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      <div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-slate-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.total}</div><div className="text-xs text-slate-400">Total</div></div><div className="bg-amber-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-amber-600">{data.byStatus.open}</div><div className="text-xs text-slate-400">Open</div></div><div className="bg-purple-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-purple-600">{data.byStatus.in_progress}</div><div className="text-xs text-slate-400">In Progress</div></div><div className="bg-emerald-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-emerald-600">{data.byStatus.completed}</div><div className="text-xs text-slate-400">Completed</div></div></div>
-      <table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Property</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Issue</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Status</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Cost</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Days</th></tr></thead>
-      <tbody>{data.items.map(w => <tr key={w.id} className="border-t border-slate-100"><td className="px-3 py-2 text-slate-700">{w.property}</td><td className="px-3 py-2 text-slate-600">{w.issue}</td><td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${w.status==="open"?"bg-amber-100 text-amber-700":w.status==="in_progress"?"bg-purple-100 text-purple-700":"bg-emerald-100 text-emerald-700"}`}>{w.status}</span></td><td className="px-3 py-2 text-right font-mono">{w.cost ? acctFmt(w.cost) : "—"}</td><td className="px-3 py-2 text-right font-mono text-slate-500">{w.daysOpen}</td></tr>)}</tbody></table>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Work Order Summary</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      <div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-neutral-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.total}</div><div className="text-xs text-neutral-400">Total</div></div><div className="bg-amber-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-amber-600">{data.byStatus.open}</div><div className="text-xs text-neutral-400">Open</div></div><div className="bg-purple-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-purple-600">{data.byStatus.in_progress}</div><div className="text-xs text-neutral-400">In Progress</div></div><div className="bg-emerald-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-emerald-600">{data.byStatus.completed}</div><div className="text-xs text-neutral-400">Completed</div></div></div>
+      <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Issue</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Status</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Cost</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Days</th></tr></thead>
+      <tbody>{data.items.map(w => <tr key={w.id} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700">{w.property}</td><td className="px-3 py-2 text-neutral-600">{w.issue}</td><td className="px-3 py-2"><span className={`text-xs px-2 py-0.5 rounded-full ${w.status==="open"?"bg-amber-100 text-amber-700":w.status==="in_progress"?"bg-purple-100 text-purple-700":"bg-emerald-100 text-emerald-700"}`}>{w.status}</span></td><td className="px-3 py-2 text-right font-mono">{w.cost ? acctFmt(w.cost) : "—"}</td><td className="px-3 py-2 text-right font-mono text-neutral-500">{w.daysOpen}</td></tr>)}</tbody></table>
     </div>); })()}
 
     {/* Open Invoices */}
     {reportId === "open_invoices" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Open Invoices / Unpaid Charges</p><p className="text-sm text-slate-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
-      {(() => { const data = getOpenInvoices(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No unpaid charges</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Tenant</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Date</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Description</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Original</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Paid</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Due</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Days</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-3 py-2 text-slate-700">{r.tenant}</td><td className="px-3 py-2 text-xs text-slate-400">{r.date}</td><td className="px-3 py-2 text-xs text-slate-500 max-w-48 truncate">{r.description}</td><td className="px-3 py-2 text-right font-mono">{acctFmt(r.originalAmount)}</td><td className="px-3 py-2 text-right font-mono text-emerald-600">{acctFmt(r.amountPaid)}</td><td className="px-3 py-2 text-right font-mono font-semibold text-red-600">{acctFmt(r.amountDue)}</td><td className={`px-3 py-2 text-right font-mono ${r.daysOutstanding > 60 ? "text-red-600 font-bold" : r.daysOutstanding > 30 ? "text-amber-600" : ""}`}>{r.daysOutstanding}</td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td colSpan={5} className="px-3 py-2">TOTAL</td><td className="px-3 py-2 text-right font-mono text-red-600">{acctFmt(data.reduce((s,r)=>s+r.amountDue,0))}</td><td></td></tr></tfoot></table>); })()}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Open Invoices / Unpaid Charges</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
+      {(() => { const data = getOpenInvoices(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No unpaid charges</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Date</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Description</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Original</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Paid</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Due</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Days</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700">{r.tenant}</td><td className="px-3 py-2 text-xs text-neutral-400">{r.date}</td><td className="px-3 py-2 text-xs text-neutral-500 max-w-48 truncate">{r.description}</td><td className="px-3 py-2 text-right font-mono">{acctFmt(r.originalAmount)}</td><td className="px-3 py-2 text-right font-mono text-emerald-600">{acctFmt(r.amountPaid)}</td><td className="px-3 py-2 text-right font-mono font-semibold text-red-600">{acctFmt(r.amountDue)}</td><td className={`px-3 py-2 text-right font-mono ${r.daysOutstanding > 60 ? "text-red-600 font-bold" : r.daysOutstanding > 30 ? "text-amber-600" : ""}`}>{r.daysOutstanding}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td colSpan={5} className="px-3 py-2">TOTAL</td><td className="px-3 py-2 text-right font-mono text-red-600">{acctFmt(data.reduce((s,r)=>s+r.amountDue,0))}</td><td></td></tr></tfoot></table>); })()}
     </div>)}
 
     {/* Collections Report */}
     {reportId === "collections" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Collections Report</p></div>
-      {(() => { const data = getCollectionsReport(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No outstanding balances</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Tenant</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Property</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Contact</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Total Owed</th><th className="px-3 py-2 text-center text-xs font-semibold text-slate-500">Severity</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-3 py-2 text-slate-700 font-medium">{r.tenant}</td><td className="px-3 py-2 text-xs text-slate-500">{r.property}</td><td className="px-3 py-2 text-xs text-slate-400">{r.email && <span className="block">{r.email}</span>}{r.phone && <span>{r.phone}</span>}</td><td className="px-3 py-2 text-right font-mono font-bold text-red-600">{acctFmt(r.total)}</td><td className="px-3 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.severity==="critical"?"bg-red-100 text-red-700":r.severity==="warning"?"bg-amber-100 text-amber-700":"bg-slate-100 text-slate-500"}`}>{r.severity}</span></td></tr>)}</tbody></table>); })()}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Collections Report</p></div>
+      {(() => { const data = getCollectionsReport(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No outstanding balances</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Contact</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Total Owed</th><th className="px-3 py-2 text-center text-xs font-semibold text-neutral-500">Severity</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700 font-medium">{r.tenant}</td><td className="px-3 py-2 text-xs text-neutral-500">{r.property}</td><td className="px-3 py-2 text-xs text-neutral-400">{r.email && <span className="block">{r.email}</span>}{r.phone && <span>{r.phone}</span>}</td><td className="px-3 py-2 text-right font-mono font-bold text-red-600">{acctFmt(r.total)}</td><td className="px-3 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.severity==="critical"?"bg-red-100 text-red-700":r.severity==="warning"?"bg-amber-100 text-amber-700":"bg-neutral-100 text-neutral-500"}`}>{r.severity}</span></td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* Customer Balance Detail */}
     {reportId === "customer_balance_detail" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Tenant Balance Detail</p></div>
-      {(() => { const data = getCustomerBalanceDetail(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No tenant balances</p> : data.map(t => (<div key={t.name} className="mb-6"><div className="flex justify-between items-center border-b border-slate-200 pb-1 mb-2"><span className="text-sm font-bold text-slate-800">{t.name}</span><span className={`font-mono text-sm font-bold ${t.totalBalance < 0 ? "text-green-600" : "text-red-600"}`}>{acctFmt(t.totalBalance, true)}</span></div>
-      <table className="w-full text-xs"><thead><tr><th className="px-2 py-1 text-left text-slate-400">Date</th><th className="px-2 py-1 text-left text-slate-400">Entry</th><th className="px-2 py-1 text-left text-slate-400">Description</th><th className="px-2 py-1 text-right text-slate-400">Debit</th><th className="px-2 py-1 text-right text-slate-400">Credit</th><th className="px-2 py-1 text-right text-slate-400">Balance</th></tr></thead>
-      <tbody>{t.transactions.map((tx,i) => <tr key={i} className="border-t border-slate-50"><td className="px-2 py-1 text-slate-400">{tx.date}</td><td className="px-2 py-1 text-brand-600 font-mono">{tx.jeNumber||""}</td><td className="px-2 py-1 text-slate-600 truncate max-w-40">{tx.description}</td><td className="px-2 py-1 text-right font-mono">{tx.debit > 0 ? acctFmt(tx.debit) : ""}</td><td className="px-2 py-1 text-right font-mono">{tx.credit > 0 ? acctFmt(tx.credit) : ""}</td><td className={`px-2 py-1 text-right font-mono font-semibold ${tx.balance < 0 ? "text-green-600" : ""}`}>{acctFmt(tx.balance, true)}</td></tr>)}</tbody></table></div>)); })()}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Tenant Balance Detail</p></div>
+      {(() => { const data = getCustomerBalanceDetail(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No tenant balances</p> : data.map(t => (<div key={t.name} className="mb-6"><div className="flex justify-between items-center border-b border-neutral-200 pb-1 mb-2"><span className="text-sm font-bold text-neutral-800">{t.name}</span><span className={`font-mono text-sm font-bold ${t.totalBalance < 0 ? "text-green-600" : "text-red-600"}`}>{acctFmt(t.totalBalance, true)}</span></div>
+      <table className="w-full text-xs"><thead><tr><th className="px-2 py-1 text-left text-neutral-400">Date</th><th className="px-2 py-1 text-left text-neutral-400">Entry</th><th className="px-2 py-1 text-left text-neutral-400">Description</th><th className="px-2 py-1 text-right text-neutral-400">Debit</th><th className="px-2 py-1 text-right text-neutral-400">Credit</th><th className="px-2 py-1 text-right text-neutral-400">Balance</th></tr></thead>
+      <tbody>{t.transactions.map((tx,i) => <tr key={i} className="border-t border-neutral-50"><td className="px-2 py-1 text-neutral-400">{tx.date}</td><td className="px-2 py-1 text-brand-600 font-mono">{tx.jeNumber||""}</td><td className="px-2 py-1 text-neutral-600 truncate max-w-40">{tx.description}</td><td className="px-2 py-1 text-right font-mono">{tx.debit > 0 ? acctFmt(tx.debit) : ""}</td><td className="px-2 py-1 text-right font-mono">{tx.credit > 0 ? acctFmt(tx.credit) : ""}</td><td className={`px-2 py-1 text-right font-mono font-semibold ${tx.balance < 0 ? "text-green-600" : ""}`}>{acctFmt(tx.balance, true)}</td></tr>)}</tbody></table></div>)); })()}
     </div>)}
 
     {/* Expenses by Vendor */}
     {reportId === "expenses_by_vendor" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Expenses by Vendor</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      {(() => { const data = getExpensesByVendor(start, end); return (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Vendor</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Amount</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 w-48">% of Total</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.vendor}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.total)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-slate-100 rounded-full h-2"><div className="bg-orange-500 rounded-full h-2" style={{width: Math.min(100, r.percentage) + "%"}} /></div><span className="text-xs text-slate-500 w-8">{r.percentage}%</span></div></td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td className="px-4 py-2">TOTAL</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.total,0))}</td><td></td></tr></tfoot></table>); })()}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Expenses by Vendor</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {(() => { const data = getExpensesByVendor(start, end); return (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Vendor</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Amount</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500 w-48">% of Total</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.vendor}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.total)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-neutral-100 rounded-full h-2"><div className="bg-orange-500 rounded-full h-2" style={{width: Math.min(100, r.percentage) + "%"}} /></div><span className="text-xs text-neutral-500 w-8">{r.percentage}%</span></div></td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTAL</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.total,0))}</td><td></td></tr></tfoot></table>); })()}
     </div>)}
 
     {/* Security Deposit Ledger */}
     {reportId === "security_deposits" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Security Deposit Ledger</p><p className="text-sm text-slate-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
-      {(() => { const data = getSecurityDepositLedger(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No security deposits held</p> : (<><table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Tenant</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Received</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Returned</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Net Held</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.tenant}</td><td className="px-4 py-2 text-xs text-slate-500">{r.property}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.received)}</td><td className="px-4 py-2 text-right font-mono text-red-600">{r.returned > 0 ? acctFmt(r.returned) : ""}</td><td className="px-4 py-2 text-right font-mono font-bold">{acctFmt(r.netHeld)}</td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td colSpan={4} className="px-4 py-2">TOTAL HELD</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.netHeld,0))}</td></tr></tfoot></table></>); })()}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Security Deposit Ledger</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
+      {(() => { const data = getSecurityDepositLedger(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No security deposits held</p> : (<><table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Received</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Returned</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Net Held</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.tenant}</td><td className="px-4 py-2 text-xs text-neutral-500">{r.property}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.received)}</td><td className="px-4 py-2 text-right font-mono text-red-600">{r.returned > 0 ? acctFmt(r.returned) : ""}</td><td className="px-4 py-2 text-right font-mono font-bold">{acctFmt(r.netHeld)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td colSpan={4} className="px-4 py-2">TOTAL HELD</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.netHeld,0))}</td></tr></tfoot></table></>); })()}
     </div>)}
 
     {/* Late Fee Report */}
     {reportId === "late_fees" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Late Fee Report</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      {(() => { const data = getLateFeeReport(start, end); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No late fees in this period</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Assessed</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Collected</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Outstanding</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Count</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.tenant}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.feesAssessed)}</td><td className="px-4 py-2 text-right font-mono text-emerald-600">{acctFmt(r.feesCollected)}</td><td className="px-4 py-2 text-right font-mono font-bold text-red-600">{r.feesOutstanding > 0 ? acctFmt(r.feesOutstanding) : ""}</td><td className="px-4 py-2 text-right">{r.count}</td></tr>)}</tbody></table>); })()}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Late Fee Report</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {(() => { const data = getLateFeeReport(start, end); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No late fees in this period</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Assessed</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Collected</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Outstanding</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Count</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.tenant}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.feesAssessed)}</td><td className="px-4 py-2 text-right font-mono text-emerald-600">{acctFmt(r.feesCollected)}</td><td className="px-4 py-2 text-right font-mono font-bold text-red-600">{r.feesOutstanding > 0 ? acctFmt(r.feesOutstanding) : ""}</td><td className="px-4 py-2 text-right">{r.count}</td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* Owner Distributions */}
     {reportId === "owner_distributions" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Owner Distribution Report</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      {(() => { const data = getOwnerDistributions(start, end); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No distributions in this period</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Date</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Entry</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Description</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Amount</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-400">{r.date}</td><td className="px-4 py-2 font-mono text-xs text-brand-600">{r.jeNumber||""}</td><td className="px-4 py-2 text-slate-700">{r.description}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(r.amount)}</td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td colSpan={3} className="px-4 py-2">TOTAL DISTRIBUTED</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.amount,0))}</td></tr></tfoot></table>); })()}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Owner Distribution Report</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {(() => { const data = getOwnerDistributions(start, end); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No distributions in this period</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Date</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Entry</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Description</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Amount</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-400">{r.date}</td><td className="px-4 py-2 font-mono text-xs text-brand-600">{r.jeNumber||""}</td><td className="px-4 py-2 text-neutral-700">{r.description}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(r.amount)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td colSpan={3} className="px-4 py-2">TOTAL DISTRIBUTED</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.amount,0))}</td></tr></tfoot></table>); })()}
     </div>)}
 
     {/* Rent Collection Summary */}
     {reportId === "rent_collection" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Rent Collection Summary</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      {(() => { const data = getRentCollectionSummary(start, end); return (<><div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-blue-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-blue-700">{acctFmt(data.totals.charged)}</div><div className="text-xs text-slate-400">Charged</div></div><div className="bg-emerald-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-emerald-700">{acctFmt(data.totals.collected)}</div><div className="text-xs text-slate-400">Collected</div></div><div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-red-600">{acctFmt(data.totals.outstanding)}</div><div className="text-xs text-slate-400">Outstanding</div></div><div className="bg-slate-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.totals.collectionRate}%</div><div className="text-xs text-slate-400">Collection Rate</div></div></div>
-      <table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Charged</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Collected</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Outstanding</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Rate</th></tr></thead>
-      <tbody>{data.byProperty.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.property}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.charged)}</td><td className="px-4 py-2 text-right font-mono text-emerald-600">{acctFmt(r.collected)}</td><td className="px-4 py-2 text-right font-mono text-red-600">{r.outstanding > 0 ? acctFmt(r.outstanding) : ""}</td><td className="px-4 py-2 text-right">{r.collectionRate}%</td></tr>)}</tbody></table></>); })()}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Rent Collection Summary</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {(() => { const data = getRentCollectionSummary(start, end); return (<><div className="grid grid-cols-4 gap-3 mb-4"><div className="bg-blue-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-blue-700">{acctFmt(data.totals.charged)}</div><div className="text-xs text-neutral-400">Charged</div></div><div className="bg-emerald-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-emerald-700">{acctFmt(data.totals.collected)}</div><div className="text-xs text-neutral-400">Collected</div></div><div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-red-600">{acctFmt(data.totals.outstanding)}</div><div className="text-xs text-neutral-400">Outstanding</div></div><div className="bg-neutral-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.totals.collectionRate}%</div><div className="text-xs text-neutral-400">Collection Rate</div></div></div>
+      <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Charged</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Collected</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Outstanding</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Rate</th></tr></thead>
+      <tbody>{data.byProperty.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.property}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(r.charged)}</td><td className="px-4 py-2 text-right font-mono text-emerald-600">{acctFmt(r.collected)}</td><td className="px-4 py-2 text-right font-mono text-red-600">{r.outstanding > 0 ? acctFmt(r.outstanding) : ""}</td><td className="px-4 py-2 text-right">{r.collectionRate}%</td></tr>)}</tbody></table></>); })()}
     </div>)}
 
     {/* Transaction Detail by Account */}
     {reportId === "txn_by_account" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Transaction Detail by Account</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      {getTransactionsByAccount(start, end).map(acct => (<div key={acct.name} className="mb-4"><div className="bg-slate-50 px-3 py-2 rounded-lg font-semibold text-sm text-slate-800 flex justify-between"><span>{acct.code ? acct.code + " " : ""}{acct.name}</span><span className="text-xs text-slate-400">{acct.type}</span></div>
-      <table className="w-full text-xs mb-2"><tbody>{acct.transactions.map((t,i) => <tr key={i} className="border-t border-slate-50"><td className="px-3 py-1 text-slate-400 w-20">{t.date}</td><td className="px-3 py-1 text-brand-600 font-mono w-16">{t.jeNumber||""}</td><td className="px-3 py-1 text-slate-600">{t.description}</td><td className="px-3 py-1 text-right font-mono w-20">{t.debit > 0 ? acctFmt(t.debit) : ""}</td><td className="px-3 py-1 text-right font-mono w-20">{t.credit > 0 ? acctFmt(t.credit) : ""}</td></tr>)}</tbody></table></div>))}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Transaction Detail by Account</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      {getTransactionsByAccount(start, end).map(acct => (<div key={acct.name} className="mb-4"><div className="bg-neutral-50 px-3 py-2 rounded-lg font-semibold text-sm text-neutral-800 flex justify-between"><span>{acct.code ? acct.code + " " : ""}{acct.name}</span><span className="text-xs text-neutral-400">{acct.type}</span></div>
+      <table className="w-full text-xs mb-2"><tbody>{acct.transactions.map((t,i) => <tr key={i} className="border-t border-neutral-50"><td className="px-3 py-1 text-neutral-400 w-20">{t.date}</td><td className="px-3 py-1 text-brand-600 font-mono w-16">{t.jeNumber||""}</td><td className="px-3 py-1 text-neutral-600">{t.description}</td><td className="px-3 py-1 text-right font-mono w-20">{t.debit > 0 ? acctFmt(t.debit) : ""}</td><td className="px-3 py-1 text-right font-mono w-20">{t.credit > 0 ? acctFmt(t.credit) : ""}</td></tr>)}</tbody></table></div>))}
     </div>)}
 
     {/* P&L Comparison */}
     {reportId === "pl_compare" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Profit & Loss Comparison</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}{compareData ? " vs Prior" : ""}</p></div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Profit & Loss Comparison</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}{compareData ? " vs Prior" : ""}</p></div>
       {!compareData && <p className="text-center py-4 text-amber-600 text-sm">Select "Compare to" in the toolbar above to see a comparison.</p>}
-      <table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Account</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Current</th>{compareData && <th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Prior</th>}{compareData && <th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Change</th>}</tr></thead>
-      <tbody><tr className="bg-slate-50 font-bold"><td className="px-4 py-2" colSpan={compareData ? 4 : 2}>Income</td></tr>
-      {plData.revenue.filter(a=>a.amount!==0).map(a => { const prior = compareData?.revenue.find(p=>p.id===a.id); return <tr key={a.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700 pl-8">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-slate-400">{prior ? acctFmt(prior.amount) : "—"}</td>}{compareData && <td className={`px-4 py-2 text-right font-mono ${a.amount-(prior?.amount||0) > 0 ? "text-emerald-600" : a.amount-(prior?.amount||0) < 0 ? "text-red-600" : ""}`}>{acctFmt(a.amount - (prior?.amount||0), true)}</td>}</tr>; })}
-      <tr className="border-t border-slate-300 font-bold"><td className="px-4 py-2 pl-8">Total Income</td><td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalRevenue)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-slate-400">{acctFmt(compareData.totalRevenue)}</td>}{compareData && <td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalRevenue - compareData.totalRevenue, true)}</td>}</tr>
-      <tr className="bg-slate-50 font-bold"><td className="px-4 py-2" colSpan={compareData ? 4 : 2}>Expenses</td></tr>
-      {plData.expenses.filter(a=>a.amount!==0).map(a => { const prior = compareData?.expenses.find(p=>p.id===a.id); return <tr key={a.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700 pl-8">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-slate-400">{prior ? acctFmt(prior.amount) : "—"}</td>}{compareData && <td className={`px-4 py-2 text-right font-mono ${a.amount-(prior?.amount||0) < 0 ? "text-emerald-600" : a.amount-(prior?.amount||0) > 0 ? "text-red-600" : ""}`}>{acctFmt(a.amount - (prior?.amount||0), true)}</td>}</tr>; })}
-      <tr className="border-t border-slate-300 font-bold"><td className="px-4 py-2 pl-8">Total Expenses</td><td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalExpenses)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-slate-400">{acctFmt(compareData.totalExpenses)}</td>}{compareData && <td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalExpenses - compareData.totalExpenses, true)}</td>}</tr>
-      <tr className="border-t-2 border-b-2 border-slate-800 font-black"><td className="px-4 py-2">NET INCOME</td><td className="px-4 py-2 text-right font-mono">{acctFmt(plData.netIncome)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-slate-400">{acctFmt(compareData.netIncome)}</td>}{compareData && <td className={`px-4 py-2 text-right font-mono ${plData.netIncome-compareData.netIncome > 0 ? "text-emerald-600" : "text-red-600"}`}>{acctFmt(plData.netIncome - compareData.netIncome, true)}</td>}</tr>
+      <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Account</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Current</th>{compareData && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Prior</th>}{compareData && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Change</th>}</tr></thead>
+      <tbody><tr className="bg-neutral-50 font-bold"><td className="px-4 py-2" colSpan={compareData ? 4 : 2}>Income</td></tr>
+      {plData.revenue.filter(a=>a.amount!==0).map(a => { const prior = compareData?.revenue.find(p=>p.id===a.id); return <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700 pl-8">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-neutral-400">{prior ? acctFmt(prior.amount) : "—"}</td>}{compareData && <td className={`px-4 py-2 text-right font-mono ${a.amount-(prior?.amount||0) > 0 ? "text-emerald-600" : a.amount-(prior?.amount||0) < 0 ? "text-red-600" : ""}`}>{acctFmt(a.amount - (prior?.amount||0), true)}</td>}</tr>; })}
+      <tr className="border-t border-neutral-300 font-bold"><td className="px-4 py-2 pl-8">Total Income</td><td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalRevenue)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-neutral-400">{acctFmt(compareData.totalRevenue)}</td>}{compareData && <td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalRevenue - compareData.totalRevenue, true)}</td>}</tr>
+      <tr className="bg-neutral-50 font-bold"><td className="px-4 py-2" colSpan={compareData ? 4 : 2}>Expenses</td></tr>
+      {plData.expenses.filter(a=>a.amount!==0).map(a => { const prior = compareData?.expenses.find(p=>p.id===a.id); return <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700 pl-8">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-neutral-400">{prior ? acctFmt(prior.amount) : "—"}</td>}{compareData && <td className={`px-4 py-2 text-right font-mono ${a.amount-(prior?.amount||0) < 0 ? "text-emerald-600" : a.amount-(prior?.amount||0) > 0 ? "text-red-600" : ""}`}>{acctFmt(a.amount - (prior?.amount||0), true)}</td>}</tr>; })}
+      <tr className="border-t border-neutral-300 font-bold"><td className="px-4 py-2 pl-8">Total Expenses</td><td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalExpenses)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-neutral-400">{acctFmt(compareData.totalExpenses)}</td>}{compareData && <td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalExpenses - compareData.totalExpenses, true)}</td>}</tr>
+      <tr className="border-t-2 border-b-2 border-neutral-800 font-black"><td className="px-4 py-2">NET INCOME</td><td className="px-4 py-2 text-right font-mono">{acctFmt(plData.netIncome)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-neutral-400">{acctFmt(compareData.netIncome)}</td>}{compareData && <td className={`px-4 py-2 text-right font-mono ${plData.netIncome-compareData.netIncome > 0 ? "text-emerald-600" : "text-red-600"}`}>{acctFmt(plData.netIncome - compareData.netIncome, true)}</td>}</tr>
       </tbody></table>
     </div>)}
 
     {/* AP Aging Summary */}
     {reportId === "ap_aging_summary" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">AP Aging Summary</p><p className="text-sm text-slate-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
-      {(() => { const data = getAPAgingData(asOfDate); const vendors = Object.entries(data.byVendor).filter(([,d]) => Math.abs(d.total) > 0.01); return vendors.length === 0 ? <p className="text-center py-8 text-slate-400">No outstanding payables</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Vendor</th><th className="px-4 py-2 text-right text-xs font-semibold text-emerald-600">Current</th><th className="px-4 py-2 text-right text-xs font-semibold text-amber-600">1-30</th><th className="px-4 py-2 text-right text-xs font-semibold text-orange-600">31-60</th><th className="px-4 py-2 text-right text-xs font-semibold text-red-600">61-90</th><th className="px-4 py-2 text-right text-xs font-semibold text-red-800">91+</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-700">Total</th></tr></thead>
-      <tbody>{vendors.map(([vendor, d]) => <tr key={vendor} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{vendor}</td><td className="px-4 py-2 text-right font-mono">{d.current ? acctFmt(d.current) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.days30 ? acctFmt(d.days30) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.days60 ? acctFmt(d.days60) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.days90 ? acctFmt(d.days90) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.over90 ? acctFmt(d.over90) : ""}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(d.total)}</td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td className="px-4 py-2">TOTALS</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.current)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.days30)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.days60)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.days90)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.over90)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.total)}</td></tr></tfoot></table>); })()}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">AP Aging Summary</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
+      {(() => { const data = getAPAgingData(asOfDate); const vendors = Object.entries(data.byVendor).filter(([,d]) => Math.abs(d.total) > 0.01); return vendors.length === 0 ? <p className="text-center py-8 text-neutral-400">No outstanding payables</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Vendor</th><th className="px-4 py-2 text-right text-xs font-semibold text-emerald-600">Current</th><th className="px-4 py-2 text-right text-xs font-semibold text-amber-600">1-30</th><th className="px-4 py-2 text-right text-xs font-semibold text-orange-600">31-60</th><th className="px-4 py-2 text-right text-xs font-semibold text-red-600">61-90</th><th className="px-4 py-2 text-right text-xs font-semibold text-red-800">91+</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-700">Total</th></tr></thead>
+      <tbody>{vendors.map(([vendor, d]) => <tr key={vendor} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{vendor}</td><td className="px-4 py-2 text-right font-mono">{d.current ? acctFmt(d.current) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.days30 ? acctFmt(d.days30) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.days60 ? acctFmt(d.days60) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.days90 ? acctFmt(d.days90) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.over90 ? acctFmt(d.over90) : ""}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(d.total)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTALS</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.current)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.days30)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.days60)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.days90)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.over90)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.total)}</td></tr></tfoot></table>); })()}
     </div>)}
 
     {/* Unpaid Bills */}
     {reportId === "unpaid_bills" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Unpaid Bills</p></div>
-      {(() => { const data = getUnpaidBills(); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No unpaid bills found</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Date</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Vendor</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Description</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Ref</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Amount</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-400 text-xs">{r.date}</td><td className="px-4 py-2 text-slate-700">{r.vendor}</td><td className="px-4 py-2 text-xs text-slate-500 truncate max-w-48">{r.description}</td><td className="px-4 py-2 font-mono text-xs text-brand-600">{r.jeNumber||""}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(r.amount)}</td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td colSpan={4} className="px-4 py-2">TOTAL</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.amount,0))}</td></tr></tfoot></table>); })()}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Unpaid Bills</p></div>
+      {(() => { const data = getUnpaidBills(); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No unpaid bills found</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Date</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Vendor</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Description</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Ref</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Amount</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-400 text-xs">{r.date}</td><td className="px-4 py-2 text-neutral-700">{r.vendor}</td><td className="px-4 py-2 text-xs text-neutral-500 truncate max-w-48">{r.description}</td><td className="px-4 py-2 font-mono text-xs text-brand-600">{r.jeNumber||""}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(r.amount)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td colSpan={4} className="px-4 py-2">TOTAL</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.amount,0))}</td></tr></tfoot></table>); })()}
     </div>)}
 
     {/* Vendor Balance Summary */}
     {reportId === "vendor_balance_summary" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Vendor Balance Summary</p><p className="text-sm text-slate-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
-      {(() => { const data = getVendorBalanceSummary(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No outstanding vendor balances</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Vendor</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Balance</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.vendor}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(r.total)}</td></tr>)}</tbody>
-      <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td className="px-4 py-2">TOTAL OWED</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.total,0))}</td></tr></tfoot></table>); })()}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Vendor Balance Summary</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
+      {(() => { const data = getVendorBalanceSummary(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No outstanding vendor balances</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Vendor</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Balance</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.vendor}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(r.total)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTAL OWED</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.total,0))}</td></tr></tfoot></table>); })()}
     </div>)}
 
     {/* Audit Log */}
     {reportId === "audit_log" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Audit Log</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      <button onClick={async () => { const d = await getAuditLog(start, end); setAuditData(d); }} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 mb-3">Refresh</button>
-      {auditData.length === 0 ? <p className="text-center py-8 text-slate-400">No audit entries in this period</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Time</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">User</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Module</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Action</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Details</th></tr></thead>
-      <tbody>{auditData.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-3 py-2 text-xs text-slate-400 whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</td><td className="px-3 py-2 text-xs text-slate-600">{r.user_email}</td><td className="px-3 py-2 text-xs"><span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{r.module}</span></td><td className="px-3 py-2 text-xs"><span className={`px-1.5 py-0.5 rounded ${r.action==="create"?"bg-emerald-100 text-emerald-700":r.action==="delete"?"bg-red-100 text-red-600":r.action==="update"?"bg-blue-100 text-blue-700":"bg-slate-100 text-slate-600"}`}>{r.action}</span></td><td className="px-3 py-2 text-xs text-slate-500 max-w-64 truncate">{r.details}</td></tr>)}</tbody></table>)}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Audit Log</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      <button onClick={async () => { const d = await getAuditLog(start, end); setAuditData(d); }} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 mb-3">Refresh</button>
+      {auditData.length === 0 ? <p className="text-center py-8 text-neutral-400">No audit entries in this period</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Time</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">User</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Module</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Action</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Details</th></tr></thead>
+      <tbody>{auditData.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-xs text-neutral-400 whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</td><td className="px-3 py-2 text-xs text-neutral-600">{r.user_email}</td><td className="px-3 py-2 text-xs"><span className="bg-neutral-100 text-neutral-600 px-1.5 py-0.5 rounded">{r.module}</span></td><td className="px-3 py-2 text-xs"><span className={`px-1.5 py-0.5 rounded ${r.action==="create"?"bg-emerald-100 text-emerald-700":r.action==="delete"?"bg-red-100 text-red-600":r.action==="update"?"bg-blue-100 text-blue-700":"bg-neutral-100 text-neutral-600"}`}>{r.action}</span></td><td className="px-3 py-2 text-xs text-neutral-500 max-w-64 truncate">{r.details}</td></tr>)}</tbody></table>)}
     </div>)}
 
     {/* Reconciliation Summary */}
     {reportId === "recon_summary" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Reconciliation Summary</p></div>
-      <button onClick={async () => { const d = await getReconSummary(); setReconData(d); }} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 mb-3">Refresh</button>
-      {reconData.length === 0 ? <p className="text-center py-8 text-slate-400">No reconciliations found</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Period</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Bank Balance</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Book Balance</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Difference</th><th className="px-4 py-2 text-center text-xs font-semibold text-slate-500">Status</th></tr></thead>
-      <tbody>{reconData.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.period}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(safeNum(r.bank_ending_balance))}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(safeNum(r.book_balance))}</td><td className={`px-4 py-2 text-right font-mono ${Math.abs(safeNum(r.difference)) < 0.01 ? "text-emerald-600" : "text-red-600"}`}>{acctFmt(safeNum(r.difference))}</td><td className="px-4 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="reconciled"?"bg-emerald-100 text-emerald-700":"bg-amber-100 text-amber-700"}`}>{r.status}</span></td></tr>)}</tbody></table>)}
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Reconciliation Summary</p></div>
+      <button onClick={async () => { const d = await getReconSummary(); setReconData(d); }} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 mb-3">Refresh</button>
+      {reconData.length === 0 ? <p className="text-center py-8 text-neutral-400">No reconciliations found</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Period</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Bank Balance</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Book Balance</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Difference</th><th className="px-4 py-2 text-center text-xs font-semibold text-neutral-500">Status</th></tr></thead>
+      <tbody>{reconData.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.period}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(safeNum(r.bank_ending_balance))}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(safeNum(r.book_balance))}</td><td className={`px-4 py-2 text-right font-mono ${Math.abs(safeNum(r.difference)) < 0.01 ? "text-emerald-600" : "text-red-600"}`}>{acctFmt(safeNum(r.difference))}</td><td className="px-4 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="reconciled"?"bg-emerald-100 text-emerald-700":"bg-amber-100 text-amber-700"}`}>{r.status}</span></td></tr>)}</tbody></table>)}
     </div>)}
 
     {/* Budget vs Actuals */}
     {reportId === "budget_vs_actual" && (<div>
-      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Budget vs. Actuals</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Budget vs. Actuals</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       <div className="flex gap-2 mb-4">
         <button onClick={() => setShowBudgetEditor(!showBudgetEditor)} className="text-xs bg-brand-100 text-brand-700 px-3 py-1.5 rounded-lg hover:bg-brand-200 font-semibold">{showBudgetEditor ? "Hide Budget Editor" : "Edit Budgets"}</button>
-        <div><label className="text-xs text-slate-500 mr-1">Budget Month:</label><input type="month" value={budgetMonth} onChange={e => { setBudgetMonth(e.target.value); fetchBudgets(e.target.value); }} className="border border-slate-200 rounded-lg px-2 py-1 text-sm" /></div>
+        <div><label className="text-xs text-neutral-500 mr-1">Budget Month:</label><input type="month" value={budgetMonth} onChange={e => { setBudgetMonth(e.target.value); fetchBudgets(e.target.value); }} className="border border-neutral-200 rounded-lg px-2 py-1 text-sm" /></div>
       </div>
       {showBudgetEditor && (<div className="bg-brand-50 rounded-xl p-4 mb-4 max-h-64 overflow-y-auto">
         <p className="text-xs font-semibold text-brand-700 mb-2">Set Monthly Budget for {budgetMonth}</p>
         <div className="space-y-1">{accounts.filter(a => a.is_active && ["Revenue","Expense","Cost of Goods Sold","Other Income","Other Expense"].includes(a.type)).sort((a,b) => (a.code||"").localeCompare(b.code||"")).map(a => {
           const existing = budgets.find(b => b.account_id === a.id);
-          return <div key={a.id} className="flex items-center gap-2"><span className="text-xs text-slate-600 w-48 truncate">{a.code||"•"} {a.name}</span><input type="number" defaultValue={existing?.amount || ""} onBlur={e => { if (e.target.value) saveBudget(a.id, a.name, e.target.value); }} placeholder="0.00" className="border border-brand-200 rounded-lg px-2 py-1 text-xs w-24 text-right font-mono" /></div>;
+          return <div key={a.id} className="flex items-center gap-2"><span className="text-xs text-neutral-600 w-48 truncate">{a.code||"•"} {a.name}</span><input type="number" defaultValue={existing?.amount || ""} onBlur={e => { if (e.target.value) saveBudget(a.id, a.name, e.target.value); }} placeholder="0.00" className="border border-brand-200 rounded-lg px-2 py-1 text-xs w-24 text-right font-mono" /></div>;
         })}</div>
       </div>)}
-      {(() => { const data = getBudgetVsActual(start, end); const hasAnyBudget = data.some(a => a.budget > 0); return !hasAnyBudget ? <p className="text-center py-8 text-slate-400">No budgets set. Click "Edit Budgets" to set monthly amounts.</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Account</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Actual</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Budget</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Variance ($)</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Variance (%)</th></tr></thead>
-      <tbody>{data.filter(a => a.budget > 0).map(a => { const favorable = a.isExpense ? a.variance < 0 : a.variance > 0; return <tr key={a.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2 text-right font-mono text-slate-400">{acctFmt(a.budget)}</td><td className={`px-4 py-2 text-right font-mono font-semibold ${favorable ? "text-emerald-600" : "text-red-600"}`}>{acctFmt(a.variance, true)}</td><td className={`px-4 py-2 text-right ${favorable ? "text-emerald-600" : "text-red-600"}`}>{a.variancePct > 0 ? "+" : ""}{a.variancePct}%</td></tr>; })}</tbody></table>); })()}
+      {(() => { const data = getBudgetVsActual(start, end); const hasAnyBudget = data.some(a => a.budget > 0); return !hasAnyBudget ? <p className="text-center py-8 text-neutral-400">No budgets set. Click "Edit Budgets" to set monthly amounts.</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Account</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Actual</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Budget</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Variance ($)</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Variance (%)</th></tr></thead>
+      <tbody>{data.filter(a => a.budget > 0).map(a => { const favorable = a.isExpense ? a.variance < 0 : a.variance > 0; return <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2 text-right font-mono text-neutral-400">{acctFmt(a.budget)}</td><td className={`px-4 py-2 text-right font-mono font-semibold ${favorable ? "text-emerald-600" : "text-red-600"}`}>{acctFmt(a.variance, true)}</td><td className={`px-4 py-2 text-right ${favorable ? "text-emerald-600" : "text-red-600"}`}>{a.variancePct > 0 ? "+" : ""}{a.variancePct}%</td></tr>; })}</tbody></table>); })()}
     </div>)}
     )}
 
@@ -10020,11 +10020,11 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   <div className="space-y-4">
   {/* Header */}
   <div className="flex items-center justify-between">
-    <div><h3 className="text-lg font-semibold text-slate-900">Bank Transactions</h3><p className="text-sm text-slate-400">Import, review, and categorize bank transactions</p></div>
+    <div><h3 className="text-lg font-semibold text-neutral-900">Bank Transactions</h3><p className="text-sm text-neutral-400">Import, review, and categorize bank transactions</p></div>
     <div className="flex gap-2 flex-wrap">
       {connections.some(c => c.connection_status === "active") && <button onClick={syncTransactions} disabled={syncing} className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg font-semibold hover:bg-emerald-200 disabled:opacity-50">{syncing ? "Syncing..." : "Sync"}</button>}
       <button onClick={connectBank} disabled={plaidConnecting} className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">link</span>{plaidConnecting ? "Connecting..." : "Connect Bank"}</button>
-      <button onClick={startImport} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-slate-700 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">upload_file</span>Import CSV</button>
+      <button onClick={startImport} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-neutral-700 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">upload_file</span>Import CSV</button>
     </div>
   </div>
 
@@ -10049,19 +10049,19 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       const isSelected = selectedFeed === feed.id;
       return (
       <button key={feed.id} onClick={() => setSelectedFeed(isSelected ? "all" : feed.id)}
-        className={`shrink-0 rounded-xl border-2 p-3 min-w-48 text-left transition-all ${isSelected ? "border-brand-600 bg-brand-50" : "border-slate-200 bg-white hover:border-slate-300"}`}>
-        <div className="text-xs text-slate-400 truncate">{feed.institution_name || feed.account_type}</div>
-        <div className="font-semibold text-slate-800 truncate">{feed.account_name}</div>
-        {feed.masked_number && <div className="text-xs text-slate-400">••••{feed.masked_number}</div>}
+        className={`shrink-0 rounded-xl border-2 p-3 min-w-48 text-left transition-all ${isSelected ? "border-brand-600 bg-brand-50" : "border-neutral-200 bg-white hover:border-neutral-300"}`}>
+        <div className="text-xs text-neutral-400 truncate">{feed.institution_name || feed.account_type}</div>
+        <div className="font-semibold text-neutral-800 truncate">{feed.account_name}</div>
+        {feed.masked_number && <div className="text-xs text-neutral-400">••••{feed.masked_number}</div>}
         <div className="flex justify-between mt-2">
-          <span className={`text-xs px-1.5 py-0.5 rounded ${feed.connection_type === "teller" ? "bg-blue-100 text-blue-700" : feed.connection_type === "plaid" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>{feed.connection_type === "teller" ? "Teller" : feed.connection_type === "plaid" ? "Plaid" : "CSV"}</span>
-          {feed.last_synced_at && <span className="text-xs text-slate-400">{new Date(feed.last_synced_at).toLocaleDateString()}</span>}
+          <span className={`text-xs px-1.5 py-0.5 rounded ${feed.connection_type === "teller" ? "bg-blue-100 text-blue-700" : feed.connection_type === "plaid" ? "bg-blue-100 text-blue-700" : "bg-neutral-100 text-neutral-500"}`}>{feed.connection_type === "teller" ? "Teller" : feed.connection_type === "plaid" ? "Plaid" : "CSV"}</span>
+          {feed.last_synced_at && <span className="text-xs text-neutral-400">{new Date(feed.last_synced_at).toLocaleDateString()}</span>}
           {reviewCount > 0 && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold">{reviewCount}</span>}
         </div>
       </button>
       );
     })}
-    <button onClick={() => setShowNewAccount(true)} className="shrink-0 rounded-xl border-2 border-dashed border-slate-200 p-3 min-w-36 flex flex-col items-center justify-center gap-1 text-slate-400 hover:border-slate-400 hover:text-slate-600">
+    <button onClick={() => setShowNewAccount(true)} className="shrink-0 rounded-xl border-2 border-dashed border-neutral-200 p-3 min-w-36 flex flex-col items-center justify-center gap-1 text-neutral-400 hover:border-neutral-400 hover:text-neutral-600">
       <span className="material-icons-outlined">add</span>
       <span className="text-xs">New Account</span>
     </button>
@@ -10069,20 +10069,20 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   )}
 
   {feeds.length === 0 && (
-  <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
+  <div className="bg-white rounded-xl border border-neutral-200 p-8 text-center">
     <div className="text-3xl mb-3">🏦</div>
-    <h4 className="font-semibold text-slate-800 mb-1">No bank accounts set up</h4>
-    <p className="text-sm text-slate-400 mb-4">Create a bank account to start importing transactions</p>
+    <h4 className="font-semibold text-neutral-800 mb-1">No bank accounts set up</h4>
+    <p className="text-sm text-neutral-400 mb-4">Create a bank account to start importing transactions</p>
     <button onClick={() => setShowNewAccount(true)} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-brand-700">+ Add Bank Account</button>
   </div>
   )}
 
   {/* Tabs */}
   {feeds.length > 0 && (<>
-  <div className="flex gap-1 border-b border-slate-200">
+  <div className="flex gap-1 border-b border-neutral-200">
     {[["for_review", `For Review (${counts.for_review})`], ["recognized", `Recognized (${counts.recognized})`], ["categorized", `Categorized (${counts.categorized})`], ["excluded", `Excluded (${counts.excluded})`], ["rules", `Rules (${rules.length})`]].map(([id, label]) => (
     <button key={id} onClick={() => { setActiveTab(id); setSelectedTxns(new Set()); }}
-      className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-600"}`}>{label}</button>
+      className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-600"}`}>{label}</button>
     ))}
   </div>
 
@@ -10090,20 +10090,20 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   {activeTab === "rules" && (
   <div className="space-y-4">
     <div className="flex items-center justify-between">
-      <p className="text-sm text-slate-500">Rules run in priority order. First matching rule wins.</p>
+      <p className="text-sm text-neutral-500">Rules run in priority order. First matching rule wins.</p>
       <button onClick={() => { resetRuleForm(); setShowRuleDrawer(true); }} className="bg-violet-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-violet-700 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">add</span>New Rule</button>
     </div>
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
       <table className="w-full text-sm">
-        <thead className="bg-slate-50 border-b border-slate-200">
+        <thead className="bg-neutral-50 border-b border-neutral-200">
           <tr>
-            <th className="px-3 py-2.5 w-12 text-center text-xs font-semibold text-slate-500">#</th>
-            <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500">RULE NAME</th>
-            <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500">CONDITIONS</th>
-            <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500">ACTION</th>
-            <th className="px-3 py-2.5 text-center text-xs font-semibold text-slate-500">MATCHED</th>
-            <th className="px-3 py-2.5 text-center text-xs font-semibold text-slate-500">STATUS</th>
-            <th className="px-3 py-2.5 text-right text-xs font-semibold text-slate-500">ACTIONS</th>
+            <th className="px-3 py-2.5 w-12 text-center text-xs font-semibold text-neutral-500">#</th>
+            <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">RULE NAME</th>
+            <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">CONDITIONS</th>
+            <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">ACTION</th>
+            <th className="px-3 py-2.5 text-center text-xs font-semibold text-neutral-500">MATCHED</th>
+            <th className="px-3 py-2.5 text-center text-xs font-semibold text-neutral-500">STATUS</th>
+            <th className="px-3 py-2.5 text-right text-xs font-semibold text-neutral-500">ACTIONS</th>
           </tr>
         </thead>
         <tbody>
@@ -10113,10 +10113,10 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
             const conditions = cond.conditions || [];
             const lines = act.lines || [];
             return (
-            <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50">
-              <td className="px-3 py-3 text-center"><span className="font-mono text-xs text-slate-400">{r.priority}</span></td>
-              <td className="px-3 py-3"><span className="font-semibold text-slate-800">{r.name}</span>{r.auto_accept && <span className="ml-2 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">auto-add</span>}</td>
-              <td className="px-3 py-3 text-xs text-slate-500 max-w-48">
+            <tr key={r.id} className="border-b border-neutral-100 hover:bg-neutral-50">
+              <td className="px-3 py-3 text-center"><span className="font-mono text-xs text-neutral-400">{r.priority}</span></td>
+              <td className="px-3 py-3"><span className="font-semibold text-neutral-800">{r.name}</span>{r.auto_accept && <span className="ml-2 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">auto-add</span>}</td>
+              <td className="px-3 py-3 text-xs text-neutral-500 max-w-48">
                 <span className="text-violet-600 font-medium">{(cond.logic || "all").toUpperCase()}</span>{" of: "}
                 {conditions.map((c, i) => <span key={i}>{i > 0 && ", "}{c.field} {c.operator} "{c.value}"</span>)}
                 {cond.direction !== "all" && <span className="ml-1">· {cond.direction}</span>}
@@ -10125,13 +10125,13 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
                 {act.type === "exclude" ? <span className="text-red-600 font-medium">Exclude ({act.exclude_reason})</span>
                   : <span className="text-blue-600">{lines.map(l => l.account_name).join(" + ") || "—"}{act.split && <span className="text-purple-500 ml-1">(split)</span>}</span>}
               </td>
-              <td className="px-3 py-3 text-center text-xs text-slate-400">{r.apply_count || 0}</td>
+              <td className="px-3 py-3 text-center text-xs text-neutral-400">{r.apply_count || 0}</td>
               <td className="px-3 py-3 text-center">
-                <button onClick={() => toggleRule(r)} className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.enabled ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>{r.enabled ? "On" : "Off"}</button>
+                <button onClick={() => toggleRule(r)} className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.enabled ? "bg-emerald-100 text-emerald-700" : "bg-neutral-100 text-neutral-400"}`}>{r.enabled ? "On" : "Off"}</button>
               </td>
               <td className="px-3 py-3 text-right">
                 <button onClick={() => startEditRule(r)} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>
-                <button onClick={() => duplicateRule(r)} className="text-xs text-slate-400 hover:underline mr-2">Copy</button>
+                <button onClick={() => duplicateRule(r)} className="text-xs text-neutral-400 hover:underline mr-2">Copy</button>
                 <button onClick={() => deleteRule(r.id)} className="text-xs text-red-400 hover:text-red-600">Delete</button>
               </td>
             </tr>
@@ -10140,18 +10140,18 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
         </tbody>
       </table>
       {rules.length === 0 && (
-        <div className="py-8 text-center text-slate-400">
+        <div className="py-8 text-center text-neutral-400">
           <div className="text-3xl mb-2">📋</div>
           <p className="font-medium">No rules yet</p>
           <p className="text-xs mt-1 mb-4">Rules auto-categorize imported transactions. Start with a template or create your own!</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-left max-w-3xl mx-auto">
             {RENTAL_RULE_PRESETS.map((preset, i) => (
               <button key={i} onClick={() => applyPreset(preset)} className="bg-white border border-violet-100 rounded-xl p-3 hover:border-violet-300 hover:shadow-sm transition-all text-left">
-                <p className="text-sm font-semibold text-slate-700">{preset.name}</p>
-                <p className="text-xs text-slate-400 mt-1">{preset.description}</p>
+                <p className="text-sm font-semibold text-neutral-700">{preset.name}</p>
+                <p className="text-xs text-neutral-400 mt-1">{preset.description}</p>
                 <div className="flex gap-1 mt-2">
                   {preset.action.type === "exclude" ? <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">Exclude</span> : <span className="text-xs bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded">Assign</span>}
-                  <span className="text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">{preset.conditions.length} condition{preset.conditions.length > 1 ? "s" : ""}</span>
+                  <span className="text-xs bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded">{preset.conditions.length} condition{preset.conditions.length > 1 ? "s" : ""}</span>
                 </div>
               </button>
             ))}
@@ -10184,24 +10184,24 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     <span className="text-sm font-medium text-brand-800">{selectedTxns.size} selected</span>
     <div className="flex gap-2">
       <button onClick={() => bulkExclude("duplicate")} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100">Exclude All</button>
-      <button onClick={() => setSelectedTxns(new Set())} className="text-xs text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-100">Deselect</button>
+      <button onClick={() => setSelectedTxns(new Set())} className="text-xs text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect</button>
     </div>
   </div>
   )}
 
   {/* Transaction Table */}
-  <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+  <div className="bg-white rounded-xl border border-neutral-200 overflow-x-auto">
   <table className="w-full text-sm">
-  <thead className="bg-slate-50 border-b border-slate-200">
+  <thead className="bg-neutral-50 border-b border-neutral-200">
     <tr>
       {activeTab === "for_review" && <th className="px-3 py-2.5 w-8"><input type="checkbox" checked={selectedTxns.size === filtered.length && filtered.length > 0} onChange={e => { if (e.target.checked) setSelectedTxns(new Set(filtered.map(t => t.id))); else setSelectedTxns(new Set()); }} className="accent-brand-600" /></th>}
-      <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500">DATE</th>
-      <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500">DESCRIPTION</th>
-      <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500">PAYEE</th>
-      {activeTab === "categorized" && <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500">CATEGORY</th>}
-      {activeTab === "excluded" && <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500">REASON</th>}
-      <th className="px-3 py-2.5 text-right text-xs font-semibold text-slate-500">AMOUNT</th>
-      <th className="px-3 py-2.5 text-right text-xs font-semibold text-slate-500">ACTION</th>
+      <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">DATE</th>
+      <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">DESCRIPTION</th>
+      <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">PAYEE</th>
+      {activeTab === "categorized" && <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">CATEGORY</th>}
+      {activeTab === "excluded" && <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">REASON</th>}
+      <th className="px-3 py-2.5 text-right text-xs font-semibold text-neutral-500">AMOUNT</th>
+      <th className="px-3 py-2.5 text-right text-xs font-semibold text-neutral-500">ACTION</th>
     </tr>
   </thead>
   <tbody>
@@ -10209,21 +10209,21 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     const isExpanded = expandedTxn === txn.id;
     return (
     <React.Fragment key={txn.id}>
-    <tr className={`border-b border-slate-100 hover:bg-slate-50 cursor-pointer ${isExpanded ? "bg-brand-50/50" : ""}`} onClick={() => setExpandedTxn(isExpanded ? null : txn.id)}>
+    <tr className={`border-b border-neutral-100 hover:bg-neutral-50 cursor-pointer ${isExpanded ? "bg-brand-50/50" : ""}`} onClick={() => setExpandedTxn(isExpanded ? null : txn.id)}>
       {activeTab === "for_review" && <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><input type="checkbox" checked={selectedTxns.has(txn.id)} onChange={e => { const s = new Set(selectedTxns); e.target.checked ? s.add(txn.id) : s.delete(txn.id); setSelectedTxns(s); }} className="accent-brand-600" /></td>}
-      <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{txn.posted_date}</td>
-      <td className="px-3 py-2.5 text-slate-800 max-w-xs truncate">
+      <td className="px-3 py-2.5 text-neutral-600 whitespace-nowrap">{txn.posted_date}</td>
+      <td className="px-3 py-2.5 text-neutral-800 max-w-xs truncate">
         {txn.bank_description_clean || txn.bank_description_raw}
         {txn.suggestion_status === "suggested_rule" && (() => { const sug = txn.raw_payload_json?._suggestion; const sugType = sug?.type || "assign"; return <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${sugType === "split" ? "bg-purple-100 text-purple-600" : "bg-violet-100 text-violet-600"}`}>{sugType === "split" ? "Rule: Split" : "Rule"}</span>; })()}
         {txn.suggestion_status === "suggested_exclude" && <span className="ml-1.5 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">Rule: Exclude</span>}
       </td>
-      <td className="px-3 py-2.5 text-slate-500 truncate max-w-32">{txn.payee_normalized || "—"}</td>
+      <td className="px-3 py-2.5 text-neutral-500 truncate max-w-32">{txn.payee_normalized || "—"}</td>
       {activeTab === "categorized" && <td className="px-3 py-2.5 text-xs"><span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">Posted</span></td>}
       {activeTab === "excluded" && <td className="px-3 py-2.5 text-xs text-red-600">{txn.exclusion_reason || "—"}</td>}
       <td className={`px-3 py-2.5 text-right font-mono font-semibold ${txn.direction === "inflow" ? "text-emerald-700" : "text-red-600"}`}>{txn.direction === "inflow" ? "+" : "-"}${safeNum(txn.amount).toFixed(2)}</td>
       <td className="px-3 py-2.5 text-right whitespace-nowrap">
         {txn.status === "for_review" && <button onClick={e => { e.stopPropagation(); if (isExpanded) { setExpandedTxn(null); } else { setExpandedTxn(txn.id); const sug = txn.raw_payload_json?._suggestion; if (sug?.type === "split" && sug.lines?.length >= 2) { setActionMode("split"); const abs = Math.abs(txn.amount); setSplitLines(sug.lines.map(l => ({ accountId: l.account_id || "", accountName: l.account_name || "", classId: l.class_id || "", memo: sug.memo || "", amount: sug.splitBy === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0) }))); } else if (sug) { setActionMode("add"); setAddForm({ accountId: sug.accountId || "", accountName: sug.accountName || "", memo: sug.memo || "", classId: sug.classId || "" }); } else { setActionMode("add"); setAddForm({ accountId: "", accountName: "", memo: "", classId: "" }); } }}} className="text-xs text-brand-600 font-semibold hover:underline">{txn.suggestion_status === "suggested_rule" || txn.suggestion_status === "suggested_exclude" ? "Review" : "Add"}</button>}
-        {["categorized", "matched", "posted"].includes(txn.status) && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-slate-400 hover:underline">Undo</button>}
+        {["categorized", "matched", "posted"].includes(txn.status) && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-neutral-400 hover:underline">Undo</button>}
         {txn.status === "excluded" && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-blue-600 hover:underline">Restore</button>}
       </td>
     </tr>
@@ -10234,7 +10234,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       <div className="flex gap-1 mb-3 border-b border-brand-100 pb-2">
         {[["add","Add"],["match","Match"],["transfer","Transfer"],["split","Split"]].map(([id,label]) => (
           <button key={id} onClick={() => { setActionMode(id); if (id === "match") findMatches(txn); }}
-            className={`px-3 py-1 text-xs font-medium rounded-lg ${actionMode === id ? "bg-brand-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50 border border-slate-200"}`}>{label}</button>
+            className={`px-3 py-1 text-xs font-medium rounded-lg ${actionMode === id ? "bg-brand-600 text-white" : "bg-white text-neutral-500 hover:bg-neutral-50 border border-neutral-200"}`}>{label}</button>
         ))}
         <button onClick={() => { const reason = prompt("Exclude reason: duplicate / personal / noise / error"); if (reason) excludeTransaction(txn, reason); }}
           className="px-3 py-1 text-xs text-red-500 hover:bg-red-50 rounded-lg ml-auto border border-red-200">Exclude</button>
@@ -10249,13 +10249,13 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       {/* ADD */}
       {actionMode === "add" && (
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
-        <div><label className="text-xs font-medium text-slate-500 block mb-1">Category *</label>
+        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Category *</label>
           <select value={addForm.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); setAddForm({...addForm, accountId: e.target.value, accountName: a?.name || ""}); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
             <option value="">Select account...</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a => a.type === type && a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}
           </select></div>
-        <div><label className="text-xs font-medium text-slate-500 block mb-1">Memo</label>
+        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Memo</label>
           <input type="text" value={addForm.memo} onChange={e => setAddForm({...addForm, memo: e.target.value})} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
-        <div><label className="text-xs font-medium text-slate-500 block mb-1">Class</label>
+        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Class</label>
           <select value={addForm.classId} onChange={e => setAddForm({...addForm, classId: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
             <option value="">No class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select></div>
@@ -10266,16 +10266,16 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       {/* MATCH */}
       {actionMode === "match" && (
       <div>
-        {matchLoading && <div className="text-xs text-slate-400 py-4 text-center">Searching for matches...</div>}
-        {!matchLoading && matchCandidates.length === 0 && <div className="text-xs text-slate-400 py-4 text-center">No matching journal entries found within 10 days.</div>}
+        {matchLoading && <div className="text-xs text-neutral-400 py-4 text-center">Searching for matches...</div>}
+        {!matchLoading && matchCandidates.length === 0 && <div className="text-xs text-neutral-400 py-4 text-center">No matching journal entries found within 10 days.</div>}
         {!matchLoading && matchCandidates.length > 0 && (
         <div className="space-y-2 max-h-48 overflow-y-auto">
-          <p className="text-xs text-slate-500 mb-1">{matchCandidates.length} potential match{matchCandidates.length !== 1 ? "es" : ""}</p>
+          <p className="text-xs text-neutral-500 mb-1">{matchCandidates.length} potential match{matchCandidates.length !== 1 ? "es" : ""}</p>
           {matchCandidates.map(c => (
-          <div key={c.id} className="flex items-center justify-between bg-white rounded-lg border border-slate-200 px-3 py-2">
+          <div key={c.id} className="flex items-center justify-between bg-white rounded-lg border border-neutral-200 px-3 py-2">
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-medium text-slate-800 truncate">{c.number} — {c.description}</div>
-              <div className="text-xs text-slate-400">{c.date} · ${safeNum(c._jeTotal).toFixed(2)} · Score: {c._score}/100</div>
+              <div className="text-xs font-medium text-neutral-800 truncate">{c.number} — {c.description}</div>
+              <div className="text-xs text-neutral-400">{c.date} · ${safeNum(c._jeTotal).toFixed(2)} · Score: {c._score}/100</div>
             </div>
             <button onClick={() => confirmMatch(txn, c)} className="shrink-0 bg-brand-600 text-white text-xs px-3 py-1 rounded-lg ml-2 hover:bg-brand-700">Match</button>
           </div>
@@ -10288,11 +10288,11 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       {/* TRANSFER */}
       {actionMode === "transfer" && (
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
-        <div><label className="text-xs font-medium text-slate-500 block mb-1">Transfer to Account *</label>
+        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Transfer to Account *</label>
           <select value={transferForm.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); setTransferForm({...transferForm, accountId: e.target.value, accountName: a?.name || ""}); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
             <option value="">Select account...</option>{accounts.filter(a => a.is_active && (a.type === "Asset" || a.type === "Liability")).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}
           </select></div>
-        <div><label className="text-xs font-medium text-slate-500 block mb-1">Memo</label>
+        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Memo</label>
           <input type="text" value={transferForm.memo} onChange={e => setTransferForm({...transferForm, memo: e.target.value})} placeholder="e.g. Transfer to savings" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
         <button onClick={() => acceptTransfer(txn, transferForm.accountId, transferForm.accountName, transferForm.memo)} disabled={!transferForm.accountId} className="bg-blue-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-blue-700">Post Transfer</button>
       </div>
@@ -10302,7 +10302,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       {actionMode === "split" && (
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium text-slate-500">Split into lines (total must equal ${Math.abs(txn.amount).toFixed(2)})</span>
+          <span className="text-xs font-medium text-neutral-500">Split into lines (total must equal ${Math.abs(txn.amount).toFixed(2)})</span>
           <button onClick={() => setSplitLines(prev => [...prev, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }])} className="text-xs text-brand-600 hover:underline">+ Add Line</button>
         </div>
         <div className="space-y-2">
@@ -10330,7 +10330,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       )}
 
       {/* Transaction Details */}
-      <div className="mt-2 text-xs text-slate-400 border-t border-brand-100 pt-2">
+      <div className="mt-2 text-xs text-neutral-400 border-t border-brand-100 pt-2">
         <span className="mr-3">Source: {txn.source_type?.toUpperCase() || "CSV"}</span>
         <span className="mr-3">Raw: {txn.bank_description_raw}</span>
         {txn.check_number && <span className="mr-3">Check #: {txn.check_number}</span>}
@@ -10348,11 +10348,11 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     </React.Fragment>
     );
   })}
-  {filtered.length === 0 && <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-400">No transactions in this tab</td></tr>}
+  {filtered.length === 0 && <tr><td colSpan={7} className="px-4 py-12 text-center text-neutral-400">No transactions in this tab</td></tr>}
   </tbody>
   </table>
   </div>
-  <div className="text-xs text-slate-400">{filtered.length} of {transactions.length} transactions</div>
+  <div className="text-xs text-neutral-400">{filtered.length} of {transactions.length} transactions</div>
   </>)}
   </>)}
 
@@ -10360,20 +10360,20 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   {showNewAccount && (
   <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
   <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
-    <h3 className="font-semibold text-slate-800 mb-4">Add Bank Account</h3>
+    <h3 className="font-semibold text-neutral-800 mb-4">Add Bank Account</h3>
     <div className="space-y-3">
-      <div><label className="text-xs font-medium text-slate-500 block mb-1">Account Name *</label><Input value={newAccountForm.name} onChange={e => setNewAccountForm({...newAccountForm, name: e.target.value})} placeholder="e.g. Chase Checking" /></div>
-      <div><label className="text-xs font-medium text-slate-500 block mb-1">Account Type</label>
+      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Account Name *</label><Input value={newAccountForm.name} onChange={e => setNewAccountForm({...newAccountForm, name: e.target.value})} placeholder="e.g. Chase Checking" /></div>
+      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Account Type</label>
         <select value={newAccountForm.type} onChange={e => setNewAccountForm({...newAccountForm, type: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm">
           <option value="checking">Checking</option><option value="savings">Savings</option><option value="credit_card">Credit Card</option><option value="loan">Loan</option><option value="other">Other</option>
         </select>
       </div>
-      <div><label className="text-xs font-medium text-slate-500 block mb-1">Last 4 Digits</label><Input maxLength={4} value={newAccountForm.masked_number} onChange={e => setNewAccountForm({...newAccountForm, masked_number: e.target.value})} placeholder="1234" /></div>
-      <div><label className="text-xs font-medium text-slate-500 block mb-1">Institution</label><Input value={newAccountForm.institution_name} onChange={e => setNewAccountForm({...newAccountForm, institution_name: e.target.value})} placeholder="e.g. Chase, Bank of America" /></div>
+      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Last 4 Digits</label><Input maxLength={4} value={newAccountForm.masked_number} onChange={e => setNewAccountForm({...newAccountForm, masked_number: e.target.value})} placeholder="1234" /></div>
+      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Institution</label><Input value={newAccountForm.institution_name} onChange={e => setNewAccountForm({...newAccountForm, institution_name: e.target.value})} placeholder="e.g. Chase, Bank of America" /></div>
     </div>
     <div className="flex gap-2 mt-4">
       <Btn onClick={createFeed}>Create</Btn>
-      <button onClick={() => setShowNewAccount(false)} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
+      <button onClick={() => setShowNewAccount(false)} className="text-sm text-neutral-400 px-4 py-2">Cancel</button>
     </div>
   </div>
   </div>
@@ -10385,8 +10385,8 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
     <div className="p-6">
     <div className="flex items-center justify-between mb-4">
-      <h3 className="font-semibold text-slate-800">Import Bank Transactions</h3>
-      <button onClick={() => setShowImportWizard(false)} className="text-slate-400 hover:text-slate-700 text-xl">✕</button>
+      <h3 className="font-semibold text-neutral-800">Import Bank Transactions</h3>
+      <button onClick={() => setShowImportWizard(false)} className="text-neutral-400 hover:text-neutral-700 text-xl">✕</button>
     </div>
 
     {/* Step Bar */}
@@ -10394,10 +10394,10 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     {[{n:1,l:"Account"},{n:2,l:"Upload"},{n:3,l:"Map"},{n:4,l:"Preview"},{n:5,l:"Options"},{n:6,l:"Done"}].map((s,i)=>(
       <div key={s.n} className="flex items-center flex-1">
       <div className="flex flex-col items-center gap-1">
-        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 ${wizStep>s.n?"bg-emerald-500 border-emerald-500 text-white":wizStep===s.n?"bg-slate-800 border-slate-800 text-white":"bg-white border-slate-200 text-slate-400"}`}>{wizStep>s.n?"✓":s.n}</div>
-        <span className={`text-xs ${wizStep===s.n?"text-slate-800 font-medium":"text-slate-400"}`}>{s.l}</span>
+        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 ${wizStep>s.n?"bg-emerald-500 border-emerald-500 text-white":wizStep===s.n?"bg-neutral-800 border-neutral-800 text-white":"bg-white border-neutral-200 text-neutral-400"}`}>{wizStep>s.n?"✓":s.n}</div>
+        <span className={`text-xs ${wizStep===s.n?"text-neutral-800 font-medium":"text-neutral-400"}`}>{s.l}</span>
       </div>
-      {i<5&&<div className={`flex-1 h-0.5 mb-4 mx-1 ${wizStep>s.n?"bg-emerald-400":"bg-slate-200"}`}/>}
+      {i<5&&<div className={`flex-1 h-0.5 mb-4 mx-1 ${wizStep>s.n?"bg-emerald-400":"bg-neutral-200"}`}/>}
       </div>
     ))}
     </div>
@@ -10405,25 +10405,25 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     {/* Step 1: Select Account */}
     {wizStep === 1 && (
     <div className="space-y-4">
-      <label className="text-sm font-medium text-slate-700 block">Import into which account?</label>
+      <label className="text-sm font-medium text-neutral-700 block">Import into which account?</label>
       <select value={wizFeedId} onChange={e => { if (e.target.value === "__new__") { setShowNewAccount(true); } else setWizFeedId(e.target.value); }} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm">
         <option value="">Select bank account...</option>
         {feeds.map(f => <option key={f.id} value={f.id}>{f.account_name} ({f.account_type}){f.masked_number ? ` ••••${f.masked_number}` : ""}</option>)}
         <option value="__new__">+ Create New Account</option>
       </select>
-      <div className="flex justify-end"><button onClick={() => { if (!wizFeedId) { showToast("Select an account.", "error"); return; } setWizStep(2); }} disabled={!wizFeedId} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Next →</button></div>
+      <div className="flex justify-end"><button onClick={() => { if (!wizFeedId) { showToast("Select an account.", "error"); return; } setWizStep(2); }} disabled={!wizFeedId} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Next →</button></div>
     </div>
     )}
 
     {/* Step 2: Upload CSV */}
     {wizStep === 2 && (
     <div className="space-y-4">
-      <div onClick={() => fileRef.current?.click()} className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer ${wizFile ? "border-emerald-300 bg-emerald-50/50" : "border-slate-200 hover:border-slate-400"}`}>
+      <div onClick={() => fileRef.current?.click()} className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer ${wizFile ? "border-emerald-300 bg-emerald-50/50" : "border-neutral-200 hover:border-neutral-400"}`}>
         <input ref={fileRef} type="file" accept=".csv,.txt,.tsv" className="hidden" onChange={e => { if (e.target.files[0]) setWizFile(e.target.files[0]); }} />
-        {wizFile ? <><p className="text-2xl">📄</p><p className="font-semibold text-emerald-800">{wizFile.name}</p><p className="text-xs text-emerald-600">{(wizFile.size/1024).toFixed(1)} KB</p></> : <><p className="text-2xl">📤</p><p className="font-semibold text-slate-700">Drop CSV here or click to browse</p></>}
+        {wizFile ? <><p className="text-2xl">📄</p><p className="font-semibold text-emerald-800">{wizFile.name}</p><p className="text-xs text-emerald-600">{(wizFile.size/1024).toFixed(1)} KB</p></> : <><p className="text-2xl">📤</p><p className="font-semibold text-neutral-700">Drop CSV here or click to browse</p></>}
       </div>
       <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700"><strong>Supported:</strong> Chase, Bank of America, Wells Fargo, Citibank, Capital One, US Bank, and generic CSV</div>
-      <div className="flex justify-between"><button onClick={() => setWizStep(1)} className="text-sm text-slate-400">← Back</button><button onClick={wizHandleUpload} disabled={!wizFile} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Parse & Continue →</button></div>
+      <div className="flex justify-between"><button onClick={() => setWizStep(1)} className="text-sm text-neutral-400">← Back</button><button onClick={wizHandleUpload} disabled={!wizFile} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Parse & Continue →</button></div>
     </div>
     )}
 
@@ -10431,15 +10431,15 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     {wizStep === 3 && wizParsed && (
     <div className="space-y-4">
       {wizDetected && <div className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-full inline-block">Auto-detected: {wizDetected.name}</div>}
-      <div className="bg-slate-50 rounded-xl p-3"><p className="text-xs text-slate-400 mb-2">Headers found:</p><div className="flex flex-wrap gap-1.5">{wizParsed.headers.map(h => <span key={h} className="text-xs bg-white border border-slate-200 text-slate-700 px-2 py-0.5 rounded-lg font-mono">{h}</span>)}</div></div>
+      <div className="bg-neutral-50 rounded-xl p-3"><p className="text-xs text-neutral-400 mb-2">Headers found:</p><div className="flex flex-wrap gap-1.5">{wizParsed.headers.map(h => <span key={h} className="text-xs bg-white border border-neutral-200 text-neutral-700 px-2 py-0.5 rounded-lg font-mono">{h}</span>)}</div></div>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {[{f:"date",l:"Date *"},{f:"description",l:"Description *"},{f:"amount",l:"Amount"},{f:"debit",l:"Debit"},{f:"credit",l:"Credit"},{f:"memo",l:"Memo"},{f:"payee",l:"Payee"},{f:"check_number",l:"Check #"},{f:"reference",l:"Reference"}].map(({f,l})=>(
-        <div key={f}><label className="text-xs font-medium text-slate-500">{l}</label><select value={wizMapping[f]} onChange={e=>setWizMapping(m=>({...m,[f]:e.target.value}))} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs mt-1"><option value="">— Not mapped —</option>{wizParsed.headers.map(h=><option key={h} value={h}>{h}</option>)}</select></div>
+        <div key={f}><label className="text-xs font-medium text-neutral-500">{l}</label><select value={wizMapping[f]} onChange={e=>setWizMapping(m=>({...m,[f]:e.target.value}))} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs mt-1"><option value="">— Not mapped —</option>{wizParsed.headers.map(h=><option key={h} value={h}>{h}</option>)}</select></div>
         ))}
       </div>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={wizInvertSign} onChange={e => setWizInvertSign(e.target.checked)} className="accent-brand-600" /> Invert sign (negative = inflow)</label>
       {!(wizMapping.date && wizMapping.description && (wizMapping.amount || wizMapping.debit || wizMapping.credit)) && <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">Date, Description, and at least one amount column required</p>}
-      <div className="flex justify-between"><button onClick={() => setWizStep(2)} className="text-sm text-slate-400">← Back</button><button onClick={wizBuildPreview} disabled={!(wizMapping.date && wizMapping.description && (wizMapping.amount || wizMapping.debit || wizMapping.credit))} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Preview →</button></div>
+      <div className="flex justify-between"><button onClick={() => setWizStep(2)} className="text-sm text-neutral-400">← Back</button><button onClick={wizBuildPreview} disabled={!(wizMapping.date && wizMapping.description && (wizMapping.amount || wizMapping.debit || wizMapping.credit))} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Preview →</button></div>
     </div>
     )}
 
@@ -10451,9 +10451,9 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
         <div className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg"><strong>{wizPreview.filter(r=>!r.valid).length}</strong> invalid</div>
         <div className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg"><strong>{wizPreview.length}</strong> total</div>
       </div>
-      <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200">
+      <div className="max-h-64 overflow-y-auto rounded-xl border border-neutral-200">
         <table className="w-full text-xs">
-          <thead className="bg-slate-50 sticky top-0"><tr><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Description</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2">Status</th></tr></thead>
+          <thead className="bg-neutral-50 sticky top-0"><tr><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Description</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2">Status</th></tr></thead>
           <tbody>{wizPreview.slice(0, 50).map((r, i) => (
             <tr key={i} className={`border-t ${r.valid ? "" : "bg-red-50/50"}`}>
               <td className="px-3 py-1.5">{r.date || "—"}</td>
@@ -10464,8 +10464,8 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
           ))}</tbody>
         </table>
       </div>
-      {wizPreview.length > 50 && <p className="text-xs text-slate-400">Showing first 50 of {wizPreview.length} rows</p>}
-      <div className="flex justify-between"><button onClick={() => setWizStep(3)} className="text-sm text-slate-400">← Back</button><button onClick={() => setWizStep(5)} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg">Continue →</button></div>
+      {wizPreview.length > 50 && <p className="text-xs text-neutral-400">Showing first 50 of {wizPreview.length} rows</p>}
+      <div className="flex justify-between"><button onClick={() => setWizStep(3)} className="text-sm text-neutral-400">← Back</button><button onClick={() => setWizStep(5)} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg">Continue →</button></div>
     </div>
     )}
 
@@ -10473,24 +10473,24 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     {wizStep === 5 && (
     <div className="space-y-4">
       <div className="space-y-3">
-        <label className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 px-4 py-3 cursor-pointer">
+        <label className="flex items-center gap-3 bg-white rounded-xl border border-neutral-200 px-4 py-3 cursor-pointer">
           <input type="checkbox" checked={wizOptions.skipDuplicates} onChange={e => setWizOptions({...wizOptions, skipDuplicates: e.target.checked})} className="accent-brand-600" />
-          <div><span className="text-sm font-medium text-slate-700">Skip duplicates automatically</span><p className="text-xs text-slate-400">Transactions with matching fingerprints will be skipped</p></div>
+          <div><span className="text-sm font-medium text-neutral-700">Skip duplicates automatically</span><p className="text-xs text-neutral-400">Transactions with matching fingerprints will be skipped</p></div>
         </label>
-        <label className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 px-4 py-3 cursor-pointer">
+        <label className="flex items-center gap-3 bg-white rounded-xl border border-neutral-200 px-4 py-3 cursor-pointer">
           <input type="checkbox" checked={wizOptions.autoApplyRules} onChange={e => setWizOptions({...wizOptions, autoApplyRules: e.target.checked})} className="accent-brand-600" />
-          <div><span className="text-sm font-medium text-slate-700">Auto-apply categorization rules</span><p className="text-xs text-slate-400">Rules will suggest categories for matching transactions</p></div>
+          <div><span className="text-sm font-medium text-neutral-700">Auto-apply categorization rules</span><p className="text-xs text-neutral-400">Rules will suggest categories for matching transactions</p></div>
         </label>
-        <label className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 px-4 py-3 cursor-pointer">
+        <label className="flex items-center gap-3 bg-white rounded-xl border border-neutral-200 px-4 py-3 cursor-pointer">
           <input type="checkbox" checked={wizOptions.markForReview} onChange={e => setWizOptions({...wizOptions, markForReview: e.target.checked})} className="accent-brand-600" />
-          <div><span className="text-sm font-medium text-slate-700">Mark all as "For Review"</span><p className="text-xs text-slate-400">Transactions require manual review before posting</p></div>
+          <div><span className="text-sm font-medium text-neutral-700">Mark all as "For Review"</span><p className="text-xs text-neutral-400">Transactions require manual review before posting</p></div>
         </label>
       </div>
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
-        <div className="flex justify-between text-sm"><span className="text-slate-400">Valid rows</span><span className="font-bold text-slate-800">{wizPreview.filter(r=>r.valid).length}</span></div>
-        <div className="flex justify-between text-sm mt-1"><span className="text-slate-400">Will skip (invalid)</span><span className="text-red-500">{wizPreview.filter(r=>!r.valid).length}</span></div>
+      <div className="bg-white rounded-xl border border-neutral-200 p-4">
+        <div className="flex justify-between text-sm"><span className="text-neutral-400">Valid rows</span><span className="font-bold text-neutral-800">{wizPreview.filter(r=>r.valid).length}</span></div>
+        <div className="flex justify-between text-sm mt-1"><span className="text-neutral-400">Will skip (invalid)</span><span className="text-red-500">{wizPreview.filter(r=>!r.valid).length}</span></div>
       </div>
-      <div className="flex justify-between"><button onClick={() => setWizStep(4)} className="text-sm text-slate-400">← Back</button><Btn variant="success-fill" onClick={wizExecuteImport}>Import {wizPreview.filter(r=>r.valid).length} Transactions</Btn></div>
+      <div className="flex justify-between"><button onClick={() => setWizStep(4)} className="text-sm text-neutral-400">← Back</button><Btn variant="success-fill" onClick={wizExecuteImport}>Import {wizPreview.filter(r=>r.valid).length} Transactions</Btn></div>
     </div>
     )}
 
@@ -10498,14 +10498,14 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     {wizStep === 6 && wizResult && (
     <div className="text-center py-8">
       <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">✓</div>
-      <h4 className="text-xl font-bold text-slate-900 mb-2">Import Complete</h4>
-      <div className="space-y-1 text-sm text-slate-500 mb-6">
+      <h4 className="text-xl font-bold text-neutral-900 mb-2">Import Complete</h4>
+      <div className="space-y-1 text-sm text-neutral-500 mb-6">
         <p><strong>{wizResult.imported}</strong> transactions imported</p>
         {wizResult.duplicates > 0 && <p>{wizResult.duplicates} duplicates skipped</p>}
         {wizResult.skipped > 0 && <p>{wizResult.skipped} rows skipped (errors)</p>}
         {wizResult.ruleApplied > 0 && <p className="text-violet-600">{wizResult.ruleApplied} auto-categorized by rules</p>}
       </div>
-      <button onClick={() => { setShowImportWizard(false); setActiveTab("for_review"); }} className="bg-slate-800 text-white text-sm px-6 py-2 rounded-lg">Review Transactions</button>
+      <button onClick={() => { setShowImportWizard(false); setActiveTab("for_review"); }} className="bg-neutral-800 text-white text-sm px-6 py-2 rounded-lg">Review Transactions</button>
     </div>
     )}
     </div>
@@ -10519,28 +10519,28 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   <>
   <div className="fixed inset-0 bg-black/30 z-40" onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }} />
   <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-white shadow-2xl z-50 overflow-y-auto">
-    <div className="sticky top-0 bg-white border-b border-slate-200 px-5 py-4 flex items-center justify-between z-10">
-      <h3 className="text-lg font-bold text-slate-800">{editingRule ? "Edit Rule" : "Create New Rule"}</h3>
-      <button onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+    <div className="sticky top-0 bg-white border-b border-neutral-200 px-5 py-4 flex items-center justify-between z-10">
+      <h3 className="text-lg font-bold text-neutral-800">{editingRule ? "Edit Rule" : "Create New Rule"}</h3>
+      <button onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }} className="text-neutral-400 hover:text-neutral-600 text-xl">✕</button>
     </div>
     <div className="px-5 py-4 space-y-5">
 
       {/* Rule Name */}
       <div>
-        <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">Rule Name *</label>
+        <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Rule Name *</label>
         <input type="text" value={ruleForm.name} onChange={e => setRuleForm({...ruleForm, name: e.target.value})} placeholder="e.g. Home Depot Supplies" className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:border-violet-400 focus:outline-none" />
       </div>
 
       {/* Direction + Bank Account Scope */}
       <div className="flex gap-3">
         <div className="flex-1">
-          <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">Apply to</label>
+          <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Apply to</label>
           <select value={ruleForm.condDirection} onChange={e => setRuleForm({...ruleForm, condDirection: e.target.value})} className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm">
             <option value="all">All transactions</option><option value="outflow">Money out</option><option value="inflow">Money in</option>
           </select>
         </div>
         <div className="flex-1">
-          <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">Bank Account</label>
+          <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Bank Account</label>
           <select value={ruleForm.bankAccountFeedId} onChange={e => setRuleForm({...ruleForm, bankAccountFeedId: e.target.value})} className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm">
             <option value="">All bank accounts</option>{feeds.map(f => <option key={f.id} value={f.id}>{f.account_name}</option>)}
           </select>
@@ -10550,11 +10550,11 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       {/* Conditions */}
       <div>
         <div className="flex items-center gap-2 mb-2">
-          <label className="text-xs font-medium text-slate-500 uppercase tracking-widest">When transaction meets</label>
+          <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest">When transaction meets</label>
           <select value={ruleForm.condLogic} onChange={e => setRuleForm({...ruleForm, condLogic: e.target.value})} className="border border-violet-200 rounded-lg px-2 py-1 text-xs font-semibold text-violet-700">
             <option value="all">ALL</option><option value="any">ANY</option>
           </select>
-          <span className="text-xs text-slate-400">conditions:</span>
+          <span className="text-xs text-neutral-400">conditions:</span>
         </div>
         {ruleForm.conditions.map((cond, idx) => {
           const isAmount = cond.field === "amount";
@@ -10571,7 +10571,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
             </select>
             <input type={isAmount ? "number" : "text"} value={cond.value} onChange={e => updateCondition(idx, "value", e.target.value)} placeholder={isAmount ? "0.00" : "Enter text..."} className="flex-1 border border-violet-200 rounded-lg px-2 py-1.5 text-xs" />
             {cond.operator === "between" && <>
-              <span className="text-xs text-slate-400">and</span>
+              <span className="text-xs text-neutral-400">and</span>
               <input type="number" value={cond.value2 || ""} onChange={e => updateCondition(idx, "value2", e.target.value)} placeholder="0.00" className="w-24 border border-violet-200 rounded-lg px-2 py-1.5 text-xs" />
             </>}
             {ruleForm.conditions.length > 1 && <button onClick={() => removeCondition(idx)} className="text-red-400 hover:text-red-600 text-sm shrink-0">✕</button>}
@@ -10584,18 +10584,18 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       </div>
 
       {/* Divider: Then */}
-      <div className="flex items-center gap-2"><div className="flex-1 border-t border-slate-200" /><span className="text-xs font-semibold text-slate-400 uppercase">Then</span><div className="flex-1 border-t border-slate-200" /></div>
+      <div className="flex items-center gap-2"><div className="flex-1 border-t border-neutral-200" /><span className="text-xs font-semibold text-neutral-400 uppercase">Then</span><div className="flex-1 border-t border-neutral-200" /></div>
 
       {/* Assign vs Exclude */}
       <div className="flex gap-4">
-        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="ruleType" checked={ruleForm.ruleType === "assign"} onChange={() => setRuleForm({...ruleForm, ruleType: "assign"})} className="accent-violet-600" /><span className="font-medium text-slate-700">Assign</span></label>
-        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="ruleType" checked={ruleForm.ruleType === "exclude"} onChange={() => setRuleForm({...ruleForm, ruleType: "exclude"})} className="accent-violet-600" /><span className="font-medium text-slate-700">Exclude</span></label>
+        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="ruleType" checked={ruleForm.ruleType === "assign"} onChange={() => setRuleForm({...ruleForm, ruleType: "assign"})} className="accent-violet-600" /><span className="font-medium text-neutral-700">Assign</span></label>
+        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="ruleType" checked={ruleForm.ruleType === "exclude"} onChange={() => setRuleForm({...ruleForm, ruleType: "exclude"})} className="accent-violet-600" /><span className="font-medium text-neutral-700">Exclude</span></label>
       </div>
 
       {/* Assign Fields */}
       {ruleForm.ruleType === "assign" && (<>
         <div>
-          <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">Transaction Type</label>
+          <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Transaction Type</label>
           <select value={ruleForm.transactionType} onChange={e => setRuleForm({...ruleForm, transactionType: e.target.value})} className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm">
             <option value="expense">Expense</option><option value="deposit">Deposit</option><option value="transfer">Transfer</option><option value="check">Check</option>
           </select>
@@ -10604,12 +10604,12 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
         {/* Category Lines (split support) */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-xs font-medium text-slate-500 uppercase tracking-widest">Category *</label>
+            <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest">Category *</label>
             {!ruleForm.split && <button onClick={addSplitLine} className="text-xs text-violet-600 hover:underline">+ Add a split</button>}
           </div>
           {ruleForm.split && ruleForm.lines.length >= 2 && (
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs text-slate-400">Split by:</span>
+              <span className="text-xs text-neutral-400">Split by:</span>
               <select value={ruleForm.splitBy || "percentage"} onChange={e => setRuleForm({...ruleForm, splitBy: e.target.value})} className="border border-violet-200 rounded-lg px-2 py-1 text-xs">
                 <option value="percentage">Percentage</option><option value="amount">Amount</option>
               </select>
@@ -10645,11 +10645,11 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
         {/* Payee + Memo */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">Payee</label>
+            <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Payee</label>
             <input type="text" value={ruleForm.actionPayee} onChange={e => setRuleForm({...ruleForm, actionPayee: e.target.value})} placeholder="Optional" className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm" />
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">Memo</label>
+            <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Memo</label>
             <input type="text" value={ruleForm.actionMemo} onChange={e => setRuleForm({...ruleForm, actionMemo: e.target.value})} placeholder="Optional" className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm" />
           </div>
         </div>
@@ -10658,7 +10658,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       {/* Exclude Fields */}
       {ruleForm.ruleType === "exclude" && (
         <div>
-          <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">Exclude Reason</label>
+          <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Exclude Reason</label>
           <select value={ruleForm.excludeReason} onChange={e => setRuleForm({...ruleForm, excludeReason: e.target.value})} className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm">
             <option value="personal">Personal</option><option value="duplicate">Duplicate</option><option value="noise">Noise</option><option value="other">Other</option>
           </select>
@@ -10667,23 +10667,23 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
 
       {/* How to apply */}
       <div>
-        <div className="flex items-center gap-2 mb-2"><div className="flex-1 border-t border-slate-200" /><span className="text-xs font-semibold text-slate-400 uppercase">How to apply</span><div className="flex-1 border-t border-slate-200" /></div>
+        <div className="flex items-center gap-2 mb-2"><div className="flex-1 border-t border-neutral-200" /><span className="text-xs font-semibold text-neutral-400 uppercase">How to apply</span><div className="flex-1 border-t border-neutral-200" /></div>
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="autoAccept" checked={!ruleForm.autoAccept} onChange={() => setRuleForm({...ruleForm, autoAccept: false})} className="accent-violet-600" /><span className="text-slate-700">Auto-categorize, then I'll review manually</span></label>
-          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="autoAccept" checked={ruleForm.autoAccept} onChange={() => setRuleForm({...ruleForm, autoAccept: true})} className="accent-violet-600" /><span className="text-slate-700">Auto-add (skip review entirely)</span></label>
+          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="autoAccept" checked={!ruleForm.autoAccept} onChange={() => setRuleForm({...ruleForm, autoAccept: false})} className="accent-violet-600" /><span className="text-neutral-700">Auto-categorize, then I'll review manually</span></label>
+          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="autoAccept" checked={ruleForm.autoAccept} onChange={() => setRuleForm({...ruleForm, autoAccept: true})} className="accent-violet-600" /><span className="text-neutral-700">Auto-add (skip review entirely)</span></label>
         </div>
       </div>
 
       {/* Priority */}
       <div>
-        <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">Priority (lower = runs first)</label>
+        <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Priority (lower = runs first)</label>
         <input type="number" value={ruleForm.priority} onChange={e => setRuleForm({...ruleForm, priority: e.target.value})} min="1" max="999" className="w-24 border border-violet-200 rounded-lg px-3 py-2 text-sm" />
       </div>
 
       {/* Actions */}
-      <div className="flex gap-3 pt-2 border-t border-slate-200">
+      <div className="flex gap-3 pt-2 border-t border-neutral-200">
         <button onClick={saveRule} className="bg-violet-600 text-white text-sm px-6 py-2.5 rounded-lg hover:bg-violet-700 font-semibold">{editingRule ? "Update Rule" : "Save Rule"}</button>
-        <button onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }} className="text-sm text-slate-500 px-4 py-2.5 hover:text-slate-700">Cancel</button>
+        <button onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }} className="text-sm text-neutral-500 px-4 py-2.5 hover:text-neutral-700">Cancel</button>
       </div>
     </div>
   </div>
@@ -11045,12 +11045,12 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   return (
   <div className="flex flex-col md:flex-row gap-0 -mx-4 md:-mx-6 -mt-2">
   {/* Left Sidebar Nav — desktop */}
-  <div className="hidden md:block w-56 shrink-0 border-r border-slate-200 bg-white min-h-[calc(100vh-180px)] py-4 px-2">
+  <div className="hidden md:block w-56 shrink-0 border-r border-neutral-200 bg-white min-h-[calc(100vh-180px)] py-4 px-2">
   {acctSidebarItems.map(group => (
   <div key={group.section}>
-    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold px-3 mt-4 mb-1">{group.section}</p>
+    <p className="text-[10px] uppercase tracking-widest text-neutral-400 font-semibold px-3 mt-4 mb-1">{group.section}</p>
     {group.items.map(item => (
-      <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === item.id ? "bg-green-50 text-green-700 border-l-3 border-green-600" : "text-slate-600 hover:bg-slate-50"}`}>
+      <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === item.id ? "bg-green-50 text-green-700 border-l-3 border-green-600" : "text-neutral-600 hover:bg-neutral-50"}`}>
         <span className="material-icons-outlined text-lg">{item.icon}</span>
         <span className="truncate">{item.label}</span>
         {item.badge > 0 && <span className="ml-auto bg-amber-100 text-amber-700 text-xs px-1.5 py-0.5 rounded-full">{item.badge}</span>}
@@ -11061,9 +11061,9 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   </div>
 
   {/* Mobile horizontal tab bar */}
-  <div className="md:hidden flex gap-2 px-4 py-2 border-b border-slate-200 overflow-x-auto w-full bg-white">
+  <div className="md:hidden flex gap-2 px-4 py-2 border-b border-neutral-200 overflow-x-auto w-full bg-white">
   {acctSidebarItems.flatMap(g => g.items).map(item => (
-    <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${activeTab === item.id ? "bg-green-50 text-green-700" : "text-slate-500 hover:bg-slate-50"}`}>
+    <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${activeTab === item.id ? "bg-green-50 text-green-700" : "text-neutral-500 hover:bg-neutral-50"}`}>
       <span className="material-icons-outlined text-base">{item.icon}</span>
       {item.label}
       {item.badge > 0 && <span className="ml-1 bg-amber-100 text-amber-700 text-xs px-1.5 py-0.5 rounded-full">{item.badge}</span>}
@@ -11078,59 +11078,59 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   <div>
   {/* QuickBooks-style metric cards */}
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-    <div className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-medium text-slate-500">Total Revenue</span>
+        <span className="text-sm font-medium text-neutral-500">Total Revenue</span>
         <span className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
           <span className="material-icons-outlined text-emerald-600 text-xl">trending_up</span>
         </span>
       </div>
-      <p className="text-2xl font-bold text-slate-900 font-mono">{acctFmt(plData.totalRevenue)}</p>
-      <p className="text-xs text-slate-400 mt-1">Year to date</p>
+      <p className="text-2xl font-bold text-neutral-900 font-mono">{acctFmt(plData.totalRevenue)}</p>
+      <p className="text-xs text-neutral-400 mt-1">Year to date</p>
     </div>
-    <div className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-medium text-slate-500">Total Expenses</span>
+        <span className="text-sm font-medium text-neutral-500">Total Expenses</span>
         <span className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
           <span className="material-icons-outlined text-red-600 text-xl">trending_down</span>
         </span>
       </div>
-      <p className="text-2xl font-bold text-slate-900 font-mono">{acctFmt(plData.totalExpenses)}</p>
-      <p className="text-xs text-slate-400 mt-1">Year to date</p>
+      <p className="text-2xl font-bold text-neutral-900 font-mono">{acctFmt(plData.totalExpenses)}</p>
+      <p className="text-xs text-neutral-400 mt-1">Year to date</p>
     </div>
-    <div className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-medium text-slate-500">Net Income</span>
+        <span className="text-sm font-medium text-neutral-500">Net Income</span>
         <span className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
           <span className="material-icons-outlined text-blue-600 text-xl">account_balance</span>
         </span>
       </div>
-      <p className={`text-2xl font-bold font-mono ${plData.netIncome >= 0 ? "text-slate-900" : "text-red-600"}`}>{acctFmt(plData.netIncome)}</p>
-      <p className="text-xs text-slate-400 mt-1">Year to date</p>
+      <p className={`text-2xl font-bold font-mono ${plData.netIncome >= 0 ? "text-neutral-900" : "text-red-600"}`}>{acctFmt(plData.netIncome)}</p>
+      <p className="text-xs text-neutral-400 mt-1">Year to date</p>
     </div>
-    <div className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-medium text-slate-500">Total Assets</span>
+        <span className="text-sm font-medium text-neutral-500">Total Assets</span>
         <span className="w-10 h-10 rounded-lg bg-violet-50 flex items-center justify-center">
           <span className="material-icons-outlined text-violet-600 text-xl">business</span>
         </span>
       </div>
-      <p className="text-2xl font-bold text-slate-900 font-mono">{acctFmt(bsData.totalAssets)}</p>
-      <p className="text-xs text-slate-400 mt-1">Balance sheet</p>
+      <p className="text-2xl font-bold text-neutral-900 font-mono">{acctFmt(bsData.totalAssets)}</p>
+      <p className="text-xs text-neutral-400 mt-1">Balance sheet</p>
     </div>
   </div>
 
   {/* Quick Actions */}
   <div className="flex gap-3 mb-6 overflow-x-auto">
-    <button onClick={() => setActiveTab("journal")} className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-green-300 hover:shadow-sm transition-all whitespace-nowrap">
+    <button onClick={() => setActiveTab("journal")} className="flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-green-300 hover:shadow-sm transition-all whitespace-nowrap">
       <span className="material-icons-outlined text-green-600 text-lg">add_circle</span>
       New Journal Entry
     </button>
-    <button onClick={() => setActiveTab("recurring")} className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-green-300 hover:shadow-sm transition-all whitespace-nowrap">
+    <button onClick={() => setActiveTab("recurring")} className="flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-green-300 hover:shadow-sm transition-all whitespace-nowrap">
       <span className="material-icons-outlined text-green-600 text-lg">autorenew</span>
       Recurring Entries
     </button>
-    <button onClick={() => setActiveTab("reports")} className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-green-300 hover:shadow-sm transition-all whitespace-nowrap">
+    <button onClick={() => setActiveTab("reports")} className="flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-green-300 hover:shadow-sm transition-all whitespace-nowrap">
       <span className="material-icons-outlined text-green-600 text-lg">assessment</span>
       Run Reports
     </button>
@@ -11139,31 +11139,31 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   {/* Two-column layout: Recent Entries + Summary */}
   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
     {/* Left: Recent Transactions (2/3) */}
-    <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-        <h3 className="font-semibold text-slate-800">Recent Journal Entries</h3>
+    <div className="lg:col-span-2 bg-white rounded-xl border border-neutral-200">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
+        <h3 className="font-semibold text-neutral-800">Recent Journal Entries</h3>
         <button onClick={() => setActiveTab("journal")} className="text-xs text-green-600 hover:underline">View All</button>
       </div>
-      <div className="divide-y divide-slate-100">
+      <div className="divide-y divide-neutral-100">
         {journalEntries.slice(0, 8).map(je => {
         const total = (je.lines || []).reduce((s,l) => s + safeNum(l.debit), 0);
         return (
-          <div key={je.id} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors">
+          <div key={je.id} className="flex items-center justify-between px-5 py-3 hover:bg-neutral-50 transition-colors">
             <div className="flex items-center gap-3">
-              <span className={`w-2.5 h-2.5 rounded-full ${je.status==="posted"?"bg-emerald-400":je.status==="draft"?"bg-amber-400":"bg-slate-300"}`} />
+              <span className={`w-2.5 h-2.5 rounded-full ${je.status==="posted"?"bg-emerald-400":je.status==="draft"?"bg-amber-400":"bg-neutral-300"}`} />
               <div>
-                <p className="text-sm text-slate-700">{je.description}</p>
-                <p className="text-xs text-slate-400">{je.number} · {je.date}{je.property ? " · " + je.property.split(",")[0] : ""}</p>
+                <p className="text-sm text-neutral-700">{je.description}</p>
+                <p className="text-xs text-neutral-400">{je.number} · {je.date}{je.property ? " · " + je.property.split(",")[0] : ""}</p>
               </div>
             </div>
             <div className="text-right">
-              <span className="font-mono text-sm font-semibold text-slate-800">{acctFmt(total)}</span>
+              <span className="font-mono text-sm font-semibold text-neutral-800">{acctFmt(total)}</span>
               <div className="mt-0.5"><AcctStatusBadge status={je.status} /></div>
             </div>
           </div>
         );
         })}
-        {journalEntries.length === 0 && <p className="text-sm text-slate-400 text-center py-8">No journal entries yet</p>}
+        {journalEntries.length === 0 && <p className="text-sm text-neutral-400 text-center py-8">No journal entries yet</p>}
       </div>
     </div>
 
@@ -11179,21 +11179,21 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
         <button onClick={() => setActiveTab("journal")} className="text-xs text-amber-700 font-semibold hover:underline mt-2">Review Now →</button>
       </div>
       )}
-      <div className="bg-white rounded-xl border border-slate-200">
-        <div className="px-5 py-4 border-b border-slate-100">
-          <h3 className="font-semibold text-slate-800">Account Summary</h3>
+      <div className="bg-white rounded-xl border border-neutral-200">
+        <div className="px-5 py-4 border-b border-neutral-100">
+          <h3 className="font-semibold text-neutral-800">Account Summary</h3>
         </div>
         <div className="p-4 space-y-2">
           {["Asset","Liability","Equity","Revenue","Expense"].map(type => {
           const total = calcAllBalances(acctAccounts, journalEntries).filter(a => a.type === type && a.is_active).reduce((s,a) => s + a.computedBalance, 0);
           const colors = { Asset: "bg-blue-500", Liability: "bg-red-500", Equity: "bg-violet-500", Revenue: "bg-emerald-500", Expense: "bg-orange-500" };
           return (
-            <div key={type} className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-slate-50">
+            <div key={type} className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-neutral-50">
               <div className="flex items-center gap-2.5">
                 <span className={`w-2.5 h-2.5 rounded-full ${colors[type]}`} />
-                <span className="text-sm text-slate-700">{type}</span>
+                <span className="text-sm text-neutral-700">{type}</span>
               </div>
-              <span className={`font-mono text-sm font-semibold ${total < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(total, true)}</span>
+              <span className={`font-mono text-sm font-semibold ${total < 0 ? "text-red-600" : "text-neutral-800"}`}>{acctFmt(total, true)}</span>
             </div>
           );
           })}
@@ -11328,15 +11328,15 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
 
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
-  <h3 className="font-semibold text-slate-700 mb-3">Upload Document</h3>
+  <h3 className="font-semibold text-neutral-700 mb-3">Upload Document</h3>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Document Name *</label><Input placeholder="Lease Agreement 2026" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property</label><PropertySelect value={form.property} onChange={(addr, prop) => setForm({ ...form, property: addr, tenant: prop?.tenant || form.tenant })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant</label><Input placeholder="Optional — link to a tenant" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Document Type</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Document Name *</label><Input placeholder="Lease Agreement 2026" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property</label><PropertySelect value={form.property} onChange={(addr, prop) => setForm({ ...form, property: addr, tenant: prop?.tenant || form.tenant })} companyId={companyId} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant</label><Input placeholder="Optional — link to a tenant" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Document Type</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
   {["Lease", "Inspection", "Maintenance", "Financial", "Notice", "Other"].map(t => <option key={t}>{t}</option>)}
   </select></div>
-  <label className="flex items-center gap-2 text-sm text-slate-500 border border-brand-100 rounded-2xl px-3 py-2 cursor-pointer">
+  <label className="flex items-center gap-2 text-sm text-neutral-500 border border-brand-100 rounded-2xl px-3 py-2 cursor-pointer">
   <input type="checkbox" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} />
   Visible to Tenant
   </label>
@@ -11346,29 +11346,29 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   <Btn onClick={uploadDocument} disabled={uploading}>
   {uploading ? "Uploading..." : "Upload"}
   </Btn>
-  <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-2xl hover:bg-slate-100">Cancel</button>
+  <button onClick={() => setShowForm(false)} className="bg-neutral-100 text-neutral-500 text-sm px-4 py-2 rounded-2xl hover:bg-neutral-100">Cancel</button>
   </div>
   </div>
   )}
 
   <div className="flex gap-2 mb-4 flex-wrap">
   {["all", "Lease", "Inspection", "Maintenance", "Financial", "Notice", "Other"].map(t => (
-  <button key={t} onClick={() => setFilter(t)} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === t ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{t}</button>
+  <button key={t} onClick={() => setFilter(t)} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === t ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"}`}>{t}</button>
   ))}
   </div>
 
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-hidden">
   <table className="w-full text-sm">
-  <thead className="bg-brand-50/30 text-xs text-slate-400 uppercase">
+  <thead className="bg-brand-50/30 text-xs text-neutral-400 uppercase">
   <tr>{["Document", "Property", "Type", "Date", "Tenant Visible", "Actions"].map(h => <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>)}</tr>
   </thead>
   <tbody>
   {filtered.map(d => (
   <tr key={d.id} className="border-t border-brand-50/50 hover:bg-brand-50/30">
-  <td className="px-3 py-2.5 font-medium text-slate-800">📄 {d.name}</td>
-  <td className="px-3 py-2.5 text-slate-400">{d.property}</td>
+  <td className="px-3 py-2.5 font-medium text-neutral-800">📄 {d.name}</td>
+  <td className="px-3 py-2.5 text-neutral-400">{d.property}</td>
   <td className="px-3 py-2.5"><span className="bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full text-xs">{d.type}</span></td>
-  <td className="px-3 py-2.5 text-slate-400">{d.uploaded_at?.slice(0, 10)}</td>
+  <td className="px-3 py-2.5 text-neutral-400">{d.uploaded_at?.slice(0, 10)}</td>
   <td className="px-3 py-2.5">{d.tenant_visible ? "✅" : "🔒"}</td>
   <td className="px-3 py-2.5">
   <div className="flex gap-2">
@@ -11401,7 +11401,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   }} className="text-xs text-brand-600 hover:underline">View</button>
   </>
   ) : (
-  <span className="text-xs text-slate-400">No file</span>
+  <span className="text-xs text-neutral-400">No file</span>
   )}
   <button onClick={() => deleteDoc(d.id, d.name, d.file_name)} className="text-xs text-red-400 hover:underline">Delete</button>
   </div>
@@ -11409,7 +11409,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   </tr>
   ))}
   {filtered.length === 0 && (
-  <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">No documents yet. Upload one above.</td></tr>
+  <tr><td colSpan={6} className="px-3 py-8 text-center text-neutral-400">No documents yet. Upload one above.</td></tr>
   )}
   </tbody>
   </table>
@@ -11487,23 +11487,23 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   {selectedInspection && (
   <Modal title={`Inspection — ${selectedInspection.property}`} onClose={() => setSelectedInspection(null)}>
   <div className="space-y-2 mb-4">
-  <div className="flex justify-between text-sm"><span className="text-slate-400">Type</span><span className="font-medium">{selectedInspection.type}</span></div>
-  <div className="flex justify-between text-sm"><span className="text-slate-400">Date</span><span className="font-medium">{selectedInspection.date}</span></div>
-  <div className="flex justify-between text-sm"><span className="text-slate-400">Inspector</span><span className="font-medium">{selectedInspection.inspector || "—"}</span></div>
-  <div className="flex justify-between text-sm"><span className="text-slate-400">Status</span><Badge status={selectedInspection.status} /></div>
+  <div className="flex justify-between text-sm"><span className="text-neutral-400">Type</span><span className="font-medium">{selectedInspection.type}</span></div>
+  <div className="flex justify-between text-sm"><span className="text-neutral-400">Date</span><span className="font-medium">{selectedInspection.date}</span></div>
+  <div className="flex justify-between text-sm"><span className="text-neutral-400">Inspector</span><span className="font-medium">{selectedInspection.inspector || "—"}</span></div>
+  <div className="flex justify-between text-sm"><span className="text-neutral-400">Status</span><Badge status={selectedInspection.status} /></div>
   </div>
-  {selectedInspection.notes && <div className="bg-brand-50/30 rounded-lg p-3 text-sm text-slate-500 mb-4">{selectedInspection.notes}</div>}
+  {selectedInspection.notes && <div className="bg-brand-50/30 rounded-lg p-3 text-sm text-neutral-500 mb-4">{selectedInspection.notes}</div>}
   {selectedInspection.checklist && (() => {
   try {
   const cl = JSON.parse(selectedInspection.checklist);
   return (
   <div>
-  <h4 className="font-semibold text-slate-700 mb-2 text-sm">Checklist</h4>
+  <h4 className="font-semibold text-neutral-700 mb-2 text-sm">Checklist</h4>
   <div className="space-y-1">
   {Object.entries(cl).map(([item, val]) => (
   <div key={item} className="flex items-center justify-between text-sm py-1 border-b border-brand-50/50">
-  <span className="text-slate-700">{item}</span>
-  <span className={val.pass === true ? "text-green-600 font-semibold" : val.pass === false ? "text-red-500 font-semibold" : "text-slate-400"}>
+  <span className="text-neutral-700">{item}</span>
+  <span className={val.pass === true ? "text-green-600 font-semibold" : val.pass === false ? "text-red-500 font-semibold" : "text-neutral-400"}>
   {val.pass === true ? "✓ Pass" : val.pass === false ? "✗ Fail" : "—"}
   </span>
   </div>
@@ -11526,25 +11526,25 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
 
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
-  <h3 className="font-semibold text-slate-700 mb-3">New Inspection</h3>
+  <h3 className="font-semibold text-neutral-700 mb-3">New Inspection</h3>
   <div className="grid grid-cols-2 gap-3 mb-4">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Inspection Type</label><Select value={form.type} onChange={e => { setForm({ ...form, type: e.target.value }); initChecklist(e.target.value); }}>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Inspection Type</label><Select value={form.type} onChange={e => { setForm({ ...form, type: e.target.value }); initChecklist(e.target.value); }}>
   {["Move-In", "Move-Out", "Periodic"].map(t => <option key={t}>{t}</option>)}
   </Select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Inspector</label><Input placeholder="Inspector name" value={form.inspector} onChange={e => setForm({ ...form, inspector: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Date</label><Input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="General notes about the inspection" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Inspector</label><Input placeholder="Inspector name" value={form.inspector} onChange={e => setForm({ ...form, inspector: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Date</label><Input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Textarea placeholder="General notes about the inspection" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
   </div>
 
   {/* Checklist */}
-  <h4 className="font-semibold text-slate-700 mb-2 text-sm">Checklist Items</h4>
+  <h4 className="font-semibold text-neutral-700 mb-2 text-sm">Checklist Items</h4>
   <div className="space-y-2 mb-4">
   {Object.entries(checklist).map(([item, val]) => (
   <div key={item} className="flex items-center gap-3 bg-brand-50/30 rounded-lg px-3 py-2">
-  <span className="text-sm text-slate-700 flex-1">{item}</span>
-  <button onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: true } })} className={`text-xs px-2 py-1 rounded ${val.pass === true ? "bg-green-500 text-white" : "bg-slate-200 text-slate-500"}`}>Pass</button>
-  <button onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: false } })} className={`text-xs px-2 py-1 rounded ${val.pass === false ? "bg-red-500 text-white" : "bg-slate-200 text-slate-500"}`}>Fail</button>
+  <span className="text-sm text-neutral-700 flex-1">{item}</span>
+  <button onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: true } })} className={`text-xs px-2 py-1 rounded ${val.pass === true ? "bg-green-500 text-white" : "bg-neutral-200 text-neutral-500"}`}>Pass</button>
+  <button onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: false } })} className={`text-xs px-2 py-1 rounded ${val.pass === false ? "bg-red-500 text-white" : "bg-neutral-200 text-neutral-500"}`}>Fail</button>
   <input placeholder="Note" value={val.notes} onChange={e => setChecklist({ ...checklist, [item]: { ...val, notes: e.target.value } })} className="border border-brand-100 rounded px-2 py-1 text-xs w-32" />
   </div>
   ))}
@@ -11562,14 +11562,14 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   <div key={insp.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <div className="flex justify-between items-start">
   <div>
-  <div className="font-semibold text-slate-800">{insp.property}</div>
-  <div className="text-xs text-slate-400 mt-0.5">{insp.type} Inspection · {insp.inspector}</div>
+  <div className="font-semibold text-neutral-800">{insp.property}</div>
+  <div className="text-xs text-neutral-400 mt-0.5">{insp.type} Inspection · {insp.inspector}</div>
   </div>
   <Badge status={insp.status} label={insp.status} />
   </div>
   <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-  <div><span className="text-slate-400">Date</span><div className="font-semibold text-slate-700">{insp.date}</div></div>
-  <div><span className="text-slate-400">Type</span><div className="font-semibold text-slate-700">{insp.type}</div></div>
+  <div><span className="text-neutral-400">Date</span><div className="font-semibold text-neutral-700">{insp.date}</div></div>
+  <div><span className="text-neutral-400">Type</span><div className="font-semibold text-neutral-700">{insp.type}</div></div>
   </div>
   <div className="mt-3 flex gap-2 flex-wrap">
   <Btn variant="secondary" size="xs" onClick={() => setSelectedInspection(insp)}>📋 View Report</Btn>
@@ -11589,7 +11589,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   </div>
   </div>
   ))}
-  {inspections.length === 0 && <div className="text-center py-12 text-slate-400">No inspections yet. Create one above.</div>}
+  {inspections.length === 0 && <div className="text-center py-12 text-neutral-400">No inspections yet. Create one above.</div>}
   </div>
   </div>
   );
@@ -11940,7 +11940,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
 
   <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
   <StatCard label="Active Leases" value={active.length} color="text-green-600" sub="current" />
-  <StatCard label="Expiring (90d)" value={expiringSoon.length} color={expiringSoon.length > 0 ? "text-amber-600" : "text-slate-400"} sub="need attention" />
+  <StatCard label="Expiring (90d)" value={expiringSoon.length} color={expiringSoon.length > 0 ? "text-amber-600" : "text-neutral-400"} sub="need attention" />
   <StatCard label="Total Deposits" value={"$" + totalDeposits.toLocaleString()} color="text-purple-600" sub="held" />
   <StatCard label="Avg Rent" value={"$" + (active.length > 0 ? Math.round(active.reduce((s, l) => s + safeNum(l.rent_amount), 0) / active.length) : 0)} color="text-blue-600" sub="per lease" />
   </div>
@@ -11959,18 +11959,18 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
 
   <div className="flex gap-1 mb-4 border-b border-brand-50 overflow-x-auto">
   {[["active","Active"],["expiring","Expiring"],["expired","Expired"],["renewed","Renewed"],["terminated","Terminated"],["all","All"]].map(([id,label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400")}>{label}{id === "expiring" && expiringSoon.length > 0 ? " (" + expiringSoon.length + ")" : ""}</button>
+  <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400")}>{label}{id === "expiring" && expiringSoon.length > 0 ? " (" + expiringSoon.length + ")" : ""}</button>
   ))}
   </div>
 
   {showTemplateForm && (
   <Modal title="Lease Template" onClose={() => setShowTemplateForm(false)}>
   <div className="space-y-3">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Template Name *</label><Input placeholder="Standard 12-Month Lease" value={templateForm.name} onChange={e => setTemplateForm({...templateForm, name: e.target.value})} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Description</label><Input placeholder="Default template for residential leases" value={templateForm.description} onChange={e => setTemplateForm({...templateForm, description: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Template Name *</label><Input placeholder="Standard 12-Month Lease" value={templateForm.name} onChange={e => setTemplateForm({...templateForm, name: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Description</label><Input placeholder="Default template for residential leases" value={templateForm.description} onChange={e => setTemplateForm({...templateForm, description: e.target.value})} /></div>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs text-slate-400">Lease Length (months)</label><Input type="number" min="1" max="120" placeholder="12" value={templateForm.default_lease_months} onChange={e => setTemplateForm({...templateForm, default_lease_months: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400">Annual Escalation %</label><Input type="number" step="0.1" min="0" max="25" placeholder="3.0" value={templateForm.default_escalation_pct} onChange={e => setTemplateForm({...templateForm, default_escalation_pct: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400">Lease Length (months)</label><Input type="number" min="1" max="120" placeholder="12" value={templateForm.default_lease_months} onChange={e => setTemplateForm({...templateForm, default_lease_months: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400">Annual Escalation %</label><Input type="number" step="0.1" min="0" max="25" placeholder="3.0" value={templateForm.default_escalation_pct} onChange={e => setTemplateForm({...templateForm, default_escalation_pct: e.target.value})} /></div>
   </div>
   <Textarea placeholder="Standard clauses..." value={templateForm.clauses} onChange={e => setTemplateForm({...templateForm, clauses: e.target.value})}  rows={4} />
   <Textarea placeholder="Special terms..." value={templateForm.special_terms} onChange={e => setTemplateForm({...templateForm, special_terms: e.target.value})}  rows={3} />
@@ -11984,10 +11984,10 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   {showDepositModal && (
   <Modal title={"Return Deposit — " + showDepositModal.tenant_name} onClose={() => setShowDepositModal(null)}>
   <div className="space-y-3">
-  <div className="bg-purple-50 rounded-lg p-3 text-sm"><div className="flex justify-between"><span className="text-slate-400">Original Deposit:</span><span className="font-bold">${safeNum(showDepositModal.security_deposit).toLocaleString()}</span></div></div>
-  <div><label className="text-xs text-slate-400">Amount to Return ($)</label><Input type="number" value={depositForm.amount_returned} onChange={e => setDepositForm({...depositForm, amount_returned: e.target.value})} placeholder={String(showDepositModal.security_deposit)} /></div>
-  <div><label className="text-xs text-slate-400">Deduction Reasons</label><Textarea value={depositForm.deductions} onChange={e => setDepositForm({...depositForm, deductions: e.target.value})} placeholder="Cleaning, damages, unpaid rent..." className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={3} /></div>
-  <div><label className="text-xs text-slate-400">Return Date</label><Input type="date" value={depositForm.return_date} onChange={e => setDepositForm({...depositForm, return_date: e.target.value})} /></div>
+  <div className="bg-purple-50 rounded-lg p-3 text-sm"><div className="flex justify-between"><span className="text-neutral-400">Original Deposit:</span><span className="font-bold">${safeNum(showDepositModal.security_deposit).toLocaleString()}</span></div></div>
+  <div><label className="text-xs text-neutral-400">Amount to Return ($)</label><Input type="number" value={depositForm.amount_returned} onChange={e => setDepositForm({...depositForm, amount_returned: e.target.value})} placeholder={String(showDepositModal.security_deposit)} /></div>
+  <div><label className="text-xs text-neutral-400">Deduction Reasons</label><Textarea value={depositForm.deductions} onChange={e => setDepositForm({...depositForm, deductions: e.target.value})} placeholder="Cleaning, damages, unpaid rent..." className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={3} /></div>
+  <div><label className="text-xs text-neutral-400">Return Date</label><Input type="date" value={depositForm.return_date} onChange={e => setDepositForm({...depositForm, return_date: e.target.value})} /></div>
   {Number(depositForm.amount_returned || 0) < safeNum(showDepositModal.security_deposit) && depositForm.amount_returned && (
   <div className="bg-red-50 rounded-lg p-2 text-xs text-red-700">Deducting ${(safeNum(showDepositModal.security_deposit) - Number(depositForm.amount_returned)).toLocaleString()} from deposit</div>
   )}
@@ -12002,7 +12002,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   {(() => { let items = []; try { items = JSON.parse(showChecklist.lease[showChecklist.type === "in" ? "move_in_checklist" : "move_out_checklist"] || "[]"); } catch {} return items.map((item, i) => (
   <div key={i} onClick={() => toggleChecklistItem(showChecklist.lease, showChecklist.type, i)} className={"flex items-center gap-3 p-2 rounded-lg cursor-pointer border " + (item.checked ? "bg-green-50 border-green-200" : "bg-white border-gray-100 hover:bg-brand-50/30")}>
   <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs " + (item.checked ? "bg-green-500 border-green-500 text-white" : "border-brand-200")}>{item.checked ? "✓" : ""}</span>
-  <span className={"text-sm " + (item.checked ? "line-through text-slate-400" : "text-slate-700")}>{item.item}</span>
+  <span className={"text-sm " + (item.checked ? "line-through text-neutral-400" : "text-neutral-700")}>{item.item}</span>
   </div>
   )); })()}
   </div>
@@ -12011,9 +12011,9 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
 
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
-  <h3 className="font-manrope font-semibold text-slate-800 mb-4">{editingLease ? "Edit Lease" : "Create New Lease"}</h3>
+  <h3 className="font-manrope font-semibold text-neutral-800 mb-4">{editingLease ? "Edit Lease" : "Create New Lease"}</h3>
   {!editingLease && templates.length > 0 && (
-  <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Apply Template</label>
+  <div className="mb-4"><label className="text-xs text-neutral-400 mb-1 block">Apply Template</label>
   <Select value={form.template_id} onChange={e => { setForm({...form, template_id: e.target.value}); applyTemplate(e.target.value); }} >
   <option value="">Select template...</option>
   {templates.map(t => <option key={t.id} value={t.id}>{t.name} — {t.description}</option>)}
@@ -12021,36 +12021,36 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
   )}
   <div className="grid grid-cols-2 gap-3 mb-4">
-  <div><label className="text-xs text-slate-400 mb-1 block">Tenant *</label>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Tenant *</label>
   <Select value={form.tenant_name} onChange={e => { setForm({...form, tenant_name: e.target.value}); prefillFromTenant(e.target.value); }} >
   <option value="">Select tenant...</option>
   {tenants.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
   </Select>
   </div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Lease Start *</label><Input type="date" value={form.start_date} onChange={e => setForm({...form, start_date: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Lease End *</label><Input type="date" value={form.end_date} onChange={e => setForm({...form, end_date: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Monthly Rent ($) *</label><Input type="number" min="0" step="0.01" placeholder="1500.00" value={form.rent_amount} onChange={e => setForm({...form, rent_amount: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Security Deposit ($)</label><Input type="number" min="0" step="0.01" placeholder="1500.00" value={form.security_deposit} onChange={e => setForm({...form, security_deposit: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Annual Escalation %</label><Input type="number" step="0.1" min="0" max="25" placeholder="3.0" value={form.rent_escalation_pct} onChange={e => setForm({...form, rent_escalation_pct: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Payment Due Day</label><Input type="number" min="1" max="31" placeholder="1" value={form.payment_due_day} onChange={e => setForm({...form, payment_due_day: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Lease Type</label>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Lease Start *</label><Input type="date" value={form.start_date} onChange={e => setForm({...form, start_date: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Lease End *</label><Input type="date" value={form.end_date} onChange={e => setForm({...form, end_date: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Monthly Rent ($) *</label><Input type="number" min="0" step="0.01" placeholder="1500.00" value={form.rent_amount} onChange={e => setForm({...form, rent_amount: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Security Deposit ($)</label><Input type="number" min="0" step="0.01" placeholder="1500.00" value={form.security_deposit} onChange={e => setForm({...form, security_deposit: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Annual Escalation %</label><Input type="number" step="0.1" min="0" max="25" placeholder="3.0" value={form.rent_escalation_pct} onChange={e => setForm({...form, rent_escalation_pct: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Payment Due Day</label><Input type="number" min="1" max="31" placeholder="1" value={form.payment_due_day} onChange={e => setForm({...form, payment_due_day: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Lease Type</label>
   <Select value={form.lease_type} onChange={e => setForm({...form, lease_type: e.target.value})} ><option value="fixed">Fixed Term</option><option value="month_to_month">Month-to-Month</option><option value="renewal">Renewal</option></Select></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Renewal Notice (days)</label><Input type="number" min="0" max="180" placeholder="60" value={form.renewal_notice_days} onChange={e => setForm({...form, renewal_notice_days: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Renewal Notice (days)</label><Input type="number" min="0" max="180" placeholder="60" value={form.renewal_notice_days} onChange={e => setForm({...form, renewal_notice_days: e.target.value})} /></div>
   </div>
   {/* Late Fee Settings */}
   <div className="bg-amber-50 border border-amber-200 rounded-3xl p-4 mb-4">
   <div className="text-sm font-semibold text-amber-800 mb-2">⚠️ Late Fee Settings</div>
   <div className="grid grid-cols-3 gap-3">
-  <div><label className="text-xs text-slate-400 mb-1 block">Grace Period (days)</label><Input type="number" min="0" max="30" placeholder="5" value={form.late_fee_grace_days} onChange={e => setForm({...form, late_fee_grace_days: e.target.value})} className="border-amber-200 bg-white" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Fee Type</label><Select value={form.late_fee_type} onChange={e => setForm({...form, late_fee_type: e.target.value})} className="border-amber-200 bg-white"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></Select></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">{form.late_fee_type === "flat" ? "Fee Amount ($)" : "Fee Percentage (%)"}</label><Input type="number" step="0.01" min="0" placeholder="50.00" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} className="border-amber-200 bg-white" /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Grace Period (days)</label><Input type="number" min="0" max="30" placeholder="5" value={form.late_fee_grace_days} onChange={e => setForm({...form, late_fee_grace_days: e.target.value})} className="border-amber-200 bg-white" /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Fee Type</label><Select value={form.late_fee_type} onChange={e => setForm({...form, late_fee_type: e.target.value})} className="border-amber-200 bg-white"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></Select></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">{form.late_fee_type === "flat" ? "Fee Amount ($)" : "Fee Percentage (%)"}</label><Input type="number" step="0.01" min="0" placeholder="50.00" value={form.late_fee_amount} onChange={e => setForm({...form, late_fee_amount: e.target.value})} className="border-amber-200 bg-white" /></div>
   </div>
   <p className="text-xs text-amber-600 mt-2">Late fees auto-apply to tenant ledger after grace period. Admin can waive from ledger.</p>
   </div>
-  <div className="flex items-center gap-2 mb-4"><input type="checkbox" checked={form.auto_renew} onChange={e => setForm({...form, auto_renew: e.target.checked})} className="rounded" /><label className="text-sm text-slate-500">Auto-renew at end of term</label></div>
-  <div className="mb-3"><label className="text-xs text-slate-400 mb-1 block">Lease Clauses</label><Textarea value={form.clauses} onChange={e => setForm({...form, clauses: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={3} placeholder="Standard clauses..." /></div>
-  <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Special Terms</label><Textarea value={form.special_terms} onChange={e => setForm({...form, special_terms: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={2} placeholder="Pet deposit, parking, storage..." /></div>
+  <div className="flex items-center gap-2 mb-4"><input type="checkbox" checked={form.auto_renew} onChange={e => setForm({...form, auto_renew: e.target.checked})} className="rounded" /><label className="text-sm text-neutral-500">Auto-renew at end of term</label></div>
+  <div className="mb-3"><label className="text-xs text-neutral-400 mb-1 block">Lease Clauses</label><Textarea value={form.clauses} onChange={e => setForm({...form, clauses: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={3} placeholder="Standard clauses..." /></div>
+  <div className="mb-4"><label className="text-xs text-neutral-400 mb-1 block">Special Terms</label><Textarea value={form.special_terms} onChange={e => setForm({...form, special_terms: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={2} placeholder="Pet deposit, parking, storage..." /></div>
   <div className="flex gap-2">
   <Btn onClick={saveLease}>{editingLease ? "Update Lease" : "Create Lease"}</Btn>
   <Btn variant="ghost" onClick={resetForm}>Cancel</Btn>
@@ -12062,26 +12062,26 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   {filteredLeases.map(l => {
   const daysLeft = Math.ceil((parseLocalDate(l.end_date) - new Date()) / 86400000);
   const isExpired = daysLeft <= 0 && l.status === "active";
-  const sc = { active: "bg-green-100 text-green-700", expired: "bg-red-100 text-red-700", renewed: "bg-blue-100 text-blue-700", terminated: "bg-slate-100 text-slate-500", draft: "bg-amber-100 text-amber-700" };
+  const sc = { active: "bg-green-100 text-green-700", expired: "bg-red-100 text-red-700", renewed: "bg-blue-100 text-blue-700", terminated: "bg-neutral-100 text-neutral-500", draft: "bg-amber-100 text-amber-700" };
   const dc = { held: "bg-purple-100 text-purple-700", partial_return: "bg-amber-100 text-amber-700", returned: "bg-green-100 text-green-700", forfeited: "bg-red-100 text-red-700" };
   return (
   <div key={l.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (isExpired ? "border-red-200" : "border-brand-50")}>
   <div className="flex justify-between items-start mb-3">
-  <div><div className="text-sm font-bold text-slate-800">{l.tenant_name}</div><div className="text-xs text-slate-400">{l.property}</div></div>
+  <div><div className="text-sm font-bold text-neutral-800">{l.tenant_name}</div><div className="text-xs text-neutral-400">{l.property}</div></div>
   <div className="flex items-center gap-2">
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[isExpired ? "expired" : l.status] || "bg-slate-100")}>{isExpired ? "EXPIRED" : l.status}</span>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[isExpired ? "expired" : l.status] || "bg-neutral-100")}>{isExpired ? "EXPIRED" : l.status}</span>
   {l.lease_type === "renewal" && <span className="px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-600">Renewal</span>}
   </div>
   </div>
   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-3 md:grid-cols-4">
-  <div><span className="text-slate-400">Term:</span> <span className="font-medium">{l.start_date} to {l.end_date}</span></div>
-  <div><span className="text-slate-400">Rent:</span> <span className="font-bold text-slate-800">${safeNum(l.rent_amount).toLocaleString()}/mo</span></div>
-  <div><span className="text-slate-400">Deposit:</span> <span className="font-medium">${safeNum(l.security_deposit).toLocaleString()}</span>{l.security_deposit > 0 && <span className={"ml-1 px-1 py-0.5 rounded text-xs " + (dc[l.deposit_status] || "")}>{l.deposit_status}</span>}</div>
-  <div><span className="text-slate-400">Escalation:</span> <span className="font-medium">{l.rent_escalation_pct || 0}%/yr</span></div>
-  {l.status === "active" && <div><span className="text-slate-400">Days Left:</span> <span className={"font-bold " + (daysLeft <= 30 ? "text-red-600" : daysLeft <= 90 ? "text-amber-600" : "text-green-600")}>{daysLeft}</span></div>}
-  <div><span className="text-slate-400">Due Day:</span> <span className="font-medium">{l.payment_due_day || 1}th</span></div>
-  <div><span className="text-slate-400">Type:</span> <span className="font-medium capitalize">{(l.lease_type || "fixed").replace("_"," ")}</span></div>
-  <div><span className="text-slate-400">Auto-Renew:</span> <span className="font-medium">{l.auto_renew ? "Yes" : "No"}</span></div>
+  <div><span className="text-neutral-400">Term:</span> <span className="font-medium">{l.start_date} to {l.end_date}</span></div>
+  <div><span className="text-neutral-400">Rent:</span> <span className="font-bold text-neutral-800">${safeNum(l.rent_amount).toLocaleString()}/mo</span></div>
+  <div><span className="text-neutral-400">Deposit:</span> <span className="font-medium">${safeNum(l.security_deposit).toLocaleString()}</span>{l.security_deposit > 0 && <span className={"ml-1 px-1 py-0.5 rounded text-xs " + (dc[l.deposit_status] || "")}>{l.deposit_status}</span>}</div>
+  <div><span className="text-neutral-400">Escalation:</span> <span className="font-medium">{l.rent_escalation_pct || 0}%/yr</span></div>
+  {l.status === "active" && <div><span className="text-neutral-400">Days Left:</span> <span className={"font-bold " + (daysLeft <= 30 ? "text-red-600" : daysLeft <= 90 ? "text-amber-600" : "text-green-600")}>{daysLeft}</span></div>}
+  <div><span className="text-neutral-400">Due Day:</span> <span className="font-medium">{l.payment_due_day || 1}th</span></div>
+  <div><span className="text-neutral-400">Type:</span> <span className="font-medium capitalize">{(l.lease_type || "fixed").replace("_"," ")}</span></div>
+  <div><span className="text-neutral-400">Auto-Renew:</span> <span className="font-medium">{l.auto_renew ? "Yes" : "No"}</span></div>
   </div>
   <div className="flex flex-wrap gap-2 pt-2 border-t border-brand-50/50">
   <Btn variant="secondary" size="xs" onClick={() => startEdit(l)}>Edit</Btn>
@@ -12089,8 +12089,8 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   {l.status === "active" && <Btn variant="success-fill" size="xs" onClick={() => renewLease(l)}>Renew</Btn>}
   {l.status === "active" && <Btn variant="secondary" size="xs" onClick={() => { setShowRentIncrease(l); setRentIncreaseForm({ new_amount: String(l.rent_amount), effective_date: formatLocalDate(new Date()), reason: "" }); }}>📈 Rent Increase</Btn>}
   {l.status === "active" && <Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>Terminate</Btn>}
-  <button onClick={() => setShowChecklist({ lease: l, type: "in" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_in_completed ? "text-green-600 border-green-200 bg-green-50" : "text-slate-400 border-brand-100 hover:bg-brand-50/30")}>Move-In {l.move_in_completed ? "✓" : ""}</button>
-  <button onClick={() => setShowChecklist({ lease: l, type: "out" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_out_completed ? "text-green-600 border-green-200 bg-green-50" : "text-slate-400 border-brand-100 hover:bg-brand-50/30")}>Move-Out {l.move_out_completed ? "✓" : ""}</button>
+  <button onClick={() => setShowChecklist({ lease: l, type: "in" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_in_completed ? "text-green-600 border-green-200 bg-green-50" : "text-neutral-400 border-brand-100 hover:bg-brand-50/30")}>Move-In {l.move_in_completed ? "✓" : ""}</button>
+  <button onClick={() => setShowChecklist({ lease: l, type: "out" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_out_completed ? "text-green-600 border-green-200 bg-green-50" : "text-neutral-400 border-brand-100 hover:bg-brand-50/30")}>Move-Out {l.move_out_completed ? "✓" : ""}</button>
   {safeNum(l.security_deposit) > 0 && l.deposit_status === "held" && (l.status === "terminated" || l.status === "expired" || isExpired) && (
   <Btn variant="purple" size="xs" onClick={() => { setShowDepositModal(l); setDepositForm({ amount_returned: String(l.security_deposit), deductions: "", return_date: formatLocalDate(new Date()) }); }}>Return Deposit</Btn>
   )}
@@ -12098,7 +12098,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
   );
   })}
-  {filteredLeases.length === 0 && <div className="text-center py-10 text-slate-400">No leases found</div>}
+  {filteredLeases.length === 0 && <div className="text-center py-10 text-neutral-400">No leases found</div>}
   </div>
 
   {/* Rent Increase Modal */}
@@ -12106,12 +12106,12 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <Modal title={`Rent Increase — ${showRentIncrease.tenant_name}`} onClose={() => setShowRentIncrease(null)}>
   <div className="space-y-3">
   <div className="bg-brand-50/30 rounded-xl p-3 text-sm">
-  <div className="flex justify-between"><span className="text-slate-400">Current Rent:</span><span className="font-bold">${showRentIncrease.rent_amount}/mo</span></div>
-  <div className="flex justify-between"><span className="text-slate-400">Property:</span><span>{showRentIncrease.property}</span></div>
+  <div className="flex justify-between"><span className="text-neutral-400">Current Rent:</span><span className="font-bold">${showRentIncrease.rent_amount}/mo</span></div>
+  <div className="flex justify-between"><span className="text-neutral-400">Property:</span><span>{showRentIncrease.property}</span></div>
   </div>
-  <div><label className="text-xs text-slate-400 mb-1 block">New Monthly Rent ($) *</label><Input type="number" min="0" step="0.01" placeholder="1600.00" value={rentIncreaseForm.new_amount} onChange={e => setRentIncreaseForm({...rentIncreaseForm, new_amount: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Effective Date *</label><Input type="date" value={rentIncreaseForm.effective_date} onChange={e => setRentIncreaseForm({...rentIncreaseForm, effective_date: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Reason</label><Input value={rentIncreaseForm.reason} onChange={e => setRentIncreaseForm({...rentIncreaseForm, reason: e.target.value})} placeholder="Market adjustment, annual increase..." /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">New Monthly Rent ($) *</label><Input type="number" min="0" step="0.01" placeholder="1600.00" value={rentIncreaseForm.new_amount} onChange={e => setRentIncreaseForm({...rentIncreaseForm, new_amount: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Effective Date *</label><Input type="date" value={rentIncreaseForm.effective_date} onChange={e => setRentIncreaseForm({...rentIncreaseForm, effective_date: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Reason</label><Input value={rentIncreaseForm.reason} onChange={e => setRentIncreaseForm({...rentIncreaseForm, reason: e.target.value})} placeholder="Market adjustment, annual increase..." /></div>
   {rentIncreaseForm.new_amount && Number(rentIncreaseForm.new_amount) !== showRentIncrease.rent_amount && (
   <div className={`text-sm font-semibold rounded-lg p-2 text-center ${Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
   {Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "+" : ""}{Math.round((Number(rentIncreaseForm.new_amount) - showRentIncrease.rent_amount) / showRentIncrease.rent_amount * 100)}% ({Number(rentIncreaseForm.new_amount) > showRentIncrease.rent_amount ? "+" : ""}${Number(rentIncreaseForm.new_amount) - showRentIncrease.rent_amount}/mo)
@@ -12339,9 +12339,9 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
 
   <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
   <StatCard label="Active Vendors" value={activeVendors.length} color="text-green-600" sub="available" />
-  <StatCard label="Pending Invoices" value={pendingInvoices.length} color={pendingInvoices.length > 0 ? "text-amber-600" : "text-slate-400"} sub={"$" + totalOwed.toLocaleString() + " owed"} />
+  <StatCard label="Pending Invoices" value={pendingInvoices.length} color={pendingInvoices.length > 0 ? "text-amber-600" : "text-neutral-400"} sub={"$" + totalOwed.toLocaleString() + " owed"} />
   <StatCard label="Total Paid (YTD)" value={"$" + totalPaidAll.toLocaleString()} color="text-blue-600" sub="all vendors" />
-  <StatCard label="Insurance Alerts" value={insuranceExpiring.length} color={insuranceExpiring.length > 0 ? "text-red-500" : "text-slate-400"} sub="expiring < 30d" />
+  <StatCard label="Insurance Alerts" value={insuranceExpiring.length} color={insuranceExpiring.length > 0 ? "text-red-500" : "text-neutral-400"} sub="expiring < 30d" />
   </div>
 
   {insuranceExpiring.length > 0 && (
@@ -12355,40 +12355,40 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
 
   <div className="flex gap-1 mb-4 border-b border-brand-50">
   {[["vendors","Vendors"],["invoices","Invoices"]].map(([id,label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400")}>{label}</button>
+  <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400")}>{label}</button>
   ))}
   </div>
 
   {/* New Vendor Form */}
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
-  <div className="flex items-center justify-between mb-4"><h3 className="font-manrope font-semibold text-slate-800">{editingVendor ? "Edit Vendor" : "Add New Vendor"}</h3><Btn variant="ghost" onClick={resetVendorForm} title="Close">✕</Btn></div>
+  <div className="flex items-center justify-between mb-4"><h3 className="font-manrope font-semibold text-neutral-800">{editingVendor ? "Edit Vendor" : "Add New Vendor"}</h3><Btn variant="ghost" onClick={resetVendorForm} title="Close">✕</Btn></div>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div className="col-span-2"><div className="grid grid-cols-6 gap-3">
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">First Name *</label><Input value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" /></div>
-  <div className="col-span-1"><label className="text-xs font-medium text-slate-400 mb-1 block">MI</label><Input maxLength={1} value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} placeholder="M" className="text-center" /></div>
-  <div className="col-span-3"><label className="text-xs font-medium text-slate-400 mb-1 block">Last Name *</label><Input value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} placeholder="Last" /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">First Name *</label><Input value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" /></div>
+  <div className="col-span-1"><label className="text-xs font-medium text-neutral-400 mb-1 block">MI</label><Input maxLength={1} value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} placeholder="M" className="text-center" /></div>
+  <div className="col-span-3"><label className="text-xs font-medium text-neutral-400 mb-1 block">Last Name *</label><Input value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} placeholder="Last" /></div>
   </div></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Company</label><Input value={form.company} onChange={e => setForm({...form, company: e.target.value})} placeholder="ABC Plumbing LLC" /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Email</label><Input type="email" placeholder="vendor@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} /></div>
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address</label><Input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Specialty</label>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Company</label><Input value={form.company} onChange={e => setForm({...form, company: e.target.value})} placeholder="ABC Plumbing LLC" /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Email</label><Input type="email" placeholder="vendor@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Address</label><Input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Specialty</label>
   <Select value={form.specialty} onChange={e => setForm({...form, specialty: e.target.value})} >
   {specialties.map(s => <option key={s} value={s}>{s}</option>)}
   </Select>
   </div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Status</label>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Status</label>
   <Select value={form.status} onChange={e => setForm({...form, status: e.target.value})} >
   <option value="active">Active</option><option value="preferred">Preferred</option><option value="inactive">Inactive</option><option value="blocked">Blocked</option>
   </Select>
   </div>
-  <div><label className="text-xs text-slate-400 mb-1 block">License #</label><Input placeholder="e.g. VA-12345" value={form.license_number} onChange={e => setForm({...form, license_number: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Insurance Expiry</label><Input type="date" value={form.insurance_expiry} onChange={e => setForm({...form, insurance_expiry: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Hourly Rate ($)</label><Input placeholder="0.00" type="number" value={form.hourly_rate} onChange={e => setForm({...form, hourly_rate: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Flat Rate ($)</label><Input placeholder="0.00" type="number" value={form.flat_rate} onChange={e => setForm({...form, flat_rate: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">License #</label><Input placeholder="e.g. VA-12345" value={form.license_number} onChange={e => setForm({...form, license_number: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Insurance Expiry</label><Input type="date" value={form.insurance_expiry} onChange={e => setForm({...form, insurance_expiry: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Hourly Rate ($)</label><Input placeholder="0.00" type="number" value={form.hourly_rate} onChange={e => setForm({...form, hourly_rate: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Flat Rate ($)</label><Input placeholder="0.00" type="number" value={form.flat_rate} onChange={e => setForm({...form, flat_rate: e.target.value})} /></div>
   </div>
-  <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Notes</label><Textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={2} /></div>
+  <div className="mb-4"><label className="text-xs text-neutral-400 mb-1 block">Notes</label><Textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={2} /></div>
   <div className="flex gap-2">
   <Btn onClick={saveVendor}>{editingVendor ? "Update" : "Add Vendor"}</Btn>
   <Btn variant="ghost" onClick={resetVendorForm}>Cancel</Btn>
@@ -12399,20 +12399,20 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   {/* Invoice Form */}
   {showInvoiceForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
-  <div className="flex items-center justify-between mb-4"><h3 className="font-manrope font-semibold text-slate-800">New Vendor Invoice</h3><Btn variant="ghost" onClick={() => setShowInvoiceForm(false)} title="Close">✕</Btn></div>
+  <div className="flex items-center justify-between mb-4"><h3 className="font-manrope font-semibold text-neutral-800">New Vendor Invoice</h3><Btn variant="ghost" onClick={() => setShowInvoiceForm(false)} title="Close">✕</Btn></div>
   <div className="grid grid-cols-2 gap-3 mb-4">
-  <div><label className="text-xs text-slate-400 mb-1 block">Vendor *</label>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Vendor *</label>
   <Select value={invoiceForm.vendor_id} onChange={e => { const v = vendors.find(v => String(v.id) === String(e.target.value)); setInvoiceForm({...invoiceForm, vendor_id: e.target.value, vendor_name: v?.name || ""}); }} className="truncate">
   <option value="">Select vendor...</option>
   {vendors.filter(v => v.status !== "blocked").map(v => <option key={v.id} value={v.id}>{v.name} ({v.specialty})</option>)}
   </Select>
   </div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Property</label><PropertySelect value={invoiceForm.property} onChange={v => setInvoiceForm({...invoiceForm, property: v})} companyId={companyId} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Amount ($) *</label><Input type="number" min="0" step="0.01" placeholder="500.00" value={invoiceForm.amount} onChange={e => setInvoiceForm({...invoiceForm, amount: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Invoice #</label><Input placeholder="INV-001" value={invoiceForm.invoice_number} onChange={e => setInvoiceForm({...invoiceForm, invoice_number: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Invoice Date</label><Input type="date" value={invoiceForm.invoice_date} onChange={e => setInvoiceForm({...invoiceForm, invoice_date: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Due Date</label><Input type="date" value={invoiceForm.due_date} onChange={e => setInvoiceForm({...invoiceForm, due_date: e.target.value})} /></div>
-  <div className="col-span-2"><label className="text-xs text-slate-400 mb-1 block">Description</label><Input value={invoiceForm.description} onChange={e => setInvoiceForm({...invoiceForm, description: e.target.value})} placeholder="Plumbing repair at 123 Main St" /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Property</label><PropertySelect value={invoiceForm.property} onChange={v => setInvoiceForm({...invoiceForm, property: v})} companyId={companyId} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Amount ($) *</label><Input type="number" min="0" step="0.01" placeholder="500.00" value={invoiceForm.amount} onChange={e => setInvoiceForm({...invoiceForm, amount: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Invoice #</label><Input placeholder="INV-001" value={invoiceForm.invoice_number} onChange={e => setInvoiceForm({...invoiceForm, invoice_number: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Invoice Date</label><Input type="date" value={invoiceForm.invoice_date} onChange={e => setInvoiceForm({...invoiceForm, invoice_date: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Due Date</label><Input type="date" value={invoiceForm.due_date} onChange={e => setInvoiceForm({...invoiceForm, due_date: e.target.value})} /></div>
+  <div className="col-span-2"><label className="text-xs text-neutral-400 mb-1 block">Description</label><Input value={invoiceForm.description} onChange={e => setInvoiceForm({...invoiceForm, description: e.target.value})} placeholder="Plumbing repair at 123 Main St" /></div>
   </div>
   <div className="flex gap-2">
   <Btn onClick={saveInvoice}>Save Invoice</Btn>
@@ -12435,42 +12435,42 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   {filteredVendors.map(v => {
   const insExpired = v.insurance_expiry && parseLocalDate(v.insurance_expiry) < new Date();
   const insExpiring = v.insurance_expiry && !insExpired && Math.ceil((parseLocalDate(v.insurance_expiry) - new Date()) / 86400000) <= 30;
-  const sc = { active: "bg-green-100 text-green-700", preferred: "bg-brand-100 text-brand-700", inactive: "bg-slate-100 text-slate-400", blocked: "bg-red-100 text-red-700" };
+  const sc = { active: "bg-green-100 text-green-700", preferred: "bg-brand-100 text-brand-700", inactive: "bg-neutral-100 text-neutral-400", blocked: "bg-red-100 text-red-700" };
   return (
   <div key={v.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <div className="flex justify-between items-start mb-2">
   <div>
-  <div className="text-sm font-bold text-slate-800">{v.name}{v.company ? " — " + v.company : ""}</div>
-  <div className="text-xs text-slate-400">{v.specialty}{v.license_number ? " · Lic: " + v.license_number : ""}</div>
+  <div className="text-sm font-bold text-neutral-800">{v.name}{v.company ? " — " + v.company : ""}</div>
+  <div className="text-xs text-neutral-400">{v.specialty}{v.license_number ? " · Lic: " + v.license_number : ""}</div>
   </div>
   <div className="flex items-center gap-2">
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[v.status] || "bg-slate-100")}>{v.status}</span>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[v.status] || "bg-neutral-100")}>{v.status}</span>
   {v.rating > 0 && <span className="text-xs text-amber-500">{"\u2605".repeat(v.rating)}{"\u2606".repeat(5 - v.rating)}</span>}
   </div>
   </div>
   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-2 md:grid-cols-4">
-  {v.phone && <div><span className="text-slate-400">Phone:</span> <span className="font-medium">{v.phone}</span></div>}
-  {v.email && <div><span className="text-slate-400">Email:</span> <span className="font-medium">{v.email}</span></div>}
-  {v.hourly_rate > 0 && <div><span className="text-slate-400">Rate:</span> <span className="font-medium">${v.hourly_rate}/hr</span></div>}
-  {v.flat_rate > 0 && <div><span className="text-slate-400">Flat:</span> <span className="font-medium">${v.flat_rate}</span></div>}
-  <div><span className="text-slate-400">Jobs:</span> <span className="font-medium">{v.total_jobs || 0}</span></div>
-  <div><span className="text-slate-400">Total Paid:</span> <span className="font-medium">${safeNum(v.total_paid).toLocaleString()}</span></div>
-  {v.insurance_expiry && <div><span className="text-slate-400">Insurance:</span> <span className={"font-medium " + (insExpired ? "text-red-600" : insExpiring ? "text-amber-600" : "text-green-600")}>{v.insurance_expiry}{insExpired ? " (EXPIRED)" : ""}</span></div>}
+  {v.phone && <div><span className="text-neutral-400">Phone:</span> <span className="font-medium">{v.phone}</span></div>}
+  {v.email && <div><span className="text-neutral-400">Email:</span> <span className="font-medium">{v.email}</span></div>}
+  {v.hourly_rate > 0 && <div><span className="text-neutral-400">Rate:</span> <span className="font-medium">${v.hourly_rate}/hr</span></div>}
+  {v.flat_rate > 0 && <div><span className="text-neutral-400">Flat:</span> <span className="font-medium">${v.flat_rate}</span></div>}
+  <div><span className="text-neutral-400">Jobs:</span> <span className="font-medium">{v.total_jobs || 0}</span></div>
+  <div><span className="text-neutral-400">Total Paid:</span> <span className="font-medium">${safeNum(v.total_paid).toLocaleString()}</span></div>
+  {v.insurance_expiry && <div><span className="text-neutral-400">Insurance:</span> <span className={"font-medium " + (insExpired ? "text-red-600" : insExpiring ? "text-amber-600" : "text-green-600")}>{v.insurance_expiry}{insExpired ? " (EXPIRED)" : ""}</span></div>}
   </div>
-  {v.notes && <div className="text-xs text-slate-400 mb-2">{v.notes}</div>}
+  {v.notes && <div className="text-xs text-neutral-400 mb-2">{v.notes}</div>}
   <div className="flex flex-wrap gap-2 pt-2 border-t border-brand-50/50">
   <Btn variant="secondary" size="xs" onClick={() => startEditVendor(v)}>Edit</Btn>
   <Btn variant="danger" size="xs" onClick={() => deleteVendor(v.id, v.name)}>Delete</Btn>
   <div className="flex items-center gap-0.5 ml-2">
   {[1,2,3,4,5].map(star => (
-  <button key={star} onClick={() => rateVendor(v, star)} className={"text-sm " + (star <= (v.rating || 0) ? "text-amber-400" : "text-slate-300")}>{star <= (v.rating || 0) ? "\u2605" : "\u2606"}</button>
+  <button key={star} onClick={() => rateVendor(v, star)} className={"text-sm " + (star <= (v.rating || 0) ? "text-amber-400" : "text-neutral-300")}>{star <= (v.rating || 0) ? "\u2605" : "\u2606"}</button>
   ))}
   </div>
   </div>
   </div>
   );
   })}
-  {filteredVendors.length === 0 && <div className="text-center py-10 text-slate-400">No vendors found</div>}
+  {filteredVendors.length === 0 && <div className="text-center py-10 text-neutral-400">No vendors found</div>}
   </div>
   </div>
   )}
@@ -12485,19 +12485,19 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div key={inv.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (isOverdue ? "border-red-200" : "border-brand-50")}>
   <div className="flex justify-between items-start mb-2">
   <div>
-  <div className="text-sm font-bold text-slate-800">{inv.vendor_name}</div>
-  <div className="text-xs text-slate-400">{inv.description || "Invoice"}{inv.invoice_number ? " #" + inv.invoice_number : ""}</div>
+  <div className="text-sm font-bold text-neutral-800">{inv.vendor_name}</div>
+  <div className="text-xs text-neutral-400">{inv.description || "Invoice"}{inv.invoice_number ? " #" + inv.invoice_number : ""}</div>
   </div>
   <div className="text-right">
-  <div className="text-sm font-bold text-slate-800">${safeNum(inv.amount).toLocaleString()}</div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[inv.status] || "bg-slate-100")}>{isOverdue ? "OVERDUE" : inv.status}</span>
+  <div className="text-sm font-bold text-neutral-800">${safeNum(inv.amount).toLocaleString()}</div>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[inv.status] || "bg-neutral-100")}>{isOverdue ? "OVERDUE" : inv.status}</span>
   </div>
   </div>
   <div className="grid grid-cols-2 gap-x-4 text-xs md:grid-cols-4">
-  {inv.property && <div><span className="text-slate-400">Property:</span> <span className="font-medium">{inv.property}</span></div>}
-  <div><span className="text-slate-400">Date:</span> <span className="font-medium">{inv.invoice_date}</span></div>
-  {inv.due_date && <div><span className="text-slate-400">Due:</span> <span className={"font-medium " + (isOverdue ? "text-red-600" : "")}>{inv.due_date}</span></div>}
-  {inv.paid_date && <div><span className="text-slate-400">Paid:</span> <span className="font-medium text-green-600">{inv.paid_date}</span></div>}
+  {inv.property && <div><span className="text-neutral-400">Property:</span> <span className="font-medium">{inv.property}</span></div>}
+  <div><span className="text-neutral-400">Date:</span> <span className="font-medium">{inv.invoice_date}</span></div>
+  {inv.due_date && <div><span className="text-neutral-400">Due:</span> <span className={"font-medium " + (isOverdue ? "text-red-600" : "")}>{inv.due_date}</span></div>}
+  {inv.paid_date && <div><span className="text-neutral-400">Paid:</span> <span className="font-medium text-green-600">{inv.paid_date}</span></div>}
   </div>
   {(inv.status === "pending" || inv.status === "approved") && (
   <div className="flex gap-2 pt-2 mt-2 border-t border-brand-50/50">
@@ -12507,7 +12507,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   </div>
   );
   })}
-  {invoices.length === 0 && <div className="text-center py-10 text-slate-400">No invoices yet</div>}
+  {invoices.length === 0 && <div className="text-center py-10 text-neutral-400">No invoices yet</div>}
   </div>
   )}
   </div>
@@ -12760,32 +12760,32 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
 
   <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
   <StatCard label="Active Owners" value={activeOwners.length} color="text-green-600" sub={properties.filter(p => p.owner_id).length + " properties assigned"} />
-  <StatCard label="Pending Statements" value={pendingStatements.length} color={pendingStatements.length > 0 ? "text-amber-600" : "text-slate-400"} sub={"$" + pendingAmount.toLocaleString() + " owed"} />
+  <StatCard label="Pending Statements" value={pendingStatements.length} color={pendingStatements.length > 0 ? "text-amber-600" : "text-neutral-400"} sub={"$" + pendingAmount.toLocaleString() + " owed"} />
   <StatCard label="Total Distributed" value={"$" + totalDistributed.toLocaleString()} color="text-blue-600" sub="all time" />
-  <StatCard label="Unassigned Props" value={properties.filter(p => !p.owner_id).length} color={properties.filter(p => !p.owner_id).length > 0 ? "text-orange-500" : "text-slate-400"} sub="no owner" />
+  <StatCard label="Unassigned Props" value={properties.filter(p => !p.owner_id).length} color={properties.filter(p => !p.owner_id).length > 0 ? "text-orange-500" : "text-neutral-400"} sub="no owner" />
   </div>
 
   <div className="flex gap-1 mb-4 border-b border-brand-50">
   {[["owners","Owners"],["properties","Properties"],["statements","Statements"],["distributions","Distributions"]].map(([id,label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400")}>{label}</button>
+  <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400")}>{label}</button>
   ))}
   </div>
 
   {/* Generate Statement Modal */}
   {showGenerate && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
-  <h3 className="font-manrope font-semibold text-slate-800 mb-4">Generate Owner Statement</h3>
+  <h3 className="font-manrope font-semibold text-neutral-800 mb-4">Generate Owner Statement</h3>
   <div className="grid grid-cols-2 gap-3 mb-4">
-  <div><label className="text-xs text-slate-400 mb-1 block">Owner *</label>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Owner *</label>
   <Select value={genOwner} onChange={e => setGenOwner(e.target.value)} >
   <option value="">Select owner...</option>
   {activeOwners.map(o => <option key={o.id} value={o.id}>{o.name} ({properties.filter(p => String(p.owner_id) === String(o.id)).length} properties)</option>)}
   </Select>
   </div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Month</label><Input placeholder="Enter name" type="month" value={genMonth} onChange={e => setGenMonth(e.target.value)} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Month</label><Input placeholder="Enter name" type="month" value={genMonth} onChange={e => setGenMonth(e.target.value)} /></div>
   </div>
   {genOwner && (
-  <div className="bg-brand-50/30 rounded-lg p-3 mb-4 text-xs text-slate-500">
+  <div className="bg-brand-50/30 rounded-lg p-3 mb-4 text-xs text-neutral-500">
   <div className="font-semibold mb-1">Properties included:</div>
   {properties.filter(p => String(p.owner_id) === String(genOwner)).map(p => <div key={p.id}>{p.address}</div>)}
   {properties.filter(p => String(p.owner_id) === String(genOwner)).length === 0 && <div className="text-amber-600">No properties assigned to this owner</div>}
@@ -12801,31 +12801,31 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   {/* Owner Form */}
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
-  <h3 className="font-manrope font-semibold text-slate-800 mb-4">{editingOwner ? "Edit Owner" : "Add New Owner"}</h3>
+  <h3 className="font-manrope font-semibold text-neutral-800 mb-4">{editingOwner ? "Edit Owner" : "Add New Owner"}</h3>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div className="col-span-2"><div className="grid grid-cols-6 gap-3">
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">First Name *</label><Input value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" /></div>
-  <div className="col-span-1"><label className="text-xs font-medium text-slate-400 mb-1 block">MI</label><Input maxLength={1} value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} placeholder="M" className="text-center" /></div>
-  <div className="col-span-3"><label className="text-xs font-medium text-slate-400 mb-1 block">Last Name *</label><Input value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} placeholder="Last" /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">First Name *</label><Input value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" /></div>
+  <div className="col-span-1"><label className="text-xs font-medium text-neutral-400 mb-1 block">MI</label><Input maxLength={1} value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} placeholder="M" className="text-center" /></div>
+  <div className="col-span-3"><label className="text-xs font-medium text-neutral-400 mb-1 block">Last Name *</label><Input value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} placeholder="Last" /></div>
   </div></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Company</label><Input placeholder="Smith Properties LLC" value={form.company} onChange={e => setForm({...form, company: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Email</label><Input type="email" placeholder="vendor@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} /></div>
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address</label><Input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Tax ID / EIN</label><Input placeholder="XX-XXXXXXX" value={form.tax_id} onChange={e => setForm({...form, tax_id: e.target.value})} maxLength={10} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Management Fee %</label><Input type="number" step="0.5" min="0" max="50" placeholder="10.0" value={form.management_fee_pct} onChange={e => setForm({...form, management_fee_pct: e.target.value})} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Payment Method</label>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Company</label><Input placeholder="Smith Properties LLC" value={form.company} onChange={e => setForm({...form, company: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Email</label><Input type="email" placeholder="vendor@company.com" value={form.email} onChange={e => setForm({...form, email: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Address</label><Input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Tax ID / EIN</label><Input placeholder="XX-XXXXXXX" value={form.tax_id} onChange={e => setForm({...form, tax_id: e.target.value})} maxLength={10} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Management Fee %</label><Input type="number" step="0.5" min="0" max="50" placeholder="10.0" value={form.management_fee_pct} onChange={e => setForm({...form, management_fee_pct: e.target.value})} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Payment Method</label>
   <Select value={form.payment_method} onChange={e => setForm({...form, payment_method: e.target.value})} >
   <option value="check">Check</option><option value="ach">ACH</option><option value="wire">Wire</option>
   </Select>
   </div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Status</label>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Status</label>
   <Select value={form.status} onChange={e => setForm({...form, status: e.target.value})} >
   <option value="active">Active</option><option value="inactive">Inactive</option>
   </Select>
   </div>
   </div>
-  <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Notes</label><Textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={2} /></div>
+  <div className="mb-4"><label className="text-xs text-neutral-400 mb-1 block">Notes</label><Textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={2} /></div>
   <div className="flex gap-2">
   <Btn onClick={saveOwner}>{editingOwner ? "Update" : "Add Owner"}</Btn>
   <Btn variant="ghost" onClick={resetForm}>Cancel</Btn>
@@ -12838,23 +12838,23 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <Modal title={"Statement — " + viewStatement.owner_name + " — " + viewStatement.period} onClose={() => setViewStatement(null)}>
   <div className="space-y-3">
   <div className="grid grid-cols-2 gap-3">
-  <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Income</div><div className="text-lg font-bold text-green-700">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
-  <div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Expenses</div><div className="text-lg font-bold text-red-600">${safeNum(viewStatement.total_expenses).toLocaleString()}</div></div>
-  <div className="bg-purple-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Mgmt Fee</div><div className="text-lg font-bold text-purple-700">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
-  <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Net to Owner</div><div className={"text-lg font-bold " + (viewStatement.net_to_owner >= 0 ? "text-brand-700" : "text-red-600")}>${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
+  <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Income</div><div className="text-lg font-bold text-green-700">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
+  <div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Expenses</div><div className="text-lg font-bold text-red-600">${safeNum(viewStatement.total_expenses).toLocaleString()}</div></div>
+  <div className="bg-purple-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Mgmt Fee</div><div className="text-lg font-bold text-purple-700">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
+  <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Net to Owner</div><div className={"text-lg font-bold " + (viewStatement.net_to_owner >= 0 ? "text-brand-700" : "text-red-600")}>${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
   </div>
   {(() => {
   let items = []; try { items = JSON.parse(viewStatement.line_items || "[]"); } catch {}
   return items.map((cat, ci) => (
   <div key={ci}>
-  <div className="font-semibold text-slate-700 text-sm mt-2 mb-1">{cat.category}</div>
+  <div className="font-semibold text-neutral-700 text-sm mt-2 mb-1">{cat.category}</div>
   {(cat.items || []).map((item, ii) => (
   <div key={ii} className="flex justify-between text-xs py-1 border-b border-brand-50/50">
-  <div className="text-slate-500">{item.description}<span className="text-slate-400 ml-2">{item.date}</span></div>
+  <div className="text-neutral-500">{item.description}<span className="text-neutral-400 ml-2">{item.date}</span></div>
   <div className={"font-bold " + (item.amount >= 0 ? "text-green-600" : "text-red-600")}>{item.amount >= 0 ? "+" : ""}${Math.abs(item.amount).toLocaleString()}</div>
   </div>
   ))}
-  {(cat.items || []).length === 0 && <div className="text-xs text-slate-400 py-1">None</div>}
+  {(cat.items || []).length === 0 && <div className="text-xs text-neutral-400 py-1">None</div>}
   </div>
   ));
   })()}
@@ -12876,19 +12876,19 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div key={o.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <div className="flex justify-between items-start mb-2">
   <div>
-  <div className="text-sm font-bold text-slate-800">{o.name}{o.company ? " — " + o.company : ""}</div>
-  <div className="text-xs text-slate-400">{o.email}{o.phone ? " · " + o.phone : ""}</div>
+  <div className="text-sm font-bold text-neutral-800">{o.name}{o.company ? " — " + o.company : ""}</div>
+  <div className="text-xs text-neutral-400">{o.email}{o.phone ? " · " + o.phone : ""}</div>
   </div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (o.status === "active" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-400")}>{o.status}</span>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (o.status === "active" ? "bg-green-100 text-green-700" : "bg-neutral-100 text-neutral-400")}>{o.status}</span>
   </div>
   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-2 md:grid-cols-4">
-  <div><span className="text-slate-400">Properties:</span> <span className="font-bold">{ownerProps.length}</span></div>
-  <div><span className="text-slate-400">Mgmt Fee:</span> <span className="font-medium">{o.management_fee_pct}%</span></div>
-  <div><span className="text-slate-400">Total Distributed:</span> <span className="font-medium">${ownerDist.toLocaleString()}</span></div>
-  <div><span className="text-slate-400">Payment:</span> <span className="font-medium capitalize">{o.payment_method}</span></div>
+  <div><span className="text-neutral-400">Properties:</span> <span className="font-bold">{ownerProps.length}</span></div>
+  <div><span className="text-neutral-400">Mgmt Fee:</span> <span className="font-medium">{o.management_fee_pct}%</span></div>
+  <div><span className="text-neutral-400">Total Distributed:</span> <span className="font-medium">${ownerDist.toLocaleString()}</span></div>
+  <div><span className="text-neutral-400">Payment:</span> <span className="font-medium capitalize">{o.payment_method}</span></div>
   </div>
   {ownerProps.length > 0 && (
-  <div className="text-xs text-slate-400 mb-2">{ownerProps.map(p => p.address).join(" · ")}</div>
+  <div className="text-xs text-neutral-400 mb-2">{ownerProps.map(p => p.address).join(" · ")}</div>
   )}
   <div className="flex gap-2 pt-2 border-t border-brand-50/50">
   <Btn variant="purple" size="xs" onClick={() => inviteOwner(o)}>✉️ Invite</Btn>
@@ -12898,19 +12898,19 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
   );
   })}
-  {owners.length === 0 && <div className="text-center py-10 text-slate-400">No owners added yet</div>}
+  {owners.length === 0 && <div className="text-center py-10 text-neutral-400">No owners added yet</div>}
   </div>
   )}
 
   {/* PROPERTIES TAB - assign owners */}
   {activeTab === "properties" && (
   <div className="space-y-2">
-  <div className="text-sm text-slate-400 mb-3">Assign owners to properties. This determines which income and expenses appear on each owner's statement.</div>
+  <div className="text-sm text-neutral-400 mb-3">Assign owners to properties. This determines which income and expenses appear on each owner's statement.</div>
   {properties.map(p => (
   <div key={p.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center">
   <div>
-  <div className="text-sm font-medium text-slate-800">{p.address}</div>
-  <div className="text-xs text-slate-400">{p.type} · {p.status}</div>
+  <div className="text-sm font-medium text-neutral-800">{p.address}</div>
+  <div className="text-xs text-neutral-400">{p.type} · {p.status}</div>
   </div>
   <Select value={p.owner_id || ""} onChange={e => assignPropertyToOwner(p.id, e.target.value)} className="min-w-40">
   <option value="">No owner</option>
@@ -12930,23 +12930,23 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div key={s.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4 cursor-pointer hover:border-brand-200" onClick={() => setViewStatement(s)}>
   <div className="flex justify-between items-start mb-2">
   <div>
-  <div className="text-sm font-bold text-slate-800">{s.owner_name}</div>
-  <div className="text-xs text-slate-400">Period: {s.period}</div>
+  <div className="text-sm font-bold text-neutral-800">{s.owner_name}</div>
+  <div className="text-xs text-neutral-400">Period: {s.period}</div>
   </div>
   <div className="text-right">
-  <div className="text-sm font-bold text-slate-800">${safeNum(s.net_to_owner).toLocaleString()}</div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[s.status] || "bg-slate-100")}>{s.status}</span>
+  <div className="text-sm font-bold text-neutral-800">${safeNum(s.net_to_owner).toLocaleString()}</div>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (sc[s.status] || "bg-neutral-100")}>{s.status}</span>
   </div>
   </div>
   <div className="grid grid-cols-3 gap-2 text-xs">
-  <div><span className="text-slate-400">Income:</span> <span className="text-green-600 font-medium">${safeNum(s.total_income).toLocaleString()}</span></div>
-  <div><span className="text-slate-400">Expenses:</span> <span className="text-red-600 font-medium">${safeNum(s.total_expenses).toLocaleString()}</span></div>
-  <div><span className="text-slate-400">Mgmt Fee:</span> <span className="text-purple-600 font-medium">${safeNum(s.management_fee).toLocaleString()}</span></div>
+  <div><span className="text-neutral-400">Income:</span> <span className="text-green-600 font-medium">${safeNum(s.total_income).toLocaleString()}</span></div>
+  <div><span className="text-neutral-400">Expenses:</span> <span className="text-red-600 font-medium">${safeNum(s.total_expenses).toLocaleString()}</span></div>
+  <div><span className="text-neutral-400">Mgmt Fee:</span> <span className="text-purple-600 font-medium">${safeNum(s.management_fee).toLocaleString()}</span></div>
   </div>
   </div>
   );
   })}
-  {statements.length === 0 && <div className="text-center py-10 text-slate-400">No statements generated yet. Click "Generate Statement" to create one.</div>}
+  {statements.length === 0 && <div className="text-center py-10 text-neutral-400">No statements generated yet. Click "Generate Statement" to create one.</div>}
   </div>
   )}
 
@@ -12956,13 +12956,13 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   {distributions.map(d => (
   <div key={d.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center">
   <div>
-  <div className="text-sm font-medium text-slate-800">{owners.find(o => String(o.id) === String(d.owner_id))?.name || "Unknown"}</div>
-  <div className="text-xs text-slate-400">{d.date} · {d.method} · {d.reference}</div>
+  <div className="text-sm font-medium text-neutral-800">{owners.find(o => String(o.id) === String(d.owner_id))?.name || "Unknown"}</div>
+  <div className="text-xs text-neutral-400">{d.date} · {d.method} · {d.reference}</div>
   </div>
   <div className="text-sm font-bold text-green-600">${safeNum(d.amount).toLocaleString()}</div>
   </div>
   ))}
-  {distributions.length === 0 && <div className="text-center py-10 text-slate-400">No distributions yet</div>}
+  {distributions.length === 0 && <div className="text-center py-10 text-neutral-400">No distributions yet</div>}
   </div>
   )}
   </div>
@@ -13170,18 +13170,18 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   return (
   <div>
   {/* Tabs: Reconcile / Period Lock */}
-  <div className="flex gap-1 mb-4 border-b border-slate-200">
+  <div className="flex gap-1 mb-4 border-b border-neutral-200">
     {[["reconcile", "Reconcile"], ["period_lock", "Period Lock"]].map(([id, label]) => (
-      <button key={id} onClick={() => setReconTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 ${reconTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-500"}`}>{label}</button>
+      <button key={id} onClick={() => setReconTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 ${reconTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500"}`}>{label}</button>
     ))}
   </div>
 
   {/* Period Lock Tab */}
   {reconTab === "period_lock" && (
   <div className="space-y-4">
-    <div className="bg-white rounded-xl border border-slate-200 p-5">
-      <h3 className="font-semibold text-slate-800 mb-1">Accounting Period Lock</h3>
-      <p className="text-sm text-slate-400 mb-4">Lock past periods to prevent any changes to transactions on or before the lock date.</p>
+    <div className="bg-white rounded-xl border border-neutral-200 p-5">
+      <h3 className="font-semibold text-neutral-800 mb-1">Accounting Period Lock</h3>
+      <p className="text-sm text-neutral-400 mb-4">Lock past periods to prevent any changes to transactions on or before the lock date.</p>
       {periodLock ? (
       <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
         <div className="flex items-center justify-between">
@@ -13199,11 +13199,11 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
       </div>
       )}
       <div className="grid grid-cols-2 gap-3">
-        <div><label className="text-xs font-medium text-slate-500 block mb-1">Lock Date</label>
+        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Lock Date</label>
           <Input type="date" value={lockDate} onChange={e => setLockDate(e.target.value)} /></div>
         <div className="flex items-end"><Btn variant="danger-fill" className="w-full" onClick={savePeriodLock} disabled={!lockDate}>Lock Period</Btn></div>
       </div>
-      <div className="mt-3 text-xs text-slate-400">
+      <div className="mt-3 text-xs text-neutral-400">
         <strong>What gets locked:</strong> No journal entries can be posted, edited, or voided with a date on or before the lock date. Bank feed transactions in locked periods cannot be accepted or undone. Recurring entries will skip locked periods.
       </div>
     </div>
@@ -13214,23 +13214,23 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   {reconTab === "reconcile" && !showReconcile && !viewRecon && (
   <div>
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-5">
-  <h3 className="font-manrope font-semibold text-slate-800 mb-3">Start Bank Reconciliation</h3>
+  <h3 className="font-manrope font-semibold text-neutral-800 mb-3">Start Bank Reconciliation</h3>
   <div className="grid grid-cols-3 gap-3">
-  <div><label className="text-xs text-slate-400 mb-1 block">Month</label><Input placeholder="Enter name" type="month" value={reconPeriod} onChange={e => setReconPeriod(e.target.value)} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Bank Ending Balance ($)</label><Input type="number" step="0.01" value={bankBalance} onChange={e => setBankBalance(e.target.value)} placeholder="Enter from bank statement" /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Month</label><Input placeholder="Enter name" type="month" value={reconPeriod} onChange={e => setReconPeriod(e.target.value)} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Bank Ending Balance ($)</label><Input type="number" step="0.01" value={bankBalance} onChange={e => setBankBalance(e.target.value)} placeholder="Enter from bank statement" /></div>
   <div className="flex items-end"><Btn className="w-full" onClick={startReconciliation}>Begin Reconciliation</Btn></div>
   </div>
   </div>
 
-  <h3 className="font-semibold text-slate-700 mb-3">Previous Reconciliations</h3>
+  <h3 className="font-semibold text-neutral-700 mb-3">Previous Reconciliations</h3>
   <div className="space-y-2">
   {reconciliations.map(r => {
   const sc = { reconciled: "bg-green-100 text-green-700", in_progress: "bg-amber-100 text-amber-700", discrepancy: "bg-red-100 text-red-700" };
   return (
   <div key={r.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-brand-200" onClick={() => setViewRecon(r)}>
   <div>
-  <div className="text-sm font-medium text-slate-800">{r.period}</div>
-  <div className="text-xs text-slate-400">{new Date(r.created_at).toLocaleDateString()}</div>
+  <div className="text-sm font-medium text-neutral-800">{r.period}</div>
+  <div className="text-xs text-neutral-400">{new Date(r.created_at).toLocaleDateString()}</div>
   </div>
   <div className="flex items-center gap-3">
   <div className="text-right text-xs">
@@ -13245,7 +13245,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   </div>
   );
   })}
-  {reconciliations.length === 0 && <div className="text-center py-8 text-slate-400">No reconciliations yet</div>}
+  {reconciliations.length === 0 && <div className="text-center py-8 text-neutral-400">No reconciliations yet</div>}
   </div>
   </div>
   )}
@@ -13255,17 +13255,17 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   <Btn variant="ghost" size="sm" onClick={() => setViewRecon(null)}>← Back</Btn>
   <div className="bg-white rounded-3xl border border-brand-50 p-5">
   <div className="flex justify-between items-start mb-4">
-  <div><h3 className="font-semibold text-slate-800">Reconciliation — {viewRecon.period}</h3><div className="text-xs text-slate-400">{new Date(viewRecon.created_at).toLocaleDateString()}</div></div>
+  <div><h3 className="font-semibold text-neutral-800">Reconciliation — {viewRecon.period}</h3><div className="text-xs text-neutral-400">{new Date(viewRecon.created_at).toLocaleDateString()}</div></div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewRecon.status === "reconciled" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")}>{viewRecon.status}</span>
   </div>
   <div className="grid grid-cols-3 gap-3 mb-4">
-  <div className="bg-blue-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Bank Balance</div><div className="text-lg font-bold text-blue-700">${safeNum(viewRecon.bank_ending_balance).toLocaleString()}</div></div>
-  <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Book Balance</div><div className="text-lg font-bold text-brand-700">${safeNum(viewRecon.book_balance).toLocaleString()}</div></div>
-  <div className={"rounded-lg p-3 text-center " + (Math.abs(viewRecon.difference) < 0.01 ? "bg-green-50" : "bg-red-50")}><div className="text-xs text-slate-400">Difference</div><div className={"text-lg font-bold " + (Math.abs(viewRecon.difference) < 0.01 ? "text-green-700" : "text-red-600")}>${safeNum(viewRecon.difference).toLocaleString()}</div></div>
+  <div className="bg-blue-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Bank Balance</div><div className="text-lg font-bold text-blue-700">${safeNum(viewRecon.bank_ending_balance).toLocaleString()}</div></div>
+  <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Book Balance</div><div className="text-lg font-bold text-brand-700">${safeNum(viewRecon.book_balance).toLocaleString()}</div></div>
+  <div className={"rounded-lg p-3 text-center " + (Math.abs(viewRecon.difference) < 0.01 ? "bg-green-50" : "bg-red-50")}><div className="text-xs text-neutral-400">Difference</div><div className={"text-lg font-bold " + (Math.abs(viewRecon.difference) < 0.01 ? "text-green-700" : "text-red-600")}>${safeNum(viewRecon.difference).toLocaleString()}</div></div>
   </div>
   {(() => { let items = []; try { items = JSON.parse(viewRecon.unreconciled_items || "[]"); } catch {} return items.length > 0 ? (
   <div><div className="font-semibold text-red-700 text-sm mb-2">Unreconciled Items ({items.length})</div>
-  {items.map((it, i) => (<div key={i} className="flex justify-between text-xs py-1 border-b border-brand-50/50"><span className="text-slate-500">{it.date} — {it.description}</span><span className="font-bold">${it.amount.toLocaleString()}</span></div>))}
+  {items.map((it, i) => (<div key={i} className="flex justify-between text-xs py-1 border-b border-brand-50/50"><span className="text-neutral-500">{it.date} — {it.description}</span><span className="font-bold">${it.amount.toLocaleString()}</span></div>))}
   </div>) : null; })()}
   </div>
   </div>
@@ -13275,22 +13275,22 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   <div>
   <div className="flex justify-between items-center mb-4">
   <div>
-  <h3 className="font-semibold text-slate-800">Reconcile — {reconPeriod}</h3>
-  <div className="text-xs text-slate-400">Bank balance: ${Number(bankBalance).toLocaleString()} · Check items that match your bank statement</div>
+  <h3 className="font-semibold text-neutral-800">Reconcile — {reconPeriod}</h3>
+  <div className="text-xs text-neutral-400">Bank balance: ${Number(bankBalance).toLocaleString()} · Check items that match your bank statement</div>
   </div>
   <Btn variant="ghost" onClick={() => { setShowReconcile(false); setReconItems([]); }}>Cancel</Btn>
   </div>
 
   <div className="grid grid-cols-3 gap-3 mb-4">
-  <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Reconciled ({reconciledCount})</div><div className="text-lg font-bold text-green-700">${reconciledTotal.toLocaleString()}</div></div>
-  <div className="bg-amber-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Unreconciled ({reconItems.length - reconciledCount})</div><div className="text-lg font-bold text-amber-700">${unreconciledTotal.toLocaleString()}</div></div>
-  <div className={"rounded-lg p-3 text-center " + (Math.abs(Number(bankBalance) - reconciledTotal) < 0.01 ? "bg-green-50" : "bg-red-50")}><div className="text-xs text-slate-400">Remaining Diff</div><div className={"text-lg font-bold " + (Math.abs(Number(bankBalance) - reconciledTotal) < 0.01 ? "text-green-700" : "text-red-600")}>${(Number(bankBalance) - reconciledTotal).toLocaleString()}</div></div>
+  <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Reconciled ({reconciledCount})</div><div className="text-lg font-bold text-green-700">${reconciledTotal.toLocaleString()}</div></div>
+  <div className="bg-amber-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Unreconciled ({reconItems.length - reconciledCount})</div><div className="text-lg font-bold text-amber-700">${unreconciledTotal.toLocaleString()}</div></div>
+  <div className={"rounded-lg p-3 text-center " + (Math.abs(Number(bankBalance) - reconciledTotal) < 0.01 ? "bg-green-50" : "bg-red-50")}><div className="text-xs text-neutral-400">Remaining Diff</div><div className={"text-lg font-bold " + (Math.abs(Number(bankBalance) - reconciledTotal) < 0.01 ? "text-green-700" : "text-red-600")}>${(Number(bankBalance) - reconciledTotal).toLocaleString()}</div></div>
   </div>
 
   <div className="mb-3 flex items-center gap-2">
   <Btn variant="secondary" size="sm" onClick={toggleAllRecon}>{reconItems.every(i => i.reconciled) ? "Uncheck All" : "Check All"}</Btn>
   <Btn variant="success-fill" size="xs" onClick={() => autoMatchItems(reconItems)}>⚡ Auto-Match</Btn>
-  <span className="text-xs text-slate-400">{reconItems.length} transactions</span>
+  <span className="text-xs text-neutral-400">{reconItems.length} transactions</span>
   </div>
 
   <div className="space-y-1 mb-4">
@@ -13298,8 +13298,8 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   <div key={i} onClick={() => toggleReconItem(i)} className={"flex items-center gap-3 px-4 py-2.5 rounded-lg cursor-pointer border " + (item.reconciled ? "bg-green-50 border-green-200" : "bg-white border-gray-100 hover:bg-brand-50/30")}>
   <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs flex-shrink-0 " + (item.reconciled ? "bg-green-500 border-green-500 text-white" : "border-brand-200")}>{item.reconciled ? "✓" : ""}</span>
   <div className="flex-1 min-w-0">
-  <div className="text-sm text-slate-800 truncate">{item.description}</div>
-  <div className="text-xs text-slate-400">{item.date} · {item.reference} · {item.memo}</div>
+  <div className="text-sm text-neutral-800 truncate">{item.description}</div>
+  <div className="text-xs text-neutral-400">{item.date} · {item.reference} · {item.memo}</div>
   </div>
   <div className={"text-sm font-bold flex-shrink-0 " + (item.amount >= 0 ? "text-green-600" : "text-red-600")}>{item.amount >= 0 ? "+" : ""}${item.amount.toLocaleString()}</div>
   </div>
@@ -13491,7 +13491,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   <StatCard label="Active Rules" value={enabledCount + "/" + settings.length} color="text-green-600" sub="notification types" />
   <StatCard label="Sent Today" value={sentToday} color="text-blue-600" sub="notifications" />
   <StatCard label="Total Sent" value={logs.length} color="text-brand-600" sub="all time" />
-  <StatCard label="Failed" value={logs.filter(l => l.status === "failed").length} color={logs.filter(l => l.status === "failed").length > 0 ? "text-red-500" : "text-slate-400"} sub="delivery errors" />
+  <StatCard label="Failed" value={logs.filter(l => l.status === "failed").length} color={logs.filter(l => l.status === "failed").length > 0 ? "text-red-500" : "text-neutral-400"} sub="delivery errors" />
   </div>
 
   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5 text-sm text-amber-800">
@@ -13512,7 +13512,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
 
   <div className="flex gap-1 mb-4 border-b border-brand-50">
   {[["settings","Settings"],["log","Send Log"],["rentroll","Rent Roll"]].map(([id,label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400")}>{label}</button>
+  <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400")}>{label}</button>
   ))}
   </div>
 
@@ -13527,17 +13527,17 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   <div className="flex items-center gap-2">
   <span className="text-lg">{info.icon}</span>
   <div>
-  <div className="text-sm font-bold text-slate-800">{info.label}</div>
-  <div className="text-xs text-slate-400">{info.desc}</div>
+  <div className="text-sm font-bold text-neutral-800">{info.label}</div>
+  <div className="text-xs text-neutral-400">{info.desc}</div>
   </div>
   </div>
-  <button onClick={() => toggleSetting(s)} className={"relative w-10 h-5 rounded-full transition-colors " + (s.enabled ? "bg-green-500" : "bg-slate-300")}>
+  <button onClick={() => toggleSetting(s)} className={"relative w-10 h-5 rounded-full transition-colors " + (s.enabled ? "bg-green-500" : "bg-neutral-300")}>
   <span className={"absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow " + (s.enabled ? "left-5" : "left-0.5")} />
   </button>
   </div>
   <div className="flex items-center gap-3 text-xs mb-2">
-  <span className="text-slate-400">Recipients:</span>
-  <span className="font-medium text-slate-500">{s.recipients}</span>
+  <span className="text-neutral-400">Recipients:</span>
+  <span className="font-medium text-neutral-500">{s.recipients}</span>
   <Select value={s.recipient_filter || "all"} onChange={async (e) => {
   await supabase.from("notification_settings").update({ recipient_filter: e.target.value }).eq("id", s.id).eq("company_id", companyId);
   fetchData();
@@ -13559,13 +13559,13 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   </div>
   {s.days_before > 0 && (
   <div className="flex items-center gap-1">
-  <span className="text-slate-400">Days before:</span>
+  <span className="text-neutral-400">Days before:</span>
   <input type="number" value={s.days_before} onChange={e => updateDaysBefore(s, e.target.value)} className="w-12 border border-brand-100 rounded px-1 py-0.5 text-xs text-center" min="0" />
   </div>
   )}
   </div>
   <div className="mb-2">
-  <Textarea value={s.template} onChange={e => updateTemplate(s, e.target.value)} className="text-xs text-slate-500" rows={2} />
+  <Textarea value={s.template} onChange={e => updateTemplate(s, e.target.value)} className="text-xs text-neutral-500" rows={2} />
   </div>
   <Btn variant="secondary" size="xs" onClick={() => sendTestNotification(s)}>Send Test</Btn>
   </div>
@@ -13580,23 +13580,23 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   {logs.map(l => (
   <div key={l.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-2.5 flex justify-between items-center">
   <div>
-  <div className="text-sm text-slate-800">{l.subject}</div>
-  <div className="text-xs text-slate-400">{l.recipient_email} · {new Date(l.created_at).toLocaleString()}</div>
+  <div className="text-sm text-neutral-800">{l.subject}</div>
+  <div className="text-xs text-neutral-400">{l.recipient_email} · {new Date(l.created_at).toLocaleString()}</div>
   </div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (l.status === "sent" ? "bg-green-100 text-green-700" : l.status === "failed" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700")}>{l.status}</span>
   </div>
   ))}
-  {logs.length === 0 && <div className="text-center py-8 text-slate-400">No notifications sent yet</div>}
+  {logs.length === 0 && <div className="text-center py-8 text-neutral-400">No notifications sent yet</div>}
   </div>
   )}
 
   {/* RENT ROLL TAB */}
   {activeTab === "rentroll" && (
   <div>
-  <h3 className="font-semibold text-slate-700 mb-3">Rent Roll</h3>
+  <h3 className="font-semibold text-neutral-700 mb-3">Rent Roll</h3>
   <div className="bg-white rounded-3xl border border-brand-50 overflow-x-auto">
   <table className="w-full text-sm">
-  <thead className="bg-brand-50/30 text-xs text-slate-400">
+  <thead className="bg-brand-50/30 text-xs text-neutral-400">
   <tr>
   <th className="text-left px-4 py-2">Tenant</th>
   <th className="text-left px-4 py-2">Property</th>
@@ -13609,12 +13609,12 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   <tbody>
   {tenants.filter(t => t.lease_status === "active" || !t.lease_status).map(t => (
   <tr key={t.id} className="border-t border-brand-50/50">
-  <td className="px-4 py-2 font-medium text-slate-800">{t.name}</td>
-  <td className="px-4 py-2 text-slate-500">{t.property}</td>
+  <td className="px-4 py-2 font-medium text-neutral-800">{t.name}</td>
+  <td className="px-4 py-2 text-neutral-500">{t.property}</td>
   <td className="px-4 py-2 text-right font-bold">${safeNum(t.rent).toLocaleString()}</td>
   <td className={"px-4 py-2 text-right font-bold " + (safeNum(t.balance) > 0 ? "text-red-600" : "text-green-600")}>${safeNum(t.balance).toLocaleString()}</td>
-  <td className="px-4 py-2 text-slate-500">{t.move_out || "—"}</td>
-  <td className="px-4 py-2"><span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (t.lease_status === "active" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-400")}>{t.lease_status || "active"}</span></td>
+  <td className="px-4 py-2 text-neutral-500">{t.move_out || "—"}</td>
+  <td className="px-4 py-2"><span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (t.lease_status === "active" ? "bg-green-100 text-green-700" : "bg-neutral-100 text-neutral-400")}>{t.lease_status || "active"}</span></td>
   </tr>
   ))}
   </tbody>
@@ -13773,32 +13773,32 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
 
   {/* Lease Terms Preview */}
   <div className="bg-brand-50/30 rounded-lg p-3 max-h-32 overflow-y-auto">
-  <div className="text-xs font-semibold text-slate-500 mb-1">Lease Terms</div>
-  <div className="text-xs text-slate-400 whitespace-pre-wrap">{lease.clauses || "Standard residential lease terms apply."}</div>
-  {lease.special_terms && <div className="text-xs text-slate-400 mt-1"><span className="font-semibold">Special Terms:</span> {lease.special_terms}</div>}
+  <div className="text-xs font-semibold text-neutral-500 mb-1">Lease Terms</div>
+  <div className="text-xs text-neutral-400 whitespace-pre-wrap">{lease.clauses || "Standard residential lease terms apply."}</div>
+  {lease.special_terms && <div className="text-xs text-neutral-400 mt-1"><span className="font-semibold">Special Terms:</span> {lease.special_terms}</div>}
   </div>
 
   {/* Signer Status */}
   <div>
-  <div className="text-sm font-semibold text-slate-700 mb-2">Signatures</div>
+  <div className="text-sm font-semibold text-neutral-700 mb-2">Signatures</div>
   {signers.length === 0 && (
   <div className="text-center py-4">
-  <div className="text-sm text-slate-400 mb-3">No signature requests yet</div>
+  <div className="text-sm text-neutral-400 mb-3">No signature requests yet</div>
   <Btn onClick={initSignatureRequest}>Send for Signature</Btn>
   </div>
   )}
   {signers.map(s => (
   <div key={s.id} className={"flex items-center justify-between px-3 py-2 rounded-lg mb-2 " + (s.status === "signed" ? "bg-green-50 border border-green-200" : "bg-amber-50 border border-amber-200")}>
   <div>
-  <div className="text-sm font-medium text-slate-800">{s.signer_name}</div>
-  <div className="text-xs text-slate-400 capitalize">{s.signer_role}</div>
+  <div className="text-sm font-medium text-neutral-800">{s.signer_name}</div>
+  <div className="text-xs text-neutral-400 capitalize">{s.signer_role}</div>
   </div>
   <div className="flex items-center gap-2">
   {s.status === "signed" ? (
   <div className="text-right">
   <span className={"text-xs font-bold px-2 py-0.5 rounded-full " + (s.verified_server_side ? "text-green-700 bg-green-100" : "text-amber-700 bg-amber-100")}>{s.verified_server_side ? "🔒 Verified" : "✓ Signed"}</span>
-  <div className="text-xs text-slate-400 mt-0.5">{new Date(s.signed_at).toLocaleDateString()}</div>
-  {s.integrity_hash && <div className="text-xs text-slate-300 font-mono mt-0.5">{s.integrity_hash.slice(0, 12)}...</div>}
+  <div className="text-xs text-neutral-400 mt-0.5">{new Date(s.signed_at).toLocaleDateString()}</div>
+  {s.integrity_hash && <div className="text-xs text-neutral-300 font-mono mt-0.5">{s.integrity_hash.slice(0, 12)}...</div>}
   </div>
   ) : (
   <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">Pending</span>
@@ -13811,11 +13811,11 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   {/* Signing Pad - show for pending signers */}
   {pendingSigners.length > 0 && !allSigned && (
   <div className="border border-brand-100 rounded-3xl p-4">
-  <div className="text-sm font-semibold text-slate-700 mb-2">Sign as: {pendingSigners[0].signer_name} ({pendingSigners[0].signer_role})</div>
+  <div className="text-sm font-semibold text-neutral-700 mb-2">Sign as: {pendingSigners[0].signer_name} ({pendingSigners[0].signer_role})</div>
 
   <div className="flex gap-2 mb-3">
-  <button onClick={() => setSignMethod("draw")} className={"text-xs px-3 py-1.5 rounded-lg font-medium " + (signMethod === "draw" ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-500")}>Draw Signature</button>
-  <button onClick={() => setSignMethod("type")} className={"text-xs px-3 py-1.5 rounded-lg font-medium " + (signMethod === "type" ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-500")}>Type Name</button>
+  <button onClick={() => setSignMethod("draw")} className={"text-xs px-3 py-1.5 rounded-lg font-medium " + (signMethod === "draw" ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-500")}>Draw Signature</button>
+  <button onClick={() => setSignMethod("type")} className={"text-xs px-3 py-1.5 rounded-lg font-medium " + (signMethod === "type" ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-500")}>Type Name</button>
   </div>
 
   {signMethod === "draw" ? (
@@ -13825,7 +13825,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   onMouseDown={startDraw} onMouseMove={draw} onMouseUp={endDraw} onMouseLeave={endDraw}
   onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={endDraw}
   className="w-full cursor-crosshair" style={{ touchAction: "none" }} />
-  <div className="absolute bottom-1 left-3 text-xs text-slate-300">Sign above this line</div>
+  <div className="absolute bottom-1 left-3 text-xs text-neutral-300">Sign above this line</div>
   </div>
   <Btn variant="ghost" size="xs" onClick={clearCanvas}>Clear</Btn>
   </div>
@@ -13839,7 +13839,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
 
   <div className="flex items-start gap-2 mt-3 mb-3 bg-amber-50 rounded-lg p-2">
   <input type="checkbox" checked={consentAgreed} onChange={(e) => setConsentAgreed(e.target.checked)} className="mt-1" />
-  <label className="text-xs text-slate-500">I agree that my electronic signature is the legal equivalent of my manual/handwritten signature and I consent to be legally bound by this lease agreement.</label>
+  <label className="text-xs text-neutral-500">I agree that my electronic signature is the legal equivalent of my manual/handwritten signature and I consent to be legally bound by this lease agreement.</label>
   </div>
 
   <button onClick={() => {
@@ -13852,7 +13852,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   }
   submitSignature(signer);
   }} disabled={signing || !consentAgreed}
-  className={"w-full py-2.5 rounded-lg text-white font-semibold text-sm " + (signing || !consentAgreed ? "bg-slate-400 cursor-not-allowed" : "bg-brand-600 hover:bg-brand-700")}>
+  className={"w-full py-2.5 rounded-lg text-white font-semibold text-sm " + (signing || !consentAgreed ? "bg-neutral-400 cursor-not-allowed" : "bg-brand-600 hover:bg-brand-700")}>
   {signing ? "Signing..." : !consentAgreed ? "Agree to terms above to sign" : "Apply Signature"}
   </button>
   </div>
@@ -13954,18 +13954,18 @@ function OwnerMaintenanceView({ companyId, properties }) {
   <div key={wo.id} className="bg-white border border-brand-50 rounded-2xl p-4">
   <div className="flex justify-between items-start">
   <div>
-  <div className="text-sm font-semibold text-slate-800">{wo.issue}</div>
-  <div className="text-xs text-slate-400">{wo.property} · {wo.date || new Date(wo.created_at).toLocaleDateString()}</div>
+  <div className="text-sm font-semibold text-neutral-800">{wo.issue}</div>
+  <div className="text-xs text-neutral-400">{wo.property} · {wo.date || new Date(wo.created_at).toLocaleDateString()}</div>
   </div>
   <div className="text-right">
   <span className="text-xs">{statusIcon[wo.status] || "⚪"} {wo.status}</span>
   {wo.cost > 0 && <div className="text-xs font-bold text-red-500 mt-0.5">${safeNum(wo.cost).toLocaleString()}</div>}
   </div>
   </div>
-  {wo.notes && <div className="text-xs text-slate-400 mt-1">{wo.notes}</div>}
+  {wo.notes && <div className="text-xs text-neutral-400 mt-1">{wo.notes}</div>}
   </div>
   ))}
-  {workOrders.length === 0 && <div className="text-center py-8 text-slate-400">No maintenance activity</div>}
+  {workOrders.length === 0 && <div className="text-center py-8 text-neutral-400">No maintenance activity</div>}
   </div>
   );
 }
@@ -14005,8 +14005,8 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="max-w-lg mx-auto mt-16 text-center">
   <div className="text-5xl mb-4">\ud83c\udfe0</div>
   <PageHeader title="Owner Portal" />
-  <p className="text-slate-400 mb-4">{error}</p>
-  <p className="text-sm text-slate-400">Please contact your property manager to set up your owner portal access.</p>
+  <p className="text-neutral-400 mb-4">{error}</p>
+  <p className="text-sm text-neutral-400">Please contact your property manager to set up your owner portal access.</p>
   </div>
   );
 
@@ -14034,19 +14034,19 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   {/* Stats */}
   <div className="grid grid-cols-2 gap-3 mb-6 md:grid-cols-4">
   <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center">
-  <div className="text-xs text-slate-400 mb-1">Total Income</div>
+  <div className="text-xs text-neutral-400 mb-1">Total Income</div>
   <div className="text-lg font-bold text-green-600">${totalIncome.toLocaleString()}</div>
   </div>
   <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center">
-  <div className="text-xs text-slate-400 mb-1">Total Expenses</div>
+  <div className="text-xs text-neutral-400 mb-1">Total Expenses</div>
   <div className="text-lg font-bold text-red-500">${totalExpenses.toLocaleString()}</div>
   </div>
   <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center">
-  <div className="text-xs text-slate-400 mb-1">Distributions</div>
+  <div className="text-xs text-neutral-400 mb-1">Distributions</div>
   <div className="text-lg font-bold text-brand-600">${totalDistributed.toLocaleString()}</div>
   </div>
   <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center">
-  <div className="text-xs text-slate-400 mb-1">Pending</div>
+  <div className="text-xs text-neutral-400 mb-1">Pending</div>
   <div className="text-lg font-bold text-amber-600">{pendingStatements.length}</div>
   </div>
   </div>
@@ -14054,39 +14054,39 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   {/* Tabs */}
   <div className="flex gap-1 mb-5 border-b border-brand-50">
   {[["overview","\ud83c\udfe0 Overview"],["statements","\ud83d\udcca Statements"],["distributions","💰 Distributions"],["properties","\ud83c\udfe2 Properties"],["maintenance","🔧 Maintenance"]].map(([id, label]) => (
-  <button key={id} onClick={() => { setActiveTab(id); setViewStatement(null); }} className={"px-4 py-2.5 text-sm font-medium border-b-2 transition-colors " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-700")}>{label}</button>
+  <button key={id} onClick={() => { setActiveTab(id); setViewStatement(null); }} className={"px-4 py-2.5 text-sm font-medium border-b-2 transition-colors " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-700")}>{label}</button>
   ))}
   </div>
 
   {/* OVERVIEW TAB */}
   {activeTab === "overview" && (
   <div className="space-y-4">
-  <h3 className="font-semibold text-slate-700">Your Properties</h3>
+  <h3 className="font-semibold text-neutral-700">Your Properties</h3>
   <div className="grid gap-3 md:grid-cols-2">
   {properties.map(p => (
   <div key={p.id} className="bg-white rounded-3xl border border-brand-50 p-4">
   <div className="flex justify-between items-start">
   <div>
-  <div className="font-semibold text-slate-800 text-sm">{p.address}</div>
-  <div className="text-xs text-slate-400">{p.type || "Residential"}</div>
+  <div className="font-semibold text-neutral-800 text-sm">{p.address}</div>
+  <div className="text-xs text-neutral-400">{p.type || "Residential"}</div>
   </div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (p.status === "occupied" ? "bg-green-100 text-green-700" : p.status === "vacant" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-400")}>{p.status || "active"}</span>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (p.status === "occupied" ? "bg-green-100 text-green-700" : p.status === "vacant" ? "bg-amber-100 text-amber-700" : "bg-neutral-100 text-neutral-400")}>{p.status || "active"}</span>
   </div>
   {p.rent && <div className="text-sm font-bold text-green-600 mt-2">${safeNum(p.rent).toLocaleString()}/mo</div>}
   </div>
   ))}
-  {properties.length === 0 && <div className="text-center py-8 text-slate-400">No properties assigned yet</div>}
+  {properties.length === 0 && <div className="text-center py-8 text-neutral-400">No properties assigned yet</div>}
   </div>
 
   {/* Recent statements */}
   {statements.length > 0 && (
   <div>
-  <h3 className="font-semibold text-slate-700 mt-4 mb-2">Recent Statements</h3>
+  <h3 className="font-semibold text-neutral-700 mt-4 mb-2">Recent Statements</h3>
   {statements.slice(0, 3).map(s => (
   <div key={s.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center mb-2 cursor-pointer hover:border-brand-200" onClick={() => { setActiveTab("statements"); setViewStatement(s); }}>
   <div>
-  <div className="text-sm font-medium text-slate-800">{s.period}</div>
-  <div className="text-xs text-slate-400">Net: ${safeNum(s.net_to_owner).toLocaleString()}</div>
+  <div className="text-sm font-medium text-neutral-800">{s.period}</div>
+  <div className="text-xs text-neutral-400">Net: ${safeNum(s.net_to_owner).toLocaleString()}</div>
   </div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (s.status === "paid" ? "bg-green-100 text-green-700" : s.status === "sent" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{s.status}</span>
   </div>
@@ -14102,19 +14102,19 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   {statements.map(s => (
   <div key={s.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-brand-200" onClick={() => setViewStatement(s)}>
   <div>
-  <div className="text-sm font-semibold text-slate-800">{s.period}</div>
-  <div className="text-xs text-slate-400">{new Date(s.created_at).toLocaleDateString()}</div>
+  <div className="text-sm font-semibold text-neutral-800">{s.period}</div>
+  <div className="text-xs text-neutral-400">{new Date(s.created_at).toLocaleDateString()}</div>
   </div>
   <div className="flex items-center gap-4">
   <div className="text-right">
-  <div className="text-xs text-slate-400">Income: <span className="text-green-600 font-bold">${safeNum(s.total_income).toLocaleString()}</span></div>
-  <div className="text-xs text-slate-400">Net: <span className="text-brand-600 font-bold">${safeNum(s.net_to_owner).toLocaleString()}</span></div>
+  <div className="text-xs text-neutral-400">Income: <span className="text-green-600 font-bold">${safeNum(s.total_income).toLocaleString()}</span></div>
+  <div className="text-xs text-neutral-400">Net: <span className="text-brand-600 font-bold">${safeNum(s.net_to_owner).toLocaleString()}</span></div>
   </div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (s.status === "paid" ? "bg-green-100 text-green-700" : s.status === "sent" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{s.status}</span>
   </div>
   </div>
   ))}
-  {statements.length === 0 && <div className="text-center py-8 text-slate-400">No statements yet</div>}
+  {statements.length === 0 && <div className="text-center py-8 text-neutral-400">No statements yet</div>}
   </div>
   )}
 
@@ -14125,8 +14125,8 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="bg-white rounded-3xl border border-brand-50 p-5">
   <div className="flex justify-between items-start mb-4">
   <div>
-  <h3 className="font-bold text-slate-800">Owner Statement — {viewStatement.period}</h3>
-  <div className="text-xs text-slate-400">{viewStatement.owner_name} · Generated {new Date(viewStatement.created_at).toLocaleDateString()}</div>
+  <h3 className="font-bold text-neutral-800">Owner Statement — {viewStatement.period}</h3>
+  <div className="text-xs text-neutral-400">{viewStatement.owner_name} · Generated {new Date(viewStatement.created_at).toLocaleDateString()}</div>
   </div>
   <div className="flex items-center gap-2">
   <Btn onClick={() => { const w = window.open("", "_blank", "noopener,noreferrer"); w.document.write("<pre>" + escapeHtml(JSON.stringify(viewStatement, null, 2)) + "</pre>"); w.document.title = "Statement " + sanitizeForPrint(viewStatement.period); setTimeout(() => w.print(), 300); }} variant="secondary" size="xs"><span className="material-icons-outlined text-xs align-middle">print</span></Btn>
@@ -14134,18 +14134,18 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   </div>
   </div>
   <div className="grid grid-cols-4 gap-3 mb-4">
-  <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Income</div><div className="text-lg font-bold text-green-600">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
-  <div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Expenses</div><div className="text-lg font-bold text-red-500">${safeNum(viewStatement.total_expenses).toLocaleString()}</div></div>
-  <div className="bg-purple-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Mgmt Fee</div><div className="text-lg font-bold text-purple-600">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
-  <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Net to You</div><div className="text-lg font-bold text-brand-700">${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
+  <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Income</div><div className="text-lg font-bold text-green-600">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
+  <div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Expenses</div><div className="text-lg font-bold text-red-500">${safeNum(viewStatement.total_expenses).toLocaleString()}</div></div>
+  <div className="bg-purple-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Mgmt Fee</div><div className="text-lg font-bold text-purple-600">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
+  <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Net to You</div><div className="text-lg font-bold text-brand-700">${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
   </div>
   {/* Line items */}
   {(() => { let items = []; try { items = JSON.parse(viewStatement.line_items || "[]"); } catch {} return items.map((cat, ci) => (
   <div key={ci} className="mb-3">
-  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{cat.category}</div>
+  <div className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">{cat.category}</div>
   {(cat.items || []).map((item, ii) => (
   <div key={ii} className="flex justify-between text-xs py-1 border-b border-brand-50/50">
-  <span className="text-slate-500">{item.date} — {item.description}</span>
+  <span className="text-neutral-500">{item.date} — {item.description}</span>
   <span className={"font-bold " + (item.amount >= 0 ? "text-green-600" : "text-red-500")}>${Math.abs(item.amount).toLocaleString()}</span>
   </div>
   ))}
@@ -14161,22 +14161,22 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   {distributions.map(d => (
   <div key={d.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center">
   <div>
-  <div className="text-sm font-medium text-slate-800">${safeNum(d.amount).toLocaleString()}</div>
-  <div className="text-xs text-slate-400">{d.reference} · {new Date(d.date).toLocaleDateString()}</div>
+  <div className="text-sm font-medium text-neutral-800">${safeNum(d.amount).toLocaleString()}</div>
+  <div className="text-xs text-neutral-400">{d.reference} · {new Date(d.date).toLocaleDateString()}</div>
   </div>
   <div className="text-right">
   <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700">{d.method?.toUpperCase()}</span>
   </div>
   </div>
   ))}
-  {distributions.length === 0 && <div className="text-center py-8 text-slate-400">No distributions yet</div>}
+  {distributions.length === 0 && <div className="text-center py-8 text-neutral-400">No distributions yet</div>}
   </div>
   )}
 
   {/* MAINTENANCE TAB */}
   {activeTab === "maintenance" && (
   <div>
-  <h3 className="font-manrope font-bold text-slate-700 mb-3">Maintenance Activity</h3>
+  <h3 className="font-manrope font-bold text-neutral-700 mb-3">Maintenance Activity</h3>
   <OwnerMaintenanceView companyId={companyId} properties={properties} />
   </div>
   )}
@@ -14188,15 +14188,15 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div key={p.id} className="bg-white rounded-3xl border border-brand-50 p-4">
   <div className="flex justify-between items-start mb-2">
   <div>
-  <div className="font-semibold text-slate-800">{p.address}</div>
-  <div className="text-xs text-slate-400">{p.type || "Residential"} · {p.bedrooms || "?"} bd / {p.bathrooms || "?"} ba · {p.sqft || "?"} sqft</div>
+  <div className="font-semibold text-neutral-800">{p.address}</div>
+  <div className="text-xs text-neutral-400">{p.type || "Residential"} · {p.bedrooms || "?"} bd / {p.bathrooms || "?"} ba · {p.sqft || "?"} sqft</div>
   </div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (p.status === "occupied" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{p.status}</span>
   </div>
   {p.rent && <div className="text-sm">Rent: <span className="font-bold text-green-600">${safeNum(p.rent).toLocaleString()}/mo</span></div>}
   </div>
   ))}
-  {properties.length === 0 && <div className="text-center py-8 text-slate-400">No properties assigned</div>}
+  {properties.length === 0 && <div className="text-center py-8 text-neutral-400">No properties assigned</div>}
   </div>
   )}
   </div>
@@ -14308,28 +14308,28 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
 
   {/* Stats */}
   <div className="flex gap-3 mb-4">
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-slate-800">{hoaPayments.length}</div><div className="text-xs text-slate-400">Total</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{hoaPayments.filter(h => h.status === "pending").length}</div><div className="text-xs text-slate-400">Pending</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">${hoaPayments.filter(h => h.status === "paid").reduce((s, h) => s + safeNum(h.amount), 0).toLocaleString()}</div><div className="text-xs text-slate-400">Paid</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-neutral-800">{hoaPayments.length}</div><div className="text-xs text-neutral-400">Total</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{hoaPayments.filter(h => h.status === "pending").length}</div><div className="text-xs text-neutral-400">Pending</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">${hoaPayments.filter(h => h.status === "paid").reduce((s, h) => s + safeNum(h.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400">Paid</div></div>
   </div>
 
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
-  <h3 className="font-semibold text-slate-700 mb-3">{editingHoa ? "Edit HOA Payment" : "New HOA Payment"}</h3>
+  <h3 className="font-semibold text-neutral-700 mb-3">{editingHoa ? "Edit HOA Payment" : "New HOA Payment"}</h3>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">HOA Company</label><Input placeholder="e.g. Riverside HOA" value={form.hoa_name} onChange={e => setForm({ ...form, hoa_name: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($)</label><Input placeholder="250.00" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Due Date</label><Input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Frequency</label><Select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })}>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">HOA Company</label><Input placeholder="e.g. Riverside HOA" value={form.hoa_name} onChange={e => setForm({ ...form, hoa_name: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Amount ($)</label><Input placeholder="250.00" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Due Date</label><Input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Frequency</label><Select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })}>
   <option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="annual">Annual</option>
   </Select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
-  <div className="col-span-2 border-t border-slate-100 pt-2 mt-1"><p className="text-xs text-slate-400 mb-2">Portal Login (encrypted)</p>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
+  <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1"><p className="text-xs text-neutral-400 mb-2">Portal Login (encrypted)</p>
   <div className="grid grid-cols-3 gap-2">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Website</label><Input type="url" value={form.website||""} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Username</label><Input value={form.username||""} onChange={e => setForm({...form, username: e.target.value})} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Password</label><Input type="password" value={form.password||""} onChange={e => setForm({...form, password: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Website</label><Input type="url" value={form.website||""} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Username</label><Input value={form.username||""} onChange={e => setForm({...form, username: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Password</label><Input type="password" value={form.password||""} onChange={e => setForm({...form, password: e.target.value})} /></div>
   </div></div>
   </div>
   <div className="flex gap-2 mt-3">
@@ -14341,22 +14341,22 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
 
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-x-auto">
   <table className="w-full text-sm">
-  <thead className="bg-brand-50/30 text-xs text-slate-400 uppercase">
+  <thead className="bg-brand-50/30 text-xs text-neutral-400 uppercase">
   <tr><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">HOA Company</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-left">Due Date</th><th className="px-4 py-3 text-left">Frequency</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Portal</th><th className="px-4 py-3 text-right">Actions</th></tr>
   </thead>
   <tbody>
   {filtered.map(h => (
   <tr key={h.id} className="border-t border-brand-50/50 hover:bg-brand-50/30/50">
-  <td className="px-4 py-2.5 text-slate-800">{h.property}</td>
-  <td className="px-4 py-2.5 font-medium text-slate-800">{h.hoa_name}</td>
+  <td className="px-4 py-2.5 text-neutral-800">{h.property}</td>
+  <td className="px-4 py-2.5 font-medium text-neutral-800">{h.hoa_name}</td>
   <td className="px-4 py-2.5 text-right font-semibold">${safeNum(h.amount).toLocaleString()}</td>
-  <td className="px-4 py-2.5 text-slate-400">{h.due_date}</td>
-  <td className="px-4 py-2.5 text-slate-500 capitalize">{h.frequency}</td>
+  <td className="px-4 py-2.5 text-neutral-400">{h.due_date}</td>
+  <td className="px-4 py-2.5 text-neutral-500 capitalize">{h.frequency}</td>
   <td className="px-4 py-2.5"><Badge status={h.status} /></td>
   <td className="px-4 py-2.5 text-xs">
-  {h.website ? <a href={h.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{h.website.replace(/^https?:\/\//, "")}</a> : <span className="text-slate-300">—</span>}
+  {h.website ? <a href={h.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{h.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
   {h.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(h.id)) { s.delete(h.id); setShowCreds(s); } else { h._decUser = await decryptCredential(h.username_encrypted, h.encryption_iv, companyId); h._decPass = await decryptCredential(h.password_encrypted, h.encryption_iv, companyId); s.add(h.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(h.id) ? "Hide" : "Show"} login</button>}
-  {showCreds.has(h.id) && <div className="text-slate-600 mt-0.5">{h._decUser || "—"} / {h._decPass || "—"}</div>}
+  {showCreds.has(h.id) && <div className="text-neutral-600 mt-0.5">{h._decUser || "—"} / {h._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
   {h.status === "pending" && <button onClick={() => payHOA(h)} className="text-xs text-green-600 hover:underline mr-2">Pay</button>}
@@ -14367,7 +14367,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   ))}
   </tbody>
   </table>
-  {filtered.length === 0 && <div className="text-center py-8 text-slate-400">No HOA payments found</div>}
+  {filtered.length === 0 && <div className="text-center py-8 text-neutral-400">No HOA payments found</div>}
   </div>
   </div>
   );
@@ -14494,44 +14494,44 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
 
   {/* Stats */}
   <div className="flex gap-3 mb-4">
-  <div className="rounded-xl shadow-sm border border-slate-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-slate-800">{activeLoans.length}</div><div className="text-xs text-slate-400">Active Loans</div></div>
-  <div className="rounded-xl shadow-sm border border-slate-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{formatCurrency(totalMonthly)}</div><div className="text-xs text-slate-400">Total Monthly Payments</div></div>
-  <div className="rounded-xl shadow-sm border border-slate-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">{formatCurrency(totalBalance)}</div><div className="text-xs text-slate-400">Total Outstanding Balance</div></div>
+  <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-neutral-800">{activeLoans.length}</div><div className="text-xs text-neutral-400">Active Loans</div></div>
+  <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{formatCurrency(totalMonthly)}</div><div className="text-xs text-neutral-400">Total Monthly Payments</div></div>
+  <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">{formatCurrency(totalBalance)}</div><div className="text-xs text-neutral-400">Total Outstanding Balance</div></div>
   </div>
 
   {showForm && (
   <Modal title={editingLoan ? "Edit Loan" : "New Loan"} onClose={() => { setShowForm(false); setEditingLoan(null); }}>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lender Name *</label><Input placeholder="e.g. Wells Fargo" value={form.lender_name} onChange={e => setForm({ ...form, lender_name: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Loan Type</label><Select value={form.loan_type} onChange={e => setForm({ ...form, loan_type: e.target.value })}>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lender Name *</label><Input placeholder="e.g. Wells Fargo" value={form.lender_name} onChange={e => setForm({ ...form, lender_name: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Loan Type</label><Select value={form.loan_type} onChange={e => setForm({ ...form, loan_type: e.target.value })}>
   <option value="Conventional">Conventional</option><option value="FHA">FHA</option><option value="VA">VA</option><option value="DSCR">DSCR</option><option value="Hard Money">Hard Money</option><option value="HELOC">HELOC</option><option value="Other">Other</option>
   </Select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Original Amount ($) *</label><Input placeholder="250000" type="number" value={form.original_amount} onChange={e => setForm({ ...form, original_amount: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Current Balance ($)</label><Input placeholder="230000" type="number" value={form.current_balance} onChange={e => setForm({ ...form, current_balance: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Interest Rate (%)</label><Input placeholder="6.5" type="number" step="0.01" value={form.interest_rate} onChange={e => setForm({ ...form, interest_rate: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Monthly Payment ($)</label><Input placeholder="1800" type="number" value={form.monthly_payment} onChange={e => setForm({ ...form, monthly_payment: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Account Number</label><Input placeholder="Loan account #" value={form.account_number} onChange={e => setForm({ ...form, account_number: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Loan Start Date</label><Input type="date" value={form.loan_start_date} onChange={e => setForm({ ...form, loan_start_date: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Maturity Date</label><Input type="date" value={form.maturity_date} onChange={e => setForm({ ...form, maturity_date: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status</label><Select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Original Amount ($) *</label><Input placeholder="250000" type="number" value={form.original_amount} onChange={e => setForm({ ...form, original_amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Current Balance ($)</label><Input placeholder="230000" type="number" value={form.current_balance} onChange={e => setForm({ ...form, current_balance: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Interest Rate (%)</label><Input placeholder="6.5" type="number" step="0.01" value={form.interest_rate} onChange={e => setForm({ ...form, interest_rate: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Monthly Payment ($)</label><Input placeholder="1800" type="number" value={form.monthly_payment} onChange={e => setForm({ ...form, monthly_payment: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Account Number</label><Input placeholder="Loan account #" value={form.account_number} onChange={e => setForm({ ...form, account_number: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Loan Start Date</label><Input type="date" value={form.loan_start_date} onChange={e => setForm({ ...form, loan_start_date: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Maturity Date</label><Input type="date" value={form.maturity_date} onChange={e => setForm({ ...form, maturity_date: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Status</label><Select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
   <option value="active">Active</option><option value="paid_off">Paid Off</option>
   </Select></div>
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
   <div className="col-span-2">
-  <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.escrow_included} onChange={e => setForm({ ...form, escrow_included: e.target.checked })} className="rounded" /><span className="text-sm text-slate-600">Escrow Included</span></label>
+  <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.escrow_included} onChange={e => setForm({ ...form, escrow_included: e.target.checked })} className="rounded" /><span className="text-sm text-neutral-600">Escrow Included</span></label>
   </div>
   {form.escrow_included && (
   <>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Escrow Amount ($)</label><Input placeholder="350" type="number" value={form.escrow_amount} onChange={e => setForm({ ...form, escrow_amount: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Escrow Covers</label><Input placeholder="e.g. Taxes, Insurance" value={form.escrow_covers} onChange={e => setForm({ ...form, escrow_covers: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Escrow Amount ($)</label><Input placeholder="350" type="number" value={form.escrow_amount} onChange={e => setForm({ ...form, escrow_amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Escrow Covers</label><Input placeholder="e.g. Taxes, Insurance" value={form.escrow_covers} onChange={e => setForm({ ...form, escrow_covers: e.target.value })} /></div>
   </>
   )}
-  <div className="col-span-2 border-t border-slate-100 pt-2 mt-1"><p className="text-xs text-slate-400 mb-2">Lender Portal Login (encrypted)</p>
+  <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1"><p className="text-xs text-neutral-400 mb-2">Lender Portal Login (encrypted)</p>
   <div className="grid grid-cols-3 gap-2">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Website</label><Input type="url" value={form.website||""} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Username</label><Input value={form.username||""} onChange={e => setForm({...form, username: e.target.value})} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Password</label><Input type="password" value={form.password||""} onChange={e => setForm({...form, password: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Website</label><Input type="url" value={form.website||""} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Username</label><Input value={form.username||""} onChange={e => setForm({...form, username: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Password</label><Input type="password" value={form.password||""} onChange={e => setForm({...form, password: e.target.value})} /></div>
   </div></div>
   </div>
   <div className="flex gap-2 mt-4">
@@ -14541,25 +14541,25 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   </Modal>
   )}
 
-  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+  <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-x-auto">
   <table className="w-full text-sm">
-  <thead className="bg-slate-50 text-xs text-slate-400 uppercase">
+  <thead className="bg-neutral-50 text-xs text-neutral-400 uppercase">
   <tr><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Lender</th><th className="px-4 py-3 text-left">Type</th><th className="px-4 py-3 text-right">Rate</th><th className="px-4 py-3 text-right">Monthly</th><th className="px-4 py-3 text-right">Balance</th><th className="px-4 py-3 text-left">Maturity</th><th className="px-4 py-3 text-left">Portal</th><th className="px-4 py-3 text-right">Actions</th></tr>
   </thead>
   <tbody>
   {filtered.map(l => (
-  <tr key={l.id} className="border-t border-slate-100 hover:bg-green-50/40">
-  <td className="px-4 py-2.5 text-slate-800">{l.property}</td>
-  <td className="px-4 py-2.5 font-medium text-slate-800">{l.lender_name}</td>
-  <td className="px-4 py-2.5 text-slate-500">{l.loan_type}</td>
-  <td className="px-4 py-2.5 text-right text-slate-600">{safeNum(l.interest_rate).toFixed(2)}%</td>
+  <tr key={l.id} className="border-t border-neutral-100 hover:bg-green-50/40">
+  <td className="px-4 py-2.5 text-neutral-800">{l.property}</td>
+  <td className="px-4 py-2.5 font-medium text-neutral-800">{l.lender_name}</td>
+  <td className="px-4 py-2.5 text-neutral-500">{l.loan_type}</td>
+  <td className="px-4 py-2.5 text-right text-neutral-600">{safeNum(l.interest_rate).toFixed(2)}%</td>
   <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(l.monthly_payment)}</td>
   <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(l.current_balance)}</td>
-  <td className="px-4 py-2.5 text-slate-400">{l.maturity_date || "—"}</td>
+  <td className="px-4 py-2.5 text-neutral-400">{l.maturity_date || "—"}</td>
   <td className="px-4 py-2.5 text-xs">
-  {l.website ? <a href={l.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{l.website.replace(/^https?:\/\//, "")}</a> : <span className="text-slate-300">—</span>}
+  {l.website ? <a href={l.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{l.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
   {l.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(l.id)) { s.delete(l.id); setShowCreds(s); } else { l._decUser = await decryptCredential(l.username_encrypted, l.encryption_iv, companyId); l._decPass = await decryptCredential(l.password_encrypted, l.encryption_iv, companyId); s.add(l.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(l.id) ? "Hide" : "Show"} login</button>}
-  {showCreds.has(l.id) && <div className="text-slate-600 mt-0.5">{l._decUser || "—"} / {l._decPass || "—"}</div>}
+  {showCreds.has(l.id) && <div className="text-neutral-600 mt-0.5">{l._decUser || "—"} / {l._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
   {l.status === "active" && <button onClick={() => recordPayment(l)} className="text-xs text-green-600 hover:underline mr-2">Record Payment</button>}
@@ -14570,7 +14570,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   ))}
   </tbody>
   </table>
-  {filtered.length === 0 && <div className="text-center py-8 text-slate-400">No loans found</div>}
+  {filtered.length === 0 && <div className="text-center py-8 text-neutral-400">No loans found</div>}
   </div>
   </div>
   );
@@ -14679,29 +14679,29 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
 
   {/* Stats */}
   <div className="flex gap-3 mb-4">
-  <div className="rounded-xl shadow-sm border border-slate-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-slate-800">{activePolicies.length}</div><div className="text-xs text-slate-400">Active Policies</div></div>
-  <div className="rounded-xl shadow-sm border border-slate-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{formatCurrency(totalAnnualPremium)}</div><div className="text-xs text-slate-400">Total Premium (Annual)</div></div>
-  <div className="rounded-xl shadow-sm border border-slate-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">{expiringSoon}</div><div className="text-xs text-slate-400">Expiring Soon (90 days)</div></div>
+  <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-neutral-800">{activePolicies.length}</div><div className="text-xs text-neutral-400">Active Policies</div></div>
+  <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{formatCurrency(totalAnnualPremium)}</div><div className="text-xs text-neutral-400">Total Premium (Annual)</div></div>
+  <div className="rounded-xl shadow-sm border border-neutral-200 bg-white px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">{expiringSoon}</div><div className="text-xs text-neutral-400">Expiring Soon (90 days)</div></div>
   </div>
 
   {showForm && (
   <Modal title={editingPolicy ? "Edit Policy" : "New Insurance Policy"} onClose={() => { setShowForm(false); setEditingPolicy(null); }}>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Provider *</label><Input placeholder="e.g. State Farm" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Policy Number</label><Input placeholder="Policy #" value={form.policy_number} onChange={e => setForm({ ...form, policy_number: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Premium Amount ($) *</label><Input placeholder="1200" type="number" value={form.premium_amount} onChange={e => setForm({ ...form, premium_amount: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Premium Frequency</label><Select value={form.premium_frequency} onChange={e => setForm({ ...form, premium_frequency: e.target.value })}>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Provider *</label><Input placeholder="e.g. State Farm" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Policy Number</label><Input placeholder="Policy #" value={form.policy_number} onChange={e => setForm({ ...form, policy_number: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Premium Amount ($) *</label><Input placeholder="1200" type="number" value={form.premium_amount} onChange={e => setForm({ ...form, premium_amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Premium Frequency</label><Select value={form.premium_frequency} onChange={e => setForm({ ...form, premium_frequency: e.target.value })}>
   <option value="Monthly">Monthly</option><option value="Quarterly">Quarterly</option><option value="Annual">Annual</option>
   </Select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Coverage Amount ($)</label><Input placeholder="300000" type="number" value={form.coverage_amount} onChange={e => setForm({ ...form, coverage_amount: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Expiration Date</label><Input type="date" value={form.expiration_date} onChange={e => setForm({ ...form, expiration_date: e.target.value })} /></div>
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
-  <div className="col-span-2 border-t border-slate-100 pt-2 mt-1"><p className="text-xs text-slate-400 mb-2">Insurance Portal Login (encrypted)</p>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Coverage Amount ($)</label><Input placeholder="300000" type="number" value={form.coverage_amount} onChange={e => setForm({ ...form, coverage_amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Expiration Date</label><Input type="date" value={form.expiration_date} onChange={e => setForm({ ...form, expiration_date: e.target.value })} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
+  <div className="col-span-2 border-t border-neutral-100 pt-2 mt-1"><p className="text-xs text-neutral-400 mb-2">Insurance Portal Login (encrypted)</p>
   <div className="grid grid-cols-3 gap-2">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Website</label><Input type="url" value={form.website||""} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Username</label><Input value={form.username||""} onChange={e => setForm({...form, username: e.target.value})} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Password</label><Input type="password" value={form.password||""} onChange={e => setForm({...form, password: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Website</label><Input type="url" value={form.website||""} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Username</label><Input value={form.username||""} onChange={e => setForm({...form, username: e.target.value})} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Password</label><Input type="password" value={form.password||""} onChange={e => setForm({...form, password: e.target.value})} /></div>
   </div></div>
   </div>
   <div className="flex gap-2 mt-4">
@@ -14711,25 +14711,25 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   </Modal>
   )}
 
-  <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+  <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-x-auto">
   <table className="w-full text-sm">
-  <thead className="bg-slate-50 text-xs text-slate-400 uppercase">
+  <thead className="bg-neutral-50 text-xs text-neutral-400 uppercase">
   <tr><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Provider</th><th className="px-4 py-3 text-left">Policy #</th><th className="px-4 py-3 text-right">Premium</th><th className="px-4 py-3 text-left">Freq.</th><th className="px-4 py-3 text-right">Coverage</th><th className="px-4 py-3 text-left">Expiry</th><th className="px-4 py-3 text-left">Portal</th><th className="px-4 py-3 text-right">Actions</th></tr>
   </thead>
   <tbody>
   {filtered.map(p => (
-  <tr key={p.id} className={`border-t border-slate-100 hover:bg-green-50/40 ${expiryClass(p.expiration_date)}`}>
-  <td className="px-4 py-2.5 text-slate-800">{p.property}</td>
-  <td className="px-4 py-2.5 font-medium text-slate-800">{p.provider}</td>
-  <td className="px-4 py-2.5 text-slate-500">{p.policy_number || "—"}</td>
+  <tr key={p.id} className={`border-t border-neutral-100 hover:bg-green-50/40 ${expiryClass(p.expiration_date)}`}>
+  <td className="px-4 py-2.5 text-neutral-800">{p.property}</td>
+  <td className="px-4 py-2.5 font-medium text-neutral-800">{p.provider}</td>
+  <td className="px-4 py-2.5 text-neutral-500">{p.policy_number || "—"}</td>
   <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(p.premium_amount)}</td>
-  <td className="px-4 py-2.5 text-slate-500">{p.premium_frequency}</td>
+  <td className="px-4 py-2.5 text-neutral-500">{p.premium_frequency}</td>
   <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(p.coverage_amount)}</td>
-  <td className="px-4 py-2.5 text-slate-400">{p.expiration_date || "—"}</td>
+  <td className="px-4 py-2.5 text-neutral-400">{p.expiration_date || "—"}</td>
   <td className="px-4 py-2.5 text-xs">
-  {p.website ? <a href={p.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{p.website.replace(/^https?:\/\//, "")}</a> : <span className="text-slate-300">—</span>}
+  {p.website ? <a href={p.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{p.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
   {p.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(p.id)) { s.delete(p.id); setShowCreds(s); } else { p._decUser = await decryptCredential(p.username_encrypted, p.encryption_iv, companyId); p._decPass = await decryptCredential(p.password_encrypted, p.encryption_iv, companyId); s.add(p.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(p.id) ? "Hide" : "Show"} login</button>}
-  {showCreds.has(p.id) && <div className="text-slate-600 mt-0.5">{p._decUser || "—"} / {p._decPass || "—"}</div>}
+  {showCreds.has(p.id) && <div className="text-neutral-600 mt-0.5">{p._decUser || "—"} / {p._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
   <button onClick={() => { setEditingPolicy(p); setForm({ property: p.property || "", provider: p.provider || "", policy_number: p.policy_number || "", premium_amount: String(p.premium_amount || ""), premium_frequency: p.premium_frequency || "Annual", coverage_amount: String(p.coverage_amount || ""), expiration_date: p.expiration_date || "", notes: p.notes || "", website: p.website || "", username: "", password: "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>
@@ -14739,7 +14739,7 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   ))}
   </tbody>
   </table>
-  {filtered.length === 0 && <div className="text-center py-8 text-slate-400">No insurance policies found</div>}
+  {filtered.length === 0 && <div className="text-center py-8 text-neutral-400">No insurance policies found</div>}
   </div>
   </div>
   );
@@ -14849,37 +14849,37 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
   <div className="flex items-center justify-between mb-5">
   <div>
   <PageHeader title="Archive" />
-  <p className="text-xs text-slate-400 mt-1">Archived items are auto-purged after 180 days</p>
+  <p className="text-xs text-neutral-400 mt-1">Archived items are auto-purged after 180 days</p>
   </div>
-  <div className="text-sm text-slate-400">{items.length} archived item{items.length !== 1 ? "s" : ""}</div>
+  <div className="text-sm text-neutral-400">{items.length} archived item{items.length !== 1 ? "s" : ""}</div>
   </div>
 
   <div className="flex gap-2 mb-4 flex-wrap">
-  <button onClick={() => setFilter("all")} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === "all" ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-500"}`}>All ({items.length})</button>
+  <button onClick={() => setFilter("all")} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === "all" ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-500"}`}>All ({items.length})</button>
   {tables.map(t => {
   const count = items.filter(i => i._table === t).length;
   const label = t.replace("_", " ").replace(/\b\w/g, c => c.toUpperCase());
-  return <button key={t} onClick={() => setFilter(t)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === t ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-500"}`}>{label} ({count})</button>;
+  return <button key={t} onClick={() => setFilter(t)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === t ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-500"}`}>{label} ({count})</button>;
   })}
   </div>
 
-  {loading ? <div className="text-center py-8 text-slate-400">Loading...</div> : filtered.length === 0 ? (
+  {loading ? <div className="text-center py-8 text-neutral-400">Loading...</div> : filtered.length === 0 ? (
   <div className="text-center py-16">
   <div className="text-4xl mb-3">📦</div>
-  <div className="text-slate-400">No archived items</div>
-  <div className="text-xs text-slate-300 mt-1">Deleted items will appear here for 180 days</div>
+  <div className="text-neutral-400">No archived items</div>
+  <div className="text-xs text-neutral-300 mt-1">Deleted items will appear here for 180 days</div>
   </div>
   ) : (
   <div className="space-y-2">
   {filtered.map(item => (
   <div key={item._table + item.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4 flex items-center gap-4">
-  <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-lg">
+  <div className="w-10 h-10 rounded-full bg-neutral-100 flex items-center justify-center text-lg">
   {item._table === "properties" ? "🏠" : item._table === "tenants" ? "👤" : item._table === "work_orders" ? "🔧" : item._table === "documents" || item._table === "doc_generated" ? "📄" : item._table === "leases" ? "📋" : item._table === "vendors" ? "🏗️" : item._table === "hoa_payments" ? "🏘️" : item._table === "autopay_schedules" ? "🔄" : item._table === "recurring_journal_entries" ? "📊" : item._table === "late_fee_rules" ? "⚠️" : item._table === "app_users" ? "👥" : "💰"}
   </div>
   <div className="flex-1 min-w-0">
-  <div className="font-semibold text-slate-800 text-sm">{getItemTitle(item)}</div>
-  <div className="text-xs text-slate-400">{item._label} · {getItemSubtitle(item)}</div>
-  <div className="text-xs text-slate-300 mt-0.5">Archived {new Date(item.archived_at).toLocaleDateString()} {item.archived_by ? "by " + item.archived_by : ""} · <span className={daysUntilPurge(item) < 30 ? "text-red-400 font-semibold" : "text-slate-400"}>{daysUntilPurge(item)} days until auto-purge</span></div>
+  <div className="font-semibold text-neutral-800 text-sm">{getItemTitle(item)}</div>
+  <div className="text-xs text-neutral-400">{item._label} · {getItemSubtitle(item)}</div>
+  <div className="text-xs text-neutral-300 mt-0.5">Archived {new Date(item.archived_at).toLocaleDateString()} {item.archived_by ? "by " + item.archived_by : ""} · <span className={daysUntilPurge(item) < 30 ? "text-red-400 font-semibold" : "text-neutral-400"}>{daysUntilPurge(item)} days until auto-purge</span></div>
   </div>
   <div className="flex gap-2 shrink-0">
   <button onClick={() => restoreItem(item)} className="text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 font-medium">♻️ Restore</button>
@@ -15062,40 +15062,40 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   <div className="flex items-center justify-between mb-5">
   <div>
   <PageHeader title="Autopay & Recurring Rent" />
-  <p className="text-xs text-slate-400 mt-0.5">Set recurring schedules per tenant with custom start and end dates</p>
+  <p className="text-xs text-neutral-400 mt-0.5">Set recurring schedules per tenant with custom start and end dates</p>
   </div>
   <Btn onClick={() => setShowForm(!showForm)}>+ New Schedule</Btn>
   </div>
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-5">
-  <h3 className="font-semibold text-slate-700 mb-3">New Autopay Schedule</h3>
+  <h3 className="font-semibold text-neutral-700 mb-3">New Autopay Schedule</h3>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant *</label><Select value={form.tenant} onChange={e => { const t = tenants.find(t => t.name === e.target.value); setForm({ ...form, tenant: e.target.value, property: t?.property || "", amount: t?.rent || "" }); }}>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant *</label><Select value={form.tenant} onChange={e => { const t = tenants.find(t => t.name === e.target.value); setForm({ ...form, tenant: e.target.value, property: t?.property || "", amount: t?.rent || "" }); }}>
   <option value="">Select tenant...</option>
   {tenants.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
   </Select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($)</label><Input placeholder="1500.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Payment Method</label><Select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })}>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Amount ($)</label><Input placeholder="1500.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Payment Method</label><Select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })}>
   {["ACH", "card", "cash", "check"].map(m => <option key={m}>{m}</option>)}
   </Select></div>
   <div>
-  <label className="text-xs text-slate-400 mb-1 block">Day of Month</label>
+  <label className="text-xs text-neutral-400 mb-1 block">Day of Month</label>
   <Select value={form.day_of_month} onChange={e => setForm({ ...form, day_of_month: e.target.value })} >
   {Array.from({ length: 28 }, (_, i) => i + 1).map(d => <option key={d} value={String(d)}>{d}{d === 1 ? "st" : d === 2 ? "nd" : d === 3 ? "rd" : "th"}</option>)}
   </Select>
   </div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Frequency</label><Select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })}>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Frequency</label><Select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })}>
   <option value="monthly">Monthly</option>
   <option value="weekly">Weekly</option>
   <option value="biweekly">Bi-Weekly</option>
   </Select></div>
   <div>
-  <label className="text-xs text-slate-400 mb-1 block">Start Date</label>
+  <label className="text-xs text-neutral-400 mb-1 block">Start Date</label>
   <Input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })}  />
   </div>
   <div>
-  <label className="text-xs text-slate-400 mb-1 block">End Date (optional)</label>
+  <label className="text-xs text-neutral-400 mb-1 block">End Date (optional)</label>
   <Input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })}  />
   </div>
   </div>
@@ -15110,19 +15110,19 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   <div key={s.id} className={`bg-white rounded-xl border shadow-sm p-4 ${s.enabled ? "border-brand-50" : "border-brand-100 opacity-60"}`}>
   <div className="flex justify-between items-start">
   <div>
-  <div className="font-semibold text-slate-800">{s.tenant}</div>
-  <div className="text-xs text-slate-400">{s.property}</div>
+  <div className="font-semibold text-neutral-800">{s.tenant}</div>
+  <div className="text-xs text-neutral-400">{s.property}</div>
   </div>
   <div className="flex items-center gap-2">
-  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${s.enabled ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-400"}`}>{s.enabled ? "Active" : "Paused"}</span>
-  <span className="text-lg font-manrope font-bold text-slate-800">${s.amount}</span>
+  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${s.enabled ? "bg-green-100 text-green-700" : "bg-neutral-100 text-neutral-400"}`}>{s.enabled ? "Active" : "Paused"}</span>
+  <span className="text-lg font-manrope font-bold text-neutral-800">${s.amount}</span>
   </div>
   </div>
   <div className="mt-3 grid grid-cols-4 gap-2 text-xs">
-  <div><span className="text-slate-400">Frequency</span><div className="font-semibold text-slate-700 capitalize">{s.frequency}</div></div>
-  <div><span className="text-slate-400">Day</span><div className="font-semibold text-slate-700">{s.day_of_month}{s.day_of_month === "1" ? "st" : s.day_of_month === "2" ? "nd" : s.day_of_month === "3" ? "rd" : "th"} of month</div></div>
-  <div><span className="text-slate-400">Start</span><div className="font-semibold text-slate-700">{s.start_date}</div></div>
-  <div><span className="text-slate-400">End</span><div className="font-semibold text-slate-700">{s.end_date || "Ongoing"}</div></div>
+  <div><span className="text-neutral-400">Frequency</span><div className="font-semibold text-neutral-700 capitalize">{s.frequency}</div></div>
+  <div><span className="text-neutral-400">Day</span><div className="font-semibold text-neutral-700">{s.day_of_month}{s.day_of_month === "1" ? "st" : s.day_of_month === "2" ? "nd" : s.day_of_month === "3" ? "rd" : "th"} of month</div></div>
+  <div><span className="text-neutral-400">Start</span><div className="font-semibold text-neutral-700">{s.start_date}</div></div>
+  <div><span className="text-neutral-400">End</span><div className="font-semibold text-neutral-700">{s.end_date || "Ongoing"}</div></div>
   </div>
   <div className="mt-2 flex items-center justify-between">
   <div className="text-xs text-brand-600 font-medium">Next due: {nextDue(s)}</div>
@@ -15134,7 +15134,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   </div>
   </div>
   ))}
-  {schedules.length === 0 && <div className="text-center py-12 text-slate-400">No autopay schedules yet. Create one above.</div>}
+  {schedules.length === 0 && <div className="text-center py-12 text-neutral-400">No autopay schedules yet. Create one above.</div>}
   </div>
   </div>
   );
@@ -15251,7 +15251,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   <div className="flex items-center justify-between mb-5">
   <div>
   <PageHeader title="Late Fee Automation" />
-  <p className="text-xs text-slate-400 mt-0.5">Auto-flag overdue payments and apply fees after grace period</p>
+  <p className="text-xs text-neutral-400 mt-0.5">Auto-flag overdue payments and apply fees after grace period</p>
   </div>
   <div className="flex gap-2">
   {afterGrace.length > 0 && <Btn variant="danger-fill" className="bg-red-500 hover:bg-red-600" onClick={applyAllFees}>⚡ Apply All ({afterGrace.length})</Btn>}
@@ -15260,7 +15260,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   </div>
   {rules.length > 0 && (
   <div className="mb-5 space-y-2">
-  <h3 className="font-semibold text-slate-700 text-sm">Active Rules</h3>
+  <h3 className="font-semibold text-neutral-700 text-sm">Active Rules</h3>
   {rules.map(r => (
   <div key={r.id} className="bg-brand-50 border border-brand-100 rounded-2xl px-4 py-3 flex justify-between items-center">
   <div>
@@ -15274,12 +15274,12 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   )}
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-5">
-  <h3 className="font-semibold text-slate-700 mb-3">New Late Fee Rule</h3>
+  <h3 className="font-semibold text-neutral-700 mb-3">New Late Fee Rule</h3>
   <div className="grid grid-cols-2 gap-3">
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Rule Name *</label><Input placeholder="Standard Late Fee" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Grace Period (days)</label><Input type="number" min="0" max="30" placeholder="5" value={form.grace_days} onChange={e => setForm({ ...form, grace_days: e.target.value })} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Fee Type</label><Select value={form.fee_type} onChange={e => setForm({ ...form, fee_type: e.target.value })}><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></Select></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">{form.fee_type === "flat" ? "Fee Amount ($)" : "Percentage (%)"}</label><Input type="number" min="0" step="0.01" placeholder={form.fee_type === "flat" ? "50.00" : "5.0"} value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Rule Name *</label><Input placeholder="Standard Late Fee" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Grace Period (days)</label><Input type="number" min="0" max="30" placeholder="5" value={form.grace_days} onChange={e => setForm({ ...form, grace_days: e.target.value })} /></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">Fee Type</label><Select value={form.fee_type} onChange={e => setForm({ ...form, fee_type: e.target.value })}><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></Select></div>
+  <div><label className="text-xs text-neutral-400 mb-1 block">{form.fee_type === "flat" ? "Fee Amount ($)" : "Percentage (%)"}</label><Input type="number" min="0" step="0.01" placeholder={form.fee_type === "flat" ? "50.00" : "5.0"} value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} /></div>
   </div>
   <div className="flex gap-2 mt-3">
   <Btn onClick={saveRule}>Save Rule</Btn>
@@ -15288,9 +15288,9 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   </div>
   )}
   <div className="grid grid-cols-3 gap-3 mb-5">
-  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center"><div className="text-2xl font-bold text-orange-500">{flagged.length}</div><div className="text-xs text-slate-400 mt-1">Overdue</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center"><div className="text-2xl font-bold text-red-500">{afterGrace.length}</div><div className="text-xs text-slate-400 mt-1">Past Grace Period</div></div>
-  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center"><div className="text-2xl font-bold text-slate-700">${flagged.reduce((s, p) => s + safeNum(p.amount), 0).toLocaleString()}</div><div className="text-xs text-slate-400 mt-1">Total Overdue</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center"><div className="text-2xl font-bold text-orange-500">{flagged.length}</div><div className="text-xs text-neutral-400 mt-1">Overdue</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center"><div className="text-2xl font-bold text-red-500">{afterGrace.length}</div><div className="text-xs text-neutral-400 mt-1">Past Grace Period</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center"><div className="text-2xl font-bold text-neutral-700">${flagged.reduce((s, p) => s + safeNum(p.amount), 0).toLocaleString()}</div><div className="text-xs text-neutral-400 mt-1">Total Overdue</div></div>
   </div>
   <div className="space-y-3">
   {flagged.map(p => {
@@ -15298,7 +15298,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   return (
   <div key={p.id} className={`bg-white rounded-xl border shadow-sm p-4 ${pastGrace ? "border-red-200" : "border-orange-100"}`}>
   <div className="flex justify-between items-start">
-  <div><div className="font-semibold text-slate-800">{p.tenant}</div><div className="text-xs text-slate-400">{p.property}</div></div>
+  <div><div className="font-semibold text-neutral-800">{p.tenant}</div><div className="text-xs text-neutral-400">{p.property}</div></div>
   <div className="text-right"><div className="font-bold text-red-500">${p.amount}</div><div className={`text-xs font-semibold ${pastGrace ? "text-red-500" : "text-orange-500"}`}>{p.daysLate} days late</div></div>
   </div>
   <div className="mt-3 flex gap-2">
@@ -15308,7 +15308,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   </div>
   );
   })}
-  {flagged.length === 0 && <div className="text-center py-10 text-slate-400">🎉 No overdue payments!</div>}
+  {flagged.length === 0 && <div className="text-center py-10 text-neutral-400">🎉 No overdue payments!</div>}
   </div>
   </div>
   );
@@ -15490,9 +15490,9 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   if (!tenantData) return (
   <div className="text-center py-20">
   <div className="text-5xl mb-4">🏠</div>
-  <div className="text-slate-500 font-semibold text-lg">No tenant account linked to this email.</div>
-  <div className="text-slate-400 text-sm mt-2">Contact your property manager to get access.</div>
-  <div className="text-xs text-slate-300 mt-4">{currentUser?.email}</div>
+  <div className="text-neutral-500 font-semibold text-lg">No tenant account linked to this email.</div>
+  <div className="text-neutral-400 text-sm mt-2">Contact your property manager to get access.</div>
+  <div className="text-xs text-neutral-300 mt-4">{currentUser?.email}</div>
   </div>
   );
 
@@ -15541,7 +15541,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   {/* Tab Navigation */}
   <div className="flex gap-1 mb-5 overflow-x-auto pb-1 border-b border-brand-50">
   {tabs.map(([id, label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap transition-colors " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-700")}>{label}</button>
+  <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap transition-colors " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-700")}>{label}</button>
   ))}
   </div>
 
@@ -15549,9 +15549,9 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   {activeTab === "overview" && (
   <div className="space-y-4">
   <div className="bg-white rounded-3xl border border-brand-50 p-4">
-  <h3 className="font-semibold text-slate-700 mb-3">Lease Details</h3>
+  <h3 className="font-semibold text-neutral-700 mb-3">Lease Details</h3>
   {[["Status", (tenantData.lease_status || "active")], ["Property", tenantData.property], ["Move-in", tenantData.move_in || "—"], ["Lease End", tenantData.move_out || "—"], ["Monthly Rent", "$" + safeNum(tenantData.rent).toLocaleString()], ["Email", tenantData.email || "—"], ["Phone", tenantData.phone || "—"]].map(([l, v]) => (
-  <div key={l} className="flex justify-between py-2 border-b border-brand-50/50 text-sm last:border-0"><span className="text-slate-400">{l}</span><span className="font-medium text-slate-800 capitalize">{v}</span></div>
+  <div key={l} className="flex justify-between py-2 border-b border-brand-50/50 text-sm last:border-0"><span className="text-neutral-400">{l}</span><span className="font-medium text-neutral-800 capitalize">{v}</span></div>
   ))}
   </div>
   {safeNum(tenantData.balance) > 0 && (
@@ -15564,20 +15564,20 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   </div>
   )}
   <div className="bg-white rounded-3xl border border-brand-50 p-4">
-  <h3 className="font-semibold text-slate-700 mb-3">Recent Activity</h3>
+  <h3 className="font-semibold text-neutral-700 mb-3">Recent Activity</h3>
   {payments.slice(0, 3).map(p => (
   <div key={p.id} className="flex justify-between py-2 border-b border-brand-50/50 last:border-0 text-sm">
-  <div><span className="text-green-600 font-medium">Payment</span> <span className="text-slate-400">— {p.date}</span></div>
-  <span className="font-semibold text-slate-800">${safeNum(p.amount).toLocaleString()}</span>
+  <div><span className="text-green-600 font-medium">Payment</span> <span className="text-neutral-400">— {p.date}</span></div>
+  <span className="font-semibold text-neutral-800">${safeNum(p.amount).toLocaleString()}</span>
   </div>
   ))}
   {workOrders.slice(0, 2).map(w => (
   <div key={w.id} className="flex justify-between py-2 border-b border-brand-50/50 last:border-0 text-sm">
-  <div><span className="text-orange-600 font-medium">Maintenance</span> <span className="text-slate-400">— {w.issue}</span></div>
+  <div><span className="text-orange-600 font-medium">Maintenance</span> <span className="text-neutral-400">— {w.issue}</span></div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (w.status === "completed" ? "bg-green-100 text-green-700" : w.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{w.status}</span>
   </div>
   ))}
-  {payments.length === 0 && workOrders.length === 0 && <div className="text-center py-4 text-slate-400 text-sm">No recent activity</div>}
+  {payments.length === 0 && workOrders.length === 0 && <div className="text-center py-4 text-neutral-400 text-sm">No recent activity</div>}
   </div>
   </div>
   )}
@@ -15593,36 +15593,36 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   </div>
   )}
   <div className="bg-white rounded-3xl border border-brand-50 p-6">
-  <h3 className="font-semibold text-slate-800 text-lg mb-1">Make a Payment</h3>
-  <p className="text-sm text-slate-400 mb-5">Pay securely with Stripe</p>
+  <h3 className="font-semibold text-neutral-800 text-lg mb-1">Make a Payment</h3>
+  <p className="text-sm text-neutral-400 mb-5">Pay securely with Stripe</p>
   <div className="mb-4">
-  <label className="text-xs text-slate-400 mb-1 block">Current Balance</label>
+  <label className="text-xs text-neutral-400 mb-1 block">Current Balance</label>
   <div className={"text-2xl font-bold " + (safeNum(tenantData.balance) > 0 ? "text-red-600" : "text-green-600")}>
   ${safeNum(tenantData.balance).toLocaleString()}
   </div>
   </div>
   <div className="mb-4">
-  <label className="text-xs text-slate-400 mb-1 block">Payment Amount</label>
+  <label className="text-xs text-neutral-400 mb-1 block">Payment Amount</label>
   <div className="relative">
-  <span className="absolute left-3 top-2.5 text-slate-400">$</span>
+  <span className="absolute left-3 top-2.5 text-neutral-400">$</span>
   <input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full border border-brand-100 rounded-2xl pl-7 pr-3 py-2.5 text-lg font-mono" placeholder="0.00" min="0" max="999999.99" step="0.01" />
   </div>
   <div className="flex gap-2 mt-2">
-  <button onClick={() => setPaymentAmount(String(tenantData.rent || 0))} className="text-xs bg-slate-100 text-slate-500 px-3 py-1 rounded-2xl hover:bg-slate-100">Full Rent (${safeNum(tenantData.rent)})</button>
+  <button onClick={() => setPaymentAmount(String(tenantData.rent || 0))} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1 rounded-2xl hover:bg-neutral-100">Full Rent (${safeNum(tenantData.rent)})</button>
   {safeNum(tenantData.balance) > 0 && <button onClick={() => setPaymentAmount(String(tenantData.balance))} className="text-xs bg-red-50 text-red-600 px-3 py-1 rounded-lg hover:bg-red-100">Full Balance (${safeNum(tenantData.balance)})</button>}
   </div>
   </div>
   <div className="mb-4 p-3 bg-brand-50/30 rounded-lg">
   <div className="flex items-center gap-2 mb-2">
   <div className="w-8 h-5 bg-gradient-to-r from-brand-600 to-purple-600 rounded text-white text-xs flex items-center justify-center font-bold">S</div>
-  <span className="text-sm text-slate-500">Powered by Stripe</span>
+  <span className="text-sm text-neutral-500">Powered by Stripe</span>
   </div>
-  <div className="text-xs text-slate-400">Secure payment processing. Your card information is encrypted and never stored on our servers.</div>
+  <div className="text-xs text-neutral-400">Secure payment processing. Your card information is encrypted and never stored on our servers.</div>
   </div>
-  <button onClick={handleStripePayment} disabled={paymentProcessing} className={"w-full py-3 rounded-xl text-white font-semibold text-sm transition-all " + (paymentProcessing ? "bg-slate-400 cursor-not-allowed" : "bg-brand-600 hover:bg-brand-700 active:scale-98")}>
+  <button onClick={handleStripePayment} disabled={paymentProcessing} className={"w-full py-3 rounded-xl text-white font-semibold text-sm transition-all " + (paymentProcessing ? "bg-neutral-400 cursor-not-allowed" : "bg-brand-600 hover:bg-brand-700 active:scale-98")}>
   {paymentProcessing ? "Processing..." : "Pay $" + (paymentAmount || "0")}
   </button>
-  <div className="text-xs text-slate-400 text-center mt-3">A receipt will be available after payment is confirmed.</div>
+  <div className="text-xs text-neutral-400 text-center mt-3">A receipt will be available after payment is confirmed.</div>
   </div>
   </div>
   )}
@@ -15630,12 +15630,12 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   {/* ---- AUTOPAY TAB ---- */}
   {activeTab === "autopay" && tenantData && (
   <div className="max-w-md mx-auto">
-  <h3 className="font-manrope font-bold text-slate-800 mb-4">Recurring Payments</h3>
+  <h3 className="font-manrope font-bold text-neutral-800 mb-4">Recurring Payments</h3>
   <div className="bg-white rounded-3xl border border-brand-50 shadow-card p-6">
   <div className="flex items-center justify-between mb-4">
   <div>
-  <div className="text-sm font-semibold text-slate-700">Monthly Autopay</div>
-  <div className="text-xs text-slate-400">Automatically pay rent on the 1st</div>
+  <div className="text-sm font-semibold text-neutral-700">Monthly Autopay</div>
+  <div className="text-xs text-neutral-400">Automatically pay rent on the 1st</div>
   </div>
   <button onClick={async () => {
   setAutopayLoading(true);
@@ -15656,21 +15656,21 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   }
   } catch (e) { showToast("Error: " + e.message, "error"); }
   setAutopayLoading(false);
-  }} disabled={autopayLoading} className={`relative w-12 h-6 rounded-full transition-colors ${autopayEnabled ? "bg-emerald-500" : "bg-slate-300"}`}>
-  <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${autopayEnabled ? "translate-x-6" : "translate-x-0.5"}`} />
+  }} disabled={autopayLoading} className={`relative w-12 h-6 rounded-full transition-colors ${autopayEnabled ? "bg-emerald-500" : "bg-neutral-300"}`}>
+  <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${autopayEnabled ? "tranneutral-x-6" : "tranneutral-x-0.5"}`} />
   </button>
   </div>
   {autopayEnabled && (
   <div className="bg-emerald-50 rounded-2xl p-4 space-y-2">
-  <div className="flex justify-between text-sm"><span className="text-slate-400">Amount</span><span className="font-bold text-emerald-700">${safeNum(tenantData.rent).toLocaleString()}/month</span></div>
-  <div className="flex justify-between text-sm"><span className="text-slate-400">Payment Day</span><span className="font-medium text-slate-700">1st of each month</span></div>
-  <div className="flex justify-between text-sm"><span className="text-slate-400">Method</span><span className="font-medium text-slate-700">Stripe</span></div>
+  <div className="flex justify-between text-sm"><span className="text-neutral-400">Amount</span><span className="font-bold text-emerald-700">${safeNum(tenantData.rent).toLocaleString()}/month</span></div>
+  <div className="flex justify-between text-sm"><span className="text-neutral-400">Payment Day</span><span className="font-medium text-neutral-700">1st of each month</span></div>
+  <div className="flex justify-between text-sm"><span className="text-neutral-400">Method</span><span className="font-medium text-neutral-700">Stripe</span></div>
   </div>
   )}
   {!autopayEnabled && (
   <div className="bg-brand-50/30 rounded-2xl p-4 text-center">
-  <span className="material-icons-outlined text-slate-300 text-3xl mb-2">autorenew</span>
-  <p className="text-sm text-slate-400">Enable autopay to schedule your rent payment on the 1st of each month. Requires the autopay processing worker to be deployed.</p>
+  <span className="material-icons-outlined text-neutral-300 text-3xl mb-2">autorenew</span>
+  <p className="text-sm text-neutral-400">Enable autopay to schedule your rent payment on the 1st of each month. Requires the autopay processing worker to be deployed.</p>
   </div>
   )}
   </div>
@@ -15681,7 +15681,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   {activeTab === "history" && (
   <div>
   <div className="flex justify-between items-center mb-3">
-  <h3 className="font-semibold text-slate-700">Payment History</h3>
+  <h3 className="font-semibold text-neutral-700">Payment History</h3>
   <Btn variant="secondary" size="xs" onClick={() => exportToCSV(payments, [
   { label: "Date", key: "date" }, { label: "Type", key: "type" }, { label: "Amount", key: "amount" },
   { label: "Method", key: "method" }, { label: "Status", key: "status" },
@@ -15691,8 +15691,8 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   {payments.map(p => (
   <div key={p.id} className="bg-white border border-brand-50 rounded-2xl px-4 py-3 flex justify-between items-center">
   <div>
-  <div className="text-sm font-medium text-slate-800">{p.type === "rent" ? "Rent Payment" : p.type}</div>
-  <div className="text-xs text-slate-400">{p.date} · {p.method}</div>
+  <div className="text-sm font-medium text-neutral-800">{p.type === "rent" ? "Rent Payment" : p.type}</div>
+  <div className="text-xs text-neutral-400">{p.date} · {p.method}</div>
   </div>
   <div className="flex items-center gap-3">
   {p.status === "paid" && <Btn variant="secondary" size="xs" onClick={() => generatePaymentReceipt(p)}>Receipt</Btn>}
@@ -15703,23 +15703,23 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   </div>
   </div>
   ))}
-  {payments.length === 0 && <div className="text-center py-8 text-slate-400">No payments recorded yet</div>}
+  {payments.length === 0 && <div className="text-center py-8 text-neutral-400">No payments recorded yet</div>}
   </div>
   {/* Ledger / Account Balance */}
-  <h3 className="font-semibold text-slate-700 mt-6 mb-3">Account Ledger</h3>
+  <h3 className="font-semibold text-neutral-700 mt-6 mb-3">Account Ledger</h3>
   <div className="space-y-2">
   {ledger.map(e => (
   <div key={e.id} className="bg-white border border-brand-50 rounded-2xl px-4 py-3">
   <div className="flex justify-between">
-  <div><div className="text-sm font-medium text-slate-800">{e.description}</div><div className="text-xs text-slate-400">{e.date}</div></div>
+  <div><div className="text-sm font-medium text-neutral-800">{e.description}</div><div className="text-xs text-neutral-400">{e.date}</div></div>
   <div className="text-right">
   <div className={"text-sm font-bold " + (e.type === "payment" || e.type === "credit" ? "text-green-600" : "text-red-500")}>{e.type === "payment" || e.type === "credit" ? "+" + formatCurrency(Math.abs(e.amount)) : "-" + formatCurrency(Math.abs(e.amount))}</div>
-  <div className="text-xs text-slate-400">Bal: ${e.balance}</div>
+  <div className="text-xs text-neutral-400">Bal: ${e.balance}</div>
   </div>
   </div>
   </div>
   ))}
-  {ledger.length === 0 && <div className="text-center py-8 text-slate-400">No ledger entries yet</div>}
+  {ledger.length === 0 && <div className="text-center py-8 text-neutral-400">No ledger entries yet</div>}
   </div>
   </div>
   )}
@@ -15728,15 +15728,15 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   {activeTab === "maintenance" && (
   <div>
   <div className="flex justify-between items-center mb-4">
-  <h3 className="font-semibold text-slate-700">Maintenance Requests</h3>
+  <h3 className="font-semibold text-neutral-700">Maintenance Requests</h3>
   <Btn size="xs" onClick={() => setShowMaintForm(!showMaintForm)}>
   {showMaintForm ? "Cancel" : "+ New Request"}
   </Btn>
   </div>
   {showMaintForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
-  <h4 className="font-medium text-slate-700 mb-3">Submit a Maintenance Request</h4>
-  <label className="text-xs font-medium text-slate-400 mb-1 block">What's the issue? *</label>
+  <h4 className="font-medium text-neutral-700 mb-3">Submit a Maintenance Request</h4>
+  <label className="text-xs font-medium text-neutral-400 mb-1 block">What's the issue? *</label>
   <Input placeholder="e.g. Leaking faucet in kitchen" value={maintForm.issue} onChange={e => setMaintForm({...maintForm, issue: e.target.value})} className="mb-3" />
   <Select value={maintForm.priority} onChange={e => setMaintForm({...maintForm, priority: e.target.value})} className="mb-3">
   <option value="normal">Normal Priority</option>
@@ -15745,7 +15745,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   </Select>
   <Textarea placeholder="Additional details..." value={maintForm.notes} onChange={e => setMaintForm({...maintForm, notes: e.target.value})} className="mb-3" rows={3} />
   <div className="mb-3">
-  <label className="text-xs text-slate-400 mb-1 block">Attach Photo (optional)</label>
+  <label className="text-xs text-neutral-400 mb-1 block">Attach Photo (optional)</label>
   <input type="file" accept="image/*" onChange={e => setMaintPhoto(e.target.files[0])} className="text-sm" />
   </div>
   <Btn onClick={submitMaintenanceRequest}>Submit Request</Btn>
@@ -15756,18 +15756,18 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div key={w.id} className="bg-white border border-brand-50 rounded-2xl px-4 py-3">
   <div className="flex justify-between items-start">
   <div>
-  <div className="text-sm font-medium text-slate-800">{w.issue}</div>
-  <div className="text-xs text-slate-400">{w.property} · {new Date(w.created_at).toLocaleDateString()}</div>
-  {w.notes && <div className="text-xs text-slate-400 mt-1">{w.notes}</div>}
+  <div className="text-sm font-medium text-neutral-800">{w.issue}</div>
+  <div className="text-xs text-neutral-400">{w.property} · {new Date(w.created_at).toLocaleDateString()}</div>
+  {w.notes && <div className="text-xs text-neutral-400 mt-1">{w.notes}</div>}
   </div>
   <div className="text-right">
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (w.status === "completed" ? "bg-green-100 text-green-700" : w.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{w.status.replace("_", " ")}</span>
-  <div className={"text-xs mt-1 " + (w.priority === "emergency" ? "text-red-500 font-bold" : w.priority === "urgent" ? "text-orange-500" : "text-slate-400")}>{w.priority}</div>
+  <div className={"text-xs mt-1 " + (w.priority === "emergency" ? "text-red-500 font-bold" : w.priority === "urgent" ? "text-orange-500" : "text-neutral-400")}>{w.priority}</div>
   </div>
   </div>
   </div>
   ))}
-  {workOrders.length === 0 && <div className="text-center py-8 text-slate-400">No maintenance requests</div>}
+  {workOrders.length === 0 && <div className="text-center py-8 text-neutral-400">No maintenance requests</div>}
   </div>
   </div>
   )}
@@ -15776,7 +15776,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   {activeTab === "documents" && (
   <div>
   <div className="flex items-center justify-between mb-3">
-  <h3 className="font-semibold text-slate-700">My Documents</h3>
+  <h3 className="font-semibold text-neutral-700">My Documents</h3>
   <Btn size="xs" onClick={() => setShowTenantDocUpload(true)}>+ Upload</Btn>
   </div>
   <div className="space-y-2">
@@ -15787,14 +15787,14 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   {d.type === "lease" ? "\ud83d\udcdc" : d.type === "notice" ? "\ud83d\udce8" : "📄"}
   </div>
   <div>
-  <div className="text-sm font-medium text-slate-800">{d.name || d.file_name}</div>
-  <div className="text-xs text-slate-400">{d.type || "Document"} · {new Date(d.uploaded_at).toLocaleDateString()}</div>
+  <div className="text-sm font-medium text-neutral-800">{d.name || d.file_name}</div>
+  <div className="text-xs text-neutral-400">{d.type || "Document"} · {new Date(d.uploaded_at).toLocaleDateString()}</div>
   </div>
   </div>
   <Btn variant="secondary" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }}>View</Btn>
   </div>
   ))}
-  {documents.length === 0 && <div className="text-center py-8 text-slate-400">No documents uploaded yet</div>}
+  {documents.length === 0 && <div className="text-center py-8 text-neutral-400">No documents uploaded yet</div>}
   </div>
   {showTenantDocUpload && <DocUploadModal onClose={() => setShowTenantDocUpload(false)} companyId={companyId} property={tenantData?.property || ""} tenant={tenantData?.name || ""} showToast={showToast} isTenantUpload onUploaded={async () => { const { data } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).is("archived_at", null).order("uploaded_at", { ascending: false }); setDocuments(data || []); }} />}
   </div>
@@ -15806,13 +15806,13 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="p-4 space-y-3 max-h-96 overflow-y-auto">
   {messages.map(m => (
   <div key={m.id} className={"flex " + (m.sender !== tenantData.name ? "justify-start" : "justify-end")}>
-  <div className={"max-w-xs rounded-2xl px-4 py-2.5 " + (m.sender !== tenantData.name ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-800")}>
+  <div className={"max-w-xs rounded-2xl px-4 py-2.5 " + (m.sender !== tenantData.name ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-800")}>
   <div className="text-sm">{m.message}</div>
-  <div className={"text-xs mt-1 " + (m.sender !== tenantData.name ? "text-brand-200" : "text-slate-400")}>{m.sender} · {new Date(m.created_at).toLocaleDateString()}</div>
+  <div className={"text-xs mt-1 " + (m.sender !== tenantData.name ? "text-brand-200" : "text-neutral-400")}>{m.sender} · {new Date(m.created_at).toLocaleDateString()}</div>
   </div>
   </div>
   ))}
-  {messages.length === 0 && <div className="text-center py-6 text-slate-400 text-sm">No messages yet. Send a message to your property manager below.</div>}
+  {messages.length === 0 && <div className="text-center py-6 text-neutral-400 text-sm">No messages yet. Send a message to your property manager below.</div>}
   </div>
   <div className="p-3 border-t border-brand-50 flex gap-2">
   <Input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} placeholder="Message your property manager..." className="flex-1" />
@@ -16001,7 +16001,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   <div className="flex items-center justify-between mb-5">
   <div>
   <PageHeader title="Team & Role Management" />
-  <p className="text-xs text-slate-400 mt-0.5">Add team members and choose exactly which modules they can access</p>
+  <p className="text-xs text-neutral-400 mt-0.5">Add team members and choose exactly which modules they can access</p>
   </div>
   <Btn onClick={startAdd}>+ Add User</Btn>
   </div>
@@ -16011,7 +16011,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   {Object.entries(ROLES).map(([key, r]) => (
   <div key={key} className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
   <div className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold text-white mb-1 ${r.color}`}>{r.label}</div>
-  <div className="text-xs text-slate-400">{key === "admin" ? "Full access" : key === "tenant" ? "Portal only" : "Customizable"}</div>
+  <div className="text-xs text-neutral-400">{key === "admin" ? "Full access" : key === "tenant" ? "Portal only" : "Customizable"}</div>
   </div>
   ))}
   </div>
@@ -16019,21 +16019,21 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   {/* Add / Edit form */}
   {showForm && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
-  <h3 className="font-semibold text-slate-700 mb-4">{editingUser ? `Edit — ${editingUser.name}` : "Add Team Member"}</h3>
+  <h3 className="font-semibold text-neutral-700 mb-4">{editingUser ? `Edit — ${editingUser.name}` : "Add Team Member"}</h3>
 
   {/* Basic info */}
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div className="col-span-2"><div className="grid grid-cols-6 gap-3">
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">First Name *</label><input value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
-  <div className="col-span-1"><label className="text-xs font-medium text-slate-400 mb-1 block">MI</label><input maxLength={1} value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} placeholder="M" className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full text-center" /></div>
-  <div className="col-span-3"><label className="text-xs font-medium text-slate-400 mb-1 block">Last Name *</label><input value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} placeholder="Last" className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">First Name *</label><input value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div className="col-span-1"><label className="text-xs font-medium text-neutral-400 mb-1 block">MI</label><input maxLength={1} value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} placeholder="M" className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full text-center" /></div>
+  <div className="col-span-3"><label className="text-xs font-medium text-neutral-400 mb-1 block">Last Name *</label><input value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} placeholder="Last" className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
   </div></div>
   <input
   placeholder="Email address"
   value={form.email}
   onChange={e => setForm({ ...form, email: e.target.value })}
   disabled={!!editingUser}
-  className="border border-brand-100 rounded-2xl px-3 py-2 text-sm disabled:bg-brand-50/30 disabled:text-slate-400"
+  className="border border-brand-100 rounded-2xl px-3 py-2 text-sm disabled:bg-brand-50/30 disabled:text-neutral-400"
   />
   <Select
   value={form.role}
@@ -16050,16 +16050,16 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   {isCustomizable && (
   <div className="border border-brand-50 rounded-3xl p-4 bg-brand-50/30">
   <div className="flex items-center justify-between mb-3">
-  <div className="text-sm font-semibold text-slate-700">Choose which modules this person can access</div>
+  <div className="text-sm font-semibold text-neutral-700">Choose which modules this person can access</div>
   <div className="flex gap-2">
   <button
   onClick={() => setCustomPages(ALL_NAV_FLAT.map(n => n.id))}
   className="text-xs text-brand-600 hover:underline"
   >Select all</button>
-  <span className="text-slate-300">|</span>
+  <span className="text-neutral-300">|</span>
   <button
   onClick={() => setCustomPages([])}
-  className="text-xs text-slate-400 hover:underline"
+  className="text-xs text-neutral-400 hover:underline"
   >Clear all</button>
   </div>
   </div>
@@ -16073,7 +16073,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all text-left ${
   isOn
   ? "bg-brand-600 border-brand-600 text-white"
-  : "bg-white border-brand-100 text-slate-500 hover:border-brand-300"
+  : "bg-white border-brand-100 text-neutral-500 hover:border-brand-300"
   }`}
   >
   <span className="text-base">{nav.icon}</span>
@@ -16083,7 +16083,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   );
   })}
   </div>
-  <div className="mt-3 text-xs text-slate-400">
+  <div className="mt-3 text-xs text-neutral-400">
   {customPages.length} module{customPages.length !== 1 ? "s" : ""} selected
   </div>
   </div>
@@ -16117,16 +16117,16 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   <div key={u.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <div className="flex justify-between items-center">
   <div className="flex items-center gap-3">
-  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold ${ROLES[u.role]?.color || "bg-slate-400"}`}>
+  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold ${ROLES[u.role]?.color || "bg-neutral-400"}`}>
   {u.name?.[0]}
   </div>
   <div>
-  <div className="font-semibold text-slate-800 text-sm">{u.name}</div>
-  <div className="text-xs text-slate-400">{u.email}</div>
+  <div className="font-semibold text-neutral-800 text-sm">{u.name}</div>
+  <div className="text-xs text-neutral-400">{u.email}</div>
   </div>
   </div>
   <div className="flex items-center gap-2">
-  <span className={`text-xs font-semibold text-white px-2 py-0.5 rounded-full ${ROLES[u.role]?.color || "bg-slate-400"}`}>
+  <span className={`text-xs font-semibold text-white px-2 py-0.5 rounded-full ${ROLES[u.role]?.color || "bg-neutral-400"}`}>
   {ROLES[u.role]?.label}
   </span>
   <Btn variant="secondary" size="xs" onClick={() => inviteUser(u)}>
@@ -16152,13 +16152,13 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   })}
   </div>
   {u.custom_pages && (
-  <div className="mt-1 text-xs text-slate-400">Custom access · {effectivePages.length} modules</div>
+  <div className="mt-1 text-xs text-neutral-400">Custom access · {effectivePages.length} modules</div>
   )}
   </div>
   );
   })}
   {users.length === 0 && (
-  <div className="text-center py-10 text-slate-400">No team members added yet. Click + Add User to get started.</div>
+  <div className="text-center py-10 text-neutral-400">No team members added yet. Click + Add User to get started.</div>
   )}
   </div>
   </div>
@@ -16350,7 +16350,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <span className="material-icons-outlined text-3xl">check_circle</span>
   </div>
   <PageHeader title="Move-Out Complete" />
-  <p className="text-slate-400 mb-6">All accounting entries posted, lease terminated, and property marked vacant.</p>
+  <p className="text-neutral-400 mb-6">All accounting entries posted, lease terminated, and property marked vacant.</p>
   <Btn onClick={() => setPage("dashboard")}>Back to Dashboard</Btn>
   </div>
   );
@@ -16365,8 +16365,8 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <div className="flex items-center gap-2 mb-8">
   {steps.map((s, i) => (
   <div key={s} className="flex items-center gap-2 flex-1">
-  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${i + 1 <= step ? "bg-brand-600 text-white" : "bg-brand-50 text-slate-400"}`}>{i + 1}</div>
-  <span className={`text-xs font-medium hidden md:block ${i + 1 <= step ? "text-brand-600" : "text-slate-400"}`}>{s}</span>
+  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${i + 1 <= step ? "bg-brand-600 text-white" : "bg-brand-50 text-neutral-400"}`}>{i + 1}</div>
+  <span className={`text-xs font-medium hidden md:block ${i + 1 <= step ? "text-brand-600" : "text-neutral-400"}`}>{s}</span>
   {i < steps.length - 1 && <div className={`flex-1 h-0.5 ${i + 1 < step ? "bg-brand-600" : "bg-brand-50"}`} />}
   </div>
   ))}
@@ -16375,10 +16375,10 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   {/* Step 1: Select Tenant */}
   {step === 1 && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
-  <h3 className="text-lg font-manrope font-bold text-slate-800 mb-4">Select Tenant & Move-Out Date</h3>
+  <h3 className="text-lg font-manrope font-bold text-neutral-800 mb-4">Select Tenant & Move-Out Date</h3>
   <div className="space-y-4">
   <div>
-  <label className="text-xs font-medium text-slate-400 uppercase tracking-widest block mb-1">Tenant</label>
+  <label className="text-xs font-medium text-neutral-400 uppercase tracking-widest block mb-1">Tenant</label>
   <Select value={selectedTenant?.id || ""} onChange={e => selectTenant(e.target.value)} >
   <option value="">Select tenant...</option>
   {tenants.map(t => <option key={t.id} value={t.id}>{t.name} — {t.property}</option>)}
@@ -16387,14 +16387,14 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   {selectedTenant && (
   <>
   <div>
-  <label className="text-xs font-medium text-slate-400 uppercase tracking-widest block mb-1">Move-Out Date</label>
+  <label className="text-xs font-medium text-neutral-400 uppercase tracking-widest block mb-1">Move-Out Date</label>
   <Input type="date" value={moveOutDate} onChange={e => setMoveOutDate(e.target.value)}  />
   </div>
   <div className="bg-brand-50/30 rounded-2xl p-4 space-y-2 text-sm">
-  <div className="flex justify-between"><span className="text-slate-400">Property</span><span className="font-medium text-slate-700">{selectedTenant.property}</span></div>
-  <div className="flex justify-between"><span className="text-slate-400">Monthly Rent</span><span className="font-medium text-slate-700">${safeNum(selectedTenant.rent)}</span></div>
-  <div className="flex justify-between"><span className="text-slate-400">Balance</span><span className={`font-bold ${outstandingBalance > 0 ? "text-red-600" : "text-emerald-600"}`}>${outstandingBalance.toFixed(2)}</span></div>
-  {selectedLease && <div className="flex justify-between"><span className="text-slate-400">Security Deposit</span><span className="font-medium text-slate-700">${depositAmount.toFixed(2)}</span></div>}
+  <div className="flex justify-between"><span className="text-neutral-400">Property</span><span className="font-medium text-neutral-700">{selectedTenant.property}</span></div>
+  <div className="flex justify-between"><span className="text-neutral-400">Monthly Rent</span><span className="font-medium text-neutral-700">${safeNum(selectedTenant.rent)}</span></div>
+  <div className="flex justify-between"><span className="text-neutral-400">Balance</span><span className={`font-bold ${outstandingBalance > 0 ? "text-red-600" : "text-emerald-600"}`}>${outstandingBalance.toFixed(2)}</span></div>
+  {selectedLease && <div className="flex justify-between"><span className="text-neutral-400">Security Deposit</span><span className="font-medium text-neutral-700">${depositAmount.toFixed(2)}</span></div>}
   </div>
   </>
   )}
@@ -16408,12 +16408,12 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   {/* Step 2: Inspection Checklist */}
   {step === 2 && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
-  <h3 className="text-lg font-manrope font-bold text-slate-800 mb-4">Move-Out Inspection</h3>
+  <h3 className="text-lg font-manrope font-bold text-neutral-800 mb-4">Move-Out Inspection</h3>
   <div className="space-y-2">
   {checklist.map((item, i) => (
   <div key={i} className={`flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-colors ${item.checked ? "bg-emerald-50 border-emerald-200" : "bg-white border-brand-50 hover:bg-brand-50/30"}`} onClick={() => { const c = [...checklist]; c[i] = { ...c[i], checked: !c[i].checked }; setChecklist(c); }}>
-  <span className={`material-icons-outlined text-lg ${item.checked ? "text-emerald-600" : "text-slate-300"}`}>{item.checked ? "check_circle" : "radio_button_unchecked"}</span>
-  <span className={`flex-1 text-sm ${item.checked ? "text-emerald-700 font-medium" : "text-slate-500"}`}>{item.label}</span>
+  <span className={`material-icons-outlined text-lg ${item.checked ? "text-emerald-600" : "text-neutral-300"}`}>{item.checked ? "check_circle" : "radio_button_unchecked"}</span>
+  <span className={`flex-1 text-sm ${item.checked ? "text-emerald-700 font-medium" : "text-neutral-500"}`}>{item.label}</span>
   </div>
   ))}
   </div>
@@ -16427,17 +16427,17 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   {/* Step 3: Deposit Accounting */}
   {step === 3 && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
-  <h3 className="text-lg font-manrope font-bold text-slate-800 mb-4">Security Deposit Settlement</h3>
+  <h3 className="text-lg font-manrope font-bold text-neutral-800 mb-4">Security Deposit Settlement</h3>
   <div className="bg-brand-50/30 rounded-2xl p-4 mb-4">
-  <div className="flex justify-between text-sm"><span className="text-slate-400">Original Deposit</span><span className="font-bold text-slate-700">${depositAmount.toFixed(2)}</span></div>
+  <div className="flex justify-between text-sm"><span className="text-neutral-400">Original Deposit</span><span className="font-bold text-neutral-700">${depositAmount.toFixed(2)}</span></div>
   </div>
-  <h4 className="text-sm font-semibold text-slate-500 mb-2">Deductions</h4>
+  <h4 className="text-sm font-semibold text-neutral-500 mb-2">Deductions</h4>
   {deductions.map((d, i) => (
   <div key={i} className="flex items-center justify-between py-2 border-b border-brand-50/50">
-  <span className="text-sm text-slate-700">{d.desc}</span>
+  <span className="text-sm text-neutral-700">{d.desc}</span>
   <div className="flex items-center gap-2">
   <span className="text-sm font-semibold text-red-600">-${d.amount.toFixed(2)}</span>
-  <button onClick={() => setDeductions(deductions.filter((_, j) => j !== i))} className="text-slate-300 hover:text-red-500"><span className="material-icons-outlined text-sm">close</span></button>
+  <button onClick={() => setDeductions(deductions.filter((_, j) => j !== i))} className="text-neutral-300 hover:text-red-500"><span className="material-icons-outlined text-sm">close</span></button>
   </div>
   </div>
   ))}
@@ -16447,7 +16447,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <Btn onClick={addDeduction}>Add</Btn>
   </div>
   <div className="bg-emerald-50 rounded-2xl p-4 mt-4 space-y-1">
-  <div className="flex justify-between text-sm"><span className="text-slate-400">Total Deductions</span><span className="font-semibold text-red-600">-${totalDeductions.toFixed(2)}</span></div>
+  <div className="flex justify-between text-sm"><span className="text-neutral-400">Total Deductions</span><span className="font-semibold text-red-600">-${totalDeductions.toFixed(2)}</span></div>
   <div className="flex justify-between text-sm font-bold"><span className="text-emerald-700">Return to Tenant</span><span className="text-emerald-700">${depositReturn.toFixed(2)}</span></div>
   </div>
   <div className="flex justify-between mt-6">
@@ -16460,9 +16460,9 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   {/* Step 4: AR Settlement */}
   {step === 4 && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
-  <h3 className="text-lg font-manrope font-bold text-slate-800 mb-4">Outstanding Balance</h3>
+  <h3 className="text-lg font-manrope font-bold text-neutral-800 mb-4">Outstanding Balance</h3>
   <div className={`rounded-2xl p-4 mb-4 ${outstandingBalance > 0 ? "bg-red-50" : "bg-emerald-50"}`}>
-  <div className="text-sm text-slate-400">Current Balance</div>
+  <div className="text-sm text-neutral-400">Current Balance</div>
   <div className={`text-2xl font-manrope font-bold ${outstandingBalance > 0 ? "text-red-600" : "text-emerald-600"}`}>${outstandingBalance.toFixed(2)}</div>
   </div>
   {outstandingBalance > 0 && (
@@ -16473,8 +16473,8 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   { value: "collections", label: "Send to Collections", desc: "Mark tenant for external collections agency", icon: "gavel" },
   ].map(opt => (
   <div key={opt.value} onClick={() => setArAction(opt.value)} className={`flex items-center gap-3 p-4 rounded-2xl border cursor-pointer transition-all ${arAction === opt.value ? "border-brand-300 bg-brand-50" : "border-brand-50 hover:border-brand-200"}`}>
-  <span className={`material-icons-outlined ${arAction === opt.value ? "text-brand-600" : "text-slate-400"}`}>{opt.icon}</span>
-  <div><div className="text-sm font-semibold text-slate-700">{opt.label}</div><div className="text-xs text-slate-400">{opt.desc}</div></div>
+  <span className={`material-icons-outlined ${arAction === opt.value ? "text-brand-600" : "text-neutral-400"}`}>{opt.icon}</span>
+  <div><div className="text-sm font-semibold text-neutral-700">{opt.label}</div><div className="text-xs text-neutral-400">{opt.desc}</div></div>
   </div>
   ))}
   </div>
@@ -16490,15 +16490,15 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   {/* Step 5: Confirm & Execute */}
   {step === 5 && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
-  <h3 className="text-lg font-manrope font-bold text-slate-800 mb-4">Confirm Move-Out</h3>
+  <h3 className="text-lg font-manrope font-bold text-neutral-800 mb-4">Confirm Move-Out</h3>
   <div className="space-y-3 text-sm">
-  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-slate-400">Tenant</span><span className="font-semibold text-slate-700">{selectedTenant?.name}</span></div>
-  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-slate-400">Property</span><span className="font-semibold text-slate-700">{selectedLease?.property}</span></div>
-  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-slate-400">Move-Out Date</span><span className="font-semibold text-slate-700">{moveOutDate}</span></div>
-  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-slate-400">Inspection Items</span><span className="font-semibold text-emerald-600">{checklist.filter(c => c.checked).length}/{checklist.length} checked</span></div>
-  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-slate-400">Deposit Return</span><span className="font-semibold text-emerald-600">${depositReturn.toFixed(2)}</span></div>
-  {totalDeductions > 0 && <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-slate-400">Deductions</span><span className="font-semibold text-red-600">-${totalDeductions.toFixed(2)}</span></div>}
-  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-slate-400">AR Action</span><span className="font-semibold text-slate-700 capitalize">{outstandingBalance > 0 ? arAction.replace("_", " ") : "Settled"}</span></div>
+  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Tenant</span><span className="font-semibold text-neutral-700">{selectedTenant?.name}</span></div>
+  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Property</span><span className="font-semibold text-neutral-700">{selectedLease?.property}</span></div>
+  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Move-Out Date</span><span className="font-semibold text-neutral-700">{moveOutDate}</span></div>
+  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Inspection Items</span><span className="font-semibold text-emerald-600">{checklist.filter(c => c.checked).length}/{checklist.length} checked</span></div>
+  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Deposit Return</span><span className="font-semibold text-emerald-600">${depositReturn.toFixed(2)}</span></div>
+  {totalDeductions > 0 && <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Deductions</span><span className="font-semibold text-red-600">-${totalDeductions.toFixed(2)}</span></div>}
+  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">AR Action</span><span className="font-semibold text-neutral-700 capitalize">{outstandingBalance > 0 ? arAction.replace("_", " ") : "Settled"}</span></div>
   </div>
   <div className="bg-amber-50 rounded-2xl p-3 mt-4 text-xs text-amber-700">
   <span className="material-icons-outlined text-sm align-middle mr-1">warning</span>
@@ -16525,7 +16525,7 @@ const EVICTION_STAGES = [
   { id: "judgment", label: "Judgment", icon: "description", color: "bg-red-600" },
   { id: "writ", label: "Writ of Restitution", icon: "assignment", color: "bg-red-700" },
   { id: "lockout", label: "Lockout", icon: "lock", color: "bg-red-800" },
-  { id: "closed", label: "Closed", icon: "check_circle", color: "bg-slate-500" },
+  { id: "closed", label: "Closed", icon: "check_circle", color: "bg-neutral-500" },
 ];
 
 function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
@@ -16753,7 +16753,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <div className="flex items-center justify-between mb-5">
   <div>
   <PageHeader title="Eviction Tracker" />
-  <p className="text-sm text-slate-400">Manage eviction cases from notice to resolution</p>
+  <p className="text-sm text-neutral-400">Manage eviction cases from notice to resolution</p>
   </div>
   <Btn variant="danger-fill" onClick={() => setShowForm(!showForm)}>+ New Case</Btn>
   </div>
@@ -16762,23 +16762,23 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
   <StatCard label="Active Cases" value={activeCases.length} color="text-red-600" />
   <StatCard label="In Court" value={activeCases.filter(c => ["filing","hearing","judgment","writ"].includes(c.current_stage)).length} color="text-orange-600" />
-  <StatCard label="Total Costs" value={formatCurrency(cases.reduce((s, c) => s + safeNum(c.total_costs), 0))} color="text-slate-700" />
-  <StatCard label="Closed" value={cases.filter(c => c.status === "closed").length} color="text-slate-500" />
+  <StatCard label="Total Costs" value={formatCurrency(cases.reduce((s, c) => s + safeNum(c.total_costs), 0))} color="text-neutral-700" />
+  <StatCard label="Closed" value={cases.filter(c => c.status === "closed").length} color="text-neutral-500" />
   </div>
 
   {showForm && (
   <div className="bg-white rounded-xl border border-red-100 shadow-sm p-4 mb-4">
-  <h3 className="font-semibold text-slate-700 mb-3">Start Eviction Case</h3>
+  <h3 className="font-semibold text-neutral-700 mb-3">Start Eviction Case</h3>
   <div className="grid grid-cols-2 gap-3">
   <div className="col-span-2">
-  <label className="text-xs font-medium text-slate-400 mb-1 block">Tenant *</label>
+  <label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant *</label>
   <Select value={form.tenant_id} onChange={e => { const t = tenants.find(x => String(x.id) === e.target.value); if (t) setForm({ ...form, tenant_id: t.id, tenant_name: t.name, property: t.property || "" }); }}>
   <option value="">Select tenant...</option>
   {tenants.filter(t => !t.archived_at).map(t => <option key={t.id} value={t.id}>{t.name} — {t.property}{safeNum(t.balance) > 0 ? ` (owes ${formatCurrency(t.balance)})` : ""}</option>)}
   </Select>
   </div>
   <div>
-  <label className="text-xs font-medium text-slate-400 mb-1 block">Reason</label>
+  <label className="text-xs font-medium text-neutral-400 mb-1 block">Reason</label>
   <Select value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} >
   <option value="non_payment">Non-Payment of Rent</option>
   <option value="lease_violation">Lease Violation</option>
@@ -16790,7 +16790,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   </Select>
   </div>
   <div>
-  <label className="text-xs font-medium text-slate-400 mb-1 block">Notice Type</label>
+  <label className="text-xs font-medium text-neutral-400 mb-1 block">Notice Type</label>
   <Select value={form.notice_type} onChange={e => setForm({ ...form, notice_type: e.target.value })} >
   <option value="pay_or_quit">Pay or Quit</option>
   <option value="cure_or_quit">Cure or Quit</option>
@@ -16799,12 +16799,12 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   </Select>
   </div>
   <div>
-  <label className="text-xs font-medium text-slate-400 mb-1 block">Cure Period (days)</label>
+  <label className="text-xs font-medium text-neutral-400 mb-1 block">Cure Period (days)</label>
   <Select value={form.notice_days} onChange={e => setForm({ ...form, notice_days: e.target.value })} >
   <option value="3">3 days</option><option value="5">5 days</option><option value="7">7 days</option><option value="10">10 days</option><option value="14">14 days</option><option value="30">30 days</option><option value="60">60 days</option>
   </Select>
   </div>
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="Additional context or details..." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Textarea placeholder="Additional context or details..." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
   </div>
   <div className="flex gap-2 mt-3">
   <Btn variant="danger-fill" onClick={createCase}>Start Case</Btn>
@@ -16846,7 +16846,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
 
   {/* Stage Progress */}
   <div className="px-6 py-4 border-b border-brand-50">
-  <div className="text-xs font-semibold text-slate-400 uppercase mb-3">Progress</div>
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3">Progress</div>
   <div className="flex items-center gap-1">
   {EVICTION_STAGES.map((s, i) => {
   const currentIdx = stageIdx(selectedCase.current_stage);
@@ -16854,8 +16854,8 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   const isCurrent = i === currentIdx;
   return (
   <div key={s.id} className="flex-1">
-  <div className={`h-2 rounded-full ${isComplete ? "bg-red-500" : isCurrent ? "bg-red-300" : "bg-slate-100"}`} />
-  <div className={`text-center mt-1 text-[10px] ${isCurrent ? "text-red-600 font-bold" : isComplete ? "text-red-400" : "text-slate-300"}`}>{s.label.split(" ")[0]}</div>
+  <div className={`h-2 rounded-full ${isComplete ? "bg-red-500" : isCurrent ? "bg-red-300" : "bg-neutral-100"}`} />
+  <div className={`text-center mt-1 text-[10px] ${isCurrent ? "text-red-600 font-bold" : isComplete ? "text-red-400" : "text-neutral-300"}`}>{s.label.split(" ")[0]}</div>
   </div>
   );
   })}
@@ -16864,32 +16864,32 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
 
   {/* Key Dates */}
   <div className="px-6 py-4 border-b border-brand-50">
-  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Key Dates</div>
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-2">Key Dates</div>
   <div className="grid grid-cols-2 gap-2 text-sm">
-  <div><span className="text-slate-400 text-xs block">Notice Sent</span><span className="font-semibold text-slate-700">{selectedCase.notice_date || "—"}</span></div>
-  <div><span className="text-slate-400 text-xs block">Cure Deadline</span><span className="font-semibold text-red-600">{selectedCase.cure_deadline || "—"}</span></div>
-  {selectedCase.filing_date && <div><span className="text-slate-400 text-xs block">Filed</span><span className="font-semibold text-slate-700">{selectedCase.filing_date}</span></div>}
-  {selectedCase.hearing_date && <div><span className="text-slate-400 text-xs block">Hearing</span><span className="font-semibold text-slate-700">{selectedCase.hearing_date}</span></div>}
-  {selectedCase.judgment_date && <div><span className="text-slate-400 text-xs block">Judgment</span><span className="font-semibold text-slate-700">{selectedCase.judgment_date}</span></div>}
-  {selectedCase.lockout_date && <div><span className="text-slate-400 text-xs block">Lockout</span><span className="font-semibold text-slate-700">{selectedCase.lockout_date}</span></div>}
+  <div><span className="text-neutral-400 text-xs block">Notice Sent</span><span className="font-semibold text-neutral-700">{selectedCase.notice_date || "—"}</span></div>
+  <div><span className="text-neutral-400 text-xs block">Cure Deadline</span><span className="font-semibold text-red-600">{selectedCase.cure_deadline || "—"}</span></div>
+  {selectedCase.filing_date && <div><span className="text-neutral-400 text-xs block">Filed</span><span className="font-semibold text-neutral-700">{selectedCase.filing_date}</span></div>}
+  {selectedCase.hearing_date && <div><span className="text-neutral-400 text-xs block">Hearing</span><span className="font-semibold text-neutral-700">{selectedCase.hearing_date}</span></div>}
+  {selectedCase.judgment_date && <div><span className="text-neutral-400 text-xs block">Judgment</span><span className="font-semibold text-neutral-700">{selectedCase.judgment_date}</span></div>}
+  {selectedCase.lockout_date && <div><span className="text-neutral-400 text-xs block">Lockout</span><span className="font-semibold text-neutral-700">{selectedCase.lockout_date}</span></div>}
   </div>
   </div>
 
   {/* Stage History */}
   <div className="px-6 py-4 border-b border-brand-50">
-  <div className="text-xs font-semibold text-slate-400 uppercase mb-3">Timeline</div>
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3">Timeline</div>
   <div className="space-y-3">
   {JSON.parse(selectedCase.stage_history || "[]").slice().reverse().map((h, i) => {
   const stg = EVICTION_STAGES.find(s => s.id === h.stage);
   return (
   <div key={i} className="flex gap-3">
-  <div className={`w-8 h-8 rounded-full ${stg?.color || "bg-slate-400"} flex items-center justify-center shrink-0`}>
+  <div className={`w-8 h-8 rounded-full ${stg?.color || "bg-neutral-400"} flex items-center justify-center shrink-0`}>
   <span className="material-icons-outlined text-white text-sm">{stg?.icon || "info"}</span>
   </div>
   <div className="flex-1">
-  <div className="text-sm font-semibold text-slate-800 capitalize">{h.stage?.replace(/_/g, " ")}</div>
-  <div className="text-xs text-slate-400">{h.date} · {h.by}</div>
-  {h.note && <div className="text-xs text-slate-500 mt-0.5">{h.note}</div>}
+  <div className="text-sm font-semibold text-neutral-800 capitalize">{h.stage?.replace(/_/g, " ")}</div>
+  <div className="text-xs text-neutral-400">{h.date} · {h.by}</div>
+  {h.note && <div className="text-xs text-neutral-500 mt-0.5">{h.note}</div>}
   {safeNum(h.cost) > 0 && <div className="text-xs text-red-500 font-semibold mt-0.5">Cost: {formatCurrency(h.cost)}</div>}
   </div>
   </div>
@@ -16906,13 +16906,13 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   {/* Advance Stage */}
   {selectedCase.status === "active" && (
   <div className="px-6 py-4 border-b border-brand-50">
-  <div className="text-xs font-semibold text-slate-400 uppercase mb-3">Advance to Next Stage</div>
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3">Advance to Next Stage</div>
   <div className="space-y-2">
   <div className="grid grid-cols-2 gap-2">
-  <div><label className="text-xs text-slate-400 block mb-1">Date</label><Input type="date" value={stageDate} onChange={e => setStageDate(e.target.value)} /></div>
-  <div><label className="text-xs text-slate-400 block mb-1">Cost ($)</label><Input type="number" value={stageCost} onChange={e => setStageCost(e.target.value)} placeholder="0.00" /></div>
+  <div><label className="text-xs text-neutral-400 block mb-1">Date</label><Input type="date" value={stageDate} onChange={e => setStageDate(e.target.value)} /></div>
+  <div><label className="text-xs text-neutral-400 block mb-1">Cost ($)</label><Input type="number" value={stageCost} onChange={e => setStageCost(e.target.value)} placeholder="0.00" /></div>
   </div>
-  <div><label className="text-xs text-slate-400 block mb-1">Notes</label><Input value={stageNote} onChange={e => setStageNote(e.target.value)} placeholder="Court case #, attorney notes, details..." /></div>
+  <div><label className="text-xs text-neutral-400 block mb-1">Notes</label><Input value={stageNote} onChange={e => setStageNote(e.target.value)} placeholder="Court case #, attorney notes, details..." /></div>
   <div className="flex gap-2 flex-wrap">
   {EVICTION_STAGES.filter(s => stageIdx(s.id) === stageIdx(selectedCase.current_stage) + 1).map(nextS => (
   <button key={nextS.id} onClick={() => advanceStage(selectedCase, nextS.id)} className={`text-xs text-white px-4 py-2 rounded-lg font-medium ${nextS.color} hover:opacity-90`}>
@@ -16926,13 +16926,13 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
 
   {/* Actions */}
   <div className="px-6 py-4">
-  <div className="text-xs font-semibold text-slate-400 uppercase mb-3">Case Actions</div>
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3">Case Actions</div>
   <div className="flex gap-2 flex-wrap">
   {selectedCase.status === "active" && (
   <>
   <button onClick={() => closeCase(selectedCase, "tenant_cured")} className="text-xs bg-green-100 text-green-700 px-3 py-2 rounded-lg hover:bg-green-200 font-medium">Tenant Cured</button>
   <button onClick={() => closeCase(selectedCase, "settled")} className="text-xs bg-blue-100 text-blue-700 px-3 py-2 rounded-lg hover:bg-blue-200 font-medium">Settled / Agreement</button>
-  <button onClick={() => closeCase(selectedCase, "dismissed")} className="text-xs bg-slate-100 text-slate-700 px-3 py-2 rounded-lg hover:bg-slate-200 font-medium">Dismissed</button>
+  <button onClick={() => closeCase(selectedCase, "dismissed")} className="text-xs bg-neutral-100 text-neutral-700 px-3 py-2 rounded-lg hover:bg-neutral-200 font-medium">Dismissed</button>
   <button onClick={() => closeCase(selectedCase, "completed")} className="text-xs bg-red-100 text-red-700 px-3 py-2 rounded-lg hover:bg-red-200 font-medium">Eviction Complete</button>
   </>
   )}
@@ -16941,8 +16941,8 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
 
   {selectedCase.notes && (
   <div className="px-6 py-4 border-t border-brand-50">
-  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Case Notes</div>
-  <p className="text-sm text-slate-600">{selectedCase.notes}</p>
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-2">Case Notes</div>
+  <p className="text-sm text-neutral-600">{selectedCase.notes}</p>
   </div>
   )}
   </div>
@@ -16960,26 +16960,26 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <div className="flex justify-between items-start">
   <div>
   <div className="flex items-center gap-2 mb-1">
-  <span className={`w-6 h-6 rounded-full ${currentStage?.color || "bg-slate-400"} flex items-center justify-center`}>
+  <span className={`w-6 h-6 rounded-full ${currentStage?.color || "bg-neutral-400"} flex items-center justify-center`}>
   <span className="material-icons-outlined text-white text-xs">{currentStage?.icon || "info"}</span>
   </span>
-  <span className="font-semibold text-slate-800">{c.tenant_name}</span>
-  {c.status === "closed" && <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">Closed{c.outcome ? ` — ${c.outcome.replace(/_/g, " ")}` : ""}</span>}
+  <span className="font-semibold text-neutral-800">{c.tenant_name}</span>
+  {c.status === "closed" && <span className="text-xs bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded-full">Closed{c.outcome ? ` — ${c.outcome.replace(/_/g, " ")}` : ""}</span>}
   </div>
-  <div className="text-xs text-slate-400">{c.property} · {c.reason?.replace(/_/g, " ")}</div>
+  <div className="text-xs text-neutral-400">{c.property} · {c.reason?.replace(/_/g, " ")}</div>
   </div>
   <div className="text-right">
-  <div className={`text-xs font-semibold capitalize px-2.5 py-1 rounded-full ${c.status === "active" ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-500"}`}>{currentStage?.label || c.current_stage}</div>
-  <div className="text-xs text-slate-400 mt-1">{daysActive}d active</div>
+  <div className={`text-xs font-semibold capitalize px-2.5 py-1 rounded-full ${c.status === "active" ? "bg-red-100 text-red-700" : "bg-neutral-100 text-neutral-500"}`}>{currentStage?.label || c.current_stage}</div>
+  <div className="text-xs text-neutral-400 mt-1">{daysActive}d active</div>
   </div>
   </div>
   {/* Mini progress bar */}
   <div className="flex gap-0.5 mt-3">
   {EVICTION_STAGES.map((s, i) => (
-  <div key={s.id} className={`h-1.5 flex-1 rounded-full ${i < curIdx ? "bg-red-400" : i === curIdx ? "bg-red-200" : "bg-slate-100"}`} />
+  <div key={s.id} className={`h-1.5 flex-1 rounded-full ${i < curIdx ? "bg-red-400" : i === curIdx ? "bg-red-200" : "bg-neutral-100"}`} />
   ))}
   </div>
-  <div className="flex gap-4 mt-2 text-xs text-slate-400">
+  <div className="flex gap-4 mt-2 text-xs text-neutral-400">
   <span>Notice: {c.notice_date}</span>
   <span>Cure by: {c.cure_deadline}</span>
   {safeNum(c.total_costs) > 0 && <span className="text-red-500">Costs: {formatCurrency(c.total_costs)}</span>}
@@ -16987,7 +16987,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   </div>
   );
   })}
-  {filtered.length === 0 && <div className="text-center py-12 text-slate-400">No eviction cases{filterStage !== "all" ? " matching filter" : ""}. Click + New Case to start one.</div>}
+  {filtered.length === 0 && <div className="text-center py-12 text-neutral-400">No eviction cases{filterStage !== "all" ? " matching filter" : ""}. Click + New Case to start one.</div>}
   </div>
   </div>
   );
@@ -17713,14 +17713,14 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="h-14 border-b border-brand-100 bg-white/80 backdrop-blur-md flex items-center px-5 gap-3 shrink-0">
   <IconBtn icon="arrow_back" onClick={() => { setShowTemplateEditor(false); setEditingTemplate(null); }} />
   <div className="flex-1 min-w-0">
-  <h2 className="text-lg font-manrope font-bold text-slate-800 truncate">{editingTemplate ? "Edit Template" : "New Template"}{templateForm.name ? ": " + templateForm.name : ""}</h2>
+  <h2 className="text-lg font-manrope font-bold text-neutral-800 truncate">{editingTemplate ? "Edit Template" : "New Template"}{templateForm.name ? ": " + templateForm.name : ""}</h2>
   </div>
-  <div className="flex bg-slate-100 rounded-xl p-0.5">
-  <button onClick={() => setTemplateForm(prev => ({ ...prev, template_type: "html" }))} className={"px-3 py-1.5 text-xs font-medium rounded-lg transition-colors " + (templateForm.template_type === "html" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700")}>HTML</button>
-  <button onClick={() => setTemplateForm(prev => ({ ...prev, template_type: "pdf_overlay" }))} className={"px-3 py-1.5 text-xs font-medium rounded-lg transition-colors " + (templateForm.template_type === "pdf_overlay" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700")}>PDF Overlay</button>
+  <div className="flex bg-neutral-100 rounded-xl p-0.5">
+  <button onClick={() => setTemplateForm(prev => ({ ...prev, template_type: "html" }))} className={"px-3 py-1.5 text-xs font-medium rounded-lg transition-colors " + (templateForm.template_type === "html" ? "bg-white text-brand-700 shadow-sm" : "text-neutral-500 hover:text-neutral-700")}>HTML</button>
+  <button onClick={() => setTemplateForm(prev => ({ ...prev, template_type: "pdf_overlay" }))} className={"px-3 py-1.5 text-xs font-medium rounded-lg transition-colors " + (templateForm.template_type === "pdf_overlay" ? "bg-white text-brand-700 shadow-sm" : "text-neutral-500 hover:text-neutral-700")}>PDF Overlay</button>
   </div>
   <Btn size="lg" onClick={saveTemplate}>{editingTemplate ? "Update Template" : "Create Template"}</Btn>
-  <span className="text-xs text-slate-300 ml-2">Esc to close</span>
+  <span className="text-xs text-neutral-300 ml-2">Esc to close</span>
   </div>
 
   {/* Split pane */}
@@ -17728,28 +17728,28 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {/* Left: Template config + fields */}
   <div style={{ width: splitPercent + "%" }} className="overflow-y-auto p-6 space-y-4">
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
-  <h3 className="font-manrope font-bold text-slate-700 mb-3">Template Details</h3>
+  <h3 className="font-manrope font-bold text-neutral-700 mb-3">Template Details</h3>
   <div className="grid grid-cols-2 gap-3">
   <div>
-  <label className="text-xs font-medium text-slate-400 block mb-1">Name *</label>
+  <label className="text-xs font-medium text-neutral-400 block mb-1">Name *</label>
   <Input value={templateForm.name} onChange={e => setTemplateForm({...templateForm, name: e.target.value})} placeholder="e.g. Pet Addendum" />
   </div>
   <div>
-  <label className="text-xs font-medium text-slate-400 block mb-1">Category</label>
+  <label className="text-xs font-medium text-neutral-400 block mb-1">Category</label>
   <Select value={templateForm.category} onChange={e => setTemplateForm({...templateForm, category: e.target.value})}>
   {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
   </Select>
   </div>
   </div>
   <div className="mt-3">
-  <label className="text-xs font-medium text-slate-400 block mb-1">Description</label>
+  <label className="text-xs font-medium text-neutral-400 block mb-1">Description</label>
   <Input value={templateForm.description} onChange={e => setTemplateForm({...templateForm, description: e.target.value})} placeholder="Brief description" />
   </div>
   </div>
 
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <div className="flex items-center justify-between mb-3">
-  <h3 className="font-manrope font-bold text-slate-700">Form Fields ({templateForm.fields.length})</h3>
+  <h3 className="font-manrope font-bold text-neutral-700">Form Fields ({templateForm.fields.length})</h3>
   <Btn size="sm" onClick={addField}>+ Add Field</Btn>
   </div>
   <div className="space-y-3">
@@ -17774,7 +17774,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {f.type === "select" && (
   <Input value={(f.options || []).join(", ")} onChange={e => updateField(i, "options", e.target.value.split(",").map(s => s.trim()))} placeholder="Options (comma-separated)" className="text-xs mt-2" />
   )}
-  <div className="text-xs text-slate-400 mt-1">Merge tag: <code className="bg-slate-100 px-1 rounded">{"{{" + (f.name || "field_name") + "}}"}</code></div>
+  <div className="text-xs text-neutral-400 mt-1">Merge tag: <code className="bg-neutral-100 px-1 rounded">{"{{" + (f.name || "field_name") + "}}"}</code></div>
   </div>
   ))}
   </div>
@@ -17783,7 +17783,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {/* Advanced Field Config */}
   {templateForm.fields.length > 0 && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
-  <h3 className="font-manrope font-bold text-slate-700 mb-3">Advanced Field Config</h3>
+  <h3 className="font-manrope font-bold text-neutral-700 mb-3">Advanced Field Config</h3>
 
   {/* Calculated Fields */}
   <div className="mb-4">
@@ -17809,7 +17809,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }} className="text-red-400 hover:text-red-600">✕</button>
   </div>
   ))}
-  {Object.keys(templateForm.field_config?.calculated || {}).length === 0 && <p className="text-xs text-slate-400 italic">No calculated fields. Use formulas like <code className="bg-slate-100 px-1 rounded">rent * days / 30</code></p>}
+  {Object.keys(templateForm.field_config?.calculated || {}).length === 0 && <p className="text-xs text-neutral-400 italic">No calculated fields. Use formulas like <code className="bg-neutral-100 px-1 rounded">rent * days / 30</code></p>}
   </div>
 
   {/* Conditional Fields */}
@@ -17838,10 +17838,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }} className="text-red-400 hover:text-red-600 ml-auto">✕</button>
   </div>
   ))}
-  {Object.keys(templateForm.field_config?.conditional || {}).length === 0 && <p className="text-xs text-slate-400 italic">No conditions. Show/hide fields based on other field values.</p>}
+  {Object.keys(templateForm.field_config?.conditional || {}).length === 0 && <p className="text-xs text-neutral-400 italic">No conditions. Show/hide fields based on other field values.</p>}
   </div>
 
-  <div className="text-xs text-slate-400 border-t border-brand-50 pt-2">
+  <div className="text-xs text-neutral-400 border-t border-brand-50 pt-2">
   <strong>Address blocks:</strong> Set field type to "address_block" above — it renders as a 5-field structured address (street, apt, city, state, zip).
   </div>
   </div>
@@ -17859,8 +17859,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {!templateForm.pdf_storage_path ? (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 text-center">
   <div className="text-4xl mb-3">📄</div>
-  <h3 className="font-manrope font-bold text-slate-700 mb-2">Upload a PDF Template</h3>
-  <p className="text-sm text-slate-400 mb-4">Upload a flat PDF. Blank fields will be auto-detected.</p>
+  <h3 className="font-manrope font-bold text-neutral-700 mb-2">Upload a PDF Template</h3>
+  <p className="text-sm text-neutral-400 mb-4">Upload a flat PDF. Blank fields will be auto-detected.</p>
   <label className="inline-flex items-center gap-2 bg-brand-600 text-white text-sm px-5 py-2.5 rounded-2xl hover:bg-brand-700 cursor-pointer font-semibold">
   <span className="material-icons-outlined text-lg">upload_file</span>Choose PDF
   <input type="file" accept=".pdf" className="hidden" onChange={e => handlePdfUpload(e.target.files[0])} />
@@ -17870,10 +17870,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <>
   {/* PDF toolbar */}
   <div className="bg-white rounded-2xl shadow-card border border-brand-50 px-4 py-2 flex items-center gap-3">
-  <span className="text-xs text-slate-500">{templateForm.pdf_page_count} pages</span>
-  <span className="text-xs text-slate-300">|</span>
-  <span className="text-xs text-slate-500">{templateForm.pdf_field_placements.length} placements</span>
-  <span className="text-xs text-slate-300">|</span>
+  <span className="text-xs text-neutral-500">{templateForm.pdf_page_count} pages</span>
+  <span className="text-xs text-neutral-300">|</span>
+  <span className="text-xs text-neutral-500">{templateForm.pdf_field_placements.length} placements</span>
+  <span className="text-xs text-neutral-300">|</span>
   {placingField ? (
   <span className="text-xs text-emerald-600 font-semibold">Click on PDF to place: {placingField} <button onClick={() => setPlacingField(null)} className="text-red-400 ml-1">✕ Cancel</button></span>
   ) : (
@@ -17900,7 +17900,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }));
   showToast(detected.length + " fields detected", "info");
   }} className="text-xs text-amber-600 hover:text-amber-800 ml-auto">Re-detect</button>
-  <label className="text-xs text-slate-500 hover:text-slate-700 cursor-pointer">
+  <label className="text-xs text-neutral-500 hover:text-neutral-700 cursor-pointer">
   Replace PDF
   <input type="file" accept=".pdf" className="hidden" onChange={e => handlePdfUpload(e.target.files[0])} />
   </label>
@@ -17959,7 +17959,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {/* HTML body editor + preview (existing) */}
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5 flex flex-col">
   <div className="flex items-center justify-between mb-2">
-  <h3 className="font-manrope font-bold text-slate-700">Document Body (HTML + Merge Fields)</h3>
+  <h3 className="font-manrope font-bold text-neutral-700">Document Body (HTML + Merge Fields)</h3>
   {templateForm.fields.length > 0 && (
   <div className="flex gap-1 flex-wrap max-w-[60%]">
   {templateForm.fields.filter(f => f.name).map(f => (
@@ -17971,7 +17971,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <Textarea value={templateForm.body} onChange={e => setTemplateForm({...templateForm, body: e.target.value})} className="text-xs font-mono flex-1 min-h-[400px]" rows={30} placeholder='<h1>Document Title</h1>\n<p>Dear {{tenant_name}},</p>\n<p>Your rent at {{property_address}} is...</p>' />
   </div>
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
-  <h3 className="font-manrope font-bold text-slate-700 mb-2">Preview</h3>
+  <h3 className="font-manrope font-bold text-neutral-700 mb-2">Preview</h3>
   <div className="prose prose-sm max-w-none border border-brand-50 rounded-xl p-6 bg-white min-h-64" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }} dangerouslySetInnerHTML={{ __html: renderMergedBody(templateForm.body, {}, templateForm.field_config) }} />
   </div>
   </>
@@ -18004,7 +18004,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const displayVal = f.type === "currency" ? formatCurrency(calcVal) : calcVal;
   return (
   <div className="flex items-center gap-2">
-  <div className={base + " bg-slate-50 text-slate-600"}>{displayVal}</div>
+  <div className={base + " bg-neutral-50 text-neutral-600"}>{displayVal}</div>
   <span className="material-icons-outlined text-sm text-amber-500" title={"Formula: " + fc.calculated[f.name].formula}>calculate</span>
   </div>
   );
@@ -18038,7 +18038,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   if (f.type === "checkbox") return (
   <label className="flex items-center gap-2"><input type="checkbox" checked={!!val} onChange={e => updateVal(f.name, e.target.checked)} className="accent-brand-600" />{f.label}</label>
   );
-  if (f.type === "signature_placeholder") return <div className="border-b-2 border-slate-300 py-4 text-xs text-slate-400 italic">Signature placeholder — will be available after e-sign integration</div>;
+  if (f.type === "signature_placeholder") return <div className="border-b-2 border-neutral-300 py-4 text-xs text-neutral-400 italic">Signature placeholder — will be available after e-sign integration</div>;
   const inputType = f.type === "date" ? "date" : f.type === "number" ? "number" : f.type === "currency" ? "text" : "text";
   const extraProps = inputType === "date" ? { min: "2000-01-01", max: "2099-12-31" } : inputType === "number" ? { step: "any" } : { maxLength: 200 };
   return <input type={inputType} value={val} onChange={e => updateVal(f.name, e.target.value)} className={base} placeholder={f.type === "currency" ? "$0.00" : ""} {...extraProps} />;
@@ -18049,7 +18049,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   return (
   <div key={f.name}>
   {f.type !== "checkbox" && (
-  <label className="text-xs font-medium text-slate-500 block mb-1">
+  <label className="text-xs font-medium text-neutral-500 block mb-1">
   {f.label} {f.required && !isCalc(f.name) && "*"}
   {isCalc(f.name) && <span className="text-amber-500 ml-1">(calculated)</span>}
   </label>
@@ -18065,15 +18065,15 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="h-14 border-b border-brand-100 bg-white/80 backdrop-blur-md flex items-center px-5 gap-3 shrink-0">
   <IconBtn icon="arrow_back" onClick={resetFlow} />
   <div className="flex-1 min-w-0">
-  <h2 className="text-lg font-manrope font-bold text-slate-800 truncate">{selectedTemplate.name}</h2>
-  <p className="text-xs text-slate-400">{mode === "prefill" ? "Prefilled from " + (prefillProperty || "property") : "Blank mode"} · Fill the form, then preview</p>
+  <h2 className="text-lg font-manrope font-bold text-neutral-800 truncate">{selectedTemplate.name}</h2>
+  <p className="text-xs text-neutral-400">{mode === "prefill" ? "Prefilled from " + (prefillProperty || "property") : "Blank mode"} · Fill the form, then preview</p>
   </div>
   <Btn onClick={() => {
   const errors = validateFields(selectedTemplate, fieldValues);
   if (errors.length > 0) { showToast(errors[0], "error"); return; }
   setStep("preview");
   }}>Preview →</Btn>
-  <span className="text-xs text-slate-300 ml-2">Esc to close</span>
+  <span className="text-xs text-neutral-300 ml-2">Esc to close</span>
   </div>
 
   {/* Split pane */}
@@ -18085,7 +18085,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   if (sectionFields.length === 0) return null;
   return (
   <div key={section} className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
-  <h3 className="font-manrope font-bold text-slate-700 text-sm mb-3 uppercase tracking-wide">{section}</h3>
+  <h3 className="font-manrope font-bold text-neutral-700 text-sm mb-3 uppercase tracking-wide">{section}</h3>
   <div className="space-y-3">{sectionFields}</div>
   </div>
   );
@@ -18125,11 +18125,11 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   );
   })}
-  {pdfPages.length === 0 && <div className="text-center py-12 text-slate-400">Loading PDF preview...</div>}
+  {pdfPages.length === 0 && <div className="text-center py-12 text-neutral-400">Loading PDF preview...</div>}
   </div>
   ) : (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
-  <h3 className="font-manrope font-bold text-slate-700 text-sm mb-3">Live Preview</h3>
+  <h3 className="font-manrope font-bold text-neutral-700 text-sm mb-3">Live Preview</h3>
   <div className="prose prose-sm max-w-none border border-brand-50 rounded-xl p-6 bg-white" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }}
   dangerouslySetInnerHTML={{ __html: renderMergedBody(selectedTemplate.body, fieldValues, fc) }} />
   </div>
@@ -18149,8 +18149,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="h-14 border-b border-brand-100 bg-white/80 backdrop-blur-md flex items-center px-5 gap-3 shrink-0">
   <IconBtn icon="arrow_back" onClick={() => setStep("fill")} />
   <div className="flex-1 min-w-0">
-  <h2 className="text-lg font-manrope font-bold text-slate-800 truncate">Document Preview</h2>
-  <p className="text-xs text-slate-400">Review the final document, then export or send</p>
+  <h2 className="text-lg font-manrope font-bold text-neutral-800 truncate">Document Preview</h2>
+  <p className="text-xs text-neutral-400">Review the final document, then export or send</p>
   </div>
   <div className="flex items-center gap-2">
   <Btn variant="danger" size="xs" onClick={() => exportPDF()}>
@@ -18163,7 +18163,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <span className="material-icons-outlined text-sm">text_snippet</span>TXT
   </Btn>
   </div>
-  <span className="text-xs text-slate-300 ml-2">Esc to go back</span>
+  <span className="text-xs text-neutral-300 ml-2">Esc to go back</span>
   </div>
 
   {/* Split pane */}
@@ -18190,7 +18190,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   );
   })}
-  {pdfPages.length === 0 && <div className="text-center py-12 text-slate-400">Loading PDF preview...</div>}
+  {pdfPages.length === 0 && <div className="text-center py-12 text-neutral-400">Loading PDF preview...</div>}
   </div>
   ) : (
   <div ref={previewRef} className="bg-white rounded-3xl shadow-card border border-brand-50 p-10 w-full max-w-[8.5in]" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7", color: "#1a1a1a" }}>
@@ -18205,7 +18205,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {/* Right: Actions sidebar */}
   <div style={{ width: (100 - splitPercent) + "%" }} className="overflow-y-auto p-6 space-y-4">
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
-  <h3 className="font-manrope font-bold text-slate-700 mb-3">Export</h3>
+  <h3 className="font-manrope font-bold text-neutral-700 mb-3">Export</h3>
   <div className="space-y-2">
   <Btn variant="danger" className="w-full justify-start" onClick={() => exportPDF()}>
   <span className="material-icons-outlined text-lg">picture_as_pdf</span>Download PDF
@@ -18220,12 +18220,12 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
 
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
-  <h3 className="font-manrope font-bold text-slate-700 mb-3">Send via Email</h3>
+  <h3 className="font-manrope font-bold text-neutral-700 mb-3">Send via Email</h3>
   <div className="space-y-2 mb-3">
   <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.self} onChange={e => setSendTo({...sendTo, self: e.target.checked})} className="accent-brand-600" />Email to myself ({userProfile?.email})</label>
   {fieldValues.tenant_name && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.tenant} onChange={e => setSendTo({...sendTo, tenant: e.target.checked})} className="accent-brand-600" />Email to tenant ({fieldValues.tenant_name})</label>}
   <div>
-  <label className="text-xs font-medium text-slate-400 block mb-1">Custom recipients (comma-separated)</label>
+  <label className="text-xs font-medium text-neutral-400 block mb-1">Custom recipients (comma-separated)</label>
   <Input value={sendTo.custom} onChange={e => setSendTo({...sendTo, custom: e.target.value})} placeholder="email@example.com" />
   </div>
   </div>
@@ -18238,7 +18238,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
 
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
-  <h3 className="font-manrope font-bold text-slate-700 mb-3">Save</h3>
+  <h3 className="font-manrope font-bold text-neutral-700 mb-3">Save</h3>
   <div className="space-y-2">
   <Btn className="w-full" onClick={async () => { await saveDocument("draft"); resetFlow(); }}>Save as Draft</Btn>
   <Btn variant="slate" className="w-full" onClick={async () => { await saveDocument("final"); resetFlow(); }}>Finalize</Btn>
@@ -18257,7 +18257,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <PageHeader title="Document Builder" />
   <div className="flex gap-1">
   {[["create","Create"],["templates","Templates"],["history","History"]].map(([id,label]) => (
-  <button key={id} onClick={() => setTab(id)} className={"px-4 py-2 text-sm font-medium rounded-2xl " + (tab === id ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}>{label}</button>
+  <button key={id} onClick={() => setTab(id)} className={"px-4 py-2 text-sm font-medium rounded-2xl " + (tab === id ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200")}>{label}</button>
   ))}
   </div>
   </div>
@@ -18270,17 +18270,17 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <button onClick={() => setMode("blank")} className={"rounded-3xl border-2 p-6 text-left transition-all " + (mode === "blank" ? "border-brand-600 bg-brand-50" : "border-brand-100 bg-white hover:border-brand-300")}>
   <div className="flex items-center gap-3 mb-2">
   <span className="w-10 h-10 rounded-2xl bg-brand-100 flex items-center justify-center"><span className="material-icons-outlined text-brand-600">edit_note</span></span>
-  <h3 className="font-manrope font-bold text-slate-800">Blank Mode</h3>
+  <h3 className="font-manrope font-bold text-neutral-800">Blank Mode</h3>
   </div>
-  <p className="text-sm text-slate-400">Start with an empty form. Fill everything out manually.</p>
+  <p className="text-sm text-neutral-400">Start with an empty form. Fill everything out manually.</p>
   </button>
   <div className={"rounded-3xl border-2 p-6 transition-all " + (mode === "prefill" ? "border-emerald-600 bg-emerald-50" : "border-brand-100 bg-white")}>
   <button onClick={() => setMode("prefill")} className="w-full text-left">
   <div className="flex items-center gap-3 mb-2">
   <span className="w-10 h-10 rounded-2xl bg-emerald-100 flex items-center justify-center"><span className="material-icons-outlined text-emerald-600">auto_fix_high</span></span>
-  <h3 className="font-manrope font-bold text-slate-800">Prefill from Property</h3>
+  <h3 className="font-manrope font-bold text-neutral-800">Prefill from Property</h3>
   </div>
-  <p className="text-sm text-slate-400">Select a property to auto-fill tenant, lease, and property data.</p>
+  <p className="text-sm text-neutral-400">Select a property to auto-fill tenant, lease, and property data.</p>
   </button>
   {mode === "prefill" && (
   <div className="mt-3">
@@ -18293,19 +18293,19 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {/* Template selection */}
   {mode && (
   <div>
-  <h3 className="font-manrope font-bold text-slate-700 mb-3">Choose a Template</h3>
+  <h3 className="font-manrope font-bold text-neutral-700 mb-3">Choose a Template</h3>
   {CATEGORIES.map(cat => {
   const catTemplates = templates.filter(t => t.category === cat);
   if (catTemplates.length === 0) return null;
   return (
   <div key={cat} className="mb-4">
-  <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">{cat}</h4>
+  <h4 className="text-xs font-semibold text-neutral-400 uppercase tracking-widest mb-2">{cat}</h4>
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
   {catTemplates.map(t => (
   <button key={t.id} onClick={() => startDocument(t, mode)} disabled={mode === "prefill" && !prefillProperty}
   className="bg-white rounded-2xl border border-brand-50 p-4 text-left hover:border-brand-300 hover:shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-  <div className="font-semibold text-slate-800 text-sm">{t.name}</div>
-  <div className="text-xs text-slate-400 mt-1">{t.description}</div>
+  <div className="font-semibold text-neutral-800 text-sm">{t.name}</div>
+  <div className="text-xs text-neutral-400 mt-1">{t.description}</div>
   <div className="text-xs text-brand-600 mt-2">{(t.fields || []).length} fields</div>
   </button>
   ))}
@@ -18329,13 +18329,13 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div key={t.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <div className="flex items-start justify-between">
   <div>
-  <div className="font-manrope font-bold text-slate-800">{t.name}</div>
+  <div className="font-manrope font-bold text-neutral-800">{t.name}</div>
   <span className="text-xs bg-brand-50 text-brand-600 px-2 py-0.5 rounded-full">{t.category}</span>
   </div>
-  {t.is_system && <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">System</span>}
+  {t.is_system && <span className="text-[10px] bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded-full">System</span>}
   </div>
-  <p className="text-xs text-slate-400 mt-2">{t.description}</p>
-  <div className="text-xs text-slate-500 mt-2">{(t.fields || []).length} fields{t.template_type === "pdf_overlay" ? " · PDF" : ""}</div>
+  <p className="text-xs text-neutral-400 mt-2">{t.description}</p>
+  <div className="text-xs text-neutral-500 mt-2">{(t.fields || []).length} fields{t.template_type === "pdf_overlay" ? " · PDF" : ""}</div>
   <div className="mt-3 flex gap-2">
   <Btn variant="secondary" size="xs" onClick={async () => { setEditingTemplate(t); setTemplateForm({ name: t.name, category: t.category, description: t.description || "", body: t.body || "", fields: t.fields || [], field_config: t.field_config || {}, template_type: t.template_type || "html", pdf_storage_path: t.pdf_storage_path || "", pdf_page_count: t.pdf_page_count || 0, pdf_field_placements: t.pdf_field_placements || [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); if (t.template_type === "pdf_overlay" && t.pdf_storage_path) { setTimeout(async () => { const pdf = await loadPdfForPreview(t.pdf_storage_path); if (pdf) await renderPdfPages(pdf, pdfScale, pdfContainerRef.current); }, 100); } }}>Edit</Btn>
   <Btn variant="success-fill" size="xs" onClick={() => { setSelectedTemplate(t); setMode("blank"); setFieldValues(applyDefaults(t)); setStep("fill"); setTab("create"); }}>Use</Btn>
@@ -18351,7 +18351,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {tab === "history" && (
   <div>
   {generatedDocs.length === 0 ? (
-  <div className="text-center py-16 text-slate-400">
+  <div className="text-center py-16 text-neutral-400">
   <span className="material-icons-outlined text-4xl mb-2">folder_open</span>
   <p className="text-sm">No documents generated yet</p>
   </div>
@@ -18360,12 +18360,12 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {generatedDocs.map(d => (
   <div key={d.id} className="bg-white rounded-2xl border border-brand-50 shadow-sm p-4 flex items-center justify-between">
   <div>
-  <div className="font-semibold text-slate-800 text-sm">{d.name}</div>
+  <div className="font-semibold text-neutral-800 text-sm">{d.name}</div>
   <div className="flex items-center gap-2 mt-1">
-  <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (d.status === "sent" ? "bg-emerald-50 text-emerald-700" : d.status === "final" ? "bg-blue-50 text-blue-700" : "bg-slate-50 text-slate-500")}>{d.status}</span>
-  {d.tenant_name && <span className="text-xs text-slate-400">{d.tenant_name}</span>}
-  {d.property_address && <span className="text-xs text-slate-400">· {d.property_address}</span>}
-  <span className="text-xs text-slate-400">· {new Date(d.created_at).toLocaleDateString()}</span>
+  <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (d.status === "sent" ? "bg-emerald-50 text-emerald-700" : d.status === "final" ? "bg-blue-50 text-blue-700" : "bg-neutral-50 text-neutral-500")}>{d.status}</span>
+  {d.tenant_name && <span className="text-xs text-neutral-400">{d.tenant_name}</span>}
+  {d.property_address && <span className="text-xs text-neutral-400">· {d.property_address}</span>}
+  <span className="text-xs text-neutral-400">· {new Date(d.created_at).toLocaleDateString()}</span>
   </div>
   </div>
   <div className="flex gap-2">
@@ -18390,7 +18390,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.self} onChange={e => setSendTo({...sendTo, self: e.target.checked})} className="accent-brand-600" />Email to myself</label>
   {sendModal.tenant_name && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.tenant} onChange={e => setSendTo({...sendTo, tenant: e.target.checked})} className="accent-brand-600" />Email to tenant ({sendModal.tenant_name})</label>}
   <div>
-  <label className="text-xs font-medium text-slate-400 block mb-1">Custom recipients</label>
+  <label className="text-xs font-medium text-neutral-400 block mb-1">Custom recipients</label>
   <Input value={sendTo.custom} onChange={e => setSendTo({...sendTo, custom: e.target.value})}  placeholder="email@example.com, other@example.com" />
   </div>
   <Btn variant="success-fill" className="w-full" onClick={() => sendEmail(sendModal)} disabled={sending}>
@@ -18505,15 +18505,15 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   {/* Approvals Section */}
   {showApprovals && approvals.length > 0 && (
   <div className="mb-6">
-  {activeTab === "all" && <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">Awaiting Approval</h3>}
+  {activeTab === "all" && <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-wide mb-3">Awaiting Approval</h3>}
   <div className="space-y-3">
   {approvals.map(a => (
   <div key={a.id} className="bg-white rounded-xl border border-amber-200 p-4 flex items-center justify-between">
   <div className="flex items-center gap-3 flex-1 min-w-0">
   <span className="text-2xl">{a.icon}</span>
   <div className="min-w-0">
-  <div className="font-semibold text-slate-800 truncate">{a.title}</div>
-  <div className="text-xs text-slate-400">{a.subtitle}</div>
+  <div className="font-semibold text-neutral-800 truncate">{a.title}</div>
+  <div className="text-xs text-neutral-400">{a.subtitle}</div>
   </div>
   </div>
   <div className="flex gap-2 shrink-0 ml-3">
@@ -18529,17 +18529,17 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   {/* Tasks Section */}
   {showTasks && tasks.length > 0 && (
   <div className="mb-6">
-  {activeTab === "all" && <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">Pending Tasks</h3>}
+  {activeTab === "all" && <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-wide mb-3">Pending Tasks</h3>}
   <div className="space-y-2">
   {tasks.map((t, i) => (
   <div key={i} onClick={() => setPage(t.link)} className="bg-white rounded-xl border border-brand-50 p-4 flex items-center gap-3 cursor-pointer hover:border-brand-200 hover:shadow-sm transition-all">
   <span className="text-xl">{t.icon}</span>
   <div className="flex-1 min-w-0">
-  <div className="text-sm font-semibold text-slate-800 truncate">{t.title}</div>
-  <div className="text-xs text-slate-400">{t.subtitle}</div>
+  <div className="text-sm font-semibold text-neutral-800 truncate">{t.title}</div>
+  <div className="text-xs text-neutral-400">{t.subtitle}</div>
   </div>
   <span className={"text-xs px-2 py-0.5 rounded-full font-bold " + (t.priority === "high" ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-700")}>{t.priority}</span>
-  <span className="material-icons-outlined text-slate-300 text-sm">arrow_forward</span>
+  <span className="material-icons-outlined text-neutral-300 text-sm">arrow_forward</span>
   </div>
   ))}
   </div>
@@ -18548,9 +18548,9 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
 
   {approvals.length === 0 && tasks.length === 0 && (
   <div className="text-center py-16">
-  <span className="material-icons-outlined text-5xl text-slate-200 mb-3">task_alt</span>
-  <div className="text-lg font-semibold text-slate-400">All caught up!</div>
-  <div className="text-sm text-slate-300">No pending tasks or approvals</div>
+  <span className="material-icons-outlined text-5xl text-neutral-200 mb-3">task_alt</span>
+  <div className="text-lg font-semibold text-neutral-400">All caught up!</div>
+  <div className="text-sm text-neutral-300">No pending tasks or approvals</div>
   </div>
   )}
   </div>
@@ -18590,10 +18590,10 @@ function AdminPage({ companyId, activeCompany, addNotification, userProfile, use
   return (
   <div>
   <PageHeader title="Admin" />
-  <p className="text-sm text-slate-400 mb-4">Manage team access and view activity logs</p>
+  <p className="text-sm text-neutral-400 mb-4">Manage team access and view activity logs</p>
   <div className="flex gap-1 mb-4 border-b border-brand-50">
   {[["audit", "Audit Trail"], ...(isAdmin ? [["team", "Team & Roles"]] : [])].map(([id, label]) => (
-  <button key={id} onClick={() => setAdminTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (adminTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}</button>
+  <button key={id} onClick={() => setAdminTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (adminTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}</button>
   ))}
   </div>
   {adminTab === "audit" && <AuditTrail companyId={companyId} />}
@@ -18669,7 +18669,7 @@ function AuditTrail({ companyId }) {
   return (
   <div>
   <PageHeader title="Audit Trail" />
-  <p className="text-sm text-slate-400 mb-4">Complete activity log across all modules</p>
+  <p className="text-sm text-neutral-400 mb-4">Complete activity log across all modules</p>
 
   {/* Filters */}
   <div className="flex flex-wrap gap-2 mb-4">
@@ -18688,27 +18688,27 @@ function AuditTrail({ companyId }) {
   {/* Stats */}
   <div className="grid grid-cols-4 gap-3 mb-4">
   <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
-  <p className="text-lg font-manrope font-bold text-slate-800">{totalCount}</p>
-  <p className="text-xs text-slate-400">Total Actions</p>
+  <p className="text-lg font-manrope font-bold text-neutral-800">{totalCount}</p>
+  <p className="text-xs text-neutral-400">Total Actions</p>
   </div>
   <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
-  <p className="text-lg font-manrope font-bold text-slate-800">{users.length}</p>
-  <p className="text-xs text-slate-400">Users Active</p>
+  <p className="text-lg font-manrope font-bold text-neutral-800">{users.length}</p>
+  <p className="text-xs text-neutral-400">Users Active</p>
   </div>
   <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
   <p className="text-lg font-bold text-emerald-600">{logs.filter(l => l.action === "create").length}</p>
-  <p className="text-xs text-slate-400">Created</p>
+  <p className="text-xs text-neutral-400">Created</p>
   </div>
   <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
   <p className="text-lg font-bold text-red-500">{logs.filter(l => l.action === "delete").length}</p>
-  <p className="text-xs text-slate-400">Deleted</p>
+  <p className="text-xs text-neutral-400">Deleted</p>
   </div>
   </div>
 
   {/* Log Table */}
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-hidden">
   <table className="w-full text-sm">
-  <thead className="bg-brand-50/30 text-xs text-slate-400 uppercase">
+  <thead className="bg-brand-50/30 text-xs text-neutral-400 uppercase">
   <tr>
   <th className="px-4 py-3 text-left">Time</th>
   <th className="px-4 py-3 text-left">User</th>
@@ -18721,15 +18721,15 @@ function AuditTrail({ companyId }) {
   <tbody>
   {paged.map(log => (
   <tr key={log.id} className="border-t border-brand-50/50 hover:bg-brand-50/30/50">
-  <td className="px-4 py-2.5 text-xs text-slate-400 whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
-  <td className="px-4 py-2.5 text-slate-700 font-medium text-xs">{log.user_email}</td>
-  <td className="px-4 py-2.5"><span className={`text-xs px-1.5 py-0.5 rounded-full ${log.user_role === "admin" ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>{log.user_role}</span></td>
+  <td className="px-4 py-2.5 text-xs text-neutral-400 whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
+  <td className="px-4 py-2.5 text-neutral-700 font-medium text-xs">{log.user_email}</td>
+  <td className="px-4 py-2.5"><span className={`text-xs px-1.5 py-0.5 rounded-full ${log.user_role === "admin" ? "bg-brand-100 text-brand-700" : "bg-neutral-100 text-neutral-500"}`}>{log.user_role}</span></td>
   <td className="px-4 py-2.5 text-xs"><span className="flex items-center gap-1">{moduleIcons[log.module] || "📌"} {log.module}</span></td>
-  <td className="px-4 py-2.5"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${actionColors[log.action] || "bg-slate-100 text-slate-700"}`}>{log.action}</span></td>
-  <td className="px-4 py-2.5 text-xs text-slate-500 max-w-xs truncate">{log.details}</td>
+  <td className="px-4 py-2.5"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${actionColors[log.action] || "bg-neutral-100 text-neutral-700"}`}>{log.action}</span></td>
+  <td className="px-4 py-2.5 text-xs text-neutral-500 max-w-xs truncate">{log.details}</td>
   </tr>
   ))}
-  {paged.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No audit logs found</td></tr>}
+  {paged.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-neutral-400">No audit logs found</td></tr>}
   </tbody>
   </table>
   </div>
@@ -18737,7 +18737,7 @@ function AuditTrail({ companyId }) {
   {/* Pagination */}
   {totalPages > 1 && (
   <div className="flex items-center justify-between mt-3">
-  <span className="text-xs text-slate-400">Page {page + 1} of {totalPages} ({totalCount} records)</span>
+  <span className="text-xs text-neutral-400">Page {page + 1} of {totalPages} ({totalCount} records)</span>
   <div className="flex gap-1">
   <Btn variant="slate" size="xs" onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0}>← Prev</Btn>
   <Btn variant="slate" size="xs" onClick={() => setPage(Math.min(totalPages - 1, page + 1))} disabled={page >= totalPages - 1}>Next →</Btn>
@@ -18841,8 +18841,8 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   </label>
   </div>
   <div>
-  <div className="font-semibold text-slate-800">{displayName || "User"}</div>
-  <div className="text-xs text-slate-400">{currentUser?.email}</div>
+  <div className="font-semibold text-neutral-800">{displayName || "User"}</div>
+  <div className="text-xs text-neutral-400">{currentUser?.email}</div>
   {uploading && <div className="text-xs text-brand-500 mt-1">Uploading...</div>}
   </div>
   </div>
@@ -18850,16 +18850,16 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   {/* Name & Phone */}
   <div className="space-y-3 mb-5">
   <div>
-  <label className="text-xs font-medium text-slate-500 block mb-1">Display Name</label>
+  <label className="text-xs font-medium text-neutral-500 block mb-1">Display Name</label>
   <Input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Your name" />
   </div>
   <div>
-  <label className="text-xs font-medium text-slate-500 block mb-1">Phone Number</label>
+  <label className="text-xs font-medium text-neutral-500 block mb-1">Phone Number</label>
   <Input value={phone} onChange={e => setPhone(formatPhoneInput(e.target.value))} placeholder="(555) 123-4567" maxLength={14} />
   </div>
   <div>
-  <label className="text-xs font-medium text-slate-500 block mb-1">Email</label>
-  <Input value={currentUser?.email || ""} disabled className="bg-slate-50 text-slate-400" />
+  <label className="text-xs font-medium text-neutral-500 block mb-1">Email</label>
+  <Input value={currentUser?.email || ""} disabled className="bg-neutral-50 text-neutral-400" />
   </div>
   </div>
 
@@ -18870,8 +18870,8 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
 
   {/* Password Reset */}
   <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-6 mb-4">
-  <h3 className="font-semibold text-slate-800 mb-2">Password</h3>
-  <p className="text-xs text-slate-400 mb-3">We'll send a password reset link to your email.</p>
+  <h3 className="font-semibold text-neutral-800 mb-2">Password</h3>
+  <p className="text-xs text-neutral-400 mb-3">We'll send a password reset link to your email.</p>
   <Btn variant="slate" size="sm" onClick={sendPasswordReset} disabled={resetSent}>
   {resetSent ? "Reset Link Sent" : "Send Password Reset Email"}
   </Btn>
@@ -18879,13 +18879,13 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
 
   {/* Preferences */}
   <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-6 mb-4">
-  <h3 className="font-semibold text-slate-800 mb-3">Preferences</h3>
+  <h3 className="font-semibold text-neutral-800 mb-3">Preferences</h3>
   <div className="flex items-center justify-between py-2">
   <div>
-  <div className="text-sm text-slate-700">Dark Mode</div>
-  <div className="text-xs text-slate-400">Switch between light and dark theme</div>
+  <div className="text-sm text-neutral-700">Dark Mode</div>
+  <div className="text-xs text-neutral-400">Switch between light and dark theme</div>
   </div>
-  <button onClick={toggleDarkMode} className={"relative w-10 h-5 rounded-full transition-colors " + (darkMode ? "bg-brand-600" : "bg-slate-300")}>
+  <button onClick={toggleDarkMode} className={"relative w-10 h-5 rounded-full transition-colors " + (darkMode ? "bg-brand-600" : "bg-neutral-300")}>
   <span className={"absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow " + (darkMode ? "left-5" : "left-0.5")} />
   </button>
   </div>
@@ -18893,15 +18893,15 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
 
   {/* 2FA */}
   <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-6 mb-4">
-  <h3 className="font-semibold text-slate-800 mb-2">Two-Factor Authentication</h3>
-  <p className="text-xs text-slate-400 mb-3">Add an extra layer of security to your account.</p>
-  <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-400 text-center">Coming Soon</div>
+  <h3 className="font-semibold text-neutral-800 mb-2">Two-Factor Authentication</h3>
+  <p className="text-xs text-neutral-400 mb-3">Add an extra layer of security to your account.</p>
+  <div className="bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-400 text-center">Coming Soon</div>
   </div>
 
   {/* Delete Account */}
   <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-6">
   <h3 className="font-semibold text-red-600 mb-2">Delete Account</h3>
-  <p className="text-xs text-slate-400 mb-3">This will deactivate your account and remove you from all companies. This action cannot be undone.</p>
+  <p className="text-xs text-neutral-400 mb-3">This will deactivate your account and remove you from all companies. This action cannot be undone.</p>
   {!showDeleteConfirm ? (
   <Btn variant="danger" size="sm" onClick={() => setShowDeleteConfirm(true)}>Delete My Account</Btn>
   ) : (
@@ -19153,14 +19153,14 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   <div className="w-full max-w-2xl">
   <div className="text-center mb-8">
   <div className="text-3xl font-bold text-brand-700 mb-1">🏡 PropManager</div>
-  <div className="text-sm text-slate-400">Welcome, {currentUser?.email}</div>
+  <div className="text-sm text-neutral-400">Welcome, {currentUser?.email}</div>
   </div>
 
   {/* Your Companies */}
   {companies.length > 0 && (
   <div className="mb-6">
   <div className="flex items-center justify-between mb-3">
-  <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wide">Your Companies</h2>
+  <h2 className="text-sm font-bold text-neutral-700 uppercase tracking-wide">Your Companies</h2>
   {companies.length > 3 && <Input placeholder="Search companies..." value={companySearch} onChange={e => setCompanySearch(e.target.value)} className="w-48 text-xs" />}
   </div>
   <div className="space-y-2">
@@ -19171,8 +19171,8 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   {c.name[0]}
   </div>
   <div className="min-w-0">
-  <div className="font-semibold text-slate-800 truncate">{c.name}</div>
-  <div className="text-xs text-slate-400">{c.type} · {c.memberRole}</div>
+  <div className="font-semibold text-neutral-800 truncate">{c.name}</div>
+  <div className="text-xs text-neutral-400">{c.type} · {c.memberRole}</div>
   </div>
   </div>
   <div className="flex items-center gap-2 shrink-0 ml-3">
@@ -19210,39 +19210,39 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   className="bg-white border-2 border-brand-200 text-brand-700 rounded-3xl p-4 text-center hover:border-brand-400 transition-colors">
   <div className="text-2xl mb-1">🔗</div>
   <div className="text-sm font-semibold">Join Company</div>
-  <div className="text-xs text-slate-400">Enter code or search</div>
+  <div className="text-xs text-neutral-400">Enter code or search</div>
   </button>
   </div>
 
   {/* Create Company Form */}
   {showCreate && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-6 mb-4">
-  <h3 className="font-bold text-slate-800 mb-4">Create New Company</h3>
+  <h3 className="font-bold text-neutral-800 mb-4">Create New Company</h3>
   <div className="space-y-3">
   {/* Company Role Selection */}
   <div>
-  <label className="text-xs font-medium text-slate-500 block mb-2">Company Type *</label>
+  <label className="text-xs font-medium text-neutral-500 block mb-2">Company Type *</label>
   <div className="grid grid-cols-2 gap-3">
   <button type="button" onClick={() => setCreateForm({...createForm, company_role: "management"})} className={`p-3 rounded-xl border-2 text-left transition-all ${createForm.company_role === "management" ? "border-brand-500 bg-brand-50" : "border-brand-100 hover:border-brand-200"}`}>
   <div className="text-lg mb-1">🏢</div>
-  <div className="text-sm font-semibold text-slate-800">Property Management</div>
-  <div className="text-xs text-slate-400">I manage properties for owners</div>
+  <div className="text-sm font-semibold text-neutral-800">Property Management</div>
+  <div className="text-xs text-neutral-400">I manage properties for owners</div>
   </button>
   <button type="button" onClick={() => setCreateForm({...createForm, company_role: "owner"})} className={`p-3 rounded-xl border-2 text-left transition-all ${createForm.company_role === "owner" ? "border-emerald-500 bg-emerald-50" : "border-brand-100 hover:border-brand-200"}`}>
   <div className="text-lg mb-1">🏠</div>
-  <div className="text-sm font-semibold text-slate-800">Property Owner</div>
-  <div className="text-xs text-slate-400">I own and manage my properties</div>
+  <div className="text-sm font-semibold text-neutral-800">Property Owner</div>
+  <div className="text-xs text-neutral-400">I own and manage my properties</div>
   </button>
   </div>
   </div>
-  <div><label className="text-xs font-medium text-slate-500">Company Name *</label><Input value={createForm.name} onChange={e => setCreateForm({...createForm, name: e.target.value})} className="mt-1" placeholder={createForm.company_role === "management" ? "e.g. Sigma Property Management" : "e.g. Smith Properties LLC"} /></div>
+  <div><label className="text-xs font-medium text-neutral-500">Company Name *</label><Input value={createForm.name} onChange={e => setCreateForm({...createForm, name: e.target.value})} className="mt-1" placeholder={createForm.company_role === "management" ? "e.g. Sigma Property Management" : "e.g. Smith Properties LLC"} /></div>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-500">Entity Type</label><Select value={createForm.type} onChange={e => setCreateForm({...createForm, type: e.target.value})} className="mt-1"><option>LLC</option><option>Corporation</option><option>Partnership</option><option>Sole Proprietorship</option><option>Trust</option><option>Other</option></Select></div>
-  <div><label className="text-xs font-medium text-slate-500">Email</label><Input type="email" value={createForm.email} onChange={e => setCreateForm({...createForm, email: e.target.value})} className="mt-1" placeholder="company@email.com" /></div>
+  <div><label className="text-xs font-medium text-neutral-500">Entity Type</label><Select value={createForm.type} onChange={e => setCreateForm({...createForm, type: e.target.value})} className="mt-1"><option>LLC</option><option>Corporation</option><option>Partnership</option><option>Sole Proprietorship</option><option>Trust</option><option>Other</option></Select></div>
+  <div><label className="text-xs font-medium text-neutral-500">Email</label><Input type="email" value={createForm.email} onChange={e => setCreateForm({...createForm, email: e.target.value})} className="mt-1" placeholder="company@email.com" /></div>
   </div>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-500">Address</label><Input placeholder="123 Business Ave, City, State ZIP" value={createForm.address} onChange={e => setCreateForm({...createForm, address: e.target.value})} className="mt-1" /></div>
-  <div><label className="text-xs font-medium text-slate-500">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={createForm.phone} onChange={e => setCreateForm({...createForm, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="mt-1" /></div>
+  <div><label className="text-xs font-medium text-neutral-500">Address</label><Input placeholder="123 Business Ave, City, State ZIP" value={createForm.address} onChange={e => setCreateForm({...createForm, address: e.target.value})} className="mt-1" /></div>
+  <div><label className="text-xs font-medium text-neutral-500">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={createForm.phone} onChange={e => setCreateForm({...createForm, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="mt-1" /></div>
   </div>
   <div className="flex gap-2 pt-2">
   <Btn size="lg" onClick={createCompany} disabled={creating}>{creating ? "Creating..." : "Create Company"}</Btn>
@@ -19255,11 +19255,11 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   {/* Join Company Form */}
   {showJoin && (
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-6 mb-4">
-  <h3 className="font-bold text-slate-800 mb-4">Join a Company</h3>
+  <h3 className="font-bold text-neutral-800 mb-4">Join a Company</h3>
   <div className="space-y-3">
-  <div><label className="text-xs font-medium text-slate-500">Company ID (8-digit code)</label><Input value={joinCode} onChange={e => setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 8))} className="mt-1" placeholder="e.g. 12345678" maxLength={8} /></div>
-  <div className="text-xs text-slate-400 text-center">— or —</div>
-  <div><label className="text-xs font-medium text-slate-500">Search by Name</label><Input value={joinSearch} onChange={e => setJoinSearch(e.target.value)} className="mt-1" placeholder="e.g. Sigma Housing" /></div>
+  <div><label className="text-xs font-medium text-neutral-500">Company ID (8-digit code)</label><Input value={joinCode} onChange={e => setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 8))} className="mt-1" placeholder="e.g. 12345678" maxLength={8} /></div>
+  <div className="text-xs text-neutral-400 text-center">— or —</div>
+  <div><label className="text-xs font-medium text-neutral-500">Search by Name</label><Input value={joinSearch} onChange={e => setJoinSearch(e.target.value)} className="mt-1" placeholder="e.g. Sigma Housing" /></div>
   <div className="flex gap-2">
   <Btn size="lg" onClick={searchCompanies}>Search</Btn>
   <Btn variant="slate" size="sm" onClick={() => setShowJoin(false)}>Cancel</Btn>
@@ -19268,13 +19268,13 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   <div className="space-y-2 mt-3">
   {searchResults.map(c => (
   <div key={c.id} className="flex items-center justify-between bg-brand-50/30 rounded-lg p-3">
-  <div><div className="text-sm font-semibold text-slate-800">{c.name}</div><div className="text-xs text-slate-400">{c.type}</div></div>
+  <div><div className="text-sm font-semibold text-neutral-800">{c.name}</div><div className="text-xs text-neutral-400">{c.type}</div></div>
   <Btn size="xs" onClick={() => requestJoin(c)}>Request to Join</Btn>
   </div>
   ))}
   </div>
   )}
-  {searchResults.length === 0 && (joinCode || joinSearch) && <div className="text-xs text-slate-400 text-center">Click Search to find companies</div>}
+  {searchResults.length === 0 && (joinCode || joinSearch) && <div className="text-xs text-neutral-400 text-center">Click Search to find companies</div>}
   </div>
   </div>
   )}
@@ -19327,8 +19327,8 @@ function PendingRequestsPanel({ companyId, addNotification }) {
   {requests.map(r => (
   <div key={r.id} className="flex items-center justify-between bg-white rounded-lg p-3">
   <div>
-  <div className="text-sm font-semibold text-slate-800">{r.user_name || r.user_email}</div>
-  <div className="text-xs text-slate-400">{r.user_email} · Requested: {new Date(r.created_at).toLocaleDateString()}</div>
+  <div className="text-sm font-semibold text-neutral-800">{r.user_name || r.user_email}</div>
+  <div className="text-xs text-neutral-400">{r.user_email} · Requested: {new Date(r.created_at).toLocaleDateString()}</div>
   </div>
   <div className="flex gap-2">
   <Btn variant="success-fill" size="xs" onClick={() => handleRequest(r, "approve")}>Approve</Btn>
@@ -19390,8 +19390,8 @@ function PendingPMAssignments({ companyId, addNotification }) {
   {requests.map(r => (
   <div key={r.id} className="flex items-center justify-between bg-white rounded-lg p-3">
   <div>
-  <div className="text-sm font-semibold text-slate-800">{r.property_address}</div>
-  <div className="text-xs text-slate-400">Owner requested: {new Date(r.requested_at).toLocaleDateString()} · {r.requested_by}</div>
+  <div className="text-sm font-semibold text-neutral-800">{r.property_address}</div>
+  <div className="text-xs text-neutral-400">Owner requested: {new Date(r.requested_at).toLocaleDateString()} · {r.requested_by}</div>
   </div>
   <div className="flex gap-2">
   <Btn variant="success-fill" size="xs" onClick={() => handleRequest(r, "accept")}>Accept</Btn>
@@ -19847,7 +19847,7 @@ function AppInner() {
   <div className="flex items-center justify-center h-screen bg-brand-50/30">
   <div className="text-center">
   <Spinner />
-  <p className="text-sm text-slate-400 mt-4">{!activeCompany?.id ? "Loading company..." : "Loading your access..."}</p>
+  <p className="text-sm text-neutral-400 mt-4">{!activeCompany?.id ? "Loading company..." : "Loading your access..."}</p>
   </div>
   </div>
   );
@@ -19880,9 +19880,9 @@ function AppInner() {
   <div className="flex items-center justify-between mt-2">
   <div className="flex items-center gap-1.5 min-w-0">
   <span className="w-5 h-5 rounded-lg bg-brand-100 flex items-center justify-center text-brand-700 text-xs font-bold shrink-0">{activeCompany.name[0]}</span>
-  <span className="text-xs text-slate-500 truncate font-medium">{activeCompany.name}</span>
+  <span className="text-xs text-neutral-500 truncate font-medium">{activeCompany.name}</span>
   </div>
-  <button onClick={() => { setSidebarOpen(false); switchCompany(); }} className="text-slate-400 hover:text-brand-600 shrink-0 ml-1" title="Switch Company"><span className="material-icons-outlined text-sm">swap_horiz</span></button>
+  <button onClick={() => { setSidebarOpen(false); switchCompany(); }} className="text-neutral-400 hover:text-brand-600 shrink-0 ml-1" title="Switch Company"><span className="material-icons-outlined text-sm">swap_horiz</span></button>
   </div>
   )}
   </div>
@@ -19893,19 +19893,19 @@ function AppInner() {
   const isExpanded = expandedNav.has(n.id);
   return (
   <div key={n.id}>
-  <div className={`flex items-center rounded-2xl mb-0.5 transition-all ${isParentActive ? "bg-brand-50 text-brand-700 font-semibold" : "text-slate-500 hover:bg-brand-50/50 hover:text-slate-700"}`}>
+  <div className={`flex items-center rounded-2xl mb-0.5 transition-all ${isParentActive ? "bg-brand-50 text-brand-700 font-semibold" : "text-neutral-500 hover:bg-brand-50/50 hover:text-neutral-700"}`}>
   <button onClick={() => { setPage(n.id); setSidebarOpen(false); }}
   className="flex-1 flex items-center gap-3 px-3 py-2.5 text-sm text-left">
   <span className="material-icons-outlined text-lg">{n.icon}</span><span>{n.label}</span>
   </button>
   {n.children && <button onClick={(e) => { e.stopPropagation(); setExpandedNav(s => { const next = new Set(s); if (next.has(n.id)) next.delete(n.id); else next.add(n.id); return next; }); }}
-  className="px-2 py-2.5 text-slate-400 hover:text-slate-700">
+  className="px-2 py-2.5 text-neutral-400 hover:text-neutral-700">
   <span className={`material-icons-outlined text-sm transition-transform ${isExpanded ? "rotate-180" : ""}`}>expand_more</span>
   </button>}
   </div>
   {n.children && isExpanded && n.children.map(c => (
   <button key={c.id} onClick={() => { setPage(c.id); setSidebarOpen(false); }}
-  className={`w-full flex items-center gap-3 pl-9 pr-3 py-2 text-xs text-left transition-all rounded-xl mb-0.5 ${page === c.id ? "bg-brand-50 text-brand-700 font-semibold" : "text-slate-400 hover:bg-brand-50/50 hover:text-slate-600"}`}>
+  className={`w-full flex items-center gap-3 pl-9 pr-3 py-2 text-xs text-left transition-all rounded-xl mb-0.5 ${page === c.id ? "bg-brand-50 text-brand-700 font-semibold" : "text-neutral-400 hover:bg-brand-50/50 hover:text-neutral-600"}`}>
   <span className="material-icons-outlined text-base">{c.icon}</span>{c.label}
   </button>
   ))}
@@ -19918,20 +19918,20 @@ function AppInner() {
   {/* Main Content */}
   <div className="flex-1 flex flex-col min-w-0">
   <header className="bg-white/80 backdrop-blur-md border-b border-brand-50 px-4 py-3 flex items-center gap-3">
-  <button className="md:hidden text-slate-400 hover:text-slate-600 transition-colors" onClick={() => setSidebarOpen(!sidebarOpen)}><span className="material-icons-outlined">menu</span></button>
-  <div className="flex-1 text-sm text-slate-400 capitalize font-medium">{page.replace("_", " ")}</div>
+  <button className="md:hidden text-neutral-400 hover:text-neutral-600 transition-colors" onClick={() => setSidebarOpen(!sidebarOpen)}><span className="material-icons-outlined">menu</span></button>
+  <div className="flex-1 text-sm text-neutral-400 capitalize font-medium">{page.replace("_", " ")}</div>
   <div className="relative">
   <button onClick={() => setShowUserMenu(!showUserMenu)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-2xl hover:bg-brand-50 transition-colors ${showUserMenu ? "bg-brand-50" : ""}`}>
   <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${ROLES[userRole]?.color || "bg-brand-600"}`}>{userProfile?.name?.[0]?.toUpperCase() || "U"}</div>
   <span className={`hidden md:inline text-xs font-semibold uppercase tracking-wide ${ROLES[userRole]?.color?.replace("bg-", "text-") || "text-brand-600"}`}>{ROLES[userRole]?.label}</span>
-  <span className="material-icons-outlined text-sm text-slate-400">expand_more</span>
+  <span className="material-icons-outlined text-sm text-neutral-400">expand_more</span>
   </button>
   {showUserMenu && <>
   <div className="fixed inset-0 z-30" onClick={() => setShowUserMenu(false)} />
-  <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg py-1 w-48 z-40">
-    <button onClick={() => { setShowUserMenu(false); switchCompany(); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">swap_horiz</span>Switch Company</button>
-    <button onClick={() => { setShowUserMenu(false); setPage("admin"); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">settings</span>Settings</button>
-    <div className="border-t border-slate-100 my-1" />
+  <div className="absolute right-0 top-full mt-1 bg-white border border-neutral-200 rounded-xl shadow-lg py-1 w-48 z-40">
+    <button onClick={() => { setShowUserMenu(false); switchCompany(); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">swap_horiz</span>Switch Company</button>
+    <button onClick={() => { setShowUserMenu(false); setPage("admin"); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">settings</span>Settings</button>
+    <div className="border-t border-neutral-100 my-1" />
     <button onClick={() => { setShowUserMenu(false); handleLogout(); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 text-left"><span className="material-icons-outlined text-base">logout</span>Logout</button>
   </div>
   </>}
@@ -19957,22 +19957,22 @@ function AppInner() {
   {showNotifications && (
   <div className="absolute right-0 top-12 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-3xl shadow-card border border-brand-50 z-50">
   <div className="px-4 py-3 border-b border-brand-50 flex justify-between items-center">
-  <span className="font-manrope font-bold text-slate-700 text-sm">Notifications</span>
+  <span className="font-manrope font-bold text-neutral-700 text-sm">Notifications</span>
   <div className="flex gap-2">
   <button onClick={() => { setPage("notifications"); setShowNotifications(false); }} className="text-xs text-brand-600 hover:underline">View All</button>
-  <button onClick={() => { setNotifications([]); setShowNotifications(false); }} className="text-xs text-slate-400 hover:text-red-500">Clear</button>
+  <button onClick={() => { setNotifications([]); setShowNotifications(false); }} className="text-xs text-neutral-400 hover:text-red-500">Clear</button>
   </div>
   </div>
   <div className="max-h-72 overflow-y-auto">
   {notifications.length === 0 ? (
-  <div className="px-4 py-6 text-center text-slate-400 text-sm">No notifications yet</div>
+  <div className="px-4 py-6 text-center text-neutral-400 text-sm">No notifications yet</div>
   ) : (
   notifications.map((n, idx) => (
   <div key={n.id || n.dbId || `notif_${idx}`} className={"px-4 py-3 border-b border-brand-50/50 hover:bg-brand-50/30 flex items-start gap-2 transition-colors " + (!n.read ? "bg-brand-50/40" : "")}>
   <span className="text-lg">{String(n.icon || "📌")}</span>
   <div className="flex-1">
-  <div className="text-sm text-slate-700">{String(n.message || "")}</div>
-  <div className="text-xs text-slate-400 mt-0.5">{String(n.time || "")}{n.date ? " · " + String(n.date) : ""}</div>
+  <div className="text-sm text-neutral-700">{String(n.message || "")}</div>
+  <div className="text-xs text-neutral-400 mt-0.5">{String(n.time || "")}{n.date ? " · " + String(n.date) : ""}</div>
   </div>
   </div>
   ))
