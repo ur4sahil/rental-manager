@@ -30,6 +30,19 @@
   --font-manrope: 'Manrope', sans-serif;
   --font-inter: 'Inter', sans-serif;
 
+  /* Neutral palette (maps to slate) */
+  --color-neutral-50: #f8fafc;
+  --color-neutral-100: #f1f5f9;
+  --color-neutral-200: #e2e8f0;
+  --color-neutral-300: #cbd5e1;
+  --color-neutral-400: #94a3b8;
+  --color-neutral-500: #64748b;
+  --color-neutral-600: #475569;
+  --color-neutral-700: #334155;
+  --color-neutral-800: #1e293b;
+  --color-neutral-900: #0f172a;
+  --color-neutral-950: #020617;
+
   /* Box shadows */
   --shadow-card: 0 4px 20px -2px rgba(0,0,0,0.05);
 }

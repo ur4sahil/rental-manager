@@ -15,10 +15,11 @@ const BTN_VARIANTS = {
   "danger-fill": "bg-red-600 text-white hover:bg-red-700",
   success:   "text-emerald-600 border border-emerald-200 hover:bg-emerald-50 bg-white",
   "success-fill": "bg-emerald-600 text-white hover:bg-emerald-700",
-  ghost:     "text-slate-500 hover:text-slate-700 hover:bg-slate-100",
+  ghost:     "text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100",
   purple:    "text-purple-600 border border-purple-200 hover:bg-purple-50 bg-white",
   amber:     "text-amber-600 border border-amber-200 hover:bg-amber-50 bg-white",
-  slate:     "text-slate-600 bg-slate-100 hover:bg-slate-200",
+  "warning-fill": "bg-amber-600 text-white hover:bg-amber-700",
+  slate:     "text-neutral-600 bg-neutral-100 hover:bg-neutral-200",
 };
 const BTN_SIZES = {
   xs: "text-xs px-2 py-1 rounded-lg gap-1",
@@ -39,7 +40,7 @@ export function Btn({ variant = "primary", size = "md", className = "", icon, ch
 // ---- ICON BUTTON ----
 export function IconBtn({ icon, className = "", title, ...props }) {
   return (
-    <button className={`w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 transition-colors ${className}`} title={title} {...props}>
+    <button className={`w-8 h-8 flex items-center justify-center rounded-xl text-neutral-400 hover:bg-neutral-100 transition-colors ${className}`} title={title} {...props}>
       <span className="material-icons-outlined text-lg">{icon}</span>
     </button>
   );
@@ -83,7 +84,7 @@ export function FormField({ label, required, className = "", children }) {
   return (
     <div className={className}>
       {label && (
-        <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">
+        <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">
           {label} {required && "*"}
         </label>
       )}
@@ -99,7 +100,7 @@ const BADGE_COLORS = {
   yellow: "bg-amber-50 text-amber-700 border-amber-200",
   blue:   "bg-blue-50 text-blue-700 border-blue-200",
   purple: "bg-purple-50 text-purple-700 border-purple-200",
-  gray:   "bg-slate-50 text-slate-600 border-slate-200",
+  gray:   "bg-neutral-50 text-neutral-600 border-neutral-200",
   indigo: "bg-brand-50 text-brand-700 border-brand-200",
 };
 const STATUS_MAP = {
@@ -125,8 +126,8 @@ export function PageHeader({ title, subtitle, children }) {
   return (
     <div className="flex flex-col md:flex-row md:items-center justify-between mb-5 gap-2">
       <div>
-        <h2 className="text-xl md:text-2xl font-manrope font-bold text-slate-800">{title}</h2>
-        {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+        <h2 className="text-xl md:text-2xl font-manrope font-bold text-neutral-800">{title}</h2>
+        {subtitle && <p className="text-xs text-neutral-400 mt-0.5">{subtitle}</p>}
       </div>
       {children && <div className="flex items-center gap-2 flex-wrap">{children}</div>}
     </div>
@@ -135,13 +136,13 @@ export function PageHeader({ title, subtitle, children }) {
 
 // ---- SECTION TITLE (within a page) ----
 export function SectionTitle({ children, className = "" }) {
-  return <h3 className={`font-manrope font-bold text-slate-700 text-sm mb-3 uppercase tracking-wide ${className}`}>{children}</h3>;
+  return <h3 className={`font-manrope font-bold text-neutral-700 text-sm mb-3 uppercase tracking-wide ${className}`}>{children}</h3>;
 }
 
 // ---- EMPTY STATE ----
 export function EmptyState({ icon = "inbox", title, subtitle }) {
   return (
-    <div className="text-center py-16 text-slate-400">
+    <div className="text-center py-16 text-neutral-400">
       <span className="material-icons-outlined text-4xl mb-2">{icon}</span>
       {title && <p className="text-sm font-medium">{title}</p>}
       {subtitle && <p className="text-xs mt-1">{subtitle}</p>}
@@ -156,7 +157,7 @@ export function TabBar({ tabs, active, onChange, size = "md" }) {
     <div className="flex gap-1 overflow-x-auto">
       {tabs.map(([id, label]) => (
         <button key={id} onClick={() => onChange(id)}
-          className={`${sizeClass} font-medium rounded-lg whitespace-nowrap transition-colors ${active === id ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+          className={`${sizeClass} font-medium rounded-lg whitespace-nowrap transition-colors ${active === id ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"}`}>
           {label}
         </button>
       ))}
@@ -175,8 +176,8 @@ export function StatCard({ label, value, icon, color = "indigo", trend }) {
           <span className={`material-icons-outlined ${textMap[color]}`}>{icon}</span>
         </div>
         <div>
-          <div className="text-xs text-slate-400 font-medium">{label}</div>
-          <div className="text-xl font-manrope font-bold text-slate-800">{value}</div>
+          <div className="text-xs text-neutral-400 font-medium">{label}</div>
+          <div className="text-xl font-manrope font-bold text-neutral-800">{value}</div>
           {trend && <div className="text-xs text-emerald-600 font-medium">{trend}</div>}
         </div>
       </div>
@@ -191,7 +192,7 @@ export function BulkBar({ count, label = "item", children, onDeselect }) {
       <span className="text-sm font-medium text-brand-800">{count} {label}{count > 1 ? "s" : ""} selected</span>
       <div className="flex gap-2">
         {children}
-        <button onClick={onDeselect} className="text-xs text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-100">Deselect</button>
+        <button onClick={onDeselect} className="text-xs text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect</button>
       </div>
     </div>
   );
@@ -201,7 +202,7 @@ export function BulkBar({ count, label = "item", children, onDeselect }) {
 export function FilterPill({ active, onClick, children }) {
   return (
     <button onClick={onClick}
-      className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${active ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+      className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${active ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"}`}>
       {children}
     </button>
   );
