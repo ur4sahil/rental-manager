@@ -11,7 +11,7 @@
 //  - All company_members mutations → RPCs (done)
 //  - Tenant balance updates → RPC (done: update_tenant_balance)
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "./supabase";
 import { Input, Textarea } from "./ui";
@@ -245,6 +245,8 @@ function shortId() {
 
 // Generate secure random ID (better than Date.now + Math.random)
 const CLASS_COLORS = ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4","#F97316","#EC4899"];
+const ALLOWED_DOC_TYPES = ["application/pdf","image/jpeg","image/png","image/gif","image/webp","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","text/plain","text/csv"];
+const ALLOWED_DOC_EXTENSIONS = /\.(pdf|jpg|jpeg|png|gif|webp|doc|docx|xls|xlsx|txt|csv)$/i;
 function pickColor(str) {
   let hash = 0;
   for (let i = 0; i < (str || "").length; i++) hash = ((hash << 5) - hash) + str.charCodeAt(i);
@@ -1142,8 +1144,6 @@ function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUpl
   if (!file) { showToast("Please select a file", "error"); return; }
   if (!form.name.trim()) { showToast("Document name is required", "error"); return; }
   // Validate file type and size
-  const ALLOWED_DOC_TYPES = ["application/pdf","image/jpeg","image/png","image/gif","image/webp","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","text/plain","text/csv"];
-  const ALLOWED_DOC_EXTENSIONS = /\.(pdf|jpg|jpeg|png|gif|webp|doc|docx|xls|xlsx|txt|csv)$/i;
   if (!ALLOWED_DOC_TYPES.includes(file.type) && !ALLOWED_DOC_EXTENSIONS.test(file.name)) { showToast("File type not allowed. Accepted: PDF, images, Word, Excel, text files.", "error"); return; }
   if (file.size > 25 * 1024 * 1024) { showToast("File must be under 25MB.", "error"); return; }
   // Magic bytes validation (prevents MIME spoofing)
@@ -2234,8 +2234,6 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   async function handleFileUpload(e) {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-    const ALLOWED_DOC_TYPES = ["application/pdf","image/jpeg","image/png","image/gif","image/webp","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","text/plain","text/csv"];
-    const ALLOWED_DOC_EXTENSIONS = /\.(pdf|jpg|jpeg|png|gif|webp|doc|docx|xls|xlsx|txt|csv)$/i;
     setSaving(true);
     let uploaded = 0;
     for (const file of files) {
@@ -7861,7 +7859,7 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   const [modal, setModal] = useState(null);
   const [period, setPeriod] = useState("This Year");
   const [form, setForm] = useState({ name:"", description:"", color:"#3B82F6" });
-  const COLORS = ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4","#F97316","#EC4899"];
+  const COLORS = CLASS_COLORS;
 
   const { start, end } = getPeriodDates(period);
   const classReport = getClassReport(accounts, journalEntries, classes, start, end);
@@ -10769,8 +10767,6 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   const file = fileRef.current?.files?.[0];
   if (!file || !form.name) return;
   // Validate file type and size
-  const ALLOWED_DOC_TYPES = ["application/pdf","image/jpeg","image/png","image/gif","image/webp","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","text/plain","text/csv"];
-  const ALLOWED_DOC_EXTENSIONS = /\.(pdf|jpg|jpeg|png|gif|webp|doc|docx|xls|xlsx|txt|csv)$/i;
   if (!ALLOWED_DOC_TYPES.includes(file.type) && !ALLOWED_DOC_EXTENSIONS.test(file.name)) { showToast("File type not allowed. Accepted: PDF, images, Word, Excel, text files.", "error"); return; }
   if (file.size > 25 * 1024 * 1024) { showToast("File must be under 25MB.", "error"); return; }
   // Magic bytes validation (prevents MIME spoofing)
