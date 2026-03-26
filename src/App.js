@@ -16528,10 +16528,34 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   try {
   const expr = formula.replace(/[a-z_][a-z0-9_]*/gi, (m) => {
   const v = parseFloat(values[m]);
-  return isNaN(v) ? 0 : v;
+  return isNaN(v) ? "0" : String(v);
   });
   if (!/^[\d\s+\-*/().]+$/.test(expr)) return 0;
-  return new Function("return (" + expr + ")")() || 0;
+  // Safe math parser — no eval/Function
+  const tokens = expr.match(/(\d+\.?\d*|[+\-*/()])/g) || [];
+  let pos = 0;
+  function parseExpr() {
+    let result = parseTerm();
+    while (pos < tokens.length && (tokens[pos] === "+" || tokens[pos] === "-")) {
+      const op = tokens[pos++]; const right = parseTerm();
+      result = op === "+" ? result + right : result - right;
+    }
+    return result;
+  }
+  function parseTerm() {
+    let result = parseFactor();
+    while (pos < tokens.length && (tokens[pos] === "*" || tokens[pos] === "/")) {
+      const op = tokens[pos++]; const right = parseFactor();
+      result = op === "*" ? result * right : (right !== 0 ? result / right : 0);
+    }
+    return result;
+  }
+  function parseFactor() {
+    if (tokens[pos] === "(") { pos++; const r = parseExpr(); if (tokens[pos] === ")") pos++; return r; }
+    if (tokens[pos] === "-") { pos++; return -parseFactor(); }
+    return parseFloat(tokens[pos++]) || 0;
+  }
+  return parseExpr() || 0;
   } catch { return 0; }
   }
 
@@ -19145,7 +19169,7 @@ function AppInner() {
   
   // Get VAPID public key from Supabase (or use a hardcoded one for now)
   // For production, generate VAPID keys and store the public key here
-  const VAPID_PUBLIC_KEY = "BLV2riRSH-L82eUcJpVA-0986CrgShKwJoMVVp7DfXMpSXFCi6f3p-EUKjIjdWnmnRDdkAMgw-4nKVZ27lUVqQk";
+  const VAPID_PUBLIC_KEY = process.env.REACT_APP_VAPID_PUBLIC_KEY || "";
   if (!VAPID_PUBLIC_KEY) { console.warn("VAPID key not configured — push disabled"); return; }
   
   const subscription = await registration.pushManager.subscribe({
