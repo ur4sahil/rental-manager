@@ -8951,7 +8951,14 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   const [plaidConnecting, setPlaidConnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [connections, setConnections] = useState([]);
-  const [ruleForm, setRuleForm] = useState({ name: "", condField: "description", condOp: "contains", condValue: "", condDirection: "all", condAmountMin: "", condAmountMax: "", actionAccountId: "", actionAccountName: "", actionClassId: "", actionPayee: "", actionMemo: "", autoAccept: false, priority: 100 });
+  const EMPTY_CONDITION = { field: "description", operator: "contains", value: "", value2: "" };
+  const EMPTY_LINE = { accountId: "", accountName: "", classId: "", percentage: null, amount: null };
+  const [ruleForm, setRuleForm] = useState({
+    name: "", conditions: [{ ...EMPTY_CONDITION }], condLogic: "all", condDirection: "all", bankAccountFeedId: "",
+    ruleType: "assign", transactionType: "expense", actionPayee: "", actionMemo: "", excludeReason: "personal",
+    split: false, splitBy: null, lines: [{ ...EMPTY_LINE }], autoAccept: false, priority: 100
+  });
+  const [showRuleDrawer, setShowRuleDrawer] = useState(false);
   const [showNewAccount, setShowNewAccount] = useState(false);
   const [newAccountForm, setNewAccountForm] = useState({ name: "", type: "checking", masked_number: "", institution_name: "" });
 
@@ -8984,12 +8991,20 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     const [feedsRes, txnRes, rulesRes, connRes] = await Promise.all([
       supabase.from("bank_account_feed").select("*").eq("company_id", companyId).eq("status", "active").order("created_at"),
       supabase.from("bank_feed_transaction").select("*").eq("company_id", companyId).order("posted_date", { ascending: false }).limit(500),
-      supabase.from("bank_transaction_rule").select("*").eq("company_id", companyId).eq("enabled", true).order("priority"),
+      supabase.from("bank_transaction_rule").select("*").eq("company_id", companyId).order("priority"),
       supabase.from("bank_connection").select("*").eq("company_id", companyId).order("created_at"),
     ]);
     setFeeds(feedsRes.data || []);
     setTransactions(txnRes.data || []);
-    setRules(rulesRes.data || []);
+    const fetchedRules = rulesRes.data || [];
+    // Auto-migrate V1 rules to V2 format on first load
+    if (fetchedRules.some(r => r.condition_json && !r.condition_json.conditions)) {
+      await migrateRulesToV2(fetchedRules);
+      const { data: refreshed } = await supabase.from("bank_transaction_rule").select("*").eq("company_id", companyId).order("priority");
+      setRules(refreshed || []);
+    } else {
+      setRules(fetchedRules);
+    }
     setConnections(connRes.data || []);
     setLoading(false);
   }
@@ -9559,37 +9574,77 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     } finally { guardRelease("bankUndo", txn.id); }
   }
 
-  // --- Rules Engine ---
+  // --- Rules Engine (V2 multi-condition + V1 fallback) ---
+  function evaluateTextOp(op, text, val) {
+    switch (op) {
+      case "contains": return text.includes(val);
+      case "does_not_contain": return !text.includes(val);
+      case "is_exactly": return text === val;
+      case "starts_with": return text.startsWith(val);
+      case "ends_with": return text.endsWith(val);
+      case "regex": try { return new RegExp(val, "i").test(text); } catch { return false; }
+      default: return text.includes(val);
+    }
+  }
+  function evaluateAmountOp(op, amt, val, val2) {
+    const numVal = Number(val) || 0;
+    const numVal2 = Number(val2) || 0;
+    switch (op) {
+      case "is_exactly": return Math.abs(amt - numVal) < 0.01;
+      case "greater_than": return amt > numVal;
+      case "less_than": return amt < numVal;
+      case "between": return amt >= numVal && amt <= numVal2;
+      default: return false;
+    }
+  }
+  function evaluateSingleCondition(cond, descClean, descRaw, amt) {
+    const field = cond.field || "description";
+    const op = cond.operator || "contains";
+    const val = (cond.value || "").toLowerCase();
+    const val2 = (cond.value2 || "").toLowerCase();
+    if (field === "description") return evaluateTextOp(op, descClean, val);
+    if (field === "bank_text") return evaluateTextOp(op, descRaw, val);
+    if (field === "amount") return evaluateAmountOp(op, amt, val, val2);
+    return false;
+  }
   function evaluateRules(txn, rulesList) {
-    const desc = (txn.bank_description_clean || txn.bank_description_raw || "").toLowerCase();
+    const descClean = (txn.bank_description_clean || "").toLowerCase();
+    const descRaw = (txn.bank_description_raw || "").toLowerCase();
     const amt = Math.abs(safeNum(txn.amount));
     for (const rule of rulesList) {
       if (!rule.enabled) continue;
-      const cond = rule.condition_json || {};
+      const condJson = rule.condition_json || {};
+      // V2 multi-condition format
+      if (condJson.conditions) {
+        if (condJson.direction && condJson.direction !== "all" && txn.direction !== condJson.direction) continue;
+        if (rule.bank_account_feed_id && rule.bank_account_feed_id !== txn.bank_account_feed_id) continue;
+        const logic = condJson.logic || "all";
+        const conditions = condJson.conditions || [];
+        if (conditions.length === 0) continue;
+        const results = conditions.map(c => evaluateSingleCondition(c, descClean, descRaw, amt));
+        const matched = logic === "all" ? results.every(r => r) : results.some(r => r);
+        if (matched) return { rule, action: rule.action_json || {} };
+        continue;
+      }
+      // V1 legacy fallback
+      const desc = descClean || descRaw;
       let matched = false;
-      // Text condition
-      const val = (cond.value || "").toLowerCase();
+      const val = (condJson.value || "").toLowerCase();
       if (val) {
-        switch (cond.operator || "contains") {
+        switch (condJson.operator || "contains") {
           case "contains": matched = desc.includes(val); break;
           case "starts_with": matched = desc.startsWith(val); break;
           case "ends_with": matched = desc.endsWith(val); break;
           case "equals": matched = desc === val; break;
-          case "regex": try { matched = new RegExp(cond.value, "i").test(desc); } catch { matched = false; } break;
+          case "regex": try { matched = new RegExp(condJson.value, "i").test(desc); } catch { matched = false; } break;
           default: matched = desc.includes(val);
         }
-      } else { matched = true; } // no text condition = match all
-      // Direction filter
-      if (cond.direction && cond.direction !== "all" && txn.direction !== cond.direction) matched = false;
-      // Amount range
-      if (cond.amount_min && amt < Number(cond.amount_min)) matched = false;
-      if (cond.amount_max && amt > Number(cond.amount_max)) matched = false;
-      // Bank account scope
+      } else { matched = true; }
+      if (condJson.direction && condJson.direction !== "all" && txn.direction !== condJson.direction) matched = false;
+      if (condJson.amount_min && amt < Number(condJson.amount_min)) matched = false;
+      if (condJson.amount_max && amt > Number(condJson.amount_max)) matched = false;
       if (rule.bank_account_feed_id && rule.bank_account_feed_id !== txn.bank_account_feed_id) matched = false;
-      if (matched) {
-        return { rule, action: rule.action_json || {} };
-      }
-      if (matched && rule.stop_processing) break;
+      if (matched) return { rule, action: rule.action_json || {} };
     }
     return null;
   }
@@ -9622,35 +9677,94 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     return applied;
   }
 
+  function resetRuleForm() {
+    setEditingRule(null);
+    setRuleForm({
+      name: "", conditions: [{ ...EMPTY_CONDITION }], condLogic: "all", condDirection: "all", bankAccountFeedId: "",
+      ruleType: "assign", transactionType: "expense", actionPayee: "", actionMemo: "", excludeReason: "personal",
+      split: false, splitBy: null, lines: [{ ...EMPTY_LINE }], autoAccept: false, priority: 100
+    });
+  }
+  // Condition helpers
+  function addCondition() {
+    if (ruleForm.conditions.length >= 5) { showToast("Maximum 5 conditions per rule.", "warning"); return; }
+    setRuleForm(f => ({ ...f, conditions: [...f.conditions, { ...EMPTY_CONDITION }] }));
+  }
+  function removeCondition(idx) {
+    if (ruleForm.conditions.length <= 1) return;
+    setRuleForm(f => ({ ...f, conditions: f.conditions.filter((_, i) => i !== idx) }));
+  }
+  function updateCondition(idx, field, value) {
+    setRuleForm(f => ({ ...f, conditions: f.conditions.map((c, i) => i === idx ? { ...c, [field]: value } : c) }));
+  }
+  // Split line helpers
+  function addSplitLine() {
+    setRuleForm(f => ({ ...f, split: true, splitBy: f.splitBy || "percentage", lines: [...f.lines, { ...EMPTY_LINE }] }));
+  }
+  function removeSplitLine(idx) {
+    setRuleForm(f => {
+      const newLines = f.lines.filter((_, i) => i !== idx);
+      return { ...f, lines: newLines, split: newLines.length >= 2, splitBy: newLines.length < 2 ? null : f.splitBy };
+    });
+  }
+  function updateLine(idx, field, value) {
+    setRuleForm(f => ({ ...f, lines: f.lines.map((l, i) => i === idx ? { ...l, [field]: value } : l) }));
+  }
   async function saveRule() {
-    const cond = { field: ruleForm.condField, operator: ruleForm.condOp, value: ruleForm.condValue };
-    if (ruleForm.condDirection !== "all") cond.direction = ruleForm.condDirection;
-    if (ruleForm.condAmountMin) cond.amount_min = Number(ruleForm.condAmountMin);
-    if (ruleForm.condAmountMax) cond.amount_max = Number(ruleForm.condAmountMax);
-    const action = {};
-    if (ruleForm.actionAccountId) { action.account_id = ruleForm.actionAccountId; action.account_name = ruleForm.actionAccountName; }
-    if (ruleForm.actionClassId) action.class_id = ruleForm.actionClassId;
-    if (ruleForm.actionPayee) action.payee = ruleForm.actionPayee;
-    if (ruleForm.actionMemo) action.memo = ruleForm.actionMemo;
     if (!ruleForm.name.trim()) { showToast("Rule name is required.", "error"); return; }
-    if (!ruleForm.condValue.trim() && !ruleForm.condAmountMin && !ruleForm.condAmountMax) { showToast("At least one condition is required.", "error"); return; }
+    const validConditions = ruleForm.conditions.filter(c =>
+      (c.field === "amount" && c.value) || ((c.field === "description" || c.field === "bank_text") && c.value.trim())
+    );
+    if (validConditions.length === 0) { showToast("At least one condition with a value is required.", "error"); return; }
+    if (ruleForm.ruleType === "assign") {
+      const validLines = ruleForm.lines.filter(l => l.accountId);
+      if (validLines.length === 0) { showToast("At least one category/account is required.", "error"); return; }
+      if (ruleForm.split && ruleForm.splitBy === "percentage") {
+        const totalPct = validLines.reduce((s, l) => s + (Number(l.percentage) || 0), 0);
+        if (Math.abs(totalPct - 100) > 0.01) { showToast(`Split percentages must add up to 100% (currently ${totalPct}%).`, "error"); return; }
+      }
+    }
+    const conditionJson = {
+      logic: ruleForm.condLogic, direction: ruleForm.condDirection,
+      conditions: validConditions.map(c => {
+        const obj = { field: c.field, operator: c.operator, value: c.value };
+        if (c.operator === "between" && c.value2) obj.value2 = c.value2;
+        return obj;
+      })
+    };
+    let actionJson;
+    if (ruleForm.ruleType === "exclude") {
+      actionJson = { type: "exclude", exclude_reason: ruleForm.excludeReason || "personal" };
+    } else {
+      const validLines = ruleForm.lines.filter(l => l.accountId);
+      actionJson = {
+        type: "assign", transaction_type: ruleForm.transactionType || "expense",
+        payee: ruleForm.actionPayee || "", memo: ruleForm.actionMemo || "",
+        split: ruleForm.split && validLines.length >= 2, split_by: ruleForm.split ? ruleForm.splitBy : null,
+        lines: validLines.map(l => ({
+          account_id: l.accountId, account_name: l.accountName, class_id: l.classId || null,
+          percentage: ruleForm.splitBy === "percentage" ? Number(l.percentage) || null : null,
+          amount: ruleForm.splitBy === "amount" ? Number(l.amount) || null : null
+        }))
+      };
+    }
+    const payload = {
+      name: ruleForm.name.trim(), priority: Number(ruleForm.priority) || 100,
+      condition_json: conditionJson, action_json: actionJson,
+      auto_accept: ruleForm.autoAccept, rule_type: ruleForm.ruleType,
+      bank_account_feed_id: ruleForm.bankAccountFeedId || null
+    };
     if (editingRule) {
-      const { error } = await supabase.from("bank_transaction_rule").update({
-        name: ruleForm.name, priority: Number(ruleForm.priority) || 100,
-        condition_json: cond, action_json: action, auto_accept: ruleForm.autoAccept
-      }).eq("id", editingRule.id);
+      const { error } = await supabase.from("bank_transaction_rule").update(payload).eq("id", editingRule.id);
       if (error) { showToast("Error: " + error.message, "error"); return; }
       showToast("Rule updated.", "success");
     } else {
-      const { error } = await supabase.from("bank_transaction_rule").insert([{
-        company_id: companyId, name: ruleForm.name, priority: Number(ruleForm.priority) || 100,
-        enabled: true, condition_json: cond, action_json: action, auto_accept: ruleForm.autoAccept
-      }]);
+      const { error } = await supabase.from("bank_transaction_rule").insert([{ ...payload, company_id: companyId, enabled: true }]);
       if (error) { showToast("Error: " + error.message, "error"); return; }
       showToast("Rule created.", "success");
     }
-    setEditingRule(null);
-    setRuleForm({ name: "", condField: "description", condOp: "contains", condValue: "", condDirection: "all", condAmountMin: "", condAmountMax: "", actionAccountId: "", actionAccountName: "", actionClassId: "", actionPayee: "", actionMemo: "", autoAccept: false, priority: 100 });
+    resetRuleForm();
+    setShowRuleDrawer(false);
     fetchAll();
   }
 
@@ -9667,19 +9781,105 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     fetchAll();
   }
 
+  async function duplicateRule(rule) {
+    const { error } = await supabase.from("bank_transaction_rule").insert([{
+      company_id: companyId, name: rule.name + " (copy)", priority: (rule.priority || 100) + 1,
+      enabled: false, condition_json: rule.condition_json, action_json: rule.action_json,
+      auto_accept: rule.auto_accept, rule_type: rule.rule_type, bank_account_feed_id: rule.bank_account_feed_id
+    }]);
+    if (error) { showToast("Error: " + error.message, "error"); return; }
+    showToast("Rule duplicated (disabled). Edit it to enable.", "success");
+    fetchAll();
+  }
+
+  async function incrementRuleStats(ruleId) {
+    try { await supabase.rpc("increment_rule_stats", { rule_id: ruleId }); } catch {}
+  }
+
+  // Migrate V1 rules to V2 JSON format (runs once per company)
+  async function migrateRulesToV2(rulesList) {
+    for (const rule of rulesList) {
+      const oldCond = rule.condition_json || {};
+      if (oldCond.conditions) continue; // already V2
+      const conditions = [];
+      if (oldCond.value) {
+        conditions.push({ field: oldCond.field || "description", operator: oldCond.operator || "contains", value: oldCond.value });
+      }
+      if (oldCond.amount_min && oldCond.amount_max) {
+        conditions.push({ field: "amount", operator: "between", value: String(oldCond.amount_min), value2: String(oldCond.amount_max) });
+      } else if (oldCond.amount_min) {
+        conditions.push({ field: "amount", operator: "greater_than", value: String(oldCond.amount_min) });
+      } else if (oldCond.amount_max) {
+        conditions.push({ field: "amount", operator: "less_than", value: String(oldCond.amount_max) });
+      }
+      const newCond = { logic: "all", direction: oldCond.direction || "all", conditions: conditions.length > 0 ? conditions : [{ field: "description", operator: "contains", value: "" }] };
+      const oldAction = rule.action_json || {};
+      const newAction = {
+        type: "assign", transaction_type: "expense", payee: oldAction.payee || "", memo: oldAction.memo || "",
+        split: false, split_by: null,
+        lines: [{ account_id: oldAction.account_id || "", account_name: oldAction.account_name || "", class_id: oldAction.class_id || "", percentage: null, amount: null }]
+      };
+      await supabase.from("bank_transaction_rule").update({ condition_json: newCond, action_json: newAction, rule_type: "assign" }).eq("id", rule.id);
+    }
+  }
+
+  function createRuleFromTransaction(txn) {
+    const desc = txn.bank_description_clean || txn.bank_description_raw || "";
+    const sug = txn.raw_payload_json?._suggestion;
+    const initialConditions = [];
+    if (desc) {
+      const cleanedDesc = desc.replace(/\d{4,}/g, "").replace(/[#*]/g, "").trim().split(/\s+/).slice(0, 4).join(" ");
+      initialConditions.push({ field: "description", operator: "contains", value: cleanedDesc, value2: "" });
+    }
+    setRuleForm({
+      name: desc.split(/\s+/).slice(0, 3).join(" "),
+      conditions: initialConditions.length > 0 ? initialConditions : [{ ...EMPTY_CONDITION }],
+      condLogic: "all", condDirection: txn.direction || "all", bankAccountFeedId: "",
+      ruleType: "assign", transactionType: "expense",
+      actionPayee: txn.payee_normalized || "", actionMemo: "",
+      excludeReason: "personal", split: false, splitBy: null,
+      lines: [{ accountId: sug?.accountId || addForm.accountId || "", accountName: sug?.accountName || addForm.accountName || "", classId: sug?.classId || addForm.classId || "", percentage: null, amount: null }],
+      autoAccept: false, priority: 100
+    });
+    setEditingRule(null);
+    setShowRuleDrawer(true);
+  }
+
   function startEditRule(rule) {
     const c = rule.condition_json || {};
     const a = rule.action_json || {};
     setEditingRule(rule);
-    setRuleForm({
-      name: rule.name, condField: c.field || "description", condOp: c.operator || "contains",
-      condValue: c.value || "", condDirection: c.direction || "all",
-      condAmountMin: c.amount_min || "", condAmountMax: c.amount_max || "",
-      actionAccountId: a.account_id || "", actionAccountName: a.account_name || "",
-      actionClassId: a.class_id || "", actionPayee: a.payee || "", actionMemo: a.memo || "",
-      autoAccept: rule.auto_accept || false, priority: rule.priority || 100
-    });
-    setShowRules(true);
+    // V2 format
+    if (c.conditions) {
+      const lines = (a.lines || []).map(l => ({
+        accountId: l.account_id || "", accountName: l.account_name || "",
+        classId: l.class_id || "", percentage: l.percentage, amount: l.amount
+      }));
+      setRuleForm({
+        name: rule.name, conditions: c.conditions.map(cnd => ({ field: cnd.field || "description", operator: cnd.operator || "contains", value: cnd.value || "", value2: cnd.value2 || "" })),
+        condLogic: c.logic || "all", condDirection: c.direction || "all",
+        bankAccountFeedId: rule.bank_account_feed_id || "",
+        ruleType: a.type || rule.rule_type || "assign", transactionType: a.transaction_type || "expense",
+        actionPayee: a.payee || "", actionMemo: a.memo || "",
+        excludeReason: a.exclude_reason || "personal",
+        split: a.split || false, splitBy: a.split_by || null,
+        lines: lines.length > 0 ? lines : [{ ...EMPTY_LINE }],
+        autoAccept: rule.auto_accept || false, priority: rule.priority || 100
+      });
+    } else {
+      // V1 legacy
+      setRuleForm({
+        name: rule.name,
+        conditions: [{ field: c.field || "description", operator: c.operator || "contains", value: c.value || "", value2: "" }],
+        condLogic: "all", condDirection: c.direction || "all", bankAccountFeedId: rule.bank_account_feed_id || "",
+        ruleType: "assign", transactionType: "expense",
+        actionPayee: a.payee || "", actionMemo: a.memo || "", excludeReason: "personal",
+        split: false, splitBy: null,
+        lines: [{ accountId: a.account_id || "", accountName: a.account_name || "", classId: a.class_id || "", percentage: null, amount: null }],
+        autoAccept: rule.auto_accept || false, priority: rule.priority || 100
+      });
+    }
+    setShowRuleDrawer(true);
   }
 
   // Bulk actions
@@ -10207,7 +10407,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       <label className="flex items-center gap-2 text-xs mb-3"><input type="checkbox" checked={ruleForm.autoAccept} onChange={e => setRuleForm({...ruleForm, autoAccept: e.target.checked})} className="accent-violet-600" /> <span className="text-slate-600">Auto-accept (skip review — use with caution)</span></label>
       <div className="flex gap-2">
         <button onClick={saveRule} className="bg-violet-600 text-white text-xs px-4 py-1.5 rounded-lg hover:bg-violet-700">{editingRule ? "Update Rule" : "Create Rule"}</button>
-        {editingRule && <button onClick={() => { setEditingRule(null); setRuleForm({ name: "", condField: "description", condOp: "contains", condValue: "", condDirection: "all", condAmountMin: "", condAmountMax: "", actionAccountId: "", actionAccountName: "", actionClassId: "", actionPayee: "", actionMemo: "", autoAccept: false, priority: 100 }); }} className="text-xs text-slate-400">Cancel</button>}
+        {editingRule && <button onClick={() => resetRuleForm()} className="text-xs text-slate-400">Cancel</button>}
         {transactions.filter(t => t.status === "for_review").length > 0 && <button onClick={async () => { const ids = transactions.filter(t => t.status === "for_review").map(t => t.id); const n = await applyRulesToTransactions(ids); showToast(`Rules applied to ${n} transaction(s).`, "success"); }} className="text-xs text-violet-600 hover:underline ml-auto">Re-apply rules to all For Review</button>}
       </div>
     </div>
