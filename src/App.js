@@ -4051,9 +4051,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div key={t.id || i} onClick={async () => {
   // Fetch full detail for this historical tenant
   const [ledgerRes, docsRes, msgsRes] = await Promise.all([
-  t.id ? supabase.from("ledger_entries").select("*").eq("company_id", companyId).eq("tenant", t.name).order("date", { ascending: false }).limit(200) : Promise.resolve({ data: [] }),
+  t.id ? supabase.from("ledger_entries").select("*").eq("company_id", companyId).ilike("tenant", t.name).order("date", { ascending: false }).limit(200) : Promise.resolve({ data: [] }),
   supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", t.name).order("uploaded_at", { ascending: false }).limit(100),
-  supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", t.name).order("created_at", { ascending: true }).limit(100),
+  supabase.from("messages").select("*").eq("company_id", companyId).ilike("tenant", t.name).order("created_at", { ascending: true }).limit(100),
   ]);
   setHistoricalTenantDetail({ tenant: t, ledger: ledgerRes.data || [], docs: docsRes.data || [], messages: msgsRes.data || [], leases: t._leases || [], activeTab: "overview" });
   }} className="bg-white border border-slate-200 rounded-xl p-4 cursor-pointer hover:border-indigo-300 hover:shadow-sm transition-all">
@@ -4702,11 +4702,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (archiveErr) { showToast("Failed to archive tenant: " + archiveErr.message, "error"); return; }
   // Update property to vacant when tenant archived
   if (tenantProperty) {
-  const { error: propErr } = await supabase.from("properties").update({ status: "vacant", tenant: "", lease_end: null, lease_start: "" }).eq("company_id", companyId).eq("address", tenantProperty).eq("tenant", name);
+  const { error: propErr } = await supabase.from("properties").update({ status: "vacant", tenant: "", lease_end: null, lease_start: "" }).eq("company_id", companyId).eq("address", tenantProperty).ilike("tenant", name);
   if (propErr) console.warn("Failed to update property to vacant:", propErr.message);
   }
   // Terminate active leases for this tenant
-  const { error: leaseErr } = await supabase.from("leases").update({ status: "terminated", archived_at: new Date().toISOString() }).eq("company_id", companyId).eq("tenant_name", name).eq("status", "active");
+  const { error: leaseErr } = await supabase.from("leases").update({ status: "terminated", archived_at: new Date().toISOString() }).eq("company_id", companyId).ilike("tenant_name", name).eq("status", "active");
   if (leaseErr) console.warn("Failed to terminate leases:", leaseErr.message);
   // Archive autopay schedules for this tenant
   await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", name);
