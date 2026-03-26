@@ -7933,6 +7933,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       { id: "pl_compare", title: "P&L Comparison", description: "Side-by-side P&L for two periods", icon: "compare_arrows" },
       { id: "bs", title: "Balance Sheet", description: "Assets, liabilities, equity as-of date", icon: "account_balance" },
       { id: "cash_flow", title: "Cash Flow Statement", description: "Cash inflows/outflows by activity", icon: "water_drop" },
+      { id: "budget_vs_actual", title: "Budget vs. Actuals", description: "Compare budgeted to actual amounts", icon: "track_changes" },
     ]},
     { category: "Who Owes You", icon: "people", reports: [
       { id: "ar_aging_summary", title: "AR Aging Summary", description: "Outstanding AR bucketed by age", icon: "timer" },
@@ -7981,6 +7982,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     }
     if (report.id === "audit_log") { getAuditLog(start, end).then(d => setAuditData(d)); }
     if (report.id === "recon_summary") { getReconSummary().then(d => setReconData(d)); }
+    if (report.id === "budget_vs_actual") { fetchBudgets(start.slice(0, 7)); }
   }
 
   // --- Computation Functions (NEW reports) ---
@@ -8260,6 +8262,83 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
   // Audit/recon data (fetched on demand)
   const [auditData, setAuditData] = useState([]);
   const [reconData, setReconData] = useState([]);
+  const [budgets, setBudgets] = useState([]);
+  const [showBudgetEditor, setShowBudgetEditor] = useState(false);
+  const [budgetMonth, setBudgetMonth] = useState(acctToday().slice(0, 7));
+  const [customReports, setCustomReports] = useState(() => { try { const s = localStorage.getItem(`custom_reports_${companyId}`); return s ? JSON.parse(s) : []; } catch { return []; } });
+  const [saveReportName, setSaveReportName] = useState("");
+
+  // --- Phase D: Budget, Custom Reports, PDF ---
+
+  async function fetchBudgets(month) {
+    const { data } = await supabase.from("budgets").select("*").eq("company_id", companyId).eq("period", month);
+    setBudgets(data || []);
+  }
+
+  async function saveBudget(accountId, accountName, amount) {
+    if (!guardSubmit("saveBudget", accountId)) return;
+    try {
+      const { error } = await supabase.from("budgets").upsert({
+        company_id: companyId, account_id: accountId, account_name: accountName,
+        period: budgetMonth, amount: Number(amount) || 0
+      }, { onConflict: "company_id,account_id,period" });
+      if (error) { showToast("Error saving budget: " + error.message, "error"); return; }
+      fetchBudgets(budgetMonth);
+    } finally { guardRelease("saveBudget", accountId); }
+  }
+
+  function getBudgetVsActual(startDate, endDate) {
+    const plData = getPLData(accounts, journalEntries, startDate, endDate, classFilter || null);
+    const budgetMap = {};
+    budgets.forEach(b => { budgetMap[b.account_id] = safeNum(b.amount); });
+    // Calculate number of months in range for monthly budget scaling
+    const months = Math.max(1, Math.round((new Date(endDate) - new Date(startDate)) / (30 * 86400000)));
+    const allAccounts = [...plData.revenue, ...plData.expenses];
+    return allAccounts.map(a => {
+      const monthlyBudget = budgetMap[a.id] || 0;
+      const periodBudget = monthlyBudget * months;
+      const variance = a.amount - periodBudget;
+      const variancePct = periodBudget > 0 ? Math.round(variance / periodBudget * 100) : 0;
+      return { ...a, budget: periodBudget, variance, variancePct, isExpense: plData.expenses.some(e => e.id === a.id) };
+    }).filter(a => a.amount !== 0 || a.budget !== 0);
+  }
+
+  function saveCustomReport() {
+    if (!saveReportName.trim() || !currentReport) return;
+    const config = { id: shortId(), name: saveReportName.trim(), reportId: currentReport.id, reportTitle: currentReport.title, period, customDates, asOfDate, compareTo, classFilter, selectedAccountId, savedAt: new Date().toISOString() };
+    const next = [...customReports, config];
+    setCustomReports(next);
+    try { localStorage.setItem(`custom_reports_${companyId}`, JSON.stringify(next)); } catch {}
+    setSaveReportName("");
+    showToast("Report configuration saved.", "success");
+  }
+
+  function deleteCustomReport(configId) {
+    const next = customReports.filter(c => c.id !== configId);
+    setCustomReports(next);
+    try { localStorage.setItem(`custom_reports_${companyId}`, JSON.stringify(next)); } catch {}
+  }
+
+  function loadCustomReport(config) {
+    setPeriod(config.period || "This Year");
+    if (config.customDates) setCustomDates(config.customDates);
+    if (config.asOfDate) setAsOfDate(config.asOfDate);
+    if (config.compareTo) setCompareTo(config.compareTo);
+    if (config.classFilter) setClassFilter(config.classFilter);
+    if (config.selectedAccountId) setSelectedAccountId(config.selectedAccountId);
+    const report = allReports.find(r => r.id === config.reportId);
+    if (report) openReport(report);
+  }
+
+  function exportPDF() {
+    if (!currentReport) return;
+    const content = document.querySelector("[data-report-content]");
+    if (!content) { showToast("Nothing to export.", "info"); return; }
+    const w = window.open("", "_blank", "width=900,height=700");
+    w.document.write(`<!DOCTYPE html><html><head><title>${currentReport.title} — ${companyName}</title><style>body{font-family:Arial,sans-serif;margin:20px;color:#1e293b}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:6px 10px;text-align:left;border-bottom:1px solid #e5e7eb}th{background:#f8fafc;font-size:11px;text-transform:uppercase;color:#64748b}@media print{body{margin:0}}</style></head><body>${content.innerHTML}</body></html>`);
+    w.document.close();
+    w.onload = () => setTimeout(() => w.print(), 300);
+  }
 
   // --- CSV Export ---
   function exportCSV() {
@@ -8345,7 +8424,22 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
 
       {/* Custom reports tab */}
       {!searchQuery && catalogTab === "custom" && (
-      <div className="text-center py-12 text-slate-400"><span className="material-icons-outlined text-4xl mb-2 block">tune</span><p className="text-sm">Custom report configurations coming soon.</p></div>
+      <div>{customReports.length === 0 ? <div className="text-center py-12 text-slate-400"><span className="material-icons-outlined text-4xl mb-2 block">tune</span><p className="text-sm">No saved report configurations yet.</p><p className="text-xs mt-1">Open any report, configure filters, then click "Save Config" in the toolbar.</p></div> : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {customReports.map(c => (
+          <div key={c.id} className="group border border-slate-200 rounded-xl p-4 hover:border-green-300 hover:shadow-md transition-all bg-white">
+            <div className="flex items-start justify-between">
+              <div className="cursor-pointer flex-1" onClick={() => loadCustomReport(c)}>
+                <p className="text-sm font-semibold text-slate-800 group-hover:text-green-700">{c.name}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{c.reportTitle} · {c.period}</p>
+                <p className="text-xs text-slate-300 mt-0.5">Saved {new Date(c.savedAt).toLocaleDateString()}</p>
+              </div>
+              <button onClick={() => deleteCustomReport(c.id)} className="text-slate-300 hover:text-red-500"><span className="material-icons text-sm">close</span></button>
+            </div>
+          </div>
+          ))}
+        </div>
+      )}</div>
       )}
 
       {/* Standard reports — categorized */}
@@ -8404,6 +8498,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       <div className="flex gap-2">
         <button onClick={() => toggleFavorite(reportId)} className={favorites.includes(reportId) ? "text-amber-400" : "text-slate-300 hover:text-amber-400"}><span className="material-icons text-lg">{favorites.includes(reportId) ? "star" : "star_border"}</span></button>
         <button onClick={exportCSV} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">download</span>Export</button>
+        <button onClick={exportPDF} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">picture_as_pdf</span>PDF</button>
         <button onClick={printReport} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">print</span>Print</button>
       </div>
     </div>
@@ -8424,10 +8519,14 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       {SHOW_COMPARE && <div><label className="text-xs text-slate-500 block mb-1">Compare to</label><select value={compareTo} onChange={e => setCompareTo(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white"><option value="">No comparison</option><option value="prior_period">Prior Period</option><option value="prior_year">Prior Year</option></select></div>}
       {SHOW_CLASS && <div><label className="text-xs text-slate-500 block mb-1">Property</label><select value={classFilter} onChange={e => setClassFilter(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white"><option value="">All Properties</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>}
       {SHOW_ACCOUNT && <div><label className="text-xs text-slate-500 block mb-1">Account</label><select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white min-w-48">{accounts.filter(a=>a.is_active).map(a => <option key={a.id} value={a.id}>{a.code||"•"} {a.name}</option>)}</select></div>}
+      <div className="flex items-end gap-2 ml-auto">
+        <input type="text" value={saveReportName} onChange={e => setSaveReportName(e.target.value)} placeholder="Save as..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-32" />
+        <button onClick={saveCustomReport} disabled={!saveReportName.trim()} className="bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg disabled:opacity-40 hover:bg-green-700 whitespace-nowrap">Save Config</button>
+      </div>
     </div>
 
     {/* Report Content */}
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6" data-report-content>
 
     {/* P&L */}
     {reportId === "pl" && (
@@ -8703,9 +8802,23 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       <tbody>{reconData.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.period}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(safeNum(r.bank_ending_balance))}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(safeNum(r.book_balance))}</td><td className={`px-4 py-2 text-right font-mono ${Math.abs(safeNum(r.difference)) < 0.01 ? "text-emerald-600" : "text-red-600"}`}>{acctFmt(safeNum(r.difference))}</td><td className="px-4 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="reconciled"?"bg-emerald-100 text-emerald-700":"bg-amber-100 text-amber-700"}`}>{r.status}</span></td></tr>)}</tbody></table>)}
     </div>)}
 
-    {/* Fallback */}
-    {!["pl","pl_compare","pl_by_class","bs","tb","gl","ar_aging_summary","ar_aging_detail","customer_balance_summary","customer_balance_detail","journal","txn_by_date","txn_by_account","account_list","expenses_by_category","expenses_by_vendor","cash_flow","rent_roll","noi_by_property","vacancy","lease_expirations","work_orders_summary","open_invoices","collections","security_deposits","late_fees","owner_distributions","rent_collection","ap_aging_summary","unpaid_bills","vendor_balance_summary","audit_log","recon_summary"].includes(reportId) && (
-    <div className="text-center py-12 text-slate-400"><span className="material-icons-outlined text-4xl mb-2 block">construction</span><p className="text-sm">This report is coming soon.</p></div>
+    {/* Budget vs Actuals */}
+    {reportId === "budget_vs_actual" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Budget vs. Actuals</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      <div className="flex gap-2 mb-4">
+        <button onClick={() => setShowBudgetEditor(!showBudgetEditor)} className="text-xs bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-200 font-semibold">{showBudgetEditor ? "Hide Budget Editor" : "Edit Budgets"}</button>
+        <div><label className="text-xs text-slate-500 mr-1">Budget Month:</label><input type="month" value={budgetMonth} onChange={e => { setBudgetMonth(e.target.value); fetchBudgets(e.target.value); }} className="border border-slate-200 rounded-lg px-2 py-1 text-sm" /></div>
+      </div>
+      {showBudgetEditor && (<div className="bg-indigo-50 rounded-xl p-4 mb-4 max-h-64 overflow-y-auto">
+        <p className="text-xs font-semibold text-indigo-700 mb-2">Set Monthly Budget for {budgetMonth}</p>
+        <div className="space-y-1">{accounts.filter(a => a.is_active && ["Revenue","Expense","Cost of Goods Sold","Other Income","Other Expense"].includes(a.type)).sort((a,b) => (a.code||"").localeCompare(b.code||"")).map(a => {
+          const existing = budgets.find(b => b.account_id === a.id);
+          return <div key={a.id} className="flex items-center gap-2"><span className="text-xs text-slate-600 w-48 truncate">{a.code||"•"} {a.name}</span><input type="number" defaultValue={existing?.amount || ""} onBlur={e => { if (e.target.value) saveBudget(a.id, a.name, e.target.value); }} placeholder="0.00" className="border border-indigo-200 rounded-lg px-2 py-1 text-xs w-24 text-right font-mono" /></div>;
+        })}</div>
+      </div>)}
+      {(() => { const data = getBudgetVsActual(start, end); const hasAnyBudget = data.some(a => a.budget > 0); return !hasAnyBudget ? <p className="text-center py-8 text-slate-400">No budgets set. Click "Edit Budgets" to set monthly amounts.</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Account</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Actual</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Budget</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Variance ($)</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Variance (%)</th></tr></thead>
+      <tbody>{data.filter(a => a.budget > 0).map(a => { const favorable = a.isExpense ? a.variance < 0 : a.variance > 0; return <tr key={a.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2 text-right font-mono text-slate-400">{acctFmt(a.budget)}</td><td className={`px-4 py-2 text-right font-mono font-semibold ${favorable ? "text-emerald-600" : "text-red-600"}`}>{acctFmt(a.variance, true)}</td><td className={`px-4 py-2 text-right ${favorable ? "text-emerald-600" : "text-red-600"}`}>{a.variancePct > 0 ? "+" : ""}{a.variancePct}%</td></tr>; })}</tbody></table>); })()}
+    </div>)}
     )}
 
     </div>
