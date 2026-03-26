@@ -3291,7 +3291,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   // #13: Client-side fallback — cascade rename to tables the RPC may not cover
   console.warn("Property rename RPC failed, running client-side fallback:", renameErr.message);
   const oldAddr = editingProperty.address;
-  await Promise.all([
+  const renameResults = await Promise.allSettled([
   supabase.from("tenants").update({ property: compositeAddress }).eq("company_id", companyId).eq("property", oldAddr),
   supabase.from("payments").update({ property: compositeAddress }).eq("company_id", companyId).eq("property", oldAddr),
   supabase.from("leases").update({ property: compositeAddress }).eq("company_id", companyId).eq("property", oldAddr),
@@ -3306,6 +3306,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   supabase.from("property_insurance").update({ property: compositeAddress }).eq("company_id", companyId).eq("property", oldAddr),
   supabase.from("property_setup_wizard").update({ property_address: compositeAddress }).eq("company_id", companyId).eq("property_address", oldAddr),
   ]);
+  const renameFails = renameResults.filter(r => r.status === "rejected");
+  if (renameFails.length > 0) showToast("Warning: " + renameFails.length + " table(s) failed to update during rename.", "warning");
   }
   }
   // Auto-create accounting class for new properties
@@ -4631,7 +4633,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   // #13: Client-side fallback — cascade rename to tables the RPC may not cover
   console.warn("Tenant rename RPC failed, running client-side fallback:", tenantRenameErr.message);
   const oldName = editingTenant.name;
-  await Promise.all([
+  const tRenameResults = await Promise.allSettled([
   supabase.from("payments").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName),
   supabase.from("leases").update({ tenant_name: form.name }).eq("company_id", companyId).eq("tenant_name", oldName),
   supabase.from("work_orders").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName),
@@ -4642,6 +4644,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   supabase.from("eviction_cases").update({ tenant_name: form.name }).eq("company_id", companyId).eq("tenant_name", oldName),
   supabase.from("properties").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName),
   ]);
+  const tRenameFails = tRenameResults.filter(r => r.status === "rejected");
+  if (tRenameFails.length > 0) showToast("Warning: " + tRenameFails.length + " table(s) failed during tenant rename.", "warning");
   }
   }
   addNotification("👤", `Tenant updated: ${_name}`);
