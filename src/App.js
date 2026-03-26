@@ -9267,8 +9267,15 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   }
 
   // --- Create New Bank Account Feed ---
+  const [creatingFeed, setCreatingFeed] = useState(false);
   async function createFeed() {
     if (!newAccountForm.name.trim()) { showToast("Account name is required.", "error"); return; }
+    if (creatingFeed) return;
+    // Check for duplicate
+    const { data: existing } = await supabase.from("bank_account_feed").select("id").eq("company_id", companyId).ilike("account_name", newAccountForm.name.trim());
+    if (existing?.length > 0) { showToast("A bank account with this name already exists.", "error"); return; }
+    setCreatingFeed(true);
+    try {
     // Create GL account in acct_accounts
     const code = newAccountForm.type === "credit_card" ? "2050" : newAccountForm.type === "savings" ? "1050" : "1000";
     const nextCode = code + "-" + shortId().slice(0, 3);
@@ -9291,6 +9298,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     setNewAccountForm({ name: "", type: "checking", masked_number: "", institution_name: "" });
     if (newFeed?.id) setWizFeedId(newFeed.id);
     fetchAll();
+    } finally { setCreatingFeed(false); }
   }
 
   // --- Teller Connect ---
@@ -10640,7 +10648,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       <div><label className="text-xs font-medium text-neutral-500 block mb-1">Institution</label><Input value={newAccountForm.institution_name} onChange={e => setNewAccountForm({...newAccountForm, institution_name: e.target.value})} placeholder="e.g. Chase, Bank of America" /></div>
     </div>
     <div className="flex gap-2 mt-4">
-      <Btn onClick={createFeed}>Create</Btn>
+      <Btn onClick={createFeed} disabled={creatingFeed}>{creatingFeed ? "Creating..." : "Create"}</Btn>
       <button onClick={() => setShowNewAccount(false)} className="text-sm text-neutral-400 px-4 py-2">Cancel</button>
     </div>
   </div>
