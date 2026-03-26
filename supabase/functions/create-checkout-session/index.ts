@@ -94,9 +94,9 @@ serve(async (req) => {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "https://rental-manager-one.vercel.app" },
       });
     }
-    // Only tenants can create checkout sessions for themselves
-    if (membership.role !== "tenant" && !["admin", "owner"].includes(membership.role)) {
-      return new Response(JSON.stringify({ error: "Insufficient role for payment" }), {
+    // Only tenants can create checkout sessions for their own rent payments
+    if (membership.role !== "tenant") {
+      return new Response(JSON.stringify({ error: "Only tenants can make payments" }), {
         status: 403,
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "https://rental-manager-one.vercel.app" },
       });

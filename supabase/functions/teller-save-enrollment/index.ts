@@ -46,6 +46,18 @@ serve(async (req) => {
     const { access_token, enrollment_id, institution, company_id } = await req.json();
     if (!access_token || !company_id) return new Response(JSON.stringify({ error: "access_token and company_id required" }), { status: 400, headers: corsHeaders });
 
+    // Verify user is admin of the company
+    const { data: membership } = await supabase.from("company_members")
+      .select("role")
+      .eq("company_id", company_id)
+      .ilike("user_email", user.email || "")
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (!membership || !["admin", "owner"].includes(membership.role)) {
+      return new Response(JSON.stringify({ error: "Only admins can connect bank accounts" }), { status: 403, headers: corsHeaders });
+    }
+
     // Encrypt access token
     const { encrypted, iv } = await encrypt(access_token, company_id);
 

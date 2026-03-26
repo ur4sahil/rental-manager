@@ -45,18 +45,11 @@ serve(async (req) => {
   const sig = req.headers.get("stripe-signature");
 
   // Verify webhook signature — FAIL CLOSED
-  if (!STRIPE_WEBHOOK_SECRET) {
-    console.error("STRIPE_WEBHOOK_SECRET not configured — rejecting all webhooks");
-    return new Response("Webhook secret not configured", { status: 500 });
-  }
-  if (!sig) {
-    console.error("Missing stripe-signature header");
-    return new Response("Missing signature", { status: 400 });
-  }
-  const isValid = await verifyStripeSignature(body, sig, STRIPE_WEBHOOK_SECRET);
-  if (!isValid) {
-    console.error("Invalid Stripe signature");
-    return new Response("Invalid signature", { status: 400 });
+  const corsHeaders = { "Content-Type": "application/json" };
+  const isValid = sig ? await verifyStripeSignature(body, sig, STRIPE_WEBHOOK_SECRET) : false;
+  if (!STRIPE_WEBHOOK_SECRET || !sig || !isValid) {
+    console.error("Webhook signature verification failed");
+    return new Response("Unauthorized", { status: 401, headers: corsHeaders });
   }
 
   const event = JSON.parse(body);

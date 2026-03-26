@@ -70,13 +70,27 @@ serve(async (req) => {
     let body: any = {};
     try { body = await req.json(); } catch {}
 
-    if (CRON_SECRET && body.cron_secret === CRON_SECRET) {
+    if (CRON_SECRET && CRON_SECRET.length >= 8 && body.cron_secret === CRON_SECRET) {
       companyFilter = null; // sync all
     } else if (authHeader) {
       const token = authHeader.replace("Bearer ", "");
       const { data: { user }, error } = await supabase.auth.getUser(token);
       if (error || !user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
-      companyFilter = body.company_id || null;
+
+      // Verify user belongs to the requested company
+      if (!body.company_id) {
+        return new Response(JSON.stringify({ error: "company_id required" }), { status: 400, headers: corsHeaders });
+      }
+      const { data: mem } = await supabase.from("company_members")
+        .select("role")
+        .eq("company_id", body.company_id)
+        .ilike("user_email", user.email || "")
+        .eq("status", "active")
+        .maybeSingle();
+      if (!mem) {
+        return new Response(JSON.stringify({ error: "Not a member of this company" }), { status: 403, headers: corsHeaders });
+      }
+      companyFilter = body.company_id;
     } else {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
     }

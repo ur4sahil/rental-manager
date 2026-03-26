@@ -13,7 +13,7 @@ const CRON_SECRET = Deno.env.get("CRON_SECRET") || "";
 serve(async (req) => {
   // Require auth for health check to prevent information leakage
   const authHeader = req.headers.get("x-cron-secret") || req.headers.get("authorization")?.replace("Bearer ", "") || "";
-  if (!CRON_SECRET || authHeader !== CRON_SECRET) {
+  if (!CRON_SECRET || CRON_SECRET.length < 8 || authHeader !== CRON_SECRET) {
     return new Response(JSON.stringify({ status: "unauthorized" }), {
       status: 401, headers: { "Content-Type": "application/json" },
     });
