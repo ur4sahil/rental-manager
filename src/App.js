@@ -7922,7 +7922,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     try { localStorage.setItem(`report_favorites_${companyId}`, JSON.stringify(next)); } catch {}
     // Also try to save to DB for cross-device sync
     if (userProfile?.email) {
-      supabase.from("app_users").update({ preferences: { report_favorites: next } }).ilike("email", userProfile.email).then(() => {}).catch(() => {});
+      supabase.from("app_users").update({ preferences: { report_favorites: next } }).eq("company_id", companyId).ilike("email", userProfile.email).then(() => {}).catch(() => {});
     }
   }
 
@@ -19226,7 +19226,7 @@ function AppInner() {
   async function loadInboxNotifications(cid) {
   const { data } = await supabase.from("notification_inbox").select("*")
   .eq("company_id", cid)
-  .or("recipient_email.ilike." + (currentUser?.email || "none") + ",recipient_email.eq.")
+  .or("recipient_email.ilike." + (currentUser?.email || "none") + ",recipient_email.is.null")
   .order("created_at", { ascending: false }).limit(50);
   if (data) {
   setNotifications(data.map(n => ({
