@@ -3536,7 +3536,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "Deposit forfeited — property deleted — " + (lease.tenant_name || ""), reference: "DEPFORF-" + shortId(), property: address,
   lines: [
   { account_id: "2100", account_name: "Security Deposits Held", debit: dep, credit: 0, class_id: classId, memo: "Clear liability: " + (lease.tenant_name || "") },
-  { account_id: "4100", account_name: "Other Income", debit: 0, credit: dep, class_id: classId, memo: "Forfeited deposit: property deleted" },
+  { account_id: "4150", account_name: "Deposit Forfeiture Income", debit: 0, credit: dep, class_id: classId, memo: "Forfeited deposit: property deleted" },
   ]
   });
   await supabase.from("leases").update({ deposit_status: "forfeited" }).eq("id", lease.id).eq("company_id", companyId);
@@ -11878,7 +11878,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   deductJeOk = !!(await autoPostJournalEntry({ companyId, date: depositForm.return_date, description: "Deposit deduction — " + lease.tenant_name + " — " + depositForm.deductions, reference: "DEPDED-" + shortId(), property: lease.property,
   lines: [
   { account_id: "2100", account_name: "Security Deposits Held", debit: deducted, credit: 0, class_id: classId, memo: "Deduction: " + depositForm.deductions },
-  { account_id: "4100", account_name: "Other Income", debit: 0, credit: deducted, class_id: classId, memo: "Deposit forfeiture: " + lease.tenant_name },
+  { account_id: "4150", account_name: "Deposit Forfeiture Income", debit: 0, credit: deducted, class_id: classId, memo: "Deposit forfeiture: " + lease.tenant_name },
   ]
   }));
   if (!deductJeOk) showToast("Deposit deduction accounting entry failed. Please check the accounting module.", "error");
