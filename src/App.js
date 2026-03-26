@@ -7965,7 +7965,6 @@ function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], v
   const validation = validateJE(form.lines.filter(l => l.account_id));
 
   const saveEntry = async (status) => {
-  if (!form.property) { showToast("Please select a property.", "error"); return; }
   if (!form.description.trim() || !validation.isValid) return;
   const lines = form.lines.filter(l => l.account_id).map(l => ({ ...l, debit: parseFloat(l.debit) || 0, credit: parseFloat(l.credit) || 0 }));
   if (modal === "add") {
