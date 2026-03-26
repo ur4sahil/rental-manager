@@ -380,11 +380,13 @@ async function decryptCredential(encryptedB64, ivHex, companyId) {
   if (!encryptedB64 || !ivHex) return "";
   try {
     const key = await _deriveKey(companyId, ["decrypt"]);
-    const iv = new Uint8Array(ivHex.match(/.{2}/g).map(h => parseInt(h, 16)));
+    const hexParts = ivHex.match(/.{2}/g);
+    if (!hexParts) return "••••••";
+    const iv = new Uint8Array(hexParts.map(h => parseInt(h, 16)));
     const ciphertext = Uint8Array.from(atob(encryptedB64), c => c.charCodeAt(0));
     const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
     return new TextDecoder().decode(decrypted);
-  } catch { return "••••••"; }
+  } catch (e) { console.warn("Credential decryption failed:", e.message); return "••••••"; }
 }
 
 function requireCompanyId(companyId, context = "") {
