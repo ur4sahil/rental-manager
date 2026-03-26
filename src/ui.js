@@ -9,8 +9,8 @@ import React from "react";
 // ---- BUTTON ----
 const BTN_BASE = "inline-flex items-center justify-center font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
 const BTN_VARIANTS = {
-  primary:   "bg-indigo-600 text-white hover:bg-indigo-700",
-  secondary: "text-indigo-600 border border-indigo-200 hover:bg-indigo-50 bg-white",
+  primary:   "bg-brand-600 text-white hover:bg-brand-700",
+  secondary: "text-brand-600 border border-brand-200 hover:bg-brand-50 bg-white",
   danger:    "text-red-600 border border-red-200 hover:bg-red-50 bg-white",
   "danger-fill": "bg-red-600 text-white hover:bg-red-700",
   success:   "text-emerald-600 border border-emerald-200 hover:bg-emerald-50 bg-white",
@@ -48,14 +48,14 @@ export function IconBtn({ icon, className = "", title, ...props }) {
 // ---- CARD ----
 export function Card({ className = "", padding = "p-5", children, ...props }) {
   return (
-    <div className={`bg-white rounded-3xl shadow-card border border-indigo-50 ${padding} ${className}`} {...props}>
+    <div className={`bg-white rounded-3xl shadow-card border border-brand-50 ${padding} ${className}`} {...props}>
       {children}
     </div>
   );
 }
 
 // ---- INPUT ----
-const INPUT_BASE = "border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full focus:border-indigo-300 focus:outline-none transition-colors";
+const INPUT_BASE = "border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full focus:border-brand-300 focus:outline-none transition-colors";
 
 export function Input({ className = "", ...props }) {
   // Auto-apply sensible defaults by type
@@ -100,7 +100,7 @@ const BADGE_COLORS = {
   blue:   "bg-blue-50 text-blue-700 border-blue-200",
   purple: "bg-purple-50 text-purple-700 border-purple-200",
   gray:   "bg-slate-50 text-slate-600 border-slate-200",
-  indigo: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  indigo: "bg-brand-50 text-brand-700 border-brand-200",
 };
 const STATUS_MAP = {
   active: "green", occupied: "green", paid: "green", completed: "green", sent: "green", posted: "green",
@@ -156,7 +156,7 @@ export function TabBar({ tabs, active, onChange, size = "md" }) {
     <div className="flex gap-1 overflow-x-auto">
       {tabs.map(([id, label]) => (
         <button key={id} onClick={() => onChange(id)}
-          className={`${sizeClass} font-medium rounded-lg whitespace-nowrap transition-colors ${active === id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+          className={`${sizeClass} font-medium rounded-lg whitespace-nowrap transition-colors ${active === id ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
           {label}
         </button>
       ))}
@@ -166,10 +166,10 @@ export function TabBar({ tabs, active, onChange, size = "md" }) {
 
 // ---- STAT CARD (dashboard) ----
 export function StatCard({ label, value, icon, color = "indigo", trend }) {
-  const bgMap = { indigo: "bg-indigo-50", green: "bg-emerald-50", red: "bg-red-50", amber: "bg-amber-50", purple: "bg-purple-50" };
-  const textMap = { indigo: "text-indigo-600", green: "text-emerald-600", red: "text-red-600", amber: "text-amber-600", purple: "text-purple-600" };
+  const bgMap = { indigo: "bg-brand-50", green: "bg-emerald-50", red: "bg-red-50", amber: "bg-amber-50", purple: "bg-purple-50" };
+  const textMap = { indigo: "text-brand-600", green: "text-emerald-600", red: "text-red-600", amber: "text-amber-600", purple: "text-purple-600" };
   return (
-    <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+    <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
       <div className="flex items-center gap-3">
         <div className={`w-10 h-10 ${bgMap[color]} rounded-2xl flex items-center justify-center`}>
           <span className={`material-icons-outlined ${textMap[color]}`}>{icon}</span>
@@ -187,8 +187,8 @@ export function StatCard({ label, value, icon, color = "indigo", trend }) {
 // ---- BULK ACTION BAR ----
 export function BulkBar({ count, label = "item", children, onDeselect }) {
   return (
-    <div className="bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3 mb-4 flex items-center justify-between">
-      <span className="text-sm font-medium text-indigo-800">{count} {label}{count > 1 ? "s" : ""} selected</span>
+    <div className="bg-brand-50 border border-brand-200 rounded-2xl px-4 py-3 mb-4 flex items-center justify-between">
+      <span className="text-sm font-medium text-brand-800">{count} {label}{count > 1 ? "s" : ""} selected</span>
       <div className="flex gap-2">
         {children}
         <button onClick={onDeselect} className="text-xs text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-100">Deselect</button>
@@ -201,7 +201,7 @@ export function BulkBar({ count, label = "item", children, onDeselect }) {
 export function FilterPill({ active, onClick, children }) {
   return (
     <button onClick={onClick}
-      className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${active ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+      className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${active ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
       {children}
     </button>
   );

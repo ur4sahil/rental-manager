@@ -28,7 +28,7 @@ class ErrorBoundary extends React.Component {
   <div className="text-5xl mb-4">⚠️</div>
   <h2 className="text-xl font-bold text-gray-800 mb-2">Something went wrong</h2>
   <p className="text-sm text-gray-500 mb-4">{this.state.error?.message || "An unexpected error occurred"}</p>
-  <button onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }} className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700">Reload App</button>
+  <button onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }} className="bg-brand-600 text-white px-6 py-2 rounded-lg hover:bg-brand-700">Reload App</button>
   </div>
   </div>
   );
@@ -904,7 +904,7 @@ function Badge({ status, label }) {
 
 function StatCard({ label, value, sub, color = "text-slate-800", onClick }) {
   return (
-  <div onClick={onClick} className={"bg-white rounded-3xl shadow-card border border-indigo-50 p-5" + (onClick ? " cursor-pointer hover:border-indigo-200 hover:shadow-md transition-all" : "")}>
+  <div onClick={onClick} className={"bg-white rounded-3xl shadow-card border border-brand-50 p-5" + (onClick ? " cursor-pointer hover:border-brand-200 hover:shadow-md transition-all" : "")}>
   <div className="text-xs text-slate-400 font-medium uppercase tracking-widest mb-1">{label}</div>
   <div className={`text-2xl font-manrope font-bold ${color}`}>{value}</div>
   {sub && <div className="text-xs text-slate-400 mt-1">{sub}</div>}
@@ -915,7 +915,7 @@ function StatCard({ label, value, sub, color = "text-slate-800", onClick }) {
 function Spinner() {
   return (
   <div className="flex items-center justify-center py-20">
-  <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+  <div className="w-8 h-8 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin"></div>
   </div>
   );
 }
@@ -923,8 +923,8 @@ function Spinner() {
 function Modal({ title, onClose, children }) {
   return (
   <div className="fixed inset-0 bg-black bg-opacity-40 z-[60] flex items-center justify-center p-4">
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-  <div className="flex items-center justify-between px-6 py-4 border-b border-indigo-50 sticky top-0 bg-white rounded-t-3xl">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+  <div className="flex items-center justify-between px-6 py-4 border-b border-brand-50 sticky top-0 bg-white rounded-t-3xl">
   <h3 className="font-manrope font-bold text-slate-800 text-lg">{title}</h3>
   <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 transition-colors"><span className="material-icons-outlined text-lg">close</span></button>
   </div>
@@ -940,7 +940,7 @@ function ToastContainer({ toasts, removeToast }) {
   return (
   <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 max-w-sm">
   {toasts.map(t => (
-  <div key={t.id} className={"flex items-start gap-3 px-4 py-3 rounded-2xl shadow-lg border backdrop-blur-md animate-slide-up " + (t.type === "error" ? "bg-red-50 border-red-200 text-red-800" : t.type === "warning" ? "bg-amber-50 border-amber-200 text-amber-800" : t.type === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-white border-indigo-100 text-slate-700")}>
+  <div key={t.id} className={"flex items-start gap-3 px-4 py-3 rounded-2xl shadow-lg border backdrop-blur-md animate-slide-up " + (t.type === "error" ? "bg-red-50 border-red-200 text-red-800" : t.type === "warning" ? "bg-amber-50 border-amber-200 text-amber-800" : t.type === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-white border-brand-100 text-slate-700")}>
   <span className="material-icons-outlined text-lg mt-0.5">{t.type === "error" ? "error" : t.type === "warning" ? "warning" : t.type === "success" ? "check_circle" : "info"}</span>
   <div className="flex-1 text-sm">{t.message}</div>
   <button onClick={() => removeToast(t.id)} className="text-slate-400 hover:text-slate-600 ml-1"><span className="material-icons-outlined text-sm">close</span></button>
@@ -956,16 +956,16 @@ function ConfirmModal({ config, onConfirm, onCancel }) {
   const isDanger = config.variant === "danger";
   return (
   <div className="fixed inset-0 bg-black bg-opacity-40 z-[90] flex items-center justify-center p-4">
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 w-full max-w-md">
-  <div className="px-6 py-4 border-b border-indigo-50">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 w-full max-w-md">
+  <div className="px-6 py-4 border-b border-brand-50">
   <h3 className="font-manrope font-bold text-slate-800 text-lg">{config.title || (isDanger ? "Confirm Action" : "Are you sure?")}</h3>
   </div>
   <div className="px-6 py-5">
   <p className="text-sm text-slate-600 whitespace-pre-line">{config.message}</p>
   </div>
-  <div className="px-6 py-4 border-t border-indigo-50 flex justify-end gap-3">
+  <div className="px-6 py-4 border-t border-brand-50 flex justify-end gap-3">
   <button onClick={onCancel} className="px-4 py-2 text-sm font-semibold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors">{config.cancelText || "Cancel"}</button>
-  <button onClick={onConfirm} className={"px-4 py-2 text-sm font-semibold text-white rounded-xl transition-colors " + (isDanger ? "bg-red-600 hover:bg-red-700" : "bg-indigo-600 hover:bg-indigo-700")}>{config.confirmText || (isDanger ? "Delete" : "Confirm")}</button>
+  <button onClick={onConfirm} className={"px-4 py-2 text-sm font-semibold text-white rounded-xl transition-colors " + (isDanger ? "bg-red-600 hover:bg-red-700" : "bg-brand-600 hover:bg-brand-700")}>{config.confirmText || (isDanger ? "Delete" : "Confirm")}</button>
   </div>
   </div>
   </div>
@@ -981,7 +981,7 @@ function PropertyDropdown({ value, onChange, className = "", required = false, l
   return (
   <div>
   {label && <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">{label} {required && "*"}</label>}
-  <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel ? sel.id : null); }} className={`border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full focus:border-indigo-300 focus:outline-none transition-colors ${className}`} required={required}>
+  <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel ? sel.id : null); }} className={`border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full focus:border-brand-300 focus:outline-none transition-colors ${className}`} required={required}>
   <option value="">Select property...</option>
   {properties.map(p => <option key={p.id} value={p.address}>{p.address} ({p.type})</option>)}
   </select>
@@ -995,7 +995,7 @@ function TenantSelect({ value, onChange, className = "", companyId }) {
   supabase.from("tenants").select("id, name, property").eq("company_id", companyId).is("archived_at", null).order("name").then(({ data }) => setTenants(data || []));
   }, [companyId]);
   return (
-  <select value={value || ""} onChange={e => { const sel = tenants.find(t => t.name === e.target.value); onChange(e.target.value, sel); }} className={`border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full ${className}`}>
+  <select value={value || ""} onChange={e => { const sel = tenants.find(t => t.name === e.target.value); onChange(e.target.value, sel); }} className={`border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full ${className}`}>
   <option value="">Select tenant...</option>
   {tenants.map(t => <option key={t.id} value={t.name}>{t.name}{t.property ? " — " + t.property : ""}</option>)}
   </select>
@@ -1018,7 +1018,7 @@ function PropertySelect({ value, onChange, className = "", companyId }) {
   supabase.from("properties").select("id, address, type, tenant, tenant_2, tenant_3, tenant_4, rent, status").eq("company_id", companyId).is("archived_at", null).order("address").then(({ data }) => setProperties(data || []));
   }, [companyId]);
   return (
-  <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel || null); }} className={`w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm ${className}`}>
+  <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel || null); }} className={`w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm ${className}`}>
   <option value="">Select property...</option>
   {properties.map(p => <option key={p.id} value={p.address}>{p.address}</option>)}
   </select>
@@ -1087,32 +1087,32 @@ function RecurringEntryModal({ entry, companyId, showToast, onComplete }) {
   <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
   <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6">
   <div className="text-center mb-4">
-  <div className="w-14 h-14 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
-  <span className="material-icons-outlined text-indigo-600 text-2xl">autorenew</span>
+  <div className="w-14 h-14 bg-brand-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+  <span className="material-icons-outlined text-brand-600 text-2xl">autorenew</span>
   </div>
   <h3 className="text-lg font-manrope font-bold text-slate-800">Set Up Recurring Rent</h3>
   <p className="text-sm text-slate-400 mt-1">Schedule automatic rent charges for <strong>{entry.tenantName}</strong></p>
   </div>
   <div className="space-y-3">
-  <div className="bg-indigo-50 rounded-xl p-3">
+  <div className="bg-brand-50 rounded-xl p-3">
   <div className="flex justify-between text-sm"><span className="text-slate-500">Property</span><span className="font-medium text-slate-800">{entry.property?.split(",")[0]}</span></div>
   <div className="flex justify-between text-sm mt-1"><span className="text-slate-500">Lease Period</span><span className="font-medium text-slate-800">{entry.leaseStart} → {entry.leaseEnd}</span></div>
   </div>
   <div>
   <label className="text-xs font-medium text-slate-500 block mb-1">Monthly Rent Amount ($)</label>
-  <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full border border-indigo-100 rounded-xl px-3 py-2 text-sm" />
+  <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full border border-brand-100 rounded-xl px-3 py-2 text-sm" />
   </div>
   <div className="grid grid-cols-2 gap-3">
   <div>
   <label className="text-xs font-medium text-slate-500 block mb-1">Frequency</label>
-  <select value={freq} onChange={e => setFreq(e.target.value)} className="w-full border border-indigo-100 rounded-xl px-3 py-2 text-sm">
+  <select value={freq} onChange={e => setFreq(e.target.value)} className="w-full border border-brand-100 rounded-xl px-3 py-2 text-sm">
   <option value="monthly">Monthly</option>
   <option value="quarterly">Quarterly</option>
   </select>
   </div>
   <div>
   <label className="text-xs font-medium text-slate-500 block mb-1">Day of Month</label>
-  <input type="number" min="1" max="28" value={dayOfMonth} onChange={e => setDayOfMonth(Math.min(28, Math.max(1, Number(e.target.value))))} title="Day of month (1-28, to ensure valid date in all months)" className="w-full border border-indigo-100 rounded-xl px-3 py-2 text-sm" />
+  <input type="number" min="1" max="28" value={dayOfMonth} onChange={e => setDayOfMonth(Math.min(28, Math.max(1, Number(e.target.value))))} title="Day of month (1-28, to ensure valid date in all months)" className="w-full border border-brand-100 rounded-xl px-3 py-2 text-sm" />
   </div>
   </div>
   <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-500">
@@ -1122,7 +1122,7 @@ function RecurringEntryModal({ entry, companyId, showToast, onComplete }) {
   </div>
   </div>
   <div className="flex gap-3 mt-4">
-  <button onClick={handleCreate} disabled={saving || !amount || Number(amount) <= 0} className="flex-1 bg-indigo-600 text-white text-sm py-2.5 rounded-xl font-semibold hover:bg-indigo-700 disabled:opacity-50">
+  <button onClick={handleCreate} disabled={saving || !amount || Number(amount) <= 0} className="flex-1 bg-brand-600 text-white text-sm py-2.5 rounded-xl font-semibold hover:bg-brand-700 disabled:opacity-50">
   {saving ? "Creating..." : "Create Recurring Entry"}
   </button>
   <button onClick={onComplete} className="flex-1 bg-slate-100 text-slate-600 text-sm py-2.5 rounded-xl font-semibold hover:bg-slate-200">Skip for Now</button>
@@ -1179,7 +1179,7 @@ function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUpl
   </div>
   <div>
   <label className="text-xs font-medium text-slate-400 block mb-1">Type</label>
-  <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
+  <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm">
   {["Lease","Notice","ID","Insurance","Inspection","Receipt","Other"].map(t => <option key={t} value={t}>{t}</option>)}
   </select>
   </div>
@@ -1187,8 +1187,8 @@ function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUpl
   <label className="text-xs font-medium text-slate-400 block mb-1">File *</label>
   <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv" className="text-sm" />
   </div>
-  {!isTenantUpload && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} className="accent-indigo-600" />Visible to tenant</label>}
-  <button onClick={handleUpload} disabled={uploading} className="w-full bg-indigo-600 text-white py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 disabled:opacity-50">{uploading ? "Uploading..." : "Upload"}</button>
+  {!isTenantUpload && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} className="accent-brand-600" />Visible to tenant</label>}
+  <button onClick={handleUpload} disabled={uploading} className="w-full bg-brand-600 text-white py-2.5 rounded-2xl font-semibold hover:bg-brand-700 disabled:opacity-50">{uploading ? "Uploading..." : "Upload"}</button>
   </div>
   </Modal>
   );
@@ -1198,29 +1198,29 @@ function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUpl
 function LandingPage({ onGetStarted }) {
   return (
   <div className="min-h-screen bg-[#fcf8ff]">
-  <nav className="flex items-center justify-between px-8 py-4 bg-white/80 backdrop-blur-md border-b border-indigo-50">
+  <nav className="flex items-center justify-between px-8 py-4 bg-white/80 backdrop-blur-md border-b border-brand-50">
   <div className="flex items-center gap-2">
-  <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-200">
+  <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shadow-lg shadow-brand-200">
   <span className="material-icons-outlined text-white text-sm">domain</span>
   </div>
-  <span className="font-manrope font-extrabold text-xl tracking-tight text-indigo-900">Estate Logic</span>
+  <span className="font-manrope font-extrabold text-xl tracking-tight text-brand-900">Estate Logic</span>
   </div>
-  <button onClick={() => onGetStarted("login")} className="bg-indigo-600 text-white text-sm px-5 py-2.5 rounded-2xl hover:bg-indigo-700 font-semibold transition-colors">Sign In</button>
+  <button onClick={() => onGetStarted("login")} className="bg-brand-600 text-white text-sm px-5 py-2.5 rounded-2xl hover:bg-brand-700 font-semibold transition-colors">Sign In</button>
   </nav>
-  <div className="bg-gradient-to-br from-indigo-50/50 to-[#fcf8ff] px-8 py-16 text-center">
-  <p className="text-indigo-600 font-semibold text-sm uppercase tracking-widest mb-3">Property Management Platform</p>
+  <div className="bg-gradient-to-br from-brand-50/50 to-[#fcf8ff] px-8 py-16 text-center">
+  <p className="text-brand-600 font-semibold text-sm uppercase tracking-widest mb-3">Property Management Platform</p>
   <h1 className="text-4xl md:text-5xl font-manrope font-extrabold text-slate-900 mb-4 leading-tight">Property Management<br />Made Simple</h1>
   <p className="text-lg text-slate-400 mb-12 max-w-xl mx-auto">Manage properties, tenants, rent, maintenance, and accounting — all in one place.</p>
 
   <h2 className="text-lg font-manrope font-manrope font-bold text-slate-700 mb-6">I am a...</h2>
   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-  <button onClick={() => onGetStarted("signup_pm")} className="bg-white rounded-3xl border border-indigo-100 p-8 text-center hover:border-indigo-300 hover:shadow-card transition-all group">
-  <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-  <span className="material-icons-outlined text-indigo-600 text-3xl">business</span>
+  <button onClick={() => onGetStarted("signup_pm")} className="bg-white rounded-3xl border border-brand-100 p-8 text-center hover:border-brand-300 hover:shadow-card transition-all group">
+  <div className="w-16 h-16 rounded-2xl bg-brand-50 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+  <span className="material-icons-outlined text-brand-600 text-3xl">business</span>
   </div>
   <div className="text-lg font-manrope font-bold text-slate-800 mb-2">Property Manager</div>
   <p className="text-sm text-slate-400">I manage properties on behalf of owners. Full access to all management tools.</p>
-  <div className="mt-4 text-indigo-600 text-sm font-bold">Get Started →</div>
+  <div className="mt-4 text-brand-600 text-sm font-bold">Get Started →</div>
   </button>
 
   <button onClick={() => onGetStarted("signup_owner")} className="bg-white rounded-3xl border border-emerald-100 p-8 text-center hover:border-emerald-300 hover:shadow-card transition-all group">
@@ -1243,7 +1243,7 @@ function LandingPage({ onGetStarted }) {
   </div>
 
   <div className="mt-10">
-  <button onClick={() => onGetStarted("login")} className="text-sm text-slate-400 hover:text-indigo-600 transition-colors">Already have an account? <span className="font-bold">Sign In</span></button>
+  <button onClick={() => onGetStarted("login")} className="text-sm text-slate-400 hover:text-brand-600 transition-colors">Already have an account? <span className="font-bold">Sign In</span></button>
   </div>
   </div>
 
@@ -1258,8 +1258,8 @@ function LandingPage({ onGetStarted }) {
   { icon: "bolt", title: "Utility Management", desc: "Track and pay utility bills with full audit logs." },
   { icon: "account_balance", title: "Full Accounting", desc: "General ledger, bank reconciliation, and financial reports." },
   ].map(f => (
-  <div key={f.title} className="bg-white rounded-3xl p-6 shadow-card border border-indigo-50 hover:border-indigo-200 transition-all">
-  <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mb-3">
+  <div key={f.title} className="bg-white rounded-3xl p-6 shadow-card border border-brand-50 hover:border-brand-200 transition-all">
+  <div className="w-12 h-12 bg-brand-50 text-brand-600 rounded-2xl flex items-center justify-center mb-3">
   <span className="material-icons-outlined text-xl">{f.icon}</span>
   </div>
   <div className="font-manrope font-bold text-slate-800 mb-1">{f.title}</div>
@@ -1268,7 +1268,7 @@ function LandingPage({ onGetStarted }) {
   ))}
   </div>
   </div>
-  <footer className="border-t border-indigo-50 px-8 py-6 text-center text-xs text-slate-400">
+  <footer className="border-t border-brand-50 px-8 py-6 text-center text-xs text-slate-400">
   © 2025 Estate Logic by Sigma Housing LLC. All rights reserved.
   </footer>
   </div>
@@ -1369,16 +1369,16 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
 
   if (signupSuccess) {
   return (
-  <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-white flex flex-col">
+  <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex flex-col">
   <nav className="flex items-center justify-between px-8 py-4">
-  <button onClick={onBack} className="text-xl font-bold text-indigo-700">🏡 PropManager</button>
+  <button onClick={onBack} className="text-xl font-bold text-brand-700">🏡 PropManager</button>
   </nav>
   <div className="flex-1 flex items-center justify-center px-4">
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-8 w-full max-w-sm text-center">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 w-full max-w-sm text-center">
   <div className="text-4xl mb-3">✅</div>
   <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-2">Account Created!</h2>
   <p className="text-sm text-slate-400 mb-4">Check your email for a confirmation link. Once confirmed, you can sign in.</p>
-  <button onClick={() => { setSignupSuccess(false); setMode("login"); setError(""); }} className="bg-indigo-600 text-white py-2.5 px-6 rounded-lg font-semibold text-sm hover:bg-indigo-700">Back to Sign In</button>
+  <button onClick={() => { setSignupSuccess(false); setMode("login"); setError(""); }} className="bg-brand-600 text-white py-2.5 px-6 rounded-lg font-semibold text-sm hover:bg-brand-700">Back to Sign In</button>
   </div>
   </div>
   </div>
@@ -1389,12 +1389,12 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   const typeInfo = userTypeLabels[mode] || {};
 
   return (
-  <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-white flex flex-col">
+  <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex flex-col">
   <nav className="flex items-center justify-between px-8 py-4">
-  <button onClick={onBack} className="text-xl font-bold text-indigo-700">🏡 PropManager</button>
+  <button onClick={onBack} className="text-xl font-bold text-brand-700">🏡 PropManager</button>
   </nav>
   <div className="flex-1 flex items-center justify-center px-4">
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-8 w-full max-w-sm">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 w-full max-w-sm">
   {isSignup && (
   <div className="text-center mb-4">
   <span className="text-3xl">{typeInfo.icon}</span>
@@ -1433,15 +1433,15 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   </div>
   )}
 
-  <button onClick={isSignup ? () => handleSignup(mode.replace("signup_", "")) : handleLogin} disabled={loading} className={`w-full text-white py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50 ${isSignup ? (mode === "signup_pm" ? "bg-indigo-600 hover:bg-indigo-700" : mode === "signup_owner" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700") : "bg-indigo-600 hover:bg-indigo-700"}`}>
+  <button onClick={isSignup ? () => handleSignup(mode.replace("signup_", "")) : handleLogin} disabled={loading} className={`w-full text-white py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50 ${isSignup ? (mode === "signup_pm" ? "bg-brand-600 hover:bg-brand-700" : mode === "signup_owner" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-amber-600 hover:bg-amber-700") : "bg-brand-600 hover:bg-brand-700"}`}>
   {loading ? "Please wait..." : isSignup ? "Create Account" : "Sign In"}
   </button>
 
   <div className="text-center mt-4 space-y-2">
   {isSignup ? (
-  <button onClick={() => { setMode("login"); setError(""); }} className="text-xs text-indigo-600 hover:underline">Already have an account? Sign in</button>
+  <button onClick={() => { setMode("login"); setError(""); }} className="text-xs text-brand-600 hover:underline">Already have an account? Sign in</button>
   ) : (
-  <button onClick={onBack} className="text-xs text-indigo-600 hover:underline">Back to role selection</button>
+  <button onClick={onBack} className="text-xs text-brand-600 hover:underline">Back to role selection</button>
   )}
   </div>
   </div>
@@ -1544,7 +1544,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   <StatCard onClick={() => setPage("accounting")} label="Net Income" value={`$${(acctRevenue - acctExpenses).toLocaleString()}`} sub="revenue - expenses" color={acctRevenue - acctExpenses >= 0 ? "text-emerald-600" : "text-red-600"} />
   </div>
   <div className="grid grid-cols-2 gap-3 mb-6 md:grid-cols-4">
-  <StatCard onClick={() => setPage("payments")} label="Rent Collected" value={`${formatCurrency(totalRent)}`} sub="payments table" color="text-indigo-600" />
+  <StatCard onClick={() => setPage("payments")} label="Rent Collected" value={`${formatCurrency(totalRent)}`} sub="payments table" color="text-brand-600" />
   <StatCard onClick={() => setPage("tenants")} label="Delinquent" value={delinquent} sub="tenants with balance" color="text-orange-500" />
   <StatCard onClick={() => setPage("maintenance")} label="Open Work Orders" value={openWO} sub={`${workOrders.filter(w => w.priority === "emergency").length} emergency`} color="text-orange-500" />
   <StatCard onClick={() => setPage("utilities")} label="Pending Utilities" value={utilities.filter(u => u.status === "pending").length} sub="awaiting payment" color="text-yellow-600" />
@@ -1571,10 +1571,10 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   })()}
 
   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <h3 className="font-semibold text-slate-700 mb-3">Lease Expirations</h3>
   {tenants.filter(t => (t.lease_end_date || t.move_out) && parseLocalDate(t.lease_end_date || t.move_out) >= new Date() && Math.ceil((parseLocalDate(t.lease_end_date || t.move_out) - new Date()) / 86400000) <= 90).map(t => (
-  <div key={t.id} className="flex justify-between items-center py-2 border-b border-indigo-50/50 last:border-0">
+  <div key={t.id} className="flex justify-between items-center py-2 border-b border-brand-50/50 last:border-0">
   <div>
   <div className="text-sm font-medium text-slate-800">{t.name}</div>
   <div className="text-xs text-slate-400">{t.property}</div>
@@ -1584,10 +1584,10 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   ))}
   {tenants.filter(t => t.move_out).length === 0 && <div className="text-sm text-slate-400 text-center py-4">No upcoming expirations</div>}
   </div>
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <h3 className="font-semibold text-slate-700 mb-3">Recent Maintenance</h3>
   {workOrders.slice(0, 3).map(w => (
-  <div key={w.id} className="flex justify-between items-center py-2 border-b border-indigo-50/50 last:border-0">
+  <div key={w.id} className="flex justify-between items-center py-2 border-b border-brand-50/50 last:border-0">
   <div>
   <div className="text-sm font-medium text-slate-800">{w.issue}</div>
   <div className="text-xs text-slate-400">{w.property}</div>
@@ -1596,10 +1596,10 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   </div>
   ))}
   </div>
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <h3 className="font-semibold text-slate-700 mb-3">Utilities Due</h3>
   {utilities.filter(u => u.status === "pending").map(u => (
-  <div key={u.id} className="flex justify-between items-center py-2 border-b border-indigo-50/50 last:border-0">
+  <div key={u.id} className="flex justify-between items-center py-2 border-b border-brand-50/50 last:border-0">
   <div>
   <div className="text-sm font-medium text-slate-800">{u.provider}</div>
   <div className="text-xs text-slate-400">{u.property} · {u.responsibility}</div>
@@ -1631,7 +1631,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   })}
   </div>
   )}
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <h3 className="font-semibold text-slate-700 mb-3">Net Operating Income</h3>
   <div className="space-y-2">
   {[
@@ -2394,7 +2394,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
               </div>
               {/* Additional tenants */}
               {tenantForm.tenantCount < 5 && (
-                <button type="button" onClick={() => setTenantForm(f => ({ ...f, tenantCount: f.tenantCount + 1 }))} className="text-sm text-indigo-600 hover:underline flex items-center gap-1 mt-2">
+                <button type="button" onClick={() => setTenantForm(f => ({ ...f, tenantCount: f.tenantCount + 1 }))} className="text-sm text-brand-600 hover:underline flex items-center gap-1 mt-2">
                   <span className="material-icons-outlined text-sm">person_add</span>
                   + Add Tenant {tenantForm.tenantCount + 1}
                 </button>
@@ -2779,8 +2779,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         return (
           <div>
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
-                <span className="material-icons-outlined text-indigo-600 text-2xl">autorenew</span>
+              <div className="w-12 h-12 bg-brand-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-brand-600 text-2xl">autorenew</span>
               </div>
               <div>
                 <h3 className="text-lg font-manrope font-bold text-slate-800">Recurring Rent</h3>
@@ -2788,7 +2788,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
               </div>
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
-              <div className="bg-indigo-50 rounded-xl p-3 space-y-1">
+              <div className="bg-brand-50 rounded-xl p-3 space-y-1">
                 <div className="flex justify-between text-sm"><span className="text-slate-500">Tenant</span><span className="font-medium text-slate-800">{tenantForm.tenant}</span></div>
                 <div className="flex justify-between text-sm"><span className="text-slate-500">Property</span><span className="font-medium text-slate-800">{savedAddress.split(",")[0]}</span></div>
                 {tenantForm.lease_start && tenantForm.lease_end && (
@@ -3776,10 +3776,10 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-2">
   <h2 className="text-xl md:text-2xl font-manrope font-bold text-slate-800">Properties</h2>
   <div className="flex items-center gap-3">
-  <button onClick={exportProperties} className="text-sm text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-2xl hover:bg-indigo-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
+  <button onClick={exportProperties} className="text-sm text-brand-600 border border-brand-200 px-3 py-1.5 rounded-2xl hover:bg-brand-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
   <div className="flex gap-1">
-  <button onClick={() => setShowArchived(false)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (!showArchived ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>Active ({properties.length})</button>
-  <button onClick={() => { setShowArchived(true); fetchArchivedProperties(); }} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (showArchived ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>Archived ({archivedProperties.length})</button>
+  <button onClick={() => setShowArchived(false)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (!showArchived ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>Active ({properties.length})</button>
+  <button onClick={() => { setShowArchived(true); fetchArchivedProperties(); }} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (showArchived ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>Archived ({archivedProperties.length})</button>
   </div>
   </div>
   </div>
@@ -3819,7 +3819,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
 
   {isAdmin && showRequests && pendingRequests.length > 0 && (
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4 mb-4 space-y-3">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4 mb-4 space-y-3">
   <h3 className="font-semibold text-slate-800">Pending Approval</h3>
   {pendingRequests.map(req => (
   <div key={req.id} className="border border-amber-100 rounded-3xl p-4 bg-amber-50/30">
@@ -3855,34 +3855,34 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {propertyTypes.map(t => <option key={t} value={t}>{t}</option>)}
   </select>
   {hasManagedProps && (
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={filterOwnership} onChange={e => setFilterOwnership(e.target.value)} >
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={filterOwnership} onChange={e => setFilterOwnership(e.target.value)} >
   <option value="all">All Properties</option>
   <option value="owned">Owned by Us</option>
   <option value="managed">PM-Managed</option>
   </select>
   )}
   {propertyOwners.length > 1 && (
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={filterOwner} onChange={e => setFilterOwner(e.target.value)} >
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={filterOwner} onChange={e => setFilterOwner(e.target.value)} >
   <option value="all">All Owners</option>
   {propertyOwners.map(o => <option key={o} value={o}>{o}</option>)}
   </select>
   )}
   {propertyCities.length > 1 && (
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={filterCity} onChange={e => setFilterCity(e.target.value)} >
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={filterCity} onChange={e => setFilterCity(e.target.value)} >
   <option value="all">All Cities</option>
   {propertyCities.map(c => <option key={c} value={c}>{c}</option>)}
   </select>
   )}
-  <div className="flex bg-indigo-50 rounded-2xl p-0.5">
+  <div className="flex bg-brand-50 rounded-2xl p-0.5">
   {[["card","▦"],["table","☰"],["compact","≡"]].map(([m,icon]) => (
-  <button key={m} onClick={() => setViewMode(m)} className={`px-3 py-1.5 text-sm rounded-md ${viewMode === m ? "bg-white shadow-sm text-indigo-700 font-semibold" : "text-slate-400"}`} title={m}>{icon}</button>
+  <button key={m} onClick={() => setViewMode(m)} className={`px-3 py-1.5 text-sm rounded-md ${viewMode === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-slate-400"}`} title={m}>{icon}</button>
   ))}
   </div>
   {viewMode === "table" && (
   <div className="relative">
-  <button onClick={() => setShowColPicker(!showColPicker)} className="border border-indigo-100 rounded-2xl px-3 py-2 text-xs text-slate-400 hover:bg-indigo-50/30">⚙️ Columns</button>
+  <button onClick={() => setShowColPicker(!showColPicker)} className="border border-brand-100 rounded-2xl px-3 py-2 text-xs text-slate-400 hover:bg-brand-50/30">⚙️ Columns</button>
   {showColPicker && (
-  <div className="absolute right-0 top-10 bg-white border border-indigo-100 rounded-3xl shadow-lg p-3 z-50 w-48 max-w-[calc(100vw-2rem)]">
+  <div className="absolute right-0 top-10 bg-white border border-brand-100 rounded-3xl shadow-lg p-3 z-50 w-48 max-w-[calc(100vw-2rem)]">
   {allCols.map(c => (
   <label key={c.id} className="flex items-center gap-2 py-1 text-xs text-slate-700 cursor-pointer">
   <input type="checkbox" checked={visibleCols.includes(c.id)} onChange={() => setVisibleCols(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id])} className="rounded" />
@@ -3893,7 +3893,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
   </div>
   )}
-  <button onClick={() => { setShowPropertyWizard({ propertyId: null, address: "", isOccupied: false, tenant: "", rent: 0, isNew: true }); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700 whitespace-nowrap">
+  <button onClick={() => { setShowPropertyWizard({ propertyId: null, address: "", isOccupied: false, tenant: "", rent: 0, isNew: true }); }} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700 whitespace-nowrap">
   {isAdmin ? "+ Add" : "+ Request"}
   </button>
   </div>
@@ -3922,10 +3922,10 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   {/* Tenant Info */}
   {selectedProperty.tenant && (
-  <div className="px-6 py-4 border-b border-indigo-50">
+  <div className="px-6 py-4 border-b border-brand-50">
   <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Current Tenant{(selectedProperty.tenant_2 || selectedProperty.tenant_3 || selectedProperty.tenant_4 || selectedProperty.tenant_5) ? "s" : ""}</div>
   <div className="flex items-center gap-3">
-  <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">{selectedProperty.tenant?.[0]}</div>
+  <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold">{selectedProperty.tenant?.[0]}</div>
   <div>
   <div className="font-semibold text-slate-800">{selectedProperty.tenant}</div>
   <div className="text-xs text-slate-400">{selectedProperty._tenantEmail || ""} · {selectedProperty._tenantPhone || ""}</div>
@@ -3933,7 +3933,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   {selectedProperty.tenant_2 && (
   <div className="flex items-center gap-3 mt-2">
-  <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-500 font-bold text-sm">{selectedProperty.tenant_2?.[0]}</div>
+  <div className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center text-brand-500 font-bold text-sm">{selectedProperty.tenant_2?.[0]}</div>
   <div>
   <div className="font-medium text-slate-700 text-sm">{selectedProperty.tenant_2}</div>
   <div className="text-xs text-slate-400">{selectedProperty.tenant_2_email || ""} · {selectedProperty.tenant_2_phone || ""}</div>
@@ -3942,7 +3942,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
   {selectedProperty.tenant_3 && (
   <div className="flex items-center gap-3 mt-2">
-  <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-500 font-bold text-sm">{selectedProperty.tenant_3?.[0]}</div>
+  <div className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center text-brand-500 font-bold text-sm">{selectedProperty.tenant_3?.[0]}</div>
   <div>
   <div className="font-medium text-slate-700 text-sm">{selectedProperty.tenant_3}</div>
   <div className="text-xs text-slate-400">{selectedProperty.tenant_3_email || ""} · {selectedProperty.tenant_3_phone || ""}</div>
@@ -3951,7 +3951,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
   {selectedProperty.tenant_4 && (
   <div className="flex items-center gap-3 mt-2">
-  <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-500 font-bold text-sm">{selectedProperty.tenant_4?.[0]}</div>
+  <div className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center text-brand-500 font-bold text-sm">{selectedProperty.tenant_4?.[0]}</div>
   <div>
   <div className="font-medium text-slate-700 text-sm">{selectedProperty.tenant_4}</div>
   <div className="text-xs text-slate-400">{selectedProperty.tenant_4_email || ""} · {selectedProperty.tenant_4_phone || ""}</div>
@@ -3960,7 +3960,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
   {selectedProperty.tenant_5 && (
   <div className="flex items-center gap-3 mt-2">
-  <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-500 font-bold text-sm">{selectedProperty.tenant_5?.[0]}</div>
+  <div className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center text-brand-500 font-bold text-sm">{selectedProperty.tenant_5?.[0]}</div>
   <div>
   <div className="font-medium text-slate-700 text-sm">{selectedProperty.tenant_5}</div>
   <div className="text-xs text-slate-400">{selectedProperty.tenant_5_email || ""} · {selectedProperty.tenant_5_phone || ""}</div>
@@ -3973,7 +3973,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {/* Tab Navigation */}
   <div className="flex border-b border-slate-200 px-6 overflow-x-auto">
   {[["overview","Overview"],["documents","Documents"],["workorders","Work Orders"],["actions","Actions"],["history","Historical Tenants"]].map(([id, label]) => (
-  <button key={id} onClick={() => { setPropertyDetailTab(id); if (id === "history") setHistoricalTenantDetail(null); }} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + (propertyDetailTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}{id === "documents" ? ` (${propertyDocs.length})` : id === "workorders" ? ` (${propertyWorkOrders.length})` : id === "history" ? ` (${historicalTenants.length})` : ""}</button>
+  <button key={id} onClick={() => { setPropertyDetailTab(id); if (id === "history") setHistoricalTenantDetail(null); }} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + (propertyDetailTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}{id === "documents" ? ` (${propertyDocs.length})` : id === "workorders" ? ` (${propertyWorkOrders.length})` : id === "history" ? ` (${historicalTenants.length})` : ""}</button>
   ))}
   </div>
 
@@ -3994,13 +3994,13 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="px-6 py-4 flex-1">
   <div className="flex items-center justify-between mb-3">
   <div className="text-sm font-semibold text-slate-700">Documents</div>
-  <button onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700 flex items-center gap-1"><span className="material-icons-outlined text-sm">upload</span>Upload</button>
+  <button onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })} className="bg-brand-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-brand-700 flex items-center gap-1"><span className="material-icons-outlined text-sm">upload</span>Upload</button>
   </div>
   {propertyDocs.length === 0 ? (
   <div className="text-center py-8">
   <span className="material-icons-outlined text-4xl text-slate-300 mb-2">folder_open</span>
   <div className="text-sm text-slate-400">No documents uploaded yet</div>
-  <button onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })} className="mt-3 text-xs text-indigo-600 hover:underline">Upload your first document</button>
+  <button onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })} className="mt-3 text-xs text-brand-600 hover:underline">Upload your first document</button>
   </div>
   ) : (
   <div className="space-y-2">
@@ -4014,7 +4014,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   </div>
   <div className="flex items-center gap-2">
-  <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-indigo-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</button>
+  <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-brand-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</button>
   {isAdmin && <button onClick={async () => {
   if (!guardSubmit("delPropDoc", d.id)) return;
   try {
@@ -4040,7 +4040,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="px-6 py-4">
   <div className="flex items-center justify-between mb-3">
   <div className="text-sm font-semibold text-slate-700">Work Orders</div>
-  <button onClick={() => { setPage("maintenance"); setSelectedProperty(null); }} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700 flex items-center gap-1"><span className="material-icons-outlined text-sm">add</span>New</button>
+  <button onClick={() => { setPage("maintenance"); setSelectedProperty(null); }} className="bg-brand-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-brand-700 flex items-center gap-1"><span className="material-icons-outlined text-sm">add</span>New</button>
   </div>
   {propertyWorkOrders.length === 0 ? (
   <div className="text-center py-8">
@@ -4064,16 +4064,16 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {propertyDetailTab === "actions" && (
   <div className="px-6 py-4">
   <div className="space-y-2">
-  {!isReadOnly(selectedProperty) && <button onClick={() => { setEditingProperty(selectedProperty); setForm({ address_line_1: selectedProperty.address_line_1 || selectedProperty.address || "", address_line_2: selectedProperty.address_line_2 || "", city: selectedProperty.city || "", state: selectedProperty.state || "", zip: selectedProperty.zip || "", type: selectedProperty.type, status: selectedProperty.status, rent: selectedProperty.rent || "", security_deposit: selectedProperty.security_deposit || "", tenant: selectedProperty.tenant || "", tenant_email: selectedProperty._tenantEmail || "", tenant_phone: selectedProperty._tenantPhone || "", lease_start: selectedProperty.lease_start || "", lease_end: selectedProperty.lease_end || "", notes: selectedProperty.notes || "" }); setShowForm(true); setSelectedProperty(null); }} className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors"><span className="material-icons-outlined text-indigo-600">edit</span>Edit Property</button>}
-  <button onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })} className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors"><span className="material-icons-outlined text-indigo-600">upload_file</span>Upload Document</button>
-  <button onClick={() => { setPage("maintenance"); setSelectedProperty(null); }} className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/30 transition-colors"><span className="material-icons-outlined text-indigo-600">build</span>New Work Order</button>
+  {!isReadOnly(selectedProperty) && <button onClick={() => { setEditingProperty(selectedProperty); setForm({ address_line_1: selectedProperty.address_line_1 || selectedProperty.address || "", address_line_2: selectedProperty.address_line_2 || "", city: selectedProperty.city || "", state: selectedProperty.state || "", zip: selectedProperty.zip || "", type: selectedProperty.type, status: selectedProperty.status, rent: selectedProperty.rent || "", security_deposit: selectedProperty.security_deposit || "", tenant: selectedProperty.tenant || "", tenant_email: selectedProperty._tenantEmail || "", tenant_phone: selectedProperty._tenantPhone || "", lease_start: selectedProperty.lease_start || "", lease_end: selectedProperty.lease_end || "", notes: selectedProperty.notes || "" }); setShowForm(true); setSelectedProperty(null); }} className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-brand-300 hover:bg-brand-50/30 transition-colors"><span className="material-icons-outlined text-brand-600">edit</span>Edit Property</button>}
+  <button onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })} className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-brand-300 hover:bg-brand-50/30 transition-colors"><span className="material-icons-outlined text-brand-600">upload_file</span>Upload Document</button>
+  <button onClick={() => { setPage("maintenance"); setSelectedProperty(null); }} className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 hover:border-brand-300 hover:bg-brand-50/30 transition-colors"><span className="material-icons-outlined text-brand-600">build</span>New Work Order</button>
   {(() => {
   const ss = getSetupStatus(selectedProperty);
   const isInProg = ss.isInProgress;
   const hasMissing = ss.missing.length > 0;
   const label = isInProg ? "Resume Property Setup" : hasMissing ? `Complete Setup (${ss.missing.length} remaining)` : "Edit Property Setup";
   const icon = isInProg ? "construction" : hasMissing ? "pending" : "settings";
-  const colors = isInProg || hasMissing ? "bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100" : "bg-white border-slate-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/30";
+  const colors = isInProg || hasMissing ? "bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100" : "bg-white border-slate-200 text-slate-700 hover:border-brand-300 hover:bg-brand-50/30";
   return (
   <button onClick={() => {
   setShowPropertyWizard({
@@ -4088,7 +4088,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   isEdit: true,
   });
   setSelectedProperty(null);
-  }} className={`w-full flex items-center gap-3 border rounded-xl px-4 py-3 text-sm transition-colors ${colors}`}><span className={`material-icons-outlined ${isInProg || hasMissing ? "text-amber-600" : "text-indigo-600"}`}>{icon}</span>{label}</button>
+  }} className={`w-full flex items-center gap-3 border rounded-xl px-4 py-3 text-sm transition-colors ${colors}`}><span className={`material-icons-outlined ${isInProg || hasMissing ? "text-amber-600" : "text-brand-600"}`}>{icon}</span>{label}</button>
   );
   })()}
   </div>
@@ -4117,7 +4117,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   supabase.from("messages").select("*").eq("company_id", companyId).ilike("tenant", t.name).order("created_at", { ascending: true }).limit(100),
   ]);
   setHistoricalTenantDetail({ tenant: t, ledger: ledgerRes.data || [], docs: docsRes.data || [], messages: msgsRes.data || [], leases: t._leases || [], activeTab: "overview" });
-  }} className="bg-white border border-slate-200 rounded-xl p-4 cursor-pointer hover:border-indigo-300 hover:shadow-sm transition-all">
+  }} className="bg-white border border-slate-200 rounded-xl p-4 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all">
   <div className="flex items-center justify-between mb-2">
   <div className="flex items-center gap-3">
   <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold">{t.name?.[0]}</div>
@@ -4146,7 +4146,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {/* Historical Tenant Detail View */}
   {propertyDetailTab === "history" && historicalTenantDetail && (
   <div className="px-6 py-4 flex-1">
-  <button onClick={() => setHistoricalTenantDetail(null)} className="text-xs text-indigo-600 hover:underline mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">arrow_back</span>Back to Previous Tenants</button>
+  <button onClick={() => setHistoricalTenantDetail(null)} className="text-xs text-brand-600 hover:underline mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">arrow_back</span>Back to Previous Tenants</button>
   <div className="flex items-center gap-3 mb-4">
   <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 font-bold text-lg">{historicalTenantDetail.tenant.name?.[0]}</div>
   <div>
@@ -4157,7 +4157,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {/* Sub-tabs */}
   <div className="flex border-b border-slate-200 mb-4">
   {[["overview","Overview"],["ledger","Ledger"],["docs","Documents"],["messages","Messages"]].map(([id, label]) => (
-  <button key={id} onClick={() => setHistoricalTenantDetail(prev => ({ ...prev, activeTab: id }))} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap " + (historicalTenantDetail.activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}{id === "ledger" ? ` (${historicalTenantDetail.ledger.length})` : id === "docs" ? ` (${historicalTenantDetail.docs.length})` : ""}</button>
+  <button key={id} onClick={() => setHistoricalTenantDetail(prev => ({ ...prev, activeTab: id }))} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap " + (historicalTenantDetail.activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}{id === "ledger" ? ` (${historicalTenantDetail.ledger.length})` : id === "docs" ? ` (${historicalTenantDetail.docs.length})` : ""}</button>
   ))}
   </div>
 
@@ -4224,7 +4224,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="text-xs text-slate-400">{d.type} · {d.uploaded_at?.slice(0, 10)}</div>
   </div>
   </div>
-  <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-indigo-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</button>
+  <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-brand-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</button>
   </div>
   ))}
   </div>
@@ -4238,7 +4238,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {historicalTenantDetail.messages.length === 0 ? <div className="text-center py-6 text-slate-400 text-sm">No messages</div> : (
   <div className="space-y-2 max-h-64 overflow-y-auto">
   {historicalTenantDetail.messages.map((m, i) => (
-  <div key={i} className={"rounded-xl px-3 py-2 max-w-[85%] text-sm " + (m.sender === "admin" ? "bg-indigo-50 text-indigo-800 ml-auto" : "bg-slate-100 text-slate-700")}>
+  <div key={i} className={"rounded-xl px-3 py-2 max-w-[85%] text-sm " + (m.sender === "admin" ? "bg-brand-50 text-brand-800 ml-auto" : "bg-slate-100 text-slate-700")}>
   <div>{m.message}</div>
   <div className="text-xs text-slate-400 mt-1">{m.sender} · {m.created_at?.slice(0, 16).replace("T", " ")}</div>
   </div>
@@ -4255,7 +4255,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
 
   {showForm && editingProperty && (
-  <div className="bg-white p-4 rounded-xl border border-indigo-50 shadow-sm mb-4">
+  <div className="bg-white p-4 rounded-xl border border-brand-50 shadow-sm mb-4">
   <h3 className="text-sm font-semibold text-slate-700 mb-3">{editingProperty ? "Edit Property" : "Add Property"}</h3>
   {!isAdmin && <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2 mb-3">Submitted for admin approval.</p>}
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -4263,26 +4263,26 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address Line 2</label><Input placeholder="Apt 4B, Suite 200, etc." value={form.address_line_2} onChange={e => setForm({ ...form, address_line_2: e.target.value })} autoComplete="address-line2" name="address-line2" /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">City *</label><Input placeholder="Greenbelt" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} autoComplete="address-level2" name="city" required /></div>
   <div className="grid grid-cols-2 gap-2">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">State *</label><select value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" autoComplete="address-level1" name="state" required><option value="">--</option>{US_STATES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">State *</label><select value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" autoComplete="address-level1" name="state" required><option value="">--</option>{US_STATES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">ZIP *</label><Input placeholder="20770" value={form.zip} onChange={async e => { const z = e.target.value.replace(/\D/g, "").slice(0, 5); setForm(f => ({ ...f, zip: z })); if (z.length === 5) { const loc = await lookupZip(z); if (loc) setForm(f => ({ ...f, city: f.city || loc.city, state: f.state || loc.state })); } }} maxLength={5} autoComplete="postal-code" name="postal-code" required /></div>
   </div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Type *</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full"><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status *</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full"><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option><option value="inactive">Inactive</option></select></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Type *</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full"><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></select></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status *</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full"><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option><option value="inactive">Inactive</option></select></div>
   {form.status === "occupied" && (<>
-  <div className="col-span-1 sm:col-span-2 bg-indigo-50 rounded-lg px-3 py-2"><div className="text-xs font-semibold text-indigo-700">Tenant Information</div></div>
+  <div className="col-span-1 sm:col-span-2 bg-brand-50 rounded-lg px-3 py-2"><div className="text-xs font-semibold text-brand-700">Tenant Information</div></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant Name *</label><Input placeholder="Jane Doe" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} required /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant Email *</label><Input type="email" placeholder="tenant@email.com" value={form.tenant_email} onChange={e => setForm({ ...form, tenant_email: e.target.value })} required /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant Phone *</label><Input type="tel" placeholder="(555) 123-4567" value={form.tenant_phone} onChange={e => setForm({ ...form, tenant_phone: formatPhoneInput(e.target.value) })} maxLength={14} required /></div>
-  <div className="col-span-1 sm:col-span-2 bg-indigo-50 rounded-lg px-3 py-2 mt-1"><div className="text-xs font-semibold text-indigo-700">Lease Details</div></div>
+  <div className="col-span-1 sm:col-span-2 bg-brand-50 rounded-lg px-3 py-2 mt-1"><div className="text-xs font-semibold text-brand-700">Lease Details</div></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Monthly Rent ($) *</label><Input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} required /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Security Deposit ($) *</label><Input placeholder="1500" value={form.security_deposit} onChange={e => setForm({ ...form, security_deposit: e.target.value })} required /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Start Date *</label><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} required /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease End Date *</label><Input type="date" value={form.lease_end} min={form.lease_start || undefined} onChange={e => setForm({ ...form, lease_end: e.target.value })} required /></div>
   </>)}
-  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="Any additional notes" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
+  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="Any additional notes" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={saveProperty} disabled={_submitGuards["saveProperty"]} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">{_submitGuards["saveProperty"] ? "Saving..." : (isAdmin ? "Save" : "Submit")}</button>
+  <button onClick={saveProperty} disabled={_submitGuards["saveProperty"]} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">{_submitGuards["saveProperty"] ? "Saving..." : (isAdmin ? "Save" : "Submit")}</button>
   <button onClick={() => { setShowForm(false); setEditingProperty(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
@@ -4318,16 +4318,16 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
 
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-  <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center"><div className="text-lg font-manrope font-bold text-slate-800">{properties.length}</div><div className="text-xs text-slate-400">Total</div></div>
-  <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center"><div className="text-lg font-bold text-emerald-600">{properties.filter(p => p.status === "occupied").length}</div><div className="text-xs text-slate-400">Occupied</div></div>
-  <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center"><div className="text-lg font-bold text-amber-600">{properties.filter(p => p.status === "vacant").length}</div><div className="text-xs text-slate-400">Vacant</div></div>
-  <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center"><div className="text-lg font-bold text-indigo-600">${properties.reduce((s, p) => s + safeNum(p.rent), 0).toLocaleString()}</div><div className="text-xs text-slate-400">Total Rent</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-manrope font-bold text-slate-800">{properties.length}</div><div className="text-xs text-slate-400">Total</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-emerald-600">{properties.filter(p => p.status === "occupied").length}</div><div className="text-xs text-slate-400">Occupied</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-amber-600">{properties.filter(p => p.status === "vacant").length}</div><div className="text-xs text-slate-400">Vacant</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center"><div className="text-lg font-bold text-brand-600">${properties.reduce((s, p) => s + safeNum(p.rent), 0).toLocaleString()}</div><div className="text-xs text-slate-400">Total Rent</div></div>
   </div>
 
   {viewMode === "card" && (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
   {filtered.map(p => (
-  <div key={p.id} onClick={() => openPropertyDetail(p)} className={`bg-white rounded-xl border shadow-sm p-4 cursor-pointer hover:shadow-md hover:border-indigo-200 transition-all ${isReadOnly(p) ? "border-purple-200 bg-purple-50/30" : "border-indigo-50"}`}>
+  <div key={p.id} onClick={() => openPropertyDetail(p)} className={`bg-white rounded-xl border shadow-sm p-4 cursor-pointer hover:shadow-md hover:border-brand-200 transition-all ${isReadOnly(p) ? "border-purple-200 bg-purple-50/30" : "border-brand-50"}`}>
   <div className="flex items-start justify-between mb-2">
   <div>
   <h3 className="font-semibold text-slate-800 text-sm">{p.address_line_1 || p.address}</h3>{(p.city || p.state) && <div className="text-xs text-slate-400">{[p.city, p.state, p.zip].filter(Boolean).join(", ")}</div>}
@@ -4346,8 +4346,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {isReadOnly(p) && <div className="mt-2 text-xs text-purple-600 bg-purple-50 rounded-lg px-2 py-1">🔒 Managed property — view only</div>}
   {p.status === "inactive" && <div className="mt-2 text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-1">⏸ Inactive — accounting history preserved</div>}
   {(() => { const ss = getSetupStatus(p); return (!ss.isComplete && ss.total > 0) ? <div className="mt-2 text-xs text-blue-600 bg-blue-50 rounded-lg px-2 py-1 flex items-center gap-1"><span className="material-icons-outlined text-sm">pending</span>Setup Incomplete — {ss.missing.length} step{ss.missing.length !== 1 ? "s" : ""} remaining</div> : null; })()}
-  <div className="flex gap-2 mt-3 pt-3 border-t border-indigo-50/50 flex-wrap" onClick={e => e.stopPropagation()}>
-  {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
+  <div className="flex gap-2 mt-3 pt-3 border-t border-brand-50/50 flex-wrap" onClick={e => e.stopPropagation()}>
+  {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline">Edit</button>}
   {!isReadOnly(p) && isAdmin && p.status !== "inactive" && <button onClick={() => deactivateProperty(p)} className="text-xs text-amber-600 hover:underline">Deactivate</button>}
   {!isReadOnly(p) && isAdmin && p.status === "inactive" && <button onClick={() => reactivateProperty(p)} className="text-xs text-green-600 hover:underline">Reactivate</button>}
   {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline">Delete</button>}
@@ -4361,9 +4361,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
 
   {viewMode === "table" && (
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-x-auto">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-x-auto">
   <table className="w-full text-sm">
-  <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
+  <thead className="bg-brand-50/30 text-xs text-slate-400 uppercase">
   <tr>
   {visibleCols.includes("address") && <th className="px-4 py-3 text-left">Address</th>}
   {visibleCols.includes("type") && <th className="px-4 py-3 text-left">Type</th>}
@@ -4378,7 +4378,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </thead>
   <tbody>
   {filtered.map(p => (
-  <tr key={p.id} className="border-t border-indigo-50/50 hover:bg-indigo-50/30/50">
+  <tr key={p.id} className="border-t border-brand-50/50 hover:bg-brand-50/30/50">
   {visibleCols.includes("address") && <td className="px-4 py-2.5 font-medium text-slate-800">{p.address}</td>}
   {visibleCols.includes("type") && <td className="px-4 py-2.5 text-slate-500">{p.type}</td>}
   {visibleCols.includes("status") && <td className="px-4 py-2.5"><Badge status={p.status} label={p.status} /></td>}
@@ -4390,7 +4390,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
   {p.pm_company_name && <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded mr-2">PM</span>}
   {isReadOnly(p) && <span className="text-xs text-purple-500 mr-2">🔒 view only</span>}
-  {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>}
+  {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>}
   {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-red-500 hover:underline mr-2">Delete</button>}
   {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-purple-600 hover:underline mr-2">PM</button>}
   {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-orange-600 hover:underline mr-2">-PM</button>}
@@ -4405,9 +4405,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
 
   {viewMode === "compact" && (
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 divide-y divide-indigo-50/50">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 divide-y divide-brand-50/50">
   {filtered.map(p => (
-  <div key={p.id} className={`flex items-center gap-3 px-4 py-2.5 hover:bg-indigo-50/30/50 ${isReadOnly(p) ? "bg-purple-50/30" : ""}`}>
+  <div key={p.id} className={`flex items-center gap-3 px-4 py-2.5 hover:bg-brand-50/30/50 ${isReadOnly(p) ? "bg-purple-50/30" : ""}`}>
   <div className={`w-2 h-2 rounded-full ${p.status === "occupied" ? "bg-emerald-500" : p.status === "vacant" ? "bg-amber-500" : "bg-red-500"}`} />
   <div className="flex-1 min-w-0">
   <span className="text-sm font-medium text-slate-800">{p.address}</span>
@@ -4417,7 +4417,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <span className="text-sm font-semibold text-slate-700">${safeNum(p.rent).toLocaleString()}</span>
   <span className="text-xs text-slate-400 w-28 truncate">{p.tenant || "—"}</span>
   <Badge status={p.status} label={p.status} />
-  {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline">Edit</button>}
+  {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline">Edit</button>}
   {isReadOnly(p) && <span className="text-xs text-purple-400">🔒</span>}
   </div>
   ))}
@@ -4469,7 +4469,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <Modal title="Set Up Recurring Rent" onClose={() => setShowRecurringSetup(null)}>
   <div className="space-y-4">
   <p className="text-sm text-gray-600">Would you like to set up automatic monthly rent posting for <strong>{showRecurringSetup.tenant}</strong> at <strong>{showRecurringSetup.property}</strong>?</p>
-  <div className="bg-indigo-50 rounded-lg p-3">
+  <div className="bg-brand-50 rounded-lg p-3">
   <div className="grid grid-cols-2 gap-3">
   <div><div className="text-xs text-gray-500">Monthly Rent</div><div className="font-bold text-gray-800">${safeNum(showRecurringSetup.rent).toLocaleString()}</div></div>
   <div><div className="text-xs text-gray-500">Posts On</div><div className="font-bold text-gray-800">1st of each month</div></div>
@@ -4509,7 +4509,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (error) { showToast("Failed to create recurring entry: " + userError(error.message), "error"); }
   else { addNotification("🔄", "Recurring rent set up for " + showRecurringSetup.tenant); }
   setShowRecurringSetup(null);
-  }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 flex-1">Yes, Set Up Recurring Rent</button>
+  }} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-brand-700 flex-1">Yes, Set Up Recurring Rent</button>
   <button onClick={() => setShowRecurringSetup(null)} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg flex-1">Skip for Now</button>
   </div>
   </div>
@@ -4522,7 +4522,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {savingProperty && (
   <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60] flex items-center justify-center">
   <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
-  <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+  <div className="w-10 h-10 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin" />
   <div className="text-sm font-medium text-slate-700">Setting up property...</div>
   <div className="text-xs text-slate-400">Creating tenant, lease & posting entries</div>
   </div>
@@ -5155,37 +5155,37 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {activePanel && selectedTenant && activePanel === "lease" && (
   <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-end">
   <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-2xl">
-  <div className="px-5 py-4 border-b border-indigo-50 flex items-center justify-between bg-indigo-600 text-white">
+  <div className="px-5 py-4 border-b border-brand-50 flex items-center justify-between bg-brand-600 text-white">
   <div>
   <div className="font-bold">{selectedTenant.name}</div>
-  <div className="text-xs text-indigo-200">{selectedTenant.property}</div>
+  <div className="text-xs text-brand-200">{selectedTenant.property}</div>
   </div>
-  <button onClick={closePanel} className="text-indigo-200 hover:text-white text-xl">✕</button>
+  <button onClick={closePanel} className="text-brand-200 hover:text-white text-xl">✕</button>
   </div>
-  <div className="flex border-b border-indigo-50">
+  <div className="flex border-b border-brand-50">
   {[["ledger", "📒 Ledger"], ["messages", "💬 Messages"], ["lease", "📄 Lease"]].map(([id, label]) => (
   <button key={id} onClick={() => {
   setActivePanel(id);
   if (id === "ledger") openLedger(selectedTenant);
   if (id === "messages") openMessages(selectedTenant);
-  }} className={`flex-1 py-2.5 text-xs font-medium ${activePanel === id ? "border-b-2 border-indigo-600 text-indigo-700" : "text-slate-400 hover:text-slate-700"}`}>{label}</button>
+  }} className={`flex-1 py-2.5 text-xs font-medium ${activePanel === id ? "border-b-2 border-brand-600 text-brand-700" : "text-slate-400 hover:text-slate-700"}`}>{label}</button>
   ))}
   </div>
 
   {/* LEDGER */}
   {activePanel === "ledger" && (
   <div className="flex-1 overflow-y-auto p-4">
-  <div className={`rounded-3xl p-4 mb-4 text-center relative ${safeNum(selectedTenant?.balance) > 0 ? "bg-red-50" : safeNum(selectedTenant?.balance) < 0 ? "bg-green-50" : "bg-indigo-50/30"}`}>
+  <div className={`rounded-3xl p-4 mb-4 text-center relative ${safeNum(selectedTenant?.balance) > 0 ? "bg-red-50" : safeNum(selectedTenant?.balance) < 0 ? "bg-green-50" : "bg-brand-50/30"}`}>
   <button onClick={() => exportLedgerPDF(selectedTenant, ledger)} className="absolute top-3 right-3 text-xs text-red-600 border border-red-200 bg-white px-3 py-1.5 rounded-lg hover:bg-red-50 flex items-center gap-1" title="Export ledger as PDF for sharing"><span className="material-icons-outlined text-sm">picture_as_pdf</span>Export PDF</button>
   <div className="text-xs text-slate-400 mb-1">Current Balance</div>
   <div className={`text-3xl font-bold ${safeNum(selectedTenant?.balance) > 0 ? "text-red-500" : safeNum(selectedTenant?.balance) < 0 ? "text-green-600" : "text-slate-700"}`}>
   {safeNum(selectedTenant?.balance) > 0 ? `-${formatCurrency(selectedTenant.balance)}` : safeNum(selectedTenant?.balance) < 0 ? `Credit ${formatCurrency(Math.abs(selectedTenant.balance))}` : "$0 Current"}
   </div>
   </div>
-  <div className="bg-indigo-50/30 rounded-xl p-3 mb-4">
+  <div className="bg-brand-50/30 rounded-xl p-3 mb-4">
   <div className="text-xs font-semibold text-slate-500 mb-2">Add Transaction</div>
   <div className="grid grid-cols-3 gap-2">
-  <select value={newCharge.type} onChange={e => setNewCharge({ ...newCharge, type: e.target.value })} className="border border-indigo-100 rounded-2xl px-2 py-2 text-xs">
+  <select value={newCharge.type} onChange={e => setNewCharge({ ...newCharge, type: e.target.value })} className="border border-brand-100 rounded-2xl px-2 py-2 text-xs">
   <option value="charge">Charge</option>
   <option value="payment">Payment</option>
   <option value="credit">Credit</option>
@@ -5194,11 +5194,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <Input placeholder="e.g. Rent, Late fee, Repair" value={newCharge.description} title="Description" onChange={e => setNewCharge({ ...newCharge, description: e.target.value })} className="text-xs" />
   <Input placeholder="0.00" value={newCharge.amount} title="Amount ($)" onChange={e => setNewCharge({ ...newCharge, amount: e.target.value })} className="text-xs" />
   </div>
-  <button onClick={addLedgerEntry} className="mt-2 w-full bg-indigo-600 text-white text-xs py-2 rounded-2xl hover:bg-indigo-700">Add Transaction</button>
+  <button onClick={addLedgerEntry} className="mt-2 w-full bg-brand-600 text-white text-xs py-2 rounded-2xl hover:bg-brand-700">Add Transaction</button>
   </div>
   <div className="space-y-2">
   {ledger.map(e => (
-  <div key={e.id} className="bg-white border border-indigo-50 rounded-lg px-3 py-2.5">
+  <div key={e.id} className="bg-white border border-brand-50 rounded-lg px-3 py-2.5">
   <div className="flex justify-between items-start">
   <div>
   <div className="text-sm font-medium text-slate-800">{e.description}</div>
@@ -5224,9 +5224,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="flex-1 overflow-y-auto p-4 space-y-3">
   {messages.map(m => (
   <div key={m.id} className={`flex ${m.sender === "admin" ? "justify-end" : "justify-start"}`}>
-  <div className={`max-w-xs rounded-2xl px-4 py-2.5 ${m.sender === "admin" ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-800"}`}>
+  <div className={`max-w-xs rounded-2xl px-4 py-2.5 ${m.sender === "admin" ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-800"}`}>
   <div className="text-sm">{m.message}</div>
-  <div className={`text-xs mt-1 ${m.sender === "admin" ? "text-indigo-200" : "text-slate-400"}`}>
+  <div className={`text-xs mt-1 ${m.sender === "admin" ? "text-brand-200" : "text-slate-400"}`}>
   {m.sender === "admin" ? "You" : selectedTenant.name} · {new Date(m.created_at).toLocaleDateString()}
   </div>
   </div>
@@ -5234,9 +5234,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ))}
   {messages.length === 0 && <div className="text-center py-6 text-slate-400 text-sm">No messages yet</div>}
   </div>
-  <div className="p-4 border-t border-indigo-50 flex gap-2">
+  <div className="p-4 border-t border-brand-50 flex gap-2">
   <Input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} placeholder="Type a message..." className="flex-1" />
-  <button onClick={sendMessage} className="bg-indigo-600 text-white px-4 py-2.5 rounded-2xl hover:bg-indigo-700 text-sm font-medium">Send</button>
+  <button onClick={sendMessage} className="bg-brand-600 text-white px-4 py-2.5 rounded-2xl hover:bg-brand-700 text-sm font-medium">Send</button>
   </div>
   </div>
   )}
@@ -5244,7 +5244,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* LEASE */}
   {activePanel === "lease" && (
   <div className="flex-1 overflow-y-auto p-4">
-  <div className="bg-white border border-indigo-50 rounded-3xl p-4 mb-4">
+  <div className="bg-white border border-brand-50 rounded-3xl p-4 mb-4">
   <h4 className="font-semibold text-slate-700 mb-3">Lease Details</h4>
   <div className="space-y-2 text-sm">
   {[
@@ -5255,7 +5255,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ["Move-Out Date", selectedTenant.move_out || "—"],
   ["Lease Status", selectedTenant.lease_status],
   ].map(([l, v]) => (
-  <div key={l} className="flex justify-between py-1.5 border-b border-indigo-50/50">
+  <div key={l} className="flex justify-between py-1.5 border-b border-brand-50/50">
   <span className="text-slate-400">{l}</span>
   <span className="font-medium text-slate-800 capitalize">{v}</span>
   </div>
@@ -5263,11 +5263,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   </div>
   {leaseModal === "renew" && (
-  <div className="bg-indigo-50 rounded-3xl p-4 mb-3 border border-indigo-100">
-  <div className="text-sm font-semibold text-indigo-700 mb-2">Enter New Lease End Date</div>
+  <div className="bg-brand-50 rounded-3xl p-4 mb-3 border border-brand-100">
+  <div className="text-sm font-semibold text-brand-700 mb-2">Enter New Lease End Date</div>
   <Input type="date" value={leaseInput} onChange={e => setLeaseInput(e.target.value)} className="mb-2" />
   <div className="flex gap-2">
-  <button onClick={() => renewLease(leaseInput)} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">Confirm Renewal</button>
+  <button onClick={() => renewLease(leaseInput)} className="bg-brand-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-brand-700">Confirm Renewal</button>
   <button onClick={() => setLeaseModal(null)} className="bg-slate-200 text-slate-500 text-xs px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
@@ -5286,18 +5286,18 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   )}
   <div className="space-y-2">
-  <button onClick={() => openLeaseForSigning(selectedTenant)} className="w-full flex items-center justify-between bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-2xl px-4 py-3 text-left">
+  <button onClick={() => openLeaseForSigning(selectedTenant)} className="w-full flex items-center justify-between bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-2xl px-4 py-3 text-left">
   <div>
-  <div className="text-sm font-medium text-indigo-800">✍️ Generate & E-Sign Lease</div>
-  <div className="text-xs text-indigo-400">Opens PDF with signature canvas</div>
+  <div className="text-sm font-medium text-brand-800">✍️ Generate & E-Sign Lease</div>
+  <div className="text-xs text-brand-400">Opens PDF with signature canvas</div>
   </div>
-  <span className="text-indigo-300">→</span>
+  <span className="text-brand-300">→</span>
   </button>
   {[
   { label: "🔄 Renew Lease", desc: "Extend lease term", modal: "renew" },
   { label: "📋 Generate Move-Out Notice", desc: "30/60 day notice", modal: "notice" },
   ].map(item => (
-  <button key={item.label} onClick={() => { setLeaseModal(item.modal); setLeaseInput(""); }} className="w-full flex items-center justify-between bg-indigo-50/30 hover:bg-indigo-50 border border-indigo-50 hover:border-indigo-200 rounded-2xl px-4 py-3 text-left">
+  <button key={item.label} onClick={() => { setLeaseModal(item.modal); setLeaseInput(""); }} className="w-full flex items-center justify-between bg-brand-50/30 hover:bg-brand-50 border border-brand-50 hover:border-brand-200 rounded-2xl px-4 py-3 text-left">
   <div>
   <div className="text-sm font-medium text-slate-800">{item.label}</div>
   <div className="text-xs text-slate-400">{item.desc}</div>
@@ -5317,40 +5317,40 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-end">
   <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-2xl overflow-y-auto">
   {/* Header */}
-  <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 p-6 text-white">
+  <div className="bg-gradient-to-r from-brand-600 to-brand-800 p-6 text-white">
   <div className="flex items-center justify-between">
   <div className="flex items-center gap-4">
   <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold">{selectedTenant.name?.[0]}</div>
   <div>
   <h2 className="text-xl font-bold">{selectedTenant.name}</h2>
-  <div className="text-indigo-200 text-sm">{selectedTenant.property}</div>
+  <div className="text-brand-200 text-sm">{selectedTenant.property}</div>
   </div>
   </div>
   <button onClick={() => { setSelectedTenant(null); setActivePanel(null); }} className="text-white/70 hover:text-white text-2xl">✕</button>
   </div>
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
-  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-indigo-200">Rent</div><div className="text-lg font-bold">{selectedTenant.rent ? formatCurrency(selectedTenant.rent) : "—"}</div></div>
-  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-indigo-200">Balance</div><div className={"text-lg font-bold " + (selectedTenant.balance > 0 ? "text-red-300" : "text-green-300")}>{selectedTenant.balance > 0 ? formatCurrency(selectedTenant.balance) : "Current"}</div></div>
-  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-indigo-200">Status</div><div className="text-lg font-bold capitalize">{selectedTenant.lease_status}</div></div>
-  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-indigo-200">Lease End</div><div className="text-lg font-bold">{selectedTenant.lease_end_date || selectedTenant.move_out || "—"}</div></div>
+  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Rent</div><div className="text-lg font-bold">{selectedTenant.rent ? formatCurrency(selectedTenant.rent) : "—"}</div></div>
+  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Balance</div><div className={"text-lg font-bold " + (selectedTenant.balance > 0 ? "text-red-300" : "text-green-300")}>{selectedTenant.balance > 0 ? formatCurrency(selectedTenant.balance) : "Current"}</div></div>
+  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Status</div><div className="text-lg font-bold capitalize">{selectedTenant.lease_status}</div></div>
+  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Lease End</div><div className="text-lg font-bold">{selectedTenant.lease_end_date || selectedTenant.move_out || "—"}</div></div>
   </div>
   </div>
 
   {/* Contact Info */}
-  <div className="px-6 py-4 border-b border-indigo-50">
+  <div className="px-6 py-4 border-b border-brand-50">
   <div className="space-y-2 text-sm">
-  <div><span className="text-xs text-slate-400 block">Email</span><a href={"mailto:" + selectedTenant.email} className="text-indigo-600 hover:underline break-all">{selectedTenant.email || "—"}</a></div>
+  <div><span className="text-xs text-slate-400 block">Email</span><a href={"mailto:" + selectedTenant.email} className="text-brand-600 hover:underline break-all">{selectedTenant.email || "—"}</a></div>
   <div className="grid grid-cols-2 gap-3">
-  <div><span className="text-xs text-slate-400 block">Phone</span><a href={"tel:" + selectedTenant.phone} className="text-indigo-600 hover:underline">{selectedTenant.phone || "—"}</a></div>
+  <div><span className="text-xs text-slate-400 block">Phone</span><a href={"tel:" + selectedTenant.phone} className="text-brand-600 hover:underline">{selectedTenant.phone || "—"}</a></div>
   <div><span className="text-xs text-slate-400 block">Lease Start</span><span className="text-slate-700">{selectedTenant.lease_start || selectedTenant.move_in || "—"}</span></div>
   </div>
   </div>
   </div>
 
   {/* Tab navigation */}
-  <div className="flex border-b border-indigo-50 px-6 overflow-x-auto">
+  <div className="flex border-b border-brand-50 px-6 overflow-x-auto">
   {[["ledger","Ledger"],["documents","Documents"],["messages","Messages"],["actions","Actions"]].map(([id, label]) => (
-  <button key={id} onClick={() => { setActivePanel(id); if (id === "documents" && selectedTenant) fetchTenantDocs(selectedTenant); if (id === "ledger" && selectedTenant) openLedger(selectedTenant); if (id === "messages" && selectedTenant) openMessages(selectedTenant); }} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + ((activePanel === id || (id === "ledger" && activePanel === "detail")) ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}</button>
+  <button key={id} onClick={() => { setActivePanel(id); if (id === "documents" && selectedTenant) fetchTenantDocs(selectedTenant); if (id === "ledger" && selectedTenant) openLedger(selectedTenant); if (id === "messages" && selectedTenant) openMessages(selectedTenant); }} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + ((activePanel === id || (id === "ledger" && activePanel === "detail")) ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}</button>
   ))}
   </div>
 
@@ -5362,12 +5362,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div>
   <div className="flex items-center justify-between mb-3">
   <h3 className="text-sm font-semibold text-slate-700">Transaction History</h3>
-  <button onClick={() => setPage("accounting", "newJE")} className="flex items-center gap-1.5 bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700"><span className="material-icons-outlined text-sm">add_circle</span>New Entry</button>
+  <button onClick={() => setPage("accounting", "newJE")} className="flex items-center gap-1.5 bg-brand-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-brand-700"><span className="material-icons-outlined text-sm">add_circle</span>New Entry</button>
   </div>
   {ledger.length === 0 ? <div className="text-center py-6 text-slate-400 text-sm">No transactions yet</div> : (
   <div className="space-y-1">
   {ledger.slice(0, 20).map((e, i) => (
-  <div key={i} className="flex items-center justify-between py-2 border-b border-indigo-50/50 text-sm">
+  <div key={i} className="flex items-center justify-between py-2 border-b border-brand-50/50 text-sm">
   <div><div className="font-medium text-slate-700">{e.description}</div><div className="text-xs text-slate-400">{e.date}</div></div>
   <div className={"font-semibold " + (e.type === "payment" || e.type === "credit" ? "text-green-600" : "text-red-500")}>{e.type === "payment" || e.type === "credit" ? "+" : "-"}{formatCurrency(Math.abs(e.amount))}</div>
   </div>
@@ -5408,7 +5408,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   </div>
   <div className="flex items-center gap-2">
-  <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-indigo-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</button>
+  <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-brand-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</button>
   {isAdmin && <button onClick={async () => {
   if (!await showConfirm({ message: `Delete document "${d.name}"?\n\nThis will remove the document from active views. It can be recovered within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from("documents").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", d.id).eq("company_id", companyId);
@@ -5422,7 +5422,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ))}
   </div>
   )}
-  <button onClick={() => setShowDocUpload({ property: selectedTenant?.property || "", tenant: selectedTenant?.name || "" })} className="mt-3 bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">Upload Documents</button>
+  <button onClick={() => setShowDocUpload({ property: selectedTenant?.property || "", tenant: selectedTenant?.name || "" })} className="mt-3 bg-brand-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-brand-700">Upload Documents</button>
   </div>
   )}
 
@@ -5432,7 +5432,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <h3 className="text-sm font-semibold text-slate-700 mb-3">Messages</h3>
   <div className="space-y-2 max-h-48 overflow-y-auto mb-3">
   {messages.length === 0 ? <div className="text-center py-4 text-slate-400 text-sm">No messages</div> : messages.map((m, i) => (
-  <div key={i} className={"rounded-2xl px-3 py-2 text-sm max-w-xs " + (m.sender === selectedTenant.name ? "bg-slate-100 text-slate-700 mr-auto" : "bg-indigo-600 text-white ml-auto")}>
+  <div key={i} className={"rounded-2xl px-3 py-2 text-sm max-w-xs " + (m.sender === selectedTenant.name ? "bg-slate-100 text-slate-700 mr-auto" : "bg-brand-600 text-white ml-auto")}>
   <div className="text-xs opacity-60 mb-0.5">{m.sender}</div>
   {m.message}
   </div>
@@ -5440,7 +5440,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   <div className="flex gap-2">
   <Input value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type a message..." className="flex-1" onKeyDown={e => e.key === "Enter" && sendMessage()} />
-  <button onClick={sendMessage} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Send</button>
+  <button onClick={sendMessage} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg">Send</button>
   </div>
   </div>
   )}
@@ -5448,7 +5448,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* Actions tab */}
   {activePanel === "actions" && (
   <div className="grid grid-cols-2 gap-3">
-  <button onClick={() => startEdit(selectedTenant)} className="bg-indigo-50/30 rounded-3xl p-4 text-center hover:bg-indigo-50/50 transition-all">
+  <button onClick={() => startEdit(selectedTenant)} className="bg-brand-50/30 rounded-3xl p-4 text-center hover:bg-brand-50/50 transition-all">
   <div className="text-2xl mb-1">✏️</div><div className="text-sm font-semibold text-slate-700">Edit Tenant</div>
   </button>
   <button onClick={() => inviteTenant(selectedTenant)} className="bg-purple-50 rounded-3xl p-4 text-center hover:bg-purple-100 transition-all">
@@ -5471,11 +5471,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   )}
 
   {/* Tab Navigation */}
-  <div className="flex flex-col md:flex-row md:items-center gap-2 mb-4 border-b border-indigo-50 pb-3">
+  <div className="flex flex-col md:flex-row md:items-center gap-2 mb-4 border-b border-brand-50 pb-3">
   <h2 className="text-xl md:text-2xl font-bold text-gray-800">Tenants</h2>
   <div className="flex gap-1 overflow-x-auto pb-1">
   {[["tenants", "Tenants"], ["leases", "Leases"], ["moveout", "Move-Out"], ["evictions", "Evictions"], ["archived", "Archived"]].map(([id, label]) => (
-  <button key={id} onClick={() => { setTenantTab(id); if (id === "archived") { supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200).then(({ data }) => setArchivedTenants(data || [])); } }} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (tenantTab === id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
+  <button key={id} onClick={() => { setTenantTab(id); if (id === "archived") { supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200).then(({ data }) => setArchivedTenants(data || [])); } }} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (tenantTab === id ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
   ))}
   </div>
   </div>
@@ -5484,7 +5484,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {tenantTab === "archived" && (
   <div>
   {archivedTenants.length === 0 ? (
-  <div className="text-center py-12 bg-white rounded-xl border border-gray-100"><div className="text-gray-400">No archived tenants</div><button onClick={async () => { if (!guardSubmit("refreshArchived")) return; try { const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200); setArchivedTenants(data || []); } finally { guardRelease("refreshArchived"); } }} className="text-xs text-indigo-600 mt-2 hover:underline">Refresh</button></div>
+  <div className="text-center py-12 bg-white rounded-xl border border-gray-100"><div className="text-gray-400">No archived tenants</div><button onClick={async () => { if (!guardSubmit("refreshArchived")) return; try { const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200); setArchivedTenants(data || []); } finally { guardRelease("refreshArchived"); } }} className="text-xs text-brand-600 mt-2 hover:underline">Refresh</button></div>
   ) : archivedTenants.map(t => (
   <div key={t.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4 opacity-70 mb-2">
   <div className="flex-1">
@@ -5563,29 +5563,29 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="flex items-center justify-between mb-3">
   <h2 className="text-2xl font-manrope font-bold text-slate-800">Tenants</h2>
   <div className="flex gap-2 items-center">
-  <div className="flex bg-indigo-50 rounded-2xl p-0.5">
+  <div className="flex bg-brand-50 rounded-2xl p-0.5">
   {[["card","\u25a6"],["table","\u2630"],["compact","\u2261"]].map(([m,icon]) => (
-  <button key={m} onClick={() => setTenantView(m)} className={`px-3 py-1.5 text-sm rounded-md ${tenantView === m ? "bg-white shadow-sm text-indigo-700 font-semibold" : "text-slate-400"}`}>{icon}</button>
+  <button key={m} onClick={() => setTenantView(m)} className={`px-3 py-1.5 text-sm rounded-md ${tenantView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-slate-400"}`}>{icon}</button>
   ))}
   </div>
-  <button onClick={exportTenants} className="text-sm text-indigo-600 border border-indigo-200 px-3 py-2 rounded-2xl hover:bg-indigo-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
+  <button onClick={exportTenants} className="text-sm text-brand-600 border border-brand-200 px-3 py-2 rounded-2xl hover:bg-brand-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
   {/* Tenants are added through the Property Setup Wizard */}
   </div>
   </div>
   {/* Filters */}
   <div className="flex flex-wrap gap-2 mb-4">
   <Input placeholder="Search name, email, phone, property..." value={tenantSearch || ""} onChange={e => setTenantSearch(e.target.value)} className="flex-1 min-w-0 sm:min-w-48" />
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} >
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} >
   <option value="all">All Status</option><option value="active">Active</option><option value="notice">Notice</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
   </select>
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={tenantFilterProp} onChange={e => setTenantFilterProp(e.target.value)} >
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={tenantFilterProp} onChange={e => setTenantFilterProp(e.target.value)} >
   <option value="all">All Properties</option>
   {[...new Set(tenants.map(t => t.property).filter(Boolean))].sort().map(p => <option key={p} value={p}>{p.length > 30 ? p.slice(0, 30) + "..." : p}</option>)}
   </select>
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={tenantFilterBalance} onChange={e => setTenantFilterBalance(e.target.value)} >
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={tenantFilterBalance} onChange={e => setTenantFilterBalance(e.target.value)} >
   <option value="all">All Balances</option><option value="delinquent">Delinquent (owes)</option><option value="current">Current ($0)</option><option value="credit">Credit (overpaid)</option>
   </select>
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={tenantFilterLeaseExpiry} onChange={e => setTenantFilterLeaseExpiry(e.target.value)} >
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={tenantFilterLeaseExpiry} onChange={e => setTenantFilterLeaseExpiry(e.target.value)} >
   <option value="all">All Leases</option><option value="30">Expires in 30 days</option><option value="60">Expires in 60 days</option><option value="90">Expires in 90 days</option><option value="expired">Expired</option><option value="no_lease">No lease date</option>
   </select>
   {(tenantFilter !== "all" || tenantFilterProp !== "all" || tenantFilterBalance !== "all" || tenantFilterLeaseExpiry !== "all" || tenantSearch) && (
@@ -5594,8 +5594,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   {/* Bulk action bar */}
   {selectedTenants.size > 0 && (
-  <div className="bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3 mb-4 flex items-center justify-between">
-  <span className="text-sm font-medium text-indigo-800">{selectedTenants.size} tenant{selectedTenants.size > 1 ? "s" : ""} selected</span>
+  <div className="bg-brand-50 border border-brand-200 rounded-2xl px-4 py-3 mb-4 flex items-center justify-between">
+  <span className="text-sm font-medium text-brand-800">{selectedTenants.size} tenant{selectedTenants.size > 1 ? "s" : ""} selected</span>
   <div className="flex gap-2">
   <button onClick={() => setBulkAction("notice")} className="text-xs bg-orange-100 text-orange-700 px-3 py-1.5 rounded-lg hover:bg-orange-200 font-medium">Send Notice</button>
   <button onClick={() => setBulkAction("charge")} className="text-xs bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-200 font-medium">Add Charge</button>
@@ -5611,7 +5611,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="space-y-3">
   <p className="text-sm text-slate-500">This will set the selected tenants' status to "notice" and generate a move-out date.</p>
   <div><label className="text-xs font-medium text-slate-400 block mb-1">Notice Period (days)</label>
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" id="bulk-notice-days" >
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" id="bulk-notice-days" >
   <option value="30">30 days</option><option value="60">60 days</option><option value="90">90 days</option>
   </select>
   </div>
@@ -5640,7 +5640,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div><label className="text-xs font-medium text-slate-400 block mb-1">Description</label><Input id="bulk-charge-desc" placeholder="Late fee, utility charge, etc." /></div>
   <div><label className="text-xs font-medium text-slate-400 block mb-1">Amount ($)</label><Input id="bulk-charge-amt" type="number" placeholder="50.00" /></div>
   <div><label className="text-xs font-medium text-slate-400 block mb-1">Revenue Account</label>
-  <select id="bulk-charge-acct" className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
+  <select id="bulk-charge-acct" className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm">
   <option value="4100">4100 — Other Income</option>
   <option value="4000">4000 — Rental Income</option>
   <option value="4010">4010 — Late Fee Income</option>
@@ -5686,7 +5686,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <Modal title={`Change Status — ${selectedTenants.size} Tenant(s)`} onClose={() => setBulkAction(null)}>
   <div className="space-y-3">
   <div><label className="text-xs font-medium text-slate-400 block mb-1">New Status</label>
-  <select id="bulk-status-val" className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" >
+  <select id="bulk-status-val" className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" >
   <option value="active">Active</option><option value="notice">Notice</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
   </select>
   </div>
@@ -5734,7 +5734,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   )}
 
   {showForm && editingTenant && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-slate-700 mb-3">{editingTenant ? "Edit Tenant" : "New Tenant"}</h3>
   <div className="grid grid-cols-2 gap-3">
   <div className="col-span-2 grid grid-cols-6 gap-3">
@@ -5746,7 +5746,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({ ...form, phone: formatPhoneInput(e.target.value) })} maxLength={14} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Monthly Rent ($)</label><Input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Status</label><select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Status</label><select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm">
   {["active", "notice", "expired"].map(s => <option key={s}>{s}</option>)}
   </select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Lease Start / Move-in</label><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} /></div>
@@ -5754,13 +5754,13 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Security Deposit ($)</label><Input placeholder="0" value={form.security_deposit || ""} onChange={e => setForm({ ...form, security_deposit: e.target.value })} /></div>
   </div>
   {form.lease_start && form.lease_end && form.rent && (
-  <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 mt-2 text-xs text-indigo-700">
+  <div className="bg-brand-50 border border-brand-200 rounded-xl p-3 mt-2 text-xs text-brand-700">
   A lease will be auto-created and rent charges posted to accounting.
   {Number(form.security_deposit) > 0 && " Security deposit will also be recorded."}
   </div>
   )}
   <div className="flex gap-2 mt-3">
-  <button onClick={saveTenant} disabled={_submitGuards["saveTenant"]} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">{_submitGuards["saveTenant"] ? "Saving..." : "Save"}</button>
+  <button onClick={saveTenant} disabled={_submitGuards["saveTenant"]} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">{_submitGuards["saveTenant"] ? "Saving..." : "Save"}</button>
   <button onClick={() => { setShowForm(false); setEditingTenant(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
@@ -5791,9 +5791,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   });
   const TenantActions = ({t}) => (
   <div className="flex gap-1.5 flex-wrap">
-  <button onClick={() => openLedger(t)} className="text-xs text-indigo-600 border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50">Ledger</button>
-  <button onClick={() => openMessages(t)} className="text-xs text-slate-500 border border-indigo-100 px-2 py-1 rounded-lg hover:bg-indigo-50/30">Msg</button>
-  <button onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="text-xs text-slate-500 border border-indigo-100 px-2 py-1 rounded-lg hover:bg-indigo-50/30">Lease</button>
+  <button onClick={() => openLedger(t)} className="text-xs text-brand-600 border border-brand-200 px-2 py-1 rounded-lg hover:bg-brand-50">Ledger</button>
+  <button onClick={() => openMessages(t)} className="text-xs text-slate-500 border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Msg</button>
+  <button onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="text-xs text-slate-500 border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Lease</button>
   <button onClick={() => startEdit(t)} className="text-xs text-blue-600 hover:underline">Edit</button>
   <button onClick={() => deleteTenant(t.id, t.name)} className="text-xs text-red-500 hover:underline">Delete</button>
   <button onClick={() => inviteTenant(t)} className="text-xs text-purple-600 hover:underline">Invite</button>
@@ -5803,10 +5803,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {tenantView === "card" && (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
   {ft.map(t => (
-  <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className={"rounded-3xl shadow-card border p-4 cursor-pointer hover:shadow-md transition-all " + (t.doc_status === "pending_docs" ? "bg-slate-50 border-amber-200 opacity-60" : "bg-white border-indigo-50 hover:border-indigo-200")}>
+  <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className={"rounded-3xl shadow-card border p-4 cursor-pointer hover:shadow-md transition-all " + (t.doc_status === "pending_docs" ? "bg-slate-50 border-amber-200 opacity-60" : "bg-white border-brand-50 hover:border-brand-200")}>
   <div className="flex justify-between items-start mb-2">
   <div className="flex items-center gap-3">
-  <div className={"w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg " + (t.doc_status === "pending_docs" ? "bg-amber-100 text-amber-700" : "bg-indigo-100 text-indigo-700")}>{t.name?.[0]}</div>
+  <div className={"w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg " + (t.doc_status === "pending_docs" ? "bg-amber-100 text-amber-700" : "bg-brand-100 text-brand-700")}>{t.name?.[0]}</div>
   <div><div className="font-semibold text-slate-800">{t.name}</div><div className="text-xs text-slate-400">{t.property}</div>{t.doc_status === "pending_docs" && <div className="text-xs text-amber-600 font-medium">Pending documents</div>}</div>
   </div>
   <Badge status={t.lease_status} />
@@ -5816,8 +5816,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div><span className="text-slate-400">Balance</span><div className={`font-semibold ${t.balance > 0 ? "text-red-500" : "text-slate-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</div></div>
   <div><span className="text-slate-400">Rent</span><div className="font-semibold text-slate-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</div></div>
   </div>
-  <div className="flex items-center justify-between mt-3 pt-2 border-t border-indigo-50">
-  <button onClick={e => { e.stopPropagation(); setSelectedTenant(t); setActivePanel("ledger"); openLedger(t); }} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">View Ledger</button>
+  <div className="flex items-center justify-between mt-3 pt-2 border-t border-brand-50">
+  <button onClick={e => { e.stopPropagation(); setSelectedTenant(t); setActivePanel("ledger"); openLedger(t); }} className="text-xs text-brand-600 hover:text-brand-800 font-medium">View Ledger</button>
   <span className="text-xs text-slate-300">Click for details →</span>
   </div>
   </div>
@@ -5825,9 +5825,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   )}
   {tenantView === "table" && (
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-x-auto">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-x-auto">
   <table className="w-full text-sm">
-  <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
+  <thead className="bg-brand-50/30 text-xs text-slate-400 uppercase">
   <tr>
   <th className="px-3 py-3 text-left w-8"><input type="checkbox" checked={ft.length > 0 && ft.every(t => selectedTenants.has(t.id))} onChange={e => { if (e.target.checked) setSelectedTenants(new Set(ft.map(t => t.id))); else setSelectedTenants(new Set()); }} className="rounded" /></th>
   <th className="px-4 py-3 text-left">Name</th><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Email</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-right">Rent</th><th className="px-4 py-3 text-right">Balance</th><th className="px-4 py-3 text-right">Actions</th>
@@ -5835,9 +5835,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </thead>
   <tbody>
   {ft.map(t => (
-  <tr key={t.id} className={`border-t border-indigo-50/50 hover:bg-indigo-50/50 cursor-pointer ${selectedTenants.has(t.id) ? "bg-indigo-50/60" : ""}`}>
+  <tr key={t.id} className={`border-t border-brand-50/50 hover:bg-brand-50/50 cursor-pointer ${selectedTenants.has(t.id) ? "bg-brand-50/60" : ""}`}>
   <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><input type="checkbox" checked={selectedTenants.has(t.id)} onChange={e => { const next = new Set(selectedTenants); if (e.target.checked) next.add(t.id); else next.delete(t.id); setSelectedTenants(next); }} className="rounded" /></td>
-  <td className="px-4 py-2.5 font-medium text-indigo-600" onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }}>{t.name}</td>
+  <td className="px-4 py-2.5 font-medium text-brand-600" onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }}>{t.name}</td>
   <td className="px-4 py-2.5 text-slate-500">{t.property}</td>
   <td className="px-4 py-2.5 text-slate-400 text-xs">{t.email}</td>
   <td className="px-4 py-2.5"><Badge status={t.lease_status} /></td>
@@ -5851,15 +5851,15 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   )}
   {tenantView === "compact" && (
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 divide-y divide-indigo-50/50">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 divide-y divide-brand-50/50">
   {ft.map(t => (
-  <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className="flex items-center gap-3 px-4 py-2.5 hover:bg-indigo-50/50 cursor-pointer">
-  <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">{t.name?.[0]}</div>
+  <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className="flex items-center gap-3 px-4 py-2.5 hover:bg-brand-50/50 cursor-pointer">
+  <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold text-xs">{t.name?.[0]}</div>
   <div className="flex-1 min-w-0"><span className="text-sm font-medium text-slate-800">{t.name}</span><span className="text-xs text-slate-400 ml-2">{t.property}</span></div>
   <span className="text-sm font-semibold text-slate-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</span>
   <span className={`text-xs font-semibold ${t.balance > 0 ? "text-red-500" : "text-slate-400"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</span>
   <Badge status={t.lease_status} />
-  <button onClick={() => openLedger(t)} className="text-xs text-indigo-600 hover:underline">Ledger</button>
+  <button onClick={() => openLedger(t)} className="text-xs text-brand-600 hover:underline">Ledger</button>
   <button onClick={() => startEdit(t)} className="text-xs text-blue-600 hover:underline">Edit</button>
   </div>
   ))}
@@ -5873,7 +5873,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {savingTenant && (
   <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60] flex items-center justify-center">
   <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3">
-  <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+  <div className="w-10 h-10 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin" />
   <div className="text-sm font-medium text-slate-700">Setting up tenant...</div>
   <div className="text-xs text-slate-400">Creating accounts, lease & posting entries</div>
   </div>
@@ -5945,7 +5945,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   { label: "Property", key: "property" }, { label: "Amount", key: "amount" },
   { label: "Type", key: "type" }, { label: "Method", key: "method" },
   { label: "Reference", key: "reference" },
-  ], "payments-export", showToast)} className="text-sm text-indigo-600 border border-indigo-200 px-3 py-2 rounded-2xl hover:bg-indigo-50 font-medium">
+  ], "payments-export", showToast)} className="text-sm text-brand-600 border border-brand-200 px-3 py-2 rounded-2xl hover:bg-brand-50 font-medium">
   <span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export
   </button>
   <button onClick={() => setPage("accounting", "newJE")} className="bg-green-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-green-700 flex items-center gap-1.5">
@@ -5954,9 +5954,9 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   </div>
   </div>
 
-  <div className="flex gap-1 mb-4 border-b border-indigo-50">
+  <div className="flex gap-1 mb-4 border-b border-brand-50">
   {[["payments", "Payments"], ["autopay", "Autopay & Recurring"]].map(([id, label]) => (
-  <button key={id} onClick={() => setPayTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (payTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}</button>
+  <button key={id} onClick={() => setPayTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (payTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}</button>
   ))}
   </div>
 
@@ -5964,7 +5964,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   {payTab === "payments" && (<>
   <div className="grid grid-cols-2 gap-3 mb-5">
   <StatCard label="Total Collected" value={formatCurrency(payments.reduce((s, p) => s + p.amount, 0))} color="text-green-600" sub="From journal entries" />
-  <StatCard label="Transactions" value={payments.length} color="text-indigo-600" sub="Posted payments" />
+  <StatCard label="Transactions" value={payments.length} color="text-brand-600" sub="Posted payments" />
   </div>
 
   <div className="flex flex-wrap gap-2 mb-4">
@@ -5976,7 +5976,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   )}
   </div>
 
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-hidden">
   <table className="w-full text-sm">
   <thead className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wider">
   <tr>
@@ -6220,16 +6220,16 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   {viewingPhotos && (
   <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
   <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-  <div className="flex items-center justify-between px-6 py-4 border-b border-indigo-50 sticky top-0 bg-white">
+  <div className="flex items-center justify-between px-6 py-4 border-b border-brand-50 sticky top-0 bg-white">
   <div><h3 className="font-bold text-slate-800">📸 Photos — {viewingPhotos.issue}</h3><p className="text-xs text-slate-400">{viewingPhotos.property}</p></div>
   <button onClick={() => setViewingPhotos(null)} className="text-slate-400 hover:text-slate-500 text-xl">✕</button>
   </div>
   <div className="p-6">
-  <div className="bg-indigo-50/30 rounded-3xl p-4 mb-4">
+  <div className="bg-brand-50/30 rounded-3xl p-4 mb-4">
   <div className="text-xs font-semibold text-slate-500 mb-2">Upload New Photo</div>
   <div className="flex gap-2">
   <Input type="file" accept="image/*" ref={photoRef} className="flex-1" />
-  <button onClick={uploadPhoto} disabled={uploadingPhoto} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700 disabled:opacity-50">{uploadingPhoto ? "Uploading..." : "Upload"}</button>
+  <button onClick={uploadPhoto} disabled={uploadingPhoto} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700 disabled:opacity-50">{uploadingPhoto ? "Uploading..." : "Upload"}</button>
   </div>
   </div>
   {woPhotos.length === 0 ? (
@@ -6237,7 +6237,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   ) : (
   <div className="grid grid-cols-2 gap-3">
   {woPhotos.map(p => (
-  <div key={p.id} className="relative group rounded-3xl overflow-hidden border border-indigo-50">
+  <div key={p.id} className="relative group rounded-3xl overflow-hidden border border-brand-50">
   <img src={p.url} alt={p.caption} className="w-full h-40 object-cover" />
   <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
   <button onClick={() => deletePhoto(p.id)} className="opacity-0 group-hover:opacity-100 bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg">Delete</button>
@@ -6254,11 +6254,11 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div className="flex flex-col md:flex-row md:items-center justify-between mb-5 gap-2">
   <h2 className="text-xl md:text-2xl font-manrope font-bold text-slate-800">Maintenance</h2>
   <div className="flex items-center gap-2">
-  <button onClick={exportWorkOrders} className="text-sm text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-2xl hover:bg-indigo-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
+  <button onClick={exportWorkOrders} className="text-sm text-brand-600 border border-brand-200 px-3 py-1.5 rounded-2xl hover:bg-brand-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
   </div>
   <div className="flex gap-1 overflow-x-auto pb-1">
   {[["workorders", "Work Orders"], ["inspections", "Inspections"], ["vendors", "Vendors"], ["archived", "Archived"]].map(([id, label]) => (
-  <button key={id} onClick={() => setMaintTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap " + (maintTab === id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
+  <button key={id} onClick={() => setMaintTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap " + (maintTab === id ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
   ))}
   </div>
   </div>
@@ -6271,30 +6271,30 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   {maintTab === "workorders" && (<>
   <div className="flex items-center justify-between mb-4">
   <div></div>
-  <button onClick={() => { setEditingWO(null); setForm({ property: "", tenant: "", issue: "", priority: "normal", status: "open", assigned: "", cost: 0, notes: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Work Order</button>
+  <button onClick={() => { setEditingWO(null); setForm({ property: "", tenant: "", issue: "", priority: "normal", status: "open", assigned: "", cost: 0, notes: "" }); setShowForm(!showForm); }} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Work Order</button>
   </div>
 
   {showForm && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-slate-700 mb-3">{editingWO ? "Edit Work Order" : "New Work Order"}</h3>
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={(v, prop) => {
   setForm({ ...form, property: v, tenant: prop?.tenant || "" });
   }} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant</label><input placeholder={form.property && !form.tenant ? "Vacant — no tenant" : "Tenant name"} value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className={"border rounded-lg px-3 py-2 text-sm w-full " + (!form.tenant && form.property ? "border-gray-100 bg-indigo-50/30 text-slate-400" : "border-indigo-100")} readOnly={!!(form.property && !form.tenant)} /></div>
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant</label><input placeholder={form.property && !form.tenant ? "Vacant — no tenant" : "Tenant name"} value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className={"border rounded-lg px-3 py-2 text-sm w-full " + (!form.tenant && form.property ? "border-gray-100 bg-brand-50/30 text-slate-400" : "border-brand-100")} readOnly={!!(form.property && !form.tenant)} /></div>
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Issue *</label><Input placeholder="Describe the maintenance issue" value={form.issue} onChange={e => setForm({ ...form, issue: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Priority</label><select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Priority</label><select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm">
   {["normal", "emergency", "low"].map(p => <option key={p}>{p}</option>)}
   </select></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Status</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
   {["open", "in_progress", "completed"].map(s => <option key={s}>{s}</option>)}
   </select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Assigned To</label><Input placeholder="Vendor or staff name" value={form.assigned} onChange={e => setForm({ ...form, assigned: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Cost ($)</label><Input placeholder="0.00" type="number" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} /></div>
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="Completion details, parts used, etc." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="Completion details, parts used, etc." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={saveWorkOrder} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">Save</button>
+  <button onClick={saveWorkOrder} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">Save</button>
   <button onClick={() => { setShowForm(false); setEditingWO(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-2xl hover:bg-slate-100">Cancel</button>
   </div>
   </div>
@@ -6302,15 +6302,15 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
 
   <div className="flex flex-wrap gap-2 mb-4">
   {["all", "open", "in_progress", "completed", "emergency"].map(s => (
-  <button key={s} onClick={() => setFilter(s)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === s ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{s.replace("_", " ")}</button>
+  <button key={s} onClick={() => setFilter(s)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === s ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{s.replace("_", " ")}</button>
   ))}
   <div className="flex-1" />
   <Input placeholder="Search issue, property, tenant..." value={woSearch} onChange={e => setWoSearch(e.target.value)} className="flex-1 min-w-0 sm:min-w-40" />
-  <select value={woFilterProp} onChange={e => setWoFilterProp(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm">
+  <select value={woFilterProp} onChange={e => setWoFilterProp(e.target.value)} className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm">
   <option value="all">All Properties</option>
   {[...new Set(workOrders.map(w => w.property).filter(Boolean))].sort().map(p => <option key={p} value={p}>{p.length > 30 ? p.slice(0, 30) + "..." : p}</option>)}
   </select>
-  <select value={woFilterAssigned} onChange={e => setWoFilterAssigned(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm">
+  <select value={woFilterAssigned} onChange={e => setWoFilterAssigned(e.target.value)} className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm">
   <option value="all">All Assigned</option><option value="_unassigned">Unassigned</option>
   {[...new Set(workOrders.map(w => w.assigned).filter(Boolean))].sort().map(a => <option key={a} value={a}>{a}</option>)}
   </select>
@@ -6318,8 +6318,8 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div className="text-xs text-slate-400 mb-3">{filtered.length} of {workOrders.length} work orders</div>
   {/* WO Bulk Action Bar */}
   {selectedWOs.size > 0 && (
-  <div className="bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3 mb-3 flex items-center justify-between">
-  <span className="text-sm font-medium text-indigo-800">{selectedWOs.size} work order{selectedWOs.size > 1 ? "s" : ""} selected</span>
+  <div className="bg-brand-50 border border-brand-200 rounded-2xl px-4 py-3 mb-3 flex items-center justify-between">
+  <span className="text-sm font-medium text-brand-800">{selectedWOs.size} work order{selectedWOs.size > 1 ? "s" : ""} selected</span>
   <div className="flex gap-2">
   <button onClick={() => bulkUpdateWOStatus("in_progress")} className="text-xs bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-200 font-medium">In Progress</button>
   <button onClick={() => bulkUpdateWOStatus("completed")} className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-200 font-medium">Complete</button>
@@ -6330,10 +6330,10 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   )}
   <div className="space-y-3">
   {filtered.map(w => (
-  <div key={w.id} className={"bg-white rounded-3xl shadow-card border p-4 " + (selectedWOs.has(w.id) ? "border-indigo-300 ring-1 ring-indigo-200" : "border-indigo-50")}>
+  <div key={w.id} className={"bg-white rounded-3xl shadow-card border p-4 " + (selectedWOs.has(w.id) ? "border-brand-300 ring-1 ring-brand-200" : "border-brand-50")}>
   <div className="flex justify-between items-start">
   <div className="flex items-start gap-3">
-  <input type="checkbox" checked={selectedWOs.has(w.id)} onChange={e => { const s = new Set(selectedWOs); e.target.checked ? s.add(w.id) : s.delete(w.id); setSelectedWOs(s); }} className="mt-1.5 accent-indigo-600" />
+  <input type="checkbox" checked={selectedWOs.has(w.id)} onChange={e => { const s = new Set(selectedWOs); e.target.checked ? s.add(w.id) : s.delete(w.id); setSelectedWOs(s); }} className="mt-1.5 accent-brand-600" />
   <div>
   <div className="flex items-center gap-2">
   <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${priorityColors[w.priority]}`}>{w.priority}</span>
@@ -6353,7 +6353,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div className="mt-3 flex gap-2 flex-wrap">
   {w.status === "open" && <button onClick={() => updateStatus(w, "in_progress")} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">▶ In Progress</button>}
   {w.status === "in_progress" && <button onClick={() => updateStatus(w, "completed")} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">✓ Complete</button>}
-  {w.status === "completed" && <button onClick={() => updateStatus(w, "open")} className="text-xs text-slate-400 border border-indigo-100 px-3 py-1 rounded-lg hover:bg-indigo-50/30">↩ Reopen</button>}
+  {w.status === "completed" && <button onClick={() => updateStatus(w, "open")} className="text-xs text-slate-400 border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">↩ Reopen</button>}
   <button onClick={() => openPhotos(w)} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">📸 Photos</button>
   <button onClick={() => startEdit(w)} className="text-xs text-blue-600 border border-blue-200 px-3 py-1 rounded-lg hover:bg-blue-50">✏️ Edit</button>
   </div>
@@ -6616,7 +6616,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   ) : (
   <div className="space-y-3">
   {auditLog.map((a, i) => (
-  <div key={i} className="bg-indigo-50/30 rounded-lg px-4 py-3">
+  <div key={i} className="bg-brand-50/30 rounded-lg px-4 py-3">
   <div className="flex justify-between">
   <span className="text-sm font-semibold text-green-600">{a.action}</span>
   <span className="text-xs text-slate-400">{new Date(a.paid_at).toLocaleString()}</span>
@@ -6630,12 +6630,12 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   )}
 
   {/* Tab Navigation */}
-  <div className="flex flex-col md:flex-row md:items-center gap-2 mb-5 border-b border-indigo-50 pb-3">
+  <div className="flex flex-col md:flex-row md:items-center gap-2 mb-5 border-b border-brand-50 pb-3">
   <h2 className="text-xl md:text-2xl font-manrope font-bold text-slate-800">Utilities</h2>
-  <button onClick={exportUtilities} className="text-sm text-indigo-600 border border-indigo-200 px-3 py-1.5 rounded-2xl hover:bg-indigo-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
+  <button onClick={exportUtilities} className="text-sm text-brand-600 border border-brand-200 px-3 py-1.5 rounded-2xl hover:bg-brand-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
   <div className="flex gap-1 overflow-x-auto pb-1">
   {[["bills", "Manual Bills"], ["automation", "⚡ Automation"], ["jobs", "Job History"]].map(([id, label]) => (
-  <button key={id} onClick={() => setUtilTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (utilTab === id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
+  <button key={id} onClick={() => setUtilTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (utilTab === id ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
   ))}
   </div>
   </div>
@@ -6648,11 +6648,11 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <h3 className="font-semibold text-gray-700">Connected Utility Accounts</h3>
   <p className="text-xs text-gray-400 mt-0.5">{utilAccounts.length} account{utilAccounts.length !== 1 ? "s" : ""} connected</p>
   </div>
-  <button onClick={() => { setEditingAccount(null); setAccountForm({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "" }); setShowAccountForm(true); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">+ Add Account</button>
+  <button onClick={() => { setEditingAccount(null); setAccountForm({ property: "", provider: "", account_number: "", username: "", password: "", account_type: "electric", check_frequency: "weekly", two_factor_method: "none", notes: "" }); setShowAccountForm(true); }} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-brand-700">+ Add Account</button>
   </div>
 
   {showAccountForm && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-gray-700 mb-3">{editingAccount ? "Edit Account" : "Connect Utility Account"}</h3>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-gray-500 mb-1 block">Property *</label><PropertySelect value={accountForm.property} onChange={v => setAccountForm({...accountForm, property: v})} companyId={companyId} /></div>
@@ -6666,7 +6666,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div><label className="text-xs font-medium text-gray-500 mb-1 block">2FA Method</label><select value={accountForm.two_factor_method} onChange={e => setAccountForm({...accountForm, two_factor_method: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option value="none">None</option><option value="sms">SMS</option><option value="email">Email</option></select></div>
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={saveAccount} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">Save Account</button>
+  <button onClick={saveAccount} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-brand-700">Save Account</button>
   <button onClick={() => { setShowAccountForm(false); setEditingAccount(null); }} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
@@ -6693,7 +6693,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div><span className="text-gray-400">Frequency</span><div className="font-semibold text-gray-700 capitalize">{acct.check_frequency}</div></div>
   </div>
   <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50">
-  <button onClick={() => triggerManualCheck(acct)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">🔄 Check Now</button>
+  <button onClick={() => triggerManualCheck(acct)} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">🔄 Check Now</button>
   <button onClick={() => deleteAccount(acct)} className="text-xs text-red-500 hover:underline ml-auto">Delete</button>
   </div>
   </div>
@@ -6745,38 +6745,38 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="flex flex-col md:flex-row gap-3 mb-4">
   <div className="mr-auto"></div>
   <Input placeholder="Search..." value={utilSearch} onChange={e => setUtilSearch(e.target.value)} className="w-full sm:w-40" />
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} >
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} >
   <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
   </select>
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={utilFilterProp} onChange={e => setUtilFilterProp(e.target.value)} >
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={utilFilterProp} onChange={e => setUtilFilterProp(e.target.value)} >
   <option value="all">All Properties</option>
   {[...new Set(utilities.map(u => u.property).filter(Boolean))].map(p => <option key={p} value={p}>{p}</option>)}
   </select>
-  <div className="flex bg-indigo-50 rounded-2xl p-0.5">
+  <div className="flex bg-brand-50 rounded-2xl p-0.5">
   {[["card","▦"],["table","☰"]].map(([m,icon]) => (
-  <button key={m} onClick={() => setUtilView(m)} className={`px-3 py-1.5 text-sm rounded-md ${utilView === m ? "bg-white shadow-sm text-indigo-700 font-semibold" : "text-slate-400"}`}>{icon}</button>
+  <button key={m} onClick={() => setUtilView(m)} className={`px-3 py-1.5 text-sm rounded-md ${utilView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-slate-400"}`}>{icon}</button>
   ))}
   </div>
-  <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700 whitespace-nowrap">+ Add Bill</button>
+  <button onClick={() => setShowForm(!showForm)} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700 whitespace-nowrap">+ Add Bill</button>
   </div>
 
   {/* Stats */}
   <div className="flex gap-3 mb-4">
-  <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-slate-800">{utilities.length}</div><div className="text-xs text-slate-400">Total</div></div>
-  <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{utilities.filter(u => u.status === "pending").length}</div><div className="text-xs text-slate-400">Pending</div></div>
-  <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">${utilities.filter(u => u.status === "paid").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-slate-400">Paid</div></div>
-  <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-red-500">${utilities.filter(u => u.status === "pending").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-slate-400">Outstanding</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-slate-800">{utilities.length}</div><div className="text-xs text-slate-400">Total</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{utilities.filter(u => u.status === "pending").length}</div><div className="text-xs text-slate-400">Pending</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">${utilities.filter(u => u.status === "paid").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-slate-400">Paid</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-red-500">${utilities.filter(u => u.status === "pending").reduce((s,u) => s + safeNum(u.amount), 0).toLocaleString()}</div><div className="text-xs text-slate-400">Outstanding</div></div>
   </div>
 
   {showForm && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-slate-700 mb-3">New Utility Bill</h3>
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Provider</label><Input placeholder="e.g. PEPCO, Washington Gas" value={form.provider} onChange={e => setForm({ ...form, provider: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($)</label><Input placeholder="150.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Due Date</label><Input type="date" value={form.due} onChange={e => setForm({ ...form, due: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Responsibility</label><select value={form.responsibility} onChange={e => setForm({ ...form, responsibility: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Responsibility</label><select value={form.responsibility} onChange={e => setForm({ ...form, responsibility: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
   {["owner", "tenant", "shared"].map(r => <option key={r}>{r}</option>)}
   </select></div>
   <div className="col-span-2 border-t border-slate-100 pt-2 mt-1"><p className="text-xs text-slate-400 mb-2">Portal Login (encrypted)</p>
@@ -6787,7 +6787,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </div></div>
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={addUtility} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
+  <button onClick={addUtility} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
   <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
@@ -6803,7 +6803,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {utilView === "card" && (
   <div className="space-y-3">
   {fu.map(u => (
-  <div key={u.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
+  <div key={u.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <div className="flex justify-between items-start">
   <div><div className="font-semibold text-slate-800">{u.provider}</div><div className="text-xs text-slate-400 mt-0.5">{u.property}</div></div>
   <div className="text-right"><div className="text-lg font-manrope font-bold text-slate-800">${u.amount}</div><Badge status={u.status} /></div>
@@ -6815,21 +6815,21 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </div>
   <div className="mt-3 flex gap-2">
   {u.status === "pending" && <button onClick={() => approvePay(u)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">✓ Pay</button>}
-  <button onClick={() => openAuditLog(u)} className="text-xs text-slate-500 border border-indigo-100 px-3 py-1 rounded-lg hover:bg-indigo-50/30">Audit</button>
+  <button onClick={() => openAuditLog(u)} className="text-xs text-slate-500 border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Audit</button>
   </div>
   </div>
   ))}
   </div>
   )}
   {utilView === "table" && (
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-x-auto">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-x-auto">
   <table className="w-full text-sm">
-  <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
+  <thead className="bg-brand-50/30 text-xs text-slate-400 uppercase">
   <tr><th className="px-4 py-3 text-left">Provider</th><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-left">Due</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Resp.</th><th className="px-4 py-3 text-left">Portal</th><th className="px-4 py-3 text-right">Actions</th></tr>
   </thead>
   <tbody>
   {fu.map(u => (
-  <tr key={u.id} className="border-t border-indigo-50/50 hover:bg-indigo-50/30/50">
+  <tr key={u.id} className="border-t border-brand-50/50 hover:bg-brand-50/30/50">
   <td className="px-4 py-2.5 font-medium text-slate-800">{u.provider}</td>
   <td className="px-4 py-2.5 text-slate-500">{u.property}</td>
   <td className="px-4 py-2.5 text-right font-semibold">${u.amount}</td>
@@ -6837,8 +6837,8 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <td className="px-4 py-2.5"><Badge status={u.status} /></td>
   <td className="px-4 py-2.5 text-slate-500 capitalize">{u.responsibility}</td>
   <td className="px-4 py-2.5 text-xs">
-  {u.website ? <a href={u.website} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline block truncate max-w-28">{u.website.replace(/^https?:\/\//, "")}</a> : <span className="text-slate-300">—</span>}
-  {u.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(s); } else { u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv, companyId); u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId); s.add(u.id); setShowCreds(new Set(s)); }}} className="text-indigo-500 hover:underline">{showCreds.has(u.id) ? "Hide" : "Show"} login</button>}
+  {u.website ? <a href={u.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{u.website.replace(/^https?:\/\//, "")}</a> : <span className="text-slate-300">—</span>}
+  {u.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(s); } else { u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv, companyId); u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId); s.add(u.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(u.id) ? "Hide" : "Show"} login</button>}
   {showCreds.has(u.id) && <div className="text-slate-600 mt-0.5">{u._decUser || "—"} / {u._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
@@ -7016,18 +7016,18 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   </div>
   <div className="flex gap-2">
   <button onClick={runNow} className="bg-amber-50 text-amber-700 text-xs px-3 py-1.5 rounded-lg border border-amber-200 hover:bg-amber-100">⚡ Post Now</button>
-  <button onClick={() => { setEditingEntry(null); setForm({ description: "", frequency: "monthly", day_of_month: 1, amount: "", tenant_name: "", property: "", debit_account_id: "1200", debit_account_name: "Accounts Receivable", credit_account_id: "4000", credit_account_name: "Rental Income", late_fee_enabled: true, grace_period_days: 5, late_fee_amount: 50 }); setShowForm(true); }} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700">+ Add Entry</button>
+  <button onClick={() => { setEditingEntry(null); setForm({ description: "", frequency: "monthly", day_of_month: 1, amount: "", tenant_name: "", property: "", debit_account_id: "1200", debit_account_name: "Accounts Receivable", credit_account_id: "4000", credit_account_name: "Rental Income", late_fee_enabled: true, grace_period_days: 5, late_fee_amount: 50 }); setShowForm(true); }} className="bg-brand-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-brand-700">+ Add Entry</button>
   </div>
   </div>
 
   {showForm && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-gray-700 mb-3">{editingEntry ? "Edit Recurring Entry" : "New Recurring Entry"}</h3>
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
   <div className="col-span-2"><label className="text-xs text-gray-500 mb-1 block">Description *</label><Input value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Monthly rent — John Doe — 123 Main St" /></div>
   <div><label className="text-xs text-gray-500 mb-1 block">Amount *</label><Input type="number" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} /></div>
   <div><label className="text-xs text-gray-500 mb-1 block">Day of Month</label><Input type="number" min="1" max="28" value={form.day_of_month} onChange={e => setForm({...form, day_of_month: e.target.value})} /></div>
-  <div><label className="text-xs text-gray-500 mb-1 block">Tenant</label><select value={form.tenant_name} onChange={e => { const t = tenants.find(x => x.name === e.target.value); setForm({...form, tenant_name: e.target.value, property: t?.property || form.property, amount: t?.rent ? String(t.rent) : form.amount }); }} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm"><option value="">Select tenant...</option>{tenants.map(t => <option key={t.id} value={t.name}>{t.name} — {t.property?.split(",")[0]}</option>)}</select></div>
+  <div><label className="text-xs text-gray-500 mb-1 block">Tenant</label><select value={form.tenant_name} onChange={e => { const t = tenants.find(x => x.name === e.target.value); setForm({...form, tenant_name: e.target.value, property: t?.property || form.property, amount: t?.rent ? String(t.rent) : form.amount }); }} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm"><option value="">Select tenant...</option>{tenants.map(t => <option key={t.id} value={t.name}>{t.name} — {t.property?.split(",")[0]}</option>)}</select></div>
   <div><label className="text-xs text-gray-500 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
   <div><label className="text-xs text-gray-500 mb-1 block">Debit Account</label><Input value={form.debit_account_name} onChange={e => setForm({...form, debit_account_name: e.target.value})} /></div>
   <div><label className="text-xs text-gray-500 mb-1 block">Credit Account</label><Input value={form.credit_account_name} onChange={e => setForm({...form, credit_account_name: e.target.value})} /></div>
@@ -7045,7 +7045,7 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   </div>
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={saveEntry} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">{editingEntry ? "Update" : "Create"}</button>
+  <button onClick={saveEntry} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-brand-700">{editingEntry ? "Update" : "Create"}</button>
   <button onClick={() => { setShowForm(false); setEditingEntry(null); }} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
@@ -7075,7 +7075,7 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (e.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500")}>{e.status}</span>
   <div className="flex gap-1">
   <button onClick={() => toggleStatus(e)} className={"text-xs px-2 py-1 rounded-lg " + (e.status === "active" ? "text-amber-600 hover:bg-amber-50" : "text-green-600 hover:bg-green-50")}>{e.status === "active" ? "⏸ Pause" : "▶ Resume"}</button>
-  <button onClick={() => { setEditingEntry(e); setForm({ description: e.description, frequency: e.frequency, day_of_month: e.day_of_month, amount: e.amount, tenant_name: e.tenant_name || "", property: e.property || "", debit_account_id: e.debit_account_id || "1200", debit_account_name: e.debit_account_name || "Accounts Receivable", credit_account_id: e.credit_account_id || "4000", credit_account_name: e.credit_account_name || "Rental Income", late_fee_enabled: e.late_fee_enabled !== false, grace_period_days: e.grace_period_days || 5, late_fee_amount: e.late_fee_amount || 50 }); setShowForm(true); }} className="text-xs text-indigo-600 px-2 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
+  <button onClick={() => { setEditingEntry(e); setForm({ description: e.description, frequency: e.frequency, day_of_month: e.day_of_month, amount: e.amount, tenant_name: e.tenant_name || "", property: e.property || "", debit_account_id: e.debit_account_id || "1200", debit_account_name: e.debit_account_name || "Accounts Receivable", credit_account_id: e.credit_account_id || "4000", credit_account_name: e.credit_account_name || "Rental Income", late_fee_enabled: e.late_fee_enabled !== false, grace_period_days: e.grace_period_days || 5, late_fee_amount: e.late_fee_amount || 50 }); setShowForm(true); }} className="text-xs text-brand-600 px-2 py-1 rounded-lg hover:bg-brand-50">Edit</button>
   <button onClick={() => deleteEntry(e)} className="text-xs text-red-500 px-2 py-1 rounded-lg hover:bg-red-50">Delete</button>
   </div>
   </div>
@@ -7398,7 +7398,7 @@ function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClos
   <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60] flex items-end sm:items-center justify-center sm:p-4">
   <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-5xl h-[95vh] sm:max-h-[90vh] flex flex-col">
   {/* Header */}
-  <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-indigo-50">
+  <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-brand-50">
   <div className="min-w-0 flex-1">
   <h3 className="text-base sm:text-lg font-manrope font-bold text-slate-800 truncate">{title || acctNames}</h3>
   {acctCodes && <p className="text-xs text-slate-400">Account {acctCodes} · {allLines.length} entries</p>}
@@ -7409,17 +7409,17 @@ function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClos
   </div>
   </div>
   {/* Filters */}
-  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 px-4 sm:px-6 py-2 sm:py-3 border-b border-indigo-50 bg-slate-50/50 overflow-x-auto">
-  {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border font-medium whitespace-nowrap ${period === p ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-400 border-indigo-100"}`}>{p}</button>)}
+  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 px-4 sm:px-6 py-2 sm:py-3 border-b border-brand-50 bg-slate-50/50 overflow-x-auto">
+  {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border font-medium whitespace-nowrap ${period === p ? "bg-slate-800 text-white border-slate-800" : "bg-white text-slate-400 border-brand-100"}`}>{p}</button>)}
   {period === "Custom" && <><Input type="date" value={customDates.start} onChange={e => setCustomDates(d => ({...d, start: e.target.value}))} className="text-xs w-auto" /><span className="text-xs text-slate-400">to</span><Input type="date" value={customDates.end} onChange={e => setCustomDates(d => ({...d, end: e.target.value}))} className="text-xs w-auto" /></>}
-  {properties.length > 1 && <select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)} className="text-xs border border-indigo-100 rounded-xl px-2 py-1.5 bg-white"><option value="">All Properties</option>{properties.map(p => <option key={p} value={p}>{p.split(",")[0]}</option>)}</select>}
+  {properties.length > 1 && <select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)} className="text-xs border border-brand-100 rounded-xl px-2 py-1.5 bg-white"><option value="">All Properties</option>{properties.map(p => <option key={p} value={p}>{p.split(",")[0]}</option>)}</select>}
   </div>
   {/* Summary bar */}
-  <div className="flex flex-wrap items-center gap-3 sm:gap-6 px-4 sm:px-6 py-2 border-b border-indigo-50 text-xs text-slate-500">
+  <div className="flex flex-wrap items-center gap-3 sm:gap-6 px-4 sm:px-6 py-2 border-b border-brand-50 text-xs text-slate-500">
   <span>DR: <strong className="text-slate-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.debit, 0))}</strong></span>
   <span>CR: <strong className="text-slate-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.credit, 0))}</strong></span>
   <span>Bal: <strong className={`font-mono ${running >= 0 ? "text-slate-800" : "text-red-600"}`}>{acctFmt(running, true)}</strong></span>
-  <button onClick={exportCSV} className="text-xs text-indigo-600 hover:underline sm:hidden ml-auto">Export</button>
+  <button onClick={exportCSV} className="text-xs text-brand-600 hover:underline sm:hidden ml-auto">Export</button>
   </div>
   {/* Mobile: Card view */}
   <div className="flex-1 overflow-auto sm:hidden">
@@ -7444,7 +7444,7 @@ function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClos
   {/* Desktop: Table view */}
   <div className="flex-1 overflow-auto hidden sm:block">
   <table className="w-full text-sm">
-  <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase sticky top-0">
+  <thead className="bg-brand-50/30 text-xs text-slate-400 uppercase sticky top-0">
   <tr>
   <th className="px-4 py-2.5 text-left">Date</th>
   <th className="px-3 py-2.5 text-left">JE #</th>
@@ -7491,7 +7491,7 @@ function AcctModal({ isOpen, onClose, title, children, size = "md" }) {
   <div className={`bg-white rounded-xl shadow-sm border border-slate-200 w-full ${sizes[size]} flex flex-col`} style={{ maxHeight:"90vh" }}>
   <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
   <h2 className="text-lg font-manrope font-bold text-slate-900">{title}</h2>
-  <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:bg-indigo-50/50 transition-colors"><span className="material-icons-outlined text-lg">close</span></button>
+  <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:bg-brand-50/50 transition-colors"><span className="material-icons-outlined text-lg">close</span></button>
   </div>
   <div className="overflow-y-auto flex-1 px-6 py-4">{children}</div>
   </div>
@@ -7572,7 +7572,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   <p className="text-sm text-slate-400">Manage your account structure</p>
   </div>
   <div className="flex gap-2">
-  <button onClick={() => setShowInactive(!showInactive)} className={`text-xs px-3 py-1.5 rounded-lg border ${showInactive ? "bg-indigo-50 border-indigo-200" : "border-indigo-100 text-slate-400"}`}>{showInactive ? "Hide Inactive" : "Show Inactive"}</button>
+  <button onClick={() => setShowInactive(!showInactive)} className={`text-xs px-3 py-1.5 rounded-lg border ${showInactive ? "bg-brand-50 border-brand-200" : "border-brand-100 text-slate-400"}`}>{showInactive ? "Hide Inactive" : "Show Inactive"}</button>
   <button onClick={openAdd} className="bg-green-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-green-700">+ New Account</button>
   </div>
   </div>
@@ -7600,7 +7600,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   <td className="px-5 py-3 text-xs text-slate-400">{a.subtype || ""}</td>
   <td className={`px-5 py-3 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-red-600" : "text-slate-800"}`}>{acctFmt(a.computedBalance, true)}</td>
   <td className="px-5 py-3 text-center flex items-center gap-2 justify-center">
-  <button onClick={e => { e.stopPropagation(); openEdit(a); }} className="text-slate-400 hover:text-indigo-600 text-xs" title="Edit account"><span className="material-icons-outlined text-sm">edit</span></button>
+  <button onClick={e => { e.stopPropagation(); openEdit(a); }} className="text-slate-400 hover:text-brand-600 text-xs" title="Edit account"><span className="material-icons-outlined text-sm">edit</span></button>
   <button onClick={e => { e.stopPropagation(); onToggle(a.id, a.is_active); }} className="text-slate-400 hover:text-slate-700 text-xs">{a.is_active ? "🟢" : "⚪"}</button>
   </td>
   </tr>
@@ -7616,23 +7616,23 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   <div className="grid grid-cols-2 gap-3">
   <div>
   <label className="text-xs font-medium text-slate-500">Type *</label>
-  <select value={form.type} onChange={e => { const v = e.target.value; setForm({...form, type: v, subtype: v === "__custom__" ? "" : (getAccountSubtypes(accounts, v)[0] || ""), customType: v === "__custom__" ? form.customType : "" }); }} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1">
+  <select value={form.type} onChange={e => { const v = e.target.value; setForm({...form, type: v, subtype: v === "__custom__" ? "" : (getAccountSubtypes(accounts, v)[0] || ""), customType: v === "__custom__" ? form.customType : "" }); }} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mt-1">
   {dynamicTypes.map(t => <option key={t} value={t}>{t}</option>)}
   <option value="__custom__">+ Add Custom Type...</option>
   </select>
-  {form.type === "__custom__" && <Input value={form.customType} onChange={e => setForm({...form, customType: e.target.value})} className="mt-1 bg-indigo-50" placeholder="Enter new account type" autoFocus />}
+  {form.type === "__custom__" && <Input value={form.customType} onChange={e => setForm({...form, customType: e.target.value})} className="mt-1 bg-brand-50" placeholder="Enter new account type" autoFocus />}
   </div>
   <div>
   <label className="text-xs font-medium text-slate-500">Subtype</label>
-  <select value={form.subtype} onChange={e => setForm({...form, subtype: e.target.value, customSubtype: e.target.value === "__custom__" ? form.customSubtype : ""})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1">
+  <select value={form.subtype} onChange={e => setForm({...form, subtype: e.target.value, customSubtype: e.target.value === "__custom__" ? form.customSubtype : ""})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mt-1">
   {(form.type === "__custom__" ? [] : dynamicSubtypes).map(s => <option key={s} value={s}>{s}</option>)}
   <option value="__custom__">+ Add Custom Subtype...</option>
   <option value="">None</option>
   </select>
-  {form.subtype === "__custom__" && <Input value={form.customSubtype} onChange={e => setForm({...form, customSubtype: e.target.value})} className="mt-1 bg-indigo-50" placeholder="Enter new subtype" />}
+  {form.subtype === "__custom__" && <Input value={form.customSubtype} onChange={e => setForm({...form, customSubtype: e.target.value})} className="mt-1 bg-brand-50" placeholder="Enter new subtype" />}
   </div>
   </div>
-  <div><label className="text-xs font-medium text-slate-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
+  <div><label className="text-xs font-medium text-slate-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
   <div className="flex justify-end gap-2 pt-2">
   <button onClick={() => setModal(null)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   <button onClick={saveAccount} className="bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700">{modal === "add" ? "Create" : "Save"}</button>
@@ -7732,17 +7732,17 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   <p className="text-xs font-semibold text-slate-500 uppercase">Journal Entry Lines</p>
   <button onClick={addLine} className="text-xs text-slate-600 hover:text-slate-800">+ Add Line</button>
   </div>
-  <div className="rounded-xl border border-indigo-100 overflow-x-auto">
+  <div className="rounded-xl border border-brand-100 overflow-x-auto">
   <table className="w-full text-sm">
   <thead><tr className="bg-slate-50 border-b border-slate-200"><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 w-48">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 w-32">Class</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 min-w-[140px]">Memo</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500 w-28">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500 w-28">Credit</th><th className="px-3 py-2 w-8" /></tr></thead>
   <tbody>
   {form.lines.map((line, i) => (
   <tr key={i} className="border-b border-slate-100">
-  <td className="px-2 py-1.5"><select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}</select></td>
-  <td className="px-2 py-1.5"><select value={line.class_id || ""} onChange={e => { setLine(i,"class_id",e.target.value||null); const cls = classes.find(c=>c.id===e.target.value); if (cls && !form.property) setForm(f=>({...f, property: cls.name})); }} className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></td>
-  <td className="px-2 py-1.5"><input type="text" value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="w-full border border-indigo-100 rounded-lg px-2 py-1.5 text-xs bg-white focus:border-indigo-300 focus:outline-none" /></td>
-  <td className="px-2 py-1.5"><input type="text" inputMode="decimal" value={line.debit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], debit: v, ...(v ? { credit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono focus:border-indigo-300 focus:outline-none" /></td>
-  <td className="px-2 py-1.5"><input type="text" inputMode="decimal" value={line.credit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], credit: v, ...(v ? { debit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-indigo-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono focus:border-indigo-300 focus:outline-none" /></td>
+  <td className="px-2 py-1.5"><select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}</select></td>
+  <td className="px-2 py-1.5"><select value={line.class_id || ""} onChange={e => { setLine(i,"class_id",e.target.value||null); const cls = classes.find(c=>c.id===e.target.value); if (cls && !form.property) setForm(f=>({...f, property: cls.name})); }} className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></td>
+  <td className="px-2 py-1.5"><input type="text" value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs bg-white focus:border-brand-300 focus:outline-none" /></td>
+  <td className="px-2 py-1.5"><input type="text" inputMode="decimal" value={line.debit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], debit: v, ...(v ? { credit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono focus:border-brand-300 focus:outline-none" /></td>
+  <td className="px-2 py-1.5"><input type="text" inputMode="decimal" value={line.credit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], credit: v, ...(v ? { debit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono focus:border-brand-300 focus:outline-none" /></td>
   <td className="px-2 py-1.5"><button onClick={() => removeLine(i)} disabled={form.lines.length<=2} className="text-slate-300 hover:text-red-500 disabled:opacity-20">✕</button></td>
   </tr>
   ))}
@@ -7799,7 +7799,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   <div className="flex gap-1 justify-center" onClick={e => e.stopPropagation()}>
   {je.status === "draft" && <button onClick={() => onPost(je.id)} className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-100 text-xs">Post</button>}
   {je.status === "posted" && <button onClick={() => onVoid(je.id)} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-100 text-xs">Void</button>}
-  {je.status !== "voided" && <button onClick={() => openEdit(je)} className="text-xs text-indigo-600 hover:underline">Edit</button>}
+  {je.status !== "voided" && <button onClick={() => openEdit(je)} className="text-xs text-brand-600 hover:underline">Edit</button>}
   <button onClick={() => openDuplicate(je)} className="text-xs text-slate-400 hover:text-slate-700 hover:underline">Duplicate</button>
   </div>
   </td>
@@ -7907,7 +7907,7 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   <td className="px-5 py-3 text-right font-mono text-sm text-emerald-700">{c.revenue > 0 ? acctFmt(c.revenue) : "—"}</td>
   <td className="px-5 py-3 text-right font-mono text-sm text-red-600">{c.expenses > 0 ? acctFmt(c.expenses) : "—"}</td>
   <td className={`px-5 py-3 text-right font-mono text-sm font-bold ${c.netIncome >= 0 ? "text-blue-700" : "text-red-700"}`}>{acctFmt(c.netIncome, true)}</td>
-  <td className="px-5 py-3 flex gap-1"><button onClick={() => openEdit(c)} className="text-xs text-indigo-600 hover:underline">Edit</button><button onClick={() => onToggle(c.id, c.is_active)} className="text-xs">{c.is_active ? "🟢" : "⚪"}</button></td>
+  <td className="px-5 py-3 flex gap-1"><button onClick={() => openEdit(c)} className="text-xs text-brand-600 hover:underline">Edit</button><button onClick={() => onToggle(c.id, c.is_active)} className="text-xs">{c.is_active ? "🟢" : "⚪"}</button></td>
   </tr>
   ))}
   </tbody>
@@ -7916,7 +7916,7 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   <AcctModal isOpen={!!modal} onClose={() => setModal(null)} title={modal === "add" ? "New Class" : "Edit Class"} size="sm">
   <div className="space-y-3">
   <div><label className="text-xs font-medium text-slate-500">Name *</label><Input placeholder="e.g. 123 Main St" value={form.name} onChange={e => setForm({...form,name:e.target.value})} className="mt-1" /></div>
-  <div><label className="text-xs font-medium text-slate-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form,description:e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
+  <div><label className="text-xs font-medium text-slate-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form,description:e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
   <div><label className="text-xs font-medium text-slate-500 block mb-2">Color</label><div className="flex gap-2 flex-wrap">{COLORS.map(c => <button key={c} type="button" onClick={() => setForm({...form,color:c})} className={`w-7 h-7 rounded-full border-2 ${form.color===c?"border-gray-800 scale-110":"border-transparent"}`} style={{background:c}} />)}</div></div>
   <div className="flex justify-end gap-2 pt-2">
   <button onClick={() => setModal(null)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
@@ -8644,9 +8644,9 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     {reportId === "gl" && glAccount && (<div>
       <div className="text-center mb-4"><p className="text-xs text-slate-400 uppercase tracking-widest">General Ledger</p><h4 className="text-base font-bold text-slate-900 mt-1">{glAccount.name}</h4><p className="text-sm text-slate-400">#{glAccount.code} · {glAccount.type}</p><p className="text-sm text-slate-400">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {glLines.length > 0 && <div className="flex justify-end mb-3"><div className="text-right"><p className="text-xs text-slate-400">Ending Balance</p><p className="font-mono font-bold">{acctFmt(glLines[glLines.length-1].balance, true)}</p></div></div>}
-      <div className="flex justify-end mb-2 relative"><button onClick={() => setShowColPicker(!showColPicker)} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">view_column</span>Columns</button>{showColPicker && <div className="absolute right-0 top-8 bg-white border border-slate-200 rounded-xl shadow-lg p-3 z-20 w-48">{[["date","Date"],["entry","Entry #"],["description","Description"],["memo","Memo"],["debit","Debit"],["credit","Credit"],["balance","Balance"]].map(([id,label]) => <label key={id} className="flex items-center gap-2 py-1 cursor-pointer text-sm text-slate-700"><input type="checkbox" checked={glColumns[id]} onChange={() => toggleGlCol(id)} className="accent-indigo-600" />{label}</label>)}</div>}</div>
+      <div className="flex justify-end mb-2 relative"><button onClick={() => setShowColPicker(!showColPicker)} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">view_column</span>Columns</button>{showColPicker && <div className="absolute right-0 top-8 bg-white border border-slate-200 rounded-xl shadow-lg p-3 z-20 w-48">{[["date","Date"],["entry","Entry #"],["description","Description"],["memo","Memo"],["debit","Debit"],["credit","Credit"],["balance","Balance"]].map(([id,label]) => <label key={id} className="flex items-center gap-2 py-1 cursor-pointer text-sm text-slate-700"><input type="checkbox" checked={glColumns[id]} onChange={() => toggleGlCol(id)} className="accent-brand-600" />{label}</label>)}</div>}</div>
       <table className="w-full text-sm border border-slate-200 rounded-xl overflow-hidden"><thead className="bg-slate-50"><tr>{glColumns.date && <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Date</th>}{glColumns.entry && <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Entry #</th>}{glColumns.description && <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Description</th>}{glColumns.memo && <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Memo</th>}{glColumns.debit && <th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Debit</th>}{glColumns.credit && <th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Credit</th>}{glColumns.balance && <th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Balance</th>}</tr></thead>
-      <tbody>{glLines.length === 0 ? <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">No transactions</td></tr> : glLines.map((l,i) => <tr key={l.jeId+"-"+i} className="border-t border-slate-100 hover:bg-green-50/40">{glColumns.date && <td className="px-4 py-2 text-xs text-slate-400">{acctFmtDate(l.date)}</td>}{glColumns.entry && <td className="px-4 py-2 font-mono text-xs text-indigo-600">{l.jeNumber||"—"}</td>}{glColumns.description && <td className="px-4 py-2 text-slate-700">{l.description}</td>}{glColumns.memo && <td className="px-4 py-2 text-xs text-slate-400">{l.memo||"—"}</td>}{glColumns.debit && <td className="px-4 py-2 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>}{glColumns.credit && <td className="px-4 py-2 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>}{glColumns.balance && <td className={`px-4 py-2 text-right font-mono font-semibold ${l.balance < 0 ? "text-red-600" : ""}`}>{acctFmt(l.balance, true)}</td>}</tr>)}</tbody></table>
+      <tbody>{glLines.length === 0 ? <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">No transactions</td></tr> : glLines.map((l,i) => <tr key={l.jeId+"-"+i} className="border-t border-slate-100 hover:bg-green-50/40">{glColumns.date && <td className="px-4 py-2 text-xs text-slate-400">{acctFmtDate(l.date)}</td>}{glColumns.entry && <td className="px-4 py-2 font-mono text-xs text-brand-600">{l.jeNumber||"—"}</td>}{glColumns.description && <td className="px-4 py-2 text-slate-700">{l.description}</td>}{glColumns.memo && <td className="px-4 py-2 text-xs text-slate-400">{l.memo||"—"}</td>}{glColumns.debit && <td className="px-4 py-2 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>}{glColumns.credit && <td className="px-4 py-2 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>}{glColumns.balance && <td className={`px-4 py-2 text-right font-mono font-semibold ${l.balance < 0 ? "text-red-600" : ""}`}>{acctFmt(l.balance, true)}</td>}</tr>)}</tbody></table>
     </div>)}
 
     {/* AR Aging Summary */}
@@ -8667,7 +8667,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     {/* Journal */}
     {reportId === "journal" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Journal</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      {getJournalReport(start, end).map(je => <div key={je.jeId} className="mb-4 border border-slate-100 rounded-lg p-3"><div className="flex justify-between items-start mb-2"><div><span className="font-mono text-xs text-indigo-600 mr-2">{je.jeNumber}</span><span className="text-sm font-semibold text-slate-800">{je.description}</span></div><span className="text-xs text-slate-400">{acctFmtDate(je.date)}</span></div>
+      {getJournalReport(start, end).map(je => <div key={je.jeId} className="mb-4 border border-slate-100 rounded-lg p-3"><div className="flex justify-between items-start mb-2"><div><span className="font-mono text-xs text-brand-600 mr-2">{je.jeNumber}</span><span className="text-sm font-semibold text-slate-800">{je.description}</span></div><span className="text-xs text-slate-400">{acctFmtDate(je.date)}</span></div>
       <table className="w-full text-xs"><tbody>{je.lines.map((l,i) => <tr key={i} className="border-t border-slate-50"><td className="py-1 text-slate-600">{l.accountName}</td><td className="py-1 text-slate-400">{l.memo||""}</td><td className="py-1 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td><td className="py-1 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td></tr>)}</tbody></table></div>)}
     </div>)}
 
@@ -8675,7 +8675,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     {reportId === "txn_by_date" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Transaction List by Date</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       <table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Date</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Entry</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Description</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-slate-500">Credit</th></tr></thead>
-      <tbody>{getTransactionsByDate(start, end).map((t,i) => <tr key={i} className="border-t border-slate-100"><td className="px-3 py-1.5 text-xs text-slate-400">{t.date}</td><td className="px-3 py-1.5 text-xs text-indigo-600 font-mono">{t.jeNumber||""}</td><td className="px-3 py-1.5 text-slate-700">{t.accountName}</td><td className="px-3 py-1.5 text-xs text-slate-500">{t.description}</td><td className="px-3 py-1.5 text-right font-mono">{t.debit > 0 ? acctFmt(t.debit) : ""}</td><td className="px-3 py-1.5 text-right font-mono">{t.credit > 0 ? acctFmt(t.credit) : ""}</td></tr>)}</tbody></table>
+      <tbody>{getTransactionsByDate(start, end).map((t,i) => <tr key={i} className="border-t border-slate-100"><td className="px-3 py-1.5 text-xs text-slate-400">{t.date}</td><td className="px-3 py-1.5 text-xs text-brand-600 font-mono">{t.jeNumber||""}</td><td className="px-3 py-1.5 text-slate-700">{t.accountName}</td><td className="px-3 py-1.5 text-xs text-slate-500">{t.description}</td><td className="px-3 py-1.5 text-right font-mono">{t.debit > 0 ? acctFmt(t.debit) : ""}</td><td className="px-3 py-1.5 text-right font-mono">{t.credit > 0 ? acctFmt(t.credit) : ""}</td></tr>)}</tbody></table>
     </div>)}
 
     {/* Account Listing */}
@@ -8767,7 +8767,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Tenant Balance Detail</p></div>
       {(() => { const data = getCustomerBalanceDetail(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No tenant balances</p> : data.map(t => (<div key={t.name} className="mb-6"><div className="flex justify-between items-center border-b border-slate-200 pb-1 mb-2"><span className="text-sm font-bold text-slate-800">{t.name}</span><span className={`font-mono text-sm font-bold ${t.totalBalance < 0 ? "text-green-600" : "text-red-600"}`}>{acctFmt(t.totalBalance, true)}</span></div>
       <table className="w-full text-xs"><thead><tr><th className="px-2 py-1 text-left text-slate-400">Date</th><th className="px-2 py-1 text-left text-slate-400">Entry</th><th className="px-2 py-1 text-left text-slate-400">Description</th><th className="px-2 py-1 text-right text-slate-400">Debit</th><th className="px-2 py-1 text-right text-slate-400">Credit</th><th className="px-2 py-1 text-right text-slate-400">Balance</th></tr></thead>
-      <tbody>{t.transactions.map((tx,i) => <tr key={i} className="border-t border-slate-50"><td className="px-2 py-1 text-slate-400">{tx.date}</td><td className="px-2 py-1 text-indigo-600 font-mono">{tx.jeNumber||""}</td><td className="px-2 py-1 text-slate-600 truncate max-w-40">{tx.description}</td><td className="px-2 py-1 text-right font-mono">{tx.debit > 0 ? acctFmt(tx.debit) : ""}</td><td className="px-2 py-1 text-right font-mono">{tx.credit > 0 ? acctFmt(tx.credit) : ""}</td><td className={`px-2 py-1 text-right font-mono font-semibold ${tx.balance < 0 ? "text-green-600" : ""}`}>{acctFmt(tx.balance, true)}</td></tr>)}</tbody></table></div>)); })()}
+      <tbody>{t.transactions.map((tx,i) => <tr key={i} className="border-t border-slate-50"><td className="px-2 py-1 text-slate-400">{tx.date}</td><td className="px-2 py-1 text-brand-600 font-mono">{tx.jeNumber||""}</td><td className="px-2 py-1 text-slate-600 truncate max-w-40">{tx.description}</td><td className="px-2 py-1 text-right font-mono">{tx.debit > 0 ? acctFmt(tx.debit) : ""}</td><td className="px-2 py-1 text-right font-mono">{tx.credit > 0 ? acctFmt(tx.credit) : ""}</td><td className={`px-2 py-1 text-right font-mono font-semibold ${tx.balance < 0 ? "text-green-600" : ""}`}>{acctFmt(tx.balance, true)}</td></tr>)}</tbody></table></div>)); })()}
     </div>)}
 
     {/* Expenses by Vendor */}
@@ -8797,7 +8797,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     {reportId === "owner_distributions" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Owner Distribution Report</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {(() => { const data = getOwnerDistributions(start, end); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No distributions in this period</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Date</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Entry</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Description</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Amount</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-400">{r.date}</td><td className="px-4 py-2 font-mono text-xs text-indigo-600">{r.jeNumber||""}</td><td className="px-4 py-2 text-slate-700">{r.description}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(r.amount)}</td></tr>)}</tbody>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-400">{r.date}</td><td className="px-4 py-2 font-mono text-xs text-brand-600">{r.jeNumber||""}</td><td className="px-4 py-2 text-slate-700">{r.description}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(r.amount)}</td></tr>)}</tbody>
       <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td colSpan={3} className="px-4 py-2">TOTAL DISTRIBUTED</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.amount,0))}</td></tr></tfoot></table>); })()}
     </div>)}
 
@@ -8813,7 +8813,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     {reportId === "txn_by_account" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Transaction Detail by Account</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {getTransactionsByAccount(start, end).map(acct => (<div key={acct.name} className="mb-4"><div className="bg-slate-50 px-3 py-2 rounded-lg font-semibold text-sm text-slate-800 flex justify-between"><span>{acct.code ? acct.code + " " : ""}{acct.name}</span><span className="text-xs text-slate-400">{acct.type}</span></div>
-      <table className="w-full text-xs mb-2"><tbody>{acct.transactions.map((t,i) => <tr key={i} className="border-t border-slate-50"><td className="px-3 py-1 text-slate-400 w-20">{t.date}</td><td className="px-3 py-1 text-indigo-600 font-mono w-16">{t.jeNumber||""}</td><td className="px-3 py-1 text-slate-600">{t.description}</td><td className="px-3 py-1 text-right font-mono w-20">{t.debit > 0 ? acctFmt(t.debit) : ""}</td><td className="px-3 py-1 text-right font-mono w-20">{t.credit > 0 ? acctFmt(t.credit) : ""}</td></tr>)}</tbody></table></div>))}
+      <table className="w-full text-xs mb-2"><tbody>{acct.transactions.map((t,i) => <tr key={i} className="border-t border-slate-50"><td className="px-3 py-1 text-slate-400 w-20">{t.date}</td><td className="px-3 py-1 text-brand-600 font-mono w-16">{t.jeNumber||""}</td><td className="px-3 py-1 text-slate-600">{t.description}</td><td className="px-3 py-1 text-right font-mono w-20">{t.debit > 0 ? acctFmt(t.debit) : ""}</td><td className="px-3 py-1 text-right font-mono w-20">{t.credit > 0 ? acctFmt(t.credit) : ""}</td></tr>)}</tbody></table></div>))}
     </div>)}
 
     {/* P&L Comparison */}
@@ -8843,7 +8843,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     {reportId === "unpaid_bills" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Unpaid Bills</p></div>
       {(() => { const data = getUnpaidBills(); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No unpaid bills found</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Date</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Vendor</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Description</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Ref</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Amount</th></tr></thead>
-      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-400 text-xs">{r.date}</td><td className="px-4 py-2 text-slate-700">{r.vendor}</td><td className="px-4 py-2 text-xs text-slate-500 truncate max-w-48">{r.description}</td><td className="px-4 py-2 font-mono text-xs text-indigo-600">{r.jeNumber||""}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(r.amount)}</td></tr>)}</tbody>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-400 text-xs">{r.date}</td><td className="px-4 py-2 text-slate-700">{r.vendor}</td><td className="px-4 py-2 text-xs text-slate-500 truncate max-w-48">{r.description}</td><td className="px-4 py-2 font-mono text-xs text-brand-600">{r.jeNumber||""}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(r.amount)}</td></tr>)}</tbody>
       <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td colSpan={4} className="px-4 py-2">TOTAL</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.amount,0))}</td></tr></tfoot></table>); })()}
     </div>)}
 
@@ -8875,14 +8875,14 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     {reportId === "budget_vs_actual" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Budget vs. Actuals</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       <div className="flex gap-2 mb-4">
-        <button onClick={() => setShowBudgetEditor(!showBudgetEditor)} className="text-xs bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-200 font-semibold">{showBudgetEditor ? "Hide Budget Editor" : "Edit Budgets"}</button>
+        <button onClick={() => setShowBudgetEditor(!showBudgetEditor)} className="text-xs bg-brand-100 text-brand-700 px-3 py-1.5 rounded-lg hover:bg-brand-200 font-semibold">{showBudgetEditor ? "Hide Budget Editor" : "Edit Budgets"}</button>
         <div><label className="text-xs text-slate-500 mr-1">Budget Month:</label><input type="month" value={budgetMonth} onChange={e => { setBudgetMonth(e.target.value); fetchBudgets(e.target.value); }} className="border border-slate-200 rounded-lg px-2 py-1 text-sm" /></div>
       </div>
-      {showBudgetEditor && (<div className="bg-indigo-50 rounded-xl p-4 mb-4 max-h-64 overflow-y-auto">
-        <p className="text-xs font-semibold text-indigo-700 mb-2">Set Monthly Budget for {budgetMonth}</p>
+      {showBudgetEditor && (<div className="bg-brand-50 rounded-xl p-4 mb-4 max-h-64 overflow-y-auto">
+        <p className="text-xs font-semibold text-brand-700 mb-2">Set Monthly Budget for {budgetMonth}</p>
         <div className="space-y-1">{accounts.filter(a => a.is_active && ["Revenue","Expense","Cost of Goods Sold","Other Income","Other Expense"].includes(a.type)).sort((a,b) => (a.code||"").localeCompare(b.code||"")).map(a => {
           const existing = budgets.find(b => b.account_id === a.id);
-          return <div key={a.id} className="flex items-center gap-2"><span className="text-xs text-slate-600 w-48 truncate">{a.code||"•"} {a.name}</span><input type="number" defaultValue={existing?.amount || ""} onBlur={e => { if (e.target.value) saveBudget(a.id, a.name, e.target.value); }} placeholder="0.00" className="border border-indigo-200 rounded-lg px-2 py-1 text-xs w-24 text-right font-mono" /></div>;
+          return <div key={a.id} className="flex items-center gap-2"><span className="text-xs text-slate-600 w-48 truncate">{a.code||"•"} {a.name}</span><input type="number" defaultValue={existing?.amount || ""} onBlur={e => { if (e.target.value) saveBudget(a.id, a.name, e.target.value); }} placeholder="0.00" className="border border-brand-200 rounded-lg px-2 py-1 text-xs w-24 text-right font-mono" /></div>;
         })}</div>
       </div>)}
       {(() => { const data = getBudgetVsActual(start, end); const hasAnyBudget = data.some(a => a.budget > 0); return !hasAnyBudget ? <p className="text-center py-8 text-slate-400">No budgets set. Click "Edit Budgets" to set monthly amounts.</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Account</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Actual</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Budget</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Variance ($)</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Variance (%)</th></tr></thead>
@@ -9762,7 +9762,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       const isSelected = selectedFeed === feed.id;
       return (
       <button key={feed.id} onClick={() => setSelectedFeed(isSelected ? "all" : feed.id)}
-        className={`shrink-0 rounded-xl border-2 p-3 min-w-48 text-left transition-all ${isSelected ? "border-indigo-600 bg-indigo-50" : "border-slate-200 bg-white hover:border-slate-300"}`}>
+        className={`shrink-0 rounded-xl border-2 p-3 min-w-48 text-left transition-all ${isSelected ? "border-brand-600 bg-brand-50" : "border-slate-200 bg-white hover:border-slate-300"}`}>
         <div className="text-xs text-slate-400 truncate">{feed.institution_name || feed.account_type}</div>
         <div className="font-semibold text-slate-800 truncate">{feed.account_name}</div>
         {feed.masked_number && <div className="text-xs text-slate-400">••••{feed.masked_number}</div>}
@@ -9786,7 +9786,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     <div className="text-3xl mb-3">🏦</div>
     <h4 className="font-semibold text-slate-800 mb-1">No bank accounts set up</h4>
     <p className="text-sm text-slate-400 mb-4">Create a bank account to start importing transactions</p>
-    <button onClick={() => setShowNewAccount(true)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">+ Add Bank Account</button>
+    <button onClick={() => setShowNewAccount(true)} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-brand-700">+ Add Bank Account</button>
   </div>
   )}
 
@@ -9795,7 +9795,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   <div className="flex gap-1 border-b border-slate-200">
     {[["for_review", `For Review (${counts.for_review})`], ["categorized", `Categorized (${counts.categorized})`], ["excluded", `Excluded (${counts.excluded})`]].map(([id, label]) => (
     <button key={id} onClick={() => { setActiveTab(id); setSelectedTxns(new Set()); }}
-      className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-600"}`}>{label}</button>
+      className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-600"}`}>{label}</button>
     ))}
   </div>
 
@@ -9804,15 +9804,15 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     <Input placeholder="Search description, payee, amount..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="flex-1 min-w-48" />
     <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-36" />
     <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-36" />
-    <select value={directionFilter} onChange={e => setDirectionFilter(e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm">
+    <select value={directionFilter} onChange={e => setDirectionFilter(e.target.value)} className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm">
       <option value="all">All</option><option value="inflow">Money In</option><option value="outflow">Money Out</option>
     </select>
   </div>
 
   {/* Bulk Action Bar */}
   {selectedTxns.size > 0 && activeTab === "for_review" && (
-  <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 flex items-center justify-between">
-    <span className="text-sm font-medium text-indigo-800">{selectedTxns.size} selected</span>
+  <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-3 flex items-center justify-between">
+    <span className="text-sm font-medium text-brand-800">{selectedTxns.size} selected</span>
     <div className="flex gap-2">
       <button onClick={() => bulkExclude("duplicate")} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100">Exclude All</button>
       <button onClick={() => setSelectedTxns(new Set())} className="text-xs text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-100">Deselect</button>
@@ -9825,7 +9825,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   <table className="w-full text-sm">
   <thead className="bg-slate-50 border-b border-slate-200">
     <tr>
-      {activeTab === "for_review" && <th className="px-3 py-2.5 w-8"><input type="checkbox" checked={selectedTxns.size === filtered.length && filtered.length > 0} onChange={e => { if (e.target.checked) setSelectedTxns(new Set(filtered.map(t => t.id))); else setSelectedTxns(new Set()); }} className="accent-indigo-600" /></th>}
+      {activeTab === "for_review" && <th className="px-3 py-2.5 w-8"><input type="checkbox" checked={selectedTxns.size === filtered.length && filtered.length > 0} onChange={e => { if (e.target.checked) setSelectedTxns(new Set(filtered.map(t => t.id))); else setSelectedTxns(new Set()); }} className="accent-brand-600" /></th>}
       <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500">DATE</th>
       <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500">DESCRIPTION</th>
       <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500">PAYEE</th>
@@ -9840,8 +9840,8 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     const isExpanded = expandedTxn === txn.id;
     return (
     <React.Fragment key={txn.id}>
-    <tr className={`border-b border-slate-100 hover:bg-slate-50 cursor-pointer ${isExpanded ? "bg-indigo-50/50" : ""}`} onClick={() => setExpandedTxn(isExpanded ? null : txn.id)}>
-      {activeTab === "for_review" && <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><input type="checkbox" checked={selectedTxns.has(txn.id)} onChange={e => { const s = new Set(selectedTxns); e.target.checked ? s.add(txn.id) : s.delete(txn.id); setSelectedTxns(s); }} className="accent-indigo-600" /></td>}
+    <tr className={`border-b border-slate-100 hover:bg-slate-50 cursor-pointer ${isExpanded ? "bg-brand-50/50" : ""}`} onClick={() => setExpandedTxn(isExpanded ? null : txn.id)}>
+      {activeTab === "for_review" && <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><input type="checkbox" checked={selectedTxns.has(txn.id)} onChange={e => { const s = new Set(selectedTxns); e.target.checked ? s.add(txn.id) : s.delete(txn.id); setSelectedTxns(s); }} className="accent-brand-600" /></td>}
       <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{txn.posted_date}</td>
       <td className="px-3 py-2.5 text-slate-800 max-w-xs truncate">
         {txn.bank_description_clean || txn.bank_description_raw}
@@ -9852,19 +9852,19 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       {activeTab === "excluded" && <td className="px-3 py-2.5 text-xs text-red-600">{txn.exclusion_reason || "—"}</td>}
       <td className={`px-3 py-2.5 text-right font-mono font-semibold ${txn.direction === "inflow" ? "text-emerald-700" : "text-red-600"}`}>{txn.direction === "inflow" ? "+" : "-"}${safeNum(txn.amount).toFixed(2)}</td>
       <td className="px-3 py-2.5 text-right whitespace-nowrap">
-        {txn.status === "for_review" && <button onClick={e => { e.stopPropagation(); if (isExpanded) { setExpandedTxn(null); } else { setExpandedTxn(txn.id); setActionMode("add"); const sug = txn.raw_payload_json?._suggestion; if (sug) setAddForm({ accountId: sug.accountId || "", accountName: sug.accountName || "", memo: sug.memo || "", classId: sug.classId || "" }); else setAddForm({ accountId: "", accountName: "", memo: "", classId: "" }); }}} className="text-xs text-indigo-600 font-semibold hover:underline">{txn.suggestion_status === "suggested_rule" ? "Review" : "Add"}</button>}
+        {txn.status === "for_review" && <button onClick={e => { e.stopPropagation(); if (isExpanded) { setExpandedTxn(null); } else { setExpandedTxn(txn.id); setActionMode("add"); const sug = txn.raw_payload_json?._suggestion; if (sug) setAddForm({ accountId: sug.accountId || "", accountName: sug.accountName || "", memo: sug.memo || "", classId: sug.classId || "" }); else setAddForm({ accountId: "", accountName: "", memo: "", classId: "" }); }}} className="text-xs text-brand-600 font-semibold hover:underline">{txn.suggestion_status === "suggested_rule" ? "Review" : "Add"}</button>}
         {["categorized", "matched", "posted"].includes(txn.status) && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-slate-400 hover:underline">Undo</button>}
         {txn.status === "excluded" && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-blue-600 hover:underline">Restore</button>}
       </td>
     </tr>
     {/* Inline Action Panel */}
     {isExpanded && txn.status === "for_review" && (
-    <tr><td colSpan={7} className="px-4 py-3 bg-indigo-50/30 border-b border-indigo-100">
+    <tr><td colSpan={7} className="px-4 py-3 bg-brand-50/30 border-b border-brand-100">
       {/* Action Tabs */}
-      <div className="flex gap-1 mb-3 border-b border-indigo-100 pb-2">
+      <div className="flex gap-1 mb-3 border-b border-brand-100 pb-2">
         {[["add","Add"],["match","Match"],["transfer","Transfer"],["split","Split"]].map(([id,label]) => (
           <button key={id} onClick={() => { setActionMode(id); if (id === "match") findMatches(txn); }}
-            className={`px-3 py-1 text-xs font-medium rounded-lg ${actionMode === id ? "bg-indigo-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50 border border-slate-200"}`}>{label}</button>
+            className={`px-3 py-1 text-xs font-medium rounded-lg ${actionMode === id ? "bg-brand-600 text-white" : "bg-white text-slate-500 hover:bg-slate-50 border border-slate-200"}`}>{label}</button>
         ))}
         <button onClick={() => { const reason = prompt("Exclude reason: duplicate / personal / noise / error"); if (reason) excludeTransaction(txn, reason); }}
           className="px-3 py-1 text-xs text-red-500 hover:bg-red-50 rounded-lg ml-auto border border-red-200">Exclude</button>
@@ -9874,13 +9874,13 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       {actionMode === "add" && (
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
         <div><label className="text-xs font-medium text-slate-500 block mb-1">Category *</label>
-          <select value={addForm.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); setAddForm({...addForm, accountId: e.target.value, accountName: a?.name || ""}); }} className="w-full border border-indigo-100 rounded-lg px-2 py-1.5 text-xs">
+          <select value={addForm.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); setAddForm({...addForm, accountId: e.target.value, accountName: a?.name || ""}); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
             <option value="">Select account...</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a => a.type === type && a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}
           </select></div>
         <div><label className="text-xs font-medium text-slate-500 block mb-1">Memo</label>
-          <input type="text" value={addForm.memo} onChange={e => setAddForm({...addForm, memo: e.target.value})} placeholder="Optional..." className="w-full border border-indigo-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+          <input type="text" value={addForm.memo} onChange={e => setAddForm({...addForm, memo: e.target.value})} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
         <div><label className="text-xs font-medium text-slate-500 block mb-1">Class</label>
-          <select value={addForm.classId} onChange={e => setAddForm({...addForm, classId: e.target.value})} className="w-full border border-indigo-100 rounded-lg px-2 py-1.5 text-xs">
+          <select value={addForm.classId} onChange={e => setAddForm({...addForm, classId: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
             <option value="">No class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select></div>
         <button onClick={() => acceptTransaction(txn, addForm.accountId, addForm.accountName, addForm.memo, addForm.classId)} disabled={!addForm.accountId} className="bg-emerald-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-emerald-700">Add & Post</button>
@@ -9901,7 +9901,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
               <div className="text-xs font-medium text-slate-800 truncate">{c.number} — {c.description}</div>
               <div className="text-xs text-slate-400">{c.date} · ${safeNum(c._jeTotal).toFixed(2)} · Score: {c._score}/100</div>
             </div>
-            <button onClick={() => confirmMatch(txn, c)} className="shrink-0 bg-indigo-600 text-white text-xs px-3 py-1 rounded-lg ml-2 hover:bg-indigo-700">Match</button>
+            <button onClick={() => confirmMatch(txn, c)} className="shrink-0 bg-brand-600 text-white text-xs px-3 py-1 rounded-lg ml-2 hover:bg-brand-700">Match</button>
           </div>
           ))}
         </div>
@@ -9913,11 +9913,11 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       {actionMode === "transfer" && (
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
         <div><label className="text-xs font-medium text-slate-500 block mb-1">Transfer to Account *</label>
-          <select value={transferForm.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); setTransferForm({...transferForm, accountId: e.target.value, accountName: a?.name || ""}); }} className="w-full border border-indigo-100 rounded-lg px-2 py-1.5 text-xs">
+          <select value={transferForm.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); setTransferForm({...transferForm, accountId: e.target.value, accountName: a?.name || ""}); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
             <option value="">Select account...</option>{accounts.filter(a => a.is_active && (a.type === "Asset" || a.type === "Liability")).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}
           </select></div>
         <div><label className="text-xs font-medium text-slate-500 block mb-1">Memo</label>
-          <input type="text" value={transferForm.memo} onChange={e => setTransferForm({...transferForm, memo: e.target.value})} placeholder="e.g. Transfer to savings" className="w-full border border-indigo-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+          <input type="text" value={transferForm.memo} onChange={e => setTransferForm({...transferForm, memo: e.target.value})} placeholder="e.g. Transfer to savings" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
         <button onClick={() => acceptTransfer(txn, transferForm.accountId, transferForm.accountName, transferForm.memo)} disabled={!transferForm.accountId} className="bg-blue-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-blue-700">Post Transfer</button>
       </div>
       )}
@@ -9927,17 +9927,17 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-medium text-slate-500">Split into lines (total must equal ${Math.abs(txn.amount).toFixed(2)})</span>
-          <button onClick={() => setSplitLines(prev => [...prev, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }])} className="text-xs text-indigo-600 hover:underline">+ Add Line</button>
+          <button onClick={() => setSplitLines(prev => [...prev, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }])} className="text-xs text-brand-600 hover:underline">+ Add Line</button>
         </div>
         <div className="space-y-2">
           {splitLines.map((line, i) => (
           <div key={i} className="grid grid-cols-5 gap-2 items-end">
-            <select value={line.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); const l = [...splitLines]; l[i] = {...l[i], accountId: e.target.value, accountName: a?.name || ""}; setSplitLines(l); }} className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs">
+            <select value={line.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); const l = [...splitLines]; l[i] = {...l[i], accountId: e.target.value, accountName: a?.name || ""}; setSplitLines(l); }} className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
               <option value="">Account...</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a => a.type === type && a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}
             </select>
-            <input type="text" inputMode="decimal" value={line.amount} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], amount: e.target.value.replace(/[^0-9.]/g, "")}; setSplitLines(l); }} placeholder="0.00" className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs text-right font-mono" />
-            <input type="text" value={line.memo} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], memo: e.target.value}; setSplitLines(l); }} placeholder="Memo..." className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs" />
-            <select value={line.classId} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], classId: e.target.value}; setSplitLines(l); }} className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs">
+            <input type="text" inputMode="decimal" value={line.amount} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], amount: e.target.value.replace(/[^0-9.]/g, "")}; setSplitLines(l); }} placeholder="0.00" className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs text-right font-mono" />
+            <input type="text" value={line.memo} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], memo: e.target.value}; setSplitLines(l); }} placeholder="Memo..." className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs" />
+            <select value={line.classId} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], classId: e.target.value}; setSplitLines(l); }} className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
               <option value="">Class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
             {splitLines.length > 2 && <button onClick={() => setSplitLines(prev => prev.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-600 text-xs">✕</button>}
@@ -9954,7 +9954,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       )}
 
       {/* Transaction Details */}
-      <div className="mt-2 text-xs text-slate-400 border-t border-indigo-100 pt-2">
+      <div className="mt-2 text-xs text-slate-400 border-t border-brand-100 pt-2">
         <span className="mr-3">Source: {txn.source_type?.toUpperCase() || "CSV"}</span>
         <span className="mr-3">Raw: {txn.bank_description_raw}</span>
         {txn.check_number && <span className="mr-3">Check #: {txn.check_number}</span>}
@@ -9981,7 +9981,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     <div className="space-y-3">
       <div><label className="text-xs font-medium text-slate-500 block mb-1">Account Name *</label><Input value={newAccountForm.name} onChange={e => setNewAccountForm({...newAccountForm, name: e.target.value})} placeholder="e.g. Chase Checking" /></div>
       <div><label className="text-xs font-medium text-slate-500 block mb-1">Account Type</label>
-        <select value={newAccountForm.type} onChange={e => setNewAccountForm({...newAccountForm, type: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
+        <select value={newAccountForm.type} onChange={e => setNewAccountForm({...newAccountForm, type: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm">
           <option value="checking">Checking</option><option value="savings">Savings</option><option value="credit_card">Credit Card</option><option value="loan">Loan</option><option value="other">Other</option>
         </select>
       </div>
@@ -9989,7 +9989,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       <div><label className="text-xs font-medium text-slate-500 block mb-1">Institution</label><Input value={newAccountForm.institution_name} onChange={e => setNewAccountForm({...newAccountForm, institution_name: e.target.value})} placeholder="e.g. Chase, Bank of America" /></div>
     </div>
     <div className="flex gap-2 mt-4">
-      <button onClick={createFeed} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700">Create</button>
+      <button onClick={createFeed} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-brand-700">Create</button>
       <button onClick={() => setShowNewAccount(false)} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
     </div>
   </div>
@@ -10023,7 +10023,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     {wizStep === 1 && (
     <div className="space-y-4">
       <label className="text-sm font-medium text-slate-700 block">Import into which account?</label>
-      <select value={wizFeedId} onChange={e => { if (e.target.value === "__new__") { setShowNewAccount(true); } else setWizFeedId(e.target.value); }} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
+      <select value={wizFeedId} onChange={e => { if (e.target.value === "__new__") { setShowNewAccount(true); } else setWizFeedId(e.target.value); }} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm">
         <option value="">Select bank account...</option>
         {feeds.map(f => <option key={f.id} value={f.id}>{f.account_name} ({f.account_type}){f.masked_number ? ` ••••${f.masked_number}` : ""}</option>)}
         <option value="__new__">+ Create New Account</option>
@@ -10051,10 +10051,10 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       <div className="bg-slate-50 rounded-xl p-3"><p className="text-xs text-slate-400 mb-2">Headers found:</p><div className="flex flex-wrap gap-1.5">{wizParsed.headers.map(h => <span key={h} className="text-xs bg-white border border-slate-200 text-slate-700 px-2 py-0.5 rounded-lg font-mono">{h}</span>)}</div></div>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {[{f:"date",l:"Date *"},{f:"description",l:"Description *"},{f:"amount",l:"Amount"},{f:"debit",l:"Debit"},{f:"credit",l:"Credit"},{f:"memo",l:"Memo"},{f:"payee",l:"Payee"},{f:"check_number",l:"Check #"},{f:"reference",l:"Reference"}].map(({f,l})=>(
-        <div key={f}><label className="text-xs font-medium text-slate-500">{l}</label><select value={wizMapping[f]} onChange={e=>setWizMapping(m=>({...m,[f]:e.target.value}))} className="w-full border border-indigo-100 rounded-lg px-2 py-1.5 text-xs mt-1"><option value="">— Not mapped —</option>{wizParsed.headers.map(h=><option key={h} value={h}>{h}</option>)}</select></div>
+        <div key={f}><label className="text-xs font-medium text-slate-500">{l}</label><select value={wizMapping[f]} onChange={e=>setWizMapping(m=>({...m,[f]:e.target.value}))} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs mt-1"><option value="">— Not mapped —</option>{wizParsed.headers.map(h=><option key={h} value={h}>{h}</option>)}</select></div>
         ))}
       </div>
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={wizInvertSign} onChange={e => setWizInvertSign(e.target.checked)} className="accent-indigo-600" /> Invert sign (negative = inflow)</label>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={wizInvertSign} onChange={e => setWizInvertSign(e.target.checked)} className="accent-brand-600" /> Invert sign (negative = inflow)</label>
       {!(wizMapping.date && wizMapping.description && (wizMapping.amount || wizMapping.debit || wizMapping.credit)) && <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">Date, Description, and at least one amount column required</p>}
       <div className="flex justify-between"><button onClick={() => setWizStep(2)} className="text-sm text-slate-400">← Back</button><button onClick={wizBuildPreview} disabled={!(wizMapping.date && wizMapping.description && (wizMapping.amount || wizMapping.debit || wizMapping.credit))} className="bg-slate-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Preview →</button></div>
     </div>
@@ -10091,15 +10091,15 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     <div className="space-y-4">
       <div className="space-y-3">
         <label className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 px-4 py-3 cursor-pointer">
-          <input type="checkbox" checked={wizOptions.skipDuplicates} onChange={e => setWizOptions({...wizOptions, skipDuplicates: e.target.checked})} className="accent-indigo-600" />
+          <input type="checkbox" checked={wizOptions.skipDuplicates} onChange={e => setWizOptions({...wizOptions, skipDuplicates: e.target.checked})} className="accent-brand-600" />
           <div><span className="text-sm font-medium text-slate-700">Skip duplicates automatically</span><p className="text-xs text-slate-400">Transactions with matching fingerprints will be skipped</p></div>
         </label>
         <label className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 px-4 py-3 cursor-pointer">
-          <input type="checkbox" checked={wizOptions.autoApplyRules} onChange={e => setWizOptions({...wizOptions, autoApplyRules: e.target.checked})} className="accent-indigo-600" />
+          <input type="checkbox" checked={wizOptions.autoApplyRules} onChange={e => setWizOptions({...wizOptions, autoApplyRules: e.target.checked})} className="accent-brand-600" />
           <div><span className="text-sm font-medium text-slate-700">Auto-apply categorization rules</span><p className="text-xs text-slate-400">Rules will suggest categories for matching transactions</p></div>
         </label>
         <label className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 px-4 py-3 cursor-pointer">
-          <input type="checkbox" checked={wizOptions.markForReview} onChange={e => setWizOptions({...wizOptions, markForReview: e.target.checked})} className="accent-indigo-600" />
+          <input type="checkbox" checked={wizOptions.markForReview} onChange={e => setWizOptions({...wizOptions, markForReview: e.target.checked})} className="accent-brand-600" />
           <div><span className="text-sm font-medium text-slate-700">Mark all as "For Review"</span><p className="text-xs text-slate-400">Transactions require manual review before posting</p></div>
         </label>
       </div>
@@ -10159,7 +10159,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
         </div>
         <div className="flex gap-1 shrink-0">
           <button onClick={() => toggleRule(r)} className={`px-1.5 py-0.5 rounded text-xs ${r.enabled ? "text-emerald-600" : "text-slate-400"}`}>{r.enabled ? "On" : "Off"}</button>
-          <button onClick={() => startEditRule(r)} className="text-indigo-500 hover:underline">Edit</button>
+          <button onClick={() => startEditRule(r)} className="text-brand-500 hover:underline">Edit</button>
           <button onClick={() => deleteRule(r.id)} className="text-red-400 hover:text-red-600">✕</button>
         </div>
       </div>
@@ -10849,28 +10849,28 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   <h2 className="text-2xl font-manrope font-bold text-slate-800">Document Management</h2>
   <div className="flex gap-2">
   <button onClick={repairUrls} className="bg-amber-500 text-white text-sm px-4 py-2 rounded-lg hover:bg-amber-600" title="Fix broken View links for existing documents">🔧 Repair URLs</button>
-  <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ Upload Document</button>
+  <button onClick={() => setShowForm(!showForm)} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ Upload Document</button>
   </div>
   </div>
 
   {showForm && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-slate-700 mb-3">Upload Document</h3>
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Document Name *</label><Input placeholder="Lease Agreement 2026" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property</label><PropertySelect value={form.property} onChange={(addr, prop) => setForm({ ...form, property: addr, tenant: prop?.tenant || form.tenant })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant</label><Input placeholder="Optional — link to a tenant" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Document Type</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Document Type</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
   {["Lease", "Inspection", "Maintenance", "Financial", "Notice", "Other"].map(t => <option key={t}>{t}</option>)}
   </select></div>
-  <label className="flex items-center gap-2 text-sm text-slate-500 border border-indigo-100 rounded-2xl px-3 py-2 cursor-pointer">
+  <label className="flex items-center gap-2 text-sm text-slate-500 border border-brand-100 rounded-2xl px-3 py-2 cursor-pointer">
   <input type="checkbox" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} />
   Visible to Tenant
   </label>
   <Input type="file" ref={fileRef} className="col-span-2" />
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={uploadDocument} disabled={uploading} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700 disabled:opacity-50">
+  <button onClick={uploadDocument} disabled={uploading} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700 disabled:opacity-50">
   {uploading ? "Uploading..." : "Upload"}
   </button>
   <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-2xl hover:bg-slate-100">Cancel</button>
@@ -10880,21 +10880,21 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
 
   <div className="flex gap-2 mb-4 flex-wrap">
   {["all", "Lease", "Inspection", "Maintenance", "Financial", "Notice", "Other"].map(t => (
-  <button key={t} onClick={() => setFilter(t)} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === t ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{t}</button>
+  <button key={t} onClick={() => setFilter(t)} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === t ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{t}</button>
   ))}
   </div>
 
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-hidden">
   <table className="w-full text-sm">
-  <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
+  <thead className="bg-brand-50/30 text-xs text-slate-400 uppercase">
   <tr>{["Document", "Property", "Type", "Date", "Tenant Visible", "Actions"].map(h => <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>)}</tr>
   </thead>
   <tbody>
   {filtered.map(d => (
-  <tr key={d.id} className="border-t border-indigo-50/50 hover:bg-indigo-50/30">
+  <tr key={d.id} className="border-t border-brand-50/50 hover:bg-brand-50/30">
   <td className="px-3 py-2.5 font-medium text-slate-800">📄 {d.name}</td>
   <td className="px-3 py-2.5 text-slate-400">{d.property}</td>
-  <td className="px-3 py-2.5"><span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full text-xs">{d.type}</span></td>
+  <td className="px-3 py-2.5"><span className="bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full text-xs">{d.type}</span></td>
   <td className="px-3 py-2.5 text-slate-400">{d.uploaded_at?.slice(0, 10)}</td>
   <td className="px-3 py-2.5">{d.tenant_visible ? "✅" : "🔒"}</td>
   <td className="px-3 py-2.5">
@@ -10909,7 +10909,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   const url = await getSignedUrl("documents", path);
   if (url) window.open(url, "_blank", "noopener,noreferrer");
   else showToast("Could not generate secure download link.", "error");
-  }} className="text-xs text-indigo-600 hover:underline">View</button>
+  }} className="text-xs text-brand-600 hover:underline">View</button>
   <button onClick={async () => {
   const isFullUrl = d.url && d.url.startsWith("http");
   if (isFullUrl) { window.open(d.url, "_blank", "noopener,noreferrer"); return; }
@@ -10925,7 +10925,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   const url = await getSignedUrl("documents", d.file_name);
   if (url) window.open(url, "_blank", "noopener,noreferrer");
   else showToast("Could not generate secure link for this file.", "error");
-  }} className="text-xs text-indigo-600 hover:underline">View</button>
+  }} className="text-xs text-brand-600 hover:underline">View</button>
   </>
   ) : (
   <span className="text-xs text-slate-400">No file</span>
@@ -11019,7 +11019,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   <div className="flex justify-between text-sm"><span className="text-slate-400">Inspector</span><span className="font-medium">{selectedInspection.inspector || "—"}</span></div>
   <div className="flex justify-between text-sm"><span className="text-slate-400">Status</span><Badge status={selectedInspection.status} /></div>
   </div>
-  {selectedInspection.notes && <div className="bg-indigo-50/30 rounded-lg p-3 text-sm text-slate-500 mb-4">{selectedInspection.notes}</div>}
+  {selectedInspection.notes && <div className="bg-brand-50/30 rounded-lg p-3 text-sm text-slate-500 mb-4">{selectedInspection.notes}</div>}
   {selectedInspection.checklist && (() => {
   try {
   const cl = JSON.parse(selectedInspection.checklist);
@@ -11028,7 +11028,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   <h4 className="font-semibold text-slate-700 mb-2 text-sm">Checklist</h4>
   <div className="space-y-1">
   {Object.entries(cl).map(([item, val]) => (
-  <div key={item} className="flex items-center justify-between text-sm py-1 border-b border-indigo-50/50">
+  <div key={item} className="flex items-center justify-between text-sm py-1 border-b border-brand-50/50">
   <span className="text-slate-700">{item}</span>
   <span className={val.pass === true ? "text-green-600 font-semibold" : val.pass === false ? "text-red-500 font-semibold" : "text-slate-400"}>
   {val.pass === true ? "✓ Pass" : val.pass === false ? "✗ Fail" : "—"}
@@ -11046,39 +11046,39 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   <div className="flex items-center justify-between mb-5">
   <h2 className="text-2xl font-manrope font-bold text-slate-800">Inspections</h2>
   <div className="flex gap-2">
-  <button onClick={exportInspections} className="text-sm text-indigo-600 border border-indigo-200 px-3 py-2 rounded-2xl hover:bg-indigo-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
-  <button onClick={() => { setShowForm(!showForm); initChecklist("Move-In"); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Inspection</button>
+  <button onClick={exportInspections} className="text-sm text-brand-600 border border-brand-200 px-3 py-2 rounded-2xl hover:bg-brand-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
+  <button onClick={() => { setShowForm(!showForm); initChecklist("Move-In"); }} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Inspection</button>
   </div>
   </div>
 
   {showForm && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-slate-700 mb-3">New Inspection</h3>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Inspection Type</label><select value={form.type} onChange={e => { setForm({ ...form, type: e.target.value }); initChecklist(e.target.value); }} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Inspection Type</label><select value={form.type} onChange={e => { setForm({ ...form, type: e.target.value }); initChecklist(e.target.value); }} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
   {["Move-In", "Move-Out", "Periodic"].map(t => <option key={t}>{t}</option>)}
   </select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Inspector</label><Input placeholder="Inspector name" value={form.inspector} onChange={e => setForm({ ...form, inspector: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Date</label><Input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="General notes about the inspection" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="General notes about the inspection" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
   </div>
 
   {/* Checklist */}
   <h4 className="font-semibold text-slate-700 mb-2 text-sm">Checklist Items</h4>
   <div className="space-y-2 mb-4">
   {Object.entries(checklist).map(([item, val]) => (
-  <div key={item} className="flex items-center gap-3 bg-indigo-50/30 rounded-lg px-3 py-2">
+  <div key={item} className="flex items-center gap-3 bg-brand-50/30 rounded-lg px-3 py-2">
   <span className="text-sm text-slate-700 flex-1">{item}</span>
   <button onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: true } })} className={`text-xs px-2 py-1 rounded ${val.pass === true ? "bg-green-500 text-white" : "bg-slate-200 text-slate-500"}`}>Pass</button>
   <button onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: false } })} className={`text-xs px-2 py-1 rounded ${val.pass === false ? "bg-red-500 text-white" : "bg-slate-200 text-slate-500"}`}>Fail</button>
-  <input placeholder="Note" value={val.notes} onChange={e => setChecklist({ ...checklist, [item]: { ...val, notes: e.target.value } })} className="border border-indigo-100 rounded px-2 py-1 text-xs w-32" />
+  <input placeholder="Note" value={val.notes} onChange={e => setChecklist({ ...checklist, [item]: { ...val, notes: e.target.value } })} className="border border-brand-100 rounded px-2 py-1 text-xs w-32" />
   </div>
   ))}
   </div>
 
   <div className="flex gap-2">
-  <button onClick={saveInspection} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">Save Inspection</button>
+  <button onClick={saveInspection} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">Save Inspection</button>
   <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-2xl hover:bg-slate-100">Cancel</button>
   </div>
   </div>
@@ -11086,7 +11086,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
 
   <div className="space-y-3">
   {inspections.map(insp => (
-  <div key={insp.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
+  <div key={insp.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <div className="flex justify-between items-start">
   <div>
   <div className="font-semibold text-slate-800">{insp.property}</div>
@@ -11099,7 +11099,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   <div><span className="text-slate-400">Type</span><div className="font-semibold text-slate-700">{insp.type}</div></div>
   </div>
   <div className="mt-3 flex gap-2 flex-wrap">
-  <button onClick={() => setSelectedInspection(insp)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">📋 View Report</button>
+  <button onClick={() => setSelectedInspection(insp)} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">📋 View Report</button>
   {insp.status === "scheduled" && <button onClick={() => updateStatus(insp.id, "completed")} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">✓ Mark Complete</button>}
   {insp.status === "completed" && <button onClick={async () => {
   if (!guardSubmit("woFromInsp", insp.id)) return;
@@ -11460,8 +11460,8 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="flex justify-between items-center mb-5">
   <h2 className="text-2xl font-manrope font-bold text-slate-800">Lease Management</h2>
   <div className="flex gap-2">
-  <button onClick={() => setShowTemplateForm(true)} className="text-xs border border-indigo-100 text-slate-500 px-3 py-2 rounded-lg hover:bg-indigo-50/30">Manage Templates</button>
-  <button onClick={() => { resetForm(); setShowForm(true); }} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Lease</button>
+  <button onClick={() => setShowTemplateForm(true)} className="text-xs border border-brand-100 text-slate-500 px-3 py-2 rounded-lg hover:bg-brand-50/30">Manage Templates</button>
+  <button onClick={() => { resetForm(); setShowForm(true); }} className="bg-brand-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Lease</button>
   </div>
   </div>
 
@@ -11484,9 +11484,9 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
   )}
 
-  <div className="flex gap-1 mb-4 border-b border-indigo-50 overflow-x-auto">
+  <div className="flex gap-1 mb-4 border-b border-brand-50 overflow-x-auto">
   {[["active","Active"],["expiring","Expiring"],["expired","Expired"],["renewed","Renewed"],["terminated","Terminated"],["all","All"]].map(([id,label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400")}>{label}{id === "expiring" && expiringSoon.length > 0 ? " (" + expiringSoon.length + ")" : ""}</button>
+  <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400")}>{label}{id === "expiring" && expiringSoon.length > 0 ? " (" + expiringSoon.length + ")" : ""}</button>
   ))}
   </div>
 
@@ -11501,7 +11501,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
   <Textarea placeholder="Standard clauses..." value={templateForm.clauses} onChange={e => setTemplateForm({...templateForm, clauses: e.target.value})}  rows={4} />
   <Textarea placeholder="Special terms..." value={templateForm.special_terms} onChange={e => setTemplateForm({...templateForm, special_terms: e.target.value})}  rows={3} />
-  <button onClick={saveTemplate} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700">Save Template</button>
+  <button onClick={saveTemplate} className="bg-brand-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-brand-700">Save Template</button>
   </div>
   </Modal>
   )}
@@ -11513,7 +11513,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="space-y-3">
   <div className="bg-purple-50 rounded-lg p-3 text-sm"><div className="flex justify-between"><span className="text-slate-400">Original Deposit:</span><span className="font-bold">${safeNum(showDepositModal.security_deposit).toLocaleString()}</span></div></div>
   <div><label className="text-xs text-slate-400">Amount to Return ($)</label><Input type="number" value={depositForm.amount_returned} onChange={e => setDepositForm({...depositForm, amount_returned: e.target.value})} placeholder={String(showDepositModal.security_deposit)} /></div>
-  <div><label className="text-xs text-slate-400">Deduction Reasons</label><Textarea value={depositForm.deductions} onChange={e => setDepositForm({...depositForm, deductions: e.target.value})} placeholder="Cleaning, damages, unpaid rent..." className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" rows={3} /></div>
+  <div><label className="text-xs text-slate-400">Deduction Reasons</label><Textarea value={depositForm.deductions} onChange={e => setDepositForm({...depositForm, deductions: e.target.value})} placeholder="Cleaning, damages, unpaid rent..." className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={3} /></div>
   <div><label className="text-xs text-slate-400">Return Date</label><Input type="date" value={depositForm.return_date} onChange={e => setDepositForm({...depositForm, return_date: e.target.value})} /></div>
   {Number(depositForm.amount_returned || 0) < safeNum(showDepositModal.security_deposit) && depositForm.amount_returned && (
   <div className="bg-red-50 rounded-lg p-2 text-xs text-red-700">Deducting ${(safeNum(showDepositModal.security_deposit) - Number(depositForm.amount_returned)).toLocaleString()} from deposit</div>
@@ -11527,8 +11527,8 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <Modal title={(showChecklist.type === "in" ? "Move-In" : "Move-Out") + " Checklist — " + showChecklist.lease.tenant_name} onClose={() => setShowChecklist(null)}>
   <div className="space-y-2">
   {(() => { let items = []; try { items = JSON.parse(showChecklist.lease[showChecklist.type === "in" ? "move_in_checklist" : "move_out_checklist"] || "[]"); } catch {} return items.map((item, i) => (
-  <div key={i} onClick={() => toggleChecklistItem(showChecklist.lease, showChecklist.type, i)} className={"flex items-center gap-3 p-2 rounded-lg cursor-pointer border " + (item.checked ? "bg-green-50 border-green-200" : "bg-white border-gray-100 hover:bg-indigo-50/30")}>
-  <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs " + (item.checked ? "bg-green-500 border-green-500 text-white" : "border-indigo-200")}>{item.checked ? "✓" : ""}</span>
+  <div key={i} onClick={() => toggleChecklistItem(showChecklist.lease, showChecklist.type, i)} className={"flex items-center gap-3 p-2 rounded-lg cursor-pointer border " + (item.checked ? "bg-green-50 border-green-200" : "bg-white border-gray-100 hover:bg-brand-50/30")}>
+  <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs " + (item.checked ? "bg-green-500 border-green-500 text-white" : "border-brand-200")}>{item.checked ? "✓" : ""}</span>
   <span className={"text-sm " + (item.checked ? "line-through text-slate-400" : "text-slate-700")}>{item.item}</span>
   </div>
   )); })()}
@@ -11537,11 +11537,11 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   )}
 
   {showForm && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
   <h3 className="font-manrope font-semibold text-slate-800 mb-4">{editingLease ? "Edit Lease" : "Create New Lease"}</h3>
   {!editingLease && templates.length > 0 && (
   <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Apply Template</label>
-  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.template_id} onChange={e => { setForm({...form, template_id: e.target.value}); applyTemplate(e.target.value); }} >
+  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.template_id} onChange={e => { setForm({...form, template_id: e.target.value}); applyTemplate(e.target.value); }} >
   <option value="">Select template...</option>
   {templates.map(t => <option key={t.id} value={t.id}>{t.name} — {t.description}</option>)}
   </select>
@@ -11549,7 +11549,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   )}
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div><label className="text-xs text-slate-400 mb-1 block">Tenant *</label>
-  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.tenant_name} onChange={e => { setForm({...form, tenant_name: e.target.value}); prefillFromTenant(e.target.value); }} >
+  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.tenant_name} onChange={e => { setForm({...form, tenant_name: e.target.value}); prefillFromTenant(e.target.value); }} >
   <option value="">Select tenant...</option>
   {tenants.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
   </select>
@@ -11562,7 +11562,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <div><label className="text-xs text-slate-400 mb-1 block">Annual Escalation %</label><Input type="number" step="0.1" min="0" max="25" placeholder="3.0" value={form.rent_escalation_pct} onChange={e => setForm({...form, rent_escalation_pct: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Payment Due Day</label><Input type="number" min="1" max="31" placeholder="1" value={form.payment_due_day} onChange={e => setForm({...form, payment_due_day: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Lease Type</label>
-  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.lease_type} onChange={e => setForm({...form, lease_type: e.target.value})} ><option value="fixed">Fixed Term</option><option value="month_to_month">Month-to-Month</option><option value="renewal">Renewal</option></select></div>
+  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.lease_type} onChange={e => setForm({...form, lease_type: e.target.value})} ><option value="fixed">Fixed Term</option><option value="month_to_month">Month-to-Month</option><option value="renewal">Renewal</option></select></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Renewal Notice (days)</label><Input type="number" min="0" max="180" placeholder="60" value={form.renewal_notice_days} onChange={e => setForm({...form, renewal_notice_days: e.target.value})} /></div>
   </div>
   {/* Late Fee Settings */}
@@ -11576,10 +11576,10 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <p className="text-xs text-amber-600 mt-2">Late fees auto-apply to tenant ledger after grace period. Admin can waive from ledger.</p>
   </div>
   <div className="flex items-center gap-2 mb-4"><input type="checkbox" checked={form.auto_renew} onChange={e => setForm({...form, auto_renew: e.target.checked})} className="rounded" /><label className="text-sm text-slate-500">Auto-renew at end of term</label></div>
-  <div className="mb-3"><label className="text-xs text-slate-400 mb-1 block">Lease Clauses</label><Textarea value={form.clauses} onChange={e => setForm({...form, clauses: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" rows={3} placeholder="Standard clauses..." /></div>
-  <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Special Terms</label><Textarea value={form.special_terms} onChange={e => setForm({...form, special_terms: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" rows={2} placeholder="Pet deposit, parking, storage..." /></div>
+  <div className="mb-3"><label className="text-xs text-slate-400 mb-1 block">Lease Clauses</label><Textarea value={form.clauses} onChange={e => setForm({...form, clauses: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={3} placeholder="Standard clauses..." /></div>
+  <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Special Terms</label><Textarea value={form.special_terms} onChange={e => setForm({...form, special_terms: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={2} placeholder="Pet deposit, parking, storage..." /></div>
   <div className="flex gap-2">
-  <button onClick={saveLease} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700">{editingLease ? "Update Lease" : "Create Lease"}</button>
+  <button onClick={saveLease} className="bg-brand-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-brand-700">{editingLease ? "Update Lease" : "Create Lease"}</button>
   <button onClick={resetForm} className="text-sm text-slate-400 px-4 py-2 hover:text-slate-700">Cancel</button>
   </div>
   </div>
@@ -11592,7 +11592,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   const sc = { active: "bg-green-100 text-green-700", expired: "bg-red-100 text-red-700", renewed: "bg-blue-100 text-blue-700", terminated: "bg-slate-100 text-slate-500", draft: "bg-amber-100 text-amber-700" };
   const dc = { held: "bg-purple-100 text-purple-700", partial_return: "bg-amber-100 text-amber-700", returned: "bg-green-100 text-green-700", forfeited: "bg-red-100 text-red-700" };
   return (
-  <div key={l.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (isExpired ? "border-red-200" : "border-indigo-50")}>
+  <div key={l.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (isExpired ? "border-red-200" : "border-brand-50")}>
   <div className="flex justify-between items-start mb-3">
   <div><div className="text-sm font-bold text-slate-800">{l.tenant_name}</div><div className="text-xs text-slate-400">{l.property}</div></div>
   <div className="flex items-center gap-2">
@@ -11610,14 +11610,14 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <div><span className="text-slate-400">Type:</span> <span className="font-medium capitalize">{(l.lease_type || "fixed").replace("_"," ")}</span></div>
   <div><span className="text-slate-400">Auto-Renew:</span> <span className="font-medium">{l.auto_renew ? "Yes" : "No"}</span></div>
   </div>
-  <div className="flex flex-wrap gap-2 pt-2 border-t border-indigo-50/50">
-  <button onClick={() => startEdit(l)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
+  <div className="flex flex-wrap gap-2 pt-2 border-t border-brand-50/50">
+  <button onClick={() => startEdit(l)} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">Edit</button>
   <button onClick={() => setShowESign(l)} className={"text-xs border px-3 py-1 rounded-lg " + (l.signature_status === "fully_signed" ? "text-green-600 border-green-200 bg-green-50" : "text-purple-600 border-purple-200 hover:bg-purple-50")}>{l.signature_status === "fully_signed" ? "✓ Signed" : "\u270d\ufe0f E-Sign"}</button>
   {l.status === "active" && <button onClick={() => renewLease(l)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">Renew</button>}
   {l.status === "active" && <button onClick={() => { setShowRentIncrease(l); setRentIncreaseForm({ new_amount: String(l.rent_amount), effective_date: formatLocalDate(new Date()), reason: "" }); }} className="text-xs text-blue-600 border border-blue-200 px-3 py-1 rounded-lg hover:bg-blue-50">📈 Rent Increase</button>}
   {l.status === "active" && <button onClick={() => terminateLease(l)} className="text-xs text-red-600 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">Terminate</button>}
-  <button onClick={() => setShowChecklist({ lease: l, type: "in" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_in_completed ? "text-green-600 border-green-200 bg-green-50" : "text-slate-400 border-indigo-100 hover:bg-indigo-50/30")}>Move-In {l.move_in_completed ? "✓" : ""}</button>
-  <button onClick={() => setShowChecklist({ lease: l, type: "out" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_out_completed ? "text-green-600 border-green-200 bg-green-50" : "text-slate-400 border-indigo-100 hover:bg-indigo-50/30")}>Move-Out {l.move_out_completed ? "✓" : ""}</button>
+  <button onClick={() => setShowChecklist({ lease: l, type: "in" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_in_completed ? "text-green-600 border-green-200 bg-green-50" : "text-slate-400 border-brand-100 hover:bg-brand-50/30")}>Move-In {l.move_in_completed ? "✓" : ""}</button>
+  <button onClick={() => setShowChecklist({ lease: l, type: "out" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_out_completed ? "text-green-600 border-green-200 bg-green-50" : "text-slate-400 border-brand-100 hover:bg-brand-50/30")}>Move-Out {l.move_out_completed ? "✓" : ""}</button>
   {safeNum(l.security_deposit) > 0 && l.deposit_status === "held" && (l.status === "terminated" || l.status === "expired" || isExpired) && (
   <button onClick={() => { setShowDepositModal(l); setDepositForm({ amount_returned: String(l.security_deposit), deductions: "", return_date: formatLocalDate(new Date()) }); }} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">Return Deposit</button>
   )}
@@ -11632,7 +11632,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   {showRentIncrease && (
   <Modal title={`Rent Increase — ${showRentIncrease.tenant_name}`} onClose={() => setShowRentIncrease(null)}>
   <div className="space-y-3">
-  <div className="bg-indigo-50/30 rounded-xl p-3 text-sm">
+  <div className="bg-brand-50/30 rounded-xl p-3 text-sm">
   <div className="flex justify-between"><span className="text-slate-400">Current Rent:</span><span className="font-bold">${showRentIncrease.rent_amount}/mo</span></div>
   <div className="flex justify-between"><span className="text-slate-400">Property:</span><span>{showRentIncrease.property}</span></div>
   </div>
@@ -11654,7 +11654,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   logAudit("update", "leases", `Rent increase: ${formatCurrency(showRentIncrease.rent_amount)} → ${formatCurrency(newAmt)} for ${showRentIncrease.tenant_name}`, showRentIncrease.id, userProfile?.email, userRole, companyId);
   setShowRentIncrease(null);
   fetchData();
-  }} className="w-full bg-indigo-600 text-white text-sm py-2.5 rounded-2xl hover:bg-indigo-700">Apply Rent Increase</button>
+  }} className="w-full bg-brand-600 text-white text-sm py-2.5 rounded-2xl hover:bg-brand-700">Apply Rent Increase</button>
   </div>
   </Modal>
   )}
@@ -11859,8 +11859,8 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div className="flex justify-between items-center mb-5">
   <h2 className="text-2xl font-manrope font-bold text-slate-800">Vendor Management</h2>
   <div className="flex gap-2">
-  <button onClick={() => setShowInvoiceForm(true)} className="text-xs border border-indigo-100 text-slate-500 px-3 py-2 rounded-lg hover:bg-indigo-50/30">+ Invoice</button>
-  <button onClick={() => { resetVendorForm(); setShowForm(true); }} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Vendor</button>
+  <button onClick={() => setShowInvoiceForm(true)} className="text-xs border border-brand-100 text-slate-500 px-3 py-2 rounded-lg hover:bg-brand-50/30">+ Invoice</button>
+  <button onClick={() => { resetVendorForm(); setShowForm(true); }} className="bg-brand-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Vendor</button>
   </div>
   </div>
 
@@ -11880,15 +11880,15 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   </div>
   )}
 
-  <div className="flex gap-1 mb-4 border-b border-indigo-50">
+  <div className="flex gap-1 mb-4 border-b border-brand-50">
   {[["vendors","Vendors"],["invoices","Invoices"]].map(([id,label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400")}>{label}</button>
+  <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400")}>{label}</button>
   ))}
   </div>
 
   {/* New Vendor Form */}
   {showForm && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
   <div className="flex items-center justify-between mb-4"><h3 className="font-manrope font-semibold text-slate-800">{editingVendor ? "Edit Vendor" : "Add New Vendor"}</h3><button onClick={resetVendorForm} className="text-slate-400 hover:text-slate-700 text-xl leading-none" title="Close">✕</button></div>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div className="col-span-2"><div className="grid grid-cols-6 gap-3">
@@ -11901,12 +11901,12 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div><label className="text-xs text-slate-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} /></div>
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address</label><Input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Specialty</label>
-  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.specialty} onChange={e => setForm({...form, specialty: e.target.value})} >
+  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.specialty} onChange={e => setForm({...form, specialty: e.target.value})} >
   {specialties.map(s => <option key={s} value={s}>{s}</option>)}
   </select>
   </div>
   <div><label className="text-xs text-slate-400 mb-1 block">Status</label>
-  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.status} onChange={e => setForm({...form, status: e.target.value})} >
+  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.status} onChange={e => setForm({...form, status: e.target.value})} >
   <option value="active">Active</option><option value="preferred">Preferred</option><option value="inactive">Inactive</option><option value="blocked">Blocked</option>
   </select>
   </div>
@@ -11915,9 +11915,9 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div><label className="text-xs text-slate-400 mb-1 block">Hourly Rate ($)</label><Input placeholder="0.00" type="number" value={form.hourly_rate} onChange={e => setForm({...form, hourly_rate: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Flat Rate ($)</label><Input placeholder="0.00" type="number" value={form.flat_rate} onChange={e => setForm({...form, flat_rate: e.target.value})} /></div>
   </div>
-  <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Notes</label><Textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" rows={2} /></div>
+  <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Notes</label><Textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={2} /></div>
   <div className="flex gap-2">
-  <button onClick={saveVendor} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700">{editingVendor ? "Update" : "Add Vendor"}</button>
+  <button onClick={saveVendor} className="bg-brand-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-brand-700">{editingVendor ? "Update" : "Add Vendor"}</button>
   <button onClick={resetVendorForm} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
   </div>
   </div>
@@ -11925,11 +11925,11 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
 
   {/* Invoice Form */}
   {showInvoiceForm && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
   <div className="flex items-center justify-between mb-4"><h3 className="font-manrope font-semibold text-slate-800">New Vendor Invoice</h3><button onClick={() => setShowInvoiceForm(false)} className="text-slate-400 hover:text-slate-700 text-xl leading-none" title="Close">✕</button></div>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div><label className="text-xs text-slate-400 mb-1 block">Vendor *</label>
-  <select value={invoiceForm.vendor_id} onChange={e => { const v = vendors.find(v => String(v.id) === String(e.target.value)); setInvoiceForm({...invoiceForm, vendor_id: e.target.value, vendor_name: v?.name || ""}); }} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm truncate">
+  <select value={invoiceForm.vendor_id} onChange={e => { const v = vendors.find(v => String(v.id) === String(e.target.value)); setInvoiceForm({...invoiceForm, vendor_id: e.target.value, vendor_name: v?.name || ""}); }} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm truncate">
   <option value="">Select vendor...</option>
   {vendors.filter(v => v.status !== "blocked").map(v => <option key={v.id} value={v.id}>{v.name} ({v.specialty})</option>)}
   </select>
@@ -11942,7 +11942,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div className="col-span-2"><label className="text-xs text-slate-400 mb-1 block">Description</label><Input value={invoiceForm.description} onChange={e => setInvoiceForm({...invoiceForm, description: e.target.value})} placeholder="Plumbing repair at 123 Main St" /></div>
   </div>
   <div className="flex gap-2">
-  <button onClick={saveInvoice} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700">Save Invoice</button>
+  <button onClick={saveInvoice} className="bg-brand-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-brand-700">Save Invoice</button>
   <button onClick={() => setShowInvoiceForm(false)} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
   </div>
   </div>
@@ -11953,7 +11953,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div>
   <div className="flex gap-2 mb-4">
   <Input placeholder="Search vendors..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="flex-1" />
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={filterSpecialty} onChange={e => setFilterSpecialty(e.target.value)} >
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={filterSpecialty} onChange={e => setFilterSpecialty(e.target.value)} >
   <option value="all">All Specialties</option>
   {specialties.map(s => <option key={s} value={s}>{s}</option>)}
   </select>
@@ -11962,9 +11962,9 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   {filteredVendors.map(v => {
   const insExpired = v.insurance_expiry && parseLocalDate(v.insurance_expiry) < new Date();
   const insExpiring = v.insurance_expiry && !insExpired && Math.ceil((parseLocalDate(v.insurance_expiry) - new Date()) / 86400000) <= 30;
-  const sc = { active: "bg-green-100 text-green-700", preferred: "bg-indigo-100 text-indigo-700", inactive: "bg-slate-100 text-slate-400", blocked: "bg-red-100 text-red-700" };
+  const sc = { active: "bg-green-100 text-green-700", preferred: "bg-brand-100 text-brand-700", inactive: "bg-slate-100 text-slate-400", blocked: "bg-red-100 text-red-700" };
   return (
-  <div key={v.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
+  <div key={v.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <div className="flex justify-between items-start mb-2">
   <div>
   <div className="text-sm font-bold text-slate-800">{v.name}{v.company ? " — " + v.company : ""}</div>
@@ -11985,8 +11985,8 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   {v.insurance_expiry && <div><span className="text-slate-400">Insurance:</span> <span className={"font-medium " + (insExpired ? "text-red-600" : insExpiring ? "text-amber-600" : "text-green-600")}>{v.insurance_expiry}{insExpired ? " (EXPIRED)" : ""}</span></div>}
   </div>
   {v.notes && <div className="text-xs text-slate-400 mb-2">{v.notes}</div>}
-  <div className="flex flex-wrap gap-2 pt-2 border-t border-indigo-50/50">
-  <button onClick={() => startEditVendor(v)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
+  <div className="flex flex-wrap gap-2 pt-2 border-t border-brand-50/50">
+  <button onClick={() => startEditVendor(v)} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">Edit</button>
   <button onClick={() => deleteVendor(v.id, v.name)} className="text-xs text-red-500 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50">Delete</button>
   <div className="flex items-center gap-0.5 ml-2">
   {[1,2,3,4,5].map(star => (
@@ -12009,7 +12009,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   const isOverdue = inv.status === "pending" && inv.due_date && parseLocalDate(inv.due_date) < new Date();
   const sc = { pending: "bg-amber-100 text-amber-700", approved: "bg-blue-100 text-blue-700", paid: "bg-green-100 text-green-700", disputed: "bg-red-100 text-red-700" };
   return (
-  <div key={inv.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (isOverdue ? "border-red-200" : "border-indigo-50")}>
+  <div key={inv.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (isOverdue ? "border-red-200" : "border-brand-50")}>
   <div className="flex justify-between items-start mb-2">
   <div>
   <div className="text-sm font-bold text-slate-800">{inv.vendor_name}</div>
@@ -12027,7 +12027,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   {inv.paid_date && <div><span className="text-slate-400">Paid:</span> <span className="font-medium text-green-600">{inv.paid_date}</span></div>}
   </div>
   {(inv.status === "pending" || inv.status === "approved") && (
-  <div className="flex gap-2 pt-2 mt-2 border-t border-indigo-50/50">
+  <div className="flex gap-2 pt-2 mt-2 border-t border-brand-50/50">
   <button onClick={() => payInvoice(inv)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">Mark Paid</button>
   </div>
   )}
@@ -12280,8 +12280,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="flex justify-between items-center mb-5">
   <h2 className="text-2xl font-manrope font-bold text-slate-800">Owner Management</h2>
   <div className="flex gap-2">
-  <button onClick={() => setShowGenerate(true)} className="text-xs border border-indigo-100 text-slate-500 px-3 py-2 rounded-lg hover:bg-indigo-50/30">Generate Statement</button>
-  <button onClick={() => { resetForm(); setShowForm(true); }} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Owner</button>
+  <button onClick={() => setShowGenerate(true)} className="text-xs border border-brand-100 text-slate-500 px-3 py-2 rounded-lg hover:bg-brand-50/30">Generate Statement</button>
+  <button onClick={() => { resetForm(); setShowForm(true); }} className="bg-brand-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Owner</button>
   </div>
   </div>
 
@@ -12292,19 +12292,19 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <StatCard label="Unassigned Props" value={properties.filter(p => !p.owner_id).length} color={properties.filter(p => !p.owner_id).length > 0 ? "text-orange-500" : "text-slate-400"} sub="no owner" />
   </div>
 
-  <div className="flex gap-1 mb-4 border-b border-indigo-50">
+  <div className="flex gap-1 mb-4 border-b border-brand-50">
   {[["owners","Owners"],["properties","Properties"],["statements","Statements"],["distributions","Distributions"]].map(([id,label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400")}>{label}</button>
+  <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400")}>{label}</button>
   ))}
   </div>
 
   {/* Generate Statement Modal */}
   {showGenerate && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
   <h3 className="font-manrope font-semibold text-slate-800 mb-4">Generate Owner Statement</h3>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div><label className="text-xs text-slate-400 mb-1 block">Owner *</label>
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={genOwner} onChange={e => setGenOwner(e.target.value)} >
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={genOwner} onChange={e => setGenOwner(e.target.value)} >
   <option value="">Select owner...</option>
   {activeOwners.map(o => <option key={o.id} value={o.id}>{o.name} ({properties.filter(p => String(p.owner_id) === String(o.id)).length} properties)</option>)}
   </select>
@@ -12312,14 +12312,14 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div><label className="text-xs text-slate-400 mb-1 block">Month</label><Input placeholder="Enter name" type="month" value={genMonth} onChange={e => setGenMonth(e.target.value)} /></div>
   </div>
   {genOwner && (
-  <div className="bg-indigo-50/30 rounded-lg p-3 mb-4 text-xs text-slate-500">
+  <div className="bg-brand-50/30 rounded-lg p-3 mb-4 text-xs text-slate-500">
   <div className="font-semibold mb-1">Properties included:</div>
   {properties.filter(p => String(p.owner_id) === String(genOwner)).map(p => <div key={p.id}>{p.address}</div>)}
   {properties.filter(p => String(p.owner_id) === String(genOwner)).length === 0 && <div className="text-amber-600">No properties assigned to this owner</div>}
   </div>
   )}
   <div className="flex gap-2">
-  <button onClick={generateStatement} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700">Generate</button>
+  <button onClick={generateStatement} className="bg-brand-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-brand-700">Generate</button>
   <button onClick={() => setShowGenerate(false)} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
   </div>
   </div>
@@ -12327,7 +12327,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
 
   {/* Owner Form */}
   {showForm && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
   <h3 className="font-manrope font-semibold text-slate-800 mb-4">{editingOwner ? "Edit Owner" : "Add New Owner"}</h3>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div className="col-span-2"><div className="grid grid-cols-6 gap-3">
@@ -12342,19 +12342,19 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div><label className="text-xs text-slate-400 mb-1 block">Tax ID / EIN</label><Input placeholder="XX-XXXXXXX" value={form.tax_id} onChange={e => setForm({...form, tax_id: e.target.value})} maxLength={10} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Management Fee %</label><Input type="number" step="0.5" min="0" max="50" placeholder="10.0" value={form.management_fee_pct} onChange={e => setForm({...form, management_fee_pct: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Payment Method</label>
-  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.payment_method} onChange={e => setForm({...form, payment_method: e.target.value})} >
+  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.payment_method} onChange={e => setForm({...form, payment_method: e.target.value})} >
   <option value="check">Check</option><option value="ach">ACH</option><option value="wire">Wire</option>
   </select>
   </div>
   <div><label className="text-xs text-slate-400 mb-1 block">Status</label>
-  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.status} onChange={e => setForm({...form, status: e.target.value})} >
+  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.status} onChange={e => setForm({...form, status: e.target.value})} >
   <option value="active">Active</option><option value="inactive">Inactive</option>
   </select>
   </div>
   </div>
-  <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Notes</label><Textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" rows={2} /></div>
+  <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Notes</label><Textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={2} /></div>
   <div className="flex gap-2">
-  <button onClick={saveOwner} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700">{editingOwner ? "Update" : "Add Owner"}</button>
+  <button onClick={saveOwner} className="bg-brand-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-brand-700">{editingOwner ? "Update" : "Add Owner"}</button>
   <button onClick={resetForm} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
   </div>
   </div>
@@ -12368,7 +12368,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Income</div><div className="text-lg font-bold text-green-700">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
   <div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Expenses</div><div className="text-lg font-bold text-red-600">${safeNum(viewStatement.total_expenses).toLocaleString()}</div></div>
   <div className="bg-purple-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Mgmt Fee</div><div className="text-lg font-bold text-purple-700">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
-  <div className="bg-indigo-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Net to Owner</div><div className={"text-lg font-bold " + (viewStatement.net_to_owner >= 0 ? "text-indigo-700" : "text-red-600")}>${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
+  <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Net to Owner</div><div className={"text-lg font-bold " + (viewStatement.net_to_owner >= 0 ? "text-brand-700" : "text-red-600")}>${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
   </div>
   {(() => {
   let items = []; try { items = JSON.parse(viewStatement.line_items || "[]"); } catch {}
@@ -12376,7 +12376,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div key={ci}>
   <div className="font-semibold text-slate-700 text-sm mt-2 mb-1">{cat.category}</div>
   {(cat.items || []).map((item, ii) => (
-  <div key={ii} className="flex justify-between text-xs py-1 border-b border-indigo-50/50">
+  <div key={ii} className="flex justify-between text-xs py-1 border-b border-brand-50/50">
   <div className="text-slate-500">{item.description}<span className="text-slate-400 ml-2">{item.date}</span></div>
   <div className={"font-bold " + (item.amount >= 0 ? "text-green-600" : "text-red-600")}>{item.amount >= 0 ? "+" : ""}${Math.abs(item.amount).toLocaleString()}</div>
   </div>
@@ -12385,7 +12385,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
   ));
   })()}
-  <div className="flex gap-2 pt-3 border-t border-indigo-50">
+  <div className="flex gap-2 pt-3 border-t border-brand-50">
   {viewStatement.status === "draft" && <button onClick={() => { markStatementSent(viewStatement); setViewStatement(null); }} className="text-xs bg-blue-600 text-white px-4 py-2 rounded-lg">Mark Sent</button>}
   {(viewStatement.status === "draft" || viewStatement.status === "sent") && <button onClick={() => { distributeToOwner(viewStatement); setViewStatement(null); }} className="text-xs bg-green-600 text-white px-4 py-2 rounded-lg">Distribute ${safeNum(viewStatement.net_to_owner).toLocaleString()}</button>}
   </div>
@@ -12400,7 +12400,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   const ownerProps = properties.filter(p => String(p.owner_id) === String(o.id));
   const ownerDist = distributions.filter(d => String(d.owner_id) === String(o.id)).reduce((s, d) => s + safeNum(d.amount), 0);
   return (
-  <div key={o.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
+  <div key={o.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <div className="flex justify-between items-start mb-2">
   <div>
   <div className="text-sm font-bold text-slate-800">{o.name}{o.company ? " — " + o.company : ""}</div>
@@ -12417,9 +12417,9 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   {ownerProps.length > 0 && (
   <div className="text-xs text-slate-400 mb-2">{ownerProps.map(p => p.address).join(" · ")}</div>
   )}
-  <div className="flex gap-2 pt-2 border-t border-indigo-50/50">
+  <div className="flex gap-2 pt-2 border-t border-brand-50/50">
   <button onClick={() => inviteOwner(o)} className="text-xs text-purple-600 border border-purple-200 px-3 py-1 rounded-lg hover:bg-purple-50">✉️ Invite</button>
-  <button onClick={() => startEdit(o)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
+  <button onClick={() => startEdit(o)} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">Edit</button>
   <button onClick={() => { setGenOwner(o.id); setShowGenerate(true); }} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">Generate Statement</button>
   </div>
   </div>
@@ -12434,12 +12434,12 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="space-y-2">
   <div className="text-sm text-slate-400 mb-3">Assign owners to properties. This determines which income and expenses appear on each owner's statement.</div>
   {properties.map(p => (
-  <div key={p.id} className="bg-white rounded-3xl border border-indigo-50 px-4 py-3 flex justify-between items-center">
+  <div key={p.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center">
   <div>
   <div className="text-sm font-medium text-slate-800">{p.address}</div>
   <div className="text-xs text-slate-400">{p.type} · {p.status}</div>
   </div>
-  <select value={p.owner_id || ""} onChange={e => assignPropertyToOwner(p.id, e.target.value)} className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm min-w-40">
+  <select value={p.owner_id || ""} onChange={e => assignPropertyToOwner(p.id, e.target.value)} className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm min-w-40">
   <option value="">No owner</option>
   {owners.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
   </select>
@@ -12454,7 +12454,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   {statements.map(s => {
   const sc = { draft: "bg-amber-100 text-amber-700", sent: "bg-blue-100 text-blue-700", paid: "bg-green-100 text-green-700" };
   return (
-  <div key={s.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4 cursor-pointer hover:border-indigo-200" onClick={() => setViewStatement(s)}>
+  <div key={s.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4 cursor-pointer hover:border-brand-200" onClick={() => setViewStatement(s)}>
   <div className="flex justify-between items-start mb-2">
   <div>
   <div className="text-sm font-bold text-slate-800">{s.owner_name}</div>
@@ -12481,7 +12481,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   {activeTab === "distributions" && (
   <div className="space-y-2">
   {distributions.map(d => (
-  <div key={d.id} className="bg-white rounded-3xl border border-indigo-50 px-4 py-3 flex justify-between items-center">
+  <div key={d.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center">
   <div>
   <div className="text-sm font-medium text-slate-800">{owners.find(o => String(o.id) === String(d.owner_id))?.name || "Unknown"}</div>
   <div className="text-xs text-slate-400">{d.date} · {d.method} · {d.reference}</div>
@@ -12699,7 +12699,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   {/* Tabs: Reconcile / Period Lock */}
   <div className="flex gap-1 mb-4 border-b border-slate-200">
     {[["reconcile", "Reconcile"], ["period_lock", "Period Lock"]].map(([id, label]) => (
-      <button key={id} onClick={() => setReconTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 ${reconTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-500"}`}>{label}</button>
+      <button key={id} onClick={() => setReconTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 ${reconTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-500"}`}>{label}</button>
     ))}
   </div>
 
@@ -12740,12 +12740,12 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   {/* Reconcile Tab */}
   {reconTab === "reconcile" && !showReconcile && !viewRecon && (
   <div>
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-5">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-5">
   <h3 className="font-manrope font-semibold text-slate-800 mb-3">Start Bank Reconciliation</h3>
   <div className="grid grid-cols-3 gap-3">
   <div><label className="text-xs text-slate-400 mb-1 block">Month</label><Input placeholder="Enter name" type="month" value={reconPeriod} onChange={e => setReconPeriod(e.target.value)} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Bank Ending Balance ($)</label><Input type="number" step="0.01" value={bankBalance} onChange={e => setBankBalance(e.target.value)} placeholder="Enter from bank statement" /></div>
-  <div className="flex items-end"><button onClick={startReconciliation} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700 w-full">Begin Reconciliation</button></div>
+  <div className="flex items-end"><button onClick={startReconciliation} className="bg-brand-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-brand-700 w-full">Begin Reconciliation</button></div>
   </div>
   </div>
 
@@ -12754,7 +12754,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   {reconciliations.map(r => {
   const sc = { reconciled: "bg-green-100 text-green-700", in_progress: "bg-amber-100 text-amber-700", discrepancy: "bg-red-100 text-red-700" };
   return (
-  <div key={r.id} className="bg-white rounded-3xl border border-indigo-50 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-indigo-200" onClick={() => setViewRecon(r)}>
+  <div key={r.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-brand-200" onClick={() => setViewRecon(r)}>
   <div>
   <div className="text-sm font-medium text-slate-800">{r.period}</div>
   <div className="text-xs text-slate-400">{new Date(r.created_at).toLocaleDateString()}</div>
@@ -12779,20 +12779,20 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
 
   {viewRecon && (
   <div>
-  <button onClick={() => setViewRecon(null)} className="text-sm text-indigo-600 mb-3 hover:underline">← Back</button>
-  <div className="bg-white rounded-3xl border border-indigo-50 p-5">
+  <button onClick={() => setViewRecon(null)} className="text-sm text-brand-600 mb-3 hover:underline">← Back</button>
+  <div className="bg-white rounded-3xl border border-brand-50 p-5">
   <div className="flex justify-between items-start mb-4">
   <div><h3 className="font-semibold text-slate-800">Reconciliation — {viewRecon.period}</h3><div className="text-xs text-slate-400">{new Date(viewRecon.created_at).toLocaleDateString()}</div></div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewRecon.status === "reconciled" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")}>{viewRecon.status}</span>
   </div>
   <div className="grid grid-cols-3 gap-3 mb-4">
   <div className="bg-blue-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Bank Balance</div><div className="text-lg font-bold text-blue-700">${safeNum(viewRecon.bank_ending_balance).toLocaleString()}</div></div>
-  <div className="bg-indigo-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Book Balance</div><div className="text-lg font-bold text-indigo-700">${safeNum(viewRecon.book_balance).toLocaleString()}</div></div>
+  <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Book Balance</div><div className="text-lg font-bold text-brand-700">${safeNum(viewRecon.book_balance).toLocaleString()}</div></div>
   <div className={"rounded-lg p-3 text-center " + (Math.abs(viewRecon.difference) < 0.01 ? "bg-green-50" : "bg-red-50")}><div className="text-xs text-slate-400">Difference</div><div className={"text-lg font-bold " + (Math.abs(viewRecon.difference) < 0.01 ? "text-green-700" : "text-red-600")}>${safeNum(viewRecon.difference).toLocaleString()}</div></div>
   </div>
   {(() => { let items = []; try { items = JSON.parse(viewRecon.unreconciled_items || "[]"); } catch {} return items.length > 0 ? (
   <div><div className="font-semibold text-red-700 text-sm mb-2">Unreconciled Items ({items.length})</div>
-  {items.map((it, i) => (<div key={i} className="flex justify-between text-xs py-1 border-b border-indigo-50/50"><span className="text-slate-500">{it.date} — {it.description}</span><span className="font-bold">${it.amount.toLocaleString()}</span></div>))}
+  {items.map((it, i) => (<div key={i} className="flex justify-between text-xs py-1 border-b border-brand-50/50"><span className="text-slate-500">{it.date} — {it.description}</span><span className="font-bold">${it.amount.toLocaleString()}</span></div>))}
   </div>) : null; })()}
   </div>
   </div>
@@ -12815,15 +12815,15 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   </div>
 
   <div className="mb-3 flex items-center gap-2">
-  <button onClick={toggleAllRecon} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">{reconItems.every(i => i.reconciled) ? "Uncheck All" : "Check All"}</button>
+  <button onClick={toggleAllRecon} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">{reconItems.every(i => i.reconciled) ? "Uncheck All" : "Check All"}</button>
   <button onClick={() => autoMatchItems(reconItems)} className="text-xs text-emerald-600 border border-emerald-200 px-3 py-1 rounded-lg hover:bg-emerald-50">⚡ Auto-Match</button>
   <span className="text-xs text-slate-400">{reconItems.length} transactions</span>
   </div>
 
   <div className="space-y-1 mb-4">
   {reconItems.map((item, i) => (
-  <div key={i} onClick={() => toggleReconItem(i)} className={"flex items-center gap-3 px-4 py-2.5 rounded-lg cursor-pointer border " + (item.reconciled ? "bg-green-50 border-green-200" : "bg-white border-gray-100 hover:bg-indigo-50/30")}>
-  <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs flex-shrink-0 " + (item.reconciled ? "bg-green-500 border-green-500 text-white" : "border-indigo-200")}>{item.reconciled ? "✓" : ""}</span>
+  <div key={i} onClick={() => toggleReconItem(i)} className={"flex items-center gap-3 px-4 py-2.5 rounded-lg cursor-pointer border " + (item.reconciled ? "bg-green-50 border-green-200" : "bg-white border-gray-100 hover:bg-brand-50/30")}>
+  <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs flex-shrink-0 " + (item.reconciled ? "bg-green-500 border-green-500 text-white" : "border-brand-200")}>{item.reconciled ? "✓" : ""}</span>
   <div className="flex-1 min-w-0">
   <div className="text-sm text-slate-800 truncate">{item.description}</div>
   <div className="text-xs text-slate-400">{item.date} · {item.reference} · {item.memo}</div>
@@ -12833,7 +12833,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   ))}
   </div>
 
-  <button onClick={saveReconciliation} className="bg-indigo-600 text-white text-sm px-8 py-2.5 rounded-2xl hover:bg-indigo-700">Save Reconciliation</button>
+  <button onClick={saveReconciliation} className="bg-brand-600 text-white text-sm px-8 py-2.5 rounded-2xl hover:bg-brand-700">Save Reconciliation</button>
   </div>
   )}
   </div>
@@ -13011,13 +13011,13 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   <div>
   <div className="flex justify-between items-center mb-5">
   <h2 className="text-2xl font-manrope font-bold text-slate-800">Email Notifications</h2>
-  <button onClick={runNotificationCheck} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">Run Notification Check</button>
+  <button onClick={runNotificationCheck} className="bg-brand-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-brand-700">Run Notification Check</button>
   </div>
 
   <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
   <StatCard label="Active Rules" value={enabledCount + "/" + settings.length} color="text-green-600" sub="notification types" />
   <StatCard label="Sent Today" value={sentToday} color="text-blue-600" sub="notifications" />
-  <StatCard label="Total Sent" value={logs.length} color="text-indigo-600" sub="all time" />
+  <StatCard label="Total Sent" value={logs.length} color="text-brand-600" sub="all time" />
   <StatCard label="Failed" value={logs.filter(l => l.status === "failed").length} color={logs.filter(l => l.status === "failed").length > 0 ? "text-red-500" : "text-slate-400"} sub="delivery errors" />
   </div>
 
@@ -13037,9 +13037,9 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   {queueStats.pending > 10 && <div className="bg-amber-50 rounded-lg px-3 py-2 mt-3 text-xs text-amber-700">📬 {queueStats.pending} queued — delivery service may be behind.</div>}
   </div>
 
-  <div className="flex gap-1 mb-4 border-b border-indigo-50">
+  <div className="flex gap-1 mb-4 border-b border-brand-50">
   {[["settings","Settings"],["log","Send Log"],["rentroll","Rent Roll"]].map(([id,label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400")}>{label}</button>
+  <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400")}>{label}</button>
   ))}
   </div>
 
@@ -13049,7 +13049,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   {settings.map(s => {
   const info = eventLabels[s.event_type] || { label: s.event_type, icon: "\ud83d\udce7", desc: "" };
   return (
-  <div key={s.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (s.enabled ? "border-indigo-50" : "border-indigo-50/50 opacity-60")}>
+  <div key={s.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (s.enabled ? "border-brand-50" : "border-brand-50/50 opacity-60")}>
   <div className="flex justify-between items-start mb-2">
   <div className="flex items-center gap-2">
   <span className="text-lg">{info.icon}</span>
@@ -13065,7 +13065,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   <div className="flex items-center gap-3 text-xs mb-2">
   <span className="text-slate-400">Recipients:</span>
   <span className="font-medium text-slate-500">{s.recipients}</span>
-  <select className="border border-indigo-100 rounded-lg px-2 py-1 text-xs" value={s.recipient_filter || "all"} onChange={async (e) => {
+  <select className="border border-brand-100 rounded-lg px-2 py-1 text-xs" value={s.recipient_filter || "all"} onChange={async (e) => {
   await supabase.from("notification_settings").update({ recipient_filter: e.target.value }).eq("id", s.id).eq("company_id", companyId);
   fetchData();
   }} className="text-xs border border-gray-200 rounded px-1.5 py-0.5 mr-2">
@@ -13081,20 +13081,20 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   currentChannels[ch] = !currentChannels[ch];
   await supabase.from("notification_settings").update({ channels: JSON.stringify(currentChannels) }).eq("id", s.id).eq("company_id", companyId);
   fetchData();
-  }} className={"text-xs px-2 py-0.5 rounded " + ((s.channels ? JSON.parse(s.channels) : { in_app: true, email: true, push: false })[ch] ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 text-gray-400")}>{channelLabels[ch]}</button>
+  }} className={"text-xs px-2 py-0.5 rounded " + ((s.channels ? JSON.parse(s.channels) : { in_app: true, email: true, push: false })[ch] ? "bg-brand-100 text-brand-700" : "bg-gray-100 text-gray-400")}>{channelLabels[ch]}</button>
   ))}
   </div>
   {s.days_before > 0 && (
   <div className="flex items-center gap-1">
   <span className="text-slate-400">Days before:</span>
-  <input type="number" value={s.days_before} onChange={e => updateDaysBefore(s, e.target.value)} className="w-12 border border-indigo-100 rounded px-1 py-0.5 text-xs text-center" min="0" />
+  <input type="number" value={s.days_before} onChange={e => updateDaysBefore(s, e.target.value)} className="w-12 border border-brand-100 rounded px-1 py-0.5 text-xs text-center" min="0" />
   </div>
   )}
   </div>
   <div className="mb-2">
   <Textarea value={s.template} onChange={e => updateTemplate(s, e.target.value)} className="text-xs text-slate-500" rows={2} />
   </div>
-  <button onClick={() => sendTestNotification(s)} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Send Test</button>
+  <button onClick={() => sendTestNotification(s)} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">Send Test</button>
   </div>
   );
   })}
@@ -13105,7 +13105,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   {activeTab === "log" && (
   <div className="space-y-2">
   {logs.map(l => (
-  <div key={l.id} className="bg-white rounded-3xl border border-indigo-50 px-4 py-2.5 flex justify-between items-center">
+  <div key={l.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-2.5 flex justify-between items-center">
   <div>
   <div className="text-sm text-slate-800">{l.subject}</div>
   <div className="text-xs text-slate-400">{l.recipient_email} · {new Date(l.created_at).toLocaleString()}</div>
@@ -13121,9 +13121,9 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   {activeTab === "rentroll" && (
   <div>
   <h3 className="font-semibold text-slate-700 mb-3">Rent Roll</h3>
-  <div className="bg-white rounded-3xl border border-indigo-50 overflow-x-auto">
+  <div className="bg-white rounded-3xl border border-brand-50 overflow-x-auto">
   <table className="w-full text-sm">
-  <thead className="bg-indigo-50/30 text-xs text-slate-400">
+  <thead className="bg-brand-50/30 text-xs text-slate-400">
   <tr>
   <th className="text-left px-4 py-2">Tenant</th>
   <th className="text-left px-4 py-2">Property</th>
@@ -13135,7 +13135,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   </thead>
   <tbody>
   {tenants.filter(t => t.lease_status === "active" || !t.lease_status).map(t => (
-  <tr key={t.id} className="border-t border-indigo-50/50">
+  <tr key={t.id} className="border-t border-brand-50/50">
   <td className="px-4 py-2 font-medium text-slate-800">{t.name}</td>
   <td className="px-4 py-2 text-slate-500">{t.property}</td>
   <td className="px-4 py-2 text-right font-bold">${safeNum(t.rent).toLocaleString()}</td>
@@ -13145,7 +13145,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   </tr>
   ))}
   </tbody>
-  <tfoot className="bg-indigo-50/30 font-bold text-sm">
+  <tfoot className="bg-brand-50/30 font-bold text-sm">
   <tr>
   <td className="px-4 py-2" colSpan="2">Total ({tenants.filter(t => t.lease_status === "active" || !t.lease_status).length} tenants)</td>
   <td className="px-4 py-2 text-right">${tenants.filter(t => t.lease_status === "active" || !t.lease_status).reduce((s, t) => s + safeNum(t.rent), 0).toLocaleString()}</td>
@@ -13293,13 +13293,13 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   <Modal title={"E-Signature — " + lease.tenant_name} onClose={onClose}>
   <div className="space-y-4">
   {/* Lease Summary */}
-  <div className="bg-indigo-50 rounded-lg p-3">
-  <div className="text-sm font-semibold text-indigo-800">{lease.property}</div>
-  <div className="text-xs text-indigo-600">{lease.start_date} to {lease.end_date} · ${safeNum(lease.rent_amount).toLocaleString()}/mo</div>
+  <div className="bg-brand-50 rounded-lg p-3">
+  <div className="text-sm font-semibold text-brand-800">{lease.property}</div>
+  <div className="text-xs text-brand-600">{lease.start_date} to {lease.end_date} · ${safeNum(lease.rent_amount).toLocaleString()}/mo</div>
   </div>
 
   {/* Lease Terms Preview */}
-  <div className="bg-indigo-50/30 rounded-lg p-3 max-h-32 overflow-y-auto">
+  <div className="bg-brand-50/30 rounded-lg p-3 max-h-32 overflow-y-auto">
   <div className="text-xs font-semibold text-slate-500 mb-1">Lease Terms</div>
   <div className="text-xs text-slate-400 whitespace-pre-wrap">{lease.clauses || "Standard residential lease terms apply."}</div>
   {lease.special_terms && <div className="text-xs text-slate-400 mt-1"><span className="font-semibold">Special Terms:</span> {lease.special_terms}</div>}
@@ -13311,7 +13311,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   {signers.length === 0 && (
   <div className="text-center py-4">
   <div className="text-sm text-slate-400 mb-3">No signature requests yet</div>
-  <button onClick={initSignatureRequest} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700">Send for Signature</button>
+  <button onClick={initSignatureRequest} className="bg-brand-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-brand-700">Send for Signature</button>
   </div>
   )}
   {signers.map(s => (
@@ -13337,17 +13337,17 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
 
   {/* Signing Pad - show for pending signers */}
   {pendingSigners.length > 0 && !allSigned && (
-  <div className="border border-indigo-100 rounded-3xl p-4">
+  <div className="border border-brand-100 rounded-3xl p-4">
   <div className="text-sm font-semibold text-slate-700 mb-2">Sign as: {pendingSigners[0].signer_name} ({pendingSigners[0].signer_role})</div>
 
   <div className="flex gap-2 mb-3">
-  <button onClick={() => setSignMethod("draw")} className={"text-xs px-3 py-1.5 rounded-lg font-medium " + (signMethod === "draw" ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500")}>Draw Signature</button>
-  <button onClick={() => setSignMethod("type")} className={"text-xs px-3 py-1.5 rounded-lg font-medium " + (signMethod === "type" ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500")}>Type Name</button>
+  <button onClick={() => setSignMethod("draw")} className={"text-xs px-3 py-1.5 rounded-lg font-medium " + (signMethod === "draw" ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-500")}>Draw Signature</button>
+  <button onClick={() => setSignMethod("type")} className={"text-xs px-3 py-1.5 rounded-lg font-medium " + (signMethod === "type" ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-500")}>Type Name</button>
   </div>
 
   {signMethod === "draw" ? (
   <div>
-  <div className="border-2 border-dashed border-indigo-200 rounded-lg bg-white relative mb-2">
+  <div className="border-2 border-dashed border-brand-200 rounded-lg bg-white relative mb-2">
   <canvas ref={canvasRef} width={400} height={120}
   onMouseDown={startDraw} onMouseMove={draw} onMouseUp={endDraw} onMouseLeave={endDraw}
   onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={endDraw}
@@ -13359,8 +13359,8 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   ) : (
   <div>
   <input value={typedName} onChange={e => setTypedName(e.target.value)} placeholder="Type your full legal name"
-  className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mb-1" />
-  {typedName && <div className="text-2xl text-indigo-800 italic font-serif py-2 px-3 bg-indigo-50/30 rounded-lg">{typedName}</div>}
+  className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mb-1" />
+  {typedName && <div className="text-2xl text-brand-800 italic font-serif py-2 px-3 bg-brand-50/30 rounded-lg">{typedName}</div>}
   </div>
   )}
 
@@ -13379,7 +13379,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   }
   submitSignature(signer);
   }} disabled={signing || !consentAgreed}
-  className={"w-full py-2.5 rounded-lg text-white font-semibold text-sm " + (signing || !consentAgreed ? "bg-slate-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700")}>
+  className={"w-full py-2.5 rounded-lg text-white font-semibold text-sm " + (signing || !consentAgreed ? "bg-slate-400 cursor-not-allowed" : "bg-brand-600 hover:bg-brand-700")}>
   {signing ? "Signing..." : !consentAgreed ? "Agree to terms above to sign" : "Apply Signature"}
   </button>
   </div>
@@ -13478,7 +13478,7 @@ function OwnerMaintenanceView({ companyId, properties }) {
   return (
   <div className="space-y-2">
   {workOrders.map(wo => (
-  <div key={wo.id} className="bg-white border border-indigo-50 rounded-2xl p-4">
+  <div key={wo.id} className="bg-white border border-brand-50 rounded-2xl p-4">
   <div className="flex justify-between items-start">
   <div>
   <div className="text-sm font-semibold text-slate-800">{wo.issue}</div>
@@ -13545,14 +13545,14 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   return (
   <div className="max-w-4xl mx-auto">
   {/* Header */}
-  <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-6 mb-6 text-white">
+  <div className="bg-gradient-to-r from-brand-600 to-purple-600 rounded-2xl p-6 mb-6 text-white">
   <div className="flex justify-between items-start">
   <div>
   <h1 className="text-2xl font-bold mb-1">Welcome, {ownerData.name}</h1>
-  <p className="text-indigo-200 text-sm">{properties.length} {properties.length === 1 ? "property" : "properties"} · {ownerData.company || "Individual Owner"}</p>
+  <p className="text-brand-200 text-sm">{properties.length} {properties.length === 1 ? "property" : "properties"} · {ownerData.company || "Individual Owner"}</p>
   </div>
   <div className="text-right">
-  <div className="text-sm text-indigo-200">Management Fee</div>
+  <div className="text-sm text-brand-200">Management Fee</div>
   <div className="text-lg font-bold">{ownerData.management_fee_pct}%</div>
   </div>
   </div>
@@ -13560,28 +13560,28 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
 
   {/* Stats */}
   <div className="grid grid-cols-2 gap-3 mb-6 md:grid-cols-4">
-  <div className="bg-white rounded-3xl border border-indigo-50 p-4 text-center">
+  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center">
   <div className="text-xs text-slate-400 mb-1">Total Income</div>
   <div className="text-lg font-bold text-green-600">${totalIncome.toLocaleString()}</div>
   </div>
-  <div className="bg-white rounded-3xl border border-indigo-50 p-4 text-center">
+  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center">
   <div className="text-xs text-slate-400 mb-1">Total Expenses</div>
   <div className="text-lg font-bold text-red-500">${totalExpenses.toLocaleString()}</div>
   </div>
-  <div className="bg-white rounded-3xl border border-indigo-50 p-4 text-center">
+  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center">
   <div className="text-xs text-slate-400 mb-1">Distributions</div>
-  <div className="text-lg font-bold text-indigo-600">${totalDistributed.toLocaleString()}</div>
+  <div className="text-lg font-bold text-brand-600">${totalDistributed.toLocaleString()}</div>
   </div>
-  <div className="bg-white rounded-3xl border border-indigo-50 p-4 text-center">
+  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center">
   <div className="text-xs text-slate-400 mb-1">Pending</div>
   <div className="text-lg font-bold text-amber-600">{pendingStatements.length}</div>
   </div>
   </div>
 
   {/* Tabs */}
-  <div className="flex gap-1 mb-5 border-b border-indigo-50">
+  <div className="flex gap-1 mb-5 border-b border-brand-50">
   {[["overview","\ud83c\udfe0 Overview"],["statements","\ud83d\udcca Statements"],["distributions","💰 Distributions"],["properties","\ud83c\udfe2 Properties"],["maintenance","🔧 Maintenance"]].map(([id, label]) => (
-  <button key={id} onClick={() => { setActiveTab(id); setViewStatement(null); }} className={"px-4 py-2.5 text-sm font-medium border-b-2 transition-colors " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-700")}>{label}</button>
+  <button key={id} onClick={() => { setActiveTab(id); setViewStatement(null); }} className={"px-4 py-2.5 text-sm font-medium border-b-2 transition-colors " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-700")}>{label}</button>
   ))}
   </div>
 
@@ -13591,7 +13591,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <h3 className="font-semibold text-slate-700">Your Properties</h3>
   <div className="grid gap-3 md:grid-cols-2">
   {properties.map(p => (
-  <div key={p.id} className="bg-white rounded-3xl border border-indigo-50 p-4">
+  <div key={p.id} className="bg-white rounded-3xl border border-brand-50 p-4">
   <div className="flex justify-between items-start">
   <div>
   <div className="font-semibold text-slate-800 text-sm">{p.address}</div>
@@ -13610,7 +13610,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div>
   <h3 className="font-semibold text-slate-700 mt-4 mb-2">Recent Statements</h3>
   {statements.slice(0, 3).map(s => (
-  <div key={s.id} className="bg-white rounded-3xl border border-indigo-50 px-4 py-3 flex justify-between items-center mb-2 cursor-pointer hover:border-indigo-200" onClick={() => { setActiveTab("statements"); setViewStatement(s); }}>
+  <div key={s.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center mb-2 cursor-pointer hover:border-brand-200" onClick={() => { setActiveTab("statements"); setViewStatement(s); }}>
   <div>
   <div className="text-sm font-medium text-slate-800">{s.period}</div>
   <div className="text-xs text-slate-400">Net: ${safeNum(s.net_to_owner).toLocaleString()}</div>
@@ -13627,7 +13627,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   {activeTab === "statements" && !viewStatement && (
   <div className="space-y-2">
   {statements.map(s => (
-  <div key={s.id} className="bg-white rounded-3xl border border-indigo-50 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-indigo-200" onClick={() => setViewStatement(s)}>
+  <div key={s.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center cursor-pointer hover:border-brand-200" onClick={() => setViewStatement(s)}>
   <div>
   <div className="text-sm font-semibold text-slate-800">{s.period}</div>
   <div className="text-xs text-slate-400">{new Date(s.created_at).toLocaleDateString()}</div>
@@ -13635,7 +13635,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="flex items-center gap-4">
   <div className="text-right">
   <div className="text-xs text-slate-400">Income: <span className="text-green-600 font-bold">${safeNum(s.total_income).toLocaleString()}</span></div>
-  <div className="text-xs text-slate-400">Net: <span className="text-indigo-600 font-bold">${safeNum(s.net_to_owner).toLocaleString()}</span></div>
+  <div className="text-xs text-slate-400">Net: <span className="text-brand-600 font-bold">${safeNum(s.net_to_owner).toLocaleString()}</span></div>
   </div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (s.status === "paid" ? "bg-green-100 text-green-700" : s.status === "sent" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{s.status}</span>
   </div>
@@ -13648,15 +13648,15 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   {/* STATEMENT DETAIL */}
   {activeTab === "statements" && viewStatement && (
   <div>
-  <button onClick={() => setViewStatement(null)} className="text-sm text-indigo-600 mb-3 hover:underline">\u2190 Back to Statements</button>
-  <div className="bg-white rounded-3xl border border-indigo-50 p-5">
+  <button onClick={() => setViewStatement(null)} className="text-sm text-brand-600 mb-3 hover:underline">\u2190 Back to Statements</button>
+  <div className="bg-white rounded-3xl border border-brand-50 p-5">
   <div className="flex justify-between items-start mb-4">
   <div>
   <h3 className="font-bold text-slate-800">Owner Statement — {viewStatement.period}</h3>
   <div className="text-xs text-slate-400">{viewStatement.owner_name} · Generated {new Date(viewStatement.created_at).toLocaleDateString()}</div>
   </div>
   <div className="flex items-center gap-2">
-  <button onClick={() => { const w = window.open("", "_blank", "noopener,noreferrer"); w.document.write("<pre>" + escapeHtml(JSON.stringify(viewStatement, null, 2)) + "</pre>"); w.document.title = "Statement " + sanitizeForPrint(viewStatement.period); setTimeout(() => w.print(), 300); }} className="text-xs text-indigo-600 border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50"><span className="material-icons-outlined text-xs align-middle">print</span></button>
+  <button onClick={() => { const w = window.open("", "_blank", "noopener,noreferrer"); w.document.write("<pre>" + escapeHtml(JSON.stringify(viewStatement, null, 2)) + "</pre>"); w.document.title = "Statement " + sanitizeForPrint(viewStatement.period); setTimeout(() => w.print(), 300); }} className="text-xs text-brand-600 border border-brand-200 px-2 py-1 rounded-lg hover:bg-brand-50"><span className="material-icons-outlined text-xs align-middle">print</span></button>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewStatement.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{viewStatement.status}</span>
   </div>
   </div>
@@ -13664,14 +13664,14 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="bg-green-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Income</div><div className="text-lg font-bold text-green-600">${safeNum(viewStatement.total_income).toLocaleString()}</div></div>
   <div className="bg-red-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Expenses</div><div className="text-lg font-bold text-red-500">${safeNum(viewStatement.total_expenses).toLocaleString()}</div></div>
   <div className="bg-purple-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Mgmt Fee</div><div className="text-lg font-bold text-purple-600">${safeNum(viewStatement.management_fee).toLocaleString()}</div></div>
-  <div className="bg-indigo-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Net to You</div><div className="text-lg font-bold text-indigo-700">${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
+  <div className="bg-brand-50 rounded-lg p-3 text-center"><div className="text-xs text-slate-400">Net to You</div><div className="text-lg font-bold text-brand-700">${safeNum(viewStatement.net_to_owner).toLocaleString()}</div></div>
   </div>
   {/* Line items */}
   {(() => { let items = []; try { items = JSON.parse(viewStatement.line_items || "[]"); } catch {} return items.map((cat, ci) => (
   <div key={ci} className="mb-3">
   <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{cat.category}</div>
   {(cat.items || []).map((item, ii) => (
-  <div key={ii} className="flex justify-between text-xs py-1 border-b border-indigo-50/50">
+  <div key={ii} className="flex justify-between text-xs py-1 border-b border-brand-50/50">
   <span className="text-slate-500">{item.date} — {item.description}</span>
   <span className={"font-bold " + (item.amount >= 0 ? "text-green-600" : "text-red-500")}>${Math.abs(item.amount).toLocaleString()}</span>
   </div>
@@ -13686,7 +13686,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   {activeTab === "distributions" && (
   <div className="space-y-2">
   {distributions.map(d => (
-  <div key={d.id} className="bg-white rounded-3xl border border-indigo-50 px-4 py-3 flex justify-between items-center">
+  <div key={d.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex justify-between items-center">
   <div>
   <div className="text-sm font-medium text-slate-800">${safeNum(d.amount).toLocaleString()}</div>
   <div className="text-xs text-slate-400">{d.reference} · {new Date(d.date).toLocaleDateString()}</div>
@@ -13712,7 +13712,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   {activeTab === "properties" && (
   <div className="space-y-3">
   {properties.map(p => (
-  <div key={p.id} className="bg-white rounded-3xl border border-indigo-50 p-4">
+  <div key={p.id} className="bg-white rounded-3xl border border-brand-50 p-4">
   <div className="flex justify-between items-start mb-2">
   <div>
   <div className="font-semibold text-slate-800">{p.address}</div>
@@ -13827,28 +13827,28 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   <div>
   <div className="flex flex-col md:flex-row gap-3 mb-4">
   <h2 className="text-2xl font-manrope font-bold text-slate-800 mr-auto">HOA Payments</h2>
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={hoaFilter} onChange={e => setHoaFilter(e.target.value)} >
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={hoaFilter} onChange={e => setHoaFilter(e.target.value)} >
   <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
   </select>
-  <button onClick={() => { setEditingHoa(null); setForm({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "", website: "", username: "", password: "" }); setShowForm(!showForm); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ Add HOA</button>
+  <button onClick={() => { setEditingHoa(null); setForm({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "", website: "", username: "", password: "" }); setShowForm(!showForm); }} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ Add HOA</button>
   </div>
 
   {/* Stats */}
   <div className="flex gap-3 mb-4">
-  <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-slate-800">{hoaPayments.length}</div><div className="text-xs text-slate-400">Total</div></div>
-  <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{hoaPayments.filter(h => h.status === "pending").length}</div><div className="text-xs text-slate-400">Pending</div></div>
-  <div className="bg-white rounded-3xl border border-indigo-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">${hoaPayments.filter(h => h.status === "paid").reduce((s, h) => s + safeNum(h.amount), 0).toLocaleString()}</div><div className="text-xs text-slate-400">Paid</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-manrope font-bold text-slate-800">{hoaPayments.length}</div><div className="text-xs text-slate-400">Total</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-amber-600">{hoaPayments.filter(h => h.status === "pending").length}</div><div className="text-xs text-slate-400">Pending</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 px-3 py-2 text-center flex-1"><div className="text-lg font-bold text-emerald-600">${hoaPayments.filter(h => h.status === "paid").reduce((s, h) => s + safeNum(h.amount), 0).toLocaleString()}</div><div className="text-xs text-slate-400">Paid</div></div>
   </div>
 
   {showForm && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
   <h3 className="font-semibold text-slate-700 mb-3">{editingHoa ? "Edit HOA Payment" : "New HOA Payment"}</h3>
   <div className="grid grid-cols-2 gap-3">
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">HOA Company</label><Input placeholder="e.g. Riverside HOA" value={form.hoa_name} onChange={e => setForm({ ...form, hoa_name: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($)</label><Input placeholder="250.00" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Due Date</label><Input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Frequency</label><select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Frequency</label><select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
   <option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="annual">Annual</option>
   </select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
@@ -13860,20 +13860,20 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   </div></div>
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={saveHOA} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
+  <button onClick={saveHOA} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
   <button onClick={() => { setShowForm(false); setEditingHoa(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
   )}
 
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-x-auto">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-x-auto">
   <table className="w-full text-sm">
-  <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
+  <thead className="bg-brand-50/30 text-xs text-slate-400 uppercase">
   <tr><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">HOA Company</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-left">Due Date</th><th className="px-4 py-3 text-left">Frequency</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-left">Portal</th><th className="px-4 py-3 text-right">Actions</th></tr>
   </thead>
   <tbody>
   {filtered.map(h => (
-  <tr key={h.id} className="border-t border-indigo-50/50 hover:bg-indigo-50/30/50">
+  <tr key={h.id} className="border-t border-brand-50/50 hover:bg-brand-50/30/50">
   <td className="px-4 py-2.5 text-slate-800">{h.property}</td>
   <td className="px-4 py-2.5 font-medium text-slate-800">{h.hoa_name}</td>
   <td className="px-4 py-2.5 text-right font-semibold">${safeNum(h.amount).toLocaleString()}</td>
@@ -13881,13 +13881,13 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   <td className="px-4 py-2.5 text-slate-500 capitalize">{h.frequency}</td>
   <td className="px-4 py-2.5"><Badge status={h.status} /></td>
   <td className="px-4 py-2.5 text-xs">
-  {h.website ? <a href={h.website} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline block truncate max-w-28">{h.website.replace(/^https?:\/\//, "")}</a> : <span className="text-slate-300">—</span>}
-  {h.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(h.id)) { s.delete(h.id); setShowCreds(s); } else { h._decUser = await decryptCredential(h.username_encrypted, h.encryption_iv, companyId); h._decPass = await decryptCredential(h.password_encrypted, h.encryption_iv, companyId); s.add(h.id); setShowCreds(new Set(s)); }}} className="text-indigo-500 hover:underline">{showCreds.has(h.id) ? "Hide" : "Show"} login</button>}
+  {h.website ? <a href={h.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{h.website.replace(/^https?:\/\//, "")}</a> : <span className="text-slate-300">—</span>}
+  {h.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(h.id)) { s.delete(h.id); setShowCreds(s); } else { h._decUser = await decryptCredential(h.username_encrypted, h.encryption_iv, companyId); h._decPass = await decryptCredential(h.password_encrypted, h.encryption_iv, companyId); s.add(h.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(h.id) ? "Hide" : "Show"} login</button>}
   {showCreds.has(h.id) && <div className="text-slate-600 mt-0.5">{h._decUser || "—"} / {h._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
   {h.status === "pending" && <button onClick={() => payHOA(h)} className="text-xs text-green-600 hover:underline mr-2">Pay</button>}
-  <button onClick={() => { setEditingHoa(h); setForm({ property: h.property, hoa_name: h.hoa_name, amount: String(h.amount), due_date: h.due_date, frequency: h.frequency || "monthly", status: h.status, notes: h.notes || "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>
+  <button onClick={() => { setEditingHoa(h); setForm({ property: h.property, hoa_name: h.hoa_name, amount: String(h.amount), due_date: h.due_date, frequency: h.frequency || "monthly", status: h.status, notes: h.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>
   <button onClick={() => deleteHOA(h.id)} className="text-xs text-red-500 hover:underline">Delete</button>
   </td>
   </tr>
@@ -14009,11 +14009,11 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <div>
   <div className="flex flex-col md:flex-row gap-3 mb-4">
   <h2 className="text-2xl font-manrope font-bold text-slate-800 mr-auto">Loans</h2>
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
   <option value="all">All Properties</option>
   {uniqueProperties.map(p => <option key={p} value={p}>{p}</option>)}
   </select>
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
   <option value="all">All Status</option><option value="active">Active</option><option value="paid_off">Paid Off</option>
   </select>
   <button onClick={() => { setEditingLoan(null); setForm(emptyForm); setShowForm(true); }} className="bg-green-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-green-700">+ Add Loan</button>
@@ -14084,13 +14084,13 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(l.current_balance)}</td>
   <td className="px-4 py-2.5 text-slate-400">{l.maturity_date || "—"}</td>
   <td className="px-4 py-2.5 text-xs">
-  {l.website ? <a href={l.website} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline block truncate max-w-28">{l.website.replace(/^https?:\/\//, "")}</a> : <span className="text-slate-300">—</span>}
-  {l.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(l.id)) { s.delete(l.id); setShowCreds(s); } else { l._decUser = await decryptCredential(l.username_encrypted, l.encryption_iv, companyId); l._decPass = await decryptCredential(l.password_encrypted, l.encryption_iv, companyId); s.add(l.id); setShowCreds(new Set(s)); }}} className="text-indigo-500 hover:underline">{showCreds.has(l.id) ? "Hide" : "Show"} login</button>}
+  {l.website ? <a href={l.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{l.website.replace(/^https?:\/\//, "")}</a> : <span className="text-slate-300">—</span>}
+  {l.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(l.id)) { s.delete(l.id); setShowCreds(s); } else { l._decUser = await decryptCredential(l.username_encrypted, l.encryption_iv, companyId); l._decPass = await decryptCredential(l.password_encrypted, l.encryption_iv, companyId); s.add(l.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(l.id) ? "Hide" : "Show"} login</button>}
   {showCreds.has(l.id) && <div className="text-slate-600 mt-0.5">{l._decUser || "—"} / {l._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
   {l.status === "active" && <button onClick={() => recordPayment(l)} className="text-xs text-green-600 hover:underline mr-2">Record Payment</button>}
-  <button onClick={() => { setEditingLoan(l); setForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), escrow_covers: l.escrow_covers || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", property: l.property || "", notes: l.notes || "", status: l.status || "active" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>
+  <button onClick={() => { setEditingLoan(l); setForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), escrow_covers: l.escrow_covers || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", property: l.property || "", notes: l.notes || "", status: l.status || "active" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>
   <button onClick={() => deleteLoan(l.id)} className="text-xs text-red-500 hover:underline">Delete</button>
   </td>
   </tr>
@@ -14197,7 +14197,7 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   <div>
   <div className="flex flex-col md:flex-row gap-3 mb-4">
   <h2 className="text-2xl font-manrope font-bold text-slate-800 mr-auto">Insurance</h2>
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
   <option value="all">All Properties</option>
   {uniqueProperties.map(p => <option key={p} value={p}>{p}</option>)}
   </select>
@@ -14254,12 +14254,12 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(p.coverage_amount)}</td>
   <td className="px-4 py-2.5 text-slate-400">{p.expiration_date || "—"}</td>
   <td className="px-4 py-2.5 text-xs">
-  {p.website ? <a href={p.website} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline block truncate max-w-28">{p.website.replace(/^https?:\/\//, "")}</a> : <span className="text-slate-300">—</span>}
-  {p.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(p.id)) { s.delete(p.id); setShowCreds(s); } else { p._decUser = await decryptCredential(p.username_encrypted, p.encryption_iv, companyId); p._decPass = await decryptCredential(p.password_encrypted, p.encryption_iv, companyId); s.add(p.id); setShowCreds(new Set(s)); }}} className="text-indigo-500 hover:underline">{showCreds.has(p.id) ? "Hide" : "Show"} login</button>}
+  {p.website ? <a href={p.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{p.website.replace(/^https?:\/\//, "")}</a> : <span className="text-slate-300">—</span>}
+  {p.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(p.id)) { s.delete(p.id); setShowCreds(s); } else { p._decUser = await decryptCredential(p.username_encrypted, p.encryption_iv, companyId); p._decPass = await decryptCredential(p.password_encrypted, p.encryption_iv, companyId); s.add(p.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(p.id) ? "Hide" : "Show"} login</button>}
   {showCreds.has(p.id) && <div className="text-slate-600 mt-0.5">{p._decUser || "—"} / {p._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
-  <button onClick={() => { setEditingPolicy(p); setForm({ property: p.property || "", provider: p.provider || "", policy_number: p.policy_number || "", premium_amount: String(p.premium_amount || ""), premium_frequency: p.premium_frequency || "Annual", coverage_amount: String(p.coverage_amount || ""), expiration_date: p.expiration_date || "", notes: p.notes || "", website: p.website || "", username: "", password: "" }); setShowForm(true); }} className="text-xs text-indigo-600 hover:underline mr-2">Edit</button>
+  <button onClick={() => { setEditingPolicy(p); setForm({ property: p.property || "", provider: p.provider || "", policy_number: p.policy_number || "", premium_amount: String(p.premium_amount || ""), premium_frequency: p.premium_frequency || "Annual", coverage_amount: String(p.coverage_amount || ""), expiration_date: p.expiration_date || "", notes: p.notes || "", website: p.website || "", username: "", password: "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>
   <button onClick={() => deletePolicy(p.id)} className="text-xs text-red-500 hover:underline">Delete</button>
   </td>
   </tr>
@@ -14381,11 +14381,11 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
   </div>
 
   <div className="flex gap-2 mb-4 flex-wrap">
-  <button onClick={() => setFilter("all")} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === "all" ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"}`}>All ({items.length})</button>
+  <button onClick={() => setFilter("all")} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === "all" ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-500"}`}>All ({items.length})</button>
   {tables.map(t => {
   const count = items.filter(i => i._table === t).length;
   const label = t.replace("_", " ").replace(/\b\w/g, c => c.toUpperCase());
-  return <button key={t} onClick={() => setFilter(t)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === t ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"}`}>{label} ({count})</button>;
+  return <button key={t} onClick={() => setFilter(t)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === t ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-500"}`}>{label} ({count})</button>;
   })}
   </div>
 
@@ -14398,7 +14398,7 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
   ) : (
   <div className="space-y-2">
   {filtered.map(item => (
-  <div key={item._table + item.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4 flex items-center gap-4">
+  <div key={item._table + item.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4 flex items-center gap-4">
   <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-lg">
   {item._table === "properties" ? "🏠" : item._table === "tenants" ? "👤" : item._table === "work_orders" ? "🔧" : item._table === "documents" || item._table === "doc_generated" ? "📄" : item._table === "leases" ? "📋" : item._table === "vendors" ? "🏗️" : item._table === "hoa_payments" ? "🏘️" : item._table === "autopay_schedules" ? "🔄" : item._table === "recurring_journal_entries" ? "📊" : item._table === "late_fee_rules" ? "⚠️" : item._table === "app_users" ? "👥" : "💰"}
   </div>
@@ -14421,11 +14421,11 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
 
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
-  admin: { label: "Admin", color: "bg-indigo-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","insurance","accounting","owners","notifications","admin","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
+  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","insurance","accounting","owners","notifications","admin","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
   office_assistant: { label: "Office Assistant", color: "bg-blue-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","accounting","notifications","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
   accountant: { label: "Accountant", color: "bg-green-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-orange-500", pages: ["maintenance","vendors"] },
-  tenant: { label: "Tenant", color: "bg-indigo-50/300", pages: ["tenant_portal"] },
+  tenant: { label: "Tenant", color: "bg-brand-50/300", pages: ["tenant_portal"] },
   owner: { label: "Owner", color: "bg-purple-600", pages: ["owner_portal","loans"] },
 };
 
@@ -14590,28 +14590,28 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   <h2 className="text-2xl font-manrope font-bold text-slate-800">Autopay & Recurring Rent</h2>
   <p className="text-xs text-slate-400 mt-0.5">Set recurring schedules per tenant with custom start and end dates</p>
   </div>
-  <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Schedule</button>
+  <button onClick={() => setShowForm(!showForm)} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Schedule</button>
   </div>
   {showForm && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-5">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-5">
   <h3 className="font-semibold text-slate-700 mb-3">New Autopay Schedule</h3>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant *</label><select value={form.tenant} onChange={e => { const t = tenants.find(t => t.name === e.target.value); setForm({ ...form, tenant: e.target.value, property: t?.property || "", amount: t?.rent || "" }); }} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Tenant *</label><select value={form.tenant} onChange={e => { const t = tenants.find(t => t.name === e.target.value); setForm({ ...form, tenant: e.target.value, property: t?.property || "", amount: t?.rent || "" }); }} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
   <option value="">Select tenant...</option>
   {tenants.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
   </select></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Property</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Amount ($)</label><Input placeholder="1500.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Payment Method</label><select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Payment Method</label><select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
   {["ACH", "card", "cash", "check"].map(m => <option key={m}>{m}</option>)}
   </select></div>
   <div>
   <label className="text-xs text-slate-400 mb-1 block">Day of Month</label>
-  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.day_of_month} onChange={e => setForm({ ...form, day_of_month: e.target.value })} >
+  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.day_of_month} onChange={e => setForm({ ...form, day_of_month: e.target.value })} >
   {Array.from({ length: 28 }, (_, i) => i + 1).map(d => <option key={d} value={String(d)}>{d}{d === 1 ? "st" : d === 2 ? "nd" : d === 3 ? "rd" : "th"}</option>)}
   </select>
   </div>
-  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Frequency</label><select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-slate-400 mb-1 block">Frequency</label><select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
   <option value="monthly">Monthly</option>
   <option value="weekly">Weekly</option>
   <option value="biweekly">Bi-Weekly</option>
@@ -14626,14 +14626,14 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   </div>
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={saveSchedule} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">Save Schedule</button>
+  <button onClick={saveSchedule} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">Save Schedule</button>
   <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
   )}
   <div className="space-y-3">
   {schedules.map(s => (
-  <div key={s.id} className={`bg-white rounded-xl border shadow-sm p-4 ${s.enabled ? "border-indigo-50" : "border-indigo-100 opacity-60"}`}>
+  <div key={s.id} className={`bg-white rounded-xl border shadow-sm p-4 ${s.enabled ? "border-brand-50" : "border-brand-100 opacity-60"}`}>
   <div className="flex justify-between items-start">
   <div>
   <div className="font-semibold text-slate-800">{s.tenant}</div>
@@ -14651,7 +14651,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   <div><span className="text-slate-400">End</span><div className="font-semibold text-slate-700">{s.end_date || "Ongoing"}</div></div>
   </div>
   <div className="mt-2 flex items-center justify-between">
-  <div className="text-xs text-indigo-600 font-medium">Next due: {nextDue(s)}</div>
+  <div className="text-xs text-brand-600 font-medium">Next due: {nextDue(s)}</div>
   <div className="flex gap-2">
   <button onClick={() => runNow(s)} className="text-xs text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50">▶ Run Now</button>
   <button onClick={() => toggleActive(s)} className={`text-xs border px-3 py-1 rounded-lg ${s.enabled ? "text-orange-500 border-orange-200 hover:bg-orange-50" : "text-green-600 border-green-200 hover:bg-green-50"}`}>{s.enabled ? "⏸ Pause" : "▶ Resume"}</button>
@@ -14781,17 +14781,17 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   </div>
   <div className="flex gap-2">
   {afterGrace.length > 0 && <button onClick={applyAllFees} className="bg-red-500 text-white text-sm px-4 py-2 rounded-lg hover:bg-red-600">⚡ Apply All ({afterGrace.length})</button>}
-  <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Rule</button>
+  <button onClick={() => setShowForm(!showForm)} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Rule</button>
   </div>
   </div>
   {rules.length > 0 && (
   <div className="mb-5 space-y-2">
   <h3 className="font-semibold text-slate-700 text-sm">Active Rules</h3>
   {rules.map(r => (
-  <div key={r.id} className="bg-indigo-50 border border-indigo-100 rounded-2xl px-4 py-3 flex justify-between items-center">
+  <div key={r.id} className="bg-brand-50 border border-brand-100 rounded-2xl px-4 py-3 flex justify-between items-center">
   <div>
-  <div className="font-semibold text-indigo-800 text-sm">{r.name}</div>
-  <div className="text-xs text-indigo-500">{r.grace_days} day grace · {r.fee_type === "flat" ? `${formatCurrency(r.fee_amount)} flat` : `${r.fee_amount}% of rent`}</div>
+  <div className="font-semibold text-brand-800 text-sm">{r.name}</div>
+  <div className="text-xs text-brand-500">{r.grace_days} day grace · {r.fee_type === "flat" ? `${formatCurrency(r.fee_amount)} flat` : `${r.fee_amount}% of rent`}</div>
   </div>
   <button onClick={async () => { if(!guardSubmit("delLateFee",r.id))return; try{ if(!await showConfirm({ message: "Delete this late fee rule?" }))return; await supabase.from("late_fee_rules").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", r.id).eq("company_id", companyId); fetchData(); }finally{guardRelease("delLateFee",r.id);} }} className="text-xs text-red-400 hover:text-red-600">Delete</button>
   </div>
@@ -14799,24 +14799,24 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   </div>
   )}
   {showForm && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-5">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-5">
   <h3 className="font-semibold text-slate-700 mb-3">New Late Fee Rule</h3>
   <div className="grid grid-cols-2 gap-3">
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Rule Name *</label><Input placeholder="Standard Late Fee" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Grace Period (days)</label><Input type="number" min="0" max="30" placeholder="5" value={form.grace_days} onChange={e => setForm({ ...form, grace_days: e.target.value })} /></div>
-  <div><label className="text-xs text-slate-400 mb-1 block">Fee Type</label><select value={form.fee_type} onChange={e => setForm({ ...form, fee_type: e.target.value })} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></select></div>
+  <div><label className="text-xs text-slate-400 mb-1 block">Fee Type</label><select value={form.fee_type} onChange={e => setForm({ ...form, fee_type: e.target.value })} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm"><option value="flat">Flat ($)</option><option value="percent">Percent (%)</option></select></div>
   <div><label className="text-xs text-slate-400 mb-1 block">{form.fee_type === "flat" ? "Fee Amount ($)" : "Percentage (%)"}</label><Input type="number" min="0" step="0.01" placeholder={form.fee_type === "flat" ? "50.00" : "5.0"} value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} /></div>
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={saveRule} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">Save Rule</button>
+  <button onClick={saveRule} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">Save Rule</button>
   <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
   )}
   <div className="grid grid-cols-3 gap-3 mb-5">
-  <div className="bg-white rounded-3xl border border-indigo-50 p-4 text-center"><div className="text-2xl font-bold text-orange-500">{flagged.length}</div><div className="text-xs text-slate-400 mt-1">Overdue</div></div>
-  <div className="bg-white rounded-3xl border border-indigo-50 p-4 text-center"><div className="text-2xl font-bold text-red-500">{afterGrace.length}</div><div className="text-xs text-slate-400 mt-1">Past Grace Period</div></div>
-  <div className="bg-white rounded-3xl border border-indigo-50 p-4 text-center"><div className="text-2xl font-bold text-slate-700">${flagged.reduce((s, p) => s + safeNum(p.amount), 0).toLocaleString()}</div><div className="text-xs text-slate-400 mt-1">Total Overdue</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center"><div className="text-2xl font-bold text-orange-500">{flagged.length}</div><div className="text-xs text-slate-400 mt-1">Overdue</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center"><div className="text-2xl font-bold text-red-500">{afterGrace.length}</div><div className="text-xs text-slate-400 mt-1">Past Grace Period</div></div>
+  <div className="bg-white rounded-3xl border border-brand-50 p-4 text-center"><div className="text-2xl font-bold text-slate-700">${flagged.reduce((s, p) => s + safeNum(p.amount), 0).toLocaleString()}</div><div className="text-xs text-slate-400 mt-1">Total Overdue</div></div>
   </div>
   <div className="space-y-3">
   {flagged.map(p => {
@@ -15038,46 +15038,46 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   return (
   <div>
   {/* Tenant Header */}
-  <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-3xl p-5 mb-5 text-white">
+  <div className="bg-gradient-to-r from-brand-600 to-brand-800 rounded-3xl p-5 mb-5 text-white">
   <div className="flex justify-between items-start">
   <div>
   <div className="text-lg font-bold">{tenantData.name}</div>
-  <div className="text-indigo-200 text-sm">{tenantData.property}</div>
+  <div className="text-brand-200 text-sm">{tenantData.property}</div>
   </div>
-  <div className="text-right text-xs text-indigo-200">Lease: {tenantData.lease_status || "active"}</div>
+  <div className="text-right text-xs text-brand-200">Lease: {tenantData.lease_status || "active"}</div>
   </div>
   <div className="mt-3 grid grid-cols-3 gap-3">
   <div className="bg-white/10 backdrop-blur rounded-lg p-3 text-center">
-  <div className="text-xs text-indigo-200">Balance Due</div>
+  <div className="text-xs text-brand-200">Balance Due</div>
   <div className={"text-xl font-bold " + (safeNum(tenantData.balance) > 0 ? "text-red-300" : "text-green-300")}>
   {safeNum(tenantData.balance) > 0 ? "$" + safeNum(tenantData.balance).toLocaleString() : "$0.00"}
   </div>
   </div>
   <div className="bg-white/10 backdrop-blur rounded-lg p-3 text-center">
-  <div className="text-xs text-indigo-200">Monthly Rent</div>
+  <div className="text-xs text-brand-200">Monthly Rent</div>
   <div className="text-xl font-bold">${safeNum(tenantData.rent).toLocaleString()}</div>
   </div>
   <div className="bg-white/10 backdrop-blur rounded-lg p-3 text-center">
-  <div className="text-xs text-indigo-200">Lease End</div>
+  <div className="text-xs text-brand-200">Lease End</div>
   <div className="text-sm font-bold mt-1">{tenantData.move_out || "—"}</div>
   </div>
   </div>
   </div>
 
   {/* Tab Navigation */}
-  <div className="flex gap-1 mb-5 overflow-x-auto pb-1 border-b border-indigo-50">
+  <div className="flex gap-1 mb-5 overflow-x-auto pb-1 border-b border-brand-50">
   {tabs.map(([id, label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap transition-colors " + (activeTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-700")}>{label}</button>
+  <button key={id} onClick={() => setActiveTab(id)} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap transition-colors " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-700")}>{label}</button>
   ))}
   </div>
 
   {/* ---- OVERVIEW TAB ---- */}
   {activeTab === "overview" && (
   <div className="space-y-4">
-  <div className="bg-white rounded-3xl border border-indigo-50 p-4">
+  <div className="bg-white rounded-3xl border border-brand-50 p-4">
   <h3 className="font-semibold text-slate-700 mb-3">Lease Details</h3>
   {[["Status", (tenantData.lease_status || "active")], ["Property", tenantData.property], ["Move-in", tenantData.move_in || "—"], ["Lease End", tenantData.move_out || "—"], ["Monthly Rent", "$" + safeNum(tenantData.rent).toLocaleString()], ["Email", tenantData.email || "—"], ["Phone", tenantData.phone || "—"]].map(([l, v]) => (
-  <div key={l} className="flex justify-between py-2 border-b border-indigo-50/50 text-sm last:border-0"><span className="text-slate-400">{l}</span><span className="font-medium text-slate-800 capitalize">{v}</span></div>
+  <div key={l} className="flex justify-between py-2 border-b border-brand-50/50 text-sm last:border-0"><span className="text-slate-400">{l}</span><span className="font-medium text-slate-800 capitalize">{v}</span></div>
   ))}
   </div>
   {safeNum(tenantData.balance) > 0 && (
@@ -15089,16 +15089,16 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <button onClick={() => setActiveTab("pay")} className="bg-red-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-red-700">Pay Now</button>
   </div>
   )}
-  <div className="bg-white rounded-3xl border border-indigo-50 p-4">
+  <div className="bg-white rounded-3xl border border-brand-50 p-4">
   <h3 className="font-semibold text-slate-700 mb-3">Recent Activity</h3>
   {payments.slice(0, 3).map(p => (
-  <div key={p.id} className="flex justify-between py-2 border-b border-indigo-50/50 last:border-0 text-sm">
+  <div key={p.id} className="flex justify-between py-2 border-b border-brand-50/50 last:border-0 text-sm">
   <div><span className="text-green-600 font-medium">Payment</span> <span className="text-slate-400">— {p.date}</span></div>
   <span className="font-semibold text-slate-800">${safeNum(p.amount).toLocaleString()}</span>
   </div>
   ))}
   {workOrders.slice(0, 2).map(w => (
-  <div key={w.id} className="flex justify-between py-2 border-b border-indigo-50/50 last:border-0 text-sm">
+  <div key={w.id} className="flex justify-between py-2 border-b border-brand-50/50 last:border-0 text-sm">
   <div><span className="text-orange-600 font-medium">Maintenance</span> <span className="text-slate-400">— {w.issue}</span></div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (w.status === "completed" ? "bg-green-100 text-green-700" : w.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>{w.status}</span>
   </div>
@@ -15118,7 +15118,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="text-green-600 text-sm">Your payment has been recorded and your balance updated.</div>
   </div>
   )}
-  <div className="bg-white rounded-3xl border border-indigo-50 p-6">
+  <div className="bg-white rounded-3xl border border-brand-50 p-6">
   <h3 className="font-semibold text-slate-800 text-lg mb-1">Make a Payment</h3>
   <p className="text-sm text-slate-400 mb-5">Pay securely with Stripe</p>
   <div className="mb-4">
@@ -15131,21 +15131,21 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <label className="text-xs text-slate-400 mb-1 block">Payment Amount</label>
   <div className="relative">
   <span className="absolute left-3 top-2.5 text-slate-400">$</span>
-  <input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full border border-indigo-100 rounded-2xl pl-7 pr-3 py-2.5 text-lg font-mono" placeholder="0.00" min="0" max="999999.99" step="0.01" />
+  <input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full border border-brand-100 rounded-2xl pl-7 pr-3 py-2.5 text-lg font-mono" placeholder="0.00" min="0" max="999999.99" step="0.01" />
   </div>
   <div className="flex gap-2 mt-2">
   <button onClick={() => setPaymentAmount(String(tenantData.rent || 0))} className="text-xs bg-slate-100 text-slate-500 px-3 py-1 rounded-2xl hover:bg-slate-100">Full Rent (${safeNum(tenantData.rent)})</button>
   {safeNum(tenantData.balance) > 0 && <button onClick={() => setPaymentAmount(String(tenantData.balance))} className="text-xs bg-red-50 text-red-600 px-3 py-1 rounded-lg hover:bg-red-100">Full Balance (${safeNum(tenantData.balance)})</button>}
   </div>
   </div>
-  <div className="mb-4 p-3 bg-indigo-50/30 rounded-lg">
+  <div className="mb-4 p-3 bg-brand-50/30 rounded-lg">
   <div className="flex items-center gap-2 mb-2">
-  <div className="w-8 h-5 bg-gradient-to-r from-indigo-600 to-purple-600 rounded text-white text-xs flex items-center justify-center font-bold">S</div>
+  <div className="w-8 h-5 bg-gradient-to-r from-brand-600 to-purple-600 rounded text-white text-xs flex items-center justify-center font-bold">S</div>
   <span className="text-sm text-slate-500">Powered by Stripe</span>
   </div>
   <div className="text-xs text-slate-400">Secure payment processing. Your card information is encrypted and never stored on our servers.</div>
   </div>
-  <button onClick={handleStripePayment} disabled={paymentProcessing} className={"w-full py-3 rounded-xl text-white font-semibold text-sm transition-all " + (paymentProcessing ? "bg-slate-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 active:scale-98")}>
+  <button onClick={handleStripePayment} disabled={paymentProcessing} className={"w-full py-3 rounded-xl text-white font-semibold text-sm transition-all " + (paymentProcessing ? "bg-slate-400 cursor-not-allowed" : "bg-brand-600 hover:bg-brand-700 active:scale-98")}>
   {paymentProcessing ? "Processing..." : "Pay $" + (paymentAmount || "0")}
   </button>
   <div className="text-xs text-slate-400 text-center mt-3">A receipt will be available after payment is confirmed.</div>
@@ -15157,7 +15157,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   {activeTab === "autopay" && tenantData && (
   <div className="max-w-md mx-auto">
   <h3 className="font-manrope font-bold text-slate-800 mb-4">Recurring Payments</h3>
-  <div className="bg-white rounded-3xl border border-indigo-50 shadow-card p-6">
+  <div className="bg-white rounded-3xl border border-brand-50 shadow-card p-6">
   <div className="flex items-center justify-between mb-4">
   <div>
   <div className="text-sm font-semibold text-slate-700">Monthly Autopay</div>
@@ -15194,7 +15194,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   </div>
   )}
   {!autopayEnabled && (
-  <div className="bg-indigo-50/30 rounded-2xl p-4 text-center">
+  <div className="bg-brand-50/30 rounded-2xl p-4 text-center">
   <span className="material-icons-outlined text-slate-300 text-3xl mb-2">autorenew</span>
   <p className="text-sm text-slate-400">Enable autopay to schedule your rent payment on the 1st of each month. Requires the autopay processing worker to be deployed.</p>
   </div>
@@ -15211,17 +15211,17 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <button onClick={() => exportToCSV(payments, [
   { label: "Date", key: "date" }, { label: "Type", key: "type" }, { label: "Amount", key: "amount" },
   { label: "Method", key: "method" }, { label: "Status", key: "status" },
-  ], "my-payments", showToast)} className="text-xs text-indigo-600 border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50"><span className="material-icons-outlined text-xs align-middle mr-1">download</span>Export</button>
+  ], "my-payments", showToast)} className="text-xs text-brand-600 border border-brand-200 px-2 py-1 rounded-lg hover:bg-brand-50"><span className="material-icons-outlined text-xs align-middle mr-1">download</span>Export</button>
   </div>
   <div className="space-y-2">
   {payments.map(p => (
-  <div key={p.id} className="bg-white border border-indigo-50 rounded-2xl px-4 py-3 flex justify-between items-center">
+  <div key={p.id} className="bg-white border border-brand-50 rounded-2xl px-4 py-3 flex justify-between items-center">
   <div>
   <div className="text-sm font-medium text-slate-800">{p.type === "rent" ? "Rent Payment" : p.type}</div>
   <div className="text-xs text-slate-400">{p.date} · {p.method}</div>
   </div>
   <div className="flex items-center gap-3">
-  {p.status === "paid" && <button onClick={() => generatePaymentReceipt(p)} className="text-xs text-indigo-600 border border-indigo-200 px-2 py-0.5 rounded hover:bg-indigo-50">Receipt</button>}
+  {p.status === "paid" && <button onClick={() => generatePaymentReceipt(p)} className="text-xs text-brand-600 border border-brand-200 px-2 py-0.5 rounded hover:bg-brand-50">Receipt</button>}
   <div className="text-right">
   <div className="text-sm font-bold text-green-600">${safeNum(p.amount).toLocaleString()}</div>
   <span className={"text-xs px-2 py-0.5 rounded-full " + (p.status === "paid" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>{p.status}</span>
@@ -15235,7 +15235,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <h3 className="font-semibold text-slate-700 mt-6 mb-3">Account Ledger</h3>
   <div className="space-y-2">
   {ledger.map(e => (
-  <div key={e.id} className="bg-white border border-indigo-50 rounded-2xl px-4 py-3">
+  <div key={e.id} className="bg-white border border-brand-50 rounded-2xl px-4 py-3">
   <div className="flex justify-between">
   <div><div className="text-sm font-medium text-slate-800">{e.description}</div><div className="text-xs text-slate-400">{e.date}</div></div>
   <div className="text-right">
@@ -15255,12 +15255,12 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div>
   <div className="flex justify-between items-center mb-4">
   <h3 className="font-semibold text-slate-700">Maintenance Requests</h3>
-  <button onClick={() => setShowMaintForm(!showMaintForm)} className="bg-indigo-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-indigo-700">
+  <button onClick={() => setShowMaintForm(!showMaintForm)} className="bg-brand-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-brand-700">
   {showMaintForm ? "Cancel" : "+ New Request"}
   </button>
   </div>
   {showMaintForm && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-4 mb-4">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
   <h4 className="font-medium text-slate-700 mb-3">Submit a Maintenance Request</h4>
   <label className="text-xs font-medium text-slate-400 mb-1 block">What's the issue? *</label>
   <Input placeholder="e.g. Leaking faucet in kitchen" value={maintForm.issue} onChange={e => setMaintForm({...maintForm, issue: e.target.value})} className="mb-3" />
@@ -15274,12 +15274,12 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <label className="text-xs text-slate-400 mb-1 block">Attach Photo (optional)</label>
   <input type="file" accept="image/*" onChange={e => setMaintPhoto(e.target.files[0])} className="text-sm" />
   </div>
-  <button onClick={submitMaintenanceRequest} className="bg-indigo-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-indigo-700">Submit Request</button>
+  <button onClick={submitMaintenanceRequest} className="bg-brand-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-brand-700">Submit Request</button>
   </div>
   )}
   <div className="space-y-2">
   {workOrders.map(w => (
-  <div key={w.id} className="bg-white border border-indigo-50 rounded-2xl px-4 py-3">
+  <div key={w.id} className="bg-white border border-brand-50 rounded-2xl px-4 py-3">
   <div className="flex justify-between items-start">
   <div>
   <div className="text-sm font-medium text-slate-800">{w.issue}</div>
@@ -15303,13 +15303,13 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div>
   <div className="flex items-center justify-between mb-3">
   <h3 className="font-semibold text-slate-700">My Documents</h3>
-  <button onClick={() => setShowTenantDocUpload(true)} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-indigo-700">+ Upload</button>
+  <button onClick={() => setShowTenantDocUpload(true)} className="bg-brand-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-brand-700">+ Upload</button>
   </div>
   <div className="space-y-2">
   {documents.map(d => (
-  <div key={d.id} className="bg-white border border-indigo-50 rounded-2xl px-4 py-3 flex justify-between items-center">
+  <div key={d.id} className="bg-white border border-brand-50 rounded-2xl px-4 py-3 flex justify-between items-center">
   <div className="flex items-center gap-3">
-  <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600 text-lg">
+  <div className="w-10 h-10 bg-brand-50 rounded-lg flex items-center justify-center text-brand-600 text-lg">
   {d.type === "lease" ? "\ud83d\udcdc" : d.type === "notice" ? "\ud83d\udce8" : "📄"}
   </div>
   <div>
@@ -15317,7 +15317,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="text-xs text-slate-400">{d.type || "Document"} · {new Date(d.uploaded_at).toLocaleDateString()}</div>
   </div>
   </div>
-  <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">View</button>
+  <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">View</button>
   </div>
   ))}
   {documents.length === 0 && <div className="text-center py-8 text-slate-400">No documents uploaded yet</div>}
@@ -15328,21 +15328,21 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
 
   {/* ---- MESSAGES TAB ---- */}
   {activeTab === "messages" && (
-  <div className="bg-white rounded-3xl border border-indigo-50">
+  <div className="bg-white rounded-3xl border border-brand-50">
   <div className="p-4 space-y-3 max-h-96 overflow-y-auto">
   {messages.map(m => (
   <div key={m.id} className={"flex " + (m.sender !== tenantData.name ? "justify-start" : "justify-end")}>
-  <div className={"max-w-xs rounded-2xl px-4 py-2.5 " + (m.sender !== tenantData.name ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-800")}>
+  <div className={"max-w-xs rounded-2xl px-4 py-2.5 " + (m.sender !== tenantData.name ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-800")}>
   <div className="text-sm">{m.message}</div>
-  <div className={"text-xs mt-1 " + (m.sender !== tenantData.name ? "text-indigo-200" : "text-slate-400")}>{m.sender} · {new Date(m.created_at).toLocaleDateString()}</div>
+  <div className={"text-xs mt-1 " + (m.sender !== tenantData.name ? "text-brand-200" : "text-slate-400")}>{m.sender} · {new Date(m.created_at).toLocaleDateString()}</div>
   </div>
   </div>
   ))}
   {messages.length === 0 && <div className="text-center py-6 text-slate-400 text-sm">No messages yet. Send a message to your property manager below.</div>}
   </div>
-  <div className="p-3 border-t border-indigo-50 flex gap-2">
+  <div className="p-3 border-t border-brand-50 flex gap-2">
   <Input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} placeholder="Message your property manager..." className="flex-1" />
-  <button onClick={sendMessage} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-indigo-700">Send</button>
+  <button onClick={sendMessage} className="bg-brand-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-brand-700">Send</button>
   </div>
   </div>
   )}
@@ -15529,13 +15529,13 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   <h2 className="text-2xl font-manrope font-bold text-slate-800">Team & Role Management</h2>
   <p className="text-xs text-slate-400 mt-0.5">Add team members and choose exactly which modules they can access</p>
   </div>
-  <button onClick={startAdd} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ Add User</button>
+  <button onClick={startAdd} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ Add User</button>
   </div>
 
   {/* Role legend */}
   <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-5">
   {Object.entries(ROLES).map(([key, r]) => (
-  <div key={key} className="bg-white rounded-3xl border border-indigo-50 p-3 text-center">
+  <div key={key} className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
   <div className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold text-white mb-1 ${r.color}`}>{r.label}</div>
   <div className="text-xs text-slate-400">{key === "admin" ? "Full access" : key === "tenant" ? "Portal only" : "Customizable"}</div>
   </div>
@@ -15544,27 +15544,27 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
 
   {/* Add / Edit form */}
   {showForm && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-5 mb-5">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
   <h3 className="font-semibold text-slate-700 mb-4">{editingUser ? `Edit — ${editingUser.name}` : "Add Team Member"}</h3>
 
   {/* Basic info */}
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div className="col-span-2"><div className="grid grid-cols-6 gap-3">
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">First Name *</label><input value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
-  <div className="col-span-1"><label className="text-xs font-medium text-slate-400 mb-1 block">MI</label><input maxLength={1} value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} placeholder="M" className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full text-center" /></div>
-  <div className="col-span-3"><label className="text-xs font-medium text-slate-400 mb-1 block">Last Name *</label><input value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} placeholder="Last" className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">First Name *</label><input value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div className="col-span-1"><label className="text-xs font-medium text-slate-400 mb-1 block">MI</label><input maxLength={1} value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} placeholder="M" className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full text-center" /></div>
+  <div className="col-span-3"><label className="text-xs font-medium text-slate-400 mb-1 block">Last Name *</label><input value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} placeholder="Last" className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
   </div></div>
   <input
   placeholder="Email address"
   value={form.email}
   onChange={e => setForm({ ...form, email: e.target.value })}
   disabled={!!editingUser}
-  className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm disabled:bg-indigo-50/30 disabled:text-slate-400"
+  className="border border-brand-100 rounded-2xl px-3 py-2 text-sm disabled:bg-brand-50/30 disabled:text-slate-400"
   />
   <select
   value={form.role}
   onChange={e => handleRoleChange(e.target.value)}
-  className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm col-span-2"
+  className="border border-brand-100 rounded-2xl px-3 py-2 text-sm col-span-2"
   >
   {Object.entries(ROLES).filter(([k]) => k !== "tenant").map(([key, r]) => (
   <option key={key} value={key}>{r.label}</option>
@@ -15574,13 +15574,13 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
 
   {/* Module picker — only shown for customizable roles */}
   {isCustomizable && (
-  <div className="border border-indigo-50 rounded-3xl p-4 bg-indigo-50/30">
+  <div className="border border-brand-50 rounded-3xl p-4 bg-brand-50/30">
   <div className="flex items-center justify-between mb-3">
   <div className="text-sm font-semibold text-slate-700">Choose which modules this person can access</div>
   <div className="flex gap-2">
   <button
   onClick={() => setCustomPages(ALL_NAV_FLAT.map(n => n.id))}
-  className="text-xs text-indigo-600 hover:underline"
+  className="text-xs text-brand-600 hover:underline"
   >Select all</button>
   <span className="text-slate-300">|</span>
   <button
@@ -15598,13 +15598,13 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   onClick={() => togglePage(nav.id)}
   className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all text-left ${
   isOn
-  ? "bg-indigo-600 border-indigo-600 text-white"
-  : "bg-white border-indigo-100 text-slate-500 hover:border-indigo-300"
+  ? "bg-brand-600 border-brand-600 text-white"
+  : "bg-white border-brand-100 text-slate-500 hover:border-brand-300"
   }`}
   >
   <span className="text-base">{nav.icon}</span>
   <span>{nav.label}</span>
-  {isOn && <span className="ml-auto text-indigo-200 text-xs">✓</span>}
+  {isOn && <span className="ml-auto text-brand-200 text-xs">✓</span>}
   </button>
   );
   })}
@@ -15625,7 +15625,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   )}
 
   <div className="flex gap-2 mt-4">
-  <button onClick={saveUser} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-indigo-700">
+  <button onClick={saveUser} className="bg-brand-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-brand-700">
   {editingUser ? "Save Changes" : "Add User"}
   </button>
   <button onClick={() => { setShowForm(false); setEditingUser(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">
@@ -15640,7 +15640,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   {users.map(u => {
   const effectivePages = getEffectivePages(u);
   return (
-  <div key={u.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4">
+  <div key={u.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <div className="flex justify-between items-center">
   <div className="flex items-center gap-3">
   <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold ${ROLES[u.role]?.color || "bg-slate-400"}`}>
@@ -15658,7 +15658,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   <button onClick={() => inviteUser(u)} className="text-xs text-emerald-500 border border-emerald-200 px-2 py-1 rounded-lg hover:bg-emerald-50">
   ✉️ Invite
   </button>
-  <button onClick={() => startEdit(u)} className="text-xs text-indigo-500 border border-indigo-200 px-2 py-1 rounded-lg hover:bg-indigo-50">
+  <button onClick={() => startEdit(u)} className="text-xs text-brand-500 border border-brand-200 px-2 py-1 rounded-lg hover:bg-brand-50">
   ✏️ Edit
   </button>
   <button onClick={() => removeUser(u.id, u.name, u.email)} className="text-xs text-red-400 hover:text-red-600 border border-red-100 px-2 py-1 rounded-lg hover:bg-red-50">
@@ -15671,7 +15671,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   {effectivePages.map(p => {
   const nav = ALL_NAV_FLAT.find(n => n.id === p);
   return (
-  <span key={p} className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-full">
+  <span key={p} className="text-xs bg-brand-50 text-brand-700 border border-brand-100 px-2 py-0.5 rounded-full">
   {nav ? `${nav.icon} ${nav.label}` : p}
   </span>
   );
@@ -15877,7 +15877,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   </div>
   <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-2">Move-Out Complete</h2>
   <p className="text-slate-400 mb-6">All accounting entries posted, lease terminated, and property marked vacant.</p>
-  <button onClick={() => setPage("dashboard")} className="bg-indigo-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 transition-colors">Back to Dashboard</button>
+  <button onClick={() => setPage("dashboard")} className="bg-brand-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-brand-700 transition-colors">Back to Dashboard</button>
   </div>
   );
 
@@ -15891,21 +15891,21 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <div className="flex items-center gap-2 mb-8">
   {steps.map((s, i) => (
   <div key={s} className="flex items-center gap-2 flex-1">
-  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${i + 1 <= step ? "bg-indigo-600 text-white" : "bg-indigo-50 text-slate-400"}`}>{i + 1}</div>
-  <span className={`text-xs font-medium hidden md:block ${i + 1 <= step ? "text-indigo-600" : "text-slate-400"}`}>{s}</span>
-  {i < steps.length - 1 && <div className={`flex-1 h-0.5 ${i + 1 < step ? "bg-indigo-600" : "bg-indigo-50"}`} />}
+  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${i + 1 <= step ? "bg-brand-600 text-white" : "bg-brand-50 text-slate-400"}`}>{i + 1}</div>
+  <span className={`text-xs font-medium hidden md:block ${i + 1 <= step ? "text-brand-600" : "text-slate-400"}`}>{s}</span>
+  {i < steps.length - 1 && <div className={`flex-1 h-0.5 ${i + 1 < step ? "bg-brand-600" : "bg-brand-50"}`} />}
   </div>
   ))}
   </div>
 
   {/* Step 1: Select Tenant */}
   {step === 1 && (
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-6">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
   <h3 className="text-lg font-manrope font-bold text-slate-800 mb-4">Select Tenant & Move-Out Date</h3>
   <div className="space-y-4">
   <div>
   <label className="text-xs font-medium text-slate-400 uppercase tracking-widest block mb-1">Tenant</label>
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={selectedTenant?.id || ""} onChange={e => selectTenant(e.target.value)} >
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={selectedTenant?.id || ""} onChange={e => selectTenant(e.target.value)} >
   <option value="">Select tenant...</option>
   {tenants.map(t => <option key={t.id} value={t.id}>{t.name} — {t.property}</option>)}
   </select>
@@ -15916,7 +15916,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <label className="text-xs font-medium text-slate-400 uppercase tracking-widest block mb-1">Move-Out Date</label>
   <Input type="date" value={moveOutDate} onChange={e => setMoveOutDate(e.target.value)}  />
   </div>
-  <div className="bg-indigo-50/30 rounded-2xl p-4 space-y-2 text-sm">
+  <div className="bg-brand-50/30 rounded-2xl p-4 space-y-2 text-sm">
   <div className="flex justify-between"><span className="text-slate-400">Property</span><span className="font-medium text-slate-700">{selectedTenant.property}</span></div>
   <div className="flex justify-between"><span className="text-slate-400">Monthly Rent</span><span className="font-medium text-slate-700">${safeNum(selectedTenant.rent)}</span></div>
   <div className="flex justify-between"><span className="text-slate-400">Balance</span><span className={`font-bold ${outstandingBalance > 0 ? "text-red-600" : "text-emerald-600"}`}>${outstandingBalance.toFixed(2)}</span></div>
@@ -15926,40 +15926,40 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   )}
   </div>
   <div className="flex justify-end mt-6">
-  <button disabled={!selectedTenant} onClick={() => setStep(2)} className="bg-indigo-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 disabled:opacity-40 transition-colors">Next →</button>
+  <button disabled={!selectedTenant} onClick={() => setStep(2)} className="bg-brand-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-brand-700 disabled:opacity-40 transition-colors">Next →</button>
   </div>
   </div>
   )}
 
   {/* Step 2: Inspection Checklist */}
   {step === 2 && (
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-6">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
   <h3 className="text-lg font-manrope font-bold text-slate-800 mb-4">Move-Out Inspection</h3>
   <div className="space-y-2">
   {checklist.map((item, i) => (
-  <div key={i} className={`flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-colors ${item.checked ? "bg-emerald-50 border-emerald-200" : "bg-white border-indigo-50 hover:bg-indigo-50/30"}`} onClick={() => { const c = [...checklist]; c[i] = { ...c[i], checked: !c[i].checked }; setChecklist(c); }}>
+  <div key={i} className={`flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-colors ${item.checked ? "bg-emerald-50 border-emerald-200" : "bg-white border-brand-50 hover:bg-brand-50/30"}`} onClick={() => { const c = [...checklist]; c[i] = { ...c[i], checked: !c[i].checked }; setChecklist(c); }}>
   <span className={`material-icons-outlined text-lg ${item.checked ? "text-emerald-600" : "text-slate-300"}`}>{item.checked ? "check_circle" : "radio_button_unchecked"}</span>
   <span className={`flex-1 text-sm ${item.checked ? "text-emerald-700 font-medium" : "text-slate-500"}`}>{item.label}</span>
   </div>
   ))}
   </div>
   <div className="flex justify-between mt-6">
-  <button onClick={() => setStep(1)} className="text-slate-400 px-4 py-2 rounded-2xl hover:bg-indigo-50/30 transition-colors">← Back</button>
-  <button onClick={() => setStep(3)} className="bg-indigo-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 transition-colors">Next →</button>
+  <button onClick={() => setStep(1)} className="text-slate-400 px-4 py-2 rounded-2xl hover:bg-brand-50/30 transition-colors">← Back</button>
+  <button onClick={() => setStep(3)} className="bg-brand-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-brand-700 transition-colors">Next →</button>
   </div>
   </div>
   )}
 
   {/* Step 3: Deposit Accounting */}
   {step === 3 && (
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-6">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
   <h3 className="text-lg font-manrope font-bold text-slate-800 mb-4">Security Deposit Settlement</h3>
-  <div className="bg-indigo-50/30 rounded-2xl p-4 mb-4">
+  <div className="bg-brand-50/30 rounded-2xl p-4 mb-4">
   <div className="flex justify-between text-sm"><span className="text-slate-400">Original Deposit</span><span className="font-bold text-slate-700">${depositAmount.toFixed(2)}</span></div>
   </div>
   <h4 className="text-sm font-semibold text-slate-500 mb-2">Deductions</h4>
   {deductions.map((d, i) => (
-  <div key={i} className="flex items-center justify-between py-2 border-b border-indigo-50/50">
+  <div key={i} className="flex items-center justify-between py-2 border-b border-brand-50/50">
   <span className="text-sm text-slate-700">{d.desc}</span>
   <div className="flex items-center gap-2">
   <span className="text-sm font-semibold text-red-600">-${d.amount.toFixed(2)}</span>
@@ -15970,22 +15970,22 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <div className="flex gap-2 mt-3">
   <Input placeholder="Description (e.g., Wall damage)" value={newDeductionDesc} onChange={e => setNewDeductionDesc(e.target.value)} className="flex-1" />
   <Input placeholder="$" type="number" value={newDeductionAmt} onChange={e => setNewDeductionAmt(e.target.value)} className="w-24" />
-  <button onClick={addDeduction} className="bg-indigo-600 text-white px-3 py-2 rounded-2xl text-sm font-semibold">Add</button>
+  <button onClick={addDeduction} className="bg-brand-600 text-white px-3 py-2 rounded-2xl text-sm font-semibold">Add</button>
   </div>
   <div className="bg-emerald-50 rounded-2xl p-4 mt-4 space-y-1">
   <div className="flex justify-between text-sm"><span className="text-slate-400">Total Deductions</span><span className="font-semibold text-red-600">-${totalDeductions.toFixed(2)}</span></div>
   <div className="flex justify-between text-sm font-bold"><span className="text-emerald-700">Return to Tenant</span><span className="text-emerald-700">${depositReturn.toFixed(2)}</span></div>
   </div>
   <div className="flex justify-between mt-6">
-  <button onClick={() => setStep(2)} className="text-slate-400 px-4 py-2 rounded-2xl hover:bg-indigo-50/30 transition-colors">← Back</button>
-  <button onClick={() => setStep(4)} className="bg-indigo-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 transition-colors">Next →</button>
+  <button onClick={() => setStep(2)} className="text-slate-400 px-4 py-2 rounded-2xl hover:bg-brand-50/30 transition-colors">← Back</button>
+  <button onClick={() => setStep(4)} className="bg-brand-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-brand-700 transition-colors">Next →</button>
   </div>
   </div>
   )}
 
   {/* Step 4: AR Settlement */}
   {step === 4 && (
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-6">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
   <h3 className="text-lg font-manrope font-bold text-slate-800 mb-4">Outstanding Balance</h3>
   <div className={`rounded-2xl p-4 mb-4 ${outstandingBalance > 0 ? "bg-red-50" : "bg-emerald-50"}`}>
   <div className="text-sm text-slate-400">Current Balance</div>
@@ -15998,8 +15998,8 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   { value: "waive", label: "Write Off (Bad Debt)", desc: "Post as bad debt expense and zero out balance", icon: "money_off" },
   { value: "collections", label: "Send to Collections", desc: "Mark tenant for external collections agency", icon: "gavel" },
   ].map(opt => (
-  <div key={opt.value} onClick={() => setArAction(opt.value)} className={`flex items-center gap-3 p-4 rounded-2xl border cursor-pointer transition-all ${arAction === opt.value ? "border-indigo-300 bg-indigo-50" : "border-indigo-50 hover:border-indigo-200"}`}>
-  <span className={`material-icons-outlined ${arAction === opt.value ? "text-indigo-600" : "text-slate-400"}`}>{opt.icon}</span>
+  <div key={opt.value} onClick={() => setArAction(opt.value)} className={`flex items-center gap-3 p-4 rounded-2xl border cursor-pointer transition-all ${arAction === opt.value ? "border-brand-300 bg-brand-50" : "border-brand-50 hover:border-brand-200"}`}>
+  <span className={`material-icons-outlined ${arAction === opt.value ? "text-brand-600" : "text-slate-400"}`}>{opt.icon}</span>
   <div><div className="text-sm font-semibold text-slate-700">{opt.label}</div><div className="text-xs text-slate-400">{opt.desc}</div></div>
   </div>
   ))}
@@ -16007,31 +16007,31 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   )}
   {outstandingBalance <= 0 && <p className="text-sm text-emerald-600 font-medium">No outstanding balance — tenant is settled.</p>}
   <div className="flex justify-between mt-6">
-  <button onClick={() => setStep(3)} className="text-slate-400 px-4 py-2 rounded-2xl hover:bg-indigo-50/30 transition-colors">← Back</button>
-  <button onClick={() => setStep(5)} className="bg-indigo-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-indigo-700 transition-colors">Next →</button>
+  <button onClick={() => setStep(3)} className="text-slate-400 px-4 py-2 rounded-2xl hover:bg-brand-50/30 transition-colors">← Back</button>
+  <button onClick={() => setStep(5)} className="bg-brand-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-brand-700 transition-colors">Next →</button>
   </div>
   </div>
   )}
 
   {/* Step 5: Confirm & Execute */}
   {step === 5 && (
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-6">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-6">
   <h3 className="text-lg font-manrope font-bold text-slate-800 mb-4">Confirm Move-Out</h3>
   <div className="space-y-3 text-sm">
-  <div className="flex justify-between py-2 border-b border-indigo-50"><span className="text-slate-400">Tenant</span><span className="font-semibold text-slate-700">{selectedTenant?.name}</span></div>
-  <div className="flex justify-between py-2 border-b border-indigo-50"><span className="text-slate-400">Property</span><span className="font-semibold text-slate-700">{selectedLease?.property}</span></div>
-  <div className="flex justify-between py-2 border-b border-indigo-50"><span className="text-slate-400">Move-Out Date</span><span className="font-semibold text-slate-700">{moveOutDate}</span></div>
-  <div className="flex justify-between py-2 border-b border-indigo-50"><span className="text-slate-400">Inspection Items</span><span className="font-semibold text-emerald-600">{checklist.filter(c => c.checked).length}/{checklist.length} checked</span></div>
-  <div className="flex justify-between py-2 border-b border-indigo-50"><span className="text-slate-400">Deposit Return</span><span className="font-semibold text-emerald-600">${depositReturn.toFixed(2)}</span></div>
-  {totalDeductions > 0 && <div className="flex justify-between py-2 border-b border-indigo-50"><span className="text-slate-400">Deductions</span><span className="font-semibold text-red-600">-${totalDeductions.toFixed(2)}</span></div>}
-  <div className="flex justify-between py-2 border-b border-indigo-50"><span className="text-slate-400">AR Action</span><span className="font-semibold text-slate-700 capitalize">{outstandingBalance > 0 ? arAction.replace("_", " ") : "Settled"}</span></div>
+  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-slate-400">Tenant</span><span className="font-semibold text-slate-700">{selectedTenant?.name}</span></div>
+  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-slate-400">Property</span><span className="font-semibold text-slate-700">{selectedLease?.property}</span></div>
+  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-slate-400">Move-Out Date</span><span className="font-semibold text-slate-700">{moveOutDate}</span></div>
+  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-slate-400">Inspection Items</span><span className="font-semibold text-emerald-600">{checklist.filter(c => c.checked).length}/{checklist.length} checked</span></div>
+  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-slate-400">Deposit Return</span><span className="font-semibold text-emerald-600">${depositReturn.toFixed(2)}</span></div>
+  {totalDeductions > 0 && <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-slate-400">Deductions</span><span className="font-semibold text-red-600">-${totalDeductions.toFixed(2)}</span></div>}
+  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-slate-400">AR Action</span><span className="font-semibold text-slate-700 capitalize">{outstandingBalance > 0 ? arAction.replace("_", " ") : "Settled"}</span></div>
   </div>
   <div className="bg-amber-50 rounded-2xl p-3 mt-4 text-xs text-amber-700">
   <span className="material-icons-outlined text-sm align-middle mr-1">warning</span>
   This will terminate the lease, update property to vacant, and post all accounting entries. This cannot be undone.
   </div>
   <div className="flex justify-between mt-6">
-  <button onClick={() => setStep(4)} className="text-slate-400 px-4 py-2 rounded-2xl hover:bg-indigo-50/30 transition-colors">← Back</button>
+  <button onClick={() => setStep(4)} className="text-slate-400 px-4 py-2 rounded-2xl hover:bg-brand-50/30 transition-colors">← Back</button>
   <button onClick={executeMoveOut} disabled={processing} className="bg-red-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-red-700 disabled:opacity-40 transition-colors">
   {processing ? "Processing..." : "Execute Move-Out"}
   </button>
@@ -16298,14 +16298,14 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <div className="grid grid-cols-2 gap-3">
   <div className="col-span-2">
   <label className="text-xs font-medium text-slate-400 mb-1 block">Tenant *</label>
-  <select value={form.tenant_id} onChange={e => { const t = tenants.find(x => String(x.id) === e.target.value); if (t) setForm({ ...form, tenant_id: t.id, tenant_name: t.name, property: t.property || "" }); }} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
+  <select value={form.tenant_id} onChange={e => { const t = tenants.find(x => String(x.id) === e.target.value); if (t) setForm({ ...form, tenant_id: t.id, tenant_name: t.name, property: t.property || "" }); }} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm">
   <option value="">Select tenant...</option>
   {tenants.filter(t => !t.archived_at).map(t => <option key={t.id} value={t.id}>{t.name} — {t.property}{safeNum(t.balance) > 0 ? ` (owes ${formatCurrency(t.balance)})` : ""}</option>)}
   </select>
   </div>
   <div>
   <label className="text-xs font-medium text-slate-400 mb-1 block">Reason</label>
-  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} >
+  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} >
   <option value="non_payment">Non-Payment of Rent</option>
   <option value="lease_violation">Lease Violation</option>
   <option value="holdover">Holdover (Expired Lease)</option>
@@ -16317,7 +16317,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   </div>
   <div>
   <label className="text-xs font-medium text-slate-400 mb-1 block">Notice Type</label>
-  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.notice_type} onChange={e => setForm({ ...form, notice_type: e.target.value })} >
+  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.notice_type} onChange={e => setForm({ ...form, notice_type: e.target.value })} >
   <option value="pay_or_quit">Pay or Quit</option>
   <option value="cure_or_quit">Cure or Quit</option>
   <option value="unconditional_quit">Unconditional Quit</option>
@@ -16326,11 +16326,11 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   </div>
   <div>
   <label className="text-xs font-medium text-slate-400 mb-1 block">Cure Period (days)</label>
-  <select className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm" value={form.notice_days} onChange={e => setForm({ ...form, notice_days: e.target.value })} >
+  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.notice_days} onChange={e => setForm({ ...form, notice_days: e.target.value })} >
   <option value="3">3 days</option><option value="5">5 days</option><option value="7">7 days</option><option value="10">10 days</option><option value="14">14 days</option><option value="30">30 days</option><option value="60">60 days</option>
   </select>
   </div>
-  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="Additional context or details..." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="Additional context or details..." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
   </div>
   <div className="flex gap-2 mt-3">
   <button onClick={createCase} className="bg-red-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-red-700">Start Case</button>
@@ -16342,7 +16342,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   {/* Filters */}
   <div className="flex flex-wrap gap-2 mb-4">
   <Input placeholder="Search tenant or property..." value={evSearch} onChange={e => setEvSearch(e.target.value)} className="flex-1 min-w-40" />
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={filterStage} onChange={e => setFilterStage(e.target.value)} >
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={filterStage} onChange={e => setFilterStage(e.target.value)} >
   <option value="all">All Cases</option>
   <option value="active">Active Only</option>
   <option value="closed">Closed Only</option>
@@ -16371,7 +16371,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   </div>
 
   {/* Stage Progress */}
-  <div className="px-6 py-4 border-b border-indigo-50">
+  <div className="px-6 py-4 border-b border-brand-50">
   <div className="text-xs font-semibold text-slate-400 uppercase mb-3">Progress</div>
   <div className="flex items-center gap-1">
   {EVICTION_STAGES.map((s, i) => {
@@ -16389,7 +16389,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   </div>
 
   {/* Key Dates */}
-  <div className="px-6 py-4 border-b border-indigo-50">
+  <div className="px-6 py-4 border-b border-brand-50">
   <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Key Dates</div>
   <div className="grid grid-cols-2 gap-2 text-sm">
   <div><span className="text-slate-400 text-xs block">Notice Sent</span><span className="font-semibold text-slate-700">{selectedCase.notice_date || "—"}</span></div>
@@ -16402,7 +16402,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   </div>
 
   {/* Stage History */}
-  <div className="px-6 py-4 border-b border-indigo-50">
+  <div className="px-6 py-4 border-b border-brand-50">
   <div className="text-xs font-semibold text-slate-400 uppercase mb-3">Timeline</div>
   <div className="space-y-3">
   {JSON.parse(selectedCase.stage_history || "[]").slice().reverse().map((h, i) => {
@@ -16425,13 +16425,13 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   </div>
 
   {/* Generate Legal Notice */}
-  <div className="px-6 py-3 border-b border-indigo-50 flex gap-2">
+  <div className="px-6 py-3 border-b border-brand-50 flex gap-2">
   <button onClick={() => generateEvictionNotice(selectedCase)} className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-lg hover:bg-amber-100 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">print</span>Generate Legal Notice</button>
   </div>
 
   {/* Advance Stage */}
   {selectedCase.status === "active" && (
-  <div className="px-6 py-4 border-b border-indigo-50">
+  <div className="px-6 py-4 border-b border-brand-50">
   <div className="text-xs font-semibold text-slate-400 uppercase mb-3">Advance to Next Stage</div>
   <div className="space-y-2">
   <div className="grid grid-cols-2 gap-2">
@@ -16466,7 +16466,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   </div>
 
   {selectedCase.notes && (
-  <div className="px-6 py-4 border-t border-indigo-50">
+  <div className="px-6 py-4 border-t border-brand-50">
   <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Case Notes</div>
   <p className="text-sm text-slate-600">{selectedCase.notes}</p>
   </div>
@@ -16482,7 +16482,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   const curIdx = stageIdx(c.current_stage);
   const daysActive = Math.ceil((new Date() - new Date(c.created_at)) / 86400000);
   return (
-  <div key={c.id} onClick={() => setSelectedCase(c)} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-4 cursor-pointer hover:border-red-200 hover:shadow-md transition-all">
+  <div key={c.id} onClick={() => setSelectedCase(c)} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4 cursor-pointer hover:border-red-200 hover:shadow-md transition-all">
   <div className="flex justify-between items-start">
   <div>
   <div className="flex items-center gap-2 mb-1">
@@ -17236,16 +17236,16 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   return (
   <div className="fixed inset-0 z-50 bg-[#fcf8ff] flex flex-col">
   {/* Toolbar */}
-  <div className="h-14 border-b border-indigo-100 bg-white/80 backdrop-blur-md flex items-center px-5 gap-3 shrink-0">
+  <div className="h-14 border-b border-brand-100 bg-white/80 backdrop-blur-md flex items-center px-5 gap-3 shrink-0">
   <button onClick={() => { setShowTemplateEditor(false); setEditingTemplate(null); }} className="text-slate-400 hover:text-slate-600"><span className="material-icons-outlined text-xl">arrow_back</span></button>
   <div className="flex-1 min-w-0">
   <h2 className="text-lg font-manrope font-bold text-slate-800 truncate">{editingTemplate ? "Edit Template" : "New Template"}{templateForm.name ? ": " + templateForm.name : ""}</h2>
   </div>
   <div className="flex bg-slate-100 rounded-xl p-0.5">
-  <button onClick={() => setTemplateForm(prev => ({ ...prev, template_type: "html" }))} className={"px-3 py-1.5 text-xs font-medium rounded-lg transition-colors " + (templateForm.template_type === "html" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-500 hover:text-slate-700")}>HTML</button>
-  <button onClick={() => setTemplateForm(prev => ({ ...prev, template_type: "pdf_overlay" }))} className={"px-3 py-1.5 text-xs font-medium rounded-lg transition-colors " + (templateForm.template_type === "pdf_overlay" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-500 hover:text-slate-700")}>PDF Overlay</button>
+  <button onClick={() => setTemplateForm(prev => ({ ...prev, template_type: "html" }))} className={"px-3 py-1.5 text-xs font-medium rounded-lg transition-colors " + (templateForm.template_type === "html" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700")}>HTML</button>
+  <button onClick={() => setTemplateForm(prev => ({ ...prev, template_type: "pdf_overlay" }))} className={"px-3 py-1.5 text-xs font-medium rounded-lg transition-colors " + (templateForm.template_type === "pdf_overlay" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700")}>PDF Overlay</button>
   </div>
-  <button onClick={saveTemplate} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-indigo-700 font-semibold">{editingTemplate ? "Update Template" : "Create Template"}</button>
+  <button onClick={saveTemplate} className="bg-brand-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-brand-700 font-semibold">{editingTemplate ? "Update Template" : "Create Template"}</button>
   <span className="text-xs text-slate-300 ml-2">Esc to close</span>
   </div>
 
@@ -17253,7 +17253,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="flex-1 flex overflow-hidden">
   {/* Left: Template config + fields */}
   <div style={{ width: splitPercent + "%" }} className="overflow-y-auto p-6 space-y-4">
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 mb-3">Template Details</h3>
   <div className="grid grid-cols-2 gap-3">
   <div>
@@ -17262,7 +17262,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   <div>
   <label className="text-xs font-medium text-slate-400 block mb-1">Category</label>
-  <select value={templateForm.category} onChange={e => setTemplateForm({...templateForm, category: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm">
+  <select value={templateForm.category} onChange={e => setTemplateForm({...templateForm, category: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm">
   {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
   </select>
   </div>
@@ -17273,17 +17273,17 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   </div>
 
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <div className="flex items-center justify-between mb-3">
   <h3 className="font-manrope font-bold text-slate-700">Form Fields ({templateForm.fields.length})</h3>
-  <button onClick={addField} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700">+ Add Field</button>
+  <button onClick={addField} className="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg hover:bg-brand-700">+ Add Field</button>
   </div>
   <div className="space-y-3">
   {templateForm.fields.map((f, i) => (
-  <div key={i} className="border border-indigo-50 rounded-xl p-3 bg-indigo-50/20">
+  <div key={i} className="border border-brand-50 rounded-xl p-3 bg-brand-50/20">
   <div className="grid grid-cols-3 gap-2 mb-2">
   <Input value={f.label} onChange={e => updateField(i, "label", e.target.value)} placeholder="Label" className="text-xs" />
-  <select value={f.type} onChange={e => updateField(i, "type", e.target.value)} className="border border-indigo-100 rounded-lg px-2 py-1.5 text-xs">
+  <select value={f.type} onChange={e => updateField(i, "type", e.target.value)} className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
   {["text","textarea","number","currency","date","checkbox","select","address_block","signature_placeholder"].map(t => <option key={t} value={t}>{t}</option>)}
   </select>
   <Input value={f.section || ""} onChange={e => updateField(i, "section", e.target.value)} placeholder="Section" className="text-xs" />
@@ -17292,8 +17292,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <Input value={f.prefill_from || ""} onChange={e => updateField(i, "prefill_from", e.target.value)} placeholder="Prefill from" className="text-xs" />
   <Input value={f.default_value || ""} onChange={e => updateField(i, "default_value", e.target.value)} placeholder="Default value" className="text-xs" />
   <div className="flex items-center gap-2">
-  <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={f.required} onChange={e => updateField(i, "required", e.target.checked)} className="accent-indigo-600" />Required</label>
-  <button onClick={() => insertMergeField(f.name || f.label.toLowerCase().replace(/[^a-z0-9]+/g, "_"))} className="text-xs text-indigo-600 hover:underline" title="Insert into body">{"{{}}"}</button>
+  <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={f.required} onChange={e => updateField(i, "required", e.target.checked)} className="accent-brand-600" />Required</label>
+  <button onClick={() => insertMergeField(f.name || f.label.toLowerCase().replace(/[^a-z0-9]+/g, "_"))} className="text-xs text-brand-600 hover:underline" title="Insert into body">{"{{}}"}</button>
   <button onClick={() => removeField(i)} className="text-xs text-red-400 hover:text-red-600 ml-auto">✕</button>
   </div>
   </div>
@@ -17308,7 +17308,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   {/* Advanced Field Config */}
   {templateForm.fields.length > 0 && (
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 mb-3">Advanced Field Config</h3>
 
   {/* Calculated Fields */}
@@ -17367,7 +17367,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {Object.keys(templateForm.field_config?.conditional || {}).length === 0 && <p className="text-xs text-slate-400 italic">No conditions. Show/hide fields based on other field values.</p>}
   </div>
 
-  <div className="text-xs text-slate-400 border-t border-indigo-50 pt-2">
+  <div className="text-xs text-slate-400 border-t border-brand-50 pt-2">
   <strong>Address blocks:</strong> Set field type to "address_block" above — it renders as a 5-field structured address (street, apt, city, state, zip).
   </div>
   </div>
@@ -17375,7 +17375,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
 
   {/* Drag handle */}
-  <div onMouseDown={startDrag} className="w-1.5 bg-indigo-100 hover:bg-indigo-300 cursor-col-resize shrink-0 transition-colors" />
+  <div onMouseDown={startDrag} className="w-1.5 bg-brand-100 hover:bg-brand-300 cursor-col-resize shrink-0 transition-colors" />
 
   {/* Right pane */}
   <div style={{ width: (100 - splitPercent) + "%" }} className="overflow-y-auto p-6 space-y-4">
@@ -17383,11 +17383,11 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <>
   {/* PDF Upload + Viewer */}
   {!templateForm.pdf_storage_path ? (
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-8 text-center">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 text-center">
   <div className="text-4xl mb-3">📄</div>
   <h3 className="font-manrope font-bold text-slate-700 mb-2">Upload a PDF Template</h3>
   <p className="text-sm text-slate-400 mb-4">Upload a flat PDF. Blank fields will be auto-detected.</p>
-  <label className="inline-flex items-center gap-2 bg-indigo-600 text-white text-sm px-5 py-2.5 rounded-2xl hover:bg-indigo-700 cursor-pointer font-semibold">
+  <label className="inline-flex items-center gap-2 bg-brand-600 text-white text-sm px-5 py-2.5 rounded-2xl hover:bg-brand-700 cursor-pointer font-semibold">
   <span className="material-icons-outlined text-lg">upload_file</span>Choose PDF
   <input type="file" accept=".pdf" className="hidden" onChange={e => handlePdfUpload(e.target.files[0])} />
   </label>
@@ -17395,7 +17395,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   ) : (
   <>
   {/* PDF toolbar */}
-  <div className="bg-white rounded-2xl shadow-card border border-indigo-50 px-4 py-2 flex items-center gap-3">
+  <div className="bg-white rounded-2xl shadow-card border border-brand-50 px-4 py-2 flex items-center gap-3">
   <span className="text-xs text-slate-500">{templateForm.pdf_page_count} pages</span>
   <span className="text-xs text-slate-300">|</span>
   <span className="text-xs text-slate-500">{templateForm.pdf_field_placements.length} placements</span>
@@ -17403,7 +17403,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {placingField ? (
   <span className="text-xs text-emerald-600 font-semibold">Click on PDF to place: {placingField} <button onClick={() => setPlacingField(null)} className="text-red-400 ml-1">✕ Cancel</button></span>
   ) : (
-  <select onChange={e => { if (e.target.value) setPlacingField(e.target.value); e.target.value = ""; }} className="text-xs border border-indigo-100 rounded-lg px-2 py-1">
+  <select onChange={e => { if (e.target.value) setPlacingField(e.target.value); e.target.value = ""; }} className="text-xs border border-brand-100 rounded-lg px-2 py-1">
   <option value="">+ Place field on PDF...</option>
   {templateForm.fields.map(f => <option key={f.name} value={f.name}>{f.label || f.name}</option>)}
   </select>
@@ -17438,7 +17438,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const pageNum = pg.pageNum;
   const pagePlacements = templateForm.pdf_field_placements.map((p, i) => ({ ...p, _idx: i })).filter(p => p.page === pageNum);
   return (
-  <div key={pageNum} className="relative bg-white rounded-xl shadow-card border border-indigo-50 overflow-hidden" style={{ width: pg.width + "px" }}>
+  <div key={pageNum} className="relative bg-white rounded-xl shadow-card border border-brand-50 overflow-hidden" style={{ width: pg.width + "px" }}>
   <div className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded z-10">Page {pageNum}</div>
   <canvas ref={el => { if (el && el !== pg.canvas) { el.width = pg.canvas.width; el.height = pg.canvas.height; el.getContext("2d").drawImage(pg.canvas, 0, 0); } }} width={pg.width} height={pg.height} className="block" />
   {/* Overlay for click-to-place */}
@@ -17452,7 +17452,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }}>
   {/* Render placements */}
   {pagePlacements.map(p => (
-  <div key={p._idx} className={"absolute border-2 rounded " + (p.auto_detected ? "border-amber-400 bg-amber-100/40" : "border-indigo-400 bg-indigo-100/40")}
+  <div key={p._idx} className={"absolute border-2 rounded " + (p.auto_detected ? "border-amber-400 bg-amber-100/40" : "border-brand-400 bg-brand-100/40")}
   style={{ left: p.x + "%", top: p.y + "%", width: p.width + "%", height: p.height + "%", cursor: "move" }}
   onMouseDown={e => {
   e.stopPropagation();
@@ -17483,22 +17483,22 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   ) : (
   <>
   {/* HTML body editor + preview (existing) */}
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5 flex flex-col">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5 flex flex-col">
   <div className="flex items-center justify-between mb-2">
   <h3 className="font-manrope font-bold text-slate-700">Document Body (HTML + Merge Fields)</h3>
   {templateForm.fields.length > 0 && (
   <div className="flex gap-1 flex-wrap max-w-[60%]">
   {templateForm.fields.filter(f => f.name).map(f => (
-  <button key={f.name} onClick={() => insertMergeField(f.name)} className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full hover:bg-indigo-200">{"{{}}" + f.label}</button>
+  <button key={f.name} onClick={() => insertMergeField(f.name)} className="text-[10px] bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full hover:bg-brand-200">{"{{}}" + f.label}</button>
   ))}
   </div>
   )}
   </div>
   <Textarea value={templateForm.body} onChange={e => setTemplateForm({...templateForm, body: e.target.value})} className="text-xs font-mono flex-1 min-h-[400px]" rows={30} placeholder='<h1>Document Title</h1>\n<p>Dear {{tenant_name}},</p>\n<p>Your rent at {{property_address}} is...</p>' />
   </div>
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 mb-2">Preview</h3>
-  <div className="prose prose-sm max-w-none border border-indigo-50 rounded-xl p-6 bg-white min-h-64" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }} dangerouslySetInnerHTML={{ __html: renderMergedBody(templateForm.body, {}, templateForm.field_config) }} />
+  <div className="prose prose-sm max-w-none border border-brand-50 rounded-xl p-6 bg-white min-h-64" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }} dangerouslySetInnerHTML={{ __html: renderMergedBody(templateForm.body, {}, templateForm.field_config) }} />
   </div>
   </>
   )}
@@ -17522,7 +17522,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   const renderField = (f) => {
   if (!isFieldVisible(f.name, fieldValues, fc)) return null;
-  const base = "border border-indigo-100 rounded-2xl px-3 py-2 text-sm w-full focus:border-indigo-300 focus:outline-none";
+  const base = "border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full focus:border-brand-300 focus:outline-none";
 
   // Calculated field — read-only display
   if (isCalc(f.name)) {
@@ -17562,7 +17562,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </select>
   );
   if (f.type === "checkbox") return (
-  <label className="flex items-center gap-2"><input type="checkbox" checked={!!val} onChange={e => updateVal(f.name, e.target.checked)} className="accent-indigo-600" />{f.label}</label>
+  <label className="flex items-center gap-2"><input type="checkbox" checked={!!val} onChange={e => updateVal(f.name, e.target.checked)} className="accent-brand-600" />{f.label}</label>
   );
   if (f.type === "signature_placeholder") return <div className="border-b-2 border-slate-300 py-4 text-xs text-slate-400 italic">Signature placeholder — will be available after e-sign integration</div>;
   const inputType = f.type === "date" ? "date" : f.type === "number" ? "number" : f.type === "currency" ? "text" : "text";
@@ -17588,7 +17588,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   return (
   <div className="fixed inset-0 z-50 bg-[#fcf8ff] flex flex-col">
   {/* Toolbar */}
-  <div className="h-14 border-b border-indigo-100 bg-white/80 backdrop-blur-md flex items-center px-5 gap-3 shrink-0">
+  <div className="h-14 border-b border-brand-100 bg-white/80 backdrop-blur-md flex items-center px-5 gap-3 shrink-0">
   <button onClick={resetFlow} className="text-slate-400 hover:text-slate-600"><span className="material-icons-outlined text-xl">arrow_back</span></button>
   <div className="flex-1 min-w-0">
   <h2 className="text-lg font-manrope font-bold text-slate-800 truncate">{selectedTemplate.name}</h2>
@@ -17598,7 +17598,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const errors = validateFields(selectedTemplate, fieldValues);
   if (errors.length > 0) { showToast(errors[0], "error"); return; }
   setStep("preview");
-  }} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-indigo-700 font-semibold">Preview →</button>
+  }} className="bg-brand-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-brand-700 font-semibold">Preview →</button>
   <span className="text-xs text-slate-300 ml-2">Esc to close</span>
   </div>
 
@@ -17610,7 +17610,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const sectionFields = (selectedTemplate.fields || []).filter(f => f.section === section).map(renderFieldRow).filter(Boolean);
   if (sectionFields.length === 0) return null;
   return (
-  <div key={section} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+  <div key={section} className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 text-sm mb-3 uppercase tracking-wide">{section}</h3>
   <div className="space-y-3">{sectionFields}</div>
   </div>
@@ -17619,7 +17619,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {unsectioned.length > 0 && (() => {
   const rows = unsectioned.map(renderFieldRow).filter(Boolean);
   return rows.length > 0 ? (
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <div className="space-y-3">{rows}</div>
   </div>
   ) : null;
@@ -17627,7 +17627,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
 
   {/* Drag handle */}
-  <div onMouseDown={startDrag} className="w-1.5 bg-indigo-100 hover:bg-indigo-300 cursor-col-resize shrink-0 transition-colors" />
+  <div onMouseDown={startDrag} className="w-1.5 bg-brand-100 hover:bg-brand-300 cursor-col-resize shrink-0 transition-colors" />
 
   {/* Right: Live preview */}
   <div style={{ width: (100 - splitPercent) + "%" }} className="overflow-y-auto p-6">
@@ -17636,7 +17636,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {pdfPages.map(pg => {
   const pagePlacements = (selectedTemplate.pdf_field_placements || []).filter(p => p.page === pg.pageNum);
   return (
-  <div key={pg.pageNum} className="relative bg-white rounded-xl shadow-card border border-indigo-50 overflow-hidden" style={{ width: pg.width + "px" }}>
+  <div key={pg.pageNum} className="relative bg-white rounded-xl shadow-card border border-brand-50 overflow-hidden" style={{ width: pg.width + "px" }}>
   <div className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded z-10">Page {pg.pageNum}</div>
   <canvas ref={el => { if (el && el !== pg.canvas) { el.width = pg.canvas.width; el.height = pg.canvas.height; el.getContext("2d").drawImage(pg.canvas, 0, 0); } }} width={pg.width} height={pg.height} className="block" />
   <div className="absolute inset-0">
@@ -17654,9 +17654,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {pdfPages.length === 0 && <div className="text-center py-12 text-slate-400">Loading PDF preview...</div>}
   </div>
   ) : (
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 text-sm mb-3">Live Preview</h3>
-  <div className="prose prose-sm max-w-none border border-indigo-50 rounded-xl p-6 bg-white" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }}
+  <div className="prose prose-sm max-w-none border border-brand-50 rounded-xl p-6 bg-white" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }}
   dangerouslySetInnerHTML={{ __html: renderMergedBody(selectedTemplate.body, fieldValues, fc) }} />
   </div>
   )}
@@ -17672,7 +17672,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   return (
   <div className="fixed inset-0 z-50 bg-[#fcf8ff] flex flex-col">
   {/* Toolbar */}
-  <div className="h-14 border-b border-indigo-100 bg-white/80 backdrop-blur-md flex items-center px-5 gap-3 shrink-0">
+  <div className="h-14 border-b border-brand-100 bg-white/80 backdrop-blur-md flex items-center px-5 gap-3 shrink-0">
   <button onClick={() => setStep("fill")} className="text-slate-400 hover:text-slate-600"><span className="material-icons-outlined text-xl">arrow_back</span></button>
   <div className="flex-1 min-w-0">
   <h2 className="text-lg font-manrope font-bold text-slate-800 truncate">Document Preview</h2>
@@ -17701,7 +17701,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {pdfPages.map(pg => {
   const pagePlacements = (selectedTemplate.pdf_field_placements || []).filter(p => p.page === pg.pageNum);
   return (
-  <div key={pg.pageNum} className="relative bg-white rounded-xl shadow-card border border-indigo-50 overflow-hidden" style={{ width: pg.width + "px" }}>
+  <div key={pg.pageNum} className="relative bg-white rounded-xl shadow-card border border-brand-50 overflow-hidden" style={{ width: pg.width + "px" }}>
   <div className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded z-10">Page {pg.pageNum}</div>
   <canvas ref={el => { if (el && el !== pg.canvas) { el.width = pg.canvas.width; el.height = pg.canvas.height; el.getContext("2d").drawImage(pg.canvas, 0, 0); } }} width={pg.width} height={pg.height} className="block" />
   <div className="absolute inset-0">
@@ -17719,18 +17719,18 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {pdfPages.length === 0 && <div className="text-center py-12 text-slate-400">Loading PDF preview...</div>}
   </div>
   ) : (
-  <div ref={previewRef} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-10 w-full max-w-[8.5in]" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7", color: "#1a1a1a" }}>
+  <div ref={previewRef} className="bg-white rounded-3xl shadow-card border border-brand-50 p-10 w-full max-w-[8.5in]" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7", color: "#1a1a1a" }}>
   <div dangerouslySetInnerHTML={{ __html: rendered }} />
   </div>
   )}
   </div>
 
   {/* Drag handle */}
-  <div onMouseDown={startDrag} className="w-1.5 bg-indigo-100 hover:bg-indigo-300 cursor-col-resize shrink-0 transition-colors" />
+  <div onMouseDown={startDrag} className="w-1.5 bg-brand-100 hover:bg-brand-300 cursor-col-resize shrink-0 transition-colors" />
 
   {/* Right: Actions sidebar */}
   <div style={{ width: (100 - splitPercent) + "%" }} className="overflow-y-auto p-6 space-y-4">
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 mb-3">Export</h3>
   <div className="space-y-2">
   <button onClick={() => exportPDF()} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-2xl hover:bg-red-100">
@@ -17745,11 +17745,11 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   </div>
 
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 mb-3">Send via Email</h3>
   <div className="space-y-2 mb-3">
-  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.self} onChange={e => setSendTo({...sendTo, self: e.target.checked})} className="accent-indigo-600" />Email to myself ({userProfile?.email})</label>
-  {fieldValues.tenant_name && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.tenant} onChange={e => setSendTo({...sendTo, tenant: e.target.checked})} className="accent-indigo-600" />Email to tenant ({fieldValues.tenant_name})</label>}
+  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.self} onChange={e => setSendTo({...sendTo, self: e.target.checked})} className="accent-brand-600" />Email to myself ({userProfile?.email})</label>
+  {fieldValues.tenant_name && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.tenant} onChange={e => setSendTo({...sendTo, tenant: e.target.checked})} className="accent-brand-600" />Email to tenant ({fieldValues.tenant_name})</label>}
   <div>
   <label className="text-xs font-medium text-slate-400 block mb-1">Custom recipients (comma-separated)</label>
   <Input value={sendTo.custom} onChange={e => setSendTo({...sendTo, custom: e.target.value})} placeholder="email@example.com" />
@@ -17763,10 +17763,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </button>
   </div>
 
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <h3 className="font-manrope font-bold text-slate-700 mb-3">Save</h3>
   <div className="space-y-2">
-  <button onClick={async () => { await saveDocument("draft"); resetFlow(); }} className="w-full bg-indigo-600 text-white py-2.5 rounded-2xl font-semibold hover:bg-indigo-700">Save as Draft</button>
+  <button onClick={async () => { await saveDocument("draft"); resetFlow(); }} className="w-full bg-brand-600 text-white py-2.5 rounded-2xl font-semibold hover:bg-brand-700">Save as Draft</button>
   <button onClick={async () => { await saveDocument("final"); resetFlow(); }} className="w-full bg-slate-100 text-slate-700 py-2.5 rounded-2xl font-semibold hover:bg-slate-200">Finalize</button>
   </div>
   </div>
@@ -17783,7 +17783,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <h2 className="text-2xl font-manrope font-bold text-slate-800">Document Builder</h2>
   <div className="flex gap-1">
   {[["create","Create"],["templates","Templates"],["history","History"]].map(([id,label]) => (
-  <button key={id} onClick={() => setTab(id)} className={"px-4 py-2 text-sm font-medium rounded-2xl " + (tab === id ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}>{label}</button>
+  <button key={id} onClick={() => setTab(id)} className={"px-4 py-2 text-sm font-medium rounded-2xl " + (tab === id ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}>{label}</button>
   ))}
   </div>
   </div>
@@ -17793,14 +17793,14 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div>
   {/* Mode selection */}
   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-  <button onClick={() => setMode("blank")} className={"rounded-3xl border-2 p-6 text-left transition-all " + (mode === "blank" ? "border-indigo-600 bg-indigo-50" : "border-indigo-100 bg-white hover:border-indigo-300")}>
+  <button onClick={() => setMode("blank")} className={"rounded-3xl border-2 p-6 text-left transition-all " + (mode === "blank" ? "border-brand-600 bg-brand-50" : "border-brand-100 bg-white hover:border-brand-300")}>
   <div className="flex items-center gap-3 mb-2">
-  <span className="w-10 h-10 rounded-2xl bg-indigo-100 flex items-center justify-center"><span className="material-icons-outlined text-indigo-600">edit_note</span></span>
+  <span className="w-10 h-10 rounded-2xl bg-brand-100 flex items-center justify-center"><span className="material-icons-outlined text-brand-600">edit_note</span></span>
   <h3 className="font-manrope font-bold text-slate-800">Blank Mode</h3>
   </div>
   <p className="text-sm text-slate-400">Start with an empty form. Fill everything out manually.</p>
   </button>
-  <div className={"rounded-3xl border-2 p-6 transition-all " + (mode === "prefill" ? "border-emerald-600 bg-emerald-50" : "border-indigo-100 bg-white")}>
+  <div className={"rounded-3xl border-2 p-6 transition-all " + (mode === "prefill" ? "border-emerald-600 bg-emerald-50" : "border-brand-100 bg-white")}>
   <button onClick={() => setMode("prefill")} className="w-full text-left">
   <div className="flex items-center gap-3 mb-2">
   <span className="w-10 h-10 rounded-2xl bg-emerald-100 flex items-center justify-center"><span className="material-icons-outlined text-emerald-600">auto_fix_high</span></span>
@@ -17829,10 +17829,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
   {catTemplates.map(t => (
   <button key={t.id} onClick={() => startDocument(t, mode)} disabled={mode === "prefill" && !prefillProperty}
-  className="bg-white rounded-2xl border border-indigo-50 p-4 text-left hover:border-indigo-300 hover:shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+  className="bg-white rounded-2xl border border-brand-50 p-4 text-left hover:border-brand-300 hover:shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
   <div className="font-semibold text-slate-800 text-sm">{t.name}</div>
   <div className="text-xs text-slate-400 mt-1">{t.description}</div>
-  <div className="text-xs text-indigo-600 mt-2">{(t.fields || []).length} fields</div>
+  <div className="text-xs text-brand-600 mt-2">{(t.fields || []).length} fields</div>
   </button>
   ))}
   </div>
@@ -17848,22 +17848,22 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {tab === "templates" && (
   <div>
   <div className="flex justify-end mb-4">
-  <button onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", category: "general", description: "", body: "", fields: [], field_config: {}, template_type: "html", pdf_storage_path: "", pdf_page_count: 0, pdf_field_placements: [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); }} className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-indigo-700">+ New Template</button>
+  <button onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", category: "general", description: "", body: "", fields: [], field_config: {}, template_type: "html", pdf_storage_path: "", pdf_page_count: 0, pdf_field_placements: [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); }} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Template</button>
   </div>
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
   {templates.map(t => (
-  <div key={t.id} className="bg-white rounded-3xl shadow-card border border-indigo-50 p-5">
+  <div key={t.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <div className="flex items-start justify-between">
   <div>
   <div className="font-manrope font-bold text-slate-800">{t.name}</div>
-  <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">{t.category}</span>
+  <span className="text-xs bg-brand-50 text-brand-600 px-2 py-0.5 rounded-full">{t.category}</span>
   </div>
   {t.is_system && <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">System</span>}
   </div>
   <p className="text-xs text-slate-400 mt-2">{t.description}</p>
   <div className="text-xs text-slate-500 mt-2">{(t.fields || []).length} fields{t.template_type === "pdf_overlay" ? " · PDF" : ""}</div>
   <div className="mt-3 flex gap-2">
-  <button onClick={async () => { setEditingTemplate(t); setTemplateForm({ name: t.name, category: t.category, description: t.description || "", body: t.body || "", fields: t.fields || [], field_config: t.field_config || {}, template_type: t.template_type || "html", pdf_storage_path: t.pdf_storage_path || "", pdf_page_count: t.pdf_page_count || 0, pdf_field_placements: t.pdf_field_placements || [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); if (t.template_type === "pdf_overlay" && t.pdf_storage_path) { setTimeout(async () => { const pdf = await loadPdfForPreview(t.pdf_storage_path); if (pdf) await renderPdfPages(pdf, pdfScale, pdfContainerRef.current); }, 100); } }} className="text-xs text-indigo-600 border border-indigo-200 px-3 py-1 rounded-lg hover:bg-indigo-50">Edit</button>
+  <button onClick={async () => { setEditingTemplate(t); setTemplateForm({ name: t.name, category: t.category, description: t.description || "", body: t.body || "", fields: t.fields || [], field_config: t.field_config || {}, template_type: t.template_type || "html", pdf_storage_path: t.pdf_storage_path || "", pdf_page_count: t.pdf_page_count || 0, pdf_field_placements: t.pdf_field_placements || [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); if (t.template_type === "pdf_overlay" && t.pdf_storage_path) { setTimeout(async () => { const pdf = await loadPdfForPreview(t.pdf_storage_path); if (pdf) await renderPdfPages(pdf, pdfScale, pdfContainerRef.current); }, 100); } }} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">Edit</button>
   <button onClick={() => { setSelectedTemplate(t); setMode("blank"); setFieldValues(applyDefaults(t)); setStep("fill"); setTab("create"); }} className="text-xs text-emerald-600 border border-emerald-200 px-3 py-1 rounded-lg hover:bg-emerald-50">Use</button>
   <button onClick={() => deleteTemplate(t)} className="text-xs text-red-400 hover:text-red-600 ml-auto">Delete</button>
   </div>
@@ -17884,7 +17884,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   ) : (
   <div className="space-y-3">
   {generatedDocs.map(d => (
-  <div key={d.id} className="bg-white rounded-2xl border border-indigo-50 shadow-sm p-4 flex items-center justify-between">
+  <div key={d.id} className="bg-white rounded-2xl border border-brand-50 shadow-sm p-4 flex items-center justify-between">
   <div>
   <div className="font-semibold text-slate-800 text-sm">{d.name}</div>
   <div className="flex items-center gap-2 mt-1">
@@ -17913,8 +17913,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {sendModal && (
   <Modal title={"Send: " + sendModal.name} onClose={() => setSendModal(null)}>
   <div className="space-y-3">
-  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.self} onChange={e => setSendTo({...sendTo, self: e.target.checked})} className="accent-indigo-600" />Email to myself</label>
-  {sendModal.tenant_name && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.tenant} onChange={e => setSendTo({...sendTo, tenant: e.target.checked})} className="accent-indigo-600" />Email to tenant ({sendModal.tenant_name})</label>}
+  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.self} onChange={e => setSendTo({...sendTo, self: e.target.checked})} className="accent-brand-600" />Email to myself</label>
+  {sendModal.tenant_name && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.tenant} onChange={e => setSendTo({...sendTo, tenant: e.target.checked})} className="accent-brand-600" />Email to tenant ({sendModal.tenant_name})</label>}
   <div>
   <label className="text-xs font-medium text-slate-400 block mb-1">Custom recipients</label>
   <Input value={sendTo.custom} onChange={e => setSendTo({...sendTo, custom: e.target.value})}  placeholder="email@example.com, other@example.com" />
@@ -18019,12 +18019,12 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   <div>
   <div className="flex items-center justify-between mb-5">
   <h2 className="text-2xl font-manrope font-bold text-slate-800">Tasks & Approvals</h2>
-  <button onClick={fetchAll} className="text-xs text-indigo-600 hover:underline">Refresh</button>
+  <button onClick={fetchAll} className="text-xs text-brand-600 hover:underline">Refresh</button>
   </div>
 
   <div className="flex gap-2 mb-5">
   {[["all", "All (" + (approvals.length + tasks.length) + ")"], ["approvals", "Approvals (" + approvals.length + ")"], ["tasks", "Tasks (" + tasks.length + ")"]].map(([id, label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium rounded-xl " + (activeTab === id ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
+  <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium rounded-xl " + (activeTab === id ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
   ))}
   </div>
 
@@ -18058,7 +18058,7 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   {activeTab === "all" && <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wide mb-3">Pending Tasks</h3>}
   <div className="space-y-2">
   {tasks.map((t, i) => (
-  <div key={i} onClick={() => setPage(t.link)} className="bg-white rounded-xl border border-indigo-50 p-4 flex items-center gap-3 cursor-pointer hover:border-indigo-200 hover:shadow-sm transition-all">
+  <div key={i} onClick={() => setPage(t.link)} className="bg-white rounded-xl border border-brand-50 p-4 flex items-center gap-3 cursor-pointer hover:border-brand-200 hover:shadow-sm transition-all">
   <span className="text-xl">{t.icon}</span>
   <div className="flex-1 min-w-0">
   <div className="text-sm font-semibold text-slate-800 truncate">{t.title}</div>
@@ -18117,9 +18117,9 @@ function AdminPage({ companyId, activeCompany, addNotification, userProfile, use
   <div>
   <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-1">Admin</h2>
   <p className="text-sm text-slate-400 mb-4">Manage team access and view activity logs</p>
-  <div className="flex gap-1 mb-4 border-b border-indigo-50">
+  <div className="flex gap-1 mb-4 border-b border-brand-50">
   {[["audit", "Audit Trail"], ...(isAdmin ? [["team", "Team & Roles"]] : [])].map(([id, label]) => (
-  <button key={id} onClick={() => setAdminTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (adminTab === id ? "border-indigo-600 text-indigo-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}</button>
+  <button key={id} onClick={() => setAdminTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (adminTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-slate-400 hover:text-slate-500")}>{label}</button>
   ))}
   </div>
   {adminTab === "audit" && <AuditTrail companyId={companyId} />}
@@ -18199,11 +18199,11 @@ function AuditTrail({ companyId }) {
 
   {/* Filters */}
   <div className="flex flex-wrap gap-2 mb-4">
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={filterModule} onChange={e => { setFilterModule(e.target.value); setPage(0); }} >
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={filterModule} onChange={e => { setFilterModule(e.target.value); setPage(0); }} >
   <option value="all">All Modules</option>
   {modules.map(m => <option key={m} value={m}>{moduleIcons[m] || "📌"} {m}</option>)}
   </select>
-  <select className="border border-indigo-100 rounded-2xl px-3 py-1.5 text-sm" value={filterAction} onChange={e => { setFilterAction(e.target.value); setPage(0); }} >
+  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={filterAction} onChange={e => { setFilterAction(e.target.value); setPage(0); }} >
   <option value="all">All Actions</option>
   {actions.map(a => <option key={a} value={a}>{a}</option>)}
   </select>
@@ -18213,28 +18213,28 @@ function AuditTrail({ companyId }) {
 
   {/* Stats */}
   <div className="grid grid-cols-4 gap-3 mb-4">
-  <div className="bg-white rounded-3xl border border-indigo-50 p-3 text-center">
+  <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
   <p className="text-lg font-manrope font-bold text-slate-800">{totalCount}</p>
   <p className="text-xs text-slate-400">Total Actions</p>
   </div>
-  <div className="bg-white rounded-3xl border border-indigo-50 p-3 text-center">
+  <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
   <p className="text-lg font-manrope font-bold text-slate-800">{users.length}</p>
   <p className="text-xs text-slate-400">Users Active</p>
   </div>
-  <div className="bg-white rounded-3xl border border-indigo-50 p-3 text-center">
+  <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
   <p className="text-lg font-bold text-emerald-600">{logs.filter(l => l.action === "create").length}</p>
   <p className="text-xs text-slate-400">Created</p>
   </div>
-  <div className="bg-white rounded-3xl border border-indigo-50 p-3 text-center">
+  <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
   <p className="text-lg font-bold text-red-500">{logs.filter(l => l.action === "delete").length}</p>
   <p className="text-xs text-slate-400">Deleted</p>
   </div>
   </div>
 
   {/* Log Table */}
-  <div className="bg-white rounded-3xl shadow-card border border-indigo-50 overflow-hidden">
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-hidden">
   <table className="w-full text-sm">
-  <thead className="bg-indigo-50/30 text-xs text-slate-400 uppercase">
+  <thead className="bg-brand-50/30 text-xs text-slate-400 uppercase">
   <tr>
   <th className="px-4 py-3 text-left">Time</th>
   <th className="px-4 py-3 text-left">User</th>
@@ -18246,10 +18246,10 @@ function AuditTrail({ companyId }) {
   </thead>
   <tbody>
   {paged.map(log => (
-  <tr key={log.id} className="border-t border-indigo-50/50 hover:bg-indigo-50/30/50">
+  <tr key={log.id} className="border-t border-brand-50/50 hover:bg-brand-50/30/50">
   <td className="px-4 py-2.5 text-xs text-slate-400 whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
   <td className="px-4 py-2.5 text-slate-700 font-medium text-xs">{log.user_email}</td>
-  <td className="px-4 py-2.5"><span className={`text-xs px-1.5 py-0.5 rounded-full ${log.user_role === "admin" ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-500"}`}>{log.user_role}</span></td>
+  <td className="px-4 py-2.5"><span className={`text-xs px-1.5 py-0.5 rounded-full ${log.user_role === "admin" ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>{log.user_role}</span></td>
   <td className="px-4 py-2.5 text-xs"><span className="flex items-center gap-1">{moduleIcons[log.module] || "📌"} {log.module}</span></td>
   <td className="px-4 py-2.5"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${actionColors[log.action] || "bg-slate-100 text-slate-700"}`}>{log.action}</span></td>
   <td className="px-4 py-2.5 text-xs text-slate-500 max-w-xs truncate">{log.details}</td>
@@ -18342,26 +18342,26 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   }
 
   return (
-  <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-white flex items-center justify-center p-4">
+  <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
   <div className="w-full max-w-lg">
-  <button onClick={onBack} className="flex items-center gap-1 text-sm text-indigo-600 hover:underline mb-6">
+  <button onClick={onBack} className="flex items-center gap-1 text-sm text-brand-600 hover:underline mb-6">
   <span className="material-icons-outlined text-sm">arrow_back</span> Back to Companies
   </button>
 
-  <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-6 mb-4">
+  <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-6 mb-4">
   <h2 className="text-xl font-manrope font-bold text-slate-800 mb-5">Profile</h2>
 
   {/* Avatar */}
   <div className="flex items-center gap-4 mb-6">
   <div className="relative">
   {avatarUrl ? (
-  <img src={avatarUrl} alt="Avatar" className="w-16 h-16 rounded-full object-cover border-2 border-indigo-100" />
+  <img src={avatarUrl} alt="Avatar" className="w-16 h-16 rounded-full object-cover border-2 border-brand-100" />
   ) : (
-  <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-2xl">
+  <div className="w-16 h-16 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold text-2xl">
   {displayName?.[0]?.toUpperCase() || "U"}
   </div>
   )}
-  <label className="absolute -bottom-1 -right-1 w-7 h-7 bg-indigo-600 text-white rounded-full flex items-center justify-center cursor-pointer hover:bg-indigo-700 transition-colors">
+  <label className="absolute -bottom-1 -right-1 w-7 h-7 bg-brand-600 text-white rounded-full flex items-center justify-center cursor-pointer hover:bg-brand-700 transition-colors">
   <span className="material-icons-outlined text-sm">photo_camera</span>
   <input type="file" accept="image/*" onChange={uploadAvatar} className="hidden" />
   </label>
@@ -18369,7 +18369,7 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   <div>
   <div className="font-semibold text-slate-800">{displayName || "User"}</div>
   <div className="text-xs text-slate-400">{currentUser?.email}</div>
-  {uploading && <div className="text-xs text-indigo-500 mt-1">Uploading...</div>}
+  {uploading && <div className="text-xs text-brand-500 mt-1">Uploading...</div>}
   </div>
   </div>
 
@@ -18389,13 +18389,13 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   </div>
   </div>
 
-  <button onClick={saveProfile} disabled={saving} className="w-full bg-indigo-600 text-white py-2.5 rounded-xl font-semibold text-sm hover:bg-indigo-700 disabled:opacity-50 mb-3">
+  <button onClick={saveProfile} disabled={saving} className="w-full bg-brand-600 text-white py-2.5 rounded-xl font-semibold text-sm hover:bg-brand-700 disabled:opacity-50 mb-3">
   {saving ? "Saving..." : "Save Changes"}
   </button>
   </div>
 
   {/* Password Reset */}
-  <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-6 mb-4">
+  <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-6 mb-4">
   <h3 className="font-semibold text-slate-800 mb-2">Password</h3>
   <p className="text-xs text-slate-400 mb-3">We'll send a password reset link to your email.</p>
   <button onClick={sendPasswordReset} disabled={resetSent} className="bg-slate-100 text-slate-700 text-sm px-4 py-2 rounded-xl hover:bg-slate-200 disabled:opacity-50 font-medium">
@@ -18404,21 +18404,21 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   </div>
 
   {/* Preferences */}
-  <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-6 mb-4">
+  <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-6 mb-4">
   <h3 className="font-semibold text-slate-800 mb-3">Preferences</h3>
   <div className="flex items-center justify-between py-2">
   <div>
   <div className="text-sm text-slate-700">Dark Mode</div>
   <div className="text-xs text-slate-400">Switch between light and dark theme</div>
   </div>
-  <button onClick={toggleDarkMode} className={"relative w-10 h-5 rounded-full transition-colors " + (darkMode ? "bg-indigo-600" : "bg-slate-300")}>
+  <button onClick={toggleDarkMode} className={"relative w-10 h-5 rounded-full transition-colors " + (darkMode ? "bg-brand-600" : "bg-slate-300")}>
   <span className={"absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow " + (darkMode ? "left-5" : "left-0.5")} />
   </button>
   </div>
   </div>
 
   {/* 2FA */}
-  <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-6 mb-4">
+  <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-6 mb-4">
   <h3 className="font-semibold text-slate-800 mb-2">Two-Factor Authentication</h3>
   <p className="text-xs text-slate-400 mb-3">Add an extra layer of security to your account.</p>
   <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-400 text-center">Coming Soon</div>
@@ -18660,25 +18660,25 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   fetchCompanies();
   }
 
-  if (loading) return <div className="flex items-center justify-center h-screen bg-indigo-50/30"><Spinner /></div>;
+  if (loading) return <div className="flex items-center justify-center h-screen bg-brand-50/30"><Spinner /></div>;
 
   if (showProfile) return <UserProfile currentUser={currentUser} onBack={() => setShowProfile(false)} showToast={showToast} showConfirm={showConfirm} />;
 
   return (
-  <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-white flex items-center justify-center p-4">
+  <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
   {/* Profile icon — top right */}
   <div className="fixed top-4 right-4 z-50">
-  <button onClick={() => setShowProfile(true)} className="w-10 h-10 rounded-full bg-white border border-indigo-100 shadow-sm flex items-center justify-center hover:bg-indigo-50 transition-colors" title="Profile">
+  <button onClick={() => setShowProfile(true)} className="w-10 h-10 rounded-full bg-white border border-brand-100 shadow-sm flex items-center justify-center hover:bg-brand-50 transition-colors" title="Profile">
   {currentUser?.user_metadata?.avatar_url ? (
   <img src={currentUser.user_metadata.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover" />
   ) : (
-  <span className="text-indigo-600 font-bold text-sm">{(currentUser?.user_metadata?.name || currentUser?.email || "U")[0].toUpperCase()}</span>
+  <span className="text-brand-600 font-bold text-sm">{(currentUser?.user_metadata?.name || currentUser?.email || "U")[0].toUpperCase()}</span>
   )}
   </button>
   </div>
   <div className="w-full max-w-2xl">
   <div className="text-center mb-8">
-  <div className="text-3xl font-bold text-indigo-700 mb-1">🏡 PropManager</div>
+  <div className="text-3xl font-bold text-brand-700 mb-1">🏡 PropManager</div>
   <div className="text-sm text-slate-400">Welcome, {currentUser?.email}</div>
   </div>
 
@@ -18691,9 +18691,9 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
   <div className="space-y-2">
   {companies.filter(c => !companySearch || c.name.toLowerCase().includes(companySearch.toLowerCase())).map(c => (
-  <div key={c.id} className="w-full bg-white rounded-xl border border-indigo-100 p-4 flex items-center justify-between hover:border-indigo-300 hover:shadow-md transition-all">
+  <div key={c.id} className="w-full bg-white rounded-xl border border-brand-100 p-4 flex items-center justify-between hover:border-brand-300 hover:shadow-md transition-all">
   <div onClick={() => onSelectCompany(c, c.memberRole)} className="flex items-center gap-3 flex-1 min-w-0 text-left cursor-pointer">
-  <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg shrink-0">
+  <div className="w-10 h-10 rounded-xl bg-brand-100 flex items-center justify-center text-brand-700 font-bold text-lg shrink-0">
   {c.name[0]}
   </div>
   <div className="min-w-0">
@@ -18702,7 +18702,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
   </div>
   <div className="flex items-center gap-2 shrink-0 ml-3">
-  <a href={window.location.origin + window.location.pathname + "?company=" + encodeURIComponent(c.id) + "#dashboard"} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.stopPropagation(); }} className="text-indigo-600 text-xs font-medium hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>Open</a>
+  <a href={window.location.origin + window.location.pathname + "?company=" + encodeURIComponent(c.id) + "#dashboard"} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.stopPropagation(); }} className="text-brand-600 text-xs font-medium hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>Open</a>
   {!["tenant", "owner"].includes(c.memberRole) && <button onClick={(e) => { e.stopPropagation(); deleteCompany(c); }} disabled={deleting === c.id} className="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors disabled:opacity-50">{deleting === c.id ? "Deleting..." : "Delete"}</button>}
   </div>
   </div>
@@ -18727,13 +18727,13 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   <div className="grid grid-cols-2 gap-3 mb-6">
   <button onClick={() => { if (!creating) { setShowCreate(true); setShowJoin(false); } }}
   disabled={creating}
-  className="bg-indigo-600 text-white rounded-3xl p-4 text-center hover:bg-indigo-700 transition-colors disabled:opacity-50">
+  className="bg-brand-600 text-white rounded-3xl p-4 text-center hover:bg-brand-700 transition-colors disabled:opacity-50">
   <div className="text-2xl mb-1">🏢</div>
   <div className="text-sm font-semibold">Create Company</div>
-  <div className="text-xs text-indigo-200">Start a new LLC or org</div>
+  <div className="text-xs text-brand-200">Start a new LLC or org</div>
   </button>
   <button onClick={() => { setShowJoin(true); setShowCreate(false); }}
-  className="bg-white border-2 border-indigo-200 text-indigo-700 rounded-3xl p-4 text-center hover:border-indigo-400 transition-colors">
+  className="bg-white border-2 border-brand-200 text-brand-700 rounded-3xl p-4 text-center hover:border-brand-400 transition-colors">
   <div className="text-2xl mb-1">🔗</div>
   <div className="text-sm font-semibold">Join Company</div>
   <div className="text-xs text-slate-400">Enter code or search</div>
@@ -18742,19 +18742,19 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
 
   {/* Create Company Form */}
   {showCreate && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-6 mb-4">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-6 mb-4">
   <h3 className="font-bold text-slate-800 mb-4">Create New Company</h3>
   <div className="space-y-3">
   {/* Company Role Selection */}
   <div>
   <label className="text-xs font-medium text-slate-500 block mb-2">Company Type *</label>
   <div className="grid grid-cols-2 gap-3">
-  <button type="button" onClick={() => setCreateForm({...createForm, company_role: "management"})} className={`p-3 rounded-xl border-2 text-left transition-all ${createForm.company_role === "management" ? "border-indigo-500 bg-indigo-50" : "border-indigo-100 hover:border-indigo-200"}`}>
+  <button type="button" onClick={() => setCreateForm({...createForm, company_role: "management"})} className={`p-3 rounded-xl border-2 text-left transition-all ${createForm.company_role === "management" ? "border-brand-500 bg-brand-50" : "border-brand-100 hover:border-brand-200"}`}>
   <div className="text-lg mb-1">🏢</div>
   <div className="text-sm font-semibold text-slate-800">Property Management</div>
   <div className="text-xs text-slate-400">I manage properties for owners</div>
   </button>
-  <button type="button" onClick={() => setCreateForm({...createForm, company_role: "owner"})} className={`p-3 rounded-xl border-2 text-left transition-all ${createForm.company_role === "owner" ? "border-emerald-500 bg-emerald-50" : "border-indigo-100 hover:border-indigo-200"}`}>
+  <button type="button" onClick={() => setCreateForm({...createForm, company_role: "owner"})} className={`p-3 rounded-xl border-2 text-left transition-all ${createForm.company_role === "owner" ? "border-emerald-500 bg-emerald-50" : "border-brand-100 hover:border-brand-200"}`}>
   <div className="text-lg mb-1">🏠</div>
   <div className="text-sm font-semibold text-slate-800">Property Owner</div>
   <div className="text-xs text-slate-400">I own and manage my properties</div>
@@ -18763,7 +18763,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
   <div><label className="text-xs font-medium text-slate-500">Company Name *</label><Input value={createForm.name} onChange={e => setCreateForm({...createForm, name: e.target.value})} className="mt-1" placeholder={createForm.company_role === "management" ? "e.g. Sigma Property Management" : "e.g. Smith Properties LLC"} /></div>
   <div className="grid grid-cols-2 gap-3">
-  <div><label className="text-xs font-medium text-slate-500">Entity Type</label><select value={createForm.type} onChange={e => setCreateForm({...createForm, type: e.target.value})} className="w-full border border-indigo-100 rounded-2xl px-3 py-2 text-sm mt-1"><option>LLC</option><option>Corporation</option><option>Partnership</option><option>Sole Proprietorship</option><option>Trust</option><option>Other</option></select></div>
+  <div><label className="text-xs font-medium text-slate-500">Entity Type</label><select value={createForm.type} onChange={e => setCreateForm({...createForm, type: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mt-1"><option>LLC</option><option>Corporation</option><option>Partnership</option><option>Sole Proprietorship</option><option>Trust</option><option>Other</option></select></div>
   <div><label className="text-xs font-medium text-slate-500">Email</label><Input type="email" value={createForm.email} onChange={e => setCreateForm({...createForm, email: e.target.value})} className="mt-1" placeholder="company@email.com" /></div>
   </div>
   <div className="grid grid-cols-2 gap-3">
@@ -18771,7 +18771,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   <div><label className="text-xs font-medium text-slate-500">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={createForm.phone} onChange={e => setCreateForm({...createForm, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="mt-1" /></div>
   </div>
   <div className="flex gap-2 pt-2">
-  <button onClick={createCompany} disabled={creating} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-indigo-700 disabled:opacity-50">{creating ? "Creating..." : "Create Company"}</button>
+  <button onClick={createCompany} disabled={creating} className="bg-brand-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-brand-700 disabled:opacity-50">{creating ? "Creating..." : "Create Company"}</button>
   <button onClick={() => setShowCreate(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
@@ -18780,22 +18780,22 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
 
   {/* Join Company Form */}
   {showJoin && (
-  <div className="bg-white rounded-xl border border-indigo-100 shadow-sm p-6 mb-4">
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-6 mb-4">
   <h3 className="font-bold text-slate-800 mb-4">Join a Company</h3>
   <div className="space-y-3">
   <div><label className="text-xs font-medium text-slate-500">Company ID (8-digit code)</label><Input value={joinCode} onChange={e => setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 8))} className="mt-1" placeholder="e.g. 12345678" maxLength={8} /></div>
   <div className="text-xs text-slate-400 text-center">— or —</div>
   <div><label className="text-xs font-medium text-slate-500">Search by Name</label><Input value={joinSearch} onChange={e => setJoinSearch(e.target.value)} className="mt-1" placeholder="e.g. Sigma Housing" /></div>
   <div className="flex gap-2">
-  <button onClick={searchCompanies} className="bg-indigo-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-indigo-700">Search</button>
+  <button onClick={searchCompanies} className="bg-brand-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-brand-700">Search</button>
   <button onClick={() => setShowJoin(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   {searchResults.length > 0 && (
   <div className="space-y-2 mt-3">
   {searchResults.map(c => (
-  <div key={c.id} className="flex items-center justify-between bg-indigo-50/30 rounded-lg p-3">
+  <div key={c.id} className="flex items-center justify-between bg-brand-50/30 rounded-lg p-3">
   <div><div className="text-sm font-semibold text-slate-800">{c.name}</div><div className="text-xs text-slate-400">{c.type}</div></div>
-  <button onClick={() => requestJoin(c)} className="bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-2xl hover:bg-indigo-700">Request to Join</button>
+  <button onClick={() => requestJoin(c)} className="bg-brand-600 text-white text-xs px-3 py-1.5 rounded-2xl hover:bg-brand-700">Request to Join</button>
   </div>
   ))}
   </div>
@@ -19365,14 +19365,14 @@ function AppInner() {
   }
   }, [screen, activeCompany]);
 
-  if (screen === "loading") return <><div className="flex items-center justify-center h-screen bg-indigo-50/30"><Spinner /></div><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
+  if (screen === "loading") return <><div className="flex items-center justify-center h-screen bg-brand-50/30"><Spinner /></div><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
   if (screen === "landing") return <><LandingPage onGetStarted={(mode) => { setLoginMode(mode); setScreen("login"); }} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
   if (screen === "login") return <><LoginPage onLogin={() => {}} onBack={() => setScreen("landing")} initialMode={loginMode} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
   if (screen === "company_select") return <><CompanySelector currentUser={currentUser} onSelectCompany={handleSelectCompany} onLogout={handleLogout} showToast={showToast} showConfirm={showConfirm} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
 
   if (!activeCompany?.id || !roleLoaded) {
   return (
-  <div className="flex items-center justify-center h-screen bg-indigo-50/30">
+  <div className="flex items-center justify-center h-screen bg-brand-50/30">
   <div className="text-center">
   <Spinner />
   <p className="text-sm text-slate-400 mt-4">{!activeCompany?.id ? "Loading company..." : "Loading your access..."}</p>
@@ -19396,21 +19396,21 @@ function AppInner() {
   return (
   <div className="flex h-screen bg-[#fcf8ff] font-inter overflow-hidden">
   {/* Sidebar */}
-  <div className={`${sidebarOpen ? "flex" : "hidden"} md:flex flex-col w-56 bg-white/80 backdrop-blur-md border-r border-indigo-50 z-30 fixed md:relative h-full`}>
-  <div className="px-5 py-4 border-b border-indigo-50">
+  <div className={`${sidebarOpen ? "flex" : "hidden"} md:flex flex-col w-56 bg-white/80 backdrop-blur-md border-r border-brand-50 z-30 fixed md:relative h-full`}>
+  <div className="px-5 py-4 border-b border-brand-50">
   <div className="flex items-center gap-2">
-  <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-200">
+  <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shadow-lg shadow-brand-200">
   <span className="material-icons-outlined text-white text-sm">domain</span>
   </div>
-  <span className="font-manrope font-extrabold text-lg tracking-tight text-indigo-900">Estate Logic</span>
+  <span className="font-manrope font-extrabold text-lg tracking-tight text-brand-900">Estate Logic</span>
   </div>
   {activeCompany && (
   <div className="flex items-center justify-between mt-2">
   <div className="flex items-center gap-1.5 min-w-0">
-  <span className="w-5 h-5 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold shrink-0">{activeCompany.name[0]}</span>
+  <span className="w-5 h-5 rounded-lg bg-brand-100 flex items-center justify-center text-brand-700 text-xs font-bold shrink-0">{activeCompany.name[0]}</span>
   <span className="text-xs text-slate-500 truncate font-medium">{activeCompany.name}</span>
   </div>
-  <button onClick={() => { setSidebarOpen(false); switchCompany(); }} className="text-slate-400 hover:text-indigo-600 shrink-0 ml-1" title="Switch Company"><span className="material-icons-outlined text-sm">swap_horiz</span></button>
+  <button onClick={() => { setSidebarOpen(false); switchCompany(); }} className="text-slate-400 hover:text-brand-600 shrink-0 ml-1" title="Switch Company"><span className="material-icons-outlined text-sm">swap_horiz</span></button>
   </div>
   )}
   </div>
@@ -19421,7 +19421,7 @@ function AppInner() {
   const isExpanded = expandedNav.has(n.id);
   return (
   <div key={n.id}>
-  <div className={`flex items-center rounded-2xl mb-0.5 transition-all ${isParentActive ? "bg-indigo-50 text-indigo-700 font-semibold" : "text-slate-500 hover:bg-indigo-50/50 hover:text-slate-700"}`}>
+  <div className={`flex items-center rounded-2xl mb-0.5 transition-all ${isParentActive ? "bg-brand-50 text-brand-700 font-semibold" : "text-slate-500 hover:bg-brand-50/50 hover:text-slate-700"}`}>
   <button onClick={() => { setPage(n.id); setSidebarOpen(false); }}
   className="flex-1 flex items-center gap-3 px-3 py-2.5 text-sm text-left">
   <span className="material-icons-outlined text-lg">{n.icon}</span><span>{n.label}</span>
@@ -19433,7 +19433,7 @@ function AppInner() {
   </div>
   {n.children && isExpanded && n.children.map(c => (
   <button key={c.id} onClick={() => { setPage(c.id); setSidebarOpen(false); }}
-  className={`w-full flex items-center gap-3 pl-9 pr-3 py-2 text-xs text-left transition-all rounded-xl mb-0.5 ${page === c.id ? "bg-indigo-50 text-indigo-700 font-semibold" : "text-slate-400 hover:bg-indigo-50/50 hover:text-slate-600"}`}>
+  className={`w-full flex items-center gap-3 pl-9 pr-3 py-2 text-xs text-left transition-all rounded-xl mb-0.5 ${page === c.id ? "bg-brand-50 text-brand-700 font-semibold" : "text-slate-400 hover:bg-brand-50/50 hover:text-slate-600"}`}>
   <span className="material-icons-outlined text-base">{c.icon}</span>{c.label}
   </button>
   ))}
@@ -19445,15 +19445,15 @@ function AppInner() {
 
   {/* Main Content */}
   <div className="flex-1 flex flex-col min-w-0">
-  <header className="bg-white/80 backdrop-blur-md border-b border-indigo-50 px-4 py-3 flex items-center gap-3">
+  <header className="bg-white/80 backdrop-blur-md border-b border-brand-50 px-4 py-3 flex items-center gap-3">
   <button className="md:hidden text-slate-400 hover:text-slate-600 transition-colors" onClick={() => setSidebarOpen(!sidebarOpen)}><span className="material-icons-outlined">menu</span></button>
   <div className="flex-1 text-sm text-slate-400 capitalize font-medium">{page.replace("_", " ")}</div>
-  <button onClick={switchCompany} className="hidden md:flex items-center gap-1.5 text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-2xl hover:bg-indigo-100 transition-colors font-semibold border border-indigo-100">
+  <button onClick={switchCompany} className="hidden md:flex items-center gap-1.5 text-xs bg-brand-50 text-brand-600 px-3 py-1.5 rounded-2xl hover:bg-brand-100 transition-colors font-semibold border border-brand-100">
   <span className="material-icons-outlined text-sm">swap_horiz</span> Switch Company
   </button>
-  <button onClick={() => setPage("admin")} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-2xl hover:bg-indigo-50 transition-colors ${page === "admin" ? "bg-indigo-50" : ""}`} title="Admin Settings">
-  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${ROLES[userRole]?.color || "bg-indigo-600"}`}>{userProfile?.name?.[0]?.toUpperCase() || "U"}</div>
-  <span className={`hidden md:inline text-xs font-semibold uppercase tracking-wide ${ROLES[userRole]?.color?.replace("bg-", "text-") || "text-indigo-600"}`}>{ROLES[userRole]?.label}</span>
+  <button onClick={() => setPage("admin")} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-2xl hover:bg-brand-50 transition-colors ${page === "admin" ? "bg-brand-50" : ""}`} title="Admin Settings">
+  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${ROLES[userRole]?.color || "bg-brand-600"}`}>{userProfile?.name?.[0]?.toUpperCase() || "U"}</div>
+  <span className={`hidden md:inline text-xs font-semibold uppercase tracking-wide ${ROLES[userRole]?.color?.replace("bg-", "text-") || "text-brand-600"}`}>{ROLES[userRole]?.label}</span>
   </button>
   <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 transition-colors" title="Sign Out"><span className="material-icons-outlined text-lg">logout</span></button>
   <div className="relative">
@@ -19468,18 +19468,18 @@ function AppInner() {
   setUnreadCount(0);
   setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   }
-  }} className="relative w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 hover:bg-indigo-100 transition-colors">
+  }} className="relative w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center text-brand-600 hover:bg-brand-100 transition-colors">
   <span className="material-icons-outlined">notifications</span>
   {unreadCount > 0 && (
   <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-white"></span>
   )}
   </button>
   {showNotifications && (
-  <div className="absolute right-0 top-12 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-3xl shadow-card border border-indigo-50 z-50">
-  <div className="px-4 py-3 border-b border-indigo-50 flex justify-between items-center">
+  <div className="absolute right-0 top-12 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-3xl shadow-card border border-brand-50 z-50">
+  <div className="px-4 py-3 border-b border-brand-50 flex justify-between items-center">
   <span className="font-manrope font-bold text-slate-700 text-sm">Notifications</span>
   <div className="flex gap-2">
-  <button onClick={() => { setPage("notifications"); setShowNotifications(false); }} className="text-xs text-indigo-600 hover:underline">View All</button>
+  <button onClick={() => { setPage("notifications"); setShowNotifications(false); }} className="text-xs text-brand-600 hover:underline">View All</button>
   <button onClick={() => { setNotifications([]); setShowNotifications(false); }} className="text-xs text-slate-400 hover:text-red-500">Clear</button>
   </div>
   </div>
@@ -19488,7 +19488,7 @@ function AppInner() {
   <div className="px-4 py-6 text-center text-slate-400 text-sm">No notifications yet</div>
   ) : (
   notifications.map((n, idx) => (
-  <div key={n.id || n.dbId || `notif_${idx}`} className={"px-4 py-3 border-b border-indigo-50/50 hover:bg-indigo-50/30 flex items-start gap-2 transition-colors " + (!n.read ? "bg-indigo-50/40" : "")}>
+  <div key={n.id || n.dbId || `notif_${idx}`} className={"px-4 py-3 border-b border-brand-50/50 hover:bg-brand-50/30 flex items-start gap-2 transition-colors " + (!n.read ? "bg-brand-50/40" : "")}>
   <span className="text-lg">{String(n.icon || "📌")}</span>
   <div className="flex-1">
   <div className="text-sm text-slate-700">{String(n.message || "")}</div>
