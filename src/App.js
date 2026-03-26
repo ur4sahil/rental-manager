@@ -147,7 +147,44 @@ async function safeLedgerInsert(entry) {
   return !error;
 }
 
-// Unified accounting transaction: JE → ledger → balance (top-level, accessible from all components)
+// Atomic JE + ledger + balance in a single DB transaction via RPC
+// Falls back to non-atomic postAccountingTransaction if RPC unavailable
+async function atomicPostJEAndLedger({ date, description, reference, property, lines, status, ledgerEntry, balanceUpdate, companyId }) {
+  const result = { jeId: null, ledgerOk: false, balanceOk: false, error: null };
+  try {
+    const rpcLines = (lines || []).map(l => ({
+      account_id: l.account_id, account_name: l.account_name || "",
+      debit: safeNum(l.debit), credit: safeNum(l.credit),
+      class_id: l.class_id || null, memo: l.memo || ""
+    }));
+    const { data: jeId, error: rpcErr } = await supabase.rpc("post_je_and_ledger", {
+      p_company_id: companyId,
+      p_date: date,
+      p_description: description,
+      p_reference: reference || "",
+      p_property: property || "",
+      p_status: status || "posted",
+      p_lines: rpcLines,
+      p_ledger_tenant: ledgerEntry?.tenant || null,
+      p_ledger_tenant_id: ledgerEntry?.tenant_id || null,
+      p_ledger_property: ledgerEntry?.property || property || null,
+      p_ledger_amount: safeNum(ledgerEntry?.amount),
+      p_ledger_type: ledgerEntry?.type || null,
+      p_ledger_description: ledgerEntry?.description || null,
+      p_balance_change: safeNum(balanceUpdate?.amount)
+    });
+    if (rpcErr) throw rpcErr;
+    result.jeId = jeId;
+    result.ledgerOk = !!ledgerEntry;
+    result.balanceOk = !!balanceUpdate;
+    return result;
+  } catch (e) {
+    console.warn("Atomic RPC failed, falling back to sequential:", e.message);
+    return postAccountingTransaction({ date, description, reference, property, lines, status, ledgerEntry, balanceUpdate, requireJE: true, companyId });
+  }
+}
+
+// Unified accounting transaction: JE → ledger → balance (non-atomic fallback)
 async function postAccountingTransaction({ date, description, reference, property, lines, status, ledgerEntry, balanceUpdate, requireJE = true, silent = false, companyId }) {
   const result = { jeId: null, ledgerOk: false, balanceOk: false, error: null };
   result.jeId = await autoPostJournalEntry({ date, description, reference, property, lines, status, companyId });
@@ -4946,7 +4983,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ];
   }
   // Unified: JE first → ledger → balance (all gated on JE success)
-  const result = await postAccountingTransaction({ companyId,
+  const result = await atomicPostJEAndLedger({ companyId,
   date: today, description: jeDesc, reference: "MANUAL-" + shortId(), property: selectedTenant.property || "",
   lines: jeLines,
   ledgerEntry: ledgerData,
@@ -5623,7 +5660,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const t = tenants.find(x => x.id === tid);
   if (!t) continue;
   const classId = await getPropertyClassId(t.property, companyId);
-  const result = await postAccountingTransaction({ companyId,
+  const result = await atomicPostJEAndLedger({ companyId,
   date: formatLocalDate(new Date()), description: "Bulk charge — " + t.name + " — " + desc,
   reference: "BULK-" + shortId(), property: t.property || "",
   lines: [
@@ -14508,7 +14545,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   ];
   const jeDesc = hasAccrual ? "Autopay received — " + s.tenant + " — " + s.property + " (settling AR)" : "Autopay — " + s.tenant + " — " + s.property;
   // Unified: JE → ledger → balance (gated on JE success)
-  const result = await postAccountingTransaction({ companyId,
+  const result = await atomicPostJEAndLedger({ companyId,
   date: today, description: jeDesc, reference: "APAY-" + shortId(), property: s.property,
   lines: jeLines,
   ledgerEntry: { tenant: s.tenant, property: s.property, date: today, description: "Autopay payment (" + s.method + ")", amount: -amt, type: "payment", balance: 0 },
@@ -14705,7 +14742,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   const classId = await getPropertyClassId(payment.property, companyId);
   // Unified: JE first → ledger → balance (all gated on JE success)
   if (feeAmount > 0) {
-  const result = await postAccountingTransaction({ companyId,
+  const result = await atomicPostJEAndLedger({ companyId,
   date: today,
   description: "Late fee - " + payment.tenant + " - " + payment.property,
   reference: "LATE-" + shortId(),
@@ -15719,7 +15756,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
 
   // 1. Process deposit return/deductions GL
   if (depositReturn > 0) {
-  const depResult = await postAccountingTransaction({ companyId, date: moveOutDate, description: `Security deposit returned — ${tName}`, reference: `DEP-RTN-${shortId()}`, property: selectedLease.property,
+  const depResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Security deposit returned — ${tName}`, reference: `DEP-RTN-${shortId()}`, property: selectedLease.property,
   lines: [
   { account_id: "2100", account_name: "Security Deposits Held", debit: depositReturn, credit: 0, class_id: classId, memo: `Deposit return — ${tName}` },
   { account_id: "1000", account_name: "Checking Account", debit: 0, credit: depositReturn, class_id: classId, memo: `Deposit refund to ${tName}` },
@@ -15727,7 +15764,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   if (!depResult.jeId) showToast("Warning: Deposit return GL entry failed — please post manually in Accounting.", "error");
   }
   if (totalDeductions > 0 && totalDeductions <= depositAmount) {
-  const dedResult = await postAccountingTransaction({ companyId, date: moveOutDate, description: `Deposit deductions — ${tName}`, reference: `DEP-DED-${shortId()}`, property: selectedLease.property,
+  const dedResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Deposit deductions — ${tName}`, reference: `DEP-DED-${shortId()}`, property: selectedLease.property,
   lines: [
   { account_id: "2100", account_name: "Security Deposits Held", debit: totalDeductions, credit: 0, class_id: classId, memo: `Deductions: ${deductions.map(d => d.desc).join(", ")}` },
   { account_id: "4100", account_name: "Other Income", debit: 0, credit: totalDeductions, class_id: classId, memo: `Deposit forfeiture — ${tName}` },
@@ -15737,7 +15774,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
 
   // 2. Handle outstanding AR (balance update gated on JE success)
   if (arAction === "waive" && outstandingBalance > 0) {
-  const woResult = await postAccountingTransaction({ companyId, date: moveOutDate, description: `Bad debt write-off — ${tName}`, reference: `WOFF-${shortId()}`, property: selectedLease.property,
+  const woResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Bad debt write-off — ${tName}`, reference: `WOFF-${shortId()}`, property: selectedLease.property,
   lines: [
   { account_id: "5300", account_name: "Bad Debt Expense", debit: outstandingBalance, credit: 0, class_id: classId, memo: `Write-off at move-out — ${tName}` },
   { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: outstandingBalance, class_id: classId, memo: `AR write-off — ${tName}` },
@@ -16170,7 +16207,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   // Post legal costs to accounting if any
   if (safeNum(stageCost) > 0) {
   const classId = await getPropertyClassId(evCase.property, companyId);
-  const evResult = await postAccountingTransaction({ companyId,
+  const evResult = await atomicPostJEAndLedger({ companyId,
   date: stageDate || formatLocalDate(new Date()),
   description: `Eviction cost — ${evCase.tenant_name} — ${nextStage.replace(/_/g, " ")}`,
   reference: `EVICT-${shortId()}`, property: evCase.property,
