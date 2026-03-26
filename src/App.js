@@ -10160,6 +10160,12 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
         {txn.reference_number && <span className="mr-3">Ref: {txn.reference_number}</span>}
         {txn.payee_raw && <span>Payee: {txn.payee_raw}</span>}
       </div>
+      {/* Create Rule from Transaction */}
+      <div className="mt-2 pt-2 border-t border-brand-100">
+        <button onClick={() => createRuleFromTransaction(txn)} className="text-xs text-violet-600 hover:text-violet-800 hover:underline flex items-center gap-1">
+          <span className="material-icons-outlined text-sm">auto_fix_high</span>Create a rule from this transaction
+        </button>
+      </div>
     </td></tr>
     )}
     </React.Fragment>
@@ -10412,6 +10418,182 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       </div>
     </div>
   </div>
+  )}
+
+  {/* ========== RULE DRAWER (slide from right) ========== */}
+  {showRuleDrawer && (
+  <>
+  <div className="fixed inset-0 bg-black/30 z-40" onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }} />
+  <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-white shadow-2xl z-50 overflow-y-auto">
+    <div className="sticky top-0 bg-white border-b border-slate-200 px-5 py-4 flex items-center justify-between z-10">
+      <h3 className="text-lg font-bold text-slate-800">{editingRule ? "Edit Rule" : "Create New Rule"}</h3>
+      <button onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
+    </div>
+    <div className="px-5 py-4 space-y-5">
+
+      {/* Rule Name */}
+      <div>
+        <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">Rule Name *</label>
+        <input type="text" value={ruleForm.name} onChange={e => setRuleForm({...ruleForm, name: e.target.value})} placeholder="e.g. Home Depot Supplies" className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:border-violet-400 focus:outline-none" />
+      </div>
+
+      {/* Direction + Bank Account Scope */}
+      <div className="flex gap-3">
+        <div className="flex-1">
+          <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">Apply to</label>
+          <select value={ruleForm.condDirection} onChange={e => setRuleForm({...ruleForm, condDirection: e.target.value})} className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm">
+            <option value="all">All transactions</option><option value="outflow">Money out</option><option value="inflow">Money in</option>
+          </select>
+        </div>
+        <div className="flex-1">
+          <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">Bank Account</label>
+          <select value={ruleForm.bankAccountFeedId} onChange={e => setRuleForm({...ruleForm, bankAccountFeedId: e.target.value})} className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm">
+            <option value="">All bank accounts</option>{feeds.map(f => <option key={f.id} value={f.id}>{f.account_name}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Conditions */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <label className="text-xs font-medium text-slate-500 uppercase tracking-widest">When transaction meets</label>
+          <select value={ruleForm.condLogic} onChange={e => setRuleForm({...ruleForm, condLogic: e.target.value})} className="border border-violet-200 rounded-lg px-2 py-1 text-xs font-semibold text-violet-700">
+            <option value="all">ALL</option><option value="any">ANY</option>
+          </select>
+          <span className="text-xs text-slate-400">conditions:</span>
+        </div>
+        {ruleForm.conditions.map((cond, idx) => {
+          const isAmount = cond.field === "amount";
+          const textOps = [["contains","Contains"],["does_not_contain","Doesn't contain"],["is_exactly","Is exactly"],["starts_with","Starts with"],["ends_with","Ends with"],["regex","Regex"]];
+          const amtOps = [["is_exactly","Is exactly"],["greater_than","Greater than"],["less_than","Less than"],["between","Between"]];
+          const ops = isAmount ? amtOps : textOps;
+          return (
+          <div key={idx} className="flex items-center gap-2 mb-2">
+            <select value={cond.field} onChange={e => { updateCondition(idx, "field", e.target.value); updateCondition(idx, "operator", e.target.value === "amount" ? "greater_than" : "contains"); }} className="border border-violet-200 rounded-lg px-2 py-1.5 text-xs min-w-[120px]">
+              <option value="description">Description</option><option value="bank_text">Bank text</option><option value="amount">Amount</option>
+            </select>
+            <select value={cond.operator} onChange={e => updateCondition(idx, "operator", e.target.value)} className="border border-violet-200 rounded-lg px-2 py-1.5 text-xs min-w-[130px]">
+              {ops.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <input type={isAmount ? "number" : "text"} value={cond.value} onChange={e => updateCondition(idx, "value", e.target.value)} placeholder={isAmount ? "0.00" : "Enter text..."} className="flex-1 border border-violet-200 rounded-lg px-2 py-1.5 text-xs" />
+            {cond.operator === "between" && <>
+              <span className="text-xs text-slate-400">and</span>
+              <input type="number" value={cond.value2 || ""} onChange={e => updateCondition(idx, "value2", e.target.value)} placeholder="0.00" className="w-24 border border-violet-200 rounded-lg px-2 py-1.5 text-xs" />
+            </>}
+            {ruleForm.conditions.length > 1 && <button onClick={() => removeCondition(idx)} className="text-red-400 hover:text-red-600 text-sm shrink-0">✕</button>}
+          </div>
+          );
+        })}
+        {ruleForm.conditions.length < 5 && (
+          <button onClick={addCondition} className="text-xs text-violet-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">add</span>Add a condition</button>
+        )}
+      </div>
+
+      {/* Divider: Then */}
+      <div className="flex items-center gap-2"><div className="flex-1 border-t border-slate-200" /><span className="text-xs font-semibold text-slate-400 uppercase">Then</span><div className="flex-1 border-t border-slate-200" /></div>
+
+      {/* Assign vs Exclude */}
+      <div className="flex gap-4">
+        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="ruleType" checked={ruleForm.ruleType === "assign"} onChange={() => setRuleForm({...ruleForm, ruleType: "assign"})} className="accent-violet-600" /><span className="font-medium text-slate-700">Assign</span></label>
+        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="ruleType" checked={ruleForm.ruleType === "exclude"} onChange={() => setRuleForm({...ruleForm, ruleType: "exclude"})} className="accent-violet-600" /><span className="font-medium text-slate-700">Exclude</span></label>
+      </div>
+
+      {/* Assign Fields */}
+      {ruleForm.ruleType === "assign" && (<>
+        <div>
+          <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">Transaction Type</label>
+          <select value={ruleForm.transactionType} onChange={e => setRuleForm({...ruleForm, transactionType: e.target.value})} className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm">
+            <option value="expense">Expense</option><option value="deposit">Deposit</option><option value="transfer">Transfer</option><option value="check">Check</option>
+          </select>
+        </div>
+
+        {/* Category Lines (split support) */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-medium text-slate-500 uppercase tracking-widest">Category *</label>
+            {!ruleForm.split && <button onClick={addSplitLine} className="text-xs text-violet-600 hover:underline">+ Add a split</button>}
+          </div>
+          {ruleForm.split && ruleForm.lines.length >= 2 && (
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs text-slate-400">Split by:</span>
+              <select value={ruleForm.splitBy || "percentage"} onChange={e => setRuleForm({...ruleForm, splitBy: e.target.value})} className="border border-violet-200 rounded-lg px-2 py-1 text-xs">
+                <option value="percentage">Percentage</option><option value="amount">Amount</option>
+              </select>
+            </div>
+          )}
+          {ruleForm.lines.map((line, idx) => (
+          <div key={idx} className="flex items-center gap-2 mb-2">
+            <select value={line.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); updateLine(idx, "accountId", e.target.value); updateLine(idx, "accountName", a?.name || ""); }} className="flex-1 border border-violet-200 rounded-lg px-2 py-1.5 text-xs">
+              <option value="">Select account...</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a => a.type === type && a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}
+            </select>
+            {ruleForm.split && ruleForm.splitBy === "percentage" && (
+              <input type="number" value={line.percentage ?? ""} onChange={e => updateLine(idx, "percentage", e.target.value)} placeholder="%" className="w-20 border border-violet-200 rounded-lg px-2 py-1.5 text-xs text-right" />
+            )}
+            {ruleForm.split && ruleForm.splitBy === "amount" && (
+              <input type="number" value={line.amount ?? ""} onChange={e => updateLine(idx, "amount", e.target.value)} placeholder="$" className="w-24 border border-violet-200 rounded-lg px-2 py-1.5 text-xs text-right" />
+            )}
+            <select value={line.classId} onChange={e => updateLine(idx, "classId", e.target.value)} className="w-36 border border-violet-200 rounded-lg px-2 py-1.5 text-xs">
+              <option value="">No class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            {ruleForm.lines.length > 1 && <button onClick={() => removeSplitLine(idx)} className="text-red-400 hover:text-red-600 text-sm shrink-0">✕</button>}
+          </div>
+          ))}
+          {ruleForm.split && ruleForm.lines.length < 5 && (
+            <button onClick={addSplitLine} className="text-xs text-violet-600 hover:underline">+ Add line</button>
+          )}
+          {ruleForm.split && ruleForm.splitBy === "percentage" && (
+            <div className={`text-xs mt-1 ${Math.abs(ruleForm.lines.reduce((s, l) => s + (Number(l.percentage) || 0), 0) - 100) < 0.01 ? "text-emerald-600" : "text-red-500"}`}>
+              Total: {ruleForm.lines.reduce((s, l) => s + (Number(l.percentage) || 0), 0)}%
+            </div>
+          )}
+        </div>
+
+        {/* Payee + Memo */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">Payee</label>
+            <input type="text" value={ruleForm.actionPayee} onChange={e => setRuleForm({...ruleForm, actionPayee: e.target.value})} placeholder="Optional" className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">Memo</label>
+            <input type="text" value={ruleForm.actionMemo} onChange={e => setRuleForm({...ruleForm, actionMemo: e.target.value})} placeholder="Optional" className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+        </div>
+      </>)}
+
+      {/* Exclude Fields */}
+      {ruleForm.ruleType === "exclude" && (
+        <div>
+          <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">Exclude Reason</label>
+          <select value={ruleForm.excludeReason} onChange={e => setRuleForm({...ruleForm, excludeReason: e.target.value})} className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm">
+            <option value="personal">Personal</option><option value="duplicate">Duplicate</option><option value="noise">Noise</option><option value="other">Other</option>
+          </select>
+        </div>
+      )}
+
+      {/* How to apply */}
+      <div>
+        <div className="flex items-center gap-2 mb-2"><div className="flex-1 border-t border-slate-200" /><span className="text-xs font-semibold text-slate-400 uppercase">How to apply</span><div className="flex-1 border-t border-slate-200" /></div>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="autoAccept" checked={!ruleForm.autoAccept} onChange={() => setRuleForm({...ruleForm, autoAccept: false})} className="accent-violet-600" /><span className="text-slate-700">Auto-categorize, then I'll review manually</span></label>
+          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="autoAccept" checked={ruleForm.autoAccept} onChange={() => setRuleForm({...ruleForm, autoAccept: true})} className="accent-violet-600" /><span className="text-slate-700">Auto-add (skip review entirely)</span></label>
+        </div>
+      </div>
+
+      {/* Priority */}
+      <div>
+        <label className="text-xs font-medium text-slate-500 uppercase tracking-widest block mb-1">Priority (lower = runs first)</label>
+        <input type="number" value={ruleForm.priority} onChange={e => setRuleForm({...ruleForm, priority: e.target.value})} min="1" max="999" className="w-24 border border-violet-200 rounded-lg px-3 py-2 text-sm" />
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-3 pt-2 border-t border-slate-200">
+        <button onClick={saveRule} className="bg-violet-600 text-white text-sm px-6 py-2.5 rounded-lg hover:bg-violet-700 font-semibold">{editingRule ? "Update Rule" : "Save Rule"}</button>
+        <button onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }} className="text-sm text-slate-500 px-4 py-2.5 hover:text-slate-700">Cancel</button>
+      </div>
+    </div>
+  </div>
+  </>
   )}
 
   </div>
