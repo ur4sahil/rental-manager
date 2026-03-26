@@ -114,8 +114,32 @@ async function guarded(key, fn) {
   try { await fn(); } finally { guardRelease(key); }
 }
 
-// Safely insert a ledger entry — logs errors instead of throwing
+// Safely insert a ledger entry — auto-calculates running balance if not provided
 async function safeLedgerInsert(entry) {
+  // Auto-calculate running balance unless caller provides a non-zero value
+  if (!entry.balance || entry.balance === 0) {
+    try {
+      // Find latest ledger entry for this tenant to get previous balance
+      let query = supabase.from("ledger_entries").select("balance").eq("company_id", entry.company_id);
+      if (entry.tenant_id) query = query.eq("tenant_id", entry.tenant_id);
+      else if (entry.tenant) query = query.ilike("tenant", entry.tenant);
+      else { entry.balance = 0; } // No tenant context — can't compute balance
+      if (entry.tenant_id || entry.tenant) {
+        const { data: prev } = await query.order("date", { ascending: false }).order("created_at", { ascending: false }).limit(1).maybeSingle();
+        const prevBal = safeNum(prev?.balance);
+        const amt = safeNum(entry.amount);
+        // Charges increase balance (tenant owes more), payments decrease it
+        const increasesBalance = ["charge", "late_fee", "expense", "deposit_deduction"].includes(entry.type);
+        const decreasesBalance = ["payment", "credit", "deposit_return", "void"].includes(entry.type);
+        if (increasesBalance) entry.balance = prevBal + amt;
+        else if (decreasesBalance) entry.balance = prevBal - amt;
+        else entry.balance = prevBal + amt; // deposit, adjustment — use amount as-is
+      }
+    } catch (e) {
+      console.warn("Balance calc failed, using 0:", e.message);
+      entry.balance = 0;
+    }
+  }
   const { error } = await supabase.from("ledger_entries").insert([entry]);
   if (error) {
   console.error("LEDGER ENTRY FAILED:", error.message, entry);
