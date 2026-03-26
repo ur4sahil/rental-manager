@@ -8659,22 +8659,40 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     if (!currentReport) return;
     const content = document.querySelector("[data-report-content]");
     if (!content) { showToast("Nothing to export.", "info"); return; }
-    // Clone content and clean up any stray text nodes
     const clone = content.cloneNode(true);
-    // Remove any text nodes that are just whitespace or JSX artifacts
-    const walker = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT, null, false);
-    const toRemove = [];
-    while (walker.nextNode()) { const n = walker.currentNode; if (n.parentNode === clone && /^\s*[\)\}\{]*\s*$/.test(n.textContent)) toRemove.push(n); }
-    toRemove.forEach(n => n.remove());
+    // Remove material icon spans (they render as text like "expand_more" in print)
+    clone.querySelectorAll(".material-icons-outlined, .material-icons").forEach(el => el.remove());
+    // Remove stray text nodes at top level (JSX artifacts)
+    Array.from(clone.childNodes).forEach(n => { if (n.nodeType === 3 && /^\s*[\)\}\(\{]*\s*$/.test(n.textContent)) n.remove(); });
     const safeTitle = DOMPurify.sanitize(currentReport.title + " — " + companyName, { ALLOWED_TAGS: [] });
     const safeBody = DOMPurify.sanitize(clone.innerHTML);
-    // Use iframe instead of popup to avoid popup blockers
     const iframe = document.createElement("iframe");
     iframe.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;border:0;visibility:hidden;";
     document.body.appendChild(iframe);
     const doc = iframe.contentDocument || iframe.contentWindow.document;
     doc.open();
-    doc.write(`<!DOCTYPE html><html><head><title>${safeTitle}</title><style>body{font-family:Arial,sans-serif;margin:20px;color:#1e293b}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:6px 10px;text-align:left;border-bottom:1px solid #e5e7eb}th{background:#f8fafc;font-size:11px;text-transform:uppercase;color:#64748b}.font-mono{font-family:ui-monospace,monospace}.font-bold,.font-black{font-weight:700}.text-right{text-align:right}.text-center{text-align:center}.text-xs{font-size:11px}.text-sm{font-size:13px}.border-t{border-top:1px solid #e5e7eb}.border-t-2{border-top:2px solid #1e293b}.border-b-2{border-bottom:2px solid #1e293b}@media print{body{margin:0}}</style></head><body>${safeBody}</body></html>`);
+    doc.write(`<!DOCTYPE html><html><head><title>${safeTitle}</title><style>
+body{font-family:Arial,sans-serif;margin:30px 40px;color:#1e293b;font-size:13px}
+*{box-sizing:border-box}
+.flex{display:flex}.items-center{align-items:center}.justify-between{justify-content:space-between}.justify-center{justify-content:center}.gap-1{gap:4px}.gap-2{gap:8px}.gap-3{gap:12px}
+.text-center{text-align:center}.text-right{text-align:right}.text-left{text-align:left}
+.text-xs{font-size:11px}.text-sm{font-size:13px}.text-base{font-size:15px}.text-lg{font-size:17px}
+.font-mono{font-family:ui-monospace,SFMono-Regular,monospace}.font-bold{font-weight:700}.font-black{font-weight:900}.font-semibold{font-weight:600}.font-medium{font-weight:500}
+.tabular-nums{font-variant-numeric:tabular-nums}
+.uppercase{text-transform:uppercase}.tracking-widest{letter-spacing:0.1em}.tracking-wider{letter-spacing:0.05em}
+.border-t{border-top:1px solid #e5e7eb}.border-b{border-bottom:1px solid #e5e7eb}.border-t-2{border-top:2px solid #1e293b}.border-b-2{border-bottom:2px solid #1e293b}
+.py-1{padding-top:4px;padding-bottom:4px}.py-1\\.5{padding-top:6px;padding-bottom:6px}.py-2{padding-top:8px;padding-bottom:8px}.py-3{padding-top:12px;padding-bottom:12px}
+.mt-1{margin-top:4px}.mt-2{margin-top:8px}.mt-3{margin-top:12px}.mt-4{margin-top:16px}.mb-1{margin-bottom:4px}.mb-2{margin-bottom:8px}.mb-4{margin-bottom:16px}.mb-6{margin-bottom:24px}
+.rounded{border-radius:4px}
+.text-neutral-400{color:#94a3b8}.text-neutral-500{color:#64748b}.text-neutral-700{color:#334155}.text-neutral-800{color:#1e293b}.text-neutral-900{color:#0f172a}
+.text-success-700{color:#15803d}.text-danger-600{color:#dc2626}
+table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1px solid #e5e7eb}th{background:#f8fafc;font-size:11px;text-transform:uppercase;color:#64748b;font-weight:600}
+.whitespace-nowrap{white-space:nowrap}.min-w-48{min-width:12rem}
+.px-3{padding-left:12px;padding-right:12px}.px-4{padding-left:16px;padding-right:16px}.px-5{padding-left:20px;padding-right:20px}
+.hidden,[class*="cursor-pointer"]{cursor:default}
+.grid{display:grid}.grid-cols-4{grid-template-columns:repeat(4,1fr)}
+@media print{body{margin:15px 20px}@page{margin:0.5in}}
+</style></head><body>${safeBody}</body></html>`);
     doc.close();
     setTimeout(() => { iframe.contentWindow.print(); setTimeout(() => document.body.removeChild(iframe), 1000); }, 500);
   }
@@ -9246,7 +9264,6 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       {(() => { const data = getBudgetVsActual(start, end); const hasAnyBudget = data.some(a => a.budget > 0); return !hasAnyBudget ? <p className="text-center py-8 text-neutral-400">No budgets set. Click "Edit Budgets" to set monthly amounts.</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Account</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Actual</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Budget</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Variance ($)</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Variance (%)</th></tr></thead>
       <tbody>{data.filter(a => a.budget > 0).map(a => { const favorable = a.isExpense ? a.variance < 0 : a.variance > 0; return <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2 text-right font-mono text-neutral-400">{acctFmt(a.budget)}</td><td className={`px-4 py-2 text-right font-mono font-semibold ${favorable ? "text-success-600" : "text-danger-600"}`}>{acctFmt(a.variance, true)}</td><td className={`px-4 py-2 text-right ${favorable ? "text-success-600" : "text-danger-600"}`}>{a.variancePct > 0 ? "+" : ""}{a.variancePct}%</td></tr>; })}</tbody></table>); })()}
     </div>)}
-    )}
 
     </div>
   </div>
