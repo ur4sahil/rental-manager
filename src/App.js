@@ -5475,7 +5475,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <h2 className="text-xl md:text-2xl font-bold text-gray-800">Tenants</h2>
   <div className="flex gap-1 overflow-x-auto pb-1">
   {[["tenants", "Tenants"], ["leases", "Leases"], ["moveout", "Move-Out"], ["evictions", "Evictions"], ["archived", "Archived"]].map(([id, label]) => (
-  <button key={id} onClick={() => { setTenantTab(id); if (id === "archived") { supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200).then(({ data }) => setArchivedTenants(data || [])); } }} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (tenantTab === id ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
+  <button key={id} onClick={() => { setTenantTab(id); setTenantSearch(""); if (id === "archived") { supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200).then(({ data }) => setArchivedTenants(data || [])); } }} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (tenantTab === id ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
   ))}
   </div>
   </div>
@@ -6600,7 +6600,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   }
 
   async function openAuditLog(u) {
-  const { data } = await supabase.from("utility_audit").select("*").eq("utility_id", u.id).order("paid_at", { ascending: false });
+  const { data } = await supabase.from("utility_audit").select("*").eq("utility_id", u.id).eq("company_id", companyId).order("paid_at", { ascending: false });
   setAuditLog(data || []);
   setShowAudit(u);
   }
@@ -6888,6 +6888,7 @@ function ArchivedItems({ tableName, label, fields, companyId, addNotification, o
   if (!await showConfirm({ message: "PERMANENTLY delete this " + label.toLowerCase() + "? This cannot be undone.", variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from(tableName).delete().eq("id", item.id).eq("company_id", companyId);
   if (error) { showToast("Delete failed: " + error.message, "error"); return; }
+  logAudit("delete", tableName, "Permanently deleted " + label + ": " + (item.name || item.address || item.id), item.id, userProfile?.email, userRole, companyId);
   addNotification("🗑️", "Deleted " + label);
   fetchItems();
   }
@@ -14354,6 +14355,7 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
   if (!await showConfirm({ message: `PERMANENTLY delete this ${item._label.toLowerCase()}? This cannot be undone.`, variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from(item._table).delete().eq("id", item.id).eq("company_id", companyId);
   if (error) { showToast("Failed to delete: " + error.message, "error"); return; }
+  logAudit("delete", item._table, "Permanently deleted " + item._label + ": " + (item.name || item.address || item.id), item.id, userProfile?.email, userRole, companyId);
   addNotification("🗑️", `Permanently deleted ${item._label}`);
   fetchArchived();
   }
@@ -16175,7 +16177,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   </body></html>`;
 
   const w = window.open("", "_blank", "noopener,noreferrer");
-  if (w) { w.document.write(html); w.document.title = `${noticeTypeLabel[evCase.notice_type] || "Notice"} — ${evCase.tenant_name}`; setTimeout(() => w.print(), 500); }
+  if (w) { w.document.write(html); w.document.title = DOMPurify.sanitize(`${noticeTypeLabel[evCase.notice_type] || "Notice"} — ${evCase.tenant_name}`, { ALLOWED_TAGS: [] }); setTimeout(() => w.print(), 500); }
   }
 
   async function advanceStage(evCase, nextStage) {
@@ -18645,6 +18647,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   if (failures.length > 0) { showToast("Warning: " + failures.length + " related table(s) failed to clean up.", "warning"); }
   const { error: delErr } = await supabase.from("companies").delete().eq("id", company.id);
   if (delErr) { showToast("Error deleting company: " + delErr.message, "error"); setDeleting(null); return; }
+  logAudit("delete", "companies", "Permanently deleted company: " + company.name, company.id, currentUser?.email, "admin", company.id);
   showToast('"' + company.name + '" permanently deleted.', "success");
   } catch (e) { showToast("Error deleting company: " + e.message, "error"); }
   } else {
