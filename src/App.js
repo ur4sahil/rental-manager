@@ -7941,6 +7941,11 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       { id: "open_invoices", title: "Open Invoices", description: "Unpaid rent charges with days outstanding", icon: "receipt_long" },
       { id: "collections", title: "Collections Report", description: "Most overdue tenants with contact info", icon: "gavel" },
     ]},
+    { category: "What You Owe", icon: "money_off", reports: [
+      { id: "ap_aging_summary", title: "AP Aging Summary", description: "Amounts owed to vendors by age", icon: "schedule" },
+      { id: "unpaid_bills", title: "Unpaid Bills", description: "Outstanding vendor invoices", icon: "money_off" },
+      { id: "vendor_balance_summary", title: "Vendor Balance Summary", description: "Total owed per vendor", icon: "store" },
+    ]},
     { category: "Expenses & Vendors", icon: "receipt", reports: [
       { id: "expenses_by_category", title: "Expenses by Category", description: "Expenses grouped by account type", icon: "category" },
       { id: "expenses_by_vendor", title: "Expenses by Vendor", description: "Total expenses per vendor/payee", icon: "receipt" },
@@ -7951,6 +7956,8 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       { id: "journal", title: "Journal", description: "All journal entries with full lines", icon: "edit_note" },
       { id: "txn_by_date", title: "Transaction List by Date", description: "Every posted transaction sorted by date", icon: "list_alt" },
       { id: "account_list", title: "Account Listing", description: "Chart of Accounts as a report", icon: "format_list_numbered" },
+      { id: "audit_log", title: "Audit Log", description: "Who did what and when", icon: "history" },
+      { id: "recon_summary", title: "Reconciliation Summary", description: "Bank reconciliation status history", icon: "check_circle" },
     ]},
     { category: "Property Performance", icon: "real_estate_agent", reports: [
       { id: "rent_roll", title: "Rent Roll", description: "All units with tenant, rent, lease dates", icon: "real_estate_agent" },
@@ -7972,6 +7979,8 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     if (["rent_roll","vacancy","lease_expirations","rent_collection","work_orders_summary","security_deposits","collections","noi_by_property"].includes(report.id)) {
       loadExtraData();
     }
+    if (report.id === "audit_log") { getAuditLog(start, end).then(d => setAuditData(d)); }
+    if (report.id === "recon_summary") { getReconSummary().then(d => setReconData(d)); }
   }
 
   // --- Computation Functions (NEW reports) ---
@@ -8194,6 +8203,63 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     });
     return Object.entries(byAccount).sort((a,b) => (a[1].code||"").localeCompare(b[1].code||"")).map(([name, d]) => ({ name, ...d }));
   }
+
+  // --- Phase C Computation Functions ---
+
+  function getAPAgingData(asOfDate) {
+    const apIds = new Set(accounts.filter(a => a.type === "Liability" && (a.name?.includes("Accounts Payable") || a.name?.includes("Payable") || (a.code||"").startsWith("2000"))).map(a => a.id));
+    if (apIds.size === 0) return { summary: { current: 0, days30: 0, days60: 0, days90: 0, over90: 0, total: 0 }, byVendor: {} };
+    const today = new Date();
+    const byVendor = {};
+    const summary = { current: 0, days30: 0, days60: 0, days90: 0, over90: 0, total: 0 };
+    journalEntries.filter(je => je.status === "posted" && je.date <= asOfDate).forEach(je => {
+      (je.lines||[]).filter(l => apIds.has(l.account_id)).forEach(l => {
+        const amount = safeNum(l.credit) - safeNum(l.debit); // credits increase AP
+        if (Math.abs(amount) < 0.01) return;
+        const vendor = je.description?.split(" — ")[0]?.trim() || l.memo?.split(":")[0]?.trim() || "Unknown";
+        const daysDiff = Math.floor((today - parseLocalDate(je.date)) / 86400000);
+        const bucket = daysDiff <= 30 ? "current" : daysDiff <= 60 ? "days30" : daysDiff <= 90 ? "days60" : daysDiff <= 120 ? "days90" : "over90";
+        if (!byVendor[vendor]) byVendor[vendor] = { current: 0, days30: 0, days60: 0, days90: 0, over90: 0, total: 0 };
+        byVendor[vendor][bucket] += amount;
+        byVendor[vendor].total += amount;
+        summary[bucket] += amount;
+        summary.total += amount;
+      });
+    });
+    return { summary, byVendor };
+  }
+
+  function getUnpaidBills() {
+    // Derive from vendor_invoices if available, otherwise from AP JE lines
+    const bills = [];
+    journalEntries.filter(je => je.status === "posted" && ((je.reference||"").startsWith("VINV-") || (je.description||"").toLowerCase().includes("invoice"))).forEach(je => {
+      const total = (je.lines||[]).reduce((s,l) => s + safeNum(l.credit), 0);
+      if (total > 0) {
+        const vendor = je.description?.split(" — ")[0]?.trim() || "Unknown";
+        bills.push({ vendor, date: je.date, description: je.description, amount: total, reference: je.reference, jeNumber: je.number });
+      }
+    });
+    return bills.sort((a,b) => a.date.localeCompare(b.date));
+  }
+
+  function getVendorBalanceSummary(asOfDate) {
+    const { byVendor } = getAPAgingData(asOfDate);
+    return Object.entries(byVendor).filter(([,d]) => Math.abs(d.total) > 0.01).map(([vendor, d]) => ({ vendor, ...d })).sort((a,b) => b.total - a.total);
+  }
+
+  async function getAuditLog(startDate, endDate) {
+    const { data } = await supabase.from("audit_trail").select("*").eq("company_id", companyId).gte("created_at", startDate + "T00:00:00").lte("created_at", endDate + "T23:59:59").order("created_at", { ascending: false }).limit(500);
+    return data || [];
+  }
+
+  async function getReconSummary() {
+    const { data } = await supabase.from("bank_reconciliations").select("*").eq("company_id", companyId).order("created_at", { ascending: false });
+    return data || [];
+  }
+
+  // Audit/recon data (fetched on demand)
+  const [auditData, setAuditData] = useState([]);
+  const [reconData, setReconData] = useState([]);
 
   // --- CSV Export ---
   function exportCSV() {
@@ -8582,8 +8648,63 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       <table className="w-full text-xs mb-2"><tbody>{acct.transactions.map((t,i) => <tr key={i} className="border-t border-slate-50"><td className="px-3 py-1 text-slate-400 w-20">{t.date}</td><td className="px-3 py-1 text-indigo-600 font-mono w-16">{t.jeNumber||""}</td><td className="px-3 py-1 text-slate-600">{t.description}</td><td className="px-3 py-1 text-right font-mono w-20">{t.debit > 0 ? acctFmt(t.debit) : ""}</td><td className="px-3 py-1 text-right font-mono w-20">{t.credit > 0 ? acctFmt(t.credit) : ""}</td></tr>)}</tbody></table></div>))}
     </div>)}
 
-    {/* Fallback for reports not yet implemented */}
-    {!["pl","pl_compare","pl_by_class","bs","tb","gl","ar_aging_summary","ar_aging_detail","customer_balance_summary","customer_balance_detail","journal","txn_by_date","txn_by_account","account_list","expenses_by_category","expenses_by_vendor","cash_flow","rent_roll","noi_by_property","vacancy","lease_expirations","work_orders_summary","open_invoices","collections","security_deposits","late_fees","owner_distributions","rent_collection"].includes(reportId) && (
+    {/* P&L Comparison */}
+    {reportId === "pl_compare" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Profit & Loss Comparison</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}{compareData ? " vs Prior" : ""}</p></div>
+      {!compareData && <p className="text-center py-4 text-amber-600 text-sm">Select "Compare to" in the toolbar above to see a comparison.</p>}
+      <table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Account</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Current</th>{compareData && <th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Prior</th>}{compareData && <th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Change</th>}</tr></thead>
+      <tbody><tr className="bg-slate-50 font-bold"><td className="px-4 py-2" colSpan={compareData ? 4 : 2}>Income</td></tr>
+      {plData.revenue.filter(a=>a.amount!==0).map(a => { const prior = compareData?.revenue.find(p=>p.id===a.id); return <tr key={a.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700 pl-8">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-slate-400">{prior ? acctFmt(prior.amount) : "—"}</td>}{compareData && <td className={`px-4 py-2 text-right font-mono ${a.amount-(prior?.amount||0) > 0 ? "text-emerald-600" : a.amount-(prior?.amount||0) < 0 ? "text-red-600" : ""}`}>{acctFmt(a.amount - (prior?.amount||0), true)}</td>}</tr>; })}
+      <tr className="border-t border-slate-300 font-bold"><td className="px-4 py-2 pl-8">Total Income</td><td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalRevenue)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-slate-400">{acctFmt(compareData.totalRevenue)}</td>}{compareData && <td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalRevenue - compareData.totalRevenue, true)}</td>}</tr>
+      <tr className="bg-slate-50 font-bold"><td className="px-4 py-2" colSpan={compareData ? 4 : 2}>Expenses</td></tr>
+      {plData.expenses.filter(a=>a.amount!==0).map(a => { const prior = compareData?.expenses.find(p=>p.id===a.id); return <tr key={a.id} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700 pl-8">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-slate-400">{prior ? acctFmt(prior.amount) : "—"}</td>}{compareData && <td className={`px-4 py-2 text-right font-mono ${a.amount-(prior?.amount||0) < 0 ? "text-emerald-600" : a.amount-(prior?.amount||0) > 0 ? "text-red-600" : ""}`}>{acctFmt(a.amount - (prior?.amount||0), true)}</td>}</tr>; })}
+      <tr className="border-t border-slate-300 font-bold"><td className="px-4 py-2 pl-8">Total Expenses</td><td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalExpenses)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-slate-400">{acctFmt(compareData.totalExpenses)}</td>}{compareData && <td className="px-4 py-2 text-right font-mono">{acctFmt(plData.totalExpenses - compareData.totalExpenses, true)}</td>}</tr>
+      <tr className="border-t-2 border-b-2 border-slate-800 font-black"><td className="px-4 py-2">NET INCOME</td><td className="px-4 py-2 text-right font-mono">{acctFmt(plData.netIncome)}</td>{compareData && <td className="px-4 py-2 text-right font-mono text-slate-400">{acctFmt(compareData.netIncome)}</td>}{compareData && <td className={`px-4 py-2 text-right font-mono ${plData.netIncome-compareData.netIncome > 0 ? "text-emerald-600" : "text-red-600"}`}>{acctFmt(plData.netIncome - compareData.netIncome, true)}</td>}</tr>
+      </tbody></table>
+    </div>)}
+
+    {/* AP Aging Summary */}
+    {reportId === "ap_aging_summary" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">AP Aging Summary</p><p className="text-sm text-slate-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
+      {(() => { const data = getAPAgingData(asOfDate); const vendors = Object.entries(data.byVendor).filter(([,d]) => Math.abs(d.total) > 0.01); return vendors.length === 0 ? <p className="text-center py-8 text-slate-400">No outstanding payables</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Vendor</th><th className="px-4 py-2 text-right text-xs font-semibold text-emerald-600">Current</th><th className="px-4 py-2 text-right text-xs font-semibold text-amber-600">1-30</th><th className="px-4 py-2 text-right text-xs font-semibold text-orange-600">31-60</th><th className="px-4 py-2 text-right text-xs font-semibold text-red-600">61-90</th><th className="px-4 py-2 text-right text-xs font-semibold text-red-800">91+</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-700">Total</th></tr></thead>
+      <tbody>{vendors.map(([vendor, d]) => <tr key={vendor} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{vendor}</td><td className="px-4 py-2 text-right font-mono">{d.current ? acctFmt(d.current) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.days30 ? acctFmt(d.days30) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.days60 ? acctFmt(d.days60) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.days90 ? acctFmt(d.days90) : ""}</td><td className="px-4 py-2 text-right font-mono">{d.over90 ? acctFmt(d.over90) : ""}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(d.total)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td className="px-4 py-2">TOTALS</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.current)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.days30)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.days60)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.days90)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.over90)}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.summary.total)}</td></tr></tfoot></table>); })()}
+    </div>)}
+
+    {/* Unpaid Bills */}
+    {reportId === "unpaid_bills" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Unpaid Bills</p></div>
+      {(() => { const data = getUnpaidBills(); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No unpaid bills found</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Date</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Vendor</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Description</th><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Ref</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Amount</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-400 text-xs">{r.date}</td><td className="px-4 py-2 text-slate-700">{r.vendor}</td><td className="px-4 py-2 text-xs text-slate-500 truncate max-w-48">{r.description}</td><td className="px-4 py-2 font-mono text-xs text-indigo-600">{r.jeNumber||""}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(r.amount)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td colSpan={4} className="px-4 py-2">TOTAL</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.amount,0))}</td></tr></tfoot></table>); })()}
+    </div>)}
+
+    {/* Vendor Balance Summary */}
+    {reportId === "vendor_balance_summary" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Vendor Balance Summary</p><p className="text-sm text-slate-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
+      {(() => { const data = getVendorBalanceSummary(asOfDate); return data.length === 0 ? <p className="text-center py-8 text-slate-400">No outstanding vendor balances</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Vendor</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Balance</th></tr></thead>
+      <tbody>{data.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.vendor}</td><td className="px-4 py-2 text-right font-mono font-semibold">{acctFmt(r.total)}</td></tr>)}</tbody>
+      <tfoot><tr className="border-t-2 border-slate-800 font-bold"><td className="px-4 py-2">TOTAL OWED</td><td className="px-4 py-2 text-right font-mono">{acctFmt(data.reduce((s,r)=>s+r.total,0))}</td></tr></tfoot></table>); })()}
+    </div>)}
+
+    {/* Audit Log */}
+    {reportId === "audit_log" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Audit Log</p><p className="text-sm text-slate-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
+      <button onClick={async () => { const d = await getAuditLog(start, end); setAuditData(d); }} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 mb-3">Refresh</button>
+      {auditData.length === 0 ? <p className="text-center py-8 text-slate-400">No audit entries in this period</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Time</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">User</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Module</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Action</th><th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Details</th></tr></thead>
+      <tbody>{auditData.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-3 py-2 text-xs text-slate-400 whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</td><td className="px-3 py-2 text-xs text-slate-600">{r.user_email}</td><td className="px-3 py-2 text-xs"><span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{r.module}</span></td><td className="px-3 py-2 text-xs"><span className={`px-1.5 py-0.5 rounded ${r.action==="create"?"bg-emerald-100 text-emerald-700":r.action==="delete"?"bg-red-100 text-red-600":r.action==="update"?"bg-blue-100 text-blue-700":"bg-slate-100 text-slate-600"}`}>{r.action}</span></td><td className="px-3 py-2 text-xs text-slate-500 max-w-64 truncate">{r.details}</td></tr>)}</tbody></table>)}
+    </div>)}
+
+    {/* Reconciliation Summary */}
+    {reportId === "recon_summary" && (<div>
+      <div className="text-center mb-6"><h4 className="text-base font-bold text-slate-900">{companyName}</h4><p className="text-xs text-slate-400 uppercase tracking-widest mt-1">Reconciliation Summary</p></div>
+      <button onClick={async () => { const d = await getReconSummary(); setReconData(d); }} className="text-xs bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-200 mb-3">Refresh</button>
+      {reconData.length === 0 ? <p className="text-center py-8 text-slate-400">No reconciliations found</p> : (<table className="w-full text-sm"><thead className="bg-slate-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">Period</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Bank Balance</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Book Balance</th><th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">Difference</th><th className="px-4 py-2 text-center text-xs font-semibold text-slate-500">Status</th></tr></thead>
+      <tbody>{reconData.map((r,i) => <tr key={i} className="border-t border-slate-100"><td className="px-4 py-2 text-slate-700">{r.period}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(safeNum(r.bank_ending_balance))}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(safeNum(r.book_balance))}</td><td className={`px-4 py-2 text-right font-mono ${Math.abs(safeNum(r.difference)) < 0.01 ? "text-emerald-600" : "text-red-600"}`}>{acctFmt(safeNum(r.difference))}</td><td className="px-4 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="reconciled"?"bg-emerald-100 text-emerald-700":"bg-amber-100 text-amber-700"}`}>{r.status}</span></td></tr>)}</tbody></table>)}
+    </div>)}
+
+    {/* Fallback */}
+    {!["pl","pl_compare","pl_by_class","bs","tb","gl","ar_aging_summary","ar_aging_detail","customer_balance_summary","customer_balance_detail","journal","txn_by_date","txn_by_account","account_list","expenses_by_category","expenses_by_vendor","cash_flow","rent_roll","noi_by_property","vacancy","lease_expirations","work_orders_summary","open_invoices","collections","security_deposits","late_fees","owner_distributions","rent_collection","ap_aging_summary","unpaid_bills","vendor_balance_summary","audit_log","recon_summary"].includes(reportId) && (
     <div className="text-center py-12 text-slate-400"><span className="material-icons-outlined text-4xl mb-2 block">construction</span><p className="text-sm">This report is coming soon.</p></div>
     )}
 
