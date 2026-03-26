@@ -7900,7 +7900,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
 }
 
 // --- Journal Entries Sub-Page ---
-function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate, onPost, onVoid, companyId, onOpenLedger, initialViewJEId, autoOpenAdd }) {
+function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], vendors = [], onAdd, onUpdate, onPost, onVoid, companyId, onOpenLedger, initialViewJEId, autoOpenAdd }) {
   const [modal, setModal] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
   const [searchProperty, setSearchProperty] = useState("");
@@ -7932,8 +7932,9 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   // Get unique properties from existing JEs for the filter dropdown
   const jeProperties = [...new Set(journalEntries.map(je => je.property).filter(Boolean))].sort();
 
+  const EMPTY_JE_LINE = { account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"", entity_type:"", entity_id:"", entity_name:"" };
   const openAdd = () => {
-  setForm({ date: acctToday(), description: "", reference: "", property: "", lines: [{ account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }, { account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }] });
+  setForm({ date: acctToday(), description: "", reference: "", property: "", lines: [{ ...EMPTY_JE_LINE }, { ...EMPTY_JE_LINE }] });
   setModal("add");
   };
 
@@ -7945,7 +7946,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   const openView = (je) => setModal({ mode: "view", je });
 
   const openDuplicate = (je) => {
-  setForm({ date: acctToday(), description: je.description || "", reference: je.reference || "", property: je.property || "", lines: (je.lines || []).map(l => ({ account_id: l.account_id, account_name: l.account_name, debit: l.debit || "", credit: l.credit || "", class_id: l.class_id || "", memo: l.memo || "" })) });
+  setForm({ date: acctToday(), description: je.description || "", reference: je.reference || "", property: je.property || "", lines: (je.lines || []).map(l => ({ account_id: l.account_id, account_name: l.account_name, debit: l.debit || "", credit: l.credit || "", class_id: l.class_id || "", memo: l.memo || "", entity_type: l.entity_type || "", entity_id: l.entity_id || "", entity_name: l.entity_name || "" })) });
   setModal("add");
   };
 
@@ -7956,7 +7957,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   setForm(f => ({ ...f, lines }));
   };
 
-  const addLine = () => setForm(f => ({ ...f, lines: [...f.lines, { account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }] }));
+  const addLine = () => setForm(f => ({ ...f, lines: [...f.lines, { ...EMPTY_JE_LINE }] }));
   const removeLine = (i) => { if (form.lines.length <= 2) return; setForm(f => ({ ...f, lines: f.lines.filter((_,idx) => idx !== i) })); };
 
   const totalDebit = form.lines.reduce((s,l) => s + (parseFloat(l.debit) || 0), 0);
@@ -7990,12 +7991,13 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   </div>
   <div className="rounded-xl border border-brand-100 overflow-x-auto">
   <table className="w-full text-sm">
-  <thead><tr className="bg-neutral-50 border-b border-neutral-200"><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-48">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-32">Class</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 min-w-[140px]">Memo</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 w-28">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 w-28">Credit</th><th className="px-3 py-2 w-8" /></tr></thead>
+  <thead><tr className="bg-neutral-50 border-b border-neutral-200"><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-44">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-28">Class</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-32">Name</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 min-w-[120px]">Memo</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 w-24">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 w-24">Credit</th><th className="px-3 py-2 w-8" /></tr></thead>
   <tbody>
   {form.lines.map((line, i) => (
   <tr key={i} className="border-b border-neutral-100">
   <td className="px-2 py-1.5"><Select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}</Select></td>
   <td className="px-2 py-1.5"><Select value={line.class_id || ""} onChange={e => { setLine(i,"class_id",e.target.value||null); const cls = classes.find(c=>c.id===e.target.value); if (cls && !form.property) setForm(f=>({...f, property: cls.name})); }} className="px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></td>
+  <td className="px-2 py-1.5"><Select value={line.entity_id ? `${line.entity_type}:${line.entity_id}` : ""} onChange={e => { const val = e.target.value; if (!val) { setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], entity_type: "", entity_id: "", entity_name: "" }; return { ...f, lines }; }); return; } const [type, id] = val.split(":"); const name = type === "customer" ? tenants.find(t => t.id === id)?.name : vendors.find(v => v.id === id)?.name; setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], entity_type: type, entity_id: id, entity_name: name || "" }; return { ...f, lines }; }); }} className="px-2 py-1.5 text-xs bg-white"><option value="">None</option><optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup><optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup></Select></td>
   <td className="px-2 py-1.5"><input type="text" value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs bg-white focus:border-brand-300 focus:outline-none" /></td>
   <td className="px-2 py-1.5"><input type="text" inputMode="decimal" value={line.debit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], debit: v, ...(v ? { credit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono focus:border-brand-300 focus:outline-none" /></td>
   <td className="px-2 py-1.5"><input type="text" inputMode="decimal" value={line.credit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], credit: v, ...(v ? { debit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono focus:border-brand-300 focus:outline-none" /></td>
@@ -8003,7 +8005,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   </tr>
   ))}
   </tbody>
-  <tfoot><tr className="bg-neutral-50 border-t border-neutral-200"><td colSpan={3} className="px-3 py-2 text-xs font-semibold text-neutral-500 text-right">Totals</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-success-700":"text-danger-600"}`}>{acctFmt(totalDebit)}</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-success-700":"text-danger-600"}`}>{acctFmt(totalCredit)}</td><td /></tr></tfoot>
+  <tfoot><tr className="bg-neutral-50 border-t border-neutral-200"><td colSpan={4} className="px-3 py-2 text-xs font-semibold text-neutral-500 text-right">Totals</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-success-700":"text-danger-600"}`}>{acctFmt(totalDebit)}</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-success-700":"text-danger-600"}`}>{acctFmt(totalCredit)}</td><td /></tr></tfoot>
   </table>
   </div>
   {!validation.isValid && totalDebit > 0 && totalCredit > 0 && <div className="text-xs text-danger-600 bg-danger-50 rounded-2xl px-3 py-2">⚠ Out of balance by {acctFmt(validation.difference)}</div>}
@@ -8082,7 +8084,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   <div><p className="text-xs text-neutral-400">Status</p><AcctStatusBadge status={modal.je.status} /></div>
   </div>
   <table className="w-full text-sm rounded-xl border border-neutral-200 overflow-hidden">
-  <thead><tr className="bg-neutral-50"><th className="px-5 py-3 text-left text-xs font-semibold text-neutral-500">Account</th><th className="px-5 py-3 text-left text-xs font-semibold text-neutral-500">Class</th><th className="px-5 py-3 text-left text-xs font-semibold text-neutral-500">Memo</th><th className="px-5 py-3 text-right text-xs font-semibold text-neutral-500">Debit</th><th className="px-5 py-3 text-right text-xs font-semibold text-neutral-500">Credit</th></tr></thead>
+  <thead><tr className="bg-neutral-50"><th className="px-5 py-3 text-left text-xs font-semibold text-neutral-500">Account</th><th className="px-5 py-3 text-left text-xs font-semibold text-neutral-500">Class</th><th className="px-5 py-3 text-left text-xs font-semibold text-neutral-500">Name</th><th className="px-5 py-3 text-left text-xs font-semibold text-neutral-500">Memo</th><th className="px-5 py-3 text-right text-xs font-semibold text-neutral-500">Debit</th><th className="px-5 py-3 text-right text-xs font-semibold text-neutral-500">Credit</th></tr></thead>
   <tbody>
   {(modal.je.lines || []).map((l,i) => {
   const cls = classes.find(c => c.id === l.class_id);
@@ -8090,6 +8092,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   <tr key={i} className="border-t border-neutral-100">
   <td className="px-5 py-3">{(() => { const acct = accounts.find(a => a.id === l.account_id); const code = acct?.code || ""; const name = l.account_name || acct?.name || "Unknown Account"; return <>{code && <span className="font-mono text-xs text-neutral-400 mr-1">{code}</span>}{name}</>; })()}</td>
   <td className="px-4 py-2 text-xs">{cls ? <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{background:cls.color}} />{cls.name}</span> : "—"}</td>
+  <td className="px-4 py-2 text-xs text-neutral-500">{l.entity_name ? <span>{l.entity_type === "vendor" ? "V: " : "C: "}{l.entity_name}</span> : "—"}</td>
   <td className="px-4 py-2 text-xs text-neutral-400">{l.memo || "—"}</td>
   <td className="px-4 py-2 text-right font-mono">{safeNum(l.debit) > 0 ? acctFmt(l.debit) : ""}</td>
   <td className="px-4 py-2 text-right font-mono">{safeNum(l.credit) > 0 ? acctFmt(l.credit) : ""}</td>
@@ -9285,7 +9288,7 @@ function csvBuildFingerprint(feedId, date, amount, description) {
 }
 
 // --- Main Component ---
-function BankTransactions({ accounts, journalEntries, classes, companyId, showToast, showConfirm, userProfile, onRefreshAccounting }) {
+function BankTransactions({ accounts, journalEntries, classes, tenants = [], vendors = [], companyId, showToast, showConfirm, userProfile, onRefreshAccounting }) {
   // State
   const [feeds, setFeeds] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -9330,7 +9333,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
 
   // Action panel state
   const [actionMode, setActionMode] = useState("add"); // add | match | transfer | split
-  const [addForm, setAddForm] = useState({ accountId: "", accountName: "", memo: "", classId: "" });
+  const [addForm, setAddForm] = useState({ accountId: "", accountName: "", memo: "", classId: "", entityType: "", entityId: "", entityName: "" });
   const [transferForm, setTransferForm] = useState({ accountId: "", accountName: "", memo: "" });
   const [splitLines, setSplitLines] = useState([{ accountId: "", accountName: "", amount: "", memo: "", classId: "" }, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }]);
   const [matchCandidates, setMatchCandidates] = useState([]);
@@ -9595,7 +9598,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
   }
 
   // --- Transaction Actions ---
-  async function acceptTransaction(txn, accountId, accountName, memo, classId) {
+  async function acceptTransaction(txn, accountId, accountName, memo, classId, entityType, entityId, entityName) {
     if (!guardSubmit("bankAccept", txn.id)) { showToast("Already processing this transaction.", "warning"); return; }
     try {
     if (!accountId) { showToast("Please select a category/account.", "error"); return; }
@@ -9638,6 +9641,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       account_id: l.account_id, account_name: l.account_name,
       debit: safeNum(l.debit), credit: safeNum(l.credit),
       class_id: l.class_id || null, memo: l.memo || "",
+      entity_type: entityType || null, entity_id: entityId || null, entity_name: entityName || null,
       bank_feed_transaction_id: txn.id
     })));
 
@@ -9682,7 +9686,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
 
     showToast("Transaction categorized and posted.", "success");
     setExpandedTxn(null);
-    setAddForm({ accountId: "", accountName: "", memo: "", classId: "" });
+    setAddForm({ accountId: "", accountName: "", memo: "", classId: "", entityType: "", entityId: "", entityName: "" });
     fetchAll();
     if (onRefreshAccounting) onRefreshAccounting();
     } finally { guardRelease("bankAccept", txn.id); }
@@ -10631,10 +10635,14 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
 
       {/* ADD */}
       {actionMode === "add" && (
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-end">
         <div><label className="text-xs font-medium text-neutral-500 block mb-1">Category *</label>
           <select value={addForm.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); setAddForm({...addForm, accountId: e.target.value, accountName: a?.name || ""}); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
             <option value="">Select account...</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a => a.type === type && a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}
+          </select></div>
+        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Name</label>
+          <select value={addForm.entityId ? `${addForm.entityType}:${addForm.entityId}` : ""} onChange={e => { if (!e.target.value) { setAddForm(f => ({...f, entityType: "", entityId: "", entityName: ""})); return; } const [type, id] = e.target.value.split(":"); const name = type === "customer" ? tenants.find(t => t.id === id)?.name : vendors.find(v => v.id === id)?.name; setAddForm(f => ({...f, entityType: type, entityId: id, entityName: name || ""})); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+            <option value="">None</option><optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup><optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup>
           </select></div>
         <div><label className="text-xs font-medium text-neutral-500 block mb-1">Memo</label>
           <input type="text" value={addForm.memo} onChange={e => setAddForm({...addForm, memo: e.target.value})} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
@@ -10642,7 +10650,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
           <select value={addForm.classId} onChange={e => setAddForm({...addForm, classId: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
             <option value="">No class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select></div>
-        <button onClick={() => acceptTransaction(txn, addForm.accountId, addForm.accountName, addForm.memo, addForm.classId)} disabled={!addForm.accountId} className="bg-success-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-success-700">Add & Post</button>
+        <button onClick={() => acceptTransaction(txn, addForm.accountId, addForm.accountName, addForm.memo, addForm.classId, addForm.entityType, addForm.entityId, addForm.entityName)} disabled={!addForm.accountId} className="bg-success-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-success-700">Add & Post</button>
       </div>
       )}
 
@@ -11083,6 +11091,8 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   const [acctAccounts, setAcctAccounts] = useState([]);
   const [journalEntries, setJournalEntries] = useState([]);
   const [acctClasses, setAcctClasses] = useState([]);
+  const [acctTenants, setAcctTenants] = useState([]);
+  const [acctVendors, setAcctVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(initialAction === "newJE" ? "journal" : "overview");
   const [ledgerView, setLedgerView] = useState(null); // { accountIds: [], title: "" }
@@ -11094,10 +11104,12 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   async function fetchAll() {
   setLoading(true);
   try {
-  const [acctsRes, jesRes, clsRes] = await Promise.all([
+  const [acctsRes, jesRes, clsRes, tenantsRes, vendorsRes] = await Promise.all([
   supabase.from("acct_accounts").select("*").eq("company_id", companyId).order("code"),
   supabase.from("acct_journal_entries").select("*").eq("company_id", companyId).order("date", { ascending: false }),
   supabase.from("acct_classes").select("*").eq("company_id", companyId).order("name"),
+  supabase.from("tenants").select("id, name, property").eq("company_id", companyId).is("archived_at", null).order("name"),
+  supabase.from("vendors").select("id, name").eq("company_id", companyId).is("archived_at", null).order("name"),
   ]);
   // Normalize account types to PascalCase (DB may have lowercase from older seeds)
   const _typeNorm = { asset: "Asset", liability: "Liability", equity: "Equity", revenue: "Revenue", expense: "Expense", income: "Revenue", "other income": "Other Income", "other expense": "Other Expense", "cost of goods sold": "Cost of Goods Sold" };
@@ -11225,6 +11237,8 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   setAcctAccounts(accounts);
   setJournalEntries(jeHeaders);
   setAcctClasses(classes);
+  setAcctTenants(tenantsRes.data || []);
+  setAcctVendors(vendorsRes.data || []);
   } finally { setLoading(false); }
   }
 
@@ -11280,7 +11294,8 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({
   journal_entry_id: jeRow.id, company_id: companyId,
   account_id: l.account_id, account_name: l.account_name,
-  debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || ""
+  debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "",
+  entity_type: l.entity_type || null, entity_id: l.entity_id || null, entity_name: l.entity_name || null
   })));
   if (linesErr) {
   await supabase.from("acct_journal_entries").delete().eq("id", jeRow.id).eq("company_id", cid);
@@ -11309,11 +11324,11 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   const { error: _err3930 } = await supabase.from("acct_journal_lines").delete().eq("journal_entry_id", id).eq("company_id", companyId);
   if (_err3930) pmError("PM-4003", { raw: _err3930, context: "acct_journal_lines write", silent: true });
   if (lines?.length > 0) {
-  const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "" })));
+  const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "", entity_type: l.entity_type || null, entity_id: l.entity_id || null, entity_name: l.entity_name || null })));
   if (linesErr) {
   pmError("PM-4003", { raw: linesErr, context: "update journal lines failed, restoring" });
   if (oldLines?.length > 0) {
-  await supabase.from("acct_journal_lines").insert(oldLines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: l.debit, credit: l.credit, class_id: l.class_id, memo: l.memo })));
+  await supabase.from("acct_journal_lines").insert(oldLines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: l.debit, credit: l.credit, class_id: l.class_id, memo: l.memo, entity_type: l.entity_type, entity_id: l.entity_id, entity_name: l.entity_name })));
   }
   showToast("Error updating journal lines: " + linesErr.message, "error");
   fetchAll();
@@ -11589,8 +11604,8 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
 
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} addNotification={addNotification} userProfile={userProfile} />}
   {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
-  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} />}
-  {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} />}
+  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} />}
+  {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} companyId={companyId} userProfile={userProfile} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
