@@ -14,7 +14,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "./supabase";
-import { Input, Textarea } from "./ui";
+import { Input, Textarea, Select, Btn, Card, PageHeader, FormField, TabBar, FilterPill, SectionTitle, EmptyState, IconBtn, BulkBar } from "./ui";
 
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }
@@ -966,7 +966,7 @@ function ConfirmModal({ config, onConfirm, onCancel }) {
   <p className="text-sm text-slate-600 whitespace-pre-line">{config.message}</p>
   </div>
   <div className="px-6 py-4 border-t border-brand-50 flex justify-end gap-3">
-  <button onClick={onCancel} className="px-4 py-2 text-sm font-semibold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors">{config.cancelText || "Cancel"}</button>
+  <Btn variant="slate" onClick={onCancel}>{config.cancelText || "Cancel"}</Btn>
   <button onClick={onConfirm} className={"px-4 py-2 text-sm font-semibold text-white rounded-xl transition-colors " + (isDanger ? "bg-red-600 hover:bg-red-700" : "bg-brand-600 hover:bg-brand-700")}>{config.confirmText || (isDanger ? "Delete" : "Confirm")}</button>
   </div>
   </div>
@@ -1124,9 +1124,9 @@ function RecurringEntryModal({ entry, companyId, showToast, onComplete }) {
   </div>
   </div>
   <div className="flex gap-3 mt-4">
-  <button onClick={handleCreate} disabled={saving || !amount || Number(amount) <= 0} className="flex-1 bg-brand-600 text-white text-sm py-2.5 rounded-xl font-semibold hover:bg-brand-700 disabled:opacity-50">
+  <Btn size="lg" className="flex-1" onClick={handleCreate} disabled={saving || !amount || Number(amount) <= 0}>
   {saving ? "Creating..." : "Create Recurring Entry"}
-  </button>
+  </Btn>
   <button onClick={onComplete} className="flex-1 bg-slate-100 text-slate-600 text-sm py-2.5 rounded-xl font-semibold hover:bg-slate-200">Skip for Now</button>
   </div>
   </div>
@@ -1188,7 +1188,7 @@ function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUpl
   <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv" className="text-sm" />
   </div>
   {!isTenantUpload && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} className="accent-brand-600" />Visible to tenant</label>}
-  <button onClick={handleUpload} disabled={uploading} className="w-full bg-brand-600 text-white py-2.5 rounded-2xl font-semibold hover:bg-brand-700 disabled:opacity-50">{uploading ? "Uploading..." : "Upload"}</button>
+  <Btn className="w-full" onClick={handleUpload} disabled={uploading}>{uploading ? "Uploading..." : "Upload"}</Btn>
   </div>
   </Modal>
   );
@@ -1376,7 +1376,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   <div className="flex-1 flex items-center justify-center px-4">
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 w-full max-w-sm text-center">
   <div className="text-4xl mb-3">✅</div>
-  <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-2">Account Created!</h2>
+  <PageHeader title="Account Created!" />
   <p className="text-sm text-slate-400 mb-4">Check your email for a confirmation link. Once confirmed, you can sign in.</p>
   <button onClick={() => { setSignupSuccess(false); setMode("login"); setError(""); }} className="bg-brand-600 text-white py-2.5 px-6 rounded-lg font-semibold text-sm hover:bg-brand-700">Back to Sign In</button>
   </div>
@@ -1398,13 +1398,13 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   {isSignup && (
   <div className="text-center mb-4">
   <span className="text-3xl">{typeInfo.icon}</span>
-  <h2 className="text-2xl font-manrope font-bold text-slate-800 mt-2">{typeInfo.title}</h2>
+  <PageHeader title="{typeInfo.title}" />
   <p className="text-sm text-slate-400">{typeInfo.subtitle}</p>
   </div>
   )}
   {!isSignup && (
   <>
-  <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-1">Welcome back</h2>
+  <PageHeader title="Welcome back" />
   <p className="text-sm text-slate-400 mb-6">Sign in to your account</p>
   </>
   )}
@@ -1532,7 +1532,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   return (
   <div>
   <div className="flex items-center justify-between mb-5">
-  <h2 className="text-2xl font-manrope font-bold text-slate-800">Dashboard</h2>
+  <PageHeader title="Dashboard" />
   </div>
 
   {/* Notifications accessible via bell icon in header */}
@@ -3084,9 +3084,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             <button onClick={handleSkip} className="text-sm text-slate-400 hover:text-slate-600">Skip</button>
           )}
           {step < totalSteps ? (
-            <button onClick={handleNext} disabled={saving} className="bg-green-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50">{saving ? "Saving..." : "Next \u2192"}</button>
+            <Btn variant="success-fill" onClick={handleNext} disabled={saving}>{saving ? "Saving..." : "Next \u2192"}</Btn>
           ) : (
-            <button onClick={handleComplete} disabled={saving} className="bg-green-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50">{saving ? "Completing..." : "Complete Setup \u2713"}</button>
+            <Btn variant="success-fill" onClick={handleComplete} disabled={saving}>{saving ? "Completing..." : "Complete Setup \u2713"}</Btn>
           )}
         </div>
       </div>
@@ -3772,9 +3772,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   return (
   <div>
   <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-2">
-  <h2 className="text-xl md:text-2xl font-manrope font-bold text-slate-800">Properties</h2>
+  <PageHeader title="Properties" />
   <div className="flex items-center gap-3">
-  <button onClick={exportProperties} className="text-sm text-brand-600 border border-brand-200 px-3 py-1.5 rounded-2xl hover:bg-brand-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
+  <Btn variant="secondary" onClick={exportProperties}><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</Btn>
   <div className="flex gap-1">
   <button onClick={() => setShowArchived(false)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (!showArchived ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>Active ({properties.length})</button>
   <button onClick={() => { setShowArchived(true); fetchArchivedProperties(); }} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (showArchived ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>Archived ({archivedProperties.length})</button>
@@ -3853,23 +3853,23 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {propertyTypes.map(t => <option key={t} value={t}>{t}</option>)}
   </select>
   {hasManagedProps && (
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={filterOwnership} onChange={e => setFilterOwnership(e.target.value)} >
+  <Select value={filterOwnership} onChange={e => setFilterOwnership(e.target.value)} >
   <option value="all">All Properties</option>
   <option value="owned">Owned by Us</option>
   <option value="managed">PM-Managed</option>
-  </select>
+  </Select>
   )}
   {propertyOwners.length > 1 && (
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={filterOwner} onChange={e => setFilterOwner(e.target.value)} >
+  <Select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} >
   <option value="all">All Owners</option>
   {propertyOwners.map(o => <option key={o} value={o}>{o}</option>)}
-  </select>
+  </Select>
   )}
   {propertyCities.length > 1 && (
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={filterCity} onChange={e => setFilterCity(e.target.value)} >
+  <Select value={filterCity} onChange={e => setFilterCity(e.target.value)} >
   <option value="all">All Cities</option>
   {propertyCities.map(c => <option key={c} value={c}>{c}</option>)}
-  </select>
+  </Select>
   )}
   <div className="flex bg-brand-50 rounded-2xl p-0.5">
   {[["card","▦"],["table","☰"],["compact","≡"]].map(([m,icon]) => (
@@ -4280,7 +4280,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="Any additional notes" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={saveProperty} disabled={_submitGuards["saveProperty"]} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">{_submitGuards["saveProperty"] ? "Saving..." : (isAdmin ? "Save" : "Submit")}</button>
+  <Btn onClick={saveProperty} disabled={_submitGuards["saveProperty"]}>{_submitGuards["saveProperty"] ? "Saving..." : (isAdmin ? "Save" : "Submit")}</Btn>
   <button onClick={() => { setShowForm(false); setEditingProperty(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
@@ -5192,7 +5192,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <Input placeholder="e.g. Rent, Late fee, Repair" value={newCharge.description} title="Description" onChange={e => setNewCharge({ ...newCharge, description: e.target.value })} className="text-xs" />
   <Input placeholder="0.00" value={newCharge.amount} title="Amount ($)" onChange={e => setNewCharge({ ...newCharge, amount: e.target.value })} className="text-xs" />
   </div>
-  <button onClick={addLedgerEntry} className="mt-2 w-full bg-brand-600 text-white text-xs py-2 rounded-2xl hover:bg-brand-700">Add Transaction</button>
+  <Btn size="sm" className="mt-2 w-full" onClick={addLedgerEntry}>Add Transaction</Btn>
   </div>
   <div className="space-y-2">
   {ledger.map(e => (
@@ -5234,7 +5234,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   <div className="p-4 border-t border-brand-50 flex gap-2">
   <Input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} placeholder="Type a message..." className="flex-1" />
-  <button onClick={sendMessage} className="bg-brand-600 text-white px-4 py-2.5 rounded-2xl hover:bg-brand-700 text-sm font-medium">Send</button>
+  <Btn size="lg" onClick={sendMessage}>Send</Btn>
   </div>
   </div>
   )}
@@ -5438,7 +5438,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   <div className="flex gap-2">
   <Input value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type a message..." className="flex-1" onKeyDown={e => e.key === "Enter" && sendMessage()} />
-  <button onClick={sendMessage} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg">Send</button>
+  <Btn onClick={sendMessage}>Send</Btn>
   </div>
   </div>
   )}
@@ -5559,33 +5559,33 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
 
   {/* Toolbar */}
   <div className="flex items-center justify-between mb-3">
-  <h2 className="text-2xl font-manrope font-bold text-slate-800">Tenants</h2>
+  <PageHeader title="Tenants" />
   <div className="flex gap-2 items-center">
   <div className="flex bg-brand-50 rounded-2xl p-0.5">
   {[["card","\u25a6"],["table","\u2630"],["compact","\u2261"]].map(([m,icon]) => (
   <button key={m} onClick={() => setTenantView(m)} className={`px-3 py-1.5 text-sm rounded-md ${tenantView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-slate-400"}`}>{icon}</button>
   ))}
   </div>
-  <button onClick={exportTenants} className="text-sm text-brand-600 border border-brand-200 px-3 py-2 rounded-2xl hover:bg-brand-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
+  <Btn variant="secondary" onClick={exportTenants}><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</Btn>
   {/* Tenants are added through the Property Setup Wizard */}
   </div>
   </div>
   {/* Filters */}
   <div className="flex flex-wrap gap-2 mb-4">
   <Input placeholder="Search name, email, phone, property..." value={tenantSearch || ""} onChange={e => setTenantSearch(e.target.value)} className="flex-1 min-w-0 sm:min-w-48" />
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} >
+  <Select value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} >
   <option value="all">All Status</option><option value="active">Active</option><option value="notice">Notice</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
-  </select>
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={tenantFilterProp} onChange={e => setTenantFilterProp(e.target.value)} >
+  </Select>
+  <Select value={tenantFilterProp} onChange={e => setTenantFilterProp(e.target.value)} >
   <option value="all">All Properties</option>
   {[...new Set(tenants.map(t => t.property).filter(Boolean))].sort().map(p => <option key={p} value={p}>{p.length > 30 ? p.slice(0, 30) + "..." : p}</option>)}
-  </select>
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={tenantFilterBalance} onChange={e => setTenantFilterBalance(e.target.value)} >
+  </Select>
+  <Select value={tenantFilterBalance} onChange={e => setTenantFilterBalance(e.target.value)} >
   <option value="all">All Balances</option><option value="delinquent">Delinquent (owes)</option><option value="current">Current ($0)</option><option value="credit">Credit (overpaid)</option>
-  </select>
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={tenantFilterLeaseExpiry} onChange={e => setTenantFilterLeaseExpiry(e.target.value)} >
+  </Select>
+  <Select value={tenantFilterLeaseExpiry} onChange={e => setTenantFilterLeaseExpiry(e.target.value)} >
   <option value="all">All Leases</option><option value="30">Expires in 30 days</option><option value="60">Expires in 60 days</option><option value="90">Expires in 90 days</option><option value="expired">Expired</option><option value="no_lease">No lease date</option>
-  </select>
+  </Select>
   {(tenantFilter !== "all" || tenantFilterProp !== "all" || tenantFilterBalance !== "all" || tenantFilterLeaseExpiry !== "all" || tenantSearch) && (
   <button onClick={() => { setTenantFilter("all"); setTenantFilterProp("all"); setTenantFilterBalance("all"); setTenantFilterLeaseExpiry("all"); setTenantSearch(""); }} className="text-xs text-red-500 border border-red-200 px-3 py-2 rounded-2xl hover:bg-red-50">Clear Filters</button>
   )}
@@ -5609,9 +5609,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="space-y-3">
   <p className="text-sm text-slate-500">This will set the selected tenants' status to "notice" and generate a move-out date.</p>
   <div><label className="text-xs font-medium text-slate-400 block mb-1">Notice Period (days)</label>
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" id="bulk-notice-days" >
+  <Select id="bulk-notice-days" >
   <option value="30">30 days</option><option value="60">60 days</option><option value="90">90 days</option>
-  </select>
+  </Select>
   </div>
   <button onClick={async () => {
   if (!guardSubmit("bulkNotice")) return;
@@ -5758,7 +5758,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   )}
   <div className="flex gap-2 mt-3">
-  <button onClick={saveTenant} disabled={_submitGuards["saveTenant"]} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">{_submitGuards["saveTenant"] ? "Saving..." : "Save"}</button>
+  <Btn onClick={saveTenant} disabled={_submitGuards["saveTenant"]}>{_submitGuards["saveTenant"] ? "Saving..." : "Save"}</Btn>
   <button onClick={() => { setShowForm(false); setEditingTenant(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
@@ -5936,7 +5936,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   return (
   <div>
   <div className="flex items-center justify-between mb-5">
-  <h2 className="text-2xl font-manrope font-bold text-slate-800">Payments</h2>
+  <PageHeader title="Payments" />
   <div className="flex gap-2">
   <button onClick={() => exportToCSV(payments, [
   { label: "Date", key: "date" }, { label: "Tenant", key: "tenant" },
@@ -6227,7 +6227,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div className="text-xs font-semibold text-slate-500 mb-2">Upload New Photo</div>
   <div className="flex gap-2">
   <Input type="file" accept="image/*" ref={photoRef} className="flex-1" />
-  <button onClick={uploadPhoto} disabled={uploadingPhoto} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700 disabled:opacity-50">{uploadingPhoto ? "Uploading..." : "Upload"}</button>
+  <Btn onClick={uploadPhoto} disabled={uploadingPhoto}>{uploadingPhoto ? "Uploading..." : "Upload"}</Btn>
   </div>
   </div>
   {woPhotos.length === 0 ? (
@@ -6250,9 +6250,9 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   </div>
   )}
   <div className="flex flex-col md:flex-row md:items-center justify-between mb-5 gap-2">
-  <h2 className="text-xl md:text-2xl font-manrope font-bold text-slate-800">Maintenance</h2>
+  <PageHeader title="Maintenance" />
   <div className="flex items-center gap-2">
-  <button onClick={exportWorkOrders} className="text-sm text-brand-600 border border-brand-200 px-3 py-1.5 rounded-2xl hover:bg-brand-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
+  <Btn variant="secondary" onClick={exportWorkOrders}><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</Btn>
   </div>
   <div className="flex gap-1 overflow-x-auto pb-1">
   {[["workorders", "Work Orders"], ["inspections", "Inspections"], ["vendors", "Vendors"], ["archived", "Archived"]].map(([id, label]) => (
@@ -6292,7 +6292,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="Completion details, parts used, etc." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={saveWorkOrder} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">Save</button>
+  <Btn onClick={saveWorkOrder}>Save</Btn>
   <button onClick={() => { setShowForm(false); setEditingWO(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-2xl hover:bg-slate-100">Cancel</button>
   </div>
   </div>
@@ -6629,8 +6629,8 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
 
   {/* Tab Navigation */}
   <div className="flex flex-col md:flex-row md:items-center gap-2 mb-5 border-b border-brand-50 pb-3">
-  <h2 className="text-xl md:text-2xl font-manrope font-bold text-slate-800">Utilities</h2>
-  <button onClick={exportUtilities} className="text-sm text-brand-600 border border-brand-200 px-3 py-1.5 rounded-2xl hover:bg-brand-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
+  <PageHeader title="Utilities" />
+  <Btn variant="secondary" onClick={exportUtilities}><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</Btn>
   <div className="flex gap-1 overflow-x-auto pb-1">
   {[["bills", "Manual Bills"], ["automation", "⚡ Automation"], ["jobs", "Job History"]].map(([id, label]) => (
   <button key={id} onClick={() => setUtilTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (utilTab === id ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>{label}</button>
@@ -6664,7 +6664,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div><label className="text-xs font-medium text-gray-500 mb-1 block">2FA Method</label><select value={accountForm.two_factor_method} onChange={e => setAccountForm({...accountForm, two_factor_method: e.target.value})} className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full"><option value="none">None</option><option value="sms">SMS</option><option value="email">Email</option></select></div>
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={saveAccount} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-brand-700">Save Account</button>
+  <Btn onClick={saveAccount}>Save Account</Btn>
   <button onClick={() => { setShowAccountForm(false); setEditingAccount(null); }} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
@@ -6743,13 +6743,13 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="flex flex-col md:flex-row gap-3 mb-4">
   <div className="mr-auto"></div>
   <Input placeholder="Search..." value={utilSearch} onChange={e => setUtilSearch(e.target.value)} className="w-full sm:w-40" />
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} >
+  <Select value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} >
   <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
-  </select>
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={utilFilterProp} onChange={e => setUtilFilterProp(e.target.value)} >
+  </Select>
+  <Select value={utilFilterProp} onChange={e => setUtilFilterProp(e.target.value)} >
   <option value="all">All Properties</option>
   {[...new Set(utilities.map(u => u.property).filter(Boolean))].map(p => <option key={p} value={p}>{p}</option>)}
-  </select>
+  </Select>
   <div className="flex bg-brand-50 rounded-2xl p-0.5">
   {[["card","▦"],["table","☰"]].map(([m,icon]) => (
   <button key={m} onClick={() => setUtilView(m)} className={`px-3 py-1.5 text-sm rounded-md ${utilView === m ? "bg-white shadow-sm text-brand-700 font-semibold" : "text-slate-400"}`}>{icon}</button>
@@ -6785,7 +6785,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </div></div>
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={addUtility} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
+  <Btn onClick={addUtility}>Save</Btn>
   <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
@@ -7044,7 +7044,7 @@ function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
   </div>
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={saveEntry} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-brand-700">{editingEntry ? "Update" : "Create"}</button>
+  <Btn onClick={saveEntry}>{editingEntry ? "Update" : "Create"}</Btn>
   <button onClick={() => { setShowForm(false); setEditingEntry(null); }} className="bg-gray-100 text-gray-600 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
@@ -7572,7 +7572,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   </div>
   <div className="flex gap-2">
   <button onClick={() => setShowInactive(!showInactive)} className={`text-xs px-3 py-1.5 rounded-lg border ${showInactive ? "bg-brand-50 border-brand-200" : "border-brand-100 text-slate-400"}`}>{showInactive ? "Hide Inactive" : "Show Inactive"}</button>
-  <button onClick={openAdd} className="bg-green-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-green-700">+ New Account</button>
+  <Btn variant="success-fill" size="sm" onClick={openAdd}>+ New Account</Btn>
   </div>
   </div>
   <div className="flex flex-wrap gap-2 mb-4">
@@ -7634,7 +7634,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   <div><label className="text-xs font-medium text-slate-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
   <div className="flex justify-end gap-2 pt-2">
   <button onClick={() => setModal(null)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
-  <button onClick={saveAccount} className="bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700">{modal === "add" ? "Create" : "Save"}</button>
+  <Btn variant="success-fill" onClick={saveAccount}>{modal === "add" ? "Create" : "Save"}</Btn>
   </div>
   </div>
   </AcctModal>
@@ -7764,7 +7764,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, onAdd, onUpdate
   <div className="space-y-4">
   <div className="flex items-center justify-between mb-4">
   <div><h3 className="text-lg font-semibold text-slate-900">Journal Entries</h3><p className="text-sm text-slate-400">Record and manage financial transactions</p></div>
-  <button onClick={openAdd} className="bg-green-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-green-700">+ New Entry</button>
+  <Btn variant="success-fill" size="sm" onClick={openAdd}>+ New Entry</Btn>
   </div>
   <div className="flex gap-2 mb-4">
   {[{k:"all",l:`All (${counts.all})`},{k:"posted",l:`Posted (${counts.posted})`},{k:"draft",l:`Drafts (${counts.draft})`},{k:"voided",l:`Voided (${counts.voided})`}].map(f => (
@@ -7885,7 +7885,7 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   <div className="space-y-4">
   <div className="flex items-center justify-between mb-4">
   <div><h3 className="text-lg font-semibold text-slate-900">Class Tracking</h3><p className="text-sm text-slate-400">Track by unit, property, or department</p></div>
-  <button onClick={openAdd} className="bg-green-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-green-700">+ New Class</button>
+  <Btn variant="success-fill" size="sm" onClick={openAdd}>+ New Class</Btn>
   </div>
   <div className="flex flex-wrap gap-2 mb-4">
   {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${period === p ? "bg-green-600 text-white border-green-600" : "bg-white text-slate-500 border-slate-200 hover:border-green-300"}`}>{p}</button>)}
@@ -7919,7 +7919,7 @@ function AcctClassTracking({ accounts, journalEntries, classes, onAdd, onUpdate,
   <div><label className="text-xs font-medium text-slate-500 block mb-2">Color</label><div className="flex gap-2 flex-wrap">{COLORS.map(c => <button key={c} type="button" onClick={() => setForm({...form,color:c})} className={`w-7 h-7 rounded-full border-2 ${form.color===c?"border-gray-800 scale-110":"border-transparent"}`} style={{background:c}} />)}</div></div>
   <div className="flex justify-end gap-2 pt-2">
   <button onClick={() => setModal(null)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
-  <button onClick={saveClass} className="bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700">{modal === "add" ? "Create" : "Save"}</button>
+  <Btn variant="success-fill" onClick={saveClass}>{modal === "add" ? "Create" : "Save"}</Btn>
   </div>
   </div>
   </AcctModal>
@@ -8589,7 +8589,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
       {SHOW_ACCOUNT && <div><label className="text-xs text-slate-500 block mb-1">Account</label><select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white min-w-48">{accounts.filter(a=>a.is_active).map(a => <option key={a.id} value={a.id}>{a.code||"•"} {a.name}</option>)}</select></div>}
       <div className="flex items-end gap-2 ml-auto">
         <input type="text" value={saveReportName} onChange={e => setSaveReportName(e.target.value)} placeholder="Save as..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-32" />
-        <button onClick={saveCustomReport} disabled={!saveReportName.trim()} className="bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg disabled:opacity-40 hover:bg-green-700 whitespace-nowrap">Save Config</button>
+        <Btn variant="success-fill" size="sm" className="disabled:opacity-40 whitespace-nowrap" onClick={saveCustomReport} disabled={!saveReportName.trim()}>Save Config</Btn>
       </div>
     </div>
 
@@ -10372,7 +10372,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       <div><label className="text-xs font-medium text-slate-500 block mb-1">Institution</label><Input value={newAccountForm.institution_name} onChange={e => setNewAccountForm({...newAccountForm, institution_name: e.target.value})} placeholder="e.g. Chase, Bank of America" /></div>
     </div>
     <div className="flex gap-2 mt-4">
-      <button onClick={createFeed} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-brand-700">Create</button>
+      <Btn onClick={createFeed}>Create</Btn>
       <button onClick={() => setShowNewAccount(false)} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
     </div>
   </div>
@@ -10490,7 +10490,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
         <div className="flex justify-between text-sm"><span className="text-slate-400">Valid rows</span><span className="font-bold text-slate-800">{wizPreview.filter(r=>r.valid).length}</span></div>
         <div className="flex justify-between text-sm mt-1"><span className="text-slate-400">Will skip (invalid)</span><span className="text-red-500">{wizPreview.filter(r=>!r.valid).length}</span></div>
       </div>
-      <div className="flex justify-between"><button onClick={() => setWizStep(4)} className="text-sm text-slate-400">← Back</button><button onClick={wizExecuteImport} className="bg-emerald-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-emerald-700">Import {wizPreview.filter(r=>r.valid).length} Transactions</button></div>
+      <div className="flex justify-between"><button onClick={() => setWizStep(4)} className="text-sm text-slate-400">← Back</button><Btn variant="success-fill" onClick={wizExecuteImport}>Import {wizPreview.filter(r=>r.valid).length} Transactions</Btn></div>
     </div>
     )}
 
@@ -11319,9 +11319,9 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   return (
   <div>
   <div className="flex items-center justify-between mb-5">
-  <h2 className="text-2xl font-manrope font-bold text-slate-800">Document Management</h2>
+  <PageHeader title="Document Management" />
   <div className="flex gap-2">
-  <button onClick={repairUrls} className="bg-amber-500 text-white text-sm px-4 py-2 rounded-lg hover:bg-amber-600" title="Fix broken View links for existing documents">🔧 Repair URLs</button>
+  <Btn variant="warning-fill" className="bg-amber-500 hover:bg-amber-600" onClick={repairUrls} title="Fix broken View links for existing documents">🔧 Repair URLs</Btn>
   <button onClick={() => setShowForm(!showForm)} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ Upload Document</button>
   </div>
   </div>
@@ -11343,9 +11343,9 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   <Input type="file" ref={fileRef} className="col-span-2" />
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={uploadDocument} disabled={uploading} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700 disabled:opacity-50">
+  <Btn onClick={uploadDocument} disabled={uploading}>
   {uploading ? "Uploading..." : "Upload"}
-  </button>
+  </Btn>
   <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-2xl hover:bg-slate-100">Cancel</button>
   </div>
   </div>
@@ -11517,9 +11517,9 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   )}
 
   <div className="flex items-center justify-between mb-5">
-  <h2 className="text-2xl font-manrope font-bold text-slate-800">Inspections</h2>
+  <PageHeader title="Inspections" />
   <div className="flex gap-2">
-  <button onClick={exportInspections} className="text-sm text-brand-600 border border-brand-200 px-3 py-2 rounded-2xl hover:bg-brand-50 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</button>
+  <Btn variant="secondary" onClick={exportInspections}><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</Btn>
   <button onClick={() => { setShowForm(!showForm); initChecklist("Move-In"); }} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Inspection</button>
   </div>
   </div>
@@ -11551,7 +11551,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   </div>
 
   <div className="flex gap-2">
-  <button onClick={saveInspection} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">Save Inspection</button>
+  <Btn onClick={saveInspection}>Save Inspection</Btn>
   <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-2xl hover:bg-slate-100">Cancel</button>
   </div>
   </div>
@@ -11931,7 +11931,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   return (
   <div>
   <div className="flex justify-between items-center mb-5">
-  <h2 className="text-2xl font-manrope font-bold text-slate-800">Lease Management</h2>
+  <PageHeader title="Lease Management" />
   <div className="flex gap-2">
   <button onClick={() => setShowTemplateForm(true)} className="text-xs border border-brand-100 text-slate-500 px-3 py-2 rounded-lg hover:bg-brand-50/30">Manage Templates</button>
   <button onClick={() => { resetForm(); setShowForm(true); }} className="bg-brand-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Lease</button>
@@ -11974,7 +11974,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
   <Textarea placeholder="Standard clauses..." value={templateForm.clauses} onChange={e => setTemplateForm({...templateForm, clauses: e.target.value})}  rows={4} />
   <Textarea placeholder="Special terms..." value={templateForm.special_terms} onChange={e => setTemplateForm({...templateForm, special_terms: e.target.value})}  rows={3} />
-  <button onClick={saveTemplate} className="bg-brand-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-brand-700">Save Template</button>
+  <Btn onClick={saveTemplate}>Save Template</Btn>
   </div>
   </Modal>
   )}
@@ -12014,18 +12014,18 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <h3 className="font-manrope font-semibold text-slate-800 mb-4">{editingLease ? "Edit Lease" : "Create New Lease"}</h3>
   {!editingLease && templates.length > 0 && (
   <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Apply Template</label>
-  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.template_id} onChange={e => { setForm({...form, template_id: e.target.value}); applyTemplate(e.target.value); }} >
+  <Select value={form.template_id} onChange={e => { setForm({...form, template_id: e.target.value}); applyTemplate(e.target.value); }} >
   <option value="">Select template...</option>
   {templates.map(t => <option key={t.id} value={t.id}>{t.name} — {t.description}</option>)}
-  </select>
+  </Select>
   </div>
   )}
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div><label className="text-xs text-slate-400 mb-1 block">Tenant *</label>
-  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.tenant_name} onChange={e => { setForm({...form, tenant_name: e.target.value}); prefillFromTenant(e.target.value); }} >
+  <Select value={form.tenant_name} onChange={e => { setForm({...form, tenant_name: e.target.value}); prefillFromTenant(e.target.value); }} >
   <option value="">Select tenant...</option>
   {tenants.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
-  </select>
+  </Select>
   </div>
   <div><label className="text-xs text-slate-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({...form, property: v})} companyId={companyId} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Lease Start *</label><Input type="date" value={form.start_date} onChange={e => setForm({...form, start_date: e.target.value})} /></div>
@@ -12035,7 +12035,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <div><label className="text-xs text-slate-400 mb-1 block">Annual Escalation %</label><Input type="number" step="0.1" min="0" max="25" placeholder="3.0" value={form.rent_escalation_pct} onChange={e => setForm({...form, rent_escalation_pct: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Payment Due Day</label><Input type="number" min="1" max="31" placeholder="1" value={form.payment_due_day} onChange={e => setForm({...form, payment_due_day: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Lease Type</label>
-  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.lease_type} onChange={e => setForm({...form, lease_type: e.target.value})} ><option value="fixed">Fixed Term</option><option value="month_to_month">Month-to-Month</option><option value="renewal">Renewal</option></select></div>
+  <Select value={form.lease_type} onChange={e => setForm({...form, lease_type: e.target.value})} ><option value="fixed">Fixed Term</option><option value="month_to_month">Month-to-Month</option><option value="renewal">Renewal</option></Select></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Renewal Notice (days)</label><Input type="number" min="0" max="180" placeholder="60" value={form.renewal_notice_days} onChange={e => setForm({...form, renewal_notice_days: e.target.value})} /></div>
   </div>
   {/* Late Fee Settings */}
@@ -12052,7 +12052,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   <div className="mb-3"><label className="text-xs text-slate-400 mb-1 block">Lease Clauses</label><Textarea value={form.clauses} onChange={e => setForm({...form, clauses: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={3} placeholder="Standard clauses..." /></div>
   <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Special Terms</label><Textarea value={form.special_terms} onChange={e => setForm({...form, special_terms: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={2} placeholder="Pet deposit, parking, storage..." /></div>
   <div className="flex gap-2">
-  <button onClick={saveLease} className="bg-brand-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-brand-700">{editingLease ? "Update Lease" : "Create Lease"}</button>
+  <Btn onClick={saveLease}>{editingLease ? "Update Lease" : "Create Lease"}</Btn>
   <button onClick={resetForm} className="text-sm text-slate-400 px-4 py-2 hover:text-slate-700">Cancel</button>
   </div>
   </div>
@@ -12330,7 +12330,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   return (
   <div>
   <div className="flex justify-between items-center mb-5">
-  <h2 className="text-2xl font-manrope font-bold text-slate-800">Vendor Management</h2>
+  <PageHeader title="Vendor Management" />
   <div className="flex gap-2">
   <button onClick={() => setShowInvoiceForm(true)} className="text-xs border border-brand-100 text-slate-500 px-3 py-2 rounded-lg hover:bg-brand-50/30">+ Invoice</button>
   <button onClick={() => { resetVendorForm(); setShowForm(true); }} className="bg-brand-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Vendor</button>
@@ -12374,14 +12374,14 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div><label className="text-xs text-slate-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({...form, phone: formatPhoneInput(e.target.value)})} maxLength={14} /></div>
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Address</label><Input placeholder="123 Main St, City, State ZIP" value={form.address} onChange={e => setForm({...form, address: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Specialty</label>
-  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.specialty} onChange={e => setForm({...form, specialty: e.target.value})} >
+  <Select value={form.specialty} onChange={e => setForm({...form, specialty: e.target.value})} >
   {specialties.map(s => <option key={s} value={s}>{s}</option>)}
-  </select>
+  </Select>
   </div>
   <div><label className="text-xs text-slate-400 mb-1 block">Status</label>
-  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.status} onChange={e => setForm({...form, status: e.target.value})} >
+  <Select value={form.status} onChange={e => setForm({...form, status: e.target.value})} >
   <option value="active">Active</option><option value="preferred">Preferred</option><option value="inactive">Inactive</option><option value="blocked">Blocked</option>
-  </select>
+  </Select>
   </div>
   <div><label className="text-xs text-slate-400 mb-1 block">License #</label><Input placeholder="e.g. VA-12345" value={form.license_number} onChange={e => setForm({...form, license_number: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Insurance Expiry</label><Input type="date" value={form.insurance_expiry} onChange={e => setForm({...form, insurance_expiry: e.target.value})} /></div>
@@ -12390,7 +12390,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   </div>
   <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Notes</label><Textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={2} /></div>
   <div className="flex gap-2">
-  <button onClick={saveVendor} className="bg-brand-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-brand-700">{editingVendor ? "Update" : "Add Vendor"}</button>
+  <Btn onClick={saveVendor}>{editingVendor ? "Update" : "Add Vendor"}</Btn>
   <button onClick={resetVendorForm} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
   </div>
   </div>
@@ -12415,7 +12415,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div className="col-span-2"><label className="text-xs text-slate-400 mb-1 block">Description</label><Input value={invoiceForm.description} onChange={e => setInvoiceForm({...invoiceForm, description: e.target.value})} placeholder="Plumbing repair at 123 Main St" /></div>
   </div>
   <div className="flex gap-2">
-  <button onClick={saveInvoice} className="bg-brand-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-brand-700">Save Invoice</button>
+  <Btn onClick={saveInvoice}>Save Invoice</Btn>
   <button onClick={() => setShowInvoiceForm(false)} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
   </div>
   </div>
@@ -12426,10 +12426,10 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div>
   <div className="flex gap-2 mb-4">
   <Input placeholder="Search vendors..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="flex-1" />
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={filterSpecialty} onChange={e => setFilterSpecialty(e.target.value)} >
+  <Select value={filterSpecialty} onChange={e => setFilterSpecialty(e.target.value)} >
   <option value="all">All Specialties</option>
   {specialties.map(s => <option key={s} value={s}>{s}</option>)}
-  </select>
+  </Select>
   </div>
   <div className="space-y-3">
   {filteredVendors.map(v => {
@@ -12751,7 +12751,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   return (
   <div>
   <div className="flex justify-between items-center mb-5">
-  <h2 className="text-2xl font-manrope font-bold text-slate-800">Owner Management</h2>
+  <PageHeader title="Owner Management" />
   <div className="flex gap-2">
   <button onClick={() => setShowGenerate(true)} className="text-xs border border-brand-100 text-slate-500 px-3 py-2 rounded-lg hover:bg-brand-50/30">Generate Statement</button>
   <button onClick={() => { resetForm(); setShowForm(true); }} className="bg-brand-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Owner</button>
@@ -12777,10 +12777,10 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <h3 className="font-manrope font-semibold text-slate-800 mb-4">Generate Owner Statement</h3>
   <div className="grid grid-cols-2 gap-3 mb-4">
   <div><label className="text-xs text-slate-400 mb-1 block">Owner *</label>
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={genOwner} onChange={e => setGenOwner(e.target.value)} >
+  <Select value={genOwner} onChange={e => setGenOwner(e.target.value)} >
   <option value="">Select owner...</option>
   {activeOwners.map(o => <option key={o.id} value={o.id}>{o.name} ({properties.filter(p => String(p.owner_id) === String(o.id)).length} properties)</option>)}
-  </select>
+  </Select>
   </div>
   <div><label className="text-xs text-slate-400 mb-1 block">Month</label><Input placeholder="Enter name" type="month" value={genMonth} onChange={e => setGenMonth(e.target.value)} /></div>
   </div>
@@ -12792,7 +12792,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   </div>
   )}
   <div className="flex gap-2">
-  <button onClick={generateStatement} className="bg-brand-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-brand-700">Generate</button>
+  <Btn onClick={generateStatement}>Generate</Btn>
   <button onClick={() => setShowGenerate(false)} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
   </div>
   </div>
@@ -12815,19 +12815,19 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <div><label className="text-xs text-slate-400 mb-1 block">Tax ID / EIN</label><Input placeholder="XX-XXXXXXX" value={form.tax_id} onChange={e => setForm({...form, tax_id: e.target.value})} maxLength={10} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Management Fee %</label><Input type="number" step="0.5" min="0" max="50" placeholder="10.0" value={form.management_fee_pct} onChange={e => setForm({...form, management_fee_pct: e.target.value})} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Payment Method</label>
-  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.payment_method} onChange={e => setForm({...form, payment_method: e.target.value})} >
+  <Select value={form.payment_method} onChange={e => setForm({...form, payment_method: e.target.value})} >
   <option value="check">Check</option><option value="ach">ACH</option><option value="wire">Wire</option>
-  </select>
+  </Select>
   </div>
   <div><label className="text-xs text-slate-400 mb-1 block">Status</label>
-  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.status} onChange={e => setForm({...form, status: e.target.value})} >
+  <Select value={form.status} onChange={e => setForm({...form, status: e.target.value})} >
   <option value="active">Active</option><option value="inactive">Inactive</option>
-  </select>
+  </Select>
   </div>
   </div>
   <div className="mb-4"><label className="text-xs text-slate-400 mb-1 block">Notes</label><Textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={2} /></div>
   <div className="flex gap-2">
-  <button onClick={saveOwner} className="bg-brand-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-brand-700">{editingOwner ? "Update" : "Add Owner"}</button>
+  <Btn onClick={saveOwner}>{editingOwner ? "Update" : "Add Owner"}</Btn>
   <button onClick={resetForm} className="text-sm text-slate-400 px-4 py-2">Cancel</button>
   </div>
   </div>
@@ -13190,7 +13190,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
             <div className="text-xs text-red-600 mt-1">Locked by {periodLock.locked_by || "admin"} on {new Date(periodLock.locked_at).toLocaleDateString()}</div>
             {periodLock.notes && <div className="text-xs text-red-500 mt-1">{periodLock.notes}</div>}
           </div>
-          <button onClick={removePeriodLock} className="text-xs bg-white text-red-600 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50">Remove Lock</button>
+          <Btn variant="danger" size="sm" onClick={removePeriodLock}>Remove Lock</Btn>
         </div>
       </div>
       ) : (
@@ -13201,7 +13201,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
       <div className="grid grid-cols-2 gap-3">
         <div><label className="text-xs font-medium text-slate-500 block mb-1">Lock Date</label>
           <Input type="date" value={lockDate} onChange={e => setLockDate(e.target.value)} /></div>
-        <div className="flex items-end"><button onClick={savePeriodLock} disabled={!lockDate} className="bg-red-600 text-white text-sm px-6 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 w-full">Lock Period</button></div>
+        <div className="flex items-end"><Btn variant="danger-fill" className="w-full" onClick={savePeriodLock} disabled={!lockDate}>Lock Period</Btn></div>
       </div>
       <div className="mt-3 text-xs text-slate-400">
         <strong>What gets locked:</strong> No journal entries can be posted, edited, or voided with a date on or before the lock date. Bank feed transactions in locked periods cannot be accepted or undone. Recurring entries will skip locked periods.
@@ -13218,7 +13218,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   <div className="grid grid-cols-3 gap-3">
   <div><label className="text-xs text-slate-400 mb-1 block">Month</label><Input placeholder="Enter name" type="month" value={reconPeriod} onChange={e => setReconPeriod(e.target.value)} /></div>
   <div><label className="text-xs text-slate-400 mb-1 block">Bank Ending Balance ($)</label><Input type="number" step="0.01" value={bankBalance} onChange={e => setBankBalance(e.target.value)} placeholder="Enter from bank statement" /></div>
-  <div className="flex items-end"><button onClick={startReconciliation} className="bg-brand-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-brand-700 w-full">Begin Reconciliation</button></div>
+  <div className="flex items-end"><Btn className="w-full" onClick={startReconciliation}>Begin Reconciliation</Btn></div>
   </div>
   </div>
 
@@ -13288,7 +13288,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   </div>
 
   <div className="mb-3 flex items-center gap-2">
-  <button onClick={toggleAllRecon} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">{reconItems.every(i => i.reconciled) ? "Uncheck All" : "Check All"}</button>
+  <Btn variant="secondary" size="sm" onClick={toggleAllRecon}>{reconItems.every(i => i.reconciled) ? "Uncheck All" : "Check All"}</Btn>
   <button onClick={() => autoMatchItems(reconItems)} className="text-xs text-emerald-600 border border-emerald-200 px-3 py-1 rounded-lg hover:bg-emerald-50">⚡ Auto-Match</button>
   <span className="text-xs text-slate-400">{reconItems.length} transactions</span>
   </div>
@@ -13306,7 +13306,7 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   ))}
   </div>
 
-  <button onClick={saveReconciliation} className="bg-brand-600 text-white text-sm px-8 py-2.5 rounded-2xl hover:bg-brand-700">Save Reconciliation</button>
+  <Btn size="lg" className="px-8" onClick={saveReconciliation}>Save Reconciliation</Btn>
   </div>
   )}
   </div>
@@ -13483,8 +13483,8 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   return (
   <div>
   <div className="flex justify-between items-center mb-5">
-  <h2 className="text-2xl font-manrope font-bold text-slate-800">Email Notifications</h2>
-  <button onClick={runNotificationCheck} className="bg-brand-600 text-white text-xs px-4 py-2 rounded-2xl hover:bg-brand-700">Run Notification Check</button>
+  <PageHeader title="Email Notifications" />
+  <Btn size="sm" onClick={runNotificationCheck}>Run Notification Check</Btn>
   </div>
 
   <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
@@ -13538,7 +13538,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   <div className="flex items-center gap-3 text-xs mb-2">
   <span className="text-slate-400">Recipients:</span>
   <span className="font-medium text-slate-500">{s.recipients}</span>
-  <select className="border border-brand-100 rounded-lg px-2 py-1 text-xs" value={s.recipient_filter || "all"} onChange={async (e) => {
+  <Select value={s.recipient_filter || "all"} onChange={async (e) => {
   await supabase.from("notification_settings").update({ recipient_filter: e.target.value }).eq("id", s.id).eq("company_id", companyId);
   fetchData();
   }} className="text-xs border border-gray-200 rounded px-1.5 py-0.5 mr-2">
@@ -13546,7 +13546,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   <option value="tenant_only">Tenant Only</option>
   <option value="admin_only">Admin Only</option>
   <option value="both">Admin + Tenant</option>
-  </select>
+  </Select>
   <div className="flex gap-1 mr-3">
   {channels.map(ch => (
   <button key={ch} onClick={async () => {
@@ -13784,7 +13784,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   {signers.length === 0 && (
   <div className="text-center py-4">
   <div className="text-sm text-slate-400 mb-3">No signature requests yet</div>
-  <button onClick={initSignatureRequest} className="bg-brand-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-brand-700">Send for Signature</button>
+  <Btn onClick={initSignatureRequest}>Send for Signature</Btn>
   </div>
   )}
   {signers.map(s => (
@@ -14004,7 +14004,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
   if (error) return (
   <div className="max-w-lg mx-auto mt-16 text-center">
   <div className="text-5xl mb-4">\ud83c\udfe0</div>
-  <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-2">Owner Portal</h2>
+  <PageHeader title="Owner Portal" />
   <p className="text-slate-400 mb-4">{error}</p>
   <p className="text-sm text-slate-400">Please contact your property manager to set up your owner portal access.</p>
   </div>
@@ -14299,10 +14299,10 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   return (
   <div>
   <div className="flex flex-col md:flex-row gap-3 mb-4">
-  <h2 className="text-2xl font-manrope font-bold text-slate-800 mr-auto">HOA Payments</h2>
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={hoaFilter} onChange={e => setHoaFilter(e.target.value)} >
+  <PageHeader title="HOA Payments" />
+  <Select value={hoaFilter} onChange={e => setHoaFilter(e.target.value)} >
   <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
-  </select>
+  </Select>
   <button onClick={() => { setEditingHoa(null); setForm({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "", website: "", username: "", password: "" }); setShowForm(!showForm); }} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ Add HOA</button>
   </div>
 
@@ -14333,7 +14333,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   </div></div>
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={saveHOA} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg">Save</button>
+  <Btn onClick={saveHOA}>Save</Btn>
   <button onClick={() => { setShowForm(false); setEditingHoa(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
@@ -14481,14 +14481,14 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   return (
   <div>
   <div className="flex flex-col md:flex-row gap-3 mb-4">
-  <h2 className="text-2xl font-manrope font-bold text-slate-800 mr-auto">Loans</h2>
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
+  <PageHeader title="Loans" />
+  <Select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
   <option value="all">All Properties</option>
   {uniqueProperties.map(p => <option key={p} value={p}>{p}</option>)}
-  </select>
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+  </Select>
+  <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
   <option value="all">All Status</option><option value="active">Active</option><option value="paid_off">Paid Off</option>
-  </select>
+  </Select>
   <button onClick={() => { setEditingLoan(null); setForm(emptyForm); setShowForm(true); }} className="bg-green-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-green-700">+ Add Loan</button>
   </div>
 
@@ -14535,7 +14535,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   </div></div>
   </div>
   <div className="flex gap-2 mt-4">
-  <button onClick={saveLoan} className="bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700">Save</button>
+  <Btn variant="success-fill" onClick={saveLoan}>Save</Btn>
   <button onClick={() => { setShowForm(false); setEditingLoan(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </Modal>
@@ -14669,11 +14669,11 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   return (
   <div>
   <div className="flex flex-col md:flex-row gap-3 mb-4">
-  <h2 className="text-2xl font-manrope font-bold text-slate-800 mr-auto">Insurance</h2>
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
+  <PageHeader title="Insurance" />
+  <Select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
   <option value="all">All Properties</option>
   {uniqueProperties.map(p => <option key={p} value={p}>{p}</option>)}
-  </select>
+  </Select>
   <button onClick={() => { setEditingPolicy(null); setForm(emptyForm); setShowForm(true); }} className="bg-green-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-green-700">+ Add Policy</button>
   </div>
 
@@ -14705,7 +14705,7 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   </div></div>
   </div>
   <div className="flex gap-2 mt-4">
-  <button onClick={savePolicy} className="bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700">Save</button>
+  <Btn variant="success-fill" onClick={savePolicy}>Save</Btn>
   <button onClick={() => { setShowForm(false); setEditingPolicy(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </Modal>
@@ -14848,7 +14848,7 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
   <div>
   <div className="flex items-center justify-between mb-5">
   <div>
-  <h2 className="text-2xl font-manrope font-bold text-slate-800">Archive</h2>
+  <PageHeader title="Archive" />
   <p className="text-xs text-slate-400 mt-1">Archived items are auto-purged after 180 days</p>
   </div>
   <div className="text-sm text-slate-400">{items.length} archived item{items.length !== 1 ? "s" : ""}</div>
@@ -15061,7 +15061,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   <div>
   <div className="flex items-center justify-between mb-5">
   <div>
-  <h2 className="text-2xl font-manrope font-bold text-slate-800">Autopay & Recurring Rent</h2>
+  <PageHeader title="Autopay & Recurring Rent" />
   <p className="text-xs text-slate-400 mt-0.5">Set recurring schedules per tenant with custom start and end dates</p>
   </div>
   <button onClick={() => setShowForm(!showForm)} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Schedule</button>
@@ -15081,9 +15081,9 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   </select></div>
   <div>
   <label className="text-xs text-slate-400 mb-1 block">Day of Month</label>
-  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.day_of_month} onChange={e => setForm({ ...form, day_of_month: e.target.value })} >
+  <Select value={form.day_of_month} onChange={e => setForm({ ...form, day_of_month: e.target.value })} >
   {Array.from({ length: 28 }, (_, i) => i + 1).map(d => <option key={d} value={String(d)}>{d}{d === 1 ? "st" : d === 2 ? "nd" : d === 3 ? "rd" : "th"}</option>)}
-  </select>
+  </Select>
   </div>
   <div><label className="text-xs font-medium text-slate-400 mb-1 block">Frequency</label><select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
   <option value="monthly">Monthly</option>
@@ -15100,7 +15100,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   </div>
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={saveSchedule} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">Save Schedule</button>
+  <Btn onClick={saveSchedule}>Save Schedule</Btn>
   <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
@@ -15250,11 +15250,11 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   <div>
   <div className="flex items-center justify-between mb-5">
   <div>
-  <h2 className="text-2xl font-manrope font-bold text-slate-800">Late Fee Automation</h2>
+  <PageHeader title="Late Fee Automation" />
   <p className="text-xs text-slate-400 mt-0.5">Auto-flag overdue payments and apply fees after grace period</p>
   </div>
   <div className="flex gap-2">
-  {afterGrace.length > 0 && <button onClick={applyAllFees} className="bg-red-500 text-white text-sm px-4 py-2 rounded-lg hover:bg-red-600">⚡ Apply All ({afterGrace.length})</button>}
+  {afterGrace.length > 0 && <Btn variant="danger-fill" className="bg-red-500 hover:bg-red-600" onClick={applyAllFees}>⚡ Apply All ({afterGrace.length})</Btn>}
   <button onClick={() => setShowForm(!showForm)} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ New Rule</button>
   </div>
   </div>
@@ -15282,7 +15282,7 @@ function LateFees({ addNotification, userProfile, userRole, companyId, showToast
   <div><label className="text-xs text-slate-400 mb-1 block">{form.fee_type === "flat" ? "Fee Amount ($)" : "Percentage (%)"}</label><Input type="number" min="0" step="0.01" placeholder={form.fee_type === "flat" ? "50.00" : "5.0"} value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} /></div>
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={saveRule} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">Save Rule</button>
+  <Btn onClick={saveRule}>Save Rule</Btn>
   <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
@@ -15748,7 +15748,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <label className="text-xs text-slate-400 mb-1 block">Attach Photo (optional)</label>
   <input type="file" accept="image/*" onChange={e => setMaintPhoto(e.target.files[0])} className="text-sm" />
   </div>
-  <button onClick={submitMaintenanceRequest} className="bg-brand-600 text-white text-sm px-6 py-2 rounded-2xl hover:bg-brand-700">Submit Request</button>
+  <Btn onClick={submitMaintenanceRequest}>Submit Request</Btn>
   </div>
   )}
   <div className="space-y-2">
@@ -15816,7 +15816,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   </div>
   <div className="p-3 border-t border-brand-50 flex gap-2">
   <Input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} placeholder="Message your property manager..." className="flex-1" />
-  <button onClick={sendMessage} className="bg-brand-600 text-white px-4 py-2 rounded-xl text-sm hover:bg-brand-700">Send</button>
+  <Btn onClick={sendMessage}>Send</Btn>
   </div>
   </div>
   )}
@@ -16000,10 +16000,10 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   <div>
   <div className="flex items-center justify-between mb-5">
   <div>
-  <h2 className="text-2xl font-manrope font-bold text-slate-800">Team & Role Management</h2>
+  <PageHeader title="Team & Role Management" />
   <p className="text-xs text-slate-400 mt-0.5">Add team members and choose exactly which modules they can access</p>
   </div>
-  <button onClick={startAdd} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ Add User</button>
+  <Btn onClick={startAdd}>+ Add User</Btn>
   </div>
 
   {/* Role legend */}
@@ -16099,9 +16099,9 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   )}
 
   <div className="flex gap-2 mt-4">
-  <button onClick={saveUser} className="bg-brand-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-brand-700">
+  <Btn size="lg" onClick={saveUser}>
   {editingUser ? "Save Changes" : "Add User"}
-  </button>
+  </Btn>
   <button onClick={() => { setShowForm(false); setEditingUser(null); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">
   Cancel
   </button>
@@ -16349,7 +16349,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto mb-4">
   <span className="material-icons-outlined text-3xl">check_circle</span>
   </div>
-  <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-2">Move-Out Complete</h2>
+  <PageHeader title="Move-Out Complete" />
   <p className="text-slate-400 mb-6">All accounting entries posted, lease terminated, and property marked vacant.</p>
   <button onClick={() => setPage("dashboard")} className="bg-brand-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-brand-700 transition-colors">Back to Dashboard</button>
   </div>
@@ -16359,7 +16359,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
 
   return (
   <div className="max-w-2xl mx-auto">
-  <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-6">Move-Out Wizard</h2>
+  <PageHeader title="Move-Out Wizard" />
 
   {/* Step indicator */}
   <div className="flex items-center gap-2 mb-8">
@@ -16379,10 +16379,10 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <div className="space-y-4">
   <div>
   <label className="text-xs font-medium text-slate-400 uppercase tracking-widest block mb-1">Tenant</label>
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={selectedTenant?.id || ""} onChange={e => selectTenant(e.target.value)} >
+  <Select value={selectedTenant?.id || ""} onChange={e => selectTenant(e.target.value)} >
   <option value="">Select tenant...</option>
   {tenants.map(t => <option key={t.id} value={t.id}>{t.name} — {t.property}</option>)}
-  </select>
+  </Select>
   </div>
   {selectedTenant && (
   <>
@@ -16444,7 +16444,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <div className="flex gap-2 mt-3">
   <Input placeholder="Description (e.g., Wall damage)" value={newDeductionDesc} onChange={e => setNewDeductionDesc(e.target.value)} className="flex-1" />
   <Input placeholder="$" type="number" value={newDeductionAmt} onChange={e => setNewDeductionAmt(e.target.value)} className="w-24" />
-  <button onClick={addDeduction} className="bg-brand-600 text-white px-3 py-2 rounded-2xl text-sm font-semibold">Add</button>
+  <Btn onClick={addDeduction}>Add</Btn>
   </div>
   <div className="bg-emerald-50 rounded-2xl p-4 mt-4 space-y-1">
   <div className="flex justify-between text-sm"><span className="text-slate-400">Total Deductions</span><span className="font-semibold text-red-600">-${totalDeductions.toFixed(2)}</span></div>
@@ -16506,9 +16506,9 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   </div>
   <div className="flex justify-between mt-6">
   <button onClick={() => setStep(4)} className="text-slate-400 px-4 py-2 rounded-2xl hover:bg-brand-50/30 transition-colors">← Back</button>
-  <button onClick={executeMoveOut} disabled={processing} className="bg-red-600 text-white px-6 py-2.5 rounded-2xl font-semibold hover:bg-red-700 disabled:opacity-40 transition-colors">
+  <Btn variant="danger-fill" className="disabled:opacity-40" onClick={executeMoveOut} disabled={processing}>
   {processing ? "Processing..." : "Execute Move-Out"}
-  </button>
+  </Btn>
   </div>
   </div>
   )}
@@ -16752,7 +16752,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <div>
   <div className="flex items-center justify-between mb-5">
   <div>
-  <h2 className="text-2xl font-manrope font-bold text-slate-800">Eviction Tracker</h2>
+  <PageHeader title="Eviction Tracker" />
   <p className="text-sm text-slate-400">Manage eviction cases from notice to resolution</p>
   </div>
   <button onClick={() => setShowForm(!showForm)} className="bg-red-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-red-700">+ New Case</button>
@@ -16779,7 +16779,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   </div>
   <div>
   <label className="text-xs font-medium text-slate-400 mb-1 block">Reason</label>
-  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} >
+  <Select value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} >
   <option value="non_payment">Non-Payment of Rent</option>
   <option value="lease_violation">Lease Violation</option>
   <option value="holdover">Holdover (Expired Lease)</option>
@@ -16787,27 +16787,27 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <option value="property_damage">Property Damage</option>
   <option value="unauthorized_occupant">Unauthorized Occupant</option>
   <option value="other">Other</option>
-  </select>
+  </Select>
   </div>
   <div>
   <label className="text-xs font-medium text-slate-400 mb-1 block">Notice Type</label>
-  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.notice_type} onChange={e => setForm({ ...form, notice_type: e.target.value })} >
+  <Select value={form.notice_type} onChange={e => setForm({ ...form, notice_type: e.target.value })} >
   <option value="pay_or_quit">Pay or Quit</option>
   <option value="cure_or_quit">Cure or Quit</option>
   <option value="unconditional_quit">Unconditional Quit</option>
   <option value="notice_to_vacate">Notice to Vacate</option>
-  </select>
+  </Select>
   </div>
   <div>
   <label className="text-xs font-medium text-slate-400 mb-1 block">Cure Period (days)</label>
-  <select className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" value={form.notice_days} onChange={e => setForm({ ...form, notice_days: e.target.value })} >
+  <Select value={form.notice_days} onChange={e => setForm({ ...form, notice_days: e.target.value })} >
   <option value="3">3 days</option><option value="5">5 days</option><option value="7">7 days</option><option value="10">10 days</option><option value="14">14 days</option><option value="30">30 days</option><option value="60">60 days</option>
-  </select>
+  </Select>
   </div>
   <div className="col-span-2"><label className="text-xs font-medium text-slate-400 mb-1 block">Notes</label><Textarea placeholder="Additional context or details..." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
   </div>
   <div className="flex gap-2 mt-3">
-  <button onClick={createCase} className="bg-red-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-red-700">Start Case</button>
+  <Btn variant="danger-fill" onClick={createCase}>Start Case</Btn>
   <button onClick={() => setShowForm(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-2xl">Cancel</button>
   </div>
   </div>
@@ -16816,12 +16816,12 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   {/* Filters */}
   <div className="flex flex-wrap gap-2 mb-4">
   <Input placeholder="Search tenant or property..." value={evSearch} onChange={e => setEvSearch(e.target.value)} className="flex-1 min-w-40" />
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={filterStage} onChange={e => setFilterStage(e.target.value)} >
+  <Select value={filterStage} onChange={e => setFilterStage(e.target.value)} >
   <option value="all">All Cases</option>
   <option value="active">Active Only</option>
   <option value="closed">Closed Only</option>
   {EVICTION_STAGES.filter(s => s.id !== "closed").map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-  </select>
+  </Select>
   </div>
 
   {/* Case Detail Panel */}
@@ -17719,7 +17719,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <button onClick={() => setTemplateForm(prev => ({ ...prev, template_type: "html" }))} className={"px-3 py-1.5 text-xs font-medium rounded-lg transition-colors " + (templateForm.template_type === "html" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700")}>HTML</button>
   <button onClick={() => setTemplateForm(prev => ({ ...prev, template_type: "pdf_overlay" }))} className={"px-3 py-1.5 text-xs font-medium rounded-lg transition-colors " + (templateForm.template_type === "pdf_overlay" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700")}>PDF Overlay</button>
   </div>
-  <button onClick={saveTemplate} className="bg-brand-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-brand-700 font-semibold">{editingTemplate ? "Update Template" : "Create Template"}</button>
+  <Btn size="lg" onClick={saveTemplate}>{editingTemplate ? "Update Template" : "Create Template"}</Btn>
   <span className="text-xs text-slate-300 ml-2">Esc to close</span>
   </div>
 
@@ -17750,7 +17750,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <div className="flex items-center justify-between mb-3">
   <h3 className="font-manrope font-bold text-slate-700">Form Fields ({templateForm.fields.length})</h3>
-  <button onClick={addField} className="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg hover:bg-brand-700">+ Add Field</button>
+  <Btn size="sm" onClick={addField}>+ Add Field</Btn>
   </div>
   <div className="space-y-3">
   {templateForm.fields.map((f, i) => (
@@ -18254,7 +18254,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   return (
   <div>
   <div className="flex items-center justify-between mb-5">
-  <h2 className="text-2xl font-manrope font-bold text-slate-800">Document Builder</h2>
+  <PageHeader title="Document Builder" />
   <div className="flex gap-1">
   {[["create","Create"],["templates","Templates"],["history","History"]].map(([id,label]) => (
   <button key={id} onClick={() => setTab(id)} className={"px-4 py-2 text-sm font-medium rounded-2xl " + (tab === id ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}>{label}</button>
@@ -18492,7 +18492,7 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   return (
   <div>
   <div className="flex items-center justify-between mb-5">
-  <h2 className="text-2xl font-manrope font-bold text-slate-800">Tasks & Approvals</h2>
+  <PageHeader title="Tasks & Approvals" />
   <button onClick={fetchAll} className="text-xs text-brand-600 hover:underline">Refresh</button>
   </div>
 
@@ -18589,7 +18589,7 @@ function AdminPage({ companyId, activeCompany, addNotification, userProfile, use
   const isAdmin = userRole === "admin";
   return (
   <div>
-  <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-1">Admin</h2>
+  <PageHeader title="Admin" />
   <p className="text-sm text-slate-400 mb-4">Manage team access and view activity logs</p>
   <div className="flex gap-1 mb-4 border-b border-brand-50">
   {[["audit", "Audit Trail"], ...(isAdmin ? [["team", "Team & Roles"]] : [])].map(([id, label]) => (
@@ -18668,19 +18668,19 @@ function AuditTrail({ companyId }) {
 
   return (
   <div>
-  <h2 className="text-2xl font-manrope font-bold text-slate-800 mb-1">Audit Trail</h2>
+  <PageHeader title="Audit Trail" />
   <p className="text-sm text-slate-400 mb-4">Complete activity log across all modules</p>
 
   {/* Filters */}
   <div className="flex flex-wrap gap-2 mb-4">
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={filterModule} onChange={e => { setFilterModule(e.target.value); setPage(0); }} >
+  <Select value={filterModule} onChange={e => { setFilterModule(e.target.value); setPage(0); }} >
   <option value="all">All Modules</option>
   {modules.map(m => <option key={m} value={m}>{moduleIcons[m] || "📌"} {m}</option>)}
-  </select>
-  <select className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm" value={filterAction} onChange={e => { setFilterAction(e.target.value); setPage(0); }} >
+  </Select>
+  <Select value={filterAction} onChange={e => { setFilterAction(e.target.value); setPage(0); }} >
   <option value="all">All Actions</option>
   {actions.map(a => <option key={a} value={a}>{a}</option>)}
-  </select>
+  </Select>
   <Input placeholder="Filter by user email..." value={filterUser} onChange={e => { setFilterUser(e.target.value); setPage(0); }} className="flex-1 min-w-48" />
   <button onClick={fetchLogs} className="bg-slate-100 text-slate-500 text-sm px-3 py-2 rounded-2xl hover:bg-slate-100">🔄 Refresh</button>
   </div>
@@ -18823,7 +18823,7 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   </button>
 
   <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-6 mb-4">
-  <h2 className="text-xl font-manrope font-bold text-slate-800 mb-5">Profile</h2>
+  <PageHeader title="Profile" />
 
   {/* Avatar */}
   <div className="flex items-center gap-4 mb-6">
@@ -18863,9 +18863,9 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   </div>
   </div>
 
-  <button onClick={saveProfile} disabled={saving} className="w-full bg-brand-600 text-white py-2.5 rounded-xl font-semibold text-sm hover:bg-brand-700 disabled:opacity-50 mb-3">
+  <Btn size="lg" className="w-full mb-3" onClick={saveProfile} disabled={saving}>
   {saving ? "Saving..." : "Save Changes"}
-  </button>
+  </Btn>
   </div>
 
   {/* Password Reset */}
@@ -18909,7 +18909,7 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   <p className="text-sm text-red-600 font-medium">Type "DELETE" to confirm:</p>
   <Input value={deleteText} onChange={e => setDeleteText(e.target.value.toUpperCase())} placeholder="Type DELETE" className="border-red-200" />
   <div className="flex gap-2">
-  <button onClick={deleteAccount} disabled={deleteText !== "DELETE" || deleting} className="bg-red-600 text-white text-sm px-4 py-2 rounded-xl hover:bg-red-700 disabled:opacity-50 font-medium">{deleting ? "Deleting..." : "Permanently Delete"}</button>
+  <Btn variant="danger-fill" onClick={deleteAccount} disabled={deleteText !== "DELETE" || deleting}>{deleting ? "Deleting..." : "Permanently Delete"}</Btn>
   <button onClick={() => { setShowDeleteConfirm(false); setDeleteText(""); }} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-xl">Cancel</button>
   </div>
   </div>
@@ -19245,7 +19245,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   <div><label className="text-xs font-medium text-slate-500">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={createForm.phone} onChange={e => setCreateForm({...createForm, phone: formatPhoneInput(e.target.value)})} maxLength={14} className="mt-1" /></div>
   </div>
   <div className="flex gap-2 pt-2">
-  <button onClick={createCompany} disabled={creating} className="bg-brand-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-brand-700 disabled:opacity-50">{creating ? "Creating..." : "Create Company"}</button>
+  <Btn size="lg" onClick={createCompany} disabled={creating}>{creating ? "Creating..." : "Create Company"}</Btn>
   <button onClick={() => setShowCreate(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   </div>
@@ -19261,7 +19261,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   <div className="text-xs text-slate-400 text-center">— or —</div>
   <div><label className="text-xs font-medium text-slate-500">Search by Name</label><Input value={joinSearch} onChange={e => setJoinSearch(e.target.value)} className="mt-1" placeholder="e.g. Sigma Housing" /></div>
   <div className="flex gap-2">
-  <button onClick={searchCompanies} className="bg-brand-600 text-white text-sm px-5 py-2 rounded-2xl hover:bg-brand-700">Search</button>
+  <Btn size="lg" onClick={searchCompanies}>Search</Btn>
   <button onClick={() => setShowJoin(false)} className="bg-slate-100 text-slate-500 text-sm px-4 py-2 rounded-lg">Cancel</button>
   </div>
   {searchResults.length > 0 && (
