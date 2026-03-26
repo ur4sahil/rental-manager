@@ -4613,7 +4613,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (!_depOk) showToast("Security deposit accounting entry failed.", "error");
   }
   // Rent charges — fire and forget (don't block the popup)
-  autoPostRentCharges(companyId).then(result => { if (result?.posted > 0) showToast("Posted " + result.posted + " rent charge(s)", "success"); }).catch(() => {});
+  autoPostRentCharges(companyId).then(result => { if (result?.posted > 0) showToast("Posted " + result.posted + " rent charge(s)", "success"); }).catch(e => console.warn("Auto rent charge posting failed:", e.message));
   setSavingTenant(false);
   // Queue recurring entry popup
   setPendingRecurringEntry({ tenantName: _name, tenantId: tenantId, property: _property, rent: _rent, leaseStart: _leaseStart, leaseEnd: _leaseEnd });
@@ -5423,14 +5423,14 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {tenantTab === "archived" && (
   <div>
   {archivedTenants.length === 0 ? (
-  <div className="text-center py-12 bg-white rounded-xl border border-gray-100"><div className="text-gray-400">No archived tenants</div><button onClick={async () => { const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200); setArchivedTenants(data || []); }} className="text-xs text-indigo-600 mt-2 hover:underline">Refresh</button></div>
+  <div className="text-center py-12 bg-white rounded-xl border border-gray-100"><div className="text-gray-400">No archived tenants</div><button onClick={async () => { if (!guardSubmit("refreshArchived")) return; try { const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200); setArchivedTenants(data || []); } finally { guardRelease("refreshArchived"); } }} className="text-xs text-indigo-600 mt-2 hover:underline">Refresh</button></div>
   ) : archivedTenants.map(t => (
   <div key={t.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4 opacity-70 mb-2">
   <div className="flex-1">
   <div className="font-semibold text-gray-700 text-sm">{t.name}</div>
   <div className="text-xs text-gray-400">{t.property} · Archived {t.archived_at ? new Date(t.archived_at).toLocaleDateString() : ""}</div>
   </div>
-  <button onClick={async () => { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", t.id).eq("company_id", companyId); addNotification("♻️", "Restored: " + t.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); fetchTenants(); }} className="text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 border border-emerald-200">♻️ Restore</button>
+  <button onClick={async () => { if (!guardSubmit("restoreTenant", t.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", t.id).eq("company_id", companyId); addNotification("♻️", "Restored: " + t.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); fetchTenants(); } finally { guardRelease("restoreTenant", t.id); } }} className="text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 border border-emerald-200">♻️ Restore</button>
   </div>
   ))}
   </div>
@@ -5458,7 +5458,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="flex gap-2 mt-3">
   <button onClick={() => { setShowDocUpload({ property: selectedTenant?.property || "", tenant: selectedTenant?.name || showTenantDocPrompt || "" }); setShowTenantDocPrompt(null); }} className="bg-amber-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-amber-700">Upload Documents Now</button>
   {isAdmin ? (
-  <button onClick={async () => { await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", showTenantDocPrompt).is("archived_at", null); showToast("Document exception approved for " + showTenantDocPrompt, "success"); setShowTenantDocPrompt(null); fetchTenants(); }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Admin: Approve Exception</button>
+  <button onClick={async () => { if (!guardSubmit("approveException")) return; try { await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", showTenantDocPrompt).is("archived_at", null); showToast("Document exception approved for " + showTenantDocPrompt, "success"); setShowTenantDocPrompt(null); fetchTenants(); } finally { guardRelease("approveException"); } }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Admin: Approve Exception</button>
   ) : (
   <button onClick={async () => { if (!guardSubmit("reqException")) return; try { if (!await showConfirm({ message: "Skipping requires admin approval. An approval request will be sent. Continue?" })) return; await supabase.from("doc_exception_requests").insert([{ company_id: companyId, tenant_name: showTenantDocPrompt, property: selectedTenant?.property || "", requested_by: userProfile?.email || "" }]); addNotification("📋", "Document exception request sent for " + showTenantDocPrompt); logAudit("request", "tenants", "Document exception requested for " + showTenantDocPrompt, "", userProfile?.email, userRole, companyId); setShowTenantDocPrompt(null); fetchDocExceptions(); } finally { guardRelease("reqException"); } }} className="bg-slate-100 text-slate-500 text-xs px-4 py-2 rounded-lg">Request Exception</button>
   )}
