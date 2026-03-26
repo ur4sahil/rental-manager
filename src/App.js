@@ -120,7 +120,7 @@ async function safeLedgerInsert(entry) {
   if (!entry.balance || entry.balance === 0) {
     try {
       // Find latest ledger entry for this tenant to get previous balance
-      let query = supabase.from("ledger_entries").select("balance").eq("company_id", entry.company_id);
+      let query = supabase.from("ledger_entries").select("balance").eq("company_id", entry.company_id).is("archived_at", null);
       if (entry.tenant_id) query = query.eq("tenant_id", entry.tenant_id);
       else if (entry.tenant) query = query.ilike("tenant", entry.tenant);
       else { entry.balance = 0; } // No tenant context — can't compute balance
@@ -142,7 +142,7 @@ async function safeLedgerInsert(entry) {
   }
   const { error } = await supabase.from("ledger_entries").insert([entry]);
   if (error) {
-  console.error("LEDGER ENTRY FAILED:", error.message, entry);
+  console.error("LEDGER ENTRY FAILED:", error.message, { type: entry.type, tenant_id: entry.tenant_id });
   }
   return !error;
 }
@@ -488,7 +488,7 @@ async function logAudit(action, module, details = "", recordId = "", userEmail =
 async function checkPeriodLock(companyId, date) {
   if (!date || !companyId) return false;
   const { data } = await supabase.from("accounting_period_lock").select("lock_date").eq("company_id", companyId).maybeSingle();
-  return data?.lock_date && date <= data.lock_date;
+  return data?.lock_date && date < data.lock_date;
 }
 
 async function autoPostJournalEntry({ date, description, reference, property, lines, status = "posted", companyId }) {
@@ -528,7 +528,7 @@ async function autoPostJournalEntry({ date, description, reference, property, li
   if (lineErr) {
   console.error("Journal lines insert failed:", lineErr.message);
   // Clean up orphan header
-  await supabase.from("acct_journal_entries").delete().eq("id", jeRow.id);
+  await supabase.from("acct_journal_entries").delete().eq("id", jeRow.id).eq("company_id", cid);
   return null;
   }
   }
@@ -2181,7 +2181,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
           const classId2 = await getPropertyClassId(addr, companyId);
           if (startDay > 1) {
             const remainingDays = daysInMonth - startDay + 1;
-            const proratedAmount = Math.round(monthlyRent * remainingDays / daysInMonth);
+            const proratedAmount = Math.round(monthlyRent * remainingDays / daysInMonth * 100) / 100;
             const proOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start,
               description: `Prorated rent (${remainingDays}/${daysInMonth} days) — ${tName} — ${addr.split(",")[0]}`,
               reference: "PRORENT-" + shortId(), property: addr,
@@ -3366,7 +3366,10 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   supabase.from("property_setup_wizard").update({ property_address: compositeAddress }).eq("company_id", companyId).eq("property_address", oldAddr),
   ]);
   const renameFails = renameResults.filter(r => r.status === "rejected");
-  if (renameFails.length > 0) showToast("Warning: " + renameFails.length + " table(s) failed to update during rename.", "warning");
+  if (renameFails.length > 0) {
+    console.error("Rename failures:", renameFails.map(r => r.reason?.message || r.reason));
+    showToast("Warning: " + renameFails.length + " table(s) failed to update during rename. Some records may still reference the old address.", "error");
+  }
   }
   }
   // Auto-create accounting class for new properties
@@ -4891,7 +4894,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       </table>
       <div style="margin-top:24px;text-align:center;font-size:11px;color:#94a3b8">Generated on ${today} by ${companyName}</div>
     </div>`;
-    const w = window.open("", "_blank", "width=900,height=700");
+    const w = window.open("", "_blank", "width=900,height=700,noopener,noreferrer");
     w.document.write(`<!DOCTYPE html><html><head><title>Ledger - ${(tenant.name||"Tenant").replace(/</g,"&lt;")}</title><style>@media print{body{margin:0}}</style></head><body>${html}</body></html>`);
     w.document.close();
     w.onload = () => setTimeout(() => w.print(), 300);
@@ -7249,7 +7252,7 @@ const getBalanceSheetData = (accounts, journalEntries, asOfDate) => {
   const daysDiff = Math.floor((today - jeDate) / 86400000);
   // Net amount: debits increase AR, credits decrease AR
   const amount = safeNum(l.debit) - safeNum(l.credit);
-  const bucket = daysDiff <= 30 ? "current" : daysDiff <= 60 ? "days30" : daysDiff <= 90 ? "days60" : daysDiff <= 120 ? "days90" : "over90";
+  const bucket = daysDiff < 30 ? "current" : daysDiff < 60 ? "days30" : daysDiff < 90 ? "days60" : daysDiff < 120 ? "days90" : "over90";
   arAging[bucket] += amount;
 
   // Per-tenant aging
@@ -8285,7 +8288,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
         if (Math.abs(amount) < 0.01) return;
         const vendor = je.description?.split(" — ")[0]?.trim() || l.memo?.split(":")[0]?.trim() || "Unknown";
         const daysDiff = Math.floor((today - parseLocalDate(je.date)) / 86400000);
-        const bucket = daysDiff <= 30 ? "current" : daysDiff <= 60 ? "days30" : daysDiff <= 90 ? "days60" : daysDiff <= 120 ? "days90" : "over90";
+        const bucket = daysDiff < 30 ? "current" : daysDiff < 60 ? "days30" : daysDiff < 90 ? "days60" : daysDiff < 120 ? "days90" : "over90";
         if (!byVendor[vendor]) byVendor[vendor] = { current: 0, days30: 0, days60: 0, days90: 0, over90: 0, total: 0 };
         byVendor[vendor][bucket] += amount;
         byVendor[vendor].total += amount;
@@ -8399,7 +8402,7 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     if (!currentReport) return;
     const content = document.querySelector("[data-report-content]");
     if (!content) { showToast("Nothing to export.", "info"); return; }
-    const w = window.open("", "_blank", "width=900,height=700");
+    const w = window.open("", "_blank", "width=900,height=700,noopener,noreferrer");
     if (!w) { showToast("Popup blocked. Please allow popups.", "error"); return; }
     const safeTitle = DOMPurify.sanitize(currentReport.title + " — " + companyName, { ALLOWED_TAGS: [] });
     const safeBody = DOMPurify.sanitize(content.innerHTML);
@@ -9474,7 +9477,8 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
     if (validLines.length < 2) { showToast("Split requires at least 2 lines.", "error"); return; }
     const total = validLines.reduce((s, l) => s + safeNum(l.amount), 0);
     const abs = Math.abs(txn.amount);
-    if (Math.abs(total - abs) > 0.01) { showToast(`Split total ($${total.toFixed(2)}) must equal transaction amount ($${abs.toFixed(2)}).`, "error"); return; }
+    const splitTolerance = validLines.length > 2 ? 0.10 : 0.02;
+    if (Math.abs(total - abs) > splitTolerance) { showToast(`Split total ($${total.toFixed(2)}) must equal transaction amount ($${abs.toFixed(2)}).`, "error"); return; }
 
     const bankAcct = accounts.find(a => a.id === feed.gl_account_id);
     const isInflow = txn.direction === "inflow";
@@ -10900,7 +10904,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || ""
   })));
   if (linesErr) {
-  await supabase.from("acct_journal_entries").delete().eq("id", jeRow.id);
+  await supabase.from("acct_journal_entries").delete().eq("id", jeRow.id).eq("company_id", cid);
   showToast("Error creating journal entry lines: " + linesErr.message, "error");
   return;
   }
@@ -16281,7 +16285,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   ]
   });
   await safeLedgerInsert({ company_id: cid, tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: `Rent proration credit (${moveOutDay}/${daysInMoveOutMonth} days)`, amount: -creditBack, type: "adjustment", balance: 0 });
-  if (selectedTenant.id) await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: -creditBack }).catch(() => {});
+  if (selectedTenant.id) await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: -creditBack }).catch(e => console.warn("Balance update failed:", e.message));
   }
   }
   }
@@ -17503,7 +17507,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // HTML template: use html2pdf.js
   const html2pdf = (await import("html2pdf.js")).default;
   const container = document.createElement("div");
-  container.innerHTML = '<div style="font-family:Georgia,serif;font-size:13px;line-height:1.6;color:#1a1a1a;padding:40px;max-width:700px;margin:0 auto;">' + (doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues)) + '</div>';
+  container.innerHTML = '<div style="font-family:Georgia,serif;font-size:13px;line-height:1.6;color:#1a1a1a;padding:40px;max-width:700px;margin:0 auto;">' + DOMPurify.sanitize(doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues), { ADD_TAGS: ["table","thead","tbody","tr","td","th","br","hr","ul","ol","li","p","h1","h2","h3","h4","h5","h6","strong","em","u","s","sub","sup","blockquote","pre","code","img","span","div","a"], ADD_ATTR: ["style","class","href","src","alt","width","height","colspan","rowspan","align","valign"] }) + '</div>';
   document.body.appendChild(container);
   const filename = (doc?.name || selectedTemplate?.name || "document").replace(/[^a-zA-Z0-9_-]/g, "_") + ".pdf";
   await html2pdf().set({ margin: [0.5, 0.6, 0.5, 0.6], filename, image: { type: "jpeg", quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: "in", format: "letter" } }).from(container).save();
@@ -17518,7 +17522,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const body = doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues);
   // Parse HTML into docx paragraphs
   const temp = document.createElement("div");
-  temp.innerHTML = body;
+  temp.innerHTML = DOMPurify.sanitize(body);
   const paragraphs = [];
   function processNode(node) {
   if (node.nodeType === 3) {
@@ -17584,7 +17588,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   function exportTXT(doc) {
   const body = doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues);
   const temp = document.createElement("div");
-  temp.innerHTML = body;
+  temp.innerHTML = DOMPurify.sanitize(body);
   const text = temp.innerText || temp.textContent;
   const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
