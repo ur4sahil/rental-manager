@@ -13,8 +13,34 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
+import * as Sentry from "@sentry/react";
 import { supabase } from "./supabase";
 import { Input, Textarea, Select, Btn, Card, PageHeader, FormField, TabBar, FilterPill, SectionTitle, EmptyState, IconBtn, BulkBar } from "./ui";
+
+// ============ SENTRY INITIALIZATION ============
+Sentry.init({
+  dsn: process.env.REACT_APP_SENTRY_DSN || "",
+  environment: process.env.NODE_ENV || "development",
+  enabled: process.env.NODE_ENV === "production" && !!process.env.REACT_APP_SENTRY_DSN,
+  sampleRate: 1.0,
+  tracesSampleRate: 0,
+  beforeSend(event) {
+    if (event.breadcrumbs) {
+      event.breadcrumbs = event.breadcrumbs.map(b => ({
+        ...b,
+        message: b.message?.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+/g, "[email]")
+      }));
+    }
+    return event;
+  },
+  ignoreErrors: [
+    "ResizeObserver loop",
+    "Non-Error promise rejection",
+    "Load failed",
+    "ChunkLoadError",
+  ],
+});
+window.Sentry = Sentry;
 
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null, errorCode: "PM-8006" }; }
@@ -302,6 +328,76 @@ async function checkRPCHealth(companyId) {
   pmError("PM-8006", { raw: e, context: "RPC health check", silent: true });
   return []; // Never crash the app over a health check
   }
+}
+
+// ============ DATA INTEGRITY GUARDS (PM-9xxx) ============
+async function runDataIntegrityChecks(companyId, { deep = false } = {}) {
+  const violations = [];
+  try {
+    // PM-9001: Unbalanced journal entries
+    const { data: unbalancedJEs } = await supabase.rpc("find_unbalanced_jes", { p_company_id: companyId });
+    if (unbalancedJEs?.length > 0) {
+      for (const je of unbalancedJEs) {
+        violations.push({ code: "PM-9001", details: `JE ${je.number} is out of balance by $${je.difference}`, meta: { jeId: je.id, jeNumber: je.number, difference: je.difference } });
+      }
+    }
+
+    // PM-9002: Active tenants with no lease (deep only)
+    if (deep) {
+      const { data: activeTenants } = await supabase.from("tenants").select("id, name, property").eq("company_id", companyId).is("archived_at", null).eq("lease_status", "active");
+      for (const t of (activeTenants || [])) {
+        const { data: lease } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("tenant_name", t.name).eq("status", "active").limit(1).maybeSingle();
+        if (!lease) {
+          violations.push({ code: "PM-9002", details: `Tenant "${t.name}" at ${t.property} has no active lease`, meta: { tenantId: t.id, tenantName: t.name } });
+        }
+      }
+    }
+
+    // PM-9006: Tenant balance vs ledger mismatch (deep only)
+    if (deep) {
+      const { data: tenants } = await supabase.from("tenants").select("id, name, balance").eq("company_id", companyId).is("archived_at", null);
+      for (const t of (tenants || [])) {
+        const { data: entries } = await supabase.from("ledger_entries").select("amount").eq("company_id", companyId).eq("tenant_id", t.id);
+        const ledgerTotal = (entries || []).reduce((s, e) => s + safeNum(e.amount), 0);
+        if (Math.abs(safeNum(t.balance) - ledgerTotal) > 0.01) {
+          violations.push({ code: "PM-9006", details: `Tenant "${t.name}" balance ($${t.balance}) doesn't match ledger ($${ledgerTotal.toFixed(2)})`, meta: { tenantId: t.id, storedBalance: t.balance, ledgerTotal } });
+        }
+      }
+    }
+
+    // PM-9007: Recurring entries referencing inactive accounts
+    const { data: recurEntries } = await supabase.from("recurring_journal_entries").select("id, description, template_lines_json").eq("company_id", companyId).eq("status", "active");
+    const { data: activeAccounts } = await supabase.from("acct_accounts").select("id").eq("company_id", companyId).eq("is_active", true);
+    const activeAccountIds = new Set((activeAccounts || []).map(a => a.id));
+    for (const re of (recurEntries || [])) {
+      const lines = re.template_lines_json || [];
+      for (const line of lines) {
+        if (line.account_id && !activeAccountIds.has(line.account_id)) {
+          violations.push({ code: "PM-9007", details: `Recurring entry "${re.description}" references inactive account`, meta: { recurId: re.id, accountId: line.account_id } });
+          break;
+        }
+      }
+    }
+
+    // PM-9008: Active leases referencing archived properties (deep only)
+    if (deep) {
+      const { data: activeLeases } = await supabase.from("leases").select("id, tenant_name, property_address").eq("company_id", companyId).eq("status", "active");
+      for (const lease of (activeLeases || [])) {
+        const { data: prop } = await supabase.from("properties").select("id").eq("company_id", companyId).eq("address", lease.property_address).is("archived_at", null).maybeSingle();
+        if (!prop) {
+          violations.push({ code: "PM-9008", details: `Lease for "${lease.tenant_name}" references archived/missing property "${lease.property_address}"`, meta: { leaseId: lease.id } });
+        }
+      }
+    }
+
+    // Log all violations silently
+    for (const v of violations) {
+      pmError(v.code, { context: v.details, meta: v.meta, silent: true });
+    }
+  } catch (e) {
+    pmError("PM-8006", { raw: e, context: "data integrity checks", silent: true });
+  }
+  return violations;
 }
 
 // Format person name from parts: "Sahil A. Agarwal"
@@ -18745,7 +18841,160 @@ const pageComponents = {
   owner_portal: OwnerPortal,
 };
 
-// ============ ADMIN PAGE (Audit Trail + Team & Roles) ============
+// ============ ERROR LOG DASHBOARD ============
+function ErrorLogDashboard({ companyId, showToast }) {
+  const [errors, setErrors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState({ module: "", severity: "", reported: false, unresolved: true, range: "7d" });
+  const [stats, setStats] = useState({ critical: 0, error: 0, reported: 0, resolved: 0 });
+  const [runningCheck, setRunningCheck] = useState(false);
+  const [violations, setViolations] = useState([]);
+
+  useEffect(() => { fetchErrors(); }, [filter]);
+
+  async function fetchErrors() {
+    setLoading(true);
+    let q = supabase.from("error_log").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(200);
+    if (filter.module) q = q.eq("module", filter.module);
+    if (filter.severity) q = q.eq("severity", filter.severity);
+    if (filter.reported) q = q.eq("reported_by_user", true);
+    if (filter.unresolved) q = q.eq("resolved", false);
+    const rangeMap = { "1d": 1, "7d": 7, "30d": 30 };
+    if (rangeMap[filter.range]) {
+      const since = new Date(); since.setDate(since.getDate() - rangeMap[filter.range]);
+      q = q.gte("created_at", since.toISOString());
+    }
+    const { data } = await q;
+    setErrors(data || []);
+    // Fetch 24h stats
+    const since24h = new Date(); since24h.setDate(since24h.getDate() - 1);
+    const since7d = new Date(); since7d.setDate(since7d.getDate() - 7);
+    const { data: recentAll } = await supabase.from("error_log").select("severity, reported_by_user, resolved").eq("company_id", companyId).gte("created_at", since7d.toISOString());
+    const recent24h = (recentAll || []).filter(e => new Date(e.created_at) >= since24h);
+    setStats({
+      critical: (recentAll || []).filter(e => e.severity === "critical" && !e.resolved).length,
+      error: (recentAll || []).filter(e => e.severity === "error" && !e.resolved).length,
+      reported: (recentAll || []).filter(e => e.reported_by_user).length,
+      resolved: (recentAll || []).filter(e => e.resolved).length,
+    });
+    setLoading(false);
+  }
+
+  async function markResolved(id) {
+    await supabase.from("error_log").update({ resolved: true, resolved_at: new Date().toISOString() }).eq("id", id);
+    fetchErrors();
+  }
+
+  async function handleHealthCheck() {
+    setRunningCheck(true);
+    const v = await runDataIntegrityChecks(companyId, { deep: true });
+    setViolations(v);
+    setRunningCheck(false);
+    showToast(v.length === 0 ? "Health check passed — no issues found" : `Health check found ${v.length} issue(s)`, v.length === 0 ? "success" : "warning");
+  }
+
+  const severityColor = { critical: "bg-danger-50 text-danger-700 border-danger-200", error: "bg-danger-50 text-danger-600 border-danger-200", warning: "bg-warning-50 text-warning-700 border-warning-200", info: "bg-info-50 text-info-700 border-info-200" };
+  const severityDot = { critical: "text-danger-500", error: "text-danger-400", warning: "text-warning-500", info: "text-info-400" };
+  const modules = ["auth", "properties", "tenants", "accounting", "banking", "payments", "work_orders", "infrastructure", "data_integrity"];
+
+  return (
+  <div>
+  <div className="flex items-center justify-between mb-4">
+  <PageHeader title="Error Log" />
+  <Btn size="sm" onClick={handleHealthCheck} disabled={runningCheck}>{runningCheck ? "Running..." : "Run Health Check"}</Btn>
+  </div>
+
+  {/* Summary Cards */}
+  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+  <div className="bg-danger-50 border border-danger-200 rounded-xl p-3 text-center">
+  <p className="text-2xl font-bold text-danger-700">{stats.critical}</p>
+  <p className="text-xs text-danger-400">Critical (7d)</p>
+  </div>
+  <div className="bg-warning-50 border border-warning-200 rounded-xl p-3 text-center">
+  <p className="text-2xl font-bold text-warning-700">{stats.error}</p>
+  <p className="text-xs text-warning-400">Errors (7d)</p>
+  </div>
+  <div className="bg-brand-50 border border-brand-200 rounded-xl p-3 text-center">
+  <p className="text-2xl font-bold text-brand-700">{stats.reported}</p>
+  <p className="text-xs text-brand-400">User-Reported</p>
+  </div>
+  <div className="bg-positive-50 border border-positive-200 rounded-xl p-3 text-center">
+  <p className="text-2xl font-bold text-positive-700">{stats.resolved}</p>
+  <p className="text-xs text-positive-400">Resolved (7d)</p>
+  </div>
+  </div>
+
+  {/* Health Check Violations */}
+  {violations.length > 0 && (
+  <div className="mb-4 p-3 bg-warning-50 border border-warning-200 rounded-xl">
+  <div className="font-semibold text-warning-700 text-sm mb-2">Health Check Results ({violations.length} issues)</div>
+  {violations.map((v, i) => (
+  <div key={i} className="flex items-start gap-2 text-sm py-1">
+  <span className="font-mono text-xs bg-warning-100 text-warning-700 px-1.5 py-0.5 rounded font-bold shrink-0">{v.code}</span>
+  <span className="text-neutral-600">{v.details}</span>
+  </div>
+  ))}
+  </div>
+  )}
+
+  {/* Filters */}
+  <div className="flex flex-wrap gap-2 mb-4 items-center">
+  <Select value={filter.module} onChange={e => setFilter(f => ({ ...f, module: e.target.value }))} className="text-xs w-auto">
+  <option value="">All Modules</option>
+  {modules.map(m => <option key={m} value={m}>{m.replace("_", " ")}</option>)}
+  </Select>
+  <Select value={filter.severity} onChange={e => setFilter(f => ({ ...f, severity: e.target.value }))} className="text-xs w-auto">
+  <option value="">All Severities</option>
+  {["critical", "error", "warning", "info"].map(s => <option key={s} value={s}>{s}</option>)}
+  </Select>
+  <Select value={filter.range} onChange={e => setFilter(f => ({ ...f, range: e.target.value }))} className="text-xs w-auto">
+  <option value="1d">Last 24h</option>
+  <option value="7d">Last 7 days</option>
+  <option value="30d">Last 30 days</option>
+  <option value="">All time</option>
+  </Select>
+  <label className="flex items-center gap-1 text-xs text-neutral-500 cursor-pointer">
+  <input type="checkbox" checked={filter.reported} onChange={e => setFilter(f => ({ ...f, reported: e.target.checked }))} className="rounded" /> User-reported only
+  </label>
+  <label className="flex items-center gap-1 text-xs text-neutral-500 cursor-pointer">
+  <input type="checkbox" checked={filter.unresolved} onChange={e => setFilter(f => ({ ...f, unresolved: e.target.checked }))} className="rounded" /> Unresolved only
+  </label>
+  </div>
+
+  {/* Error List */}
+  {loading ? <p className="text-sm text-neutral-400">Loading...</p> : errors.length === 0 ? (
+  <EmptyState icon="check-circle" message="No errors match your filters" />
+  ) : (
+  <div className="space-y-2">
+  {errors.map(e => (
+  <div key={e.id} className={"border rounded-xl p-3 " + (severityColor[e.severity] || "bg-subtle-50 border-subtle-200")}>
+  <div className="flex items-start justify-between gap-2">
+  <div className="flex-1 min-w-0">
+  <div className="flex items-center gap-2 mb-1 flex-wrap">
+  <span className={"text-xs font-mono px-1.5 py-0.5 rounded font-bold " + (e.severity === "critical" || e.severity === "error" ? "bg-danger-100 text-danger-700" : "bg-warning-100 text-warning-700")}>{e.error_code}</span>
+  <span className="text-xs text-neutral-400 capitalize">{e.severity}</span>
+  <span className="text-xs text-neutral-300">{new Date(e.created_at).toLocaleString()}</span>
+  {e.user_email && <span className="text-xs text-neutral-400">{e.user_email}</span>}
+  {e.reported_by_user && <span className="text-xs bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded">Reported</span>}
+  </div>
+  <p className="text-sm font-medium text-neutral-700">{e.message}</p>
+  {e.context && <p className="text-xs text-neutral-400 mt-0.5">Context: {e.context}</p>}
+  {e.raw_message && e.raw_message !== e.message && <p className="text-xs text-neutral-300 mt-0.5 font-mono truncate">Raw: {e.raw_message}</p>}
+  </div>
+  <div className="shrink-0">
+  {!e.resolved && <Btn size="xs" variant="ghost" onClick={() => markResolved(e.id)}>Resolve</Btn>}
+  {e.resolved && <span className="text-xs text-positive-600">Resolved</span>}
+  </div>
+  </div>
+  </div>
+  ))}
+  </div>
+  )}
+  </div>
+  );
+}
+
+// ============ ADMIN PAGE (Audit Trail + Team & Roles + Error Log) ============
 function AdminPage({ companyId, activeCompany, addNotification, userProfile, userRole, showToast, showConfirm, currentUser }) {
   const [adminTab, setAdminTab] = useState("audit");
   const isAdmin = userRole === "admin";
@@ -18754,12 +19003,13 @@ function AdminPage({ companyId, activeCompany, addNotification, userProfile, use
   <PageHeader title="Admin" />
   <p className="text-sm text-neutral-400 mb-4">Manage team access and view activity logs</p>
   <div className="flex gap-1 mb-4 border-b border-brand-50">
-  {[["audit", "Audit Trail"], ...(isAdmin ? [["team", "Team & Roles"]] : [])].map(([id, label]) => (
+  {[["audit", "Audit Trail"], ...(isAdmin ? [["team", "Team & Roles"], ["errors", "Error Log"]] : [])].map(([id, label]) => (
   <button key={id} onClick={() => setAdminTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (adminTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}</button>
   ))}
   </div>
   {adminTab === "audit" && <AuditTrail companyId={companyId} />}
   {adminTab === "team" && isAdmin && <RoleManagement companyId={companyId} activeCompany={activeCompany} addNotification={addNotification} userProfile={userProfile} userRole={userRole} showToast={showToast} showConfirm={showConfirm} currentUser={currentUser} />}
+  {adminTab === "errors" && isAdmin && <ErrorLogDashboard companyId={companyId} showToast={showToast} />}
   </div>
   );
 }
