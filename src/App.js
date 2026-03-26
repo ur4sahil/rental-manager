@@ -12124,7 +12124,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   const totalUtilExp = monthUtils.reduce((s, u) => s + safeNum(u.amount), 0);
   const totalExpenses = totalVendorExp + totalUtilExp;
 
-  const mgmtFee = Math.round(totalIncome * (owner.management_fee_pct / 100) * 100) / 100;
+  const mgmtFee = Math.round(totalIncome * (safeNum(owner.management_fee_pct) / 100) * 100) / 100;
   const netToOwner = Math.round((totalIncome - totalExpenses - mgmtFee) * 100) / 100;
 
   // Build line items
@@ -12555,8 +12555,8 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   async function saveReconciliation() {
   if (!guardSubmit("saveReconciliation")) return;
   try {
-  const reconciledTotal = reconItems.filter(i => i.reconciled).reduce((s, i) => s + i.amount, 0);
-  const unreconciledTotal = reconItems.filter(i => !i.reconciled).reduce((s, i) => s + i.amount, 0);
+  const reconciledTotal = reconItems.filter(i => i.reconciled).reduce((s, i) => s + safeNum(i.amount), 0);
+  const unreconciledTotal = reconItems.filter(i => !i.reconciled).reduce((s, i) => s + safeNum(i.amount), 0);
 
   // Calculate book balance from all checking account entries (scoped to this company)
   const cJeIds = journalEntries.filter(j => j.status === "posted").map(j => j.id);
@@ -12630,8 +12630,8 @@ function AcctBankReconciliation({ accounts, journalEntries, companyId, showToast
   if (loading) return <Spinner />;
 
   const reconciledCount = reconItems.filter(i => i.reconciled).length;
-  const reconciledTotal = reconItems.filter(i => i.reconciled).reduce((s, i) => s + i.amount, 0);
-  const unreconciledTotal = reconItems.filter(i => !i.reconciled).reduce((s, i) => s + i.amount, 0);
+  const reconciledTotal = reconItems.filter(i => i.reconciled).reduce((s, i) => s + safeNum(i.amount), 0);
+  const unreconciledTotal = reconItems.filter(i => !i.reconciled).reduce((s, i) => s + safeNum(i.amount), 0);
 
   return (
   <div>
