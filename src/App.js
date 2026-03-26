@@ -8659,13 +8659,24 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     if (!currentReport) return;
     const content = document.querySelector("[data-report-content]");
     if (!content) { showToast("Nothing to export.", "info"); return; }
-    const w = window.open("", "_blank", "width=900,height=700,noopener,noreferrer");
-    if (!w) { showToast("Popup blocked. Please allow popups.", "error"); return; }
+    // Clone content and clean up any stray text nodes
+    const clone = content.cloneNode(true);
+    // Remove any text nodes that are just whitespace or JSX artifacts
+    const walker = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT, null, false);
+    const toRemove = [];
+    while (walker.nextNode()) { const n = walker.currentNode; if (n.parentNode === clone && /^\s*[\)\}\{]*\s*$/.test(n.textContent)) toRemove.push(n); }
+    toRemove.forEach(n => n.remove());
     const safeTitle = DOMPurify.sanitize(currentReport.title + " — " + companyName, { ALLOWED_TAGS: [] });
-    const safeBody = DOMPurify.sanitize(content.innerHTML);
-    w.document.write(`<!DOCTYPE html><html><head><title>${safeTitle}</title><style>body{font-family:Arial,sans-serif;margin:20px;color:#1e293b}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:6px 10px;text-align:left;border-bottom:1px solid #e5e7eb}th{background:#f8fafc;font-size:11px;text-transform:uppercase;color:#64748b}@media print{body{margin:0}}</style></head><body>${safeBody}</body></html>`);
-    w.document.close();
-    w.onload = () => setTimeout(() => { if (w) w.print(); }, 300);
+    const safeBody = DOMPurify.sanitize(clone.innerHTML);
+    // Use iframe instead of popup to avoid popup blockers
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;border:0;visibility:hidden;";
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    doc.open();
+    doc.write(`<!DOCTYPE html><html><head><title>${safeTitle}</title><style>body{font-family:Arial,sans-serif;margin:20px;color:#1e293b}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:6px 10px;text-align:left;border-bottom:1px solid #e5e7eb}th{background:#f8fafc;font-size:11px;text-transform:uppercase;color:#64748b}.font-mono{font-family:ui-monospace,monospace}.font-bold,.font-black{font-weight:700}.text-right{text-align:right}.text-center{text-align:center}.text-xs{font-size:11px}.text-sm{font-size:13px}.border-t{border-top:1px solid #e5e7eb}.border-t-2{border-top:2px solid #1e293b}.border-b-2{border-bottom:2px solid #1e293b}@media print{body{margin:0}}</style></head><body>${safeBody}</body></html>`);
+    doc.close();
+    setTimeout(() => { iframe.contentWindow.print(); setTimeout(() => document.body.removeChild(iframe), 1000); }, 500);
   }
 
   // --- CSV Export ---
