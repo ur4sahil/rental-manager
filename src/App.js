@@ -9053,7 +9053,7 @@ function BankTransactions({ accounts, journalEntries, classes, companyId, showTo
       }
       const tellerConnect = window.TellerConnect.setup({
         applicationId: tellerAppId,
-        environment: window.__TELLER_ENV || "sandbox",
+        environment: window.__TELLER_ENV || "production",
         onSuccess: async (enrollment) => {
           showToast("Connecting accounts...", "success");
           const saveRes = await fetch(supabase.supabaseUrl + "/functions/v1/teller-save-enrollment", {
