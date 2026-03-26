@@ -1,4 +1,4 @@
-// ARCHITECTURE NOTE: This app is a single-file React application (~11,400 lines).
+// ARCHITECTURE NOTE: This app is a single-file React application (~19,500+ lines).
 // This is a deliberate choice for deployment simplicity (single push to Vercel).
 // For production hardening, the recommended migration path is:
 // 1. Move all financial writes (payments, accounting, distributions) to Supabase RPCs
