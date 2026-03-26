@@ -17,9 +17,12 @@ import { supabase } from "./supabase";
 import { Input, Textarea, Select, Btn, Card, PageHeader, FormField, TabBar, FilterPill, SectionTitle, EmptyState, IconBtn, BulkBar } from "./ui";
 
 class ErrorBoundary extends React.Component {
-  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
-  static getDerivedStateFromError(error) { return { hasError: true, error }; }
-  componentDidCatch(error, info) { console.error("ErrorBoundary caught:", error, info); }
+  constructor(props) { super(props); this.state = { hasError: false, error: null, errorCode: "PM-8006" }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error, errorCode: "PM-8006" }; }
+  componentDidCatch(error, info) {
+    if (window.Sentry) { window.Sentry.withScope(scope => { scope.setExtra("componentStack", info.componentStack); window.Sentry.captureException(error); }); }
+    logErrorToSupabase({ code: "PM-8006", message: "A component crashed unexpectedly.", rawMessage: error?.message || "Unknown render error", severity: "critical", context: "React ErrorBoundary", meta: { componentStack: info.componentStack?.slice(0, 500) }, timestamp: new Date().toISOString(), url: window.location.href });
+  }
   render() {
   if (this.state.hasError) {
   return (
@@ -27,7 +30,9 @@ class ErrorBoundary extends React.Component {
   <div className="text-center p-8 max-w-md">
   <div className="text-5xl mb-4">⚠️</div>
   <h2 className="text-xl font-bold text-subtle-800 mb-2">Something went wrong</h2>
-  <p className="text-sm text-subtle-500 mb-4">{this.state.error?.message || "An unexpected error occurred"}</p>
+  <p className="text-sm text-subtle-500 mb-2">We've logged this issue automatically.</p>
+  <div className="inline-block bg-danger-50 text-danger-700 font-mono text-sm px-3 py-1 rounded mb-4">{this.state.errorCode}</div>
+  <p className="text-xs text-subtle-400 mb-6">If this keeps happening, share this code with your admin.</p>
   <button onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }} className="bg-brand-600 text-white px-6 py-2 rounded-lg hover:bg-brand-700">Reload App</button>
   </div>
   </div>
@@ -340,6 +345,153 @@ function userError(msg) {
   .replace(/function ".*?" does not exist/gi, "a required server function is missing");
   return cleaned.length > 200 ? cleaned.slice(0, 200) + "..." : cleaned;
 }
+// ============ ERROR MANAGEMENT SYSTEM ============
+const PM_ERRORS = {
+  // PM-1xxx: AUTH & ACCESS
+  "PM-1001": { message: "Your session has expired. Please sign in again.", action: "reload", severity: "warning" },
+  "PM-1002": { message: "You don't have permission to perform this action.", action: "none", severity: "error" },
+  "PM-1003": { message: "This account is already registered. Try signing in instead.", action: "none", severity: "warning" },
+  "PM-1004": { message: "Invalid email or password. Please try again.", action: "retry", severity: "warning" },
+  "PM-1005": { message: "Your account doesn't have access to this company.", action: "contact", severity: "error" },
+  "PM-1006": { message: "This invitation link has expired or was already used.", action: "contact", severity: "warning" },
+  "PM-1007": { message: "Unable to send the invitation email. Please verify the email address.", action: "retry", severity: "error" },
+  "PM-1008": { message: "You need to be an Admin to change user roles.", action: "none", severity: "error" },
+  "PM-1009": { message: "Could not create user account. The email may already be in use.", action: "retry", severity: "error" },
+  // PM-2xxx: PROPERTIES
+  "PM-2001": { message: "A property with this address already exists.", action: "none", severity: "warning" },
+  "PM-2002": { message: "Could not save the property. Please check all required fields.", action: "retry", severity: "error" },
+  "PM-2003": { message: "Could not archive this property. It may have active tenants.", action: "none", severity: "error" },
+  "PM-2004": { message: "Could not restore this property.", action: "retry", severity: "error" },
+  "PM-2005": { message: "Property was saved but the accounting class could not be linked.", action: "contact", severity: "warning" },
+  "PM-2006": { message: "Could not update related records after renaming the property address.", action: "contact", severity: "warning" },
+  "PM-2007": { message: "Could not load the property setup wizard.", action: "retry", severity: "error" },
+  "PM-2008": { message: "Property was saved but the lease record could not be created.", action: "contact", severity: "warning" },
+  // PM-3xxx: TENANTS & LEASES
+  "PM-3001": { message: "A tenant with this name already exists at this property.", action: "none", severity: "warning" },
+  "PM-3002": { message: "Could not save the tenant record.", action: "retry", severity: "error" },
+  "PM-3003": { message: "Could not archive this tenant.", action: "retry", severity: "error" },
+  "PM-3004": { message: "Could not create or renew the lease.", action: "retry", severity: "error" },
+  "PM-3005": { message: "Required documents are missing. Please upload all mandatory documents before proceeding.", action: "none", severity: "warning" },
+  "PM-3006": { message: "Could not generate the move-out notice.", action: "retry", severity: "error" },
+  "PM-3007": { message: "Could not send tenant invitation.", action: "retry", severity: "error" },
+  "PM-3008": { message: "Lease was renewed but the old lease status could not be updated.", action: "contact", severity: "warning" },
+  // PM-4xxx: ACCOUNTING & JE
+  "PM-4001": { message: "This journal entry is out of balance. Debits must equal credits.", action: "retry", severity: "error" },
+  "PM-4002": { message: "Could not save the journal entry.", action: "retry", severity: "error" },
+  "PM-4003": { message: "Could not save the journal entry lines.", action: "contact", severity: "critical" },
+  "PM-4004": { message: "This date falls in a locked accounting period. Unlock it first or use a later date.", action: "none", severity: "warning" },
+  "PM-4005": { message: "Could not void this journal entry.", action: "retry", severity: "error" },
+  "PM-4006": { message: "Could not save the account. It may conflict with an existing one.", action: "retry", severity: "error" },
+  "PM-4008": { message: "Could not create the recurring journal entry template.", action: "retry", severity: "error" },
+  "PM-4010": { message: "Could not save the accounting class.", action: "retry", severity: "error" },
+  "PM-4011": { message: "Could not lock/unlock the accounting period.", action: "retry", severity: "error" },
+  "PM-4012": { message: "Journal entry was created but lines could not be saved. The entry has been rolled back.", action: "contact", severity: "critical" },
+  // PM-5xxx: BANKING & IMPORT
+  "PM-5001": { message: "Could not parse the CSV file. Check the format and try again.", action: "retry", severity: "error" },
+  "PM-5002": { message: "Could not import transactions. Some rows may have been skipped.", action: "retry", severity: "warning" },
+  "PM-5003": { message: "Could not connect to your bank. Please try again.", action: "retry", severity: "error" },
+  "PM-5004": { message: "Bank sync failed. Your bank may require re-authentication.", action: "retry", severity: "error" },
+  "PM-5005": { message: "Could not categorize this transaction.", action: "retry", severity: "error" },
+  "PM-5006": { message: "Could not create the bank account feed.", action: "retry", severity: "error" },
+  "PM-5007": { message: "This transaction has already been processed.", action: "none", severity: "warning" },
+  "PM-5008": { message: "Could not save the bank rule.", action: "retry", severity: "error" },
+  "PM-5009": { message: "Could not match this transaction.", action: "retry", severity: "error" },
+  "PM-5010": { message: "Split total doesn't match the transaction amount.", action: "retry", severity: "warning" },
+  // PM-6xxx: PAYMENTS & LEDGER
+  "PM-6001": { message: "Could not record the payment.", action: "retry", severity: "error" },
+  "PM-6002": { message: "Could not update the tenant balance.", action: "contact", severity: "critical" },
+  "PM-6003": { message: "Could not post the late fee.", action: "retry", severity: "error" },
+  "PM-6004": { message: "Could not process the owner distribution.", action: "contact", severity: "error" },
+  "PM-6005": { message: "Could not create the ledger entry.", action: "retry", severity: "error" },
+  "PM-6006": { message: "Payment was recorded but the accounting entry could not be posted.", action: "contact", severity: "critical" },
+  // PM-7xxx: WORK ORDERS & DOCS
+  "PM-7001": { message: "Could not save the work order.", action: "retry", severity: "error" },
+  "PM-7002": { message: "Could not upload the file. Check the file size and type.", action: "retry", severity: "error" },
+  "PM-7003": { message: "File was uploaded but the record could not be saved.", action: "contact", severity: "warning" },
+  "PM-7004": { message: "Could not delete the document.", action: "retry", severity: "error" },
+  // PM-8xxx: NETWORK & INFRASTRUCTURE
+  "PM-8001": { message: "Unable to reach the server. Check your internet connection and try again.", action: "retry", severity: "error" },
+  "PM-8002": { message: "A required database table is missing. Please contact support.", action: "contact", severity: "critical" },
+  "PM-8003": { message: "A required server function is missing. Please contact support.", action: "contact", severity: "critical" },
+  "PM-8004": { message: "The request timed out. Please try again.", action: "retry", severity: "warning" },
+  "PM-8005": { message: "A database permission error occurred. Your access may need to be updated.", action: "contact", severity: "error" },
+  "PM-8006": { message: "Could not save your changes. The server returned an unexpected response.", action: "retry", severity: "error" },
+  // PM-9xxx: DATA INTEGRITY
+  "PM-9001": { message: "A journal entry was found with unbalanced debits and credits.", action: "contact", severity: "critical" },
+  "PM-9002": { message: "A tenant record has no associated lease.", action: "contact", severity: "warning" },
+  "PM-9005": { message: "Duplicate transaction detected. This record may already exist.", action: "none", severity: "warning" },
+  "PM-9006": { message: "The tenant's calculated balance doesn't match the ledger total.", action: "contact", severity: "critical" },
+  "PM-9007": { message: "A recurring entry template references an account that no longer exists.", action: "contact", severity: "warning" },
+};
+
+let _activeCompanyId = null;
+let _currentUserEmail = null;
+let _currentUserRole = null;
+
+function detectInfrastructureCode(rawMessage, fallbackCode) {
+  if (!rawMessage) return fallbackCode;
+  const msg = rawMessage.toLowerCase();
+  if (msg.includes("fetch") && msg.includes("failed") || msg.includes("networkerror") || msg.includes("failed to fetch")) return "PM-8001";
+  if (msg.includes("relation") && msg.includes("does not exist")) return "PM-8002";
+  if (msg.includes("function") && msg.includes("does not exist")) return "PM-8003";
+  if (msg.includes("timeout") || msg.includes("aborted")) return "PM-8004";
+  if (msg.includes("row-level security") || msg.includes("rls") || msg.includes("permission denied")) return "PM-8005";
+  if (msg.includes("duplicate key") || msg.includes("unique constraint")) return "PM-9005";
+  return fallbackCode;
+}
+
+async function logErrorToSupabase(errorRecord) {
+  try {
+    const moduleMap = { "1": "auth", "2": "properties", "3": "tenants", "4": "accounting", "5": "banking", "6": "payments", "7": "work_orders", "8": "infrastructure", "9": "data_integrity" };
+    await supabase.from("error_log").insert([{
+      company_id: _activeCompanyId || null, error_code: errorRecord.code, message: errorRecord.message,
+      raw_message: errorRecord.rawMessage || null, severity: errorRecord.severity,
+      module: moduleMap[errorRecord.code?.charAt(3)] || "unknown",
+      context: errorRecord.context || null, meta: errorRecord.meta || {},
+      user_email: _currentUserEmail || "anonymous", user_role: _currentUserRole || "unknown",
+      url: errorRecord.url || null, user_agent: errorRecord.userAgent || null, reported_by_user: false
+    }]);
+  } catch (_) { /* Cannot error while logging an error */ }
+}
+
+function pmError(code, { raw = null, context = "", silent = false, meta = {} } = {}) {
+  const entry = PM_ERRORS[code] || PM_ERRORS["PM-8006"];
+  const rawMessage = raw?.message || raw?.error?.message || String(raw || "");
+  const resolvedCode = detectInfrastructureCode(rawMessage, code);
+  const resolved = PM_ERRORS[resolvedCode] || entry;
+  const errorRecord = {
+    code: resolvedCode, message: resolved.message, action: resolved.action, severity: resolved.severity,
+    rawMessage: rawMessage.slice(0, 500), context, meta,
+    timestamp: new Date().toISOString(), url: window.location.href,
+    userAgent: navigator.userAgent.slice(0, 200),
+  };
+  const consoleFn = resolved.severity === "critical" || resolved.severity === "error" ? console.error : console.warn;
+  consoleFn(`[${resolvedCode}] ${resolved.message}`, { raw: rawMessage.slice(0, 200), context, meta });
+  if (!silent && typeof _showToastGlobal === "function") {
+    _showToastGlobal(null, null, { isError: true, code: resolvedCode, message: resolved.message, action: resolved.action, severity: resolved.severity });
+  }
+  logErrorToSupabase(errorRecord);
+  if (window.Sentry && resolved.severity !== "info") {
+    window.Sentry.captureEvent({
+      message: `${resolvedCode}: ${resolved.message}`, level: resolved.severity === "critical" ? "fatal" : resolved.severity === "error" ? "error" : "warning",
+      tags: { errorCode: resolvedCode }, extra: { rawMessage: rawMessage.slice(0, 300), context, meta },
+    });
+  }
+  return errorRecord;
+}
+
+async function reportError(code) {
+  try {
+    const { data } = await supabase.from("error_log").select("id").eq("error_code", code).eq("resolved", false).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (data) await supabase.from("error_log").update({ reported_by_user: true }).eq("id", data.id);
+    if (typeof _showToastGlobal === "function") _showToastGlobal(`Error ${code} reported. Your admin team has been notified.`, "success");
+  } catch (_) {
+    if (typeof _showToastGlobal === "function") _showToastGlobal(`Error code: ${code}. Please share this with your admin.`, "info");
+  }
+}
+
+let _showToastGlobal = null; // Set by AppInner on mount
+
 // Guard: require companyId — FAIL CLOSED if missing (no silent fallback)
 function isValidEmail(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e).trim()); }
 function normalizeEmail(email) {
@@ -943,9 +1095,25 @@ function ToastContainer({ toasts, removeToast }) {
   <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 max-w-sm">
   {toasts.map(t => (
   <div key={t.id} className={"flex items-start gap-3 px-4 py-3 rounded-2xl shadow-lg border backdrop-blur-md animate-slide-up " + (t.type === "error" ? "bg-danger-50 border-danger-200 text-danger-800" : t.type === "warning" ? "bg-warn-50 border-warn-200 text-warn-800" : t.type === "success" ? "bg-success-50 border-success-200 text-success-800" : "bg-white border-brand-100 text-neutral-700")}>
-  <span className="material-icons-outlined text-lg mt-0.5">{t.type === "error" ? "error" : t.type === "warning" ? "warning" : t.type === "success" ? "check_circle" : "info"}</span>
-  <div className="flex-1 text-sm">{t.message}</div>
-  <button onClick={() => removeToast(t.id)} className="text-neutral-400 hover:text-neutral-600 ml-1"><span className="material-icons-outlined text-sm">close</span></button>
+  {t.isError ? (<>
+    <span className="material-icons-outlined text-lg mt-0.5">{t.type === "error" ? "error" : "warning"}</span>
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center gap-2 mb-1">
+        <span className={`text-xs font-mono px-1.5 py-0.5 rounded font-bold ${t.type === "error" ? "bg-danger-100 text-danger-700" : "bg-warn-100 text-warn-700"}`}>{t.code}</span>
+        {t.action === "retry" && <span className="text-xs opacity-70">Try again</span>}
+        {t.action === "contact" && <span className="text-xs opacity-70">Contact admin</span>}
+      </div>
+      <p className="text-sm">{t.message}</p>
+    </div>
+    <div className="flex items-center gap-1 shrink-0">
+      <button onClick={() => reportError(t.code)} className="text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded transition-colors" title="Report this error">Report</button>
+      <button onClick={() => removeToast(t.id)} className="text-xs opacity-60 hover:opacity-100 px-1">✕</button>
+    </div>
+  </>) : (<>
+    <span className="material-icons-outlined text-lg mt-0.5">{t.type === "error" ? "error" : t.type === "warning" ? "warning" : t.type === "success" ? "check_circle" : "info"}</span>
+    <div className="flex-1 text-sm">{t.message}</div>
+    <button onClick={() => removeToast(t.id)} className="text-neutral-400 hover:text-neutral-600 ml-1"><span className="material-icons-outlined text-sm">close</span></button>
+  </>)}
   </div>
   ))}
   </div>
@@ -19440,11 +19608,18 @@ function AppInner() {
   const [confirmConfig, setConfirmConfig] = useState(null);
   const confirmResolveRef = useRef(null);
 
-  function showToast(message, type = "info") {
+  function showToast(message, type = "info", errorObj = null) {
   const id = ++_toastIdCounter;
-  setToasts(prev => [...prev, { id, message, type }]);
-  setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+  if (errorObj?.isError) {
+    const duration = errorObj.severity === "critical" ? 10000 : errorObj.severity === "error" ? 6000 : 4000;
+    setToasts(prev => [...prev, { id, type: errorObj.severity === "critical" ? "error" : errorObj.severity, isError: true, code: errorObj.code, message: errorObj.message, action: errorObj.action }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), duration);
+  } else {
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }
+  }
+  _showToastGlobal = showToast;
   function removeToast(id) { setToasts(prev => prev.filter(t => t.id !== id)); }
 
   // safeLedgerInsert is now top-level (accessible from all components)
@@ -19618,6 +19793,9 @@ function AppInner() {
   window._tenantArBackfilled = false;
   window._jeRenumbered = false;
   window._classIdBackfilled = false;
+  _activeCompanyId = company.id;
+  _currentUserEmail = currentUser?.email || "";
+  _currentUserRole = role || "";
   setActiveCompany(company);
   try { localStorage.setItem("lastCompanyId", company.id); } catch {}
   checkRPCHealth(company.id).then(m => setMissingRPCs(m)).catch(() => {});
