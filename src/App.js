@@ -14857,8 +14857,8 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   if (!paymentAmount || isNaN(Number(paymentAmount)) || Number(paymentAmount) <= 0) {
   showToast("Please enter a valid payment amount.", "error"); return;
   }
-  if (Number(paymentAmount) > safeNum(tenantData.balance) * 2) {
-  if (!await showConfirm({ message: "Payment amount ($" + paymentAmount + ") is significantly more than your balance ($" + safeNum(tenantData.balance).toFixed(2) + "). Continue?" })) return;
+  if (Number(paymentAmount) > safeNum(tenantData.balance)) {
+  if (!await showConfirm({ message: "Payment amount ($" + paymentAmount + ") exceeds your balance ($" + safeNum(tenantData.balance).toFixed(2) + "). The overpayment will be applied as a credit. Continue?" })) return;
   }
   setPaymentProcessing(true);
   try {
@@ -19402,8 +19402,8 @@ function AppInner() {
   {notifications.length === 0 ? (
   <div className="px-4 py-6 text-center text-slate-400 text-sm">No notifications yet</div>
   ) : (
-  notifications.map(n => (
-  <div key={n.id || Math.random()} className={"px-4 py-3 border-b border-indigo-50/50 hover:bg-indigo-50/30 flex items-start gap-2 transition-colors " + (!n.read ? "bg-indigo-50/40" : "")}>
+  notifications.map((n, idx) => (
+  <div key={n.id || n.dbId || `notif_${idx}`} className={"px-4 py-3 border-b border-indigo-50/50 hover:bg-indigo-50/30 flex items-start gap-2 transition-colors " + (!n.read ? "bg-indigo-50/40" : "")}>
   <span className="text-lg">{String(n.icon || "📌")}</span>
   <div className="flex-1">
   <div className="text-sm text-slate-700">{String(n.message || "")}</div>
