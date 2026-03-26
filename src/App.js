@@ -359,13 +359,12 @@ function sanitizeForPrint(str) {
   return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 // ============ CREDENTIAL ENCRYPTION (AES-256-GCM via Web Crypto + PBKDF2) ============
-// Master key from environment — falls back to legacy derivation for backward compat
+// Master key from environment — required for credential encryption
 const _MASTER_KEY = process.env.REACT_APP_ENCRYPTION_KEY || "";
 async function _deriveKey(companyId, usage) {
-  // Use PBKDF2 with master key + company salt for strong key derivation
+  if (!_MASTER_KEY) throw new Error("REACT_APP_ENCRYPTION_KEY not configured — credential encryption unavailable");
   const salt = new TextEncoder().encode("propmanager_" + companyId + "_v2");
-  const masterMaterial = _MASTER_KEY || (companyId + "_propmanager_cred_key");
-  const baseKey = await crypto.subtle.importKey("raw", new TextEncoder().encode(masterMaterial), "PBKDF2", false, ["deriveKey"]);
+  const baseKey = await crypto.subtle.importKey("raw", new TextEncoder().encode(_MASTER_KEY), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" }, baseKey, { name: "AES-GCM", length: 256 }, false, usage);
 }
 async function encryptCredential(plaintext, companyId) {
