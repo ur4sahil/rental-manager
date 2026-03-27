@@ -7959,6 +7959,8 @@ function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], v
   const [dateTo, setDateTo] = useState("");
   const [properties, setProperties] = useState([]);
   const [form, setForm] = useState({ date: acctToday(), description: "", reference: "", property: "", lines: [{ account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }, { account_id:"", account_name:"", debit:"", credit:"", class_id:"", memo:"" }] });
+  const [showNewAcct, setShowNewAcct] = useState(null); // line index that triggered it
+  const [newAcctForm, setNewAcctForm] = useState({ code: "", name: "", type: "Expense" });
 
   useEffect(() => { let q = supabase.from("properties").select("address"); if (companyId) q = q.eq("company_id", companyId).is("archived_at", null); q.then(r => setProperties((r.data || []).map(p => p.address))); }, [companyId]);
 
@@ -8002,11 +8004,31 @@ function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], v
   };
 
   const setLine = (i, k, v) => {
+  if (k === "account_id" && v === "__new__") { setShowNewAcct(i); setNewAcctForm({ code: "", name: "", type: "Expense" }); return; }
   const lines = [...form.lines];
   lines[i] = { ...lines[i], [k]: v };
   if (k === "account_id") { const acct = accounts.find(a => a.id === v); lines[i].account_name = acct?.name || ""; }
   setForm(f => ({ ...f, lines }));
   };
+
+  async function createInlineAccount() {
+    if (!newAcctForm.name.trim()) { showToast("Account name is required.", "error"); return; }
+    const code = newAcctForm.code.trim() || nextAccountCode(accounts, newAcctForm.type);
+    const { data: newAcct, error } = await supabase.from("acct_accounts").insert([{
+      company_id: companyId, code, name: newAcctForm.name.trim(), type: newAcctForm.type,
+      is_active: true, old_text_id: companyId + "-" + code
+    }]).select("id, code, name, type").maybeSingle();
+    if (error) { pmError("PM-4006", { raw: error, context: "create inline account" }); return; }
+    if (newAcct && showNewAcct !== null) {
+      const lines = [...form.lines];
+      lines[showNewAcct] = { ...lines[showNewAcct], account_id: newAcct.id, account_name: newAcct.name };
+      setForm(f => ({ ...f, lines }));
+    }
+    showToast(`Account "${newAcctForm.name}" created.`, "success");
+    setShowNewAcct(null);
+    // Trigger parent refresh to pick up new account
+    if (typeof onAdd === "function") { /* onAdd is for JE, not account creation */ }
+  }
 
   const addLine = () => setForm(f => ({ ...f, lines: [...f.lines, { ...EMPTY_JE_LINE }] }));
   const removeLine = (i) => { if (form.lines.length <= 2) return; setForm(f => ({ ...f, lines: f.lines.filter((_,idx) => idx !== i) })); };
@@ -8041,11 +8063,11 @@ function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], v
   </div>
   <div className="rounded-xl border border-brand-100 overflow-x-auto">
   <table className="w-full text-sm">
-  <thead><tr className="bg-neutral-50 border-b border-neutral-200"><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-44">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-28">Class</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-32">Name</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 min-w-[120px]">Memo</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 w-24">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 w-24">Credit</th><th className="px-3 py-2 w-8" /></tr></thead>
+  <thead><tr className="bg-neutral-50 border-b border-neutral-200"><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-44">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-28">Class</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-32">Tenant/Vendor</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 min-w-[120px]">Memo</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 w-24">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 w-24">Credit</th><th className="px-3 py-2 w-8" /></tr></thead>
   <tbody>
   {form.lines.map((line, i) => (
   <tr key={i} className="border-b border-neutral-100">
-  <td className="px-2 py-1.5"><Select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}</Select></td>
+  <td className="px-2 py-1.5"><Select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option><option value="__new__">+ New Account</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}</Select></td>
   <td className="px-2 py-1.5"><Select value={line.class_id || ""} onChange={e => { setLine(i,"class_id",e.target.value||null); const cls = classes.find(c=>c.id===e.target.value); if (cls && !form.property) setForm(f=>({...f, property: cls.name})); }} className="px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></td>
   <td className="px-2 py-1.5"><Select value={line.entity_id ? `${line.entity_type}:${line.entity_id}` : ""} onChange={e => { const val = e.target.value; if (!val) { setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], entity_type: "", entity_id: "", entity_name: "" }; return { ...f, lines }; }); return; } const [type, id] = val.split(":"); const name = type === "customer" ? tenants.find(t => t.id === id)?.name : vendors.find(v => v.id === id)?.name; setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], entity_type: type, entity_id: id, entity_name: name || "" }; return { ...f, lines }; }); }} className="px-2 py-1.5 text-xs bg-white"><option value="">None</option><optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup><optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup></Select></td>
   <td className="px-2 py-1.5"><input type="text" value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs bg-white focus:border-brand-300 focus:outline-none" /></td>
@@ -8058,6 +8080,17 @@ function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], v
   <tfoot><tr className="bg-neutral-50 border-t border-neutral-200"><td colSpan={4} className="px-3 py-2 text-xs font-semibold text-neutral-500 text-right">Totals</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-success-700":"text-danger-600"}`}>{acctFmt(totalDebit)}</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-success-700":"text-danger-600"}`}>{acctFmt(totalCredit)}</td><td /></tr></tfoot>
   </table>
   </div>
+  {showNewAcct !== null && (
+  <div className="bg-brand-50 rounded-xl p-3 mb-2 border border-brand-200">
+  <div className="text-xs font-semibold text-brand-700 mb-2">Create New Account</div>
+  <div className="grid grid-cols-3 gap-2">
+  <div><label className="text-xs text-neutral-500 block mb-1">Type *</label><Select value={newAcctForm.type} onChange={e => setNewAcctForm({...newAcctForm, type: e.target.value})} className="text-xs">{ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</Select></div>
+  <div><label className="text-xs text-neutral-500 block mb-1">Code</label><Input value={newAcctForm.code} onChange={e => setNewAcctForm({...newAcctForm, code: e.target.value})} placeholder="Auto" className="text-xs" /></div>
+  <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><Input value={newAcctForm.name} onChange={e => setNewAcctForm({...newAcctForm, name: e.target.value})} placeholder="e.g. Office Supplies" className="text-xs" /></div>
+  </div>
+  <div className="flex gap-2 mt-2"><Btn size="sm" onClick={createInlineAccount}>Create</Btn><Btn size="sm" variant="ghost" onClick={() => setShowNewAcct(null)}>Cancel</Btn></div>
+  </div>
+  )}
   {!validation.isValid && totalDebit > 0 && totalCredit > 0 && <div className="text-xs text-danger-600 bg-danger-50 rounded-2xl px-3 py-2">⚠ Out of balance by {acctFmt(validation.difference)}</div>}
   {validation.isValid && totalDebit > 0 && <div className="text-xs text-success-600 bg-success-50 rounded-2xl px-3 py-2">✓ Balanced — {acctFmt(totalDebit)}</div>}
   <div className="flex justify-between pt-2">
@@ -8134,7 +8167,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], v
   <div><p className="text-xs text-neutral-400">Status</p><AcctStatusBadge status={modal.je.status} /></div>
   </div>
   <table className="w-full text-sm rounded-xl border border-neutral-200 overflow-hidden">
-  <thead><tr className="bg-neutral-50"><th className="px-5 py-3 text-left text-xs font-semibold text-neutral-500">Account</th><th className="px-5 py-3 text-left text-xs font-semibold text-neutral-500">Class</th><th className="px-5 py-3 text-left text-xs font-semibold text-neutral-500">Name</th><th className="px-5 py-3 text-left text-xs font-semibold text-neutral-500">Memo</th><th className="px-5 py-3 text-right text-xs font-semibold text-neutral-500">Debit</th><th className="px-5 py-3 text-right text-xs font-semibold text-neutral-500">Credit</th></tr></thead>
+  <thead><tr className="bg-neutral-50"><th className="px-5 py-3 text-left text-xs font-semibold text-neutral-500">Account</th><th className="px-5 py-3 text-left text-xs font-semibold text-neutral-500">Class</th><th className="px-5 py-3 text-left text-xs font-semibold text-neutral-500">Tenant/Vendor</th><th className="px-5 py-3 text-left text-xs font-semibold text-neutral-500">Memo</th><th className="px-5 py-3 text-right text-xs font-semibold text-neutral-500">Debit</th><th className="px-5 py-3 text-right text-xs font-semibold text-neutral-500">Credit</th></tr></thead>
   <tbody>
   {(modal.je.lines || []).map((l,i) => {
   const cls = classes.find(c => c.id === l.class_id);
@@ -9020,7 +9053,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* Account Listing */}
     {reportId === "account_list" && (<div>
       <div className="text-center mb-6"><h4 className="text-base font-bold text-neutral-900">{companyName}</h4><p className="text-xs text-neutral-400 uppercase tracking-widest mt-1">Account Listing</p></div>
-      <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Code</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Name</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Type</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Subtype</th><th className="px-4 py-2 text-center text-xs font-semibold text-neutral-500">Active</th></tr></thead>
+      <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Code</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Tenant/Vendor</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Type</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Subtype</th><th className="px-4 py-2 text-center text-xs font-semibold text-neutral-500">Active</th></tr></thead>
       <tbody>{accounts.sort((a,b) => (a.code||"").localeCompare(b.code||"")).map(a => <tr key={a.id} className="border-t border-neutral-100"><td className="px-4 py-2 font-mono text-xs text-neutral-600">{a.code||"—"}</td><td className="px-4 py-2 text-neutral-800">{a.name}</td><td className="px-4 py-2 text-neutral-500">{a.type}</td><td className="px-4 py-2 text-xs text-neutral-400">{a.subtype||"—"}</td><td className="px-4 py-2 text-center">{a.is_active ? "✓" : "✗"}</td></tr>)}</tbody></table>
     </div>)}
 
@@ -9395,6 +9428,22 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
   const [showRuleDrawer, setShowRuleDrawer] = useState(false);
   const [showNewAccount, setShowNewAccount] = useState(false);
   const [newAccountForm, setNewAccountForm] = useState({ name: "", type: "checking", masked_number: "", institution_name: "" });
+  const [showNewBankAcct, setShowNewBankAcct] = useState(false);
+  const [newBankAcctForm, setNewBankAcctForm] = useState({ code: "", name: "", type: "Expense" });
+
+  async function createInlineBankAcct() {
+    if (!newBankAcctForm.name.trim()) { showToast("Account name is required.", "error"); return; }
+    const code = newBankAcctForm.code.trim() || nextAccountCode(accounts, newBankAcctForm.type);
+    const { data: newAcct, error } = await supabase.from("acct_accounts").insert([{
+      company_id: companyId, code, name: newBankAcctForm.name.trim(), type: newBankAcctForm.type,
+      is_active: true, old_text_id: companyId + "-" + code
+    }]).select("id, name").maybeSingle();
+    if (error) { pmError("PM-4006", { raw: error, context: "create inline account from bank" }); return; }
+    if (newAcct) setAddForm(f => ({ ...f, accountId: newAcct.id, accountName: newAcct.name }));
+    showToast(`Account "${newBankAcctForm.name}" created.`, "success");
+    setShowNewBankAcct(false);
+    if (onRefreshAccounting) onRefreshAccounting();
+  }
 
   // Import wizard state
   const [wizStep, setWizStep] = useState(1);
@@ -10720,10 +10769,10 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
       {actionMode === "add" && (
       <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-end">
         <div><label className="text-xs font-medium text-neutral-500 block mb-1">Category *</label>
-          <select value={addForm.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); setAddForm({...addForm, accountId: e.target.value, accountName: a?.name || ""}); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
-            <option value="">Select account...</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a => a.type === type && a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}
+          <select value={addForm.accountId} onChange={e => { if (e.target.value === "__new__") { setShowNewBankAcct(true); return; } const a = accounts.find(a => a.id === e.target.value); setAddForm({...addForm, accountId: e.target.value, accountName: a?.name || ""}); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+            <option value="">Select account...</option><option value="__new__">+ New Account</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a => a.type === type && a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}
           </select></div>
-        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Name</label>
+        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Tenant/Vendor</label>
           <select value={addForm.entityId ? `${addForm.entityType}:${addForm.entityId}` : ""} onChange={e => { if (!e.target.value) { setAddForm(f => ({...f, entityType: "", entityId: "", entityName: ""})); return; } const [type, id] = e.target.value.split(":"); const name = type === "customer" ? tenants.find(t => t.id === id)?.name : vendors.find(v => v.id === id)?.name; setAddForm(f => ({...f, entityType: type, entityId: id, entityName: name || ""})); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
             <option value="">None</option><optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup><optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup>
           </select></div>
@@ -10734,6 +10783,17 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
             <option value="">No class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select></div>
         <button onClick={() => acceptTransaction(txn, addForm.accountId, addForm.accountName, addForm.memo, addForm.classId, addForm.entityType, addForm.entityId, addForm.entityName)} disabled={!addForm.accountId} className="bg-success-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-success-700">Add & Post</button>
+      </div>
+      )}
+      {showNewBankAcct && (
+      <div className="bg-brand-50 rounded-xl p-3 mt-2 border border-brand-200">
+      <div className="text-xs font-semibold text-brand-700 mb-2">Create New Account</div>
+      <div className="grid grid-cols-3 gap-2">
+      <div><label className="text-xs text-neutral-500 block mb-1">Type *</label><select value={newBankAcctForm.type} onChange={e => setNewBankAcctForm({...newBankAcctForm, type: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">{ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+      <div><label className="text-xs text-neutral-500 block mb-1">Code</label><input value={newBankAcctForm.code} onChange={e => setNewBankAcctForm({...newBankAcctForm, code: e.target.value})} placeholder="Auto" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+      <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><input value={newBankAcctForm.name} onChange={e => setNewBankAcctForm({...newBankAcctForm, name: e.target.value})} placeholder="e.g. Office Supplies" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+      </div>
+      <div className="flex gap-2 mt-2"><button onClick={createInlineBankAcct} className="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg">Create</button><button onClick={() => setShowNewBankAcct(false)} className="text-xs text-neutral-500 px-3 py-1.5">Cancel</button></div>
       </div>
       )}
 
