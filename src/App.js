@@ -4519,7 +4519,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {showForm && editingProperty && (
   <div className="bg-white p-4 rounded-xl border border-brand-50 shadow-sm mb-4">
   <h3 className="text-sm font-semibold text-neutral-700 mb-3">{editingProperty ? "Edit Property" : "Add Property"}</h3>
-  {!isAdmin && <p className="text-xs text-info-600 bg-info-50 rounded-lg px-3 py-2 mb-3">Submitted for admin approval.</p>}
+  {!isAdmin && <p className="text-xs text-info-600 bg-info-50 rounded-lg px-3 py-2 mb-3">Changes will be submitted for admin approval. Edit the fields below and click "Submit for Approval".</p>}
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
   <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Address Line 1 *</label><Input placeholder="123 Main St" value={form.address_line_1} onChange={e => setForm({ ...form, address_line_1: e.target.value })} autoComplete="address-line1" name="address-line1" required /></div>
   <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Address Line 2</label><Input placeholder="Apt 4B, Suite 200, etc." value={form.address_line_2} onChange={e => setForm({ ...form, address_line_2: e.target.value })} autoComplete="address-line2" name="address-line2" /></div>
@@ -4545,7 +4545,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Textarea placeholder="Any additional notes" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
   </div>
   <div className="flex gap-2 mt-3">
-  <Btn onClick={saveProperty} disabled={_submitGuards["saveProperty"]}>{_submitGuards["saveProperty"] ? "Saving..." : (isAdmin ? "Save" : "Submit")}</Btn>
+  <Btn onClick={saveProperty} disabled={_submitGuards["saveProperty"]}>{_submitGuards["saveProperty"] ? "Saving..." : (isAdmin ? "Save Changes" : "Submit for Approval")}</Btn>
   <Btn variant="ghost" onClick={() => { setShowForm(false); setEditingProperty(null); }}>Cancel</Btn>
   </div>
   </div>
@@ -4611,6 +4611,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {(() => { const ss = getSetupStatus(p); return (!ss.isComplete && ss.total > 0) ? <div onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0 }); }} className="mt-2 text-xs text-info-600 bg-info-50 rounded-lg px-2 py-1 flex items-center gap-1 cursor-pointer hover:bg-info-100 transition-colors"><span className="material-icons-outlined text-sm">pending</span>Setup Incomplete — {ss.missing.length} step{ss.missing.length !== 1 ? "s" : ""} remaining</div> : null; })()}
   <div className="flex gap-2 mt-3 pt-3 border-t border-brand-50/50 flex-wrap" onClick={e => e.stopPropagation()}>
   {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline">Edit</button>}
+  {!isReadOnly(p) && p.status === "vacant" && <button onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: false, tenant: "", rent: 0, isNew: false }); }} className="text-xs text-positive-600 hover:underline">Add Tenant</button>}
   {!isReadOnly(p) && isAdmin && p.status !== "inactive" && <button onClick={() => deactivateProperty(p)} className="text-xs text-warn-600 hover:underline">Deactivate</button>}
   {!isReadOnly(p) && isAdmin && p.status === "inactive" && <button onClick={() => reactivateProperty(p)} className="text-xs text-positive-600 hover:underline">Reactivate</button>}
   {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-danger-500 hover:underline">Delete</button>}
