@@ -6409,7 +6409,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   if (editingWO && editingWO.status === "completed" && safeNum(form.cost) !== safeNum(editingWO.cost)) {
   if (!await showConfirm({ message: `This work order is completed and its cost was already posted to accounting ($${safeNum(editingWO.cost)}). Changing the cost to $${safeNum(form.cost)} will NOT update the GL entry.\n\nYou may need to void and re-post the journal entry manually. Continue?` })) return;
   }
-  const payload = editingWO ? form : { ...form, created: formatLocalDate(new Date()) };
+  const payload = { ...form };
   const { error } = editingWO
   ? await supabase.from("work_orders").update({ property: payload.property, tenant: payload.tenant, issue: payload.issue, priority: payload.priority, status: payload.status, assigned: payload.assigned, cost: payload.cost, notes: payload.notes }).eq("id", editingWO.id).eq("company_id", companyId)
   : await supabase.from("work_orders").insert([{ ...payload, company_id: companyId }]);
@@ -6433,6 +6433,38 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   setForm({ property: "", tenant: "", issue: "", priority: "normal", status: "open", assigned: "", cost: 0, notes: "" });
   fetchWorkOrders();
   } finally { guardRelease("saveWorkOrder"); }
+  }
+
+  async function billTenantForWO(wo) {
+    if (!wo.tenant) { showToast("No tenant assigned to this work order.", "error"); return; }
+    const amountStr = prompt(`Bill tenant "${wo.tenant}" for this work order.\n\nEnter amount ($):`, wo.cost || "0");
+    if (!amountStr) return;
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) { showToast("Invalid amount.", "error"); return; }
+    const description = prompt("Description:", `Service charge — ${wo.issue?.slice(0, 50)}`);
+    if (!description) return;
+    if (!guardSubmit("billTenant", wo.id)) return;
+    try {
+      const { data: tenant } = await supabase.from("tenants").select("id, name, property").eq("company_id", companyId).ilike("name", wo.tenant).is("archived_at", null).maybeSingle();
+      if (!tenant) { showToast("Tenant not found: " + wo.tenant, "error"); return; }
+      const classId = await getPropertyClassId(wo.property, companyId);
+      const result = await atomicPostJEAndLedger({ companyId,
+        date: formatLocalDate(new Date()),
+        description: description,
+        reference: "WO-BILL-" + shortId(),
+        property: wo.property,
+        lines: [
+          { account_id: "1100", account_name: "Accounts Receivable", debit: amount, credit: 0, class_id: classId, memo: description },
+          { account_id: "4100", account_name: "Other Income", debit: 0, credit: amount, class_id: classId, memo: "Tenant billback — " + wo.issue?.slice(0, 30) },
+        ],
+        ledgerEntry: { tenant: tenant.name, tenant_id: tenant.id, property: wo.property, date: formatLocalDate(new Date()), description: description, amount: amount, type: "charge", balance: 0 },
+        balanceUpdate: { tenantId: tenant.id, amount: amount },
+      });
+      if (!result.jeId) return;
+      showToast(`Billed ${formatCurrency(amount)} to ${tenant.name}.`, "success");
+      addNotification("💰", `${formatCurrency(amount)} billed to ${tenant.name} for work order`);
+      logAudit("create", "maintenance", `Billed tenant ${tenant.name} $${amount} for WO: ${wo.issue}`, wo.id, userProfile?.email, userRole, companyId);
+    } finally { guardRelease("billTenant", wo.id); }
   }
 
   async function updateStatus(wo, newStatus) {
@@ -6675,6 +6707,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   {w.status === "open" && <button onClick={() => updateStatus(w, "in_progress")} className="text-xs text-highlight-600 border border-highlight-200 px-3 py-1 rounded-lg hover:bg-highlight-50">▶ In Progress</button>}
   {w.status === "in_progress" && <button onClick={() => updateStatus(w, "completed")} className="text-xs text-positive-600 border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">✓ Complete</button>}
   {w.status === "completed" && <button onClick={() => updateStatus(w, "open")} className="text-xs text-neutral-400 border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">↩ Reopen</button>}
+  {w.tenant && <button onClick={() => billTenantForWO(w)} className="text-xs text-danger-600 border border-danger-200 px-3 py-1 rounded-lg hover:bg-danger-50">💰 Bill Tenant</button>}
   <button onClick={() => openPhotos(w)} className="text-xs text-highlight-600 border border-highlight-200 px-3 py-1 rounded-lg hover:bg-highlight-50">📸 Photos</button>
   <button onClick={() => startEdit(w)} className="text-xs text-info-600 border border-info-200 px-3 py-1 rounded-lg hover:bg-info-50">✏️ Edit</button>
   </div>
@@ -12147,8 +12180,11 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   const failed = Object.entries(items).filter(([, v]) => v.pass === false).map(([k]) => k);
   if (failed.length === 0) { showToast("No failed items in this inspection.", "info"); return; }
   if (!await showConfirm({ message: `Create work order for ${failed.length} failed item(s)?\n\n${failed.join(", ")}` })) return;
-  const { error } = await supabase.from("work_orders").insert([{ company_id: companyId, property: insp.property, issue: `Inspection findings: ${failed.join(", ")}`, priority: "normal", status: "open", notes: `Auto-created from ${insp.type} inspection on ${insp.date}` }]);
+  // Find tenant at this property for the WO
+  const { data: propTenant } = await supabase.from("tenants").select("name").eq("company_id", companyId).eq("property", insp.property).is("archived_at", null).eq("lease_status", "active").maybeSingle();
+  const { error } = await supabase.from("work_orders").insert([{ company_id: companyId, property: insp.property, tenant: propTenant?.name || "", issue: `Inspection findings: ${failed.join(", ")}`, priority: "normal", status: "open", notes: `Auto-created from ${insp.type} inspection on ${insp.date}` }]);
   if (error) { pmError("PM-7001", { raw: error, context: "create work order from inspection" }); return; }
+  showToast("Work order created. Go to Maintenance to view it.", "success");
   addNotification("🔧", `Work order created from inspection at ${insp.property}`);
   } finally { guardRelease("woFromInsp", insp.id); }
   }}><span className="material-icons-outlined text-xs align-middle">build</span> Create Work Order</Btn>}
