@@ -1945,7 +1945,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   const [utilities, setUtilities] = useState([
     { provider: "", type: "Electric", account_number: "", due_date: 1, responsibility: propForm.status === "occupied" ? "tenant_pays" : "owner_pays", website: "", username: "", password: "" }
   ]);
-  const [hoa, setHoa] = useState({ enabled: false, hoa_name: "", amount: "", due_date: 1, frequency: "Monthly", notes: "", website: "", username: "", password: "" });
+  const EMPTY_HOA = { hoa_name: "", amount: "", due_date: 1, frequency: "Monthly", notes: "", website: "", username: "", password: "" };
+  const [hoas, setHoas] = useState([]);
+  const addHoa = () => { if (hoas.length < 5) setHoas([...hoas, { ...EMPTY_HOA }]); };
+  const updateHoa = (idx, field, val) => setHoas(prev => prev.map((h, i) => i === idx ? { ...h, [field]: val } : h));
+  const removeHoa = (idx) => setHoas(prev => prev.filter((_, i) => i !== idx));
   const [loan, setLoan] = useState({ enabled: false, lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: { taxes: false, insurance: false, pmi: false }, loan_start_date: "", maturity_date: "", account_number: "", notes: "", setup_recurring: false, website: "", username: "", password: "" });
   const [insurance, setInsurance] = useState({ enabled: false, provider: "", policy_number: "", premium_amount: "", premium_frequency: "annual", coverage_amount: "", expiration_date: "", notes: "", website: "", username: "", password: "" });
   const [recurring, setRecurring] = useState({ frequency: "monthly", day_of_month: 1, amount: wizardData.rent || 0 });
@@ -2005,7 +2009,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             if (wd.savedPropertyId) setSavedPropertyId(wd.savedPropertyId);
             if (wd.savedAddress) setSavedAddress(wd.savedAddress);
             if (wd.utilities) setUtilities(wd.utilities);
-            if (wd.hoa) setHoa(wd.hoa);
+            if (wd.hoas) setHoas(wd.hoas); else if (wd.hoa?.enabled) setHoas([wd.hoa]);
             if (wd.loan) setLoan(wd.loan);
             if (wd.insurance) setInsurance(wd.insurance);
             if (wd.recurring) setRecurring(wd.recurring);
@@ -2031,7 +2035,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
               if (wd.savedPropertyId) setSavedPropertyId(wd.savedPropertyId);
               if (wd.savedAddress) setSavedAddress(wd.savedAddress);
               if (wd.utilities) setUtilities(wd.utilities);
-              if (wd.hoa) setHoa(wd.hoa);
+              if (wd.hoas) setHoas(wd.hoas); else if (wd.hoa?.enabled) setHoas([wd.hoa]);
               if (wd.loan) setLoan(wd.loan);
               if (wd.insurance) setInsurance(wd.insurance);
               if (wd.recurring) setRecurring(wd.recurring);
@@ -2068,7 +2072,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       await supabase.from("property_setup_wizard").update({
         current_step: nextStep,
         completed_steps: Array.from(newCompletedSteps),
-        wizard_data: { propForm, tenantForm, savedPropertyId, savedAddress, utilities, hoa, loan, insurance, recurring },
+        wizard_data: { propForm, tenantForm, savedPropertyId, savedAddress, utilities, hoas, loan, insurance, recurring },
         updated_at: new Date().toISOString()
       }).eq("id", wizardId).eq("company_id", companyId);
     } catch (e) {
@@ -2124,28 +2128,27 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   }
 
   async function saveHoa() {
-    if (!hoa.enabled) return true;
-    if (!hoa.hoa_name.trim()) throw new Error("HOA name is required");
-    if (!hoa.amount || Number(hoa.amount) <= 0) throw new Error("HOA amount is required");
-    const hoaRow = {
-      company_id: companyId,
-      property: savedAddress,
-      hoa_name: hoa.hoa_name.trim(),
-      amount: Number(hoa.amount),
-      due_date: hoa.due_date || formatLocalDate(new Date()),
-      frequency: hoa.frequency,
-      notes: hoa.notes.trim(),
-      status: "pending",
-      website: hoa.website || "",
-    };
-    if (hoa.username || hoa.password) {
-      const { encrypted: encU, iv: ivU } = await encryptCredential(hoa.username || "", companyId);
-      const { encrypted: encP, iv: ivP } = await encryptCredential(hoa.password || "", companyId);
-      hoaRow.username_encrypted = encU;
-      hoaRow.password_encrypted = encP;
-      hoaRow.encryption_iv = ivP || ivU;
-    }
-    const { error } = await supabase.from("hoa_payments").insert([hoaRow]);
+    const validHoas = hoas.filter(h => h.hoa_name.trim());
+    if (validHoas.length === 0) return true;
+    const rows = validHoas.map(async h => {
+      if (!h.amount || Number(h.amount) <= 0) throw new Error("HOA amount is required for " + h.hoa_name);
+      const now = new Date();
+      const day = Math.min(28, Math.max(1, Number(h.due_date) || 1));
+      const dueDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const row = {
+        company_id: companyId, property: savedAddress, hoa_name: h.hoa_name.trim(),
+        amount: Number(h.amount), due_date: dueDate, frequency: h.frequency || "Monthly",
+        notes: (h.notes || "").trim(), status: "pending", website: h.website || "",
+      };
+      if (h.username || h.password) {
+        const { encrypted: encU, iv: ivU } = await encryptCredential(h.username || "", companyId);
+        const { encrypted: encP, iv: ivP } = await encryptCredential(h.password || "", companyId);
+        row.username_encrypted = encU; row.password_encrypted = encP; row.encryption_iv = ivP || ivU;
+      }
+      return row;
+    });
+    const resolvedRows = await Promise.all(rows);
+    const { error } = await supabase.from("hoa_payments").insert(resolvedRows);
     if (error) throw new Error("Failed to save HOA: " + error.message);
     return true;
   }
@@ -2785,53 +2788,46 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
               </div>
               <div>
                 <h3 className="text-lg font-manrope font-bold text-neutral-800">HOA</h3>
-                <p className="text-sm text-neutral-400">Homeowners Association dues</p>
+                <p className="text-sm text-neutral-400">Homeowners Association dues (up to 5)</p>
               </div>
             </div>
-            <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div className={`w-10 h-6 rounded-full transition-colors ${hoa.enabled ? "bg-positive-500" : "bg-neutral-200"} relative`} onClick={() => setHoa({ ...hoa, enabled: !hoa.enabled })}>
-                  <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${hoa.enabled ? "tranneutral-x-4.5 left-0.5" : "left-0.5"}`} />
+            {hoas.map((h, idx) => (
+            <div key={idx} className="bg-white rounded-xl border border-neutral-200 p-4 mb-3">
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-sm font-semibold text-neutral-700">HOA #{idx + 1}</span>
+                <button onClick={() => removeHoa(idx)} className="text-xs text-danger-500 hover:underline">Remove</button>
+              </div>
+              <div className="space-y-3">
+                <div><label className="text-xs font-medium text-neutral-500 block mb-1">HOA Name *</label>
+                <input type="text" value={h.hoa_name} onChange={e => updateHoa(idx, "hoa_name", e.target.value)} placeholder="e.g. Riverside HOA" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="text-xs font-medium text-neutral-500 block mb-1">Amount ($) *</label>
+                  <input type="number" value={h.amount} onChange={e => updateHoa(idx, "amount", e.target.value)} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                  <div><label className="text-xs font-medium text-neutral-500 block mb-1">Due Date (day)</label>
+                  <input type="number" min="1" max="28" value={h.due_date} onChange={e => updateHoa(idx, "due_date", Math.min(28, Math.max(1, Number(e.target.value))))} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
                 </div>
-                <span className="text-sm font-medium text-neutral-700">Does this property have an HOA?</span>
-              </label>
-              {hoa.enabled && (
-                <div className="space-y-3 pt-2">
-                  <div>
-                    <label className="text-xs font-medium text-neutral-500 block mb-1">HOA Name *</label>
-                    <input type="text" value={hoa.hoa_name} onChange={e => setHoa({ ...hoa, hoa_name: e.target.value })} placeholder="e.g. Riverside HOA" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-medium text-neutral-500 block mb-1">Amount ($) *</label>
-                      <input type="number" value={hoa.amount} onChange={e => setHoa({ ...hoa, amount: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-neutral-500 block mb-1">Due Date (day)</label>
-                      <input type="number" min="1" max="28" value={hoa.due_date} onChange={e => setHoa({ ...hoa, due_date: Math.min(28, Math.max(1, Number(e.target.value))) })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-neutral-500 block mb-1">Frequency</label>
-                    <select value={hoa.frequency} onChange={e => setHoa({ ...hoa, frequency: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
-                      {["Monthly", "Quarterly", "Annual"].map(f => <option key={f} value={f}>{f}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-neutral-500 block mb-1">Notes</label>
-                    <textarea value={hoa.notes} onChange={e => setHoa({ ...hoa, notes: e.target.value })} rows={2} placeholder="Optional notes..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
-                  </div>
-                  <div className="border-t border-neutral-100 pt-2 mt-1">
-                    <p className="text-xs text-neutral-400 mb-2">Portal Login (encrypted)</p>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Website</label><input type="url" value={hoa.website||""} onChange={e => setHoa({...hoa, website: e.target.value})} placeholder="https://..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
-                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Username</label><input type="text" value={hoa.username||""} onChange={e => setHoa({...hoa, username: e.target.value})} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
-                      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Password</label><input type="password" value={hoa.password||""} onChange={e => setHoa({...hoa, password: e.target.value})} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
-                    </div>
+                <div><label className="text-xs font-medium text-neutral-500 block mb-1">Frequency</label>
+                <select value={h.frequency} onChange={e => updateHoa(idx, "frequency", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
+                  {["Monthly", "Quarterly", "Annual"].map(f => <option key={f} value={f}>{f}</option>)}
+                </select></div>
+                <div><label className="text-xs font-medium text-neutral-500 block mb-1">Notes</label>
+                <textarea value={h.notes||""} onChange={e => updateHoa(idx, "notes", e.target.value)} rows={2} placeholder="Optional..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                <div className="border-t border-neutral-100 pt-2 mt-1">
+                  <p className="text-xs text-neutral-400 mb-2">Portal Login (encrypted)</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Website</label><input type="url" value={h.website||""} onChange={e => updateHoa(idx, "website", e.target.value)} placeholder="https://..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Username</label><input type="text" value={h.username||""} onChange={e => updateHoa(idx, "username", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                    <div><label className="text-xs font-medium text-neutral-500 block mb-1">Password</label><input type="password" value={h.password||""} onChange={e => updateHoa(idx, "password", e.target.value)} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
                   </div>
                 </div>
-              )}
+              </div>
             </div>
+            ))}
+            {hoas.length < 5 && (
+            <div onClick={addHoa} className="border-2 border-dashed border-neutral-200 rounded-xl p-4 text-center cursor-pointer hover:border-neutral-400 hover:bg-neutral-50 transition-colors">
+              <span className="text-sm text-neutral-400">+ Add {hoas.length === 0 ? "an" : "Another"} HOA</span>
+            </div>
+            )}
           </div>
         );
 
