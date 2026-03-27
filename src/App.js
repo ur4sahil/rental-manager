@@ -2333,7 +2333,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     const { data: existingTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", tenantForm.tenant.trim()).eq("property", addr).is("archived_at", null).maybeSingle();
     let tenantId = existingTenant?.id;
     if (!existingTenant) {
-      const { data: newT, error: tErr } = await supabase.from("tenants").insert([{ company_id: companyId, name: tenantForm.tenant.trim(), first_name: tenantForm.tenant_first.trim(), middle_initial: tenantForm.tenant_mi.trim(), last_name: tenantForm.tenant_last.trim(), email: tenantForm.tenant_email.toLowerCase(), phone: tenantForm.tenant_phone, property: addr, rent: Number(tenantForm.rent), lease_status: "active", lease_start: tenantForm.lease_start, lease_end_date: tenantForm.lease_end, move_in: tenantForm.lease_start, balance: 0 }]).select("id").maybeSingle();
+      const { data: newT, error: tErr } = await supabase.from("tenants").insert([{ company_id: companyId, name: tenantForm.tenant.trim(), first_name: tenantForm.tenant_first.trim(), middle_initial: tenantForm.tenant_mi.trim(), last_name: tenantForm.tenant_last.trim(), email: tenantForm.tenant_email.toLowerCase(), phone: tenantForm.tenant_phone, property: addr, rent: Number(tenantForm.rent), late_fee_amount: safeNum(tenantForm.late_fee_amount) || null, late_fee_type: tenantForm.late_fee_type || "flat", lease_status: "active", lease_start: tenantForm.lease_start, lease_end_date: tenantForm.lease_end, move_in: tenantForm.lease_start, balance: 0 }]).select("id").maybeSingle();
       if (tErr) throw new Error("Failed to create tenant: " + tErr.message);
       tenantId = newT?.id;
     }
@@ -3550,7 +3550,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const { data: existingTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.tenant.trim()).eq("property", compositeAddress).maybeSingle();
   let tenantId = existingTenant?.id;
   if (!existingTenant) {
-  const { data: newT } = await supabase.from("tenants").insert([{ company_id: companyId, name: form.tenant.trim(), email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", property: compositeAddress, rent: Number(form.rent) || 0, lease_status: "active", lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, balance: 0 }]).select("id").maybeSingle();
+  const { data: newT } = await supabase.from("tenants").insert([{ company_id: companyId, name: form.tenant.trim(), email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", property: compositeAddress, rent: Number(form.rent) || 0, late_fee_amount: safeNum(form.late_fee_amount) || null, late_fee_type: form.late_fee_type || "flat", lease_status: "active", lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, balance: 0 }]).select("id").maybeSingle();
   tenantId = newT?.id;
   // Notify: new tenant move-in
   queueNotification("move_in", (form.tenant_email || "").toLowerCase(), { tenant: form.tenant.trim(), property: compositeAddress, moveInDate: form.lease_start || formatLocalDate(new Date()) }, companyId);
@@ -4538,6 +4538,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="col-span-1 sm:col-span-2 bg-brand-50 rounded-lg px-3 py-2 mt-1"><div className="text-xs font-semibold text-brand-700">Lease Details</div></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Monthly Rent ($) *</label><Input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} required /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Security Deposit ($) *</label><Input placeholder="1500" value={form.security_deposit} onChange={e => setForm({ ...form, security_deposit: e.target.value })} required /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Late Fee</label><div className="flex gap-1"><Input placeholder="50" value={form.late_fee_amount || ""} onChange={e => setForm({ ...form, late_fee_amount: e.target.value })} className="flex-1" /><Select value={form.late_fee_type || "flat"} onChange={e => setForm({ ...form, late_fee_type: e.target.value })} className="w-16"><option value="flat">$</option><option value="percent">%</option></Select></div></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lease Start Date *</label><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} required /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lease End Date *</label><Input type="date" value={form.lease_end} min={form.lease_start || undefined} onChange={e => setForm({ ...form, lease_end: e.target.value })} required /></div>
   </>)}
@@ -4826,7 +4827,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [newCharge, setNewCharge] = useState({ description: "", amount: "", type: "charge" });
-  const [form, setForm] = useState({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "" });
+  const [form, setForm] = useState({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "", late_fee_amount: "", late_fee_type: "flat" });
   const [tenantView, setTenantView] = useState("card");
   const [tenantSearch, setTenantSearch] = useState("");
   const [tenantFilter, setTenantFilter] = useState("all");
@@ -4886,8 +4887,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
   // #3: Keep lease_start/move_in and lease_end_date/move_out in sync
   const { error } = editingTenant
-  ? await supabase.from("tenants").update({ name: form.name, first_name: form.first_name, middle_initial: form.mi, last_name: form.last_name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, move_in: form.lease_start || null, lease_end_date: form.lease_end || null, move_out: form.lease_end || null, rent: form.rent }).eq("id", editingTenant.id).eq("company_id", companyId)
-  : await supabase.from("tenants").insert([{ company_id: companyId, name: form.name, first_name: form.first_name, middle_initial: form.mi, last_name: form.last_name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, rent: form.rent, balance: 0, doc_status: "pending_docs" }]);
+  ? await supabase.from("tenants").update({ name: form.name, first_name: form.first_name, middle_initial: form.mi, last_name: form.last_name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, move_in: form.lease_start || null, lease_end_date: form.lease_end || null, move_out: form.lease_end || null, rent: form.rent, late_fee_amount: safeNum(form.late_fee_amount) || null, late_fee_type: form.late_fee_type || "flat" }).eq("id", editingTenant.id).eq("company_id", companyId)
+  : await supabase.from("tenants").insert([{ company_id: companyId, name: form.name, first_name: form.first_name, middle_initial: form.mi, last_name: form.last_name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, rent: form.rent, late_fee_amount: safeNum(form.late_fee_amount) || null, late_fee_type: form.late_fee_type || "flat", balance: 0, doc_status: "pending_docs" }]);
   if (error) {
   if (error.message?.includes("idx_tenants_unique_name_property") || error.message?.includes("duplicate")) {
   pmError("PM-3001", { raw: error, context: "save tenant " + form.name.trim() });
@@ -5116,9 +5117,46 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   } finally { guardRelease("inviteTenant"); }
   }
 
+  async function applyLateFeeForTenant(t) {
+    if (!guardSubmit("lateFee", t.id)) return;
+    try {
+      const feeAmount = t.late_fee_type === "percent"
+        ? Math.round(safeNum(t.rent) * safeNum(t.late_fee_amount) / 100 * 100) / 100
+        : safeNum(t.late_fee_amount);
+      if (!feeAmount || feeAmount <= 0) { showToast("No late fee configured for this tenant. Edit the tenant to set a late fee amount.", "error"); return; }
+      // Dedup: check if late fee already posted this month
+      const thisMonth = formatLocalDate(new Date()).slice(0, 7);
+      const { data: existing } = await supabase.from("ledger_entries").select("id").eq("company_id", companyId).eq("tenant_id", t.id).eq("type", "late_fee").gte("date", thisMonth + "-01").limit(1);
+      if (existing?.length > 0) { showToast("Late fee already applied for " + t.name + " this month.", "warning"); return; }
+      const monthName = new Date().toLocaleString("default", { month: "long", year: "numeric" });
+      const feeLabel = t.late_fee_type === "percent" ? `${t.late_fee_amount}% of $${safeNum(t.rent).toLocaleString()} = ${formatCurrency(feeAmount)}` : formatCurrency(feeAmount);
+      if (!await showConfirm({ message: `Apply ${feeLabel} late fee to ${t.name} for ${monthName}?` })) return;
+      const today = formatLocalDate(new Date());
+      const classId = await getPropertyClassId(t.property, companyId);
+      const result = await atomicPostJEAndLedger({ companyId,
+        date: today,
+        description: "Late fee — " + t.name + " — " + t.property,
+        reference: "LATEFEE-" + shortId(),
+        property: t.property,
+        lines: [
+          { account_id: "1100", account_name: "Accounts Receivable", debit: feeAmount, credit: 0, class_id: classId, memo: "Late fee: " + t.name },
+          { account_id: "4010", account_name: "Late Fee Income", debit: 0, credit: feeAmount, class_id: classId, memo: monthName + " late fee" },
+        ],
+        ledgerEntry: { tenant: t.name, tenant_id: t.id, property: t.property, date: today, description: `Late fee — ${monthName}`, amount: feeAmount, type: "late_fee", balance: 0 },
+        balanceUpdate: { tenantId: t.id, amount: feeAmount },
+      });
+      if (!result.jeId) return;
+      showToast(`Late fee ${formatCurrency(feeAmount)} applied to ${t.name}.`, "success");
+      addNotification("⚠️", `Late fee ${formatCurrency(feeAmount)} — ${t.name}`);
+      logAudit("create", "late_fees", `Late fee ${formatCurrency(feeAmount)} for ${t.name}`, t.id, userProfile?.email, userRole, companyId);
+      fetchTenants();
+      if (selectedTenant?.id === t.id) openLedger(t);
+    } finally { guardRelease("lateFee", t.id); }
+  }
+
   function startEdit(t) {
   setEditingTenant(t);
-  setForm({ name: t.name, first_name: t.first_name || parseNameParts(t.name).first_name, mi: t.middle_initial || parseNameParts(t.name).middle_initial, last_name: t.last_name || parseNameParts(t.name).last_name, email: t.email, phone: t.phone, property: t.property, lease_status: t.lease_status, lease_start: t.lease_start || t.move_in || "", lease_end: t.lease_end_date || t.move_out || "", rent: t.rent || "" });
+  setForm({ name: t.name, first_name: t.first_name || parseNameParts(t.name).first_name, mi: t.middle_initial || parseNameParts(t.name).middle_initial, last_name: t.last_name || parseNameParts(t.name).last_name, email: t.email, phone: t.phone, property: t.property, lease_status: t.lease_status, lease_start: t.lease_start || t.move_in || "", lease_end: t.lease_end_date || t.move_out || "", rent: t.rent || "", late_fee_amount: t.late_fee_amount || "", late_fee_type: t.late_fee_type || "flat" });
   setShowForm(true);
   }
 
@@ -5443,6 +5481,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className={`text-3xl font-bold ${safeNum(selectedTenant?.balance) > 0 ? "text-danger-500" : safeNum(selectedTenant?.balance) < 0 ? "text-positive-600" : "text-neutral-700"}`}>
   {safeNum(selectedTenant?.balance) > 0 ? `-${formatCurrency(selectedTenant.balance)}` : safeNum(selectedTenant?.balance) < 0 ? `Credit ${formatCurrency(Math.abs(selectedTenant.balance))}` : "$0 Current"}
   </div>
+  {safeNum(selectedTenant?.balance) > 0 && safeNum(selectedTenant?.late_fee_amount) > 0 && (
+  <button onClick={() => applyLateFeeForTenant(selectedTenant)} className="mt-2 w-full text-xs bg-danger-50 text-danger-700 border border-danger-200 rounded-lg px-3 py-2 hover:bg-danger-100 font-semibold flex items-center justify-center gap-1"><span className="material-icons-outlined text-sm">gavel</span>Apply Late Fee ({selectedTenant.late_fee_type === "percent" ? selectedTenant.late_fee_amount + "%" : formatCurrency(selectedTenant.late_fee_amount)})</button>
+  )}
   </div>
   <div className="bg-brand-50/30 rounded-xl p-3 mb-4">
   <div className="text-xs font-semibold text-neutral-500 mb-2">Add Transaction</div>
@@ -6008,6 +6049,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Phone</label><Input type="tel" placeholder="(555) 123-4567" value={form.phone} onChange={e => setForm({ ...form, phone: formatPhoneInput(e.target.value) })} maxLength={14} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={v => setForm({ ...form, property: v })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Monthly Rent ($)</label><Input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Late Fee</label><div className="flex gap-1"><Input placeholder="50" value={form.late_fee_amount} onChange={e => setForm({ ...form, late_fee_amount: e.target.value })} className="flex-1" /><Select value={form.late_fee_type} onChange={e => setForm({ ...form, late_fee_type: e.target.value })} className="w-16"><option value="flat">$</option><option value="percent">%</option></Select></div></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lease Status</label><Select value={form.lease_status} onChange={e => setForm({ ...form, lease_status: e.target.value })}>
   {["active", "notice", "expired"].map(s => <option key={s}>{s}</option>)}
   </Select></div>
@@ -6080,6 +6122,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   <div className="flex items-center justify-between mt-3 pt-2 border-t border-brand-50">
   <button onClick={e => { e.stopPropagation(); setSelectedTenant(t); setActivePanel("ledger"); openLedger(t); }} className="text-xs text-brand-600 hover:text-brand-800 font-medium">View Ledger</button>
+  {safeNum(t.balance) > 0 && safeNum(t.late_fee_amount) > 0 && <button onClick={e => { e.stopPropagation(); applyLateFeeForTenant(t); }} className="text-xs text-danger-600 hover:text-danger-800 font-medium flex items-center gap-0.5"><span className="material-icons-outlined text-xs">gavel</span>Late Fee</button>}
   <span className="text-xs text-neutral-300">Click for details →</span>
   </div>
   </div>
