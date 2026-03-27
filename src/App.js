@@ -8166,6 +8166,17 @@ function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], v
   <p className="text-xs font-semibold text-neutral-500 uppercase">Journal Entry Lines</p>
   <button onClick={addLine} className="text-xs text-neutral-600 hover:text-neutral-800">+ Add Line</button>
   </div>
+  {showNewAcct !== null && (
+  <div className="bg-brand-50 rounded-xl p-3 mb-3 border-2 border-brand-400 shadow-lg">
+  <div className="text-xs font-semibold text-brand-700 mb-2">Create New Account (for line {showNewAcct + 1})</div>
+  <div className="grid grid-cols-3 gap-2">
+  <div><label className="text-xs text-neutral-500 block mb-1">Type *</label><Select value={newAcctForm.type} onChange={e => setNewAcctForm({...newAcctForm, type: e.target.value})} className="text-xs">{ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</Select></div>
+  <div><label className="text-xs text-neutral-500 block mb-1">Code</label><Input value={newAcctForm.code} onChange={e => setNewAcctForm({...newAcctForm, code: e.target.value})} placeholder="Auto" className="text-xs" /></div>
+  <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><Input value={newAcctForm.name} onChange={e => setNewAcctForm({...newAcctForm, name: e.target.value})} placeholder="e.g. Office Supplies" className="text-xs" /></div>
+  </div>
+  <div className="flex gap-2 mt-2"><Btn size="sm" onClick={createInlineAccount}>Create & Select</Btn><Btn size="sm" variant="ghost" onClick={() => setShowNewAcct(null)}>Cancel</Btn></div>
+  </div>
+  )}
   <div className="rounded-xl border border-brand-100 overflow-x-auto">
   <table className="w-full text-sm">
   <thead><tr className="bg-neutral-50 border-b border-neutral-200"><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-44">Account</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-28">Class</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 w-32">Tenant/Vendor</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500 min-w-[120px]">Memo</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 w-24">Debit</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500 w-24">Credit</th><th className="px-3 py-2 w-8" /></tr></thead>
@@ -8185,17 +8196,6 @@ function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], v
   <tfoot><tr className="bg-neutral-50 border-t border-neutral-200"><td colSpan={4} className="px-3 py-2 text-xs font-semibold text-neutral-500 text-right">Totals</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-success-700":"text-danger-600"}`}>{acctFmt(totalDebit)}</td><td className={`px-3 py-2 text-xs font-mono font-bold text-right ${validation.isValid?"text-success-700":"text-danger-600"}`}>{acctFmt(totalCredit)}</td><td /></tr></tfoot>
   </table>
   </div>
-  {showNewAcct !== null && (
-  <div className="bg-brand-50 rounded-xl p-3 mb-2 border border-brand-200">
-  <div className="text-xs font-semibold text-brand-700 mb-2">Create New Account</div>
-  <div className="grid grid-cols-3 gap-2">
-  <div><label className="text-xs text-neutral-500 block mb-1">Type *</label><Select value={newAcctForm.type} onChange={e => setNewAcctForm({...newAcctForm, type: e.target.value})} className="text-xs">{ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</Select></div>
-  <div><label className="text-xs text-neutral-500 block mb-1">Code</label><Input value={newAcctForm.code} onChange={e => setNewAcctForm({...newAcctForm, code: e.target.value})} placeholder="Auto" className="text-xs" /></div>
-  <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><Input value={newAcctForm.name} onChange={e => setNewAcctForm({...newAcctForm, name: e.target.value})} placeholder="e.g. Office Supplies" className="text-xs" /></div>
-  </div>
-  <div className="flex gap-2 mt-2"><Btn size="sm" onClick={createInlineAccount}>Create</Btn><Btn size="sm" variant="ghost" onClick={() => setShowNewAcct(null)}>Cancel</Btn></div>
-  </div>
-  )}
   {!validation.isValid && totalDebit > 0 && totalCredit > 0 && <div className="text-xs text-danger-600 bg-danger-50 rounded-2xl px-3 py-2">⚠ Out of balance by {acctFmt(validation.difference)}</div>}
   {validation.isValid && totalDebit > 0 && <div className="text-xs text-success-600 bg-success-50 rounded-2xl px-3 py-2">✓ Balanced — {acctFmt(totalDebit)}</div>}
   <div className="flex justify-between pt-2">
