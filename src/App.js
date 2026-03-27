@@ -7951,7 +7951,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
 }
 
 // --- Journal Entries Sub-Page ---
-function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], vendors = [], onAdd, onUpdate, onPost, onVoid, companyId, onOpenLedger, initialViewJEId, autoOpenAdd }) {
+function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], vendors = [], onAdd, onUpdate, onPost, onVoid, companyId, onOpenLedger, initialViewJEId, autoOpenAdd, showToast }) {
   const [modal, setModal] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
   const [searchProperty, setSearchProperty] = useState("");
@@ -11686,7 +11686,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
 
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} addNotification={addNotification} userProfile={userProfile} />}
   {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
-  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} />}
+  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} />}
   {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
