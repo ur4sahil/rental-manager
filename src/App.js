@@ -2329,13 +2329,23 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     // Update property with tenant info
     const { error: propUpErr } = await supabase.from("properties").update({ status: "occupied", tenant: tenantForm.tenant.trim(), tenant_2: tenantForm.tenant_2?.trim() || "", tenant_2_email: tenantForm.tenant_2_email?.trim() || "", tenant_2_phone: tenantForm.tenant_2_phone?.trim() || "", tenant_3: tenantForm.tenant_3?.trim() || "", tenant_3_email: tenantForm.tenant_3_email?.trim() || "", tenant_3_phone: tenantForm.tenant_3_phone?.trim() || "", tenant_4: tenantForm.tenant_4?.trim() || "", tenant_4_email: tenantForm.tenant_4_email?.trim() || "", tenant_4_phone: tenantForm.tenant_4_phone?.trim() || "", tenant_5: tenantForm.tenant_5?.trim() || "", tenant_5_email: tenantForm.tenant_5_email?.trim() || "", tenant_5_phone: tenantForm.tenant_5_phone?.trim() || "", rent: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, lease_start: tenantForm.lease_start, lease_end: tenantForm.lease_end }).eq("id", savedPropertyId).eq("company_id", companyId);
     if (propUpErr) throw new Error("Failed to update property: " + propUpErr.message);
-    // Create/find tenant (ilike prevents case duplicates)
-    const { data: existingTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", tenantForm.tenant.trim()).eq("property", addr).is("archived_at", null).maybeSingle();
+    // Create/find tenant — check by name+property first, then by property only to prevent duplicates
+    let existingTenant = null;
+    const { data: byName } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", tenantForm.tenant.trim()).eq("property", addr).is("archived_at", null).maybeSingle();
+    if (byName) { existingTenant = byName; }
+    else {
+      // Also check if ANY active tenant exists at this property (prevents duplicate from re-running wizard)
+      const { data: byProp } = await supabase.from("tenants").select("id, name").eq("company_id", companyId).eq("property", addr).is("archived_at", null).eq("lease_status", "active").maybeSingle();
+      if (byProp) { existingTenant = byProp; }
+    }
     let tenantId = existingTenant?.id;
     if (!existingTenant) {
       const { data: newT, error: tErr } = await supabase.from("tenants").insert([{ company_id: companyId, name: tenantForm.tenant.trim(), first_name: tenantForm.tenant_first.trim(), middle_initial: tenantForm.tenant_mi.trim(), last_name: tenantForm.tenant_last.trim(), email: tenantForm.tenant_email.toLowerCase(), phone: tenantForm.tenant_phone, property: addr, rent: Number(tenantForm.rent), late_fee_amount: safeNum(tenantForm.late_fee_amount) || null, late_fee_type: tenantForm.late_fee_type || "flat", lease_status: "active", lease_start: tenantForm.lease_start, lease_end_date: tenantForm.lease_end, move_in: tenantForm.lease_start, balance: 0 }]).select("id").maybeSingle();
       if (tErr) throw new Error("Failed to create tenant: " + tErr.message);
       tenantId = newT?.id;
+    } else {
+      // Update existing tenant with latest info from wizard
+      await supabase.from("tenants").update({ name: tenantForm.tenant.trim(), first_name: tenantForm.tenant_first.trim(), middle_initial: tenantForm.tenant_mi.trim(), last_name: tenantForm.tenant_last.trim(), email: tenantForm.tenant_email.toLowerCase(), phone: tenantForm.tenant_phone, rent: Number(tenantForm.rent), late_fee_amount: safeNum(tenantForm.late_fee_amount) || null, late_fee_type: tenantForm.late_fee_type || "flat" }).eq("id", existingTenant.id).eq("company_id", companyId);
     }
     // Create lease
     if (tenantForm.lease_start && tenantForm.lease_end) {
@@ -3547,7 +3557,14 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (_isNewOccupied) setSavingProperty(true);
   // Auto-create tenant on tenant page when property becomes occupied
   if (form.status === "occupied" && form.tenant.trim()) {
-  const { data: existingTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.tenant.trim()).eq("property", compositeAddress).maybeSingle();
+  // Check by name first, then by property (prevents duplicates when address varies slightly)
+  let existingTenant = null;
+  const { data: byName } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.tenant.trim()).eq("property", compositeAddress).is("archived_at", null).maybeSingle();
+  if (byName) { existingTenant = byName; }
+  else {
+    const { data: byProp } = await supabase.from("tenants").select("id").eq("company_id", companyId).eq("property", compositeAddress).is("archived_at", null).eq("lease_status", "active").maybeSingle();
+    if (byProp) existingTenant = byProp;
+  }
   let tenantId = existingTenant?.id;
   if (!existingTenant) {
   const { data: newT } = await supabase.from("tenants").insert([{ company_id: companyId, name: form.tenant.trim(), email: (form.tenant_email || "").toLowerCase(), phone: form.tenant_phone || "", property: compositeAddress, rent: Number(form.rent) || 0, late_fee_amount: safeNum(form.late_fee_amount) || null, late_fee_type: form.late_fee_type || "flat", lease_status: "active", lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, balance: 0 }]).select("id").maybeSingle();
@@ -3992,15 +4009,16 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   // Calculate setup completeness for a property
   function getSetupStatus(property) {
     const wizard = allWizards.find(w => w.property_address === property.address);
-    const completedSteps = wizard?.completed_steps || [];
+    if (!wizard) return { wizard: null, completedSteps: [], missing: [], total: 0, completed: 0, isInProgress: false, isComplete: true };
+    // If wizard was explicitly completed or dismissed, it's done
+    if (wizard.status === "completed" || wizard.status === "dismissed") return { wizard, completedSteps: wizard.completed_steps || [], missing: [], total: 0, completed: 0, isInProgress: false, isComplete: true };
+    const completedSteps = wizard.completed_steps || [];
     const isOccupied = property.status === "occupied";
-    // All possible optional steps
     const optionalSteps = ["utilities", "hoa", "documents", "insurance"];
     if (isOccupied) optionalSteps.push("tenant_lease", "recurring_rent");
     if (userRole === "admin" || userRole === "owner") optionalSteps.push("loan");
     const missing = optionalSteps.filter(s => !completedSteps.includes(s));
-    const isInProgress = wizard?.status === "in_progress";
-    return { wizard, completedSteps, missing, total: optionalSteps.length, completed: optionalSteps.length - missing.length, isInProgress, isComplete: missing.length === 0 && !isInProgress };
+    return { wizard, completedSteps, missing, total: optionalSteps.length, completed: optionalSteps.length - missing.length, isInProgress: true, isComplete: missing.length === 0 };
   }
 
   const allCols = [
@@ -4611,6 +4629,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {(() => { const ss = getSetupStatus(p); return (!ss.isComplete && ss.total > 0) ? <div onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0 }); }} className="mt-2 text-xs text-info-600 bg-info-50 rounded-lg px-2 py-1 flex items-center gap-1 cursor-pointer hover:bg-info-100 transition-colors"><span className="material-icons-outlined text-sm">pending</span>Setup Incomplete — {ss.missing.length} step{ss.missing.length !== 1 ? "s" : ""} remaining</div> : null; })()}
   <div className="flex gap-2 mt-3 pt-3 border-t border-brand-50/50 flex-wrap" onClick={e => e.stopPropagation()}>
   {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline">Edit</button>}
+  {!isReadOnly(p) && <button onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0 }); }} className="text-xs text-brand-600 hover:underline">Edit Setup</button>}
   {!isReadOnly(p) && p.status === "vacant" && <button onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: false, tenant: "", rent: 0, isNew: false }); }} className="text-xs text-positive-600 hover:underline">Add Tenant</button>}
   {!isReadOnly(p) && isAdmin && p.status !== "inactive" && <button onClick={() => deactivateProperty(p)} className="text-xs text-warn-600 hover:underline">Deactivate</button>}
   {!isReadOnly(p) && isAdmin && p.status === "inactive" && <button onClick={() => reactivateProperty(p)} className="text-xs text-positive-600 hover:underline">Reactivate</button>}
