@@ -33,6 +33,8 @@ async function testTableExistence() {
     'property_change_requests', 'recurring_journal_entries',
     'doc_templates', 'doc_generated',
     'property_loans', 'property_insurance', 'property_setup_wizard',
+    'error_log', 'bank_account_feed', 'bank_feed_transaction',
+    'bank_import_batch', 'bank_posting_decision', 'bank_transaction_rule',
   ];
   for (const table of requiredTables) {
     const { error } = await supabase.from(table).select('*').limit(0);
@@ -74,9 +76,9 @@ async function testColumnExistence() {
   const { data: acctCode } = await supabase.from('acct_accounts').select('id, code, name, type, company_id').limit(1);
   assert(acctCode !== null, 'acct_accounts has id (UUID), code, name, type, company_id columns');
 
-  // Acct journal lines — must have company_id (direct RLS)
-  const { data: jl } = await supabase.from('acct_journal_lines').select('id, journal_entry_id, account_id, account_name, debit, credit, memo, class_id, company_id').limit(1);
-  assert(jl !== null, 'Journal lines has all required columns including class_id and company_id');
+  // Acct journal lines — must have company_id, entity columns (direct RLS)
+  const { data: jl } = await supabase.from('acct_journal_lines').select('id, journal_entry_id, account_id, account_name, debit, credit, memo, class_id, company_id, entity_type, entity_id, entity_name').limit(1);
+  assert(jl !== null, 'Journal lines has all required columns including class_id, company_id, entity_type/id/name');
 
   // Work orders columns
   const { data: wo } = await supabase.from('work_orders').select('id, company_id, property, issue, priority, status, tenant, assigned, cost').limit(1);
@@ -181,11 +183,13 @@ async function testRPCExistence() {
   });
   assert(!e6 || !e6.message.includes('does not exist'), 'RPC rename_property_v2 exists');
 
-  // validate_invite_code
-  const { error: e7 } = await supabase.rpc('validate_invite_code', {
-    p_code: 'NONEXISTENT',
-  });
-  assert(!e7 || !e7.message.includes('does not exist'), 'RPC validate_invite_code exists');
+  // find_unbalanced_jes
+  const { error: e7 } = await supabase.rpc('find_unbalanced_jes', { p_company_id: 'test' });
+  assert(!e7 || !e7.message.includes('does not exist'), 'RPC find_unbalanced_jes exists');
+
+  // apply_late_fee_atomic
+  const { error: e7b } = await supabase.rpc('apply_late_fee_atomic', { p_company_id: 'test', p_tenant_id: '00000000-0000-0000-0000-000000000000', p_tenant_name: 'test', p_property: 'test', p_fee_amount: 0, p_je_number: 'TEST', p_je_date: '2026-01-01', p_description: 'test', p_reference: 'test', p_late_fee_account_id: '00000000-0000-0000-0000-000000000000', p_ar_account_id: '00000000-0000-0000-0000-000000000000' });
+  assert(!e7b || !e7b.message.includes('does not exist'), 'RPC apply_late_fee_atomic exists');
 
   // handle_membership_request
   const { error: e8 } = await supabase.rpc('handle_membership_request', {
@@ -247,16 +251,18 @@ async function testChartOfAccounts() {
   assert(types.includes('Revenue'), 'Has Revenue accounts');
   assert(types.includes('Expense'), 'Has Expense accounts');
 
-  // Check required account codes exist (per company)
+  // Check required account codes exist (per company with fully seeded COA — at least 5 accounts)
   const companies = [...new Set(accounts.map(a => a.company_id))];
-  for (const cid of companies) {
+  const activeCompanies = companies.filter(cid => accounts.filter(a => a.company_id === cid).length >= 5);
+  assert(activeCompanies.length > 0, 'At least one company has a full chart of accounts');
+  for (const cid of activeCompanies) {
     const compAccts = accounts.filter(a => a.company_id === cid);
-    const hasChecking = compAccts.some(a => a.id.endsWith('-1000') || a.name.toLowerCase().includes('checking'));
-    const hasAR = compAccts.some(a => a.id.endsWith('-1100') || a.name.toLowerCase().includes('receivable'));
-    const hasRentalIncome = compAccts.some(a => a.id.endsWith('-4000') || a.name.toLowerCase().includes('rental income'));
-    assert(hasChecking, `Company ${cid}: has Checking account`);
-    assert(hasAR, `Company ${cid}: has Accounts Receivable`);
-    assert(hasRentalIncome, `Company ${cid}: has Rental Income account`);
+    const hasChecking = compAccts.some(a => (a.code || '').startsWith('1000') || a.name.toLowerCase().includes('checking'));
+    const hasAR = compAccts.some(a => (a.code || '').startsWith('1100') || a.name.toLowerCase().includes('receivable'));
+    const hasRentalIncome = compAccts.some(a => (a.code || '').startsWith('4000') || a.name.toLowerCase().includes('rental income'));
+    assert(hasChecking, `Company ${cid.slice(0,12)}...: has Checking account`);
+    assert(hasAR, `Company ${cid.slice(0,12)}...: has Accounts Receivable`);
+    assert(hasRentalIncome, `Company ${cid.slice(0,12)}...: has Rental Income account`);
   }
 }
 

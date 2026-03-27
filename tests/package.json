@@ -4,10 +4,12 @@
   "description": "Comprehensive test suite for PropManager",
   "main": "index.js",
   "scripts": {
-    "test": "npm run test:infra && npm run test:schema && npm run test:data && npm run test:e2e",
+    "test": "npm run test:infra && npm run test:schema && npm run test:data && npm run test:errors && npm run test:bank && npm run test:e2e",
     "test:infra": "node infra.test.js",
     "test:schema": "node supabase-schema.test.js",
     "test:data": "node data-layer.test.js",
+    "test:errors": "node error-management.test.js",
+    "test:bank": "node bank-transactions.test.js",
     "test:e2e": "npx playwright test",
     "test:e2e:headed": "npx playwright test --headed",
     "test:e2e:chromium": "npx playwright test --project=chromium-desktop",
