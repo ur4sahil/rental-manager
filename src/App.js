@@ -1885,6 +1885,26 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   })}
   </div>
   )}
+  {/* Voucher Re-examination Alerts */}
+  {(() => { const reexamTenants = tenants.filter(t => t.is_voucher && t.reexam_date && Math.ceil((new Date(t.reexam_date).getTime() - Date.now()) / 86400000) <= 120 && Math.ceil((new Date(t.reexam_date).getTime() - Date.now()) / 86400000) >= -30); return reexamTenants.length > 0 ? (
+  <div className="bg-white rounded-3xl shadow-card border border-highlight-200 p-4">
+  <h3 className="font-semibold text-highlight-700 mb-3"><span className="material-icons-outlined text-sm align-middle mr-1">event</span>Voucher Re-examination Due</h3>
+  {reexamTenants.map(t => {
+  const daysLeft = Math.ceil((new Date(t.reexam_date).getTime() - Date.now()) / 86400000);
+  return (
+  <div key={t.id} className="flex justify-between items-center py-2 border-b border-highlight-50 last:border-0">
+  <div>
+  <div className="text-sm font-medium text-neutral-800">{t.name} <span className="text-xs bg-highlight-100 text-highlight-700 px-1.5 py-0.5 rounded-full ml-1">Voucher</span></div>
+  <div className="text-xs text-neutral-400">{t.property}{t.voucher_number ? " · " + t.voucher_number : ""}</div>
+  </div>
+  <div className="text-right">
+  <div className="text-sm font-semibold">{t.reexam_date}</div>
+  <div className={`text-xs font-bold ${daysLeft <= 0 ? "text-danger-600" : daysLeft <= 30 ? "text-danger-500" : daysLeft <= 60 ? "text-warn-600" : "text-highlight-600"}`}>{daysLeft <= 0 ? "OVERDUE" : `${daysLeft} days left`}</div>
+  </div>
+  </div>);
+  })}
+  </div>
+  ) : null; })()}
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Net Operating Income</h3>
   <div className="space-y-2">
@@ -4843,7 +4863,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [newCharge, setNewCharge] = useState({ description: "", amount: "", type: "charge" });
-  const [form, setForm] = useState({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "", late_fee_amount: "", late_fee_type: "flat" });
+  const [form, setForm] = useState({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "", late_fee_amount: "", late_fee_type: "flat", is_voucher: false, voucher_number: "", reexam_date: "", case_manager_name: "", case_manager_email: "", case_manager_phone: "", voucher_portion: "", tenant_portion: "" });
   const [tenantView, setTenantView] = useState("card");
   const [tenantSearch, setTenantSearch] = useState("");
   const [tenantFilter, setTenantFilter] = useState("all");
@@ -4903,8 +4923,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
   // #3: Keep lease_start/move_in and lease_end_date/move_out in sync
   const { error } = editingTenant
-  ? await supabase.from("tenants").update({ name: form.name, first_name: form.first_name, middle_initial: form.mi, last_name: form.last_name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, move_in: form.lease_start || null, lease_end_date: form.lease_end || null, move_out: form.lease_end || null, rent: form.rent, late_fee_amount: safeNum(form.late_fee_amount) || null, late_fee_type: form.late_fee_type || "flat" }).eq("id", editingTenant.id).eq("company_id", companyId)
-  : await supabase.from("tenants").insert([{ company_id: companyId, name: form.name, first_name: form.first_name, middle_initial: form.mi, last_name: form.last_name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, rent: form.rent, late_fee_amount: safeNum(form.late_fee_amount) || null, late_fee_type: form.late_fee_type || "flat", balance: 0, doc_status: "pending_docs" }]);
+  ? await supabase.from("tenants").update({ name: form.name, first_name: form.first_name, middle_initial: form.mi, last_name: form.last_name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, move_in: form.lease_start || null, lease_end_date: form.lease_end || null, move_out: form.lease_end || null, rent: form.rent, late_fee_amount: safeNum(form.late_fee_amount) || null, late_fee_type: form.late_fee_type || "flat", is_voucher: form.is_voucher || false, voucher_number: form.voucher_number || null, reexam_date: form.reexam_date || null, case_manager_name: form.case_manager_name || null, case_manager_email: form.case_manager_email || null, case_manager_phone: form.case_manager_phone || null, voucher_portion: safeNum(form.voucher_portion) || null, tenant_portion: safeNum(form.tenant_portion) || null }).eq("id", editingTenant.id).eq("company_id", companyId)
+  : await supabase.from("tenants").insert([{ company_id: companyId, name: form.name, first_name: form.first_name, middle_initial: form.mi, last_name: form.last_name, email: normalizeEmail(form.email), phone: form.phone, property: form.property, lease_status: form.lease_status, lease_start: form.lease_start || null, lease_end_date: form.lease_end || null, move_in: form.lease_start || null, move_out: form.lease_end || null, rent: form.rent, late_fee_amount: safeNum(form.late_fee_amount) || null, late_fee_type: form.late_fee_type || "flat", is_voucher: form.is_voucher || false, voucher_number: form.voucher_number || null, reexam_date: form.reexam_date || null, case_manager_name: form.case_manager_name || null, case_manager_email: form.case_manager_email || null, case_manager_phone: form.case_manager_phone || null, voucher_portion: safeNum(form.voucher_portion) || null, tenant_portion: safeNum(form.tenant_portion) || null, balance: 0, doc_status: "pending_docs" }]);
   if (error) {
   if (error.message?.includes("idx_tenants_unique_name_property") || error.message?.includes("duplicate")) {
   pmError("PM-3001", { raw: error, context: "save tenant " + form.name.trim() });
@@ -5172,7 +5192,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
 
   function startEdit(t) {
   setEditingTenant(t);
-  setForm({ name: t.name, first_name: t.first_name || parseNameParts(t.name).first_name, mi: t.middle_initial || parseNameParts(t.name).middle_initial, last_name: t.last_name || parseNameParts(t.name).last_name, email: t.email, phone: t.phone, property: t.property, lease_status: t.lease_status, lease_start: t.lease_start || t.move_in || "", lease_end: t.lease_end_date || t.move_out || "", rent: t.rent || "", late_fee_amount: t.late_fee_amount || "", late_fee_type: t.late_fee_type || "flat" });
+  setForm({ name: t.name, first_name: t.first_name || parseNameParts(t.name).first_name, mi: t.middle_initial || parseNameParts(t.name).middle_initial, last_name: t.last_name || parseNameParts(t.name).last_name, email: t.email, phone: t.phone, property: t.property, lease_status: t.lease_status, lease_start: t.lease_start || t.move_in || "", lease_end: t.lease_end_date || t.move_out || "", rent: t.rent || "", late_fee_amount: t.late_fee_amount || "", late_fee_type: t.late_fee_type || "flat", is_voucher: t.is_voucher || false, voucher_number: t.voucher_number || "", reexam_date: t.reexam_date || "", case_manager_name: t.case_manager_name || "", case_manager_email: t.case_manager_email || "", case_manager_phone: t.case_manager_phone || "", voucher_portion: t.voucher_portion || "", tenant_portion: t.tenant_portion || "" });
   setShowForm(true);
   }
 
@@ -5653,6 +5673,17 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Status</div><div className="text-lg font-bold capitalize">{selectedTenant.lease_status}</div></div>
   <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Lease End</div><div className="text-lg font-bold">{selectedTenant.lease_end_date || selectedTenant.move_out || "—"}</div></div>
   </div>
+  {selectedTenant.is_voucher && (
+  <div className="mt-3 bg-white/10 rounded-2xl px-4 py-3">
+  <div className="flex items-center gap-2 mb-2"><span className="text-xs bg-highlight-400 text-white px-2 py-0.5 rounded-full font-bold">VOUCHER</span><span className="text-sm text-brand-200">{selectedTenant.voucher_number || ""}</span></div>
+  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+  <div><span className="text-brand-300">Voucher Portion</span><div className="font-bold text-white">{formatCurrency(selectedTenant.voucher_portion || 0)}</div></div>
+  <div><span className="text-brand-300">Tenant Portion</span><div className="font-bold text-white">{formatCurrency(selectedTenant.tenant_portion || 0)}</div></div>
+  <div><span className="text-brand-300">Re-exam Date</span><div className="font-bold text-white">{selectedTenant.reexam_date || "—"}</div></div>
+  <div><span className="text-brand-300">Case Manager</span><div className="font-bold text-white">{selectedTenant.case_manager_name || "—"}</div></div>
+  </div>
+  </div>
+  )}
   </div>
 
   {/* Contact Info */}
@@ -6073,6 +6104,31 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lease End / Move-out</label><Input type="date" value={form.lease_end} onChange={e => setForm({ ...form, lease_end: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Security Deposit ($)</label><Input placeholder="0" value={form.security_deposit || ""} onChange={e => setForm({ ...form, security_deposit: e.target.value })} /></div>
   </div>
+  {/* Voucher Tenant Section */}
+  <div className="mt-3 border border-neutral-200 rounded-xl p-3">
+  <label className="flex items-center gap-2 cursor-pointer">
+  <input type="checkbox" checked={form.is_voucher || false} onChange={e => setForm({ ...form, is_voucher: e.target.checked })} className="rounded" />
+  <span className="text-sm font-medium text-neutral-700">Voucher / Section 8 Tenant</span>
+  </label>
+  {form.is_voucher && (
+  <div className="mt-3 space-y-3">
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Voucher Number</label><Input value={form.voucher_number} onChange={e => setForm({ ...form, voucher_number: e.target.value })} placeholder="e.g. HCV-12345" /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Re-examination Date</label><Input type="date" value={form.reexam_date} onChange={e => setForm({ ...form, reexam_date: e.target.value })} /></div>
+  </div>
+  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Case Manager Name</label><Input value={form.case_manager_name} onChange={e => setForm({ ...form, case_manager_name: e.target.value })} placeholder="Jane Smith" /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Case Manager Email</label><Input type="email" value={form.case_manager_email} onChange={e => setForm({ ...form, case_manager_email: e.target.value })} placeholder="jane@county.gov" /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Case Manager Phone</label><Input type="tel" value={form.case_manager_phone} onChange={e => setForm({ ...form, case_manager_phone: formatPhoneInput(e.target.value) })} maxLength={14} placeholder="(555) 123-4567" /></div>
+  </div>
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Voucher Portion ($)</label><Input type="number" min="0" step="0.01" value={form.voucher_portion} onChange={e => { const vp = e.target.value; const tp = safeNum(form.rent) - safeNum(vp); setForm({ ...form, voucher_portion: vp, tenant_portion: tp > 0 ? String(tp) : "0" }); }} placeholder="0.00" /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant Portion ($)</label><Input type="number" min="0" step="0.01" value={form.tenant_portion} onChange={e => { const tp = e.target.value; const vp = safeNum(form.rent) - safeNum(tp); setForm({ ...form, tenant_portion: tp, voucher_portion: vp > 0 ? String(vp) : "0" }); }} placeholder="0.00" /></div>
+  </div>
+  {form.rent && <div className="text-xs text-neutral-400">Total rent: {formatCurrency(form.rent)} = Voucher {formatCurrency(form.voucher_portion || 0)} + Tenant {formatCurrency(form.tenant_portion || 0)}</div>}
+  </div>
+  )}
+  </div>
   {form.lease_start && form.lease_end && form.rent && (
   <div className="bg-brand-50 border border-brand-200 rounded-xl p-3 mt-2 text-xs text-brand-700">
   A lease will be auto-created and rent charges posted to accounting.
@@ -6129,7 +6185,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className={"w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg " + (t.doc_status === "pending_docs" ? "bg-warn-100 text-warn-700" : "bg-brand-100 text-brand-700")}>{t.name?.[0]}</div>
   <div><div className="font-semibold text-neutral-800">{t.name}</div><div className="text-xs text-neutral-400">{t.property}</div>{t.doc_status === "pending_docs" && <div className="text-xs text-warn-600 font-medium">Pending documents</div>}</div>
   </div>
-  <Badge status={t.lease_status} />
+  <div className="flex items-center gap-1"><Badge status={t.lease_status} />{t.is_voucher && <span className="text-xs bg-highlight-100 text-highlight-700 px-1.5 py-0.5 rounded-full font-semibold">Voucher</span>}</div>
   </div>
   <div className="grid grid-cols-3 gap-2 text-xs mt-2">
   <div><span className="text-neutral-400">Email</span><div className="font-semibold text-neutral-700 truncate">{t.email || "—"}</div></div>
