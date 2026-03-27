@@ -3619,9 +3619,10 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   supabase.from("property_insurance").update({ property: compositeAddress }).eq("company_id", companyId).eq("property", oldAddr),
   supabase.from("property_setup_wizard").update({ property_address: compositeAddress }).eq("company_id", companyId).eq("property_address", oldAddr),
   ]);
-  const renameFails = renameResults.filter(r => r.status === "rejected");
+  const renameFails = renameResults.filter(r => r.status === "rejected" || r.value?.error);
   if (renameFails.length > 0) {
-    pmError("PM-2006", { raw: { message: renameFails.map(r => r.reason?.message || r.reason).join("; ") }, context: "property rename failures", silent: true });
+    const failMsgs = renameFails.map(r => r.status === "rejected" ? (r.reason?.message || r.reason) : r.value?.error?.message).filter(Boolean).join("; ");
+    pmError("PM-2006", { raw: { message: failMsgs }, context: "property rename failures", meta: { failures: renameFails.length } });
     showToast("Warning: " + renameFails.length + " table(s) failed to update during rename. Some records may still reference the old address.", "error");
   }
   }
@@ -3768,17 +3769,23 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   // 5. Archive recurring journal entries
   await supabase.from("recurring_journal_entries").update({ ...arch, status: "inactive" }).eq("company_id", companyId).eq("property", address).is("archived_at", null);
 
-  // 6. Archive all operational data
-  await supabase.from("work_orders").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null);
-  await supabase.from("utilities").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null);
-  await supabase.from("documents").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null);
-  await supabase.from("vendor_invoices").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null);
-  await supabase.from("hoa_payments").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null);
-  await supabase.from("inspections").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null);
-  await supabase.from("payments").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null);
-  await supabase.from("property_loans").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null);
-  await supabase.from("property_insurance").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null);
-  await supabase.from("property_setup_wizard").update({ status: "dismissed", updated_at: new Date().toISOString() }).eq("company_id", companyId).eq("property_address", address).eq("status", "in_progress");
+  // 6. Archive all operational data (parallel with error collection)
+  const archiveResults = await Promise.allSettled([
+  supabase.from("work_orders").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null),
+  supabase.from("utilities").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null),
+  supabase.from("documents").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null),
+  supabase.from("vendor_invoices").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null),
+  supabase.from("hoa_payments").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null),
+  supabase.from("inspections").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null),
+  supabase.from("payments").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null),
+  supabase.from("property_loans").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null),
+  supabase.from("property_insurance").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null),
+  supabase.from("property_setup_wizard").update({ status: "dismissed", updated_at: new Date().toISOString() }).eq("company_id", companyId).eq("property_address", address).eq("status", "in_progress"),
+  ]);
+  const archiveFailures = archiveResults.filter(r => r.status === "rejected" || r.value?.error);
+  if (archiveFailures.length > 0) {
+  pmError("PM-2003", { raw: { message: archiveFailures.length + " table(s) failed to archive" }, context: "property archive batch for " + address, meta: { failures: archiveFailures.length } });
+  }
 
   // 7. Clear security deposit liabilities before terminating leases
   const { data: activeLeases } = await supabase.from("leases").select("id, tenant_name, security_deposit, deposit_status").eq("company_id", companyId).eq("property", address).eq("status", "active");
@@ -6754,7 +6761,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   }).eq("id", bill.id).eq("company_id", companyId);
   if (error) { pmError("PM-6001", { raw: error, context: "authorizing bill payment" }); return; }
   // Queue payment job
-  await supabase.from("automation_jobs").insert([{
+  const { error: jobErr } = await supabase.from("automation_jobs").insert([{
   company_id: companyId,
   utility_account_id: bill.utility_account_id,
   bill_id: bill.id,
@@ -6762,6 +6769,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   status: "queued",
   triggered_by: userProfile?.email || "manual",
   }]);
+  if (jobErr) pmError("PM-8006", { raw: jobErr, context: "queue bill payment job", silent: true });
   // Auto-post journal entry for utility payment (DR Utilities Expense, CR Checking)
   const classId = await getPropertyClassId(bill.property, companyId);
   const _jeOk = await autoPostJournalEntry({
