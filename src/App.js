@@ -9764,16 +9764,25 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
 
     if (jeErr || !jeRow) { showToast("Error creating JE: " + (jeErr?.message || "no ID"), "error"); return; }
 
+    // Validate UUIDs — some IDs may be integers from older data
+    const isUUID = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+    const safeUUID = (v) => (v && isUUID(String(v))) ? v : null;
+
     const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({
       journal_entry_id: jeRow.id, company_id: companyId,
       account_id: l.account_id, account_name: l.account_name,
       debit: safeNum(l.debit), credit: safeNum(l.credit),
-      class_id: l.class_id || null, memo: l.memo || "",
-      entity_type: entityType || null, entity_id: entityId || null, entity_name: entityName || null,
+      class_id: safeUUID(l.class_id), memo: l.memo || "",
+      entity_type: entityType || null, entity_id: safeUUID(entityId), entity_name: entityName || null,
       bank_feed_transaction_id: txn.id
     })));
 
-    if (linesErr) { showToast("JE lines error: " + linesErr.message, "error"); return; }
+    if (linesErr) {
+      // Clean up orphaned JE header
+      await supabase.from("acct_journal_entries").delete().eq("id", jeRow.id).eq("company_id", companyId);
+      pmError("PM-4003", { raw: linesErr, context: "bank transaction JE lines insert" });
+      return;
+    }
 
     // Create posting decision record
     const { data: decision, error: decErr } = await supabase.from("bank_posting_decision").insert([{
