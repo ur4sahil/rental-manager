@@ -9475,6 +9475,7 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
     setNewAccountForm({ name: "", type: "checking", masked_number: "", institution_name: "" });
     if (newFeed?.id) setWizFeedId(newFeed.id);
     fetchAll();
+    if (onRefreshAccounting) onRefreshAccounting(); // Refresh parent's acctAccounts so BS/GL see the new bank account
     } finally { setCreatingFeed(false); }
   }
 
