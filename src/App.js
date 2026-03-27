@@ -2597,7 +2597,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <div>
                   <label className="text-xs font-medium text-neutral-500 block mb-1">Property Type</label>
                   <select value={propForm.type} onChange={e => setPropForm({ ...propForm, type: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
-                    {["Single Family", "Multi-Family", "Apartment", "Townhouse", "Commercial"].map(t => <option key={t} value={t}>{t}</option>)}
+                    {["Single Family", "Multi-Family", "Apartment", "Townhouse", "Condo", "Commercial"].map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
                 <div>
@@ -4546,7 +4546,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">State *</label><Select value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} autoComplete="address-level1" name="state" required><option value="">--</option>{US_STATES.map(s => <option key={s} value={s}>{s}</option>)}</Select></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">ZIP *</label><Input placeholder="20770" value={form.zip} onChange={async e => { const z = e.target.value.replace(/\D/g, "").slice(0, 5); setForm(f => ({ ...f, zip: z })); if (z.length === 5) { const loc = await lookupZip(z); if (loc) setForm(f => ({ ...f, city: f.city || loc.city, state: f.state || loc.state })); } }} maxLength={5} autoComplete="postal-code" name="postal-code" required /></div>
   </div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Type *</label><Select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Commercial</option></Select></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Type *</label><Select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Condo</option><option>Commercial</option></Select></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Status *</label><Select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option><option value="inactive">Inactive</option></Select></div>
   {form.status === "occupied" && (<>
   <div className="col-span-1 sm:col-span-2 bg-brand-50 rounded-lg px-3 py-2"><div className="text-xs font-semibold text-brand-700">Tenant Information</div></div>
