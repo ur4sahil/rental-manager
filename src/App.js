@@ -495,6 +495,8 @@ const PM_ERRORS = {
   "PM-7002": { message: "Could not upload the file. Check the file size and type.", action: "retry", severity: "error" },
   "PM-7003": { message: "File was uploaded but the record could not be saved.", action: "contact", severity: "warning" },
   "PM-7004": { message: "Could not delete the document.", action: "retry", severity: "error" },
+  "PM-7005": { message: "Could not load work orders.", action: "retry", severity: "error" },
+  "PM-7006": { message: "Could not save the inspection.", action: "retry", severity: "error" },
   // PM-8xxx: NETWORK & INFRASTRUCTURE
   "PM-8001": { message: "Unable to reach the server. Check your internet connection and try again.", action: "retry", severity: "error" },
   "PM-8002": { message: "A required database table is missing. Please contact support.", action: "contact", severity: "critical" },
@@ -6425,7 +6427,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
 
   async function fetchWorkOrders() {
   const { data, error } = await supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }).limit(500);
-  if (error) { pmError("PM-7001", { raw: error, context: "loading work orders" }); }
+  if (error) { pmError("PM-7005", { raw: error, context: "loading work orders" }); }
   setWorkOrders(data || []);
   setLoading(false);
   }
@@ -6469,7 +6471,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   const { error } = editingWO
   ? await supabase.from("work_orders").update({ property: payload.property, tenant: payload.tenant, issue: payload.issue, priority: payload.priority, status: payload.status, assigned: payload.assigned, cost: payload.cost, notes: payload.notes }).eq("id", editingWO.id).eq("company_id", companyId)
   : await supabase.from("work_orders").insert([{ ...payload, company_id: companyId }]);
-  if (error) { pmError("PM-7004", { raw: error, context: "saving work order" }); return; }
+  if (error) { pmError("PM-7001", { raw: error, context: "saving work order" }); return; }
   showToast(editingWO ? "Work order updated." : "Work order created.", "success");
   if (editingWO) {
   const costChanged = safeNum(form.cost) !== safeNum(editingWO.cost);
@@ -12113,7 +12115,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   if (!form.property.trim()) { showToast("Property is required.", "error"); return; }
   if (!form.date) { showToast("Inspection date is required.", "error"); return; }
   const { error } = await supabase.from("inspections").insert([{ ...form, checklist: JSON.stringify(checklist), company_id: companyId }]);
-  if (error) { pmError("PM-7001", { raw: error, context: "save inspection" }); return; }
+  if (error) { pmError("PM-7006", { raw: error, context: "save inspection" }); return; }
   addNotification("🔍", `Inspection scheduled: ${form.type} at ${form.property}`);
   setShowForm(false);
   setForm({ property: "", type: "Move-In", inspector: "", date: formatLocalDate(new Date()), status: "scheduled", notes: "" });
