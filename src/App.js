@@ -3474,7 +3474,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   setHistoricalTenantDetail(null);
   const [docsRes, wosRes, archivedTenantsRes, terminatedLeasesRes] = await Promise.all([
   supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100),
-  supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("created_at", { ascending: false }).limit(100),
+  supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("created", { ascending: false }).limit(100),
   supabase.from("tenants").select("*").eq("company_id", companyId).eq("property", p.address).not("archived_at", "is", null).order("archived_at", { ascending: false }),
   supabase.from("leases").select("*").eq("company_id", companyId).eq("property", p.address).in("status", ["terminated", "expired"]).order("end_date", { ascending: false }),
   ]);
@@ -3931,7 +3931,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   ]);
   const all = [
   ...(pay.data || []).map(x => ({ ...x, _type: "payment", _date: x.date })),
-  ...(wo.data || []).map(x => ({ ...x, _type: "work_order", _date: x.created_at })),
+  ...(wo.data || []).map(x => ({ ...x, _type: "work_order", _date: x.created })),
   ...(docs.data || []).map(x => ({ ...x, _type: "document", _date: x.created_at })),
   ].sort((a, b) => new Date(b._date) - new Date(a._date));
   setTimelineData(all);
@@ -4349,7 +4349,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="space-y-2">
   {propertyWorkOrders.map(w => (
   <div key={w.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3">
-  <div><div className="text-sm font-medium text-neutral-700">{w.issue}</div><div className="text-xs text-neutral-400">{w.priority} · {w.created_at?.slice(0, 10)}</div></div>
+  <div><div className="text-sm font-medium text-neutral-700">{w.issue}</div><div className="text-xs text-neutral-400">{w.priority} · {w.created}</div></div>
   <Badge status={w.status} />
   </div>
   ))}
@@ -6426,7 +6426,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   useEffect(() => { fetchWorkOrders(); }, [companyId]);
 
   async function fetchWorkOrders() {
-  const { data, error } = await supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }).limit(500);
+  const { data, error } = await supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null).order("created", { ascending: false }).limit(500);
   if (error) { pmError("PM-7005", { raw: error, context: "loading work orders" }); }
   setWorkOrders(data || []);
   setLoading(false);
@@ -6470,7 +6470,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   const payload = { ...form };
   const { error } = editingWO
   ? await supabase.from("work_orders").update({ property: payload.property, tenant: payload.tenant, issue: payload.issue, priority: payload.priority, status: payload.status, assigned: payload.assigned, cost: payload.cost, notes: payload.notes }).eq("id", editingWO.id).eq("company_id", companyId)
-  : await supabase.from("work_orders").insert([{ ...payload, company_id: companyId }]);
+  : await supabase.from("work_orders").insert([{ ...payload, created: formatLocalDate(new Date()), company_id: companyId }]);
   if (error) { pmError("PM-7001", { raw: error, context: "saving work order" }); return; }
   showToast(editingWO ? "Work order updated." : "Work order created.", "success");
   if (editingWO) {
@@ -6757,7 +6757,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   </div>
   <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
   <div><span className="text-neutral-400">Assigned</span><div className="font-semibold text-neutral-700">{w.assigned || "Unassigned"}</div></div>
-  <div><span className="text-neutral-400">Created</span><div className="font-semibold text-neutral-700">{w.created_at ? new Date(w.created_at).toLocaleDateString() : w.created || "—"}</div></div>
+  <div><span className="text-neutral-400">Created</span><div className="font-semibold text-neutral-700">{w.created || "—"}</div></div>
   <div><span className="text-neutral-400">Cost</span><div className="font-semibold text-neutral-700">{w.cost ? `${formatCurrency(w.cost)}` : "—"}</div></div>
   </div>
   {w.notes && <div className="mt-2 text-xs text-neutral-400 italic">{w.notes}</div>}
@@ -8552,10 +8552,10 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
   }
 
   function getWorkOrderSummary(startDate, endDate) {
-    const wos = workOrders.filter(w => w.created_at?.slice(0,10) >= startDate && w.created_at?.slice(0,10) <= endDate);
+    const wos = workOrders.filter(w => w.created >= startDate && w.created <= endDate);
     const byStatus = { open: wos.filter(w => w.status === "open").length, in_progress: wos.filter(w => w.status === "in_progress").length, completed: wos.filter(w => w.status === "completed").length };
     const totalCost = wos.reduce((s, w) => s + safeNum(w.cost), 0);
-    return { byStatus, totalCost, total: wos.length, items: wos.map(w => ({ ...w, daysOpen: Math.floor((new Date() - new Date(w.created_at)) / 86400000) })) };
+    return { byStatus, totalCost, total: wos.length, items: wos.map(w => ({ ...w, daysOpen: Math.floor((new Date() - new Date(w.created)) / 86400000) })) };
   }
 
   function getNOIByProperty(startDate, endDate) {
@@ -12240,7 +12240,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   if (!await showConfirm({ message: `Create work order for ${failed.length} failed item(s)?\n\n${failed.join(", ")}` })) return;
   // Find tenant at this property for the WO
   const { data: propTenant } = await supabase.from("tenants").select("name").eq("company_id", companyId).eq("property", insp.property).is("archived_at", null).eq("lease_status", "active").maybeSingle();
-  const { error } = await supabase.from("work_orders").insert([{ company_id: companyId, property: insp.property, tenant: propTenant?.name || "", issue: `Inspection findings: ${failed.join(", ")}`, priority: "normal", status: "open", notes: `Auto-created from ${insp.type} inspection on ${insp.date}` }]);
+  const { error } = await supabase.from("work_orders").insert([{ company_id: companyId, property: insp.property, tenant: propTenant?.name || "", issue: `Inspection findings: ${failed.join(", ")}`, priority: "normal", status: "open", created: formatLocalDate(new Date()), notes: `Auto-created from ${insp.type} inspection on ${insp.date}` }]);
   if (error) { pmError("PM-7001", { raw: error, context: "create work order from inspection" }); return; }
   showToast("Work order created. Go to Maintenance to view it.", "success");
   addNotification("🔧", `Work order created from inspection at ${insp.property}`);
@@ -12829,7 +12829,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   const [v, inv, wo] = await Promise.all([
   supabase.from("vendors").select("*").eq("company_id", companyId).is("archived_at", null).order("name"),
   supabase.from("vendor_invoices").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
-  supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }).limit(100),
+  supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null).order("created", { ascending: false }).limit(100),
   ]);
   setVendors(v.data || []);
   setInvoices(inv.data || []);
@@ -14600,7 +14600,7 @@ function OwnerMaintenanceView({ companyId, properties }) {
   async function load() {
   const addrs = properties.map(p => p.address);
   if (addrs.length === 0) { setLoading(false); return; }
-  const { data } = await supabase.from("work_orders").select("*").eq("company_id", companyId).in("property", addrs).is("archived_at", null).order("created_at", { ascending: false }).limit(100);
+  const { data } = await supabase.from("work_orders").select("*").eq("company_id", companyId).in("property", addrs).is("archived_at", null).order("created", { ascending: false }).limit(100);
   setWorkOrders(data || []);
   setLoading(false);
   }
@@ -14615,7 +14615,7 @@ function OwnerMaintenanceView({ companyId, properties }) {
   <div className="flex justify-between items-start">
   <div>
   <div className="text-sm font-semibold text-neutral-800">{wo.issue}</div>
-  <div className="text-xs text-neutral-400">{wo.property} · {wo.date || new Date(wo.created_at).toLocaleDateString()}</div>
+  <div className="text-xs text-neutral-400">{wo.property} · {wo.created || "—"}</div>
   </div>
   <div className="text-right">
   <span className="text-xs">{statusIcon[wo.status] || "⚪"} {wo.status}</span>
@@ -16010,7 +16010,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   : supabase.from("ledger_entries").select("*").eq("company_id", companyId).eq("tenant", tenant.name).order("date", { ascending: false }),
   supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tenant.name).order("created_at", { ascending: true }),
   supabase.from("payments").select("*").eq("company_id", companyId).ilike("tenant", tenant.name).is("archived_at", null).order("date", { ascending: false }),
-  supabase.from("work_orders").select("*").eq("company_id", companyId).eq("tenant", tenant.name).is("archived_at", null).order("created_at", { ascending: false }),
+  supabase.from("work_orders").select("*").eq("company_id", companyId).eq("tenant", tenant.name).is("archived_at", null).order("created", { ascending: false }),
   supabase.from("documents").select("*").eq("company_id", companyId).eq("tenant", tenant.name).eq("tenant_visible", true).is("archived_at", null).order("uploaded_at", { ascending: false }),
   ]);
   setLedger(l.data || []);
@@ -16033,7 +16033,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   const [l, p, w, m] = await Promise.all([
   supabase.from("ledger_entries").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).order("date", { ascending: false }),
   supabase.from("payments").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).is("archived_at", null).order("date", { ascending: false }),
-  supabase.from("work_orders").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).is("archived_at", null).order("created_at", { ascending: false }),
+  supabase.from("work_orders").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).is("archived_at", null).order("created", { ascending: false }),
   supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).order("created_at", { ascending: true }),
   ]);
   setLedger(l.data || []);
@@ -16110,6 +16110,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   issue: maintForm.issue,
   priority: maintForm.priority,
   status: "open",
+  created: formatLocalDate(new Date()),
   notes: maintForm.notes,
   cost: 0,
   }]).select();
@@ -16417,7 +16418,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="flex justify-between items-start">
   <div>
   <div className="text-sm font-medium text-neutral-800">{w.issue}</div>
-  <div className="text-xs text-neutral-400">{w.property} · {new Date(w.created_at).toLocaleDateString()}</div>
+  <div className="text-xs text-neutral-400">{w.property} · {w.created || "—"}</div>
   {w.notes && <div className="text-xs text-neutral-400 mt-1">{w.notes}</div>}
   </div>
   <div className="text-right">
