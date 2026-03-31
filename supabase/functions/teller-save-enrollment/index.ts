@@ -17,16 +17,31 @@ async function encrypt(plaintext: string, companyId: string): Promise<{ encrypte
   return { encrypted: btoa(String.fromCharCode(...new Uint8Array(ciphertext))), iv: ivHex };
 }
 
-// Build TLS agent for mTLS (production)
-function getTellerFetchOptions(accessToken: string): RequestInit {
-  const headers: Record<string, string> = {
-    "Authorization": "Basic " + btoa(accessToken + ":"),
-    "Content-Type": "application/json",
+// mTLS: Teller requires client certificates in both development and production
+function createTellerClient(): Deno.HttpClient | undefined {
+  const certB64 = Deno.env.get("TELLER_CERT_B64");
+  const keyB64 = Deno.env.get("TELLER_KEY_B64");
+  if (certB64 && keyB64) {
+    try {
+      const cert = atob(certB64);
+      const key = atob(keyB64);
+      return Deno.createHttpClient({ certChain: cert, privateKey: key });
+    } catch (e) {
+      console.warn("Failed to create mTLS client:", e.message);
+    }
+  }
+  return undefined;
+}
+
+async function tellerFetch(url: string, accessToken: string, client?: Deno.HttpClient): Promise<Response> {
+  const opts: RequestInit & { client?: Deno.HttpClient } = {
+    headers: {
+      "Authorization": "Basic " + btoa(accessToken + ":"),
+      "Accept": "application/json",
+    },
   };
-  // mTLS certificate — stored as base64 env vars for Supabase Edge Functions
-  // In production, TELLER_CERT and TELLER_KEY are required
-  const opts: RequestInit = { headers };
-  return opts;
+  if (client) (opts as any).client = client;
+  return fetch(url, opts);
 }
 
 serve(async (req) => {
@@ -75,8 +90,9 @@ serve(async (req) => {
 
     if (connErr) return new Response(JSON.stringify({ error: connErr.message }), { status: 500, headers: corsHeaders });
 
-    // Fetch accounts from Teller API
-    const accountsRes = await fetch(`${TELLER_API}/accounts`, getTellerFetchOptions(access_token));
+    // Fetch accounts from Teller API (with mTLS)
+    const tlsClient = createTellerClient();
+    const accountsRes = await tellerFetch(`${TELLER_API}/accounts`, access_token, tlsClient);
     if (!accountsRes.ok) {
       const errText = await accountsRes.text();
       return new Response(JSON.stringify({ error: "Teller API error: " + errText }), { status: 400, headers: corsHeaders });
@@ -104,7 +120,7 @@ serve(async (req) => {
       let currentBalance = null;
       let availableBalance = null;
       try {
-        const balRes = await fetch(`${TELLER_API}/accounts/${acct.id}/balances`, getTellerFetchOptions(access_token));
+        const balRes = await tellerFetch(`${TELLER_API}/accounts/${acct.id}/balances`, access_token, tlsClient);
         if (balRes.ok) {
           const balData = await balRes.json();
           currentBalance = parseFloat(balData.ledger) || null;
