@@ -10660,11 +10660,12 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
     return true;
   });
 
+  const feedTxns = selectedFeed === "all" ? transactions : transactions.filter(t => t.bank_account_feed_id === selectedFeed);
   const counts = {
-    for_review: transactions.filter(t => t.status === "for_review").length,
-    recognized: transactions.filter(t => t.status === "for_review" && (t.suggestion_status === "suggested_rule" || t.suggestion_status === "suggested_exclude")).length,
-    categorized: transactions.filter(t => ["categorized", "matched", "posted"].includes(t.status)).length,
-    excluded: transactions.filter(t => t.status === "excluded").length,
+    for_review: feedTxns.filter(t => t.status === "for_review").length,
+    recognized: feedTxns.filter(t => t.status === "for_review" && (t.suggestion_status === "suggested_rule" || t.suggestion_status === "suggested_exclude")).length,
+    categorized: feedTxns.filter(t => ["categorized", "matched", "posted"].includes(t.status)).length,
+    excluded: feedTxns.filter(t => t.status === "excluded").length,
   };
 
   if (loading) return <Spinner />;
