@@ -8903,6 +8903,35 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       rows = [["Date","Entry","Description","Memo","Debit","Credit","Balance"]]; glLines.forEach(l => rows.push([l.date,l.jeNumber||"",l.description,l.memo||"",l.debit.toFixed(2),l.credit.toFixed(2),l.balance.toFixed(2)]));
     } else if (id === "rent_roll") {
       const data = getRentRoll(); rows = [["Property","Tenant","Rent","Lease Start","Lease End","Status"]]; data.forEach(r => rows.push([r.property,r.tenant,"$"+r.rent,r.leaseStart,r.leaseEnd,r.status]));
+    } else if (id === "pl_by_class") {
+      const acctMap = {}; accounts.forEach(a => { acctMap[a.id] = a; });
+      const propData = {}; const accountsUsed = new Set();
+      for (const je of journalEntries) {
+        if (je.status !== "posted" || je.date < start || je.date > end) continue;
+        for (const l of (je.lines || [])) {
+          if (!l.class_id) continue;
+          const acct = acctMap[l.account_id]; if (!acct) continue;
+          if (!["Revenue","Other Income","Expense","Cost of Goods Sold","Other Expense"].includes(acct.type)) continue;
+          if (!propData[l.class_id]) propData[l.class_id] = {};
+          if (!propData[l.class_id][l.account_id]) propData[l.class_id][l.account_id] = 0;
+          if (["Revenue","Other Income"].includes(acct.type)) propData[l.class_id][l.account_id] += safeNum(l.credit) - safeNum(l.debit);
+          else propData[l.class_id][l.account_id] += safeNum(l.debit) - safeNum(l.credit);
+          accountsUsed.add(l.account_id);
+        }
+      }
+      const props = classes.filter(c => propData[c.id]).sort((a,b) => a.name.localeCompare(b.name));
+      const allAccts = accounts.filter(a => accountsUsed.has(a.id)).sort((a,b) => a.code.localeCompare(b.code));
+      const val = (cid, aid) => propData[cid]?.[aid] || 0;
+      rows = [["Account", ...props.map(p => p.name)]];
+      allAccts.forEach(a => {
+        const isIncome = ["Revenue","Other Income"].includes(a.type);
+        rows.push([a.name, ...props.map(p => { const v = val(p.id, a.id); return v === 0 ? "" : (isIncome ? v : v).toFixed(2); })]);
+      });
+      rows.push(["Net Income", ...props.map(p => {
+        const inc = allAccts.filter(a => ["Revenue","Other Income"].includes(a.type)).reduce((s,a) => s + val(p.id, a.id), 0);
+        const exp = allAccts.filter(a => ["Expense","Cost of Goods Sold","Other Expense"].includes(a.type)).reduce((s,a) => s + val(p.id, a.id), 0);
+        return (inc - exp).toFixed(2);
+      })]);
     }
     if (rows.length === 0) { showToast("Export not available for this report.", "info"); return; }
     const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(",")).join("\n");
@@ -9208,10 +9237,10 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         const boldLabelCls = "px-3 py-1.5 text-sm font-bold text-neutral-900 whitespace-nowrap";
         const boldCellCls = "px-3 py-1.5 text-right font-mono text-xs font-bold whitespace-nowrap";
         const sectionCls = "px-3 py-2 text-xs font-semibold text-neutral-500 uppercase tracking-wider bg-neutral-50";
-        const renderRow = (label, getVal, bold, borderTop) => (
+        const renderRow = (label, getVal, bold, borderTop, acctId) => (
           <tr key={label} className={borderTop ? "border-t border-neutral-300" : "border-t border-neutral-50"}>
             <td className={bold ? boldLabelCls : labelCls} style={!bold ? { paddingLeft: 24 } : {}}>{label}</td>
-            {props.map(p => { const v = getVal(p.id); return <td key={p.id} className={bold ? boldCellCls : cellCls}>{fmtCell(v)}</td>; })}
+            {props.map(p => { const v = getVal(p.id); return <td key={p.id} className={`${bold ? boldCellCls : cellCls}${acctId ? " cursor-pointer hover:bg-positive-50/30" : ""}`} onClick={acctId && v !== 0 ? () => onOpenLedger && onOpenLedger([acctId], label) : undefined}>{fmtCell(v)}</td>; })}
           </tr>
         );
         return (
@@ -9224,12 +9253,12 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         <tbody>
           {/* Income */}
           {incomeAccts.length > 0 && <tr><td colSpan={props.length + 1} className={sectionCls}>Income</td></tr>}
-          {incomeAccts.map(a => renderRow(a.name, cid => val(cid, a.id), false, false))}
+          {incomeAccts.map(a => renderRow(a.name, cid => val(cid, a.id), false, false, a.id))}
           {renderRow("Total for Income", cid => sumGroup(cid, incomeAccts), true, true)}
 
           {/* COGS */}
           {cogsAccts.length > 0 && <tr><td colSpan={props.length + 1} className={sectionCls}>Cost of Goods Sold</td></tr>}
-          {cogsAccts.map(a => renderRow(a.name, cid => -val(cid, a.id), false, false))}
+          {cogsAccts.map(a => renderRow(a.name, cid => -val(cid, a.id), false, false, a.id))}
           {cogsAccts.length > 0 && renderRow("Total COGS", cid => sumGroup(cid, cogsAccts), true, true)}
 
           {/* Gross Profit */}
@@ -9237,7 +9266,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
 
           {/* Expenses */}
           {expenseAccts.length > 0 && <tr><td colSpan={props.length + 1} className={sectionCls}>Expenses</td></tr>}
-          {expenseAccts.map(a => renderRow(a.name, cid => val(cid, a.id), false, false))}
+          {expenseAccts.map(a => renderRow(a.name, cid => val(cid, a.id), false, false, a.id))}
           {renderRow("Total for Expenses", cid => sumGroup(cid, expenseAccts), true, true)}
 
           {/* Net Operating Income */}
@@ -9245,8 +9274,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
 
           {/* Other Income/Expense */}
           {(otherIncomeAccts.length > 0 || otherExpAccts.length > 0) && <>
-            {otherIncomeAccts.map(a => renderRow(a.name, cid => val(cid, a.id), false, false))}
-            {otherExpAccts.map(a => renderRow(a.name, cid => -val(cid, a.id), false, false))}
+            {otherIncomeAccts.map(a => renderRow(a.name, cid => val(cid, a.id), false, false, a.id))}
+            {otherExpAccts.map(a => renderRow(a.name, cid => -val(cid, a.id), false, false, a.id))}
             {renderRow("Net Other Income", cid => sumGroup(cid, otherIncomeAccts) - sumGroup(cid, otherExpAccts), true, true)}
           </>}
 
@@ -11283,7 +11312,7 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
           )}
           {ruleForm.lines.map((line, idx) => (
           <div key={idx} className="flex items-center gap-2 mb-2">
-            <AccountPicker value={line.accountId} onChange={v => { const a = accounts.find(a => a.id === v); updateLine(idx, "accountId", v); updateLine(idx, "accountName", a?.name || ""); }} accounts={accounts} accountTypes={ACCOUNT_TYPES} placeholder="Search accounts..." className="flex-1" />
+            <AccountPicker value={line.accountId} onChange={v => { if (v === "__new__") { setShowNewBankAcct(true); return; } const a = accounts.find(a => a.id === v); updateLine(idx, "accountId", v); updateLine(idx, "accountName", a?.name || ""); }} accounts={accounts} accountTypes={ACCOUNT_TYPES} showNewOption placeholder="Search accounts..." className="flex-1" />
             {ruleForm.split && ruleForm.splitBy === "percentage" && (
               <input type="number" value={line.percentage ?? ""} onChange={e => updateLine(idx, "percentage", e.target.value)} placeholder="%" className="w-20 border border-accent-200 rounded-lg px-2 py-1.5 text-xs text-right" />
             )}
@@ -11305,6 +11334,17 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
             </div>
           )}
         </div>
+        {showNewBankAcct && (
+        <div className="bg-brand-50 rounded-xl p-3 mt-2 border border-brand-200">
+        <div className="text-xs font-semibold text-brand-700 mb-2">Create New Account</div>
+        <div className="grid grid-cols-3 gap-2">
+        <div><label className="text-xs text-neutral-500 block mb-1">Type *</label><select value={newBankAcctForm.type} onChange={e => setNewBankAcctForm({...newBankAcctForm, type: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">{ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+        <div><label className="text-xs text-neutral-500 block mb-1">Code</label><input value={newBankAcctForm.code} onChange={e => setNewBankAcctForm({...newBankAcctForm, code: e.target.value})} placeholder="Auto" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+        <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><input value={newBankAcctForm.name} onChange={e => setNewBankAcctForm({...newBankAcctForm, name: e.target.value})} placeholder="e.g. Office Supplies" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+        </div>
+        <div className="flex gap-2 mt-2"><button onClick={createInlineBankAcct} className="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg">Create</button><button onClick={() => setShowNewBankAcct(false)} className="text-xs text-neutral-500 px-3 py-1.5">Cancel</button></div>
+        </div>
+        )}
 
         {/* Payee + Memo */}
         <div className="grid grid-cols-2 gap-3">
