@@ -9668,8 +9668,9 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
             })
           });
           const saveData = await saveRes.json();
-          if (saveData.error) { pmError("PM-5003", { raw: new Error(saveData.error), context: "saving Teller enrollment" }); }
-          else { showToast(saveData.message || "Bank connected!", "success"); fetchAll(); }
+          if (!saveRes.ok || saveData.error || saveData.message === "Invalid JWT") {
+            pmError("PM-5003", { raw: new Error(saveData.error || saveData.message || `HTTP ${saveRes.status}`), context: "saving Teller enrollment" });
+          } else { showToast(saveData.message || "Bank connected!", "success"); fetchAll(); }
         },
         onExit: () => { /* user closed */ },
       });
