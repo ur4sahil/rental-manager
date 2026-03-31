@@ -8850,19 +8850,9 @@ function AcctReports({ accounts, journalEntries, classes, companyName, companyId
     const content = document.querySelector("[data-report-content]");
     if (!content) { showToast("Nothing to export.", "info"); return; }
     const clone = content.cloneNode(true);
-    // Remove material icon spans (they render as text like "expand_more" in print)
     clone.querySelectorAll(".material-icons-outlined, .material-icons").forEach(el => el.remove());
-    // Remove stray text nodes at top level (JSX artifacts)
     Array.from(clone.childNodes).forEach(n => { if (n.nodeType === 3 && /^\s*[\)\}\(\{]*\s*$/.test(n.textContent)) n.remove(); });
-    const safeTitle = DOMPurify.sanitize(currentReport.title + " — " + companyName, { ALLOWED_TAGS: [] });
-    const safeBody = DOMPurify.sanitize(clone.innerHTML);
-    const iframe = document.createElement("iframe");
-    iframe.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;border:0;visibility:hidden;";
-    document.body.appendChild(iframe);
-    const doc = iframe.contentDocument || iframe.contentWindow.document;
-    doc.open();
-    doc.write(`<!DOCTYPE html><html><head><title> </title><style>
-body{font-family:Arial,sans-serif;margin:30px 40px;color:#1e293b;font-size:13px}
+    const baseCss = `body{font-family:Arial,sans-serif;margin:30px 40px;color:#1e293b;font-size:13px}
 *{box-sizing:border-box}
 .flex{display:flex}.items-center{align-items:center}.justify-between{justify-content:space-between}.justify-center{justify-content:center}.gap-1{gap:4px}.gap-2{gap:8px}.gap-3{gap:12px}
 .text-center{text-align:center}.text-right{text-align:right}.text-left{text-align:left}
@@ -8880,9 +8870,66 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
 .whitespace-nowrap{white-space:nowrap}.min-w-48{min-width:12rem}
 .px-3{padding-left:12px;padding-right:12px}.px-4{padding-left:16px;padding-right:16px}.px-5{padding-left:20px;padding-right:20px}
 .hidden,[class*="cursor-pointer"]{cursor:default}
-.grid{display:grid}.grid-cols-4{grid-template-columns:repeat(4,1fr)}
-@media print{body{margin:10px 20px}@page{size:auto;margin:0.25in 0.4in}}
-</style></head><body>${safeBody}</body></html>`);
+.grid{display:grid}.grid-cols-4{grid-template-columns:repeat(4,1fr)}`;
+
+    // For wide columnar reports (P&L by Property), split into pages
+    const table = clone.querySelector("table");
+    const isWideReport = currentReport.id === "pl_by_class" && table;
+    if (isWideReport) {
+      const headerRow = table.querySelector("thead tr");
+      const bodyRows = table.querySelectorAll("tbody tr");
+      const allThs = headerRow ? Array.from(headerRow.children) : [];
+      const propCount = allThs.length - 1; // first column is label
+      const COLS_PER_PAGE = 8;
+      const headerHtml = clone.querySelector(".text-center.mb-6")?.outerHTML || "";
+      let pages = "";
+      for (let i = 0; i < propCount; i += COLS_PER_PAGE) {
+        const colIndices = [0]; // always include label column
+        for (let c = i + 1; c <= Math.min(i + COLS_PER_PAGE, propCount); c++) colIndices.push(c);
+        const pageLabel = `Properties ${i + 1}–${Math.min(i + COLS_PER_PAGE, propCount)} of ${propCount}`;
+        let tbl = "<table><thead><tr>";
+        colIndices.forEach(ci => { tbl += allThs[ci] ? `<th${ci === 0 ? ' style="text-align:left;min-width:180px"' : ' style="text-align:right;min-width:90px"'}>${allThs[ci].textContent}</th>` : ""; });
+        tbl += "</tr></thead><tbody>";
+        bodyRows.forEach(row => {
+          const tds = Array.from(row.children);
+          const colSpanTd = tds.length === 1 && tds[0].getAttribute("colspan");
+          if (colSpanTd) {
+            tbl += `<tr><td colspan="${colIndices.length}" style="padding:8px 12px;font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;background:#f8fafc">${tds[0].textContent}</td></tr>`;
+          } else {
+            tbl += "<tr>";
+            colIndices.forEach(ci => {
+              const td = tds[ci];
+              if (td) {
+                const style = ci === 0 ? td.style.cssText : "text-align:right;font-family:ui-monospace,monospace;font-size:11px;";
+                const fw = td.classList.contains("font-bold") || td.classList.contains("font-black") ? "font-weight:700;" : "";
+                const color = td.classList.contains("text-danger-600") ? "color:#dc2626;" : "";
+                tbl += `<td style="${style}${fw}${color}">${td.textContent}</td>`;
+              }
+            });
+            tbl += "</tr>";
+          }
+        });
+        tbl += "</tbody></table>";
+        pages += `<div style="page-break-after:always">${headerHtml}<p style="text-align:center;font-size:11px;color:#94a3b8;margin-bottom:16px">${pageLabel}</p>${tbl}</div>`;
+      }
+      const iframe = document.createElement("iframe");
+      iframe.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;border:0;visibility:hidden;";
+      document.body.appendChild(iframe);
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      doc.open();
+      doc.write(`<!DOCTYPE html><html><head><title> </title><style>${baseCss}\n@media print{body{margin:10px 20px}@page{size:landscape;margin:0.25in 0.4in}}</style></head><body>${pages}</body></html>`);
+      doc.close();
+      setTimeout(() => { iframe.contentWindow.print(); setTimeout(() => document.body.removeChild(iframe), 1000); }, 500);
+      return;
+    }
+
+    const safeBody = DOMPurify.sanitize(clone.innerHTML);
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;border:0;visibility:hidden;";
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    doc.open();
+    doc.write(`<!DOCTYPE html><html><head><title> </title><style>${baseCss}\n@media print{body{margin:10px 20px}@page{size:auto;margin:0.25in 0.4in}}</style></head><body>${safeBody}</body></html>`);
     doc.close();
     setTimeout(() => { iframe.contentWindow.print(); setTimeout(() => document.body.removeChild(iframe), 1000); }, 500);
   }
