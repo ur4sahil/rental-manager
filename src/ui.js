@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 
 // ============================================================
 // Reusable UI Component Library
@@ -194,6 +194,124 @@ export function BulkBar({ count, label = "item", children, onDeselect }) {
         {children}
         <button onClick={onDeselect} className="text-xs text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect</button>
       </div>
+    </div>
+  );
+}
+
+// ---- ACCOUNT PICKER (typeahead) ----
+export function AccountPicker({ value, onChange, accounts = [], accountTypes = [], showNewOption, placeholder = "Search accounts...", className = "" }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [highlighted, setHighlighted] = useState(-1);
+  const wrapRef = useRef(null);
+  const inputRef = useRef(null);
+  const listRef = useRef(null);
+
+  // Resolve display text for current value
+  const selected = accounts.find(a => a.id === value);
+  const displayText = selected ? `${selected.code || "•"} ${selected.name}` : "";
+
+  // Filter accounts by search
+  const q = search.toLowerCase();
+  const filtered = q
+    ? accounts.filter(a => a.is_active !== false && (
+        (a.name || "").toLowerCase().includes(q) ||
+        (a.code || "").toLowerCase().includes(q) ||
+        (a.type || "").toLowerCase().includes(q)
+      ))
+    : accounts.filter(a => a.is_active !== false);
+
+  // Group filtered accounts by type
+  const types = accountTypes.length ? accountTypes : [...new Set(filtered.map(a => a.type))];
+  const grouped = types.map(type => ({
+    type,
+    items: filtered.filter(a => a.type === type),
+  })).filter(g => g.items.length > 0);
+
+  // Flat list for keyboard nav
+  const flatItems = [];
+  if (showNewOption) flatItems.push({ id: "__new__", label: "+ New Account", type: "__special__" });
+  grouped.forEach(g => g.items.forEach(a => flatItems.push(a)));
+
+  // Close on outside click
+  useEffect(() => {
+    function handleClick(e) { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  // Scroll highlighted item into view
+  useEffect(() => {
+    if (highlighted >= 0 && listRef.current) {
+      const el = listRef.current.querySelector(`[data-idx="${highlighted}"]`);
+      if (el) el.scrollIntoView({ block: "nearest" });
+    }
+  }, [highlighted]);
+
+  const select = useCallback((id) => {
+    onChange(id);
+    setOpen(false);
+    setSearch("");
+    setHighlighted(-1);
+  }, [onChange]);
+
+  function handleKeyDown(e) {
+    if (!open && (e.key === "ArrowDown" || e.key === "Enter")) { setOpen(true); e.preventDefault(); return; }
+    if (!open) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setHighlighted(h => Math.min(h + 1, flatItems.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setHighlighted(h => Math.max(h - 1, 0)); }
+    else if (e.key === "Enter" && highlighted >= 0) { e.preventDefault(); select(flatItems[highlighted].id); }
+    else if (e.key === "Escape") { setOpen(false); setSearch(""); }
+    else if (e.key === "Tab") { setOpen(false); setSearch(""); }
+  }
+
+  return (
+    <div ref={wrapRef} className={`relative ${className}`}>
+      <input
+        ref={inputRef}
+        type="text"
+        value={open ? search : displayText}
+        placeholder={value ? displayText : placeholder}
+        onChange={e => { setSearch(e.target.value); setHighlighted(-1); if (!open) setOpen(true); }}
+        onFocus={() => { setOpen(true); setSearch(""); }}
+        onKeyDown={handleKeyDown}
+        className={`${INPUT_BASE} ${className} pr-7 text-xs`}
+        autoComplete="off"
+      />
+      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-300 pointer-events-none text-xs">▾</span>
+      {value && !open && (
+        <button type="button" onClick={(e) => { e.stopPropagation(); onChange(""); setSearch(""); inputRef.current?.focus(); }}
+          className="absolute right-6 top-1/2 -translate-y-1/2 text-neutral-300 hover:text-neutral-500 text-xs"
+          tabIndex={-1}>✕</button>
+      )}
+      {open && (
+        <div ref={listRef} className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-brand-100 rounded-xl shadow-lg max-h-56 overflow-y-auto">
+          {showNewOption && (
+            <button type="button" data-idx={0}
+              onMouseDown={(e) => { e.preventDefault(); select("__new__"); }}
+              className={`w-full text-left px-3 py-1.5 text-xs font-semibold text-brand-600 hover:bg-brand-50 ${highlighted === 0 ? "bg-brand-50" : ""}`}>
+              + New Account
+            </button>
+          )}
+          {grouped.length === 0 && <div className="px-3 py-3 text-xs text-neutral-400 text-center">No accounts match "{search}"</div>}
+          {grouped.map(g => (
+            <div key={g.type}>
+              <div className="px-3 py-1 text-[10px] font-bold text-neutral-400 uppercase tracking-wider bg-neutral-50 sticky top-0">{g.type}</div>
+              {g.items.map(a => {
+                const idx = flatItems.indexOf(a);
+                return (
+                  <button type="button" key={a.id} data-idx={idx}
+                    onMouseDown={(e) => { e.preventDefault(); select(a.id); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-brand-50 flex items-center gap-1 ${highlighted === idx ? "bg-brand-50 text-brand-700" : "text-neutral-700"} ${a.id === value ? "font-semibold" : ""}`}>
+                    <span className="text-neutral-400 w-10 shrink-0 font-mono">{a.code || "•"}</span>
+                    <span className="truncate">{a.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

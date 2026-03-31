@@ -15,7 +15,7 @@ import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import * as Sentry from "@sentry/react";
 import { supabase } from "./supabase";
-import { Input, Textarea, Select, Btn, Card, PageHeader, FormField, TabBar, FilterPill, SectionTitle, EmptyState, IconBtn, BulkBar } from "./ui";
+import { Input, Textarea, Select, Btn, Card, PageHeader, FormField, TabBar, FilterPill, SectionTitle, EmptyState, IconBtn, BulkBar, AccountPicker } from "./ui";
 
 // ============ SENTRY INITIALIZATION ============
 Sentry.init({
@@ -8185,7 +8185,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], v
   <tbody>
   {form.lines.map((line, i) => (
   <tr key={i} className="border-b border-neutral-100">
-  <td className="px-2 py-1.5"><Select value={line.account_id} onChange={e => setLine(i,"account_id",e.target.value)} className="px-2 py-1.5 text-xs bg-white"><option value="">-- Select --</option><option value="__new__">+ New Account</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a=>a.type===type&&a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}</Select></td>
+  <td className="px-2 py-1.5"><AccountPicker value={line.account_id} onChange={v => setLine(i,"account_id",v)} accounts={accounts} accountTypes={ACCOUNT_TYPES} showNewOption className="px-2 py-1.5 bg-white" /></td>
   <td className="px-2 py-1.5"><Select value={line.class_id || ""} onChange={e => { setLine(i,"class_id",e.target.value||null); const cls = classes.find(c=>c.id===e.target.value); if (cls && !form.property) setForm(f=>({...f, property: cls.name})); }} className="px-2 py-1.5 text-xs bg-white"><option value="">No Class</option>{classes.filter(c=>c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></td>
   <td className="px-2 py-1.5"><Select value={line.entity_id ? `${line.entity_type}:${line.entity_id}` : ""} onChange={e => { const val = e.target.value; if (!val) { setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], entity_type: "", entity_id: "", entity_name: "" }; return { ...f, lines }; }); return; } const [type, id] = val.split(":"); const name = type === "customer" ? tenants.find(t => t.id === id)?.name : vendors.find(v => v.id === id)?.name; setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], entity_type: type, entity_id: id, entity_name: name || "" }; return { ...f, lines }; }); }} className="px-2 py-1.5 text-xs bg-white"><option value="">None</option><optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup><optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup></Select></td>
   <td className="px-2 py-1.5"><input type="text" value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs bg-white focus:border-brand-300 focus:outline-none" /></td>
@@ -10885,9 +10885,7 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
       {actionMode === "add" && (
       <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-end">
         <div><label className="text-xs font-medium text-neutral-500 block mb-1">Category *</label>
-          <select value={addForm.accountId} onChange={e => { if (e.target.value === "__new__") { setShowNewBankAcct(true); return; } const a = accounts.find(a => a.id === e.target.value); setAddForm({...addForm, accountId: e.target.value, accountName: a?.name || ""}); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
-            <option value="">Select account...</option><option value="__new__">+ New Account</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a => a.type === type && a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}
-          </select></div>
+          <AccountPicker value={addForm.accountId} onChange={v => { if (v === "__new__") { setShowNewBankAcct(true); return; } const a = accounts.find(a => a.id === v); setAddForm({...addForm, accountId: v, accountName: a?.name || ""}); }} accounts={accounts} accountTypes={ACCOUNT_TYPES} showNewOption placeholder="Search accounts..." /></div>
         <div><label className="text-xs font-medium text-neutral-500 block mb-1">Tenant/Vendor</label>
           <select value={addForm.entityId ? `${addForm.entityType}:${addForm.entityId}` : ""} onChange={e => { if (!e.target.value) { setAddForm(f => ({...f, entityType: "", entityId: "", entityName: ""})); return; } const [type, id] = e.target.value.split(":"); const name = type === "customer" ? tenants.find(t => t.id === id)?.name : vendors.find(v => v.id === id)?.name; setAddForm(f => ({...f, entityType: type, entityId: id, entityName: name || ""})); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
             <option value="">None</option><optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup><optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup>
@@ -10958,9 +10956,7 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
         <div className="space-y-2">
           {splitLines.map((line, i) => (
           <div key={i} className="grid grid-cols-5 gap-2 items-end">
-            <select value={line.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); const l = [...splitLines]; l[i] = {...l[i], accountId: e.target.value, accountName: a?.name || ""}; setSplitLines(l); }} className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
-              <option value="">Account...</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a => a.type === type && a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}
-            </select>
+            <AccountPicker value={line.accountId} onChange={v => { const a = accounts.find(a => a.id === v); const l = [...splitLines]; l[i] = {...l[i], accountId: v, accountName: a?.name || ""}; setSplitLines(l); }} accounts={accounts} accountTypes={ACCOUNT_TYPES} placeholder="Account..." />
             <input type="text" inputMode="decimal" value={line.amount} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], amount: e.target.value.replace(/[^0-9.]/g, "")}; setSplitLines(l); }} placeholder="0.00" className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs text-right font-mono" />
             <input type="text" value={line.memo} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], memo: e.target.value}; setSplitLines(l); }} placeholder="Memo..." className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs" />
             <select value={line.classId} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], classId: e.target.value}; setSplitLines(l); }} className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
@@ -11267,9 +11263,7 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
           )}
           {ruleForm.lines.map((line, idx) => (
           <div key={idx} className="flex items-center gap-2 mb-2">
-            <select value={line.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); updateLine(idx, "accountId", e.target.value); updateLine(idx, "accountName", a?.name || ""); }} className="flex-1 border border-accent-200 rounded-lg px-2 py-1.5 text-xs">
-              <option value="">Select account...</option>{ACCOUNT_TYPES.map(type => <optgroup key={type} label={type}>{accounts.filter(a => a.type === type && a.is_active).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}</optgroup>)}
-            </select>
+            <AccountPicker value={line.accountId} onChange={v => { const a = accounts.find(a => a.id === v); updateLine(idx, "accountId", v); updateLine(idx, "accountName", a?.name || ""); }} accounts={accounts} accountTypes={ACCOUNT_TYPES} placeholder="Search accounts..." className="flex-1" />
             {ruleForm.split && ruleForm.splitBy === "percentage" && (
               <input type="number" value={line.percentage ?? ""} onChange={e => updateLine(idx, "percentage", e.target.value)} placeholder="%" className="w-20 border border-accent-200 rounded-lg px-2 py-1.5 text-xs text-right" />
             )}
