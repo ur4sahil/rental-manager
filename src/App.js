@@ -9654,7 +9654,7 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
       }
       const tellerConnect = window.TellerConnect.setup({
         applicationId: tellerAppId,
-        environment: window.__TELLER_ENV || "production",
+        environment: window.__TELLER_ENV || process.env.REACT_APP_TELLER_ENV || "development",
         onSuccess: async (enrollment) => {
           showToast("Connecting accounts...", "success");
           const saveRes = await fetch(supabase.supabaseUrl + "/functions/v1/teller-save-enrollment", {
