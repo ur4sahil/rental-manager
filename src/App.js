@@ -9537,6 +9537,11 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
   const [newAccountForm, setNewAccountForm] = useState({ name: "", type: "checking", masked_number: "", institution_name: "" });
   const [showNewBankAcct, setShowNewBankAcct] = useState(false);
   const [newBankAcctForm, setNewBankAcctForm] = useState({ code: "", name: "", type: "Expense" });
+  // Post-connection setup modal
+  const [postConnectModal, setPostConnectModal] = useState(null); // { accounts, connectionId, institutionName }
+  const [postConnectMappings, setPostConnectMappings] = useState({}); // { feedId: glAccountId }
+  const [postConnectRange, setPostConnectRange] = useState({ from: "", to: formatLocalDate(new Date()) });
+  const [postConnectSyncing, setPostConnectSyncing] = useState(false);
 
   async function createInlineBankAcct() {
     if (!newBankAcctForm.name.trim()) { showToast("Account name is required.", "error"); return; }
@@ -9670,7 +9675,17 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
           const saveData = await saveRes.json();
           if (!saveRes.ok || saveData.error || saveData.message === "Invalid JWT") {
             pmError("PM-5003", { raw: new Error(saveData.error || saveData.message || `HTTP ${saveRes.status}`), context: "saving Teller enrollment" });
-          } else { showToast(saveData.message || "Bank connected!", "success"); fetchAll(); }
+          } else {
+            // Show post-connection setup modal
+            await fetchAll();
+            const ninetyDaysAgo = new Date(); ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+            setPostConnectRange({ from: formatLocalDate(ninetyDaysAgo), to: formatLocalDate(new Date()) });
+            // Build default mappings (each feed → its auto-created GL account)
+            const mappings = {};
+            (saveData.accounts || []).forEach(a => { if (a.id && a.gl_account_id) mappings[a.id] = a.gl_account_id; });
+            setPostConnectMappings(mappings);
+            setPostConnectModal({ accounts: saveData.accounts || [], connectionId: saveData.connection_id, institutionName: enrollment.enrollment?.institution?.name || "Bank" });
+          }
         },
         onExit: () => { /* user closed */ },
       });
@@ -9679,20 +9694,23 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
     finally { setPlaidConnecting(false); }
   }
 
-  async function syncTransactions() {
+  async function syncTransactions(opts = {}) {
     setSyncing(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) { showToast("Not authenticated.", "error"); return; }
+      const payload = { company_id: companyId };
+      if (opts.from_date) payload.from_date = opts.from_date;
+      if (opts.to_date) payload.to_date = opts.to_date;
       const res = await fetch(supabase.supabaseUrl + "/functions/v1/teller-sync-transactions", {
         method: "POST",
         headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
-        body: JSON.stringify({ company_id: companyId })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
-      if (data.error) { showToast("Sync error: " + data.error, "error"); }
+      if (!res.ok || data.error) { showToast("Sync error: " + (data.error || `HTTP ${res.status}`), "error"); }
       else {
-        showToast(`Synced: ${data.total_added} new, ${data.total_modified} updated`, "success");
+        showToast(`Synced: ${data.total_added} new transaction${data.total_added !== 1 ? "s" : ""}`, "success");
         fetchAll();
       }
     } catch (e) { showToast("Sync failed: " + e.message, "error"); }
@@ -11333,6 +11351,103 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
     </div>
   </div>
   </>
+  )}
+
+  {/* Post-Connection Setup Modal */}
+  {postConnectModal && (
+  <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+      <div className="p-6">
+        <div className="flex items-center gap-3 mb-1">
+          <span className="text-2xl">🏦</span>
+          <h3 className="text-lg font-bold text-neutral-800">Bank Connected</h3>
+        </div>
+        <p className="text-sm text-neutral-500 mb-5">{postConnectModal.institutionName} — {postConnectModal.accounts.length} account{postConnectModal.accounts.length !== 1 ? "s" : ""} linked</p>
+
+        {/* Connected Accounts + GL Mapping */}
+        <div className="mb-5">
+          <label className="text-xs font-semibold text-neutral-600 uppercase tracking-wide block mb-2">Account Mapping</label>
+          <div className="space-y-3">
+            {postConnectModal.accounts.map(acct => (
+            <div key={acct.id} className="bg-neutral-50 rounded-xl p-3 border border-neutral-200">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <div className="font-semibold text-sm text-neutral-800">{acct.name || "Bank Account"}</div>
+                  <div className="text-xs text-neutral-400">{acct.type}{acct.mask ? ` · ••••${acct.mask}` : ""}</div>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-neutral-500 block mb-1">GL Account</label>
+                <AccountPicker
+                  value={postConnectMappings[acct.id] || ""}
+                  onChange={v => {
+                    setPostConnectMappings(prev => ({ ...prev, [acct.id]: v }));
+                  }}
+                  accounts={accounts}
+                  accountTypes={ACCOUNT_TYPES}
+                  placeholder="Map to GL account..."
+                />
+              </div>
+            </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Date Range Picker */}
+        <div className="mb-5">
+          <label className="text-xs font-semibold text-neutral-600 uppercase tracking-wide block mb-2">Import Transactions</label>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-neutral-500 block mb-1">From</label>
+              <Input type="date" value={postConnectRange.from} onChange={e => setPostConnectRange(prev => ({ ...prev, from: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-xs text-neutral-500 block mb-1">To</label>
+              <Input type="date" value={postConnectRange.to} onChange={e => setPostConnectRange(prev => ({ ...prev, to: e.target.value }))} />
+            </div>
+          </div>
+          <div className="flex gap-2 mt-2">
+            {[30, 60, 90, 180, 365].map(days => {
+              const d = new Date(); d.setDate(d.getDate() - days);
+              return <button key={days} onClick={() => setPostConnectRange({ from: formatLocalDate(d), to: formatLocalDate(new Date()) })}
+                className="text-xs px-2 py-1 rounded-lg bg-neutral-100 text-neutral-600 hover:bg-neutral-200">{days}d</button>;
+            })}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-3 pt-3 border-t border-neutral-200">
+          <Btn onClick={async () => {
+            setPostConnectSyncing(true);
+            try {
+              // Update GL mappings if user changed them
+              for (const [feedId, glId] of Object.entries(postConnectMappings)) {
+                if (glId) {
+                  await supabase.from("bank_account_feed").update({ gl_account_id: glId }).eq("id", feedId).eq("company_id", companyId);
+                }
+              }
+              // Sync transactions with date range
+              const { data: { session } } = await supabase.auth.getSession();
+              if (!session?.access_token) { showToast("Not authenticated.", "error"); return; }
+              const res = await fetch(supabase.supabaseUrl + "/functions/v1/teller-sync-transactions", {
+                method: "POST",
+                headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
+                body: JSON.stringify({ company_id: companyId, from_date: postConnectRange.from, to_date: postConnectRange.to })
+              });
+              const data = await res.json();
+              if (!res.ok || data.error) { showToast("Sync error: " + (data.error || `HTTP ${res.status}`), "error"); }
+              else { showToast(`Imported ${data.total_added} transaction${data.total_added !== 1 ? "s" : ""} from ${postConnectModal.institutionName}`, "success"); }
+              fetchAll();
+            } catch (e) { showToast("Sync failed: " + e.message, "error"); }
+            finally { setPostConnectSyncing(false); setPostConnectModal(null); }
+          }} disabled={postConnectSyncing || !postConnectRange.from}>
+            {postConnectSyncing ? "Importing..." : "Import Transactions"}
+          </Btn>
+          <Btn variant="ghost" onClick={() => { setPostConnectModal(null); fetchAll(); }}>Skip for Now</Btn>
+        </div>
+      </div>
+    </div>
+  </div>
   )}
 
   </div>

@@ -127,7 +127,7 @@ serve(async (req) => {
         status: "active",
       }).select("id").single();
 
-      if (feed) createdFeeds.push({ id: feed.id, name: acct.name, type: acctType, mask: acct.last_four });
+      if (feed) createdFeeds.push({ id: feed.id, name: acct.name, type: acctType, mask: acct.last_four, gl_account_id: glAcct?.id || null, gl_account_name: `${nextCode} ${acct.name || institution?.name || "Bank"}` });
     }
 
     return new Response(JSON.stringify({

@@ -129,6 +129,8 @@ serve(async (req) => {
           if (!tellerAccountId) continue;
 
           // Fetch transactions from Teller
+          // Teller returns up to 500 transactions in reverse-chronological order
+          // Date filtering is done server-side after fetch
           const txnRes = await tellerFetch(`${TELLER_API}/accounts/${tellerAccountId}/transactions`, accessToken, tlsClient);
 
           if (txnRes.status === 401 || txnRes.status === 403) {
@@ -144,7 +146,11 @@ serve(async (req) => {
             throw new Error(`Teller API error (${txnRes.status}): ${errText}`);
           }
 
-          const tellerTxns = await txnRes.json();
+          let tellerTxns = await txnRes.json();
+
+          // Filter by date range if provided
+          if (body.from_date) tellerTxns = tellerTxns.filter((t: any) => t.date >= body.from_date);
+          if (body.to_date) tellerTxns = tellerTxns.filter((t: any) => t.date <= body.to_date);
 
           // Get existing fingerprints for dedup
           const { data: existingFps } = await supabase.from("bank_feed_transaction")
