@@ -9662,7 +9662,7 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
         environment: "development",
         onSuccess: async (enrollment) => {
           showToast("Connecting accounts...", "success");
-          const saveRes = await fetch(supabase.supabaseUrl + "/functions/v1/teller-save-enrollment", {
+          const saveRes = await fetch("/api/teller-save-enrollment", {
             method: "POST",
             headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -9702,7 +9702,7 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
       const payload = { company_id: companyId };
       if (opts.from_date) payload.from_date = opts.from_date;
       if (opts.to_date) payload.to_date = opts.to_date;
-      const res = await fetch(supabase.supabaseUrl + "/functions/v1/teller-sync-transactions", {
+      const res = await fetch("/api/teller-sync-transactions", {
         method: "POST",
         headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -11430,7 +11430,7 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
               // Sync transactions with date range
               const { data: { session } } = await supabase.auth.getSession();
               if (!session?.access_token) { showToast("Not authenticated.", "error"); return; }
-              const res = await fetch(supabase.supabaseUrl + "/functions/v1/teller-sync-transactions", {
+              const res = await fetch("/api/teller-sync-transactions", {
                 method: "POST",
                 headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
                 body: JSON.stringify({ company_id: companyId, from_date: postConnectRange.from, to_date: postConnectRange.to })
