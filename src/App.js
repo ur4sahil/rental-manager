@@ -13,6 +13,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
+import ExcelJS from "exceljs";
 import * as Sentry from "@sentry/react";
 import { supabase } from "./supabase";
 import { Input, Textarea, Select, Btn, Card, PageHeader, FormField, TabBar, FilterPill, SectionTitle, EmptyState, IconBtn, BulkBar, AccountPicker } from "./ui";
@@ -8934,30 +8935,80 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     setTimeout(() => { iframe.contentWindow.print(); setTimeout(() => document.body.removeChild(iframe), 1000); }, 500);
   }
 
-  // --- CSV Export ---
-  function exportCSV() {
+  // --- Excel Export (xlsx with formulas, sections, formatting) ---
+  async function exportExcel() {
     if (!currentReport) return;
-    let rows = [];
     const id = currentReport.id;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet(currentReport.title);
+    const $ = (n) => typeof n === "number" ? n : safeNum(n); // ensure numeric
+    const money = '"$"#,##0.00';
+    const pct = '0.0"%"';
+    const colLetter = (c) => { let s = ""; while (c > 0) { c--; s = String.fromCharCode(65 + (c % 26)) + s; c = Math.floor(c / 26); } return s; };
+
+    // Style helpers
+    const boldFont = { bold: true };
+    const headerFont = { bold: true, size: 12 };
+    const sectionFont = { bold: true, color: { argb: "FF64748B" }, size: 10 };
+    const titleFont = { bold: true, size: 14 };
+    const totalFont = { bold: true, size: 11 };
+    const headerFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
+    const sectionFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
+    const thinBorder = { bottom: { style: "thin", color: { argb: "FFE2E8F0" } } };
+    const thickBorder = { top: { style: "medium", color: { argb: "FF1E293B" } }, bottom: { style: "medium", color: { argb: "FF1E293B" } } };
+
+    function addTitle(title, subtitle, dateRange) {
+      const r1 = ws.addRow([companyName]); r1.getCell(1).font = titleFont;
+      const r2 = ws.addRow([title]); r2.getCell(1).font = headerFont;
+      if (subtitle) { const r3 = ws.addRow([subtitle]); r3.getCell(1).font = { italic: true, color: { argb: "FF64748B" } }; }
+      if (dateRange) { const r4 = ws.addRow([dateRange]); r4.getCell(1).font = { color: { argb: "FF94A3B8" }, size: 10 }; }
+      ws.addRow([]);
+    }
+    function addSectionHeader(label, colCount) {
+      const r = ws.addRow([label]); r.getCell(1).font = sectionFont; r.getCell(1).fill = sectionFill;
+      for (let i = 2; i <= colCount; i++) r.getCell(i).fill = sectionFill;
+    }
+    function styleHeaderRow(row, colCount) {
+      for (let i = 1; i <= colCount; i++) { row.getCell(i).font = boldFont; row.getCell(i).fill = headerFill; row.getCell(i).border = thinBorder; }
+    }
+    function styleTotalRow(row, colCount, thick) {
+      for (let i = 1; i <= colCount; i++) { row.getCell(i).font = totalFont; if (thick) row.getCell(i).border = thickBorder; }
+    }
+
+    try {
+    // ===================== PROFIT & LOSS =====================
     if (id === "pl") {
-      const plData = getPLData(accounts, journalEntries, start, end, classFilter || null);
-      rows = [["Account","Amount"]]; plData.revenue.forEach(a => rows.push([a.name, a.amount.toFixed(2)])); rows.push(["Total Income", plData.totalRevenue.toFixed(2)]); plData.expenses.forEach(a => rows.push([a.name, a.amount.toFixed(2)])); rows.push(["Total Expenses", plData.totalExpenses.toFixed(2)]); rows.push(["Net Income", plData.netIncome.toFixed(2)]);
-    } else if (id === "bs") {
-      const bsData = getBalanceSheetData(accounts, journalEntries, asOfDate);
-      rows = [["Section","Account","Amount"]]; bsData.assets.filter(a=>a.amount!==0).forEach(a => rows.push(["Assets",a.name,a.amount.toFixed(2)])); rows.push(["","Total Assets",bsData.totalAssets.toFixed(2)]); bsData.liabilities.filter(a=>a.amount!==0).forEach(a => rows.push(["Liabilities",a.name,a.amount.toFixed(2)])); rows.push(["","Total Liabilities",bsData.totalLiabilities.toFixed(2)]);
-    } else if (id === "gl") {
-      const glLines = getGeneralLedger(selectedAccountId, accounts, journalEntries).filter(l => l.date >= start && l.date <= end);
-      rows = [["Date","Entry","Description","Memo","Debit","Credit","Balance"]]; glLines.forEach(l => rows.push([l.date,l.jeNumber||"",l.description,l.memo||"",l.debit.toFixed(2),l.credit.toFixed(2),l.balance.toFixed(2)]));
-    } else if (id === "rent_roll") {
-      const data = getRentRoll(); rows = [["Property","Tenant","Rent","Lease Start","Lease End","Status"]]; data.forEach(r => rows.push([r.property,r.tenant,"$"+r.rent,r.leaseStart,r.leaseEnd,r.status]));
+      const d = getPLData(accounts, journalEntries, start, end, classFilter || null);
+      addTitle("Profit & Loss", null, `${acctFmtDate(start)} – ${acctFmtDate(end)}`);
+      const hr = ws.addRow(["Account", "Amount"]); styleHeaderRow(hr, 2);
+      ws.getColumn(2).numFmt = money; ws.getColumn(1).width = 40; ws.getColumn(2).width = 18;
+      // Income
+      addSectionHeader("INCOME", 2);
+      const incStart = ws.rowCount + 1;
+      d.revenue.filter(a => a.amount !== 0).forEach(a => { const r = ws.addRow([`  ${a.name}`, $(a.amount)]); r.getCell(2).numFmt = money; });
+      const incEnd = ws.rowCount;
+      const tiRow = ws.addRow(["Total Income", incEnd >= incStart ? { formula: `SUM(B${incStart}:B${incEnd})` } : 0]);
+      tiRow.getCell(2).numFmt = money; styleTotalRow(tiRow, 2, false);
+      ws.addRow([]);
+      // Expenses
+      addSectionHeader("EXPENSES", 2);
+      const expStart = ws.rowCount + 1;
+      d.expenses.filter(a => a.amount !== 0).forEach(a => { const r = ws.addRow([`  ${a.name}`, $(a.amount)]); r.getCell(2).numFmt = money; });
+      const expEnd = ws.rowCount;
+      const teRow = ws.addRow(["Total Expenses", expEnd >= expStart ? { formula: `SUM(B${expStart}:B${expEnd})` } : 0]);
+      teRow.getCell(2).numFmt = money; styleTotalRow(teRow, 2, false);
+      ws.addRow([]);
+      const niRow = ws.addRow(["Net Income", { formula: `B${tiRow.number}-B${teRow.number}` }]);
+      niRow.getCell(2).numFmt = money; styleTotalRow(niRow, 2, true);
+
+    // ===================== P&L BY PROPERTY =====================
     } else if (id === "pl_by_class") {
       const acctMap = {}; accounts.forEach(a => { acctMap[a.id] = a; });
       const propData = {}; const accountsUsed = new Set();
       for (const je of journalEntries) {
         if (je.status !== "posted" || je.date < start || je.date > end) continue;
         for (const l of (je.lines || [])) {
-          if (!l.class_id) continue;
-          const acct = acctMap[l.account_id]; if (!acct) continue;
+          if (!l.class_id) continue; const acct = acctMap[l.account_id]; if (!acct) continue;
           if (!["Revenue","Other Income","Expense","Cost of Goods Sold","Other Expense"].includes(acct.type)) continue;
           if (!propData[l.class_id]) propData[l.class_id] = {};
           if (!propData[l.class_id][l.account_id]) propData[l.class_id][l.account_id] = 0;
@@ -8967,23 +9018,397 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         }
       }
       const props = classes.filter(c => propData[c.id]).sort((a,b) => a.name.localeCompare(b.name));
-      const allAccts = accounts.filter(a => accountsUsed.has(a.id)).sort((a,b) => a.code.localeCompare(b.code));
       const val = (cid, aid) => propData[cid]?.[aid] || 0;
-      rows = [["Account", ...props.map(p => p.name)]];
-      allAccts.forEach(a => {
-        const isIncome = ["Revenue","Other Income"].includes(a.type);
-        rows.push([a.name, ...props.map(p => { const v = val(p.id, a.id); return v === 0 ? "" : (isIncome ? v : v).toFixed(2); })]);
+      const incomeAccts = accounts.filter(a => ["Revenue","Other Income"].includes(a.type) && accountsUsed.has(a.id)).sort((a,b) => a.code.localeCompare(b.code));
+      const expenseAccts = accounts.filter(a => ["Expense","Cost of Goods Sold","Other Expense"].includes(a.type) && accountsUsed.has(a.id)).sort((a,b) => a.code.localeCompare(b.code));
+      const nc = props.length + 1;
+      addTitle("Profit & Loss by Property", null, `${acctFmtDate(start)} – ${acctFmtDate(end)}`);
+      const hr = ws.addRow(["Account", ...props.map(p => p.name)]); styleHeaderRow(hr, nc);
+      ws.getColumn(1).width = 30;
+      for (let i = 2; i <= nc; i++) { ws.getColumn(i).width = 16; ws.getColumn(i).numFmt = money; }
+      // Income
+      addSectionHeader("INCOME", nc);
+      const incStartRow = ws.rowCount + 1;
+      incomeAccts.forEach(a => { const r = ws.addRow([`  ${a.name}`, ...props.map(p => $(val(p.id, a.id)) || 0)]); for (let i = 2; i <= nc; i++) r.getCell(i).numFmt = money; });
+      const incEndRow = ws.rowCount;
+      const tiR = ws.addRow(["Total Income"]);
+      for (let i = 2; i <= nc; i++) { tiR.getCell(i).value = incEndRow >= incStartRow ? { formula: `SUM(${colLetter(i)}${incStartRow}:${colLetter(i)}${incEndRow})` } : 0; tiR.getCell(i).numFmt = money; }
+      styleTotalRow(tiR, nc, false);
+      ws.addRow([]);
+      // Expenses
+      addSectionHeader("EXPENSES", nc);
+      const expStartRow = ws.rowCount + 1;
+      expenseAccts.forEach(a => { const r = ws.addRow([`  ${a.name}`, ...props.map(p => $(val(p.id, a.id)) || 0)]); for (let i = 2; i <= nc; i++) r.getCell(i).numFmt = money; });
+      const expEndRow = ws.rowCount;
+      const teR = ws.addRow(["Total Expenses"]);
+      for (let i = 2; i <= nc; i++) { teR.getCell(i).value = expEndRow >= expStartRow ? { formula: `SUM(${colLetter(i)}${expStartRow}:${colLetter(i)}${expEndRow})` } : 0; teR.getCell(i).numFmt = money; }
+      styleTotalRow(teR, nc, false);
+      ws.addRow([]);
+      // Net Income = Total Income - Total Expenses
+      const niR = ws.addRow(["Net Income"]);
+      for (let i = 2; i <= nc; i++) { niR.getCell(i).value = { formula: `${colLetter(i)}${tiR.number}-${colLetter(i)}${teR.number}` }; niR.getCell(i).numFmt = money; }
+      styleTotalRow(niR, nc, true);
+
+    // ===================== P&L COMPARISON =====================
+    } else if (id === "pl_compare") {
+      const d1 = getPLData(accounts, journalEntries, start, end, classFilter || null);
+      const compareEnd = start; const cStart = new Date(start); cStart.setFullYear(cStart.getFullYear() - 1);
+      const d2 = getPLData(accounts, journalEntries, formatLocalDate(cStart), compareEnd, classFilter || null);
+      addTitle("P&L Comparison", null, `${acctFmtDate(start)} – ${acctFmtDate(end)} vs Prior Year`);
+      const hr = ws.addRow(["Account", "Current", "Prior", "Change", "% Change"]); styleHeaderRow(hr, 5);
+      ws.getColumn(1).width = 35; [2,3,4].forEach(c => { ws.getColumn(c).width = 16; ws.getColumn(c).numFmt = money; }); ws.getColumn(5).width = 12; ws.getColumn(5).numFmt = pct;
+      addSectionHeader("INCOME", 5);
+      d1.revenue.filter(a => a.amount !== 0).forEach(a => {
+        const prior = d2.revenue.find(b => b.id === a.id)?.amount || 0;
+        const rn = ws.rowCount + 1;
+        const r = ws.addRow([`  ${a.name}`, $(a.amount), $(prior), { formula: `B${rn}-C${rn}` }, prior !== 0 ? { formula: `D${rn}/C${rn}*100` } : 0]);
+        [2,3,4].forEach(c => r.getCell(c).numFmt = money); r.getCell(5).numFmt = pct;
       });
-      rows.push(["Net Income", ...props.map(p => {
-        const inc = allAccts.filter(a => ["Revenue","Other Income"].includes(a.type)).reduce((s,a) => s + val(p.id, a.id), 0);
-        const exp = allAccts.filter(a => ["Expense","Cost of Goods Sold","Other Expense"].includes(a.type)).reduce((s,a) => s + val(p.id, a.id), 0);
-        return (inc - exp).toFixed(2);
-      })]);
+      const tiR = ws.addRow(["Total Income", $(d1.totalRevenue), $(d2.totalRevenue), { formula: `B${ws.rowCount}-C${ws.rowCount}` }]);
+      [2,3,4].forEach(c => tiR.getCell(c).numFmt = money); styleTotalRow(tiR, 5, false);
+      ws.addRow([]); addSectionHeader("EXPENSES", 5);
+      d1.expenses.filter(a => a.amount !== 0).forEach(a => {
+        const prior = d2.expenses.find(b => b.id === a.id)?.amount || 0;
+        const rn = ws.rowCount + 1;
+        const r = ws.addRow([`  ${a.name}`, $(a.amount), $(prior), { formula: `B${rn}-C${rn}` }, prior !== 0 ? { formula: `D${rn}/C${rn}*100` } : 0]);
+        [2,3,4].forEach(c => r.getCell(c).numFmt = money); r.getCell(5).numFmt = pct;
+      });
+      const teR = ws.addRow(["Total Expenses", $(d1.totalExpenses), $(d2.totalExpenses), { formula: `B${ws.rowCount}-C${ws.rowCount}` }]);
+      [2,3,4].forEach(c => teR.getCell(c).numFmt = money); styleTotalRow(teR, 5, false);
+      ws.addRow([]);
+      const niR = ws.addRow(["Net Income", { formula: `B${tiR.number}-B${teR.number}` }, { formula: `C${tiR.number}-C${teR.number}` }, { formula: `B${ws.rowCount}-C${ws.rowCount}` }]);
+      [2,3,4].forEach(c => niR.getCell(c).numFmt = money); styleTotalRow(niR, 5, true);
+
+    // ===================== BALANCE SHEET =====================
+    } else if (id === "bs") {
+      const d = getBalanceSheetData(accounts, journalEntries, asOfDate);
+      addTitle("Balance Sheet", null, `As of ${acctFmtDate(asOfDate)}`);
+      const hr = ws.addRow(["Account", "Amount"]); styleHeaderRow(hr, 2);
+      ws.getColumn(1).width = 40; ws.getColumn(2).width = 18; ws.getColumn(2).numFmt = money;
+      addSectionHeader("ASSETS", 2);
+      const aStart = ws.rowCount + 1;
+      d.assets.filter(a => a.amount !== 0).forEach(a => { ws.addRow([`  ${a.name}`, $(a.amount)]).getCell(2).numFmt = money; });
+      const aEnd = ws.rowCount;
+      const taR = ws.addRow(["Total Assets", aEnd >= aStart ? { formula: `SUM(B${aStart}:B${aEnd})` } : 0]); taR.getCell(2).numFmt = money; styleTotalRow(taR, 2, false);
+      ws.addRow([]);
+      addSectionHeader("LIABILITIES", 2);
+      const lStart = ws.rowCount + 1;
+      d.liabilities.filter(a => a.amount !== 0).forEach(a => { ws.addRow([`  ${a.name}`, $(a.amount)]).getCell(2).numFmt = money; });
+      const lEnd = ws.rowCount;
+      const tlR = ws.addRow(["Total Liabilities", lEnd >= lStart ? { formula: `SUM(B${lStart}:B${lEnd})` } : 0]); tlR.getCell(2).numFmt = money; styleTotalRow(tlR, 2, false);
+      ws.addRow([]);
+      addSectionHeader("EQUITY", 2);
+      const eStart = ws.rowCount + 1;
+      d.equity.filter(a => a.amount !== 0).forEach(a => { ws.addRow([`  ${a.name}`, $(a.amount)]).getCell(2).numFmt = money; });
+      if (d.netIncome !== 0) ws.addRow(["  Net Income (Current Period)", $(d.netIncome)]).getCell(2).numFmt = money;
+      const eEnd = ws.rowCount;
+      const teqR = ws.addRow(["Total Equity", eEnd >= eStart ? { formula: `SUM(B${eStart}:B${eEnd})` } : 0]); teqR.getCell(2).numFmt = money; styleTotalRow(teqR, 2, false);
+      ws.addRow([]);
+      const tlEqR = ws.addRow(["Total Liabilities & Equity", { formula: `B${tlR.number}+B${teqR.number}` }]); tlEqR.getCell(2).numFmt = money; styleTotalRow(tlEqR, 2, true);
+
+    // ===================== GENERAL LEDGER =====================
+    } else if (id === "gl") {
+      const glLines = getGeneralLedger(selectedAccountId, accounts, journalEntries).filter(l => l.date >= start && l.date <= end);
+      addTitle("General Ledger", null, `${acctFmtDate(start)} – ${acctFmtDate(end)}`);
+      const hr = ws.addRow(["Date", "Entry", "Description", "Memo", "Debit", "Credit", "Balance"]); styleHeaderRow(hr, 7);
+      ws.getColumn(1).width = 12; ws.getColumn(2).width = 10; ws.getColumn(3).width = 35; ws.getColumn(4).width = 25;
+      [5,6,7].forEach(c => { ws.getColumn(c).width = 14; ws.getColumn(c).numFmt = money; });
+      glLines.forEach(l => { const r = ws.addRow([l.date, l.jeNumber || "", l.description, l.memo || "", $(l.debit), $(l.credit), $(l.balance)]); [5,6,7].forEach(c => r.getCell(c).numFmt = money); });
+      ws.addRow([]);
+      const totR = ws.addRow(["", "", "", "Totals", { formula: `SUM(E${hr.number+1}:E${ws.rowCount-1})` }, { formula: `SUM(F${hr.number+1}:F${ws.rowCount-1})` }, ""]);
+      [5,6].forEach(c => totR.getCell(c).numFmt = money); styleTotalRow(totR, 7, true);
+
+    // ===================== TRIAL BALANCE =====================
+    } else if (id === "tb") {
+      const tbData = getTrialBalance(accounts, journalEntries, start, end);
+      addTitle("Trial Balance", null, `${acctFmtDate(start)} – ${acctFmtDate(end)}`);
+      const hr = ws.addRow(["Code", "Account", "Debit", "Credit"]); styleHeaderRow(hr, 4);
+      ws.getColumn(1).width = 10; ws.getColumn(2).width = 35; [3,4].forEach(c => { ws.getColumn(c).width = 16; ws.getColumn(c).numFmt = money; });
+      const dStart = ws.rowCount + 1;
+      tbData.filter(a => a.debitBalance !== 0 || a.creditBalance !== 0).forEach(a => {
+        const r = ws.addRow([a.code || "", a.name, $(a.debitBalance), $(a.creditBalance)]); [3,4].forEach(c => r.getCell(c).numFmt = money);
+      });
+      const dEnd = ws.rowCount;
+      const totR = ws.addRow(["", "Totals", dEnd >= dStart ? { formula: `SUM(C${dStart}:C${dEnd})` } : 0, dEnd >= dStart ? { formula: `SUM(D${dStart}:D${dEnd})` } : 0]);
+      [3,4].forEach(c => totR.getCell(c).numFmt = money); styleTotalRow(totR, 4, true);
+
+    // ===================== CASH FLOW =====================
+    } else if (id === "cash_flow") {
+      const cf = getCashFlowData(start, end);
+      addTitle("Cash Flow Statement", null, `${acctFmtDate(start)} – ${acctFmtDate(end)}`);
+      const hr = ws.addRow(["Item", "Amount"]); styleHeaderRow(hr, 2);
+      ws.getColumn(1).width = 40; ws.getColumn(2).width = 18; ws.getColumn(2).numFmt = money;
+      if (cf && typeof cf === "object") {
+        Object.entries(cf).forEach(([section, items]) => {
+          if (Array.isArray(items)) { addSectionHeader(section, 2); items.forEach(i => { ws.addRow([`  ${i.name || i.label || ""}`, $(i.amount || i.value || 0)]).getCell(2).numFmt = money; }); }
+        });
+      }
+
+    // ===================== AR AGING SUMMARY =====================
+    } else if (id === "ar_aging_summary") {
+      const bsData = getBalanceSheetData(accounts, journalEntries, asOfDate);
+      addTitle("AR Aging Summary", null, `As of ${acctFmtDate(asOfDate)}`);
+      const hr = ws.addRow(["Tenant", "Current", "1-30", "31-60", "61-90", "Over 90", "Total"]); styleHeaderRow(hr, 7);
+      ws.getColumn(1).width = 30; for (let c = 2; c <= 7; c++) { ws.getColumn(c).width = 14; ws.getColumn(c).numFmt = money; }
+      const dStart = ws.rowCount + 1;
+      (bsData.arAgingByTenant || []).filter(t => t.total !== 0).forEach(t => {
+        const r = ws.addRow([t.tenant, $(t.current), $(t.days30), $(t.days60), $(t.days90), $(t.over90), { formula: `SUM(B${ws.rowCount+1}:F${ws.rowCount+1})` }]);
+        // Fix: formula refs point to current row, need to adjust after addRow
+        r.getCell(7).value = { formula: `SUM(B${r.number}:F${r.number})` };
+        for (let c = 2; c <= 7; c++) r.getCell(c).numFmt = money;
+      });
+      const dEnd = ws.rowCount;
+      const totR = ws.addRow(["Totals"]); for (let c = 2; c <= 7; c++) { totR.getCell(c).value = dEnd >= dStart ? { formula: `SUM(${colLetter(c)}${dStart}:${colLetter(c)}${dEnd})` } : 0; totR.getCell(c).numFmt = money; }
+      styleTotalRow(totR, 7, true);
+
+    // ===================== CUSTOMER BALANCE SUMMARY =====================
+    } else if (id === "customer_balance_summary") {
+      const bsData = getBalanceSheetData(accounts, journalEntries, asOfDate);
+      addTitle("Tenant Balance Summary", null, `As of ${acctFmtDate(asOfDate)}`);
+      const hr = ws.addRow(["Tenant", "Balance"]); styleHeaderRow(hr, 2);
+      ws.getColumn(1).width = 35; ws.getColumn(2).width = 16; ws.getColumn(2).numFmt = money;
+      const dStart = ws.rowCount + 1;
+      (bsData.arByTenant || []).filter(t => t.balance !== 0).forEach(t => { ws.addRow([t.tenant, $(t.balance)]).getCell(2).numFmt = money; });
+      const dEnd = ws.rowCount;
+      const totR = ws.addRow(["Total", dEnd >= dStart ? { formula: `SUM(B${dStart}:B${dEnd})` } : 0]); totR.getCell(2).numFmt = money; styleTotalRow(totR, 2, true);
+
+    // ===================== OPEN INVOICES =====================
+    } else if (id === "open_invoices") {
+      const data = getOpenInvoices(asOfDate);
+      addTitle("Open Invoices", null, `As of ${acctFmtDate(asOfDate)}`);
+      const hr = ws.addRow(["Tenant", "Date", "Description", "Original", "Paid", "Due", "Days Out"]); styleHeaderRow(hr, 7);
+      ws.getColumn(1).width = 25; ws.getColumn(2).width = 12; ws.getColumn(3).width = 30;
+      [4,5,6].forEach(c => { ws.getColumn(c).width = 14; ws.getColumn(c).numFmt = money; }); ws.getColumn(7).width = 10;
+      const dStart = ws.rowCount + 1;
+      data.forEach(i => { const r = ws.addRow([i.tenant, i.date, i.description, $(i.originalAmount), $(i.amountPaid), $(i.amountDue), i.daysOutstanding]); [4,5,6].forEach(c => r.getCell(c).numFmt = money); });
+      const dEnd = ws.rowCount;
+      const totR = ws.addRow(["", "", "Totals"]); [4,5,6].forEach(c => { totR.getCell(c).value = dEnd >= dStart ? { formula: `SUM(${colLetter(c)}${dStart}:${colLetter(c)}${dEnd})` } : 0; totR.getCell(c).numFmt = money; });
+      styleTotalRow(totR, 7, true);
+
+    // ===================== COLLECTIONS =====================
+    } else if (id === "collections") {
+      const data = getCollectionsReport(asOfDate);
+      addTitle("Collections Report", null, `As of ${acctFmtDate(asOfDate)}`);
+      const hr = ws.addRow(["Tenant", "Property", "Email", "Phone", "Current", "1-30", "31-60", "61-90", "Over 90", "Total"]); styleHeaderRow(hr, 10);
+      ws.getColumn(1).width = 25; ws.getColumn(2).width = 20; ws.getColumn(3).width = 25; ws.getColumn(4).width = 15;
+      for (let c = 5; c <= 10; c++) { ws.getColumn(c).width = 14; ws.getColumn(c).numFmt = money; }
+      data.forEach(t => { const r = ws.addRow([t.tenant, t.property, t.email, t.phone, $(t.current), $(t.days30), $(t.days60), $(t.days90), $(t.over90), { formula: `SUM(E${ws.rowCount+1}:I${ws.rowCount+1})` }]); r.getCell(10).value = { formula: `SUM(E${r.number}:I${r.number})` }; for (let c = 5; c <= 10; c++) r.getCell(c).numFmt = money; });
+
+    // ===================== AP AGING SUMMARY =====================
+    } else if (id === "ap_aging_summary") {
+      const apData = getAPAgingData(asOfDate);
+      addTitle("AP Aging Summary", null, `As of ${acctFmtDate(asOfDate)}`);
+      const hr = ws.addRow(["Vendor", "Current", "1-30", "31-60", "61-90", "Over 90", "Total"]); styleHeaderRow(hr, 7);
+      ws.getColumn(1).width = 30; for (let c = 2; c <= 7; c++) { ws.getColumn(c).width = 14; ws.getColumn(c).numFmt = money; }
+      const dStart = ws.rowCount + 1;
+      Object.entries(apData.byVendor || {}).forEach(([vendor, d]) => {
+        const r = ws.addRow([vendor, $(d.current), $(d.days30), $(d.days60), $(d.days90), $(d.over90)]); r.getCell(7).value = { formula: `SUM(B${r.number}:F${r.number})` };
+        for (let c = 2; c <= 7; c++) r.getCell(c).numFmt = money;
+      });
+      const dEnd = ws.rowCount;
+      const totR = ws.addRow(["Totals"]); for (let c = 2; c <= 7; c++) { totR.getCell(c).value = dEnd >= dStart ? { formula: `SUM(${colLetter(c)}${dStart}:${colLetter(c)}${dEnd})` } : 0; totR.getCell(c).numFmt = money; }
+      styleTotalRow(totR, 7, true);
+
+    // ===================== UNPAID BILLS =====================
+    } else if (id === "unpaid_bills") {
+      const data = getUnpaidBills();
+      addTitle("Unpaid Bills", null, `As of ${acctFmtDate(asOfDate)}`);
+      const hr = ws.addRow(["Date", "Vendor", "Description", "Reference", "Amount"]); styleHeaderRow(hr, 5);
+      ws.getColumn(1).width = 12; ws.getColumn(2).width = 25; ws.getColumn(3).width = 35; ws.getColumn(4).width = 12; ws.getColumn(5).width = 16; ws.getColumn(5).numFmt = money;
+      const dStart = ws.rowCount + 1;
+      data.forEach(b => { ws.addRow([b.date, b.vendor, b.description, b.jeNumber || "", $(b.amount)]).getCell(5).numFmt = money; });
+      const dEnd = ws.rowCount;
+      const totR = ws.addRow(["", "", "", "Total", dEnd >= dStart ? { formula: `SUM(E${dStart}:E${dEnd})` } : 0]); totR.getCell(5).numFmt = money; styleTotalRow(totR, 5, true);
+
+    // ===================== VENDOR BALANCE SUMMARY =====================
+    } else if (id === "vendor_balance_summary") {
+      const data = getVendorBalanceSummary(asOfDate);
+      addTitle("Vendor Balance Summary", null, `As of ${acctFmtDate(asOfDate)}`);
+      const hr = ws.addRow(["Vendor", "Current", "1-30", "31-60", "61-90", "Over 90", "Total"]); styleHeaderRow(hr, 7);
+      ws.getColumn(1).width = 30; for (let c = 2; c <= 7; c++) { ws.getColumn(c).width = 14; ws.getColumn(c).numFmt = money; }
+      const dStart = ws.rowCount + 1;
+      data.forEach(v => { const r = ws.addRow([v.vendor, $(v.current), $(v.days30), $(v.days60), $(v.days90), $(v.over90)]); r.getCell(7).value = { formula: `SUM(B${r.number}:F${r.number})` }; for (let c = 2; c <= 7; c++) r.getCell(c).numFmt = money; });
+      const dEnd = ws.rowCount;
+      const totR = ws.addRow(["Totals"]); for (let c = 2; c <= 7; c++) { totR.getCell(c).value = dEnd >= dStart ? { formula: `SUM(${colLetter(c)}${dStart}:${colLetter(c)}${dEnd})` } : 0; totR.getCell(c).numFmt = money; }
+      styleTotalRow(totR, 7, true);
+
+    // ===================== EXPENSES BY CATEGORY =====================
+    } else if (id === "expenses_by_category") {
+      const data = getExpensesByCategory(start, end);
+      addTitle("Expenses by Category", null, `${acctFmtDate(start)} – ${acctFmtDate(end)}`);
+      const hr = ws.addRow(["Category", "Amount", "% of Total"]); styleHeaderRow(hr, 3);
+      ws.getColumn(1).width = 35; ws.getColumn(2).width = 16; ws.getColumn(2).numFmt = money; ws.getColumn(3).width = 12; ws.getColumn(3).numFmt = pct;
+      const dStart = ws.rowCount + 1;
+      data.forEach(e => { const r = ws.addRow([e.name, $(e.amount), $(e.percentage)]); r.getCell(2).numFmt = money; r.getCell(3).numFmt = pct; });
+      const dEnd = ws.rowCount;
+      const totR = ws.addRow(["Total", dEnd >= dStart ? { formula: `SUM(B${dStart}:B${dEnd})` } : 0, 100]); totR.getCell(2).numFmt = money; totR.getCell(3).numFmt = pct; styleTotalRow(totR, 3, true);
+
+    // ===================== EXPENSES BY VENDOR =====================
+    } else if (id === "expenses_by_vendor") {
+      const data = getExpensesByVendor(start, end);
+      addTitle("Expenses by Vendor", null, `${acctFmtDate(start)} – ${acctFmtDate(end)}`);
+      const hr = ws.addRow(["Vendor", "Amount", "% of Total"]); styleHeaderRow(hr, 3);
+      ws.getColumn(1).width = 35; ws.getColumn(2).width = 16; ws.getColumn(2).numFmt = money; ws.getColumn(3).width = 12; ws.getColumn(3).numFmt = pct;
+      const dStart = ws.rowCount + 1;
+      data.forEach(e => { const r = ws.addRow([e.vendor, $(e.total), $(e.percentage)]); r.getCell(2).numFmt = money; r.getCell(3).numFmt = pct; });
+      const dEnd = ws.rowCount;
+      const totR = ws.addRow(["Total", dEnd >= dStart ? { formula: `SUM(B${dStart}:B${dEnd})` } : 0, 100]); totR.getCell(2).numFmt = money; totR.getCell(3).numFmt = pct; styleTotalRow(totR, 3, true);
+
+    // ===================== RENT ROLL =====================
+    } else if (id === "rent_roll") {
+      const data = getRentRoll();
+      addTitle("Rent Roll", null, `As of ${acctFmtDate(asOfDate)}`);
+      const hr = ws.addRow(["Property", "Tenant", "Rent", "Deposit", "Lease Start", "Lease End", "Status"]); styleHeaderRow(hr, 7);
+      ws.getColumn(1).width = 30; ws.getColumn(2).width = 25; ws.getColumn(3).width = 14; ws.getColumn(3).numFmt = money; ws.getColumn(4).width = 14; ws.getColumn(4).numFmt = money;
+      ws.getColumn(5).width = 12; ws.getColumn(6).width = 12; ws.getColumn(7).width = 12;
+      const dStart = ws.rowCount + 1;
+      data.forEach(r => { const row = ws.addRow([r.property, r.tenant, $(r.rent), $(r.deposit || 0), r.leaseStart, r.leaseEnd, r.status]); row.getCell(3).numFmt = money; row.getCell(4).numFmt = money; });
+      const dEnd = ws.rowCount;
+      const totR = ws.addRow(["", "Total Rent", dEnd >= dStart ? { formula: `SUM(C${dStart}:C${dEnd})` } : 0]); totR.getCell(3).numFmt = money; styleTotalRow(totR, 7, true);
+
+    // ===================== VACANCY =====================
+    } else if (id === "vacancy") {
+      const data = getVacancyReport();
+      addTitle("Vacancy Report", null, `As of ${acctFmtDate(asOfDate)}`);
+      const hr = ws.addRow(["Property", "Last Tenant", "Move Out", "Days Vacant", "Last Rent", "Est. Lost Revenue"]); styleHeaderRow(hr, 6);
+      ws.getColumn(1).width = 30; ws.getColumn(2).width = 20; ws.getColumn(3).width = 12; ws.getColumn(4).width = 14; ws.getColumn(5).width = 14; ws.getColumn(5).numFmt = money; ws.getColumn(6).width = 18; ws.getColumn(6).numFmt = money;
+      const dStart = ws.rowCount + 1;
+      data.forEach(v => { const r = ws.addRow([v.property, v.lastTenant || "—", v.moveOutDate || "—", v.daysVacant, $(v.lastRent || 0), $(v.estimatedLost || 0)]); r.getCell(5).numFmt = money; r.getCell(6).numFmt = money; });
+      const dEnd = ws.rowCount;
+      const totR = ws.addRow(["", "", "", "", "", dEnd >= dStart ? { formula: `SUM(F${dStart}:F${dEnd})` } : 0]); totR.getCell(6).numFmt = money; styleTotalRow(totR, 6, true);
+
+    // ===================== LEASE EXPIRATIONS =====================
+    } else if (id === "lease_expirations") {
+      const data = getLeaseExpirations(90);
+      addTitle("Lease Expirations", null, "Next 90 Days");
+      const hr = ws.addRow(["Tenant", "Property", "Lease End", "Days Until", "Rent"]); styleHeaderRow(hr, 5);
+      ws.getColumn(1).width = 25; ws.getColumn(2).width = 30; ws.getColumn(3).width = 12; ws.getColumn(4).width = 12; ws.getColumn(5).width = 14; ws.getColumn(5).numFmt = money;
+      data.forEach(l => { ws.addRow([l.tenant, l.property, l.leaseEnd, l.daysUntilExpiration, $(l.rent)]).getCell(5).numFmt = money; });
+
+    // ===================== RENT COLLECTION =====================
+    } else if (id === "rent_collection") {
+      const data = getRentCollectionSummary(start, end);
+      addTitle("Rent Collection Summary", null, `${acctFmtDate(start)} – ${acctFmtDate(end)}`);
+      const hr = ws.addRow(["Property", "Charged", "Collected", "Outstanding", "Collection Rate"]); styleHeaderRow(hr, 5);
+      ws.getColumn(1).width = 30; [2,3,4].forEach(c => { ws.getColumn(c).width = 16; ws.getColumn(c).numFmt = money; }); ws.getColumn(5).width = 14; ws.getColumn(5).numFmt = pct;
+      const dStart = ws.rowCount + 1;
+      (data.byProperty || []).forEach(p => {
+        const rn = ws.rowCount + 1;
+        const r = ws.addRow([p.property, $(p.charged), $(p.collected), { formula: `B${rn}-C${rn}` }, p.charged > 0 ? { formula: `C${rn}/B${rn}*100` } : 0]);
+        [2,3,4].forEach(c => r.getCell(c).numFmt = money); r.getCell(5).numFmt = pct;
+      });
+      const dEnd = ws.rowCount;
+      const totR = ws.addRow(["Totals"]); [2,3].forEach(c => { totR.getCell(c).value = dEnd >= dStart ? { formula: `SUM(${colLetter(c)}${dStart}:${colLetter(c)}${dEnd})` } : 0; totR.getCell(c).numFmt = money; });
+      totR.getCell(4).value = { formula: `B${totR.number}-C${totR.number}` }; totR.getCell(4).numFmt = money;
+      totR.getCell(5).value = { formula: `IF(B${totR.number}=0,0,C${totR.number}/B${totR.number}*100)` }; totR.getCell(5).numFmt = pct;
+      styleTotalRow(totR, 5, true);
+
+    // ===================== WORK ORDER SUMMARY =====================
+    } else if (id === "work_orders_summary") {
+      const data = getWorkOrderSummary(start, end);
+      addTitle("Work Order Summary", null, `${acctFmtDate(start)} – ${acctFmtDate(end)}`);
+      const hr = ws.addRow(["Property", "Issue", "Status", "Cost", "Days Open"]); styleHeaderRow(hr, 5);
+      ws.getColumn(1).width = 25; ws.getColumn(2).width = 35; ws.getColumn(3).width = 14; ws.getColumn(4).width = 14; ws.getColumn(4).numFmt = money; ws.getColumn(5).width = 12;
+      const dStart = ws.rowCount + 1;
+      (data.items || []).forEach(w => { ws.addRow([w.property, w.issue, w.status, $(w.cost || 0), w.daysOpen || 0]).getCell(4).numFmt = money; });
+      const dEnd = ws.rowCount;
+      const totR = ws.addRow(["", "", "Total Cost", dEnd >= dStart ? { formula: `SUM(D${dStart}:D${dEnd})` } : 0, ""]); totR.getCell(4).numFmt = money; styleTotalRow(totR, 5, true);
+
+    // ===================== SECURITY DEPOSITS =====================
+    } else if (id === "security_deposits") {
+      const data = getSecurityDepositLedger(asOfDate);
+      addTitle("Security Deposit Ledger", null, `As of ${acctFmtDate(asOfDate)}`);
+      const hr = ws.addRow(["Tenant", "Property", "Received", "Returned", "Net Held"]); styleHeaderRow(hr, 5);
+      ws.getColumn(1).width = 25; ws.getColumn(2).width = 25; [3,4,5].forEach(c => { ws.getColumn(c).width = 14; ws.getColumn(c).numFmt = money; });
+      const dStart = ws.rowCount + 1;
+      data.forEach(d => {
+        const rn = ws.rowCount + 1;
+        const r = ws.addRow([d.tenant, d.property, $(d.received), $(d.returned), { formula: `C${rn}-D${rn}` }]);
+        [3,4,5].forEach(c => r.getCell(c).numFmt = money);
+      });
+      const dEnd = ws.rowCount;
+      const totR = ws.addRow(["", "Totals"]); [3,4,5].forEach(c => { totR.getCell(c).value = dEnd >= dStart ? { formula: `SUM(${colLetter(c)}${dStart}:${colLetter(c)}${dEnd})` } : 0; totR.getCell(c).numFmt = money; });
+      styleTotalRow(totR, 5, true);
+
+    // ===================== NOI BY PROPERTY =====================
+    } else if (id === "noi_by_property") {
+      const data = getNOIByProperty(start, end);
+      addTitle("NOI by Property", null, `${acctFmtDate(start)} – ${acctFmtDate(end)}`);
+      const hr = ws.addRow(["Property", "Revenue", "Expenses", "NOI", "NOI Margin"]); styleHeaderRow(hr, 5);
+      ws.getColumn(1).width = 30; [2,3,4].forEach(c => { ws.getColumn(c).width = 16; ws.getColumn(c).numFmt = money; }); ws.getColumn(5).width = 14; ws.getColumn(5).numFmt = pct;
+      const dStart = ws.rowCount + 1;
+      data.forEach(p => {
+        const rn = ws.rowCount + 1;
+        const r = ws.addRow([p.property, $(p.revenue), $(p.expenses), { formula: `B${rn}-C${rn}` }, p.revenue > 0 ? { formula: `D${rn}/B${rn}*100` } : 0]);
+        [2,3,4].forEach(c => r.getCell(c).numFmt = money); r.getCell(5).numFmt = pct;
+      });
+      const dEnd = ws.rowCount;
+      const totR = ws.addRow(["Totals"]); [2,3].forEach(c => { totR.getCell(c).value = dEnd >= dStart ? { formula: `SUM(${colLetter(c)}${dStart}:${colLetter(c)}${dEnd})` } : 0; totR.getCell(c).numFmt = money; });
+      totR.getCell(4).value = { formula: `B${totR.number}-C${totR.number}` }; totR.getCell(4).numFmt = money;
+      totR.getCell(5).value = { formula: `IF(B${totR.number}=0,0,D${totR.number}/B${totR.number}*100)` }; totR.getCell(5).numFmt = pct;
+      styleTotalRow(totR, 5, true);
+
+    // ===================== TRANSACTIONS BY DATE =====================
+    } else if (id === "txn_by_date") {
+      const data = getTransactionsByDate(start, end);
+      addTitle("Transaction List by Date", null, `${acctFmtDate(start)} – ${acctFmtDate(end)}`);
+      const hr = ws.addRow(["Date", "Entry", "Account", "Type", "Description", "Memo", "Debit", "Credit"]); styleHeaderRow(hr, 8);
+      ws.getColumn(1).width = 12; ws.getColumn(2).width = 10; ws.getColumn(3).width = 25; ws.getColumn(4).width = 14; ws.getColumn(5).width = 30; ws.getColumn(6).width = 20;
+      [7,8].forEach(c => { ws.getColumn(c).width = 14; ws.getColumn(c).numFmt = money; });
+      const dStart = ws.rowCount + 1;
+      data.forEach(t => { const r = ws.addRow([t.date, t.jeNumber || "", t.accountName, t.accountType || "", t.description, t.memo || "", $(t.debit), $(t.credit)]); [7,8].forEach(c => r.getCell(c).numFmt = money); });
+      const dEnd = ws.rowCount;
+      const totR = ws.addRow(["", "", "", "", "", "Totals", dEnd >= dStart ? { formula: `SUM(G${dStart}:G${dEnd})` } : 0, dEnd >= dStart ? { formula: `SUM(H${dStart}:H${dEnd})` } : 0]);
+      [7,8].forEach(c => totR.getCell(c).numFmt = money); styleTotalRow(totR, 8, true);
+
+    // ===================== JOURNAL =====================
+    } else if (id === "journal") {
+      const data = getJournalReport(start, end);
+      addTitle("Journal", null, `${acctFmtDate(start)} – ${acctFmtDate(end)}`);
+      const hr = ws.addRow(["Date", "Entry", "Description", "Account", "Memo", "Debit", "Credit"]); styleHeaderRow(hr, 7);
+      ws.getColumn(1).width = 12; ws.getColumn(2).width = 10; ws.getColumn(3).width = 30; ws.getColumn(4).width = 25; ws.getColumn(5).width = 20;
+      [6,7].forEach(c => { ws.getColumn(c).width = 14; ws.getColumn(c).numFmt = money; });
+      data.forEach(je => {
+        (je.lines || []).forEach((l, i) => {
+          const r = ws.addRow([i === 0 ? je.date : "", i === 0 ? je.jeNumber : "", i === 0 ? je.description : "", l.accountName, l.memo || "", $(l.debit), $(l.credit)]);
+          [6,7].forEach(c => r.getCell(c).numFmt = money);
+          if (i === 0) { r.getCell(1).font = boldFont; r.getCell(2).font = boldFont; r.getCell(3).font = boldFont; }
+        });
+      });
+
+    // ===================== ACCOUNT LISTING =====================
+    } else if (id === "account_list") {
+      addTitle("Chart of Accounts", null, "");
+      const hr = ws.addRow(["Code", "Name", "Type", "Subtype", "Active"]); styleHeaderRow(hr, 5);
+      ws.getColumn(1).width = 12; ws.getColumn(2).width = 35; ws.getColumn(3).width = 16; ws.getColumn(4).width = 16; ws.getColumn(5).width = 10;
+      accounts.sort((a,b) => (a.code||"").localeCompare(b.code||"")).forEach(a => {
+        ws.addRow([a.code || "", a.name, a.type, a.subtype || "", a.is_active ? "Yes" : "No"]);
+      });
+
+    // ===================== BUDGET VS ACTUAL =====================
+    } else if (id === "budget_vs_actual") {
+      const data = getBudgetVsActual(start, end);
+      addTitle("Budget vs. Actuals", null, `${acctFmtDate(start)} – ${acctFmtDate(end)}`);
+      const hr = ws.addRow(["Account", "Budget", "Actual", "Variance", "% Used"]); styleHeaderRow(hr, 5);
+      ws.getColumn(1).width = 35; [2,3,4].forEach(c => { ws.getColumn(c).width = 16; ws.getColumn(c).numFmt = money; }); ws.getColumn(5).width = 12; ws.getColumn(5).numFmt = pct;
+      if (Array.isArray(data)) {
+        data.forEach(d => {
+          const rn = ws.rowCount + 1;
+          const r = ws.addRow([d.name || d.account, $(d.budget || 0), $(d.actual || 0), { formula: `C${rn}-B${rn}` }, d.budget ? { formula: `C${rn}/B${rn}*100` } : 0]);
+          [2,3,4].forEach(c => r.getCell(c).numFmt = money); r.getCell(5).numFmt = pct;
+        });
+      }
+
+    } else {
+      showToast("Export not available for this report.", "info"); return;
     }
-    if (rows.length === 0) { showToast("Export not available for this report.", "info"); return; }
-    const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = currentReport.id + "-" + acctToday() + ".csv"; a.click();
+
+    // Download
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${currentReport.id}-${acctToday()}.xlsx`; a.click();
+    URL.revokeObjectURL(a.href);
+    } catch (e) { console.error("Excel export error:", e); showToast("Export failed: " + e.message, "error"); }
   }
 
   // --- Print ---
@@ -9120,7 +9545,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       </div>
       <div className="flex gap-2">
         <button onClick={() => toggleFavorite(reportId)} className={favorites.includes(reportId) ? "text-warn-400" : "text-neutral-300 hover:text-warn-400"}><span className="material-icons-outlined text-lg">{favorites.includes(reportId) ? "star" : "star_outline"}</span></button>
-        <button onClick={exportCSV} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">download</span>Export</button>
+        <button onClick={exportExcel} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">download</span>Export</button>
         <button onClick={exportPDF} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">picture_as_pdf</span>PDF</button>
         <button onClick={printReport} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">print</span>Print</button>
       </div>
