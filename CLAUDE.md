@@ -4,11 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture
 
-- **Monolithic single-page React app** — nearly all UI lives in `src/App.js` (~8,500 lines), bootstrapped with create-react-app
+- **Monolithic single-page React app** — nearly all UI lives in `src/App.js` (~19,500+ lines), bootstrapped with create-react-app (via CRACO)
 - **Backend:** Supabase (PostgreSQL + Auth + Storage + RLS + RPCs)
 - **Hosting:** Vercel (https://rental-manager-one.vercel.app)
 - **Payments:** Stripe
+- **Banking:** Teller.io (mTLS) — Vercel API routes in `/api/`, NOT Supabase Edge Functions
 - **Styling:** Tailwind CSS v4 (via PostCSS)
+- **Excel Export:** ExcelJS library for .xlsx with formulas, sections, formatting
 - **Supabase client:** initialized in `src/supabase.js`, imported as `{ supabase }`
 
 ## Build & Dev Commands
@@ -67,6 +69,22 @@ Accounting, Documents, Inspections, Autopay, Late Fees, Audit Trail,
 Leases, Vendors, Owners, Notifications, Team & Roles
 Plus: Tenant Portal (6 tabs), Owner Portal (4 tabs)
 
+## Vercel API Routes (`/api/`)
+
+- `api/teller-save-enrollment.js` — saves Teller enrollment, fetches accounts via mTLS, creates GL accounts + bank feeds
+- `api/teller-sync-transactions.js` — syncs transactions with dedup, supports CRON and manual sync
+- **Why Vercel, not Supabase Edge Functions:** Deno Deploy doesn't support `Deno.createHttpClient` for mTLS certificates. Node.js `https.request` does.
+- **Env vars required:** `SUPABASE_SERVICE_ROLE_KEY`, `TELLER_CERT_B64`, `TELLER_KEY_B64`
+
+## Banking Tables
+
+bank_connection, bank_account_feed, bank_feed_transaction,
+bank_rules, bank_rule_conditions, plaid_sync_event
+
+## CSP Notes (vercel.json)
+
+Teller Connect requires: `script-src cdn.teller.io`, `connect-src api.teller.io wss://teller.io wss://*.teller.io`, `frame-src cdn.teller.io teller.io *.teller.io`
+
 ## Important Constraints
 
 - All DB writes must include `company_id` — multi-tenant by design
@@ -74,3 +92,5 @@ Plus: Tenant Portal (6 tabs), Owner Portal (4 tabs)
 - Do not force push to main
 - Use soft-delete/archive patterns, never hard-delete production data
 - Always handle errors in async Supabase operations
+- Teller API routes MUST be Vercel serverless functions (need mTLS), never Supabase Edge Functions
+- New reports MUST include an `exportExcel` case with formulas, sections, and formatting
