@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/teller-sync-transactions",
+      "schedule": "0 6 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
