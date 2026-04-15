@@ -7878,7 +7878,7 @@ function AccountLedgerView({ accountIds, accounts, journalEntries, title, onClos
   <td className="px-4 py-2 text-xs text-neutral-500 whitespace-nowrap">{l.date}</td>
   <td className="px-3 py-2 text-xs text-positive-600 font-mono">{l.number || "—"}</td>
   <td className="px-3 py-2 text-neutral-700 text-xs max-w-xs truncate" title={l.description + (l.memo ? " | " + l.memo : "")}>{l.description}{l.memo && <span className="text-neutral-400 ml-1">({l.memo})</span>}</td>
-  <td className="px-3 py-2 text-xs text-neutral-400 font-mono">{l.reference || "—"}</td>
+  <td className="px-3 py-2 text-xs text-neutral-400 font-mono">{(() => { const r = l.reference || ""; if (r.startsWith("BANK-")) return "Bank Import"; if (r.startsWith("XFER-")) return "Bank Transfer"; return r || "—"; })()}</td>
   {ids.length > 1 && <td className="px-3 py-2 text-xs text-neutral-500">{l.accountName}</td>}
   <td className="px-3 py-2 text-xs text-neutral-400">{l.property?.split(",")[0] || "—"}</td>
   <td className="px-3 py-2 text-right font-mono text-xs">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>
@@ -8060,7 +8060,7 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
 }
 
 // --- Journal Entries Sub-Page ---
-function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], vendors = [], onAdd, onUpdate, onPost, onVoid, companyId, onOpenLedger, initialViewJEId, autoOpenAdd, showToast }) {
+function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], vendors = [], onAdd, onUpdate, onPost, onVoid, companyId, onOpenLedger, initialViewJEId, autoOpenAdd, showToast, onCloseJEDetail }) {
   const [modal, setModal] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
   const [searchProperty, setSearchProperty] = useState("");
@@ -8266,7 +8266,7 @@ function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], v
   </AcctModal>
   {/* View Modal */}
   {modal?.mode === "view" && (
-  <AcctModal isOpen={true} onClose={() => setModal(null)} title={`Journal Entry: ${modal.je.number}`} size="xl">
+  <AcctModal isOpen={true} onClose={() => { setModal(null); if (onCloseJEDetail) onCloseJEDetail(); }} title={`Journal Entry: ${modal.je.number}`} size="xl">
   <div className="space-y-4">
   <div className="grid grid-cols-3 gap-3 bg-neutral-50 rounded-xl p-4">
   <div><p className="text-xs text-neutral-400">Entry #</p><p className="font-mono font-semibold">{modal.je.number}</p></div>
@@ -10412,12 +10412,16 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
     const abs = Math.abs(txn.amount);
     const isInflow = txn.direction === "inflow";
 
+    // Build human-readable description: "Payee — Full Description"
+    const bankDesc = memo || [txn.payee_normalized, txn.bank_description_raw || txn.bank_description_clean].filter(Boolean).join(" — ") || "Bank transaction";
+    const lineMemo = txn.bank_description_raw || txn.bank_description_clean || "";
+
     // Create JE
     const lines = isInflow
-      ? [{ account_id: feed.gl_account_id, account_name: bankAcct?.name || "Bank", debit: abs, credit: 0, class_id: classId || null, memo: memo || txn.bank_description_clean },
-         { account_id: accountId, account_name: accountName, debit: 0, credit: abs, class_id: classId || null, memo: memo || txn.bank_description_clean }]
-      : [{ account_id: accountId, account_name: accountName, debit: abs, credit: 0, class_id: classId || null, memo: memo || txn.bank_description_clean },
-         { account_id: feed.gl_account_id, account_name: bankAcct?.name || "Bank", debit: 0, credit: abs, class_id: classId || null, memo: memo || txn.bank_description_clean }];
+      ? [{ account_id: feed.gl_account_id, account_name: bankAcct?.name || "Bank", debit: abs, credit: 0, class_id: classId || null, memo: lineMemo },
+         { account_id: accountId, account_name: accountName, debit: 0, credit: abs, class_id: classId || null, memo: lineMemo }]
+      : [{ account_id: accountId, account_name: accountName, debit: abs, credit: 0, class_id: classId || null, memo: lineMemo },
+         { account_id: feed.gl_account_id, account_name: bankAcct?.name || "Bank", debit: 0, credit: abs, class_id: classId || null, memo: lineMemo }];
 
     // Get next JE number
     const { data: maxJE } = await supabase.from("acct_journal_entries").select("number").eq("company_id", companyId).order("number", { ascending: false }).limit(1).maybeSingle();
@@ -10430,8 +10434,8 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
 
     const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
       company_id: companyId, number: jeNumber, date: txn.posted_date,
-      description: memo || txn.bank_description_clean,
-      reference: `BANK-${txn.id}`, property: classProperty, status: "posted"
+      description: bankDesc,
+      reference: "Bank Import", property: classProperty, status: "posted"
     }]).select("id").maybeSingle();
 
     if (jeErr || !jeRow) { showToast("Error creating JE: " + (jeErr?.message || "no ID"), "error"); return; }
@@ -12131,6 +12135,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   const [activeTab, setActiveTab] = useState(initialAction === "newJE" ? "journal" : "overview");
   const [ledgerView, setLedgerView] = useState(null); // { accountIds: [], title: "" }
   const [viewJEId, setViewJEId] = useState(null); // JE ID to auto-open in journal tab
+  const [pendingLedgerReturn, setPendingLedgerReturn] = useState(null); // { accountIds, title } — restore ledger after viewing JE
   const companyName = activeCompany?.name || "My Company";
 
   useEffect(() => { fetchAll(); }, [companyId]);
@@ -12653,13 +12658,13 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
 
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} addNotification={addNotification} userProfile={userProfile} />}
   {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
-  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} />}
+  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} onCloseJEDetail={() => { if (pendingLedgerReturn) { setLedgerView(pendingLedgerReturn); setPendingLedgerReturn(null); setViewJEId(null); } }} />}
   {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {activeTab === "reports" && <AcctReports accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} companyName={companyName} companyId={companyId} userProfile={userProfile} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {/* Account Ledger Drill-Down */}
-  {ledgerView && <AccountLedgerView accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => setLedgerView(null)} onViewJE={(jeId) => { setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
+  {ledgerView && <AccountLedgerView accountIds={ledgerView.accountIds} accounts={acctAccounts} journalEntries={journalEntries} title={ledgerView.title} onClose={() => { setLedgerView(null); setPendingLedgerReturn(null); }} onViewJE={(jeId) => { setPendingLedgerReturn({ accountIds: ledgerView.accountIds, title: ledgerView.title }); setLedgerView(null); setViewJEId(jeId); setActiveTab("journal"); }} />}
 
   </div>
   </div>
