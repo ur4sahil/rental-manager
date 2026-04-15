@@ -10046,8 +10046,10 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
   // Post-connection setup modal
   const [postConnectModal, setPostConnectModal] = useState(null); // { accounts, connectionId, institutionName }
   const [postConnectMappings, setPostConnectMappings] = useState({}); // { feedId: glAccountId }
+  const [postConnectSelected, setPostConnectSelected] = useState(new Set()); // which accounts user wants to connect
   const [postConnectRange, setPostConnectRange] = useState({ from: "", to: formatLocalDate(new Date()) });
   const [postConnectSyncing, setPostConnectSyncing] = useState(false);
+  const [postConnectNewAcct, setPostConnectNewAcct] = useState(null); // feedId being created for
 
   async function createInlineBankAcct() {
     if (!newBankAcctForm.name.trim()) { showToast("Account name is required.", "error"); return; }
@@ -10186,10 +10188,13 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
             await fetchAll();
             const ninetyDaysAgo = new Date(); ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
             setPostConnectRange({ from: formatLocalDate(ninetyDaysAgo), to: formatLocalDate(new Date()) });
-            // Build default mappings (each feed → its auto-created GL account)
+            // Build default mappings + select all accounts by default
             const mappings = {};
-            (saveData.accounts || []).forEach(a => { if (a.id && a.gl_account_id) mappings[a.id] = a.gl_account_id; });
+            const selected = new Set();
+            (saveData.accounts || []).forEach(a => { if (a.id && a.gl_account_id) mappings[a.id] = a.gl_account_id; selected.add(a.id); });
             setPostConnectMappings(mappings);
+            setPostConnectSelected(selected);
+            setPostConnectNewAcct(null);
             setPostConnectModal({ accounts: saveData.accounts || [], connectionId: saveData.connection_id, institutionName: enrollment.enrollment?.institution?.name || "Bank" });
           }
         },
@@ -11947,7 +11952,8 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
 
   {/* Post-Connection Setup Modal */}
   {postConnectModal && (() => {
-    const allMapped = postConnectModal.accounts.every(acct => postConnectMappings[acct.id]);
+    const selectedAccts = postConnectModal.accounts.filter(a => postConnectSelected.has(a.id));
+    const allMapped = selectedAccts.length > 0 && selectedAccts.every(acct => postConnectMappings[acct.id]);
     return (
   <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
     <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
@@ -11956,38 +11962,69 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
           <span className="text-2xl">🏦</span>
           <h3 className="text-lg font-bold text-neutral-800">Bank Connected</h3>
         </div>
-        <p className="text-sm text-neutral-500 mb-5">{postConnectModal.institutionName} — {postConnectModal.accounts.length} account{postConnectModal.accounts.length !== 1 ? "s" : ""} linked</p>
+        <p className="text-sm text-neutral-500 mb-5">{postConnectModal.institutionName} — {postConnectModal.accounts.length} account{postConnectModal.accounts.length !== 1 ? "s" : ""} found</p>
 
         {/* Connected Accounts + GL Mapping */}
         <div className="mb-5">
-          <label className="text-xs font-semibold text-neutral-600 uppercase tracking-wide block mb-2">Map Each Account to a Ledger Account</label>
-          <p className="text-xs text-neutral-400 mb-3">Select an existing GL account for each bank account, or create a new one.</p>
+          <label className="text-xs font-semibold text-neutral-600 uppercase tracking-wide block mb-2">Select Accounts to Connect</label>
+          <p className="text-xs text-neutral-400 mb-3">Check the accounts you want, then map each to a GL account.</p>
           <div className="space-y-3">
             {postConnectModal.accounts.map(acct => {
+              const isChecked = postConnectSelected.has(acct.id);
               const isMapped = !!postConnectMappings[acct.id];
+              const isCreating = postConnectNewAcct === acct.id;
               return (
-            <div key={acct.id} className={`rounded-xl p-3 border ${isMapped ? "bg-neutral-50 border-neutral-200" : "bg-warn-50/30 border-warn-300"}`}>
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <div className="font-semibold text-sm text-neutral-800">{acct.name || "Bank Account"}</div>
+            <div key={acct.id} className={`rounded-xl p-3 border transition-all ${!isChecked ? "bg-neutral-50 border-neutral-100 opacity-60" : isMapped ? "bg-neutral-50 border-neutral-200" : "bg-warn-50/30 border-warn-300"}`}>
+              <div className="flex items-center gap-3 mb-2">
+                <input type="checkbox" checked={isChecked} onChange={() => {
+                  setPostConnectSelected(prev => { const next = new Set(prev); if (next.has(acct.id)) next.delete(acct.id); else next.add(acct.id); return next; });
+                }} className="accent-brand-600 w-4 h-4 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm text-neutral-800 truncate">{acct.name || "Bank Account"}</div>
                   <div className="text-xs text-neutral-400">{acct.type}{acct.mask ? ` · ••••${acct.mask}` : ""}</div>
                 </div>
-                {acct.is_existing && <span className="text-xs bg-success-100 text-success-700 px-2 py-0.5 rounded-full">Reconnected</span>}
+                {acct.is_existing && <span className="text-xs bg-success-100 text-success-700 px-2 py-0.5 rounded-full shrink-0">Reconnected</span>}
               </div>
-              <div>
+              {isChecked && (
+              <div className="ml-7">
                 <label className="text-xs text-neutral-500 block mb-1">GL Account {!isMapped && <span className="text-danger-500 font-semibold">*Required</span>}</label>
                 <AccountPicker
                   value={postConnectMappings[acct.id] || ""}
                   onChange={v => {
-                    if (v === "__new__") { setShowNewBankAcct(true); setNewBankAcctForm({ code: "", name: acct.name || "", type: acct.suggested_gl_type || "Asset" }); return; }
+                    if (v === "__new__") { setPostConnectNewAcct(acct.id); setNewBankAcctForm({ code: "", name: acct.name || "", type: acct.suggested_gl_type || "Asset" }); return; }
                     setPostConnectMappings(prev => ({ ...prev, [acct.id]: v }));
+                    setPostConnectNewAcct(null);
                   }}
                   accounts={accounts}
                   accountTypes={ACCOUNT_TYPES}
                   showNewOption
                   placeholder="Select or create GL account..."
                 />
+                {isCreating && (
+                <div className="bg-brand-50 rounded-xl p-3 mt-2 border border-brand-200">
+                  <div className="text-xs font-semibold text-brand-700 mb-2">Create New Account</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div><label className="text-xs text-neutral-500 block mb-1">Type *</label><select value={newBankAcctForm.type} onChange={e => setNewBankAcctForm(f => ({...f, type: e.target.value}))} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">{ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                    <div><label className="text-xs text-neutral-500 block mb-1">Code</label><input value={newBankAcctForm.code} onChange={e => setNewBankAcctForm(f => ({...f, code: e.target.value}))} placeholder="Auto" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+                    <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><input value={newBankAcctForm.name} onChange={e => setNewBankAcctForm(f => ({...f, name: e.target.value}))} placeholder="e.g. Business Checking" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <button onClick={async () => {
+                      if (!newBankAcctForm.name.trim()) { showToast("Account name is required.", "error"); return; }
+                      const code = newBankAcctForm.code.trim() || nextAccountCode(accounts, newBankAcctForm.type);
+                      const { data: newAcct, error } = await supabase.from("acct_accounts").insert({ company_id: companyId, code, name: newBankAcctForm.name.trim(), type: newBankAcctForm.type, subtype: newBankAcctForm.type === "Asset" ? "Bank" : newBankAcctForm.type === "Liability" ? "Credit Card" : "", is_active: true, old_text_id: companyId + "-" + code }).select("id").single();
+                      if (error) { showToast("Error: " + error.message, "error"); return; }
+                      showToast(`Account "${newBankAcctForm.name}" created.`, "success");
+                      await fetchAll();
+                      setPostConnectMappings(prev => ({ ...prev, [acct.id]: newAcct.id }));
+                      setPostConnectNewAcct(null);
+                    }} className="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg">Create</button>
+                    <button onClick={() => setPostConnectNewAcct(null)} className="text-xs text-neutral-500 px-3 py-1.5">Cancel</button>
+                  </div>
+                </div>
+                )}
               </div>
+              )}
             </div>
               );
             })}
@@ -12019,14 +12056,21 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
         {/* Actions */}
         <div className="flex gap-3 pt-3 border-t border-neutral-200">
           <Btn onClick={async () => {
-            if (!allMapped) { showToast("Please map all bank accounts to a GL account before importing.", "error"); return; }
+            if (!allMapped) { showToast("Please map all selected accounts to a GL account before importing.", "error"); return; }
+            if (selectedAccts.length === 0) { showToast("Please select at least one account.", "error"); return; }
             setPostConnectSyncing(true);
             try {
-              // Save GL mappings
-              for (const [feedId, glId] of Object.entries(postConnectMappings)) {
+              // Save GL mappings for selected accounts
+              for (const acct of selectedAccts) {
+                const glId = postConnectMappings[acct.id];
                 if (glId) {
-                  await supabase.from("bank_account_feed").update({ gl_account_id: glId }).eq("id", feedId).eq("company_id", companyId);
+                  await supabase.from("bank_account_feed").update({ gl_account_id: glId }).eq("id", acct.id).eq("company_id", companyId);
                 }
+              }
+              // Deactivate unselected feeds
+              const unselected = postConnectModal.accounts.filter(a => !postConnectSelected.has(a.id));
+              for (const acct of unselected) {
+                await supabase.from("bank_account_feed").update({ status: "inactive" }).eq("id", acct.id).eq("company_id", companyId);
               }
               // Sync transactions with date range
               const { data: { session } } = await supabase.auth.getSession();
@@ -12042,7 +12086,7 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
               fetchAll();
             } catch (e) { showToast("Sync failed: " + e.message, "error"); }
             finally { setPostConnectSyncing(false); setPostConnectModal(null); }
-          }} disabled={postConnectSyncing || !postConnectRange.from || !allMapped}>
+          }} disabled={postConnectSyncing || !postConnectRange.from || !allMapped || selectedAccts.length === 0}>
             {postConnectSyncing ? "Importing..." : allMapped ? "Import Transactions" : "Map All Accounts First"}
           </Btn>
           <Btn variant="ghost" onClick={() => { setPostConnectModal(null); fetchAll(); }}>Skip for Now</Btn>
