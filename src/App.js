@@ -10062,7 +10062,17 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
     if (newAcct) setAddForm(f => ({ ...f, accountId: newAcct.id, accountName: newAcct.name }));
     showToast(`Account "${newBankAcctForm.name}" created.`, "success");
     setShowNewBankAcct(false);
-    if (onRefreshAccounting) onRefreshAccounting();
+    // Refresh accounts without resetting scroll — save and restore expanded txn
+    const savedExpanded = expandedTxn;
+    if (onRefreshAccounting) await onRefreshAccounting();
+    // Restore expanded state and scroll back to the transaction row
+    if (savedExpanded) {
+      setExpandedTxn(savedExpanded);
+      requestAnimationFrame(() => {
+        const row = document.querySelector(`[data-txn-id="${savedExpanded}"]`);
+        if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
+    }
   }
 
   // Import wizard state
@@ -11447,7 +11457,7 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
     const isExpanded = expandedTxn === txn.id;
     return (
     <React.Fragment key={txn.id}>
-    <tr className={`border-b border-neutral-100 hover:bg-neutral-50 cursor-pointer ${isExpanded ? "bg-brand-50/50" : ""}`} onClick={() => setExpandedTxn(isExpanded ? null : txn.id)}>
+    <tr data-txn-id={txn.id} className={`border-b border-neutral-100 hover:bg-neutral-50 cursor-pointer ${isExpanded ? "bg-brand-50/50" : ""}`} onClick={() => setExpandedTxn(isExpanded ? null : txn.id)}>
       {activeTab === "for_review" && <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><input type="checkbox" checked={selectedTxns.has(txn.id)} onChange={e => { const s = new Set(selectedTxns); e.target.checked ? s.add(txn.id) : s.delete(txn.id); setSelectedTxns(s); }} className="accent-brand-600" /></td>}
       <td className="px-3 py-2.5 text-neutral-600 whitespace-nowrap">{txn.posted_date}</td>
       <td className="px-3 py-2.5 text-neutral-800 max-w-xs truncate">
