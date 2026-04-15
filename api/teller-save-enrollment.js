@@ -1,5 +1,6 @@
 // Vercel API Route: Save Teller Enrollment
-// Called after Teller Connect onSuccess — stores access token, creates accounts
+// Called after Teller Connect onSuccess — stores connection + feeds (NO GL accounts)
+// GL mapping is done by user in the post-connect modal
 const https = require("https");
 const crypto = require("crypto");
 const { createClient } = require("@supabase/supabase-js");
@@ -84,23 +85,50 @@ module.exports = async function handler(req, res) {
     // Encrypt access token
     const { encrypted, iv } = await encrypt(access_token, company_id);
 
-    // Create bank_connection record
-    const { data: connection, error: connErr } = await supabase
-      .from("bank_connection")
-      .insert({
-        company_id,
-        source_type: "teller",
-        institution_name: institution?.name || "",
-        institution_id: institution?.id || "",
-        plaid_item_id: enrollment_id || "",
-        access_token_encrypted: encrypted,
-        encryption_iv: iv,
-        connection_status: "active",
-      })
-      .select("id")
-      .single();
+    // Check for existing connection with same enrollment_id (reconnect case)
+    let connectionId;
+    if (enrollment_id) {
+      const { data: existingConn } = await supabase
+        .from("bank_connection")
+        .select("id")
+        .eq("company_id", company_id)
+        .eq("plaid_item_id", enrollment_id)
+        .maybeSingle();
 
-    if (connErr) return res.status(500).json({ error: connErr.message });
+      if (existingConn) {
+        // Update existing connection with new token
+        await supabase.from("bank_connection").update({
+          access_token_encrypted: encrypted,
+          encryption_iv: iv,
+          connection_status: "active",
+          last_error_code: null,
+          last_error_message: null,
+          institution_name: institution?.name || "",
+        }).eq("id", existingConn.id);
+        connectionId = existingConn.id;
+      }
+    }
+
+    // Create new connection if not reconnecting
+    if (!connectionId) {
+      const { data: connection, error: connErr } = await supabase
+        .from("bank_connection")
+        .insert({
+          company_id,
+          source_type: "teller",
+          institution_name: institution?.name || "",
+          institution_id: institution?.id || "",
+          plaid_item_id: enrollment_id || "",
+          access_token_encrypted: encrypted,
+          encryption_iv: iv,
+          connection_status: "active",
+        })
+        .select("id")
+        .single();
+
+      if (connErr) return res.status(500).json({ error: connErr.message });
+      connectionId = connection.id;
+    }
 
     // Fetch accounts from Teller API (with mTLS)
     const accountsRes = await tellerFetch(`${TELLER_API}/accounts`, access_token);
@@ -109,31 +137,14 @@ module.exports = async function handler(req, res) {
     }
     const tellerAccounts = JSON.parse(accountsRes.body);
 
-    // Create bank_account_feed + GL account for each Teller account
-    const createdFeeds = [];
+    // Create or reuse bank_account_feed for each Teller account (NO GL accounts created)
+    const resultFeeds = [];
     for (const acct of tellerAccounts) {
       const acctType = acct.type === "credit" ? "credit_card" : acct.subtype === "savings" ? "savings" : acct.subtype === "money_market" ? "savings" : "checking";
-      const glType = acctType === "credit_card" ? "Liability" : "Asset";
-      const glSubtype = acctType === "credit_card" ? "Credit Card" : "Bank";
-      const code = acctType === "credit_card" ? "2050" : acctType === "savings" ? "1050" : "1000";
-      const nextCode = code + "-" + (acct.id || "").slice(-4);
+      const suggestedGLType = acctType === "credit_card" ? "Liability" : "Asset";
+      const suggestedGLSubtype = acctType === "credit_card" ? "Credit Card" : "Bank";
 
-      // Create GL account
-      const { data: glAcct } = await supabase
-        .from("acct_accounts")
-        .insert({
-          company_id,
-          code: nextCode,
-          name: acct.name || `${institution?.name || "Bank"} ${acct.subtype || acctType}`,
-          type: glType,
-          subtype: glSubtype,
-          is_active: true,
-          old_text_id: company_id + "-" + nextCode,
-        })
-        .select("id")
-        .single();
-
-      // Get balances
+      // Get balance
       let currentBalance = null;
       try {
         const balRes = await tellerFetch(`${TELLER_API}/accounts/${acct.id}/balances`, access_token);
@@ -143,41 +154,73 @@ module.exports = async function handler(req, res) {
         }
       } catch {}
 
-      // Create bank_account_feed
-      const { data: feed } = await supabase
+      // Check for existing feed with same Teller account ID (reconnect/dedup)
+      const { data: existingFeed } = await supabase
         .from("bank_account_feed")
-        .insert({
-          company_id,
-          gl_account_id: glAcct?.id,
-          bank_connection_id: connection.id,
-          account_name: acct.name || "Bank Account",
-          masked_number: acct.last_four || "",
-          account_type: acctType,
-          institution_name: institution?.name || acct.institution?.name || "",
-          connection_type: "teller",
-          plaid_account_id: acct.id,
-          bank_balance_current: currentBalance,
-          status: "active",
-        })
-        .select("id")
-        .single();
+        .select("id, gl_account_id, status")
+        .eq("company_id", company_id)
+        .eq("plaid_account_id", acct.id)
+        .maybeSingle();
 
-      if (feed) {
-        createdFeeds.push({
-          id: feed.id,
+      if (existingFeed) {
+        // Reuse existing feed — update connection and reactivate if needed
+        await supabase.from("bank_account_feed").update({
+          bank_connection_id: connectionId,
+          status: "active",
+          bank_balance_current: currentBalance,
+          account_name: acct.name || existingFeed.account_name || "Bank Account",
+          institution_name: institution?.name || "",
+        }).eq("id", existingFeed.id);
+
+        resultFeeds.push({
+          id: existingFeed.id,
           name: acct.name,
           type: acctType,
           mask: acct.last_four,
-          gl_account_id: glAcct?.id || null,
-          gl_account_name: `${nextCode} ${acct.name || institution?.name || "Bank"}`,
+          gl_account_id: existingFeed.gl_account_id || null,
+          is_existing: true,
+          suggested_gl_type: suggestedGLType,
+          suggested_gl_subtype: suggestedGLSubtype,
         });
+      } else {
+        // Create new feed with NO gl_account_id — user maps in modal
+        const { data: feed } = await supabase
+          .from("bank_account_feed")
+          .insert({
+            company_id,
+            gl_account_id: null,
+            bank_connection_id: connectionId,
+            account_name: acct.name || "Bank Account",
+            masked_number: acct.last_four || "",
+            account_type: acctType,
+            institution_name: institution?.name || acct.institution?.name || "",
+            connection_type: "teller",
+            plaid_account_id: acct.id,
+            bank_balance_current: currentBalance,
+            status: "active",
+          })
+          .select("id")
+          .single();
+
+        if (feed) {
+          resultFeeds.push({
+            id: feed.id,
+            name: acct.name,
+            type: acctType,
+            mask: acct.last_four,
+            gl_account_id: null,
+            is_existing: false,
+            suggested_gl_type: suggestedGLType,
+            suggested_gl_subtype: suggestedGLSubtype,
+          });
+        }
       }
     }
 
     return res.status(200).json({
-      connection_id: connection.id,
-      accounts: createdFeeds,
-      message: `Connected ${createdFeeds.length} account(s) from ${institution?.name || "bank"}`,
+      connection_id: connectionId,
+      accounts: resultFeeds,
+      message: `Connected ${resultFeeds.length} account(s) from ${institution?.name || "bank"}`,
     });
   } catch (e) {
     console.error("teller-save-enrollment error:", e.message);

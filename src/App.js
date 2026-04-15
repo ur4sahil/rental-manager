@@ -7925,7 +7925,7 @@ function AcctStatusBadge({ status }) {
 }
 
 // --- Chart of Accounts Sub-Page ---
-function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onToggle, onOpenLedger }) {
+function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onToggle, onDelete, onOpenLedger }) {
   const [modal, setModal] = useState(null);
   const [filter, setFilter] = useState("All");
   const [showInactive, setShowInactive] = useState(false);
@@ -8016,7 +8016,8 @@ function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate, onTogg
   <td className={`px-5 py-3 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(a.computedBalance, true)}</td>
   <td className="px-5 py-3 text-center flex items-center gap-2 justify-center">
   <button onClick={e => { e.stopPropagation(); openEdit(a); }} className="text-neutral-400 hover:text-brand-600 text-xs" title="Edit account"><span className="material-icons-outlined text-sm">edit</span></button>
-  <button onClick={e => { e.stopPropagation(); onToggle(a.id, a.is_active); }} className="text-neutral-400 hover:text-neutral-700 text-xs">{a.is_active ? "🟢" : "⚪"}</button>
+  <button onClick={e => { e.stopPropagation(); onToggle(a.id, a.is_active); }} className="text-neutral-400 hover:text-neutral-700 text-xs" title={a.is_active ? "Deactivate" : "Activate"}>{a.is_active ? "🟢" : "⚪"}</button>
+  {onDelete && a.computedBalance === 0 && <button onClick={e => { e.stopPropagation(); onDelete(a.id); }} className="text-neutral-300 hover:text-danger-600 text-xs" title="Delete account"><span className="material-icons-outlined text-sm">delete</span></button>}
   </td>
   </tr>
   ))}
@@ -10015,6 +10016,7 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("for_review");
   const [selectedFeed, setSelectedFeed] = useState("all");
+  const [feedMenuOpen, setFeedMenuOpen] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -10218,6 +10220,31 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
       }
     } catch (e) { showToast("Sync failed: " + e.message, "error"); }
     finally { setSyncing(false); }
+  }
+
+  async function disconnectFeed(feedId) {
+    const feed = feeds.find(f => f.id === feedId);
+    if (!feed) return;
+    if (!await showConfirm({ message: `Disconnect "${feed.account_name}"? Existing transactions will be kept but no new ones will sync.` })) return;
+    const { error } = await supabase.from("bank_account_feed").update({ status: "inactive" }).eq("id", feedId).eq("company_id", companyId);
+    if (error) { showToast("Error disconnecting feed: " + error.message, "error"); return; }
+    // If no more active feeds for this connection, mark connection as disconnected
+    if (feed.bank_connection_id) {
+      const { data: remaining } = await supabase.from("bank_account_feed").select("id").eq("bank_connection_id", feed.bank_connection_id).eq("status", "active").eq("company_id", companyId);
+      if (!remaining || remaining.length === 0) {
+        await supabase.from("bank_connection").update({ connection_status: "disconnected" }).eq("id", feed.bank_connection_id).eq("company_id", companyId);
+      }
+    }
+    if (selectedFeed === feedId) setSelectedFeed("all");
+    showToast(`"${feed.account_name}" disconnected.`, "success");
+    fetchAll();
+  }
+
+  async function updateFeedMapping(feedId, glAccountId) {
+    const { error } = await supabase.from("bank_account_feed").update({ gl_account_id: glAccountId }).eq("id", feedId).eq("company_id", companyId);
+    if (error) { showToast("Error updating mapping: " + error.message, "error"); return; }
+    showToast("GL mapping updated.", "success");
+    fetchAll();
   }
 
   // --- CSV Import Wizard ---
@@ -11208,18 +11235,41 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
     {feeds.map(feed => {
       const reviewCount = transactions.filter(t => t.bank_account_feed_id === feed.id && t.status === "for_review").length;
       const isSelected = selectedFeed === feed.id;
+      const isMenuOpen = feedMenuOpen === feed.id;
+      const isUnmapped = !feed.gl_account_id;
       return (
-      <button key={feed.id} onClick={() => setSelectedFeed(isSelected ? "all" : feed.id)}
-        className={`shrink-0 rounded-xl border-2 p-3 min-w-48 text-left transition-all ${isSelected ? "border-brand-600 bg-brand-50" : "border-neutral-200 bg-white hover:border-neutral-300"}`}>
-        <div className="text-xs text-neutral-400 truncate">{feed.institution_name || feed.account_type}</div>
+      <div key={feed.id} className="relative shrink-0">
+      <button onClick={() => { setSelectedFeed(isSelected ? "all" : feed.id); setFeedMenuOpen(null); }}
+        className={`rounded-xl border-2 p-3 min-w-48 text-left transition-all w-full ${isUnmapped ? "border-warn-300 bg-warn-50/30" : isSelected ? "border-brand-600 bg-brand-50" : "border-neutral-200 bg-white hover:border-neutral-300"}`}>
+        <div className="flex items-start justify-between">
+          <div className="text-xs text-neutral-400 truncate">{feed.institution_name || feed.account_type}</div>
+          <span onClick={e => { e.stopPropagation(); setFeedMenuOpen(isMenuOpen ? null : feed.id); }}
+            className="text-neutral-300 hover:text-neutral-600 -mt-0.5 -mr-1 cursor-pointer">
+            <span className="material-icons-outlined text-base">more_vert</span>
+          </span>
+        </div>
         <div className="font-semibold text-neutral-800 truncate">{feed.account_name}</div>
         {feed.masked_number && <div className="text-xs text-neutral-400">••••{feed.masked_number}</div>}
+        {isUnmapped && <div className="text-xs text-warn-600 mt-1 font-medium">Not mapped to GL</div>}
         <div className="flex justify-between mt-2">
           <span className={`text-xs px-1.5 py-0.5 rounded ${feed.connection_type === "teller" ? "bg-info-100 text-info-700" : feed.connection_type === "plaid" ? "bg-info-100 text-info-700" : "bg-neutral-100 text-neutral-500"}`}>{feed.connection_type === "teller" ? "Teller" : feed.connection_type === "plaid" ? "Plaid" : "CSV"}</span>
           {feed.last_synced_at && <span className="text-xs text-neutral-400">{new Date(feed.last_synced_at).toLocaleDateString()}</span>}
           {reviewCount > 0 && <span className="text-xs bg-warn-100 text-warn-700 px-1.5 py-0.5 rounded-full font-bold">{reviewCount}</span>}
         </div>
       </button>
+      {isMenuOpen && (
+        <div className="absolute top-10 right-0 z-20 bg-white border border-neutral-200 rounded-xl shadow-lg py-1 min-w-40">
+          <button onClick={() => { const glId = prompt("Enter GL Account ID to map (or use Chart of Accounts)"); if (glId) updateFeedMapping(feed.id, glId); setFeedMenuOpen(null); }}
+            className="w-full text-left px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-2">
+            <span className="material-icons-outlined text-sm">link</span>Change GL Mapping
+          </button>
+          <button onClick={() => { disconnectFeed(feed.id); setFeedMenuOpen(null); }}
+            className="w-full text-left px-3 py-2 text-sm text-danger-600 hover:bg-danger-50 flex items-center gap-2">
+            <span className="material-icons-outlined text-sm">link_off</span>Disconnect
+          </button>
+        </div>
+      )}
+      </div>
       );
     })}
     <button onClick={() => setShowNewAccount(true)} className="shrink-0 rounded-xl border-2 border-dashed border-neutral-200 p-3 min-w-36 flex flex-col items-center justify-center gap-1 text-neutral-400 hover:border-neutral-400 hover:text-neutral-600">
@@ -11894,7 +11944,9 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
   )}
 
   {/* Post-Connection Setup Modal */}
-  {postConnectModal && (
+  {postConnectModal && (() => {
+    const allMapped = postConnectModal.accounts.every(acct => postConnectMappings[acct.id]);
+    return (
   <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
     <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
       <div className="p-6">
@@ -11906,30 +11958,37 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
 
         {/* Connected Accounts + GL Mapping */}
         <div className="mb-5">
-          <label className="text-xs font-semibold text-neutral-600 uppercase tracking-wide block mb-2">Account Mapping</label>
+          <label className="text-xs font-semibold text-neutral-600 uppercase tracking-wide block mb-2">Map Each Account to a Ledger Account</label>
+          <p className="text-xs text-neutral-400 mb-3">Select an existing GL account for each bank account, or create a new one.</p>
           <div className="space-y-3">
-            {postConnectModal.accounts.map(acct => (
-            <div key={acct.id} className="bg-neutral-50 rounded-xl p-3 border border-neutral-200">
+            {postConnectModal.accounts.map(acct => {
+              const isMapped = !!postConnectMappings[acct.id];
+              return (
+            <div key={acct.id} className={`rounded-xl p-3 border ${isMapped ? "bg-neutral-50 border-neutral-200" : "bg-warn-50/30 border-warn-300"}`}>
               <div className="flex items-center justify-between mb-2">
                 <div>
                   <div className="font-semibold text-sm text-neutral-800">{acct.name || "Bank Account"}</div>
                   <div className="text-xs text-neutral-400">{acct.type}{acct.mask ? ` · ••••${acct.mask}` : ""}</div>
                 </div>
+                {acct.is_existing && <span className="text-xs bg-success-100 text-success-700 px-2 py-0.5 rounded-full">Reconnected</span>}
               </div>
               <div>
-                <label className="text-xs text-neutral-500 block mb-1">GL Account</label>
+                <label className="text-xs text-neutral-500 block mb-1">GL Account {!isMapped && <span className="text-danger-500 font-semibold">*Required</span>}</label>
                 <AccountPicker
                   value={postConnectMappings[acct.id] || ""}
                   onChange={v => {
+                    if (v === "__new__") { setShowNewBankAcct(true); setNewBankAcctForm({ code: "", name: acct.name || "", type: acct.suggested_gl_type || "Asset" }); return; }
                     setPostConnectMappings(prev => ({ ...prev, [acct.id]: v }));
                   }}
                   accounts={accounts}
                   accountTypes={ACCOUNT_TYPES}
-                  placeholder="Map to GL account..."
+                  showNewOption
+                  placeholder="Select or create GL account..."
                 />
               </div>
             </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -11958,9 +12017,10 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
         {/* Actions */}
         <div className="flex gap-3 pt-3 border-t border-neutral-200">
           <Btn onClick={async () => {
+            if (!allMapped) { showToast("Please map all bank accounts to a GL account before importing.", "error"); return; }
             setPostConnectSyncing(true);
             try {
-              // Update GL mappings if user changed them
+              // Save GL mappings
               for (const [feedId, glId] of Object.entries(postConnectMappings)) {
                 if (glId) {
                   await supabase.from("bank_account_feed").update({ gl_account_id: glId }).eq("id", feedId).eq("company_id", companyId);
@@ -11980,15 +12040,16 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
               fetchAll();
             } catch (e) { showToast("Sync failed: " + e.message, "error"); }
             finally { setPostConnectSyncing(false); setPostConnectModal(null); }
-          }} disabled={postConnectSyncing || !postConnectRange.from}>
-            {postConnectSyncing ? "Importing..." : "Import Transactions"}
+          }} disabled={postConnectSyncing || !postConnectRange.from || !allMapped}>
+            {postConnectSyncing ? "Importing..." : allMapped ? "Import Transactions" : "Map All Accounts First"}
           </Btn>
           <Btn variant="ghost" onClick={() => { setPostConnectModal(null); fetchAll(); }}>Skip for Now</Btn>
         </div>
       </div>
     </div>
   </div>
-  )}
+    );
+  })()}
 
   </div>
   );
@@ -12171,12 +12232,25 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   }
   async function toggleAccount(id, currentActive) {
   if (currentActive) {
-  // Check if any posted JEs reference this account before deactivating
   const { data: refs } = await supabase.from("acct_journal_lines").select("id").eq("account_id", id).eq("company_id", companyId).limit(1);
   if (refs?.length > 0 && !await showConfirm({ message: "This account has journal entries. Deactivating will hide it from reports but existing entries remain. Continue?" })) return;
   }
   const { error: _err3877 } = await supabase.from("acct_accounts").update({ is_active: !currentActive }).eq("company_id", companyId).eq("id", id);
   if (_err3877) { showToast("Error updating acct_accounts: " + _err3877.message, "error"); return; }
+  fetchAll();
+  }
+  async function deleteGLAccount(id) {
+  // Safety: check for journal entries
+  const { data: jeRefs } = await supabase.from("acct_journal_lines").select("id").eq("account_id", id).eq("company_id", companyId).limit(1);
+  if (jeRefs?.length > 0) { showToast("Cannot delete: account has journal entries. Deactivate instead.", "error"); return; }
+  // Safety: check for linked bank feed
+  const { data: feedRefs } = await supabase.from("bank_account_feed").select("id").eq("gl_account_id", id).eq("company_id", companyId).limit(1);
+  if (feedRefs?.length > 0) { showToast("Cannot delete: account is linked to a bank feed. Unlink the feed first.", "error"); return; }
+  const acct = acctAccounts.find(a => a.id === id);
+  if (!await showConfirm({ message: `Permanently delete account ${acct?.code || ""} ${acct?.name || ""}? This cannot be undone.` })) return;
+  const { error } = await supabase.from("acct_accounts").delete().eq("id", id).eq("company_id", companyId);
+  if (error) { showToast("Error deleting account: " + error.message, "error"); return; }
+  showToast("Account deleted.", "success");
   fetchAll();
   }
 
@@ -12512,7 +12586,7 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   )}
 
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} addNotification={addNotification} userProfile={userProfile} />}
-  {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
+  {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} />}
   {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} />}
