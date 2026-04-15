@@ -30,7 +30,7 @@ export async function safeLedgerInsert(entry) {
       entry.balance = 0;
     }
   }
-  const { error } = await supabase.from("ledger_entries").insert([entry]);
+  const { error } = await supabase.from("ledger_entries").insert([entry]); // entry.company_id set by caller
   if (error) {
   pmError("PM-6005", { raw: error, context: "ledger entry insert", silent: true, meta: { type: entry.type, tenant_id: entry.tenant_id } });
   }

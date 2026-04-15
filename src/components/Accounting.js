@@ -3,7 +3,7 @@ import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, AccountPicker } from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -745,7 +745,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   const [showNewAcct, setShowNewAcct] = useState(null); // line index that triggered it
   const [newAcctForm, setNewAcctForm] = useState({ code: "", name: "", type: "Expense" });
 
-  useEffect(() => { let q = supabase.from("properties").select("address"); if (companyId) q = q.eq("company_id", companyId).is("archived_at", null); q.then(r => setProperties((r.data || []).map(p => p.address))); }, [companyId]);
+  useEffect(() => { if (!companyId) return; supabase.from("properties").select("address").eq("company_id", companyId).is("archived_at", null).then(r => setProperties((r.data || []).map(p => p.address))); }, [companyId]);
 
   // Auto-open a specific JE when navigating from ledger drill-down
   useEffect(() => {

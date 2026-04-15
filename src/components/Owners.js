@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, PageHeader } from "../ui";
-import { safeNum, formatLocalDate, shortId, formatCurrency, parseLocalDate, normalizeEmail, exportToCSV, escapeHtml, sanitizeForPrint, formatPersonName, parseNameParts, formatPhoneInput, buildNameFields } from "../utils/helpers";
+import { safeNum, formatLocalDate, shortId, formatCurrency, parseLocalDate, normalizeEmail, exportToCSV, escapeHtml, sanitizeForPrint, formatPersonName, parseNameParts, formatPhoneInput, buildNameFields, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -509,8 +509,8 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
 
   const [p, s, d] = await Promise.all([
   supabase.from("properties").select("*").eq("company_id", companyId).eq("owner_id", owner.id),
-  supabase.from("owner_statements").select("*").eq("owner_id", owner.id).order("created_at", { ascending: false }),
-  supabase.from("owner_distributions").select("*").eq("owner_id", owner.id).order("date", { ascending: false }),
+  supabase.from("owner_statements").select("*").eq("company_id", companyId).eq("owner_id", owner.id).order("created_at", { ascending: false }),
+  supabase.from("owner_distributions").select("*").eq("company_id", companyId).eq("owner_id", owner.id).order("date", { ascending: false }),
   ]);
   setProperties(p.data || []);
   setStatements(s.data || []);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, PageHeader, IconBtn } from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";

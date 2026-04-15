@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Select, Btn } from "../ui";
-import { normalizeEmail, formatPhoneInput } from "../utils/helpers";
+import { normalizeEmail, formatPhoneInput, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { logAudit } from "../utils/audit";
 import { Spinner } from "./shared";

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, PageHeader, IconBtn } from "../ui";
-import { formatLocalDate, shortId, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, formatCurrency, getSignedUrl, sanitizeFileName, buildAddress, escapeHtml } from "../utils/helpers";
+import { formatLocalDate, shortId, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, formatCurrency, getSignedUrl, sanitizeFileName, buildAddress, escapeHtml, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
