@@ -27,13 +27,22 @@ npx supabase db push   # Push DB migrations
 Tests live in a **separate `tests/` directory** with its own `package.json` and `node_modules`. Always `cd tests/` first.
 
 ```bash
-cd tests && node data-layer.test.js                  # 42 data-layer tests (direct node, no framework)
-cd tests && npx playwright test                      # 13 E2E browser tests (headless)
-cd tests && npx playwright test --headed             # E2E with visible browser
-cd tests && npx playwright show-report               # View HTML test report
+cd tests && npm test                                  # Run ALL tests (infra + schema + data + errors + bank + e2e)
+cd tests && node data-layer.test.js                   # 298 data-layer tests
+cd tests && node bank-transactions.test.js            # 147 bank/teller/export tests
+cd tests && node error-management.test.js             # 41 error management tests
+cd tests && npx playwright test                       # 35 E2E browser specs (headless)
+cd tests && npx playwright test --headed              # E2E with visible browser
+cd tests && npx playwright test e2e/35-bank-management.spec.js  # Bank management E2E only
+cd tests && npx playwright show-report                # View HTML test report
 ```
 
 Tests use `dotenv` to load Supabase credentials from `tests/.env` (not committed — do not share).
+
+**Test conventions:**
+- Unit tests: custom `assert()` function, no framework, direct Supabase queries
+- E2E tests: Playwright, shared `helpers.js` (login, navigateTo, goToPage)
+- New bank/accounting features MUST add tests to `bank-transactions.test.js` and/or E2E specs
 
 ## Key Code Patterns
 
