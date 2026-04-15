@@ -10017,6 +10017,7 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
   const [activeTab, setActiveTab] = useState("for_review");
   const [selectedFeed, setSelectedFeed] = useState("all");
   const [feedMenuOpen, setFeedMenuOpen] = useState(null);
+  const [feedMenuPos, setFeedMenuPos] = useState({ top: 0, left: 0 });
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -11243,7 +11244,7 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
         className={`rounded-xl border-2 p-3 min-w-48 text-left transition-all w-full ${isUnmapped ? "border-warn-300 bg-warn-50/30" : isSelected ? "border-brand-600 bg-brand-50" : "border-neutral-200 bg-white hover:border-neutral-300"}`}>
         <div className="flex items-start justify-between">
           <div className="text-xs text-neutral-400 truncate">{feed.institution_name || feed.account_type}</div>
-          <span onClick={e => { e.stopPropagation(); setFeedMenuOpen(isMenuOpen ? null : feed.id); }}
+          <span onClick={e => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setFeedMenuPos({ top: r.bottom + 4, left: r.right - 160 }); setFeedMenuOpen(isMenuOpen ? null : feed.id); }}
             className="text-neutral-300 hover:text-neutral-600 -mt-0.5 -mr-1 cursor-pointer">
             <span className="material-icons-outlined text-base">more_vert</span>
           </span>
@@ -11257,8 +11258,9 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
           {reviewCount > 0 && <span className="text-xs bg-warn-100 text-warn-700 px-1.5 py-0.5 rounded-full font-bold">{reviewCount}</span>}
         </div>
       </button>
-      {isMenuOpen && (
-        <div className="absolute top-10 right-0 z-20 bg-white border border-neutral-200 rounded-xl shadow-lg py-1 min-w-40">
+      {isMenuOpen && <>
+        <div className="fixed inset-0 z-30" onClick={() => setFeedMenuOpen(null)} />
+        <div className="fixed z-40 bg-white border border-neutral-200 rounded-xl shadow-lg py-1 min-w-40" style={{ top: feedMenuPos.top, left: Math.max(8, feedMenuPos.left) }}>
           <button onClick={() => { const glId = prompt("Enter GL Account ID to map (or use Chart of Accounts)"); if (glId) updateFeedMapping(feed.id, glId); setFeedMenuOpen(null); }}
             className="w-full text-left px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-2">
             <span className="material-icons-outlined text-sm">link</span>Change GL Mapping
@@ -11268,7 +11270,7 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
             <span className="material-icons-outlined text-sm">link_off</span>Disconnect
           </button>
         </div>
-      )}
+      </>}
       </div>
       );
     })}
@@ -12243,9 +12245,11 @@ function Accounting({ companyId, activeCompany, addNotification, userProfile, sh
   // Safety: check for journal entries
   const { data: jeRefs } = await supabase.from("acct_journal_lines").select("id").eq("account_id", id).eq("company_id", companyId).limit(1);
   if (jeRefs?.length > 0) { showToast("Cannot delete: account has journal entries. Deactivate instead.", "error"); return; }
-  // Safety: check for linked bank feed
-  const { data: feedRefs } = await supabase.from("bank_account_feed").select("id").eq("gl_account_id", id).eq("company_id", companyId).limit(1);
-  if (feedRefs?.length > 0) { showToast("Cannot delete: account is linked to a bank feed. Unlink the feed first.", "error"); return; }
+  // Safety: check for linked ACTIVE bank feed (disconnected feeds don't block deletion)
+  const { data: feedRefs } = await supabase.from("bank_account_feed").select("id").eq("gl_account_id", id).eq("company_id", companyId).eq("status", "active").limit(1);
+  if (feedRefs?.length > 0) { showToast("Cannot delete: account is linked to an active bank feed. Disconnect the feed first.", "error"); return; }
+  // Unlink any inactive feeds referencing this account
+  await supabase.from("bank_account_feed").update({ gl_account_id: null }).eq("gl_account_id", id).eq("company_id", companyId).neq("status", "active");
   const acct = acctAccounts.find(a => a.id === id);
   if (!await showConfirm({ message: `Permanently delete account ${acct?.code || ""} ${acct?.name || ""}? This cannot be undone.` })) return;
   const { error } = await supabase.from("acct_accounts").delete().eq("id", id).eq("company_id", companyId);
