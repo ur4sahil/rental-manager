@@ -10019,6 +10019,8 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [directionFilter, setDirectionFilter] = useState("all");
+  const [txnPage, setTxnPage] = useState(0);
+  const TXN_PAGE_SIZE = 50;
   const [selectedTxns, setSelectedTxns] = useState(new Set());
   const [expandedTxn, setExpandedTxn] = useState(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
@@ -11160,6 +11162,9 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
     }
     return true;
   });
+  const txnTotalPages = Math.max(1, Math.ceil(filtered.length / TXN_PAGE_SIZE));
+  const safeTxnPage = Math.min(txnPage, txnTotalPages - 1);
+  const paginatedTxns = filtered.slice(safeTxnPage * TXN_PAGE_SIZE, (safeTxnPage + 1) * TXN_PAGE_SIZE);
 
   const feedTxns = selectedFeed === "all" ? transactions : transactions.filter(t => t.bank_account_feed_id === selectedFeed);
   const counts = {
@@ -11237,7 +11242,7 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
   {feeds.length > 0 && (<>
   <div className="flex gap-1 border-b border-neutral-200">
     {[["for_review", `For Review (${counts.for_review})`], ["recognized", `Recognized (${counts.recognized})`], ["categorized", `Categorized (${counts.categorized})`], ["excluded", `Excluded (${counts.excluded})`], ["rules", `Rules (${rules.length})`]].map(([id, label]) => (
-    <button key={id} onClick={() => { setActiveTab(id); setSelectedTxns(new Set()); }}
+    <button key={id} onClick={() => { setActiveTab(id); setSelectedTxns(new Set()); setTxnPage(0); }}
       className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-600"}`}>{label}</button>
     ))}
   </div>
@@ -11323,11 +11328,11 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
 
   {/* Filters (hidden on Rules tab) */}
   {activeTab !== "rules" && (
-  <div className="flex flex-wrap gap-2">
-    <Input placeholder="Search description, payee, amount..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="flex-1 min-w-48" />
-    <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-36" />
-    <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-36" />
-    <select value={directionFilter} onChange={e => setDirectionFilter(e.target.value)} className="border border-brand-100 rounded-2xl px-3 py-1.5 text-sm">
+  <div className="flex items-center gap-2">
+    <Input placeholder="Search description, payee, amount..." value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setTxnPage(0); }} className="flex-1 min-w-40 !py-1.5 text-sm" />
+    <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setTxnPage(0); }} className="w-32 !py-1.5 text-xs" />
+    <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setTxnPage(0); }} className="w-32 !py-1.5 text-xs" />
+    <select value={directionFilter} onChange={e => { setDirectionFilter(e.target.value); setTxnPage(0); }} className="border border-brand-100 rounded-xl px-2 py-1.5 text-xs">
       <option value="all">All</option><option value="inflow">Money In</option><option value="outflow">Money Out</option>
     </select>
   </div>
@@ -11345,6 +11350,18 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
   </div>
   )}
 
+  {/* Counter + Pagination */}
+  <div className="flex items-center justify-between">
+    <div className="text-xs text-neutral-500">{filtered.length} of {transactions.length} transactions{filtered.length !== transactions.length ? " (filtered)" : ""}</div>
+    {txnTotalPages > 1 && (
+    <div className="flex items-center gap-2">
+      <button onClick={() => setTxnPage(Math.max(0, safeTxnPage - 1))} disabled={safeTxnPage === 0} className="text-xs px-2 py-1 rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed">← Prev</button>
+      <span className="text-xs text-neutral-500">Page {safeTxnPage + 1} of {txnTotalPages}</span>
+      <button onClick={() => setTxnPage(Math.min(txnTotalPages - 1, safeTxnPage + 1))} disabled={safeTxnPage >= txnTotalPages - 1} className="text-xs px-2 py-1 rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed">Next →</button>
+    </div>
+    )}
+  </div>
+
   {/* Transaction Table */}
   <div className="bg-white rounded-xl border border-neutral-200 overflow-x-auto">
   <table className="w-full text-sm">
@@ -11361,7 +11378,7 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
     </tr>
   </thead>
   <tbody>
-  {filtered.map(txn => {
+  {paginatedTxns.map(txn => {
     const isExpanded = expandedTxn === txn.id;
     return (
     <React.Fragment key={txn.id}>
@@ -11519,7 +11536,17 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
   </tbody>
   </table>
   </div>
-  <div className="text-xs text-neutral-400">{filtered.length} of {transactions.length} transactions</div>
+  {/* Bottom Pagination */}
+  {txnTotalPages > 1 && (
+  <div className="flex items-center justify-between">
+    <div className="text-xs text-neutral-400">Showing {safeTxnPage * TXN_PAGE_SIZE + 1}–{Math.min((safeTxnPage + 1) * TXN_PAGE_SIZE, filtered.length)} of {filtered.length}</div>
+    <div className="flex items-center gap-2">
+      <button onClick={() => setTxnPage(Math.max(0, safeTxnPage - 1))} disabled={safeTxnPage === 0} className="text-xs px-2 py-1 rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed">← Prev</button>
+      <span className="text-xs text-neutral-500">Page {safeTxnPage + 1} of {txnTotalPages}</span>
+      <button onClick={() => setTxnPage(Math.min(txnTotalPages - 1, safeTxnPage + 1))} disabled={safeTxnPage >= txnTotalPages - 1} className="text-xs px-2 py-1 rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed">Next →</button>
+    </div>
+  </div>
+  )}
   </>)}
   </>)}
 
