@@ -1,0 +1,449 @@
+import { supabase } from "../supabase";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, escapeFilterValue } from "./helpers";
+import { pmError } from "./errors";
+import { logAudit } from "./audit";
+import { queueNotification } from "./notifications";
+
+// Safely insert a ledger entry — auto-calculates running balance if not provided
+export async function safeLedgerInsert(entry) {
+  // Auto-calculate running balance unless caller provides a non-zero value
+  if (!entry.balance || entry.balance === 0) {
+    try {
+      // Find latest ledger entry for this tenant to get previous balance
+      let query = supabase.from("ledger_entries").select("balance").eq("company_id", entry.company_id).is("archived_at", null);
+      if (entry.tenant_id) query = query.eq("tenant_id", entry.tenant_id);
+      else if (entry.tenant) query = query.ilike("tenant", entry.tenant);
+      else { entry.balance = 0; } // No tenant context — can't compute balance
+      if (entry.tenant_id || entry.tenant) {
+        const { data: prev } = await query.order("date", { ascending: false }).order("created_at", { ascending: false }).limit(1).maybeSingle();
+        const prevBal = safeNum(prev?.balance);
+        const amt = safeNum(entry.amount);
+        // Charges increase balance (tenant owes more), payments decrease it
+        const increasesBalance = ["charge", "late_fee", "expense", "deposit_deduction"].includes(entry.type);
+        const decreasesBalance = ["payment", "credit", "deposit_return", "void"].includes(entry.type);
+        if (increasesBalance) entry.balance = prevBal + amt;
+        else if (decreasesBalance) entry.balance = prevBal - amt;
+        else entry.balance = prevBal + amt; // deposit, adjustment — use amount as-is
+      }
+    } catch (e) {
+      pmError("PM-6005", { raw: e, context: "ledger balance calculation", silent: true });
+      entry.balance = 0;
+    }
+  }
+  const { error } = await supabase.from("ledger_entries").insert([entry]);
+  if (error) {
+  pmError("PM-6005", { raw: error, context: "ledger entry insert", silent: true, meta: { type: entry.type, tenant_id: entry.tenant_id } });
+  }
+  return !error;
+}
+
+// Atomic JE + ledger + balance in a single DB transaction via RPC
+// Falls back to non-atomic postAccountingTransaction if RPC unavailable
+export async function atomicPostJEAndLedger({ date, description, reference, property, lines, status, ledgerEntry, balanceUpdate, companyId }) {
+  const result = { jeId: null, ledgerOk: false, balanceOk: false, error: null };
+  try {
+    const rpcLines = (lines || []).map(l => ({
+      account_id: l.account_id, account_name: l.account_name || "",
+      debit: safeNum(l.debit), credit: safeNum(l.credit),
+      class_id: l.class_id || null, memo: l.memo || ""
+    }));
+    const { data: jeId, error: rpcErr } = await supabase.rpc("post_je_and_ledger", {
+      p_company_id: companyId,
+      p_date: date,
+      p_description: description,
+      p_reference: reference || "",
+      p_property: property || "",
+      p_status: status || "posted",
+      p_lines: rpcLines,
+      p_ledger_tenant: ledgerEntry?.tenant || null,
+      p_ledger_tenant_id: ledgerEntry?.tenant_id || null,
+      p_ledger_property: ledgerEntry?.property || property || null,
+      p_ledger_amount: safeNum(ledgerEntry?.amount),
+      p_ledger_type: ledgerEntry?.type || null,
+      p_ledger_description: ledgerEntry?.description || null,
+      p_balance_change: safeNum(balanceUpdate?.amount)
+    });
+    if (rpcErr) throw rpcErr;
+    result.jeId = jeId;
+    result.ledgerOk = !!ledgerEntry;
+    result.balanceOk = !!balanceUpdate;
+    return result;
+  } catch (e) {
+    pmError("PM-4002", { raw: e, context: "atomic JE+ledger RPC, falling back to sequential", silent: true });
+    return postAccountingTransaction({ date, description, reference, property, lines, status, ledgerEntry, balanceUpdate, requireJE: true, companyId });
+  }
+}
+
+// Unified accounting transaction: JE → ledger → balance (non-atomic fallback)
+export async function postAccountingTransaction({ date, description, reference, property, lines, status, ledgerEntry, balanceUpdate, requireJE = true, silent = false, companyId }) {
+  const result = { jeId: null, ledgerOk: false, balanceOk: false, error: null };
+  result.jeId = await autoPostJournalEntry({ date, description, reference, property, lines, status, companyId });
+  if (!result.jeId && requireJE) {
+  result.error = "Journal entry failed";
+  return result;
+  }
+  if (ledgerEntry) {
+  const enrichedEntry = { ...ledgerEntry };
+  if (!enrichedEntry.tenant_id && balanceUpdate?.tenantId) enrichedEntry.tenant_id = balanceUpdate.tenantId;
+  if (balanceUpdate?.tenantId && enrichedEntry.balance === 0) {
+  try {
+  const { data: tRow } = await supabase.from("tenants").select("balance").eq("id", balanceUpdate.tenantId).eq("company_id", companyId).maybeSingle();
+  enrichedEntry.balance = safeNum(tRow?.balance) + safeNum(balanceUpdate.amount);
+  } catch (_e) { pmError("PM-6002", { raw: _e, context: "tenant balance lookup for ledger enrichment", silent: true }); }
+  }
+  result.ledgerOk = await safeLedgerInsert({ company_id: companyId, ...enrichedEntry });
+  }
+  if (balanceUpdate?.tenantId) {
+  try {
+  const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: balanceUpdate.tenantId, p_amount_change: balanceUpdate.amount });
+  result.balanceOk = !balErr;
+  if (balErr) {
+    result.error = balErr.message;
+    pmError("PM-6002", { raw: balErr, context: "balance update for tenant " + balanceUpdate.tenantId, silent: true, meta: { tenantId: balanceUpdate.tenantId } });
+  }
+  } catch (e) { result.error = e.message; pmError("PM-6002", { raw: e, context: "balance RPC exception", silent: true }); }
+  }
+  return result;
+}
+
+// ============ UNIFIED AUTO-POSTING TO ACCOUNTING ============
+// Direct insert approach — no RPC. Posts JE header + lines in two steps.
+// All bare account codes (e.g., "1000") are resolved to UUIDs via resolveAccountId().
+export async function checkPeriodLock(companyId, date) {
+  if (!date || !companyId) return false;
+  const { data } = await supabase.from("accounting_period_lock").select("lock_date").eq("company_id", companyId).maybeSingle();
+  return data?.lock_date && date < data.lock_date;
+}
+
+export async function autoPostJournalEntry({ date, description, reference, property, lines, status = "posted", companyId }) {
+  try {
+  if (!companyId) { pmError("PM-4002", { raw: { message: "missing companyId" }, context: "autoPostJournalEntry", silent: true }); return null; }
+  // Period lock check
+  if (await checkPeriodLock(companyId, date)) { pmError("PM-4004", { raw: { message: "blocked by period lock" }, context: "autoPostJournalEntry, date: " + date, silent: true }); return null; }
+  const cid = companyId;
+  // Resolve bare account codes to UUIDs — work on a COPY to avoid mutating caller's data
+  const resolvedLines = lines?.length > 0 ? lines.map(l => ({ ...l })) : [];
+  for (let i = 0; i < resolvedLines.length; i++) {
+  if (resolvedLines[i].account_id && /^\d{4}$/.test(resolvedLines[i].account_id)) {
+  resolvedLines[i].account_id = await resolveAccountId(resolvedLines[i].account_id, cid);
+  }
+  }
+  // Step 1: Insert journal entry header (collision-safe sequential number)
+  let jeRow = null, jeErr = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+  const { data: lastJE } = await supabase.from("acct_journal_entries").select("number").eq("company_id", cid).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const lastNum = lastJE?.number ? parseInt(lastJE.number.replace(/\D/g, "")) || 0 : 0;
+  const jeNumber = "JE-" + String(lastNum + 1 + attempt).padStart(4, "0");
+  ({ data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
+  company_id: cid, number: jeNumber, date, description, reference: reference || "", property: property || "", status
+  }]).select("id").maybeSingle());
+  if (!jeErr && jeRow) break; // success
+  if (jeErr && !jeErr.message?.includes("unique")) break; // non-duplicate error, don't retry
+  }
+  if (jeErr || !jeRow) { pmError("PM-4002", { raw: jeErr, context: "journal entry insert" }); return null; }
+  // Step 2: Insert journal entry lines (with company_id for RLS)
+  if (resolvedLines.length > 0) {
+  const { error: lineErr } = await supabase.from("acct_journal_lines").insert(resolvedLines.map(l => ({
+  journal_entry_id: jeRow.id, company_id: cid,
+  account_id: l.account_id, account_name: l.account_name || "",
+  debit: safeNum(l.debit), credit: safeNum(l.credit),
+  class_id: l.class_id || null, memo: l.memo || ""
+  })));
+  if (lineErr) {
+  pmError("PM-4003", { raw: lineErr, context: "journal lines insert" });
+  // Clean up orphan header — if cleanup fails, void it instead so it's visible but harmless
+  { const { error: _delErr } = await supabase.from("acct_journal_entries").delete().eq("id", jeRow.id).eq("company_id", companyId);
+    if (_delErr) {
+      // Delete failed (RLS, network) — void the orphan so it doesn't affect reports
+      await supabase.from("acct_journal_entries").update({ status: "voided", description: "[ORPHANED — lines failed] " + (description || "") }).eq("id", jeRow.id).eq("company_id", companyId);
+      pmError("PM-4012", { raw: _delErr, context: "ORPHANED JE HEADER: delete failed, voided instead. JE ID: " + jeRow.id, silent: false });
+    }
+  }
+  return null;
+  }
+  }
+  return jeRow.id;
+  } catch (e) { pmError("PM-4002", { raw: e, context: "auto-post journal entry" }); return null; }
+}
+
+// Check if an AR accrual (rent charge) exists for a tenant in a given month
+// Used by smart AR settlement: if accrual exists, payment settles AR; else posts direct revenue
+export async function checkAccrualExists(companyId, month, tenantName) {
+  // Look for RENT-AUTO entries for this month that mention the tenant
+  const { data: rentJEs } = await supabase.from("acct_journal_entries")
+  .select("id, reference").eq("company_id", companyId)
+  .or(`reference.like.RENT-AUTO-%${escapeFilterValue(month)}%,reference.like.ACCR-${escapeFilterValue(month)}%`)
+  .neq("status", "voided");
+  if (!rentJEs || rentJEs.length === 0) return false;
+  const jeIds = rentJEs.map(je => je.id);
+  const { data: lines } = await supabase.from("acct_journal_lines")
+  .select("journal_entry_id, memo").in("journal_entry_id", jeIds);
+  if (!lines) return false;
+  return lines.some(l => l.memo && l.memo.toLowerCase().includes(tenantName.toLowerCase()));
+}
+
+// ============ OWNER DISTRIBUTION AUTOMATION ============
+// Auto-calculates management fee + owner net when rent is received.
+// Posts GL entry: DR Rental Income / CR Mgmt Fee Income + CR Owner Dist Payable
+export async function autoOwnerDistribution(companyId, propertyAddress, paymentAmount, paymentDate, tenantName) {
+  try {
+  const { data: prop } = await supabase.from("properties")
+  .select("owner_id").eq("company_id", companyId).eq("address", propertyAddress).maybeSingle();
+  if (!prop?.owner_id) return; // No owner assigned — skip silently
+  const { data: owner } = await supabase.from("owners")
+  .select("id, name, email, management_fee_pct").eq("company_id", companyId).eq("id", prop.owner_id).maybeSingle();
+  if (!owner) return;
+  // Guard: only post distribution if a rent accrual (AR charge) exists for this period.
+  // If payment was posted as direct revenue (no accrual), the DR 4000 reversal would create
+  // a negative revenue balance — effectively double-counting income.
+  const month = paymentDate.slice(0, 7);
+  const hasAccrual = await checkAccrualExists(companyId, month, tenantName);
+  if (!hasAccrual) return; // No accrual to reclassify — distribution handled when payment was direct revenue
+  const feePct = safeNum(owner.management_fee_pct || 10);
+  // Use integer cents to avoid floating point precision loss
+  const paymentCents = Math.round(paymentAmount * 100);
+  const mgmtFeeCents = Math.round(paymentCents * feePct / 100);
+  const mgmtFee = mgmtFeeCents / 100;
+  const ownerNet = (paymentCents - mgmtFeeCents) / 100;
+  const classId = await getPropertyClassId(propertyAddress, companyId);
+  const jeId = await autoPostJournalEntry({
+  companyId, date: paymentDate,
+  description: `Owner distribution accrual — ${owner.name} — ${tenantName}`,
+  reference: `ODIST-${shortId()}`, property: propertyAddress,
+  lines: [
+  { account_id: "4000", account_name: "Rental Income", debit: paymentAmount, credit: 0, class_id: classId, memo: `Reclassify to owner dist — ${tenantName}` },
+  { account_id: "4200", account_name: "Management Fee Income", debit: 0, credit: mgmtFee, class_id: classId, memo: `Mgmt fee ${feePct}% — ${owner.name}` },
+  { account_id: "2200", account_name: "Owner Distributions Payable", debit: 0, credit: ownerNet, class_id: classId, memo: `Net to ${owner.name}` },
+  ]
+  });
+  if (!jeId) { pmError("PM-6004", { raw: { message: "JE failed" }, context: "owner distribution — skipping record", silent: true }); return; }
+  const { error: distErr } = await supabase.from("owner_distributions").insert([{
+  company_id: companyId, owner_id: owner.id, property: propertyAddress,
+  period: month, type: "rent", gross_amount: paymentAmount,
+  management_fee: mgmtFee, net_amount: ownerNet, status: "pending",
+  }]);
+  if (distErr) pmError("PM-6004", { raw: distErr, context: "owner distribution insert", silent: true });
+  } catch (e) { pmError("PM-6004", { raw: e, context: "auto owner distribution", silent: true }); }
+}
+
+// Resolve property address to cost-center class ID (with caching)
+// Strategy: properties.class_id is the source of truth. If null, create the class and store it.
+export const _classIdCache = {};
+export async function getPropertyClassId(propertyAddress, companyId) {
+  if (!propertyAddress || !companyId) return null;
+  const cacheKey = `${companyId}::${propertyAddress}`;
+  if (_classIdCache[cacheKey] !== undefined) return _classIdCache[cacheKey];
+  // 1. Look up property's stored class_id (authoritative)
+  const { data: prop } = await supabase.from("properties").select("id, class_id").eq("company_id", companyId).eq("address", propertyAddress).maybeSingle();
+  if (prop?.class_id) {
+  // Verify the class still exists
+  const { data: cls } = await supabase.from("acct_classes").select("id").eq("id", prop.class_id).eq("company_id", companyId).maybeSingle();
+  if (cls?.id) { _classIdCache[cacheKey] = cls.id; return cls.id; }
+  }
+  // 2. class_id is null or stale — find or create the class by exact name match
+  const { data: exactMatch } = await supabase.from("acct_classes").select("id").eq("name", propertyAddress).eq("company_id", companyId).maybeSingle();
+  if (exactMatch?.id) {
+  // Update property to store this class_id for future lookups
+  if (prop?.id) await supabase.from("properties").update({ class_id: exactMatch.id }).eq("id", prop.id).eq("company_id", companyId);
+  _classIdCache[cacheKey] = exactMatch.id;
+  return exactMatch.id;
+  }
+  // 3. No class exists — create one and store on property
+  const { data: newClass } = await supabase.from("acct_classes").insert([{
+  id: crypto.randomUUID(), name: propertyAddress, description: "Auto-created for " + propertyAddress.split(",")[0],
+  color: pickColor(propertyAddress), is_active: true, company_id: companyId,
+  }]).select("id").maybeSingle();
+  if (newClass?.id) {
+  if (prop?.id) await supabase.from("properties").update({ class_id: newClass.id }).eq("id", prop.id).eq("company_id", companyId);
+  _classIdCache[cacheKey] = newClass.id;
+  return newClass.id;
+  }
+  _classIdCache[cacheKey] = null;
+  return null;
+}
+
+// ============ ACCOUNT CODE RESOLUTION ============
+// Maps bare account codes ("1000") to UUID primary keys in acct_accounts.
+// Uses the `code` column. Falls back to name matching. Auto-creates missing accounts.
+export const _acctIdCache = {};
+export const _acctCodeToName = { "1000": "Checking Account", "1100": "Accounts Receivable", "2100": "Security Deposits Held", "2200": "Owner Distributions Payable", "4000": "Rental Income", "4010": "Late Fee Income", "4100": "Other Income", "4200": "Management Fee Income", "5300": "Repairs & Maintenance", "5400": "Utilities Expense", "5600": "Mortgage/Loan Payment" };
+export async function resolveAccountId(bareCode, companyId) {
+  if (!companyId) return null;
+  const cid = companyId;
+  if (!_acctIdCache[cid]) _acctIdCache[cid] = {};
+  if (_acctIdCache[cid][bareCode]) return _acctIdCache[cid][bareCode];
+  // Bulk-fetch all accounts and cache by code, name, and old suffix patterns
+  const { data: allAccts } = await supabase.from("acct_accounts").select("id, code, name").eq("company_id", cid);
+  if (allAccts && allAccts.length > 0) {
+  for (const a of allAccts) {
+  // Cache by code column (primary lookup)
+  if (a.code) _acctIdCache[cid][a.code] = a.id;
+  // Cache by name → standard code (fallback for migrated accounts)
+  for (const [code, name] of Object.entries(_acctCodeToName)) {
+  if (a.name === name && !_acctIdCache[cid][code]) _acctIdCache[cid][code] = a.id;
+  }
+  // Cache by old compound suffix (e.g., "co-abc-1000" → cache under "1000")
+  if (a.code) {
+  const suffix = a.code.match(/(\d{4,})$/);
+  if (suffix && !_acctIdCache[cid][suffix[1]]) _acctIdCache[cid][suffix[1]] = a.id;
+  }
+  }
+  }
+  if (_acctIdCache[cid][bareCode]) return _acctIdCache[cid][bareCode];
+  // Auto-create missing account with UUID PK + bare code
+  const acctName = _acctCodeToName[bareCode] || "Account " + bareCode;
+  const acctType = bareCode[0] === "1" ? "Asset" : bareCode[0] === "2" ? "Liability" : bareCode[0] === "3" ? "Equity" : bareCode[0] === "4" ? "Revenue" : "Expense";
+  const { data: created, error: createErr } = await supabase.from("acct_accounts").insert([{
+  company_id: cid, code: bareCode, name: acctName, type: acctType, is_active: true, old_text_id: cid + "-" + bareCode
+  }]).select("id").maybeSingle();
+  if (createErr) pmError("PM-4006", { raw: createErr, context: "resolveAccountId auto-create for " + bareCode, silent: true });
+  const resolvedId = created?.id || null;
+  if (resolvedId) _acctIdCache[cid][bareCode] = resolvedId;
+  return resolvedId;
+}
+
+// ============ TENANT AR SUB-ACCOUNT ============
+// Creates or retrieves a per-tenant AR sub-account (e.g., "1100-001 AR - Alice Johnson")
+// linked to the parent 1100 Accounts Receivable account.
+export const _tenantArCache = {};
+export async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
+  try {
+  if (!companyId || !tenantName) return await resolveAccountId("1100", companyId);
+  const cacheKey = `${companyId}::${tenantName}`;
+  if (_tenantArCache[cacheKey]) return _tenantArCache[cacheKey];
+  // Check if tenant AR sub-account already exists
+  const { data: existing } = await supabase.from("acct_accounts").select("id, code").eq("company_id", companyId).eq("type", "Asset").eq("name", "AR - " + tenantName).maybeSingle();
+  if (existing?.id) {
+  _tenantArCache[cacheKey] = existing.id;
+  return existing.id;
+  }
+  // Get parent AR account UUID
+  const parentArId = await resolveAccountId("1100", companyId);
+  // Generate next sub-account code: 1100-001, 1100-002, etc.
+  const { data: subAccts } = await supabase.from("acct_accounts").select("code").eq("company_id", companyId).like("code", "1100-%").order("code", { ascending: false }).limit(1);
+  const lastSeq = subAccts?.[0]?.code ? parseInt(subAccts[0].code.split("-")[1]) || 0 : 0;
+  const newCode = "1100-" + String(lastSeq + 1).padStart(3, "0");
+  // Insert with old_text_id (required NOT NULL column)
+  const oldTextId = companyId + "-" + newCode;
+  let newAcct = null;
+  let createErr = null;
+  // Attempt 1: full payload
+  ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([{
+  company_id: companyId, code: newCode, name: "AR - " + tenantName,
+  type: "Asset", is_active: true, old_text_id: oldTextId,
+  parent_id: parentArId || null, tenant_id: tenantId || null,
+  }]).select("id").maybeSingle());
+  // Attempt 2: without optional columns
+  if (createErr) {
+  ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([{
+  company_id: companyId, code: newCode, name: "AR - " + tenantName,
+  type: "Asset", is_active: true, old_text_id: oldTextId,
+  }]).select("id").maybeSingle());
+  }
+  if (createErr || !newAcct?.id) {
+  pmError("PM-4006", { raw: createErr, context: "AR sub-account creation after 3 attempts", silent: true });
+  _tenantArCache[cacheKey] = parentArId;
+  return parentArId;
+  }
+  _tenantArCache[cacheKey] = newAcct.id;
+  return newAcct.id;
+  } catch (e) {
+  pmError("PM-4006", { raw: e, context: "get or create tenant AR sub-account", silent: true });
+  return await resolveAccountId("1100", companyId);
+  }
+}
+
+// INTENTIONAL NO-OP: Rent is handled exclusively by autoPostRecurringEntries via recurring_journal_entries table.
+// This stub exists for backward compatibility — called in handleSelectCompany and wizard completion.
+export async function autoPostRentCharges() { return { posted: 0, failed: 0 }; }
+
+// ============ AUTO-POST RECURRING JOURNAL ENTRIES ============
+// Posts recurring JEs for each missed period (catches up if app was down).
+// Respects frequency: monthly, quarterly, semi-annual.
+export async function autoPostRecurringEntries(companyId) {
+  try {
+  if (!companyId) return { posted: 0 };
+  const cid = companyId;
+  const today = new Date();
+  const todayStr = formatLocalDate(today);
+  const thisMonth = todayStr.slice(0, 7);
+  const { data: entries } = await supabase.from("recurring_journal_entries").select("*").eq("company_id", cid).eq("status", "active").is("archived_at", null);
+  if (!entries || entries.length === 0) return { posted: 0 };
+  let posted = 0;
+  const MAX = 50;
+  for (const entry of entries) {
+  if (posted >= MAX) break;
+  // Determine frequency interval in months
+  const freqMonths = entry.frequency === "quarterly" ? 3 : entry.frequency === "semi-annual" ? 6 : 1;
+  // Calculate which months need posting (catch up missed periods)
+  const lastPosted = entry.last_posted_date ? parseLocalDate(entry.last_posted_date) : null;
+  let cursor = lastPosted ? new Date(lastPosted.getFullYear(), lastPosted.getMonth() + freqMonths, 1) : new Date(today.getFullYear(), today.getMonth(), 1);
+  const classId = entry.property ? await getPropertyClassId(entry.property, cid) : null;
+  while (cursor <= today && posted < MAX) {
+  const monthStr = formatLocalDate(cursor).slice(0, 7);
+  const postDate = cursor <= today ? formatLocalDate(new Date(Math.min(cursor.getTime(), today.getTime()))) : todayStr;
+  const ref = "RECUR-" + (entry.id || shortId()).toString().slice(0, 8) + "-" + monthStr;
+  // Skip if posting date falls in locked period
+  if (await checkPeriodLock(cid, postDate)) { cursor.setMonth(cursor.getMonth() + freqMonths); continue; }
+  // Skip if this RECUR ref was already posted (idempotent)
+  const { data: existingRecur } = await supabase.from("acct_journal_entries").select("id").eq("company_id", cid).eq("reference", ref).neq("status", "voided").limit(1);
+  if (existingRecur && existingRecur.length > 0) { cursor.setMonth(cursor.getMonth() + freqMonths); continue; }
+
+  // Prorate last month if lease ends mid-month
+  let postAmount = safeNum(entry.amount);
+  let postDesc = entry.description || "Recurring entry";
+  if (entry.tenant_name && entry.property) {
+    const { data: lease } = await supabase.from("leases").select("end_date").eq("company_id", cid).eq("property", entry.property).eq("status", "active").maybeSingle();
+    if (lease?.end_date && lease.end_date.slice(0, 7) === monthStr) {
+      const endDay = parseInt(lease.end_date.split("-")[2], 10) || 0;
+      const yr = parseInt(monthStr.split("-")[0], 10) || 2026, mo = parseInt(monthStr.split("-")[1], 10) || 1;
+      const daysInMonth = new Date(yr, mo, 0).getDate();
+      if (endDay > 0 && endDay < daysInMonth) {
+        postAmount = Math.round(safeNum(entry.amount) * endDay / daysInMonth);
+        postDesc = (entry.description || "Recurring entry") + ` (prorated ${endDay}/${daysInMonth} days — lease ends ${lease.end_date})`;
+      }
+    }
+  }
+
+  const jeId = await autoPostJournalEntry({
+  companyId: cid, date: postDate,
+  description: postDesc,
+  reference: ref,
+  property: entry.property || "",
+  lines: [
+  { account_id: entry.debit_account_id, account_name: entry.debit_account_name || "", debit: postAmount, credit: 0, class_id: classId, memo: postDesc },
+  { account_id: entry.credit_account_id, account_name: entry.credit_account_name || "", debit: 0, credit: postAmount, class_id: classId, memo: postDesc },
+  ]
+  });
+  if (jeId) {
+  await supabase.from("recurring_journal_entries").update({ last_posted_date: postDate, next_post_date: null }).eq("id", entry.id).eq("company_id", cid);
+  // Update tenant balance if this is an AR entry (check account name pattern, not bare code — codes are resolved to UUIDs)
+  if (entry.tenant_id && (entry.debit_account_name || "").toLowerCase().includes("ar")) {
+  await supabase.rpc("update_tenant_balance", { p_tenant_id: entry.tenant_id, p_amount_change: postAmount }).catch(e => pmError("PM-6002", { raw: e, context: "recurring balance update", silent: true }));
+  }
+  posted++;
+  }
+  cursor.setMonth(cursor.getMonth() + freqMonths);
+  }
+  }
+  if (posted > 0) logAudit("create", "accounting", "Auto-posted " + posted + " recurring entries", "", "system", "system", cid);
+  return { posted };
+  } catch (e) { pmError("PM-4008", { raw: e, context: "auto recurring entries", silent: true }); return { posted: 0 }; }
+}
+
+// ZIP → City/State lookup (Zippopotam.us — free, no API key)
+export const _zipCache = {};
+export async function lookupZip(zip) {
+  if (!/^\d{5}$/.test(zip)) return null;
+  if (_zipCache[zip]) return _zipCache[zip];
+  try {
+  const r = await fetch("https://api.zippopotam.us/us/" + zip);
+  if (!r.ok) return null;
+  const data = await r.json();
+  const place = data.places?.[0];
+  if (!place) return null;
+  const result = { city: place["place name"], state: place["state abbreviation"] };
+  _zipCache[zip] = result;
+  return result;
+  } catch (_e) { pmError("PM-8006", { raw: _e, context: "ZIP code lookup", silent: true }); return null; }
+}

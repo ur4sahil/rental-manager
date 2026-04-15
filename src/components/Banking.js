@@ -1,0 +1,2181 @@
+import React, { useState, useEffect, useRef } from "react";
+import { supabase } from "../supabase";
+import { Input, Btn, AccountPicker } from "../ui";
+import { safeNum, formatLocalDate, shortId } from "../utils/helpers";
+import { pmError } from "../utils/errors";
+import { guardSubmit, guardRelease } from "../utils/guards";
+import { logAudit } from "../utils/audit";
+import { checkPeriodLock } from "../utils/accounting";
+import { Spinner } from "./shared";
+
+// --- Account type constants (kept local for backward compat) ---
+const ACCOUNT_TYPES = ["Asset","Liability","Equity","Revenue","Cost of Goods Sold","Expense","Other Income","Other Expense"];
+
+const nextAccountCode = (accounts, type) => {
+  const ranges = { Asset:{s:1000,e:1999}, Liability:{s:2000,e:2999}, Equity:{s:3000,e:3999}, Revenue:{s:4000,e:4999}, "Cost of Goods Sold":{s:5000,e:5099}, Expense:{s:5000,e:6999}, "Other Income":{s:7000,e:7999}, "Other Expense":{s:8000,e:8999} };
+  const r = ranges[type] || {s:9000,e:9999};
+  const existing = accounts.map(a => parseInt(a.code || "0")).filter(n => !isNaN(n) && n >= r.s && n <= r.e);
+  return String((existing.length > 0 ? Math.max(...existing) : r.s - 10) + 10);
+};
+
+// --- CSV Parsing Helpers ---
+function csvParseText(csvText) {
+  const lines = csvText.trim().split(/\r?\n/);
+  if (lines.length < 2) return { headers: [], rows: [] };
+  const parseRow = (line) => { const result=[]; let cur="",inQ=false; for(let i=0;i<line.length;i++){const ch=line[i]; if(ch==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}else if(ch===","&&!inQ){result.push(cur.trim());cur="";}else cur+=ch;} result.push(cur.trim()); return result; };
+  let hIdx=0; for(let i=0;i<Math.min(5,lines.length);i++){if(lines[i].includes(",")){hIdx=i;break;}}
+  const headers = parseRow(lines[hIdx]).map(h=>h.replace(/^"|"$/g,"").trim());
+  const rows=[]; for(let i=hIdx+1;i<lines.length;i++){const line=lines[i].trim();if(!line||line.startsWith("#"))continue;const vals=parseRow(line);if(vals.length<2)continue;const obj={};headers.forEach((h,idx)=>{obj[h]=(vals[idx]||"").replace(/^"|"$/g,"").trim();});rows.push(obj);}
+  return {headers,rows};
+}
+
+const KNOWN_BANK_FORMATS = [
+  { name: "Chase", headers: ["Details","Posting Date","Description","Amount","Type","Balance","Check or Slip #"], mapping: { date:"Posting Date", description:"Description", amount:"Amount", memo:"Details", check_number:"Check or Slip #" } },
+  { name: "Bank of America", headers: ["Date","Description","Amount","Running Bal."], mapping: { date:"Date", description:"Description", amount:"Amount" } },
+  { name: "Wells Fargo", headers: ["Date","Amount","*","Description"], mapping: { date:"Date", description:"Description", amount:"Amount" } },
+  { name: "Citibank", headers: ["Status","Date","Description","Debit","Credit"], mapping: { date:"Date", description:"Description", debit:"Debit", credit:"Credit" } },
+  { name: "Capital One", headers: ["Transaction Date","Posted Date","Card No.","Description","Category","Debit","Credit"], mapping: { date:"Transaction Date", description:"Description", debit:"Debit", credit:"Credit" } },
+  { name: "US Bank", headers: ["Date","Transaction","Name","Memo","Amount"], mapping: { date:"Date", description:"Name", amount:"Amount", memo:"Memo" } },
+];
+
+function csvDetectFormat(headers) {
+  const norm = headers.map(h=>h.toLowerCase().trim());
+  for(const fmt of KNOWN_BANK_FORMATS){const fh=fmt.headers.map(h=>h.toLowerCase().trim());if(fh.filter(h=>h&&norm.includes(h)).length>=2)return fmt;}
+  return null;
+}
+
+function csvParseAmount(rawAmt,rawDebit,rawCredit) {
+  const clean=(s)=>{if(!s)return 0;s=String(s).trim().replace(/[$,\s]/g,"");const neg=s.startsWith("(")||s.startsWith("-");s=s.replace(/[()]/g,"").replace(/^-/,"");const v=parseFloat(s)||0;return neg?-v:v;};
+  if(rawDebit!==undefined||rawCredit!==undefined){const d=clean(rawDebit),c=clean(rawCredit);if(c>0)return c;if(d>0)return -d;return 0;}
+  return clean(rawAmt);
+}
+
+function csvParseDate(raw) {
+  if(!raw)return "";raw=String(raw).trim();
+  if(/^\d{4}-\d{2}-\d{2}/.test(raw))return raw.substring(0,10);
+  const mdy=raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);if(mdy)return `${mdy[3]}-${mdy[1].padStart(2,"0")}-${mdy[2].padStart(2,"0")}`;
+  const mdy2=raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/);if(mdy2){const yr=parseInt(mdy2[3])>50?"19"+mdy2[3]:"20"+mdy2[3];return `${yr}-${mdy2[1].padStart(2,"0")}-${mdy2[2].padStart(2,"0")}`;}
+  try{const d=new Date(raw);if(!isNaN(d))return d.toISOString().slice(0,10);}catch(_e){pmError("PM-8006",{raw:_e,context:"date parsing fallback",silent:true});}
+  return raw;
+}
+
+function csvBuildFingerprint(feedId, date, amount, description) {
+  const norm = (description || "").toLowerCase().replace(/\s+/g, " ").trim().slice(0, 100);
+  return `${feedId}|${date}|${Math.round(amount * 100)}|${norm}`;
+}
+
+// --- Main Component ---
+export function BankTransactions({ accounts, journalEntries, classes, tenants = [], vendors = [], companyId, showToast, showConfirm, userProfile, onRefreshAccounting }) {
+  // State
+  const [feeds, setFeeds] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [rules, setRules] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("for_review");
+  const [selectedFeed, setSelectedFeed] = useState("all");
+  const [feedMenuOpen, setFeedMenuOpen] = useState(null);
+  const [feedMenuPos, setFeedMenuPos] = useState({ top: 0, left: 0 });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [directionFilter, setDirectionFilter] = useState("all");
+  const [txnPage, setTxnPage] = useState(0);
+  const TXN_PAGE_SIZE = 50;
+  const [selectedTxns, setSelectedTxns] = useState(new Set());
+  const [expandedTxn, setExpandedTxn] = useState(null);
+  const [showImportWizard, setShowImportWizard] = useState(false);
+  const [editingRule, setEditingRule] = useState(null);
+  const [plaidConnecting, setPlaidConnecting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [connections, setConnections] = useState([]);
+  const EMPTY_CONDITION = { field: "description", operator: "contains", value: "", value2: "" };
+  const EMPTY_LINE = { accountId: "", accountName: "", classId: "", percentage: null, amount: null };
+  const [ruleForm, setRuleForm] = useState({
+    name: "", conditions: [{ ...EMPTY_CONDITION }], condLogic: "all", condDirection: "all", bankAccountFeedId: "",
+    ruleType: "assign", transactionType: "expense", actionPayee: "", actionMemo: "", excludeReason: "personal",
+    split: false, splitBy: null, lines: [{ ...EMPTY_LINE }], autoAccept: false, priority: 100
+  });
+  const [showRuleDrawer, setShowRuleDrawer] = useState(false);
+  const [showNewAccount, setShowNewAccount] = useState(false);
+  const [newAccountForm, setNewAccountForm] = useState({ name: "", type: "checking", masked_number: "", institution_name: "" });
+  const [showNewBankAcct, setShowNewBankAcct] = useState(false);
+  const [newBankAcctForm, setNewBankAcctForm] = useState({ code: "", name: "", type: "Expense" });
+  // Post-connection setup modal
+  const [postConnectModal, setPostConnectModal] = useState(null); // { accounts, connectionId, institutionName }
+  const [postConnectMappings, setPostConnectMappings] = useState({}); // { feedId: glAccountId }
+  const [postConnectSelected, setPostConnectSelected] = useState(new Set()); // which accounts user wants to connect
+  const [postConnectRange, setPostConnectRange] = useState({ from: "", to: formatLocalDate(new Date()) });
+  const [postConnectSyncing, setPostConnectSyncing] = useState(false);
+  const [postConnectNewAcct, setPostConnectNewAcct] = useState(null); // feedId being created for
+
+  async function createInlineBankAcct() {
+    if (!newBankAcctForm.name.trim()) { showToast("Account name is required.", "error"); return; }
+    const code = newBankAcctForm.code.trim() || nextAccountCode(accounts, newBankAcctForm.type);
+    const { data: newAcct, error } = await supabase.from("acct_accounts").insert([{
+      company_id: companyId, code, name: newBankAcctForm.name.trim(), type: newBankAcctForm.type,
+      is_active: true, old_text_id: companyId + "-" + code
+    }]).select("id, name").maybeSingle();
+    if (error) { pmError("PM-4006", { raw: error, context: "create inline account from bank" }); return; }
+    if (newAcct) setAddForm(f => ({ ...f, accountId: newAcct.id, accountName: newAcct.name }));
+    showToast(`Account "${newBankAcctForm.name}" created.`, "success");
+    setShowNewBankAcct(false);
+    // Refresh accounts without resetting scroll — save and restore expanded txn
+    const savedExpanded = expandedTxn;
+    if (onRefreshAccounting) await onRefreshAccounting();
+    // Restore expanded state and scroll back to the transaction row
+    if (savedExpanded) {
+      setExpandedTxn(savedExpanded);
+      requestAnimationFrame(() => {
+        const row = document.querySelector(`[data-txn-id="${savedExpanded}"]`);
+        if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
+    }
+  }
+
+  // Import wizard state
+  const [wizStep, setWizStep] = useState(1);
+  const [wizFile, setWizFile] = useState(null);
+  const [wizFeedId, setWizFeedId] = useState("");
+  const [wizParsed, setWizParsed] = useState(null);
+  const [wizMapping, setWizMapping] = useState({ date:"",description:"",amount:"",debit:"",credit:"",memo:"",check_number:"",reference:"",payee:"" });
+  const [wizPreview, setWizPreview] = useState([]);
+  const [wizOptions, setWizOptions] = useState({ skipDuplicates: true, autoApplyRules: true, markForReview: true });
+  const [wizResult, setWizResult] = useState(null);
+  const [wizDetected, setWizDetected] = useState(null);
+  const [wizInvertSign, setWizInvertSign] = useState(false);
+  const fileRef = useRef();
+
+  // Action panel state
+  const [actionMode, setActionMode] = useState("add"); // add | match | transfer | split
+  const [addForm, setAddForm] = useState({ accountId: "", accountName: "", memo: "", classId: "", entityType: "", entityId: "", entityName: "" });
+  const [transferForm, setTransferForm] = useState({ accountId: "", accountName: "", memo: "" });
+  const [splitLines, setSplitLines] = useState([{ accountId: "", accountName: "", amount: "", memo: "", classId: "" }, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }]);
+  const [matchCandidates, setMatchCandidates] = useState([]);
+  const [matchLoading, setMatchLoading] = useState(false);
+
+  // Fetch on mount
+  useEffect(() => { fetchAll(); }, [companyId]);
+
+  async function fetchAll() {
+    setLoading(true);
+    const [feedsRes, txnRes, rulesRes, connRes] = await Promise.all([
+      supabase.from("bank_account_feed").select("*").eq("company_id", companyId).eq("status", "active").order("created_at"),
+      supabase.from("bank_feed_transaction").select("*").eq("company_id", companyId).order("posted_date", { ascending: false }).limit(500),
+      supabase.from("bank_transaction_rule").select("*").eq("company_id", companyId).order("priority"),
+      supabase.from("bank_connection").select("*").eq("company_id", companyId).order("created_at"),
+    ]);
+    setFeeds(feedsRes.data || []);
+    setTransactions(txnRes.data || []);
+    const fetchedRules = rulesRes.data || [];
+    // Auto-migrate V1 rules to V2 format on first load
+    if (fetchedRules.some(r => r.condition_json && !r.condition_json.conditions)) {
+      await migrateRulesToV2(fetchedRules);
+      const { data: refreshed } = await supabase.from("bank_transaction_rule").select("*").eq("company_id", companyId).order("priority");
+      setRules(refreshed || []);
+    } else {
+      setRules(fetchedRules);
+    }
+    setConnections(connRes.data || []);
+    setLoading(false);
+  }
+
+  // --- Create New Bank Account Feed ---
+  const [creatingFeed, setCreatingFeed] = useState(false);
+  async function createFeed() {
+    if (!newAccountForm.name.trim()) { showToast("Account name is required.", "error"); return; }
+    if (creatingFeed) return;
+    // Check for duplicate
+    const { data: existing } = await supabase.from("bank_account_feed").select("id").eq("company_id", companyId).ilike("account_name", newAccountForm.name.trim());
+    if (existing?.length > 0) { showToast("A bank account with this name already exists.", "error"); return; }
+    setCreatingFeed(true);
+    try {
+    // Create GL account in acct_accounts
+    const code = newAccountForm.type === "credit_card" ? "2050" : newAccountForm.type === "savings" ? "1050" : "1000";
+    const nextCode = code + "-" + shortId().slice(0, 3);
+    const { data: glAcct, error: glErr } = await supabase.from("acct_accounts").insert([{
+      company_id: companyId, code: nextCode, name: newAccountForm.name.trim(),
+      type: newAccountForm.type === "credit_card" ? "Liability" : "Asset",
+      subtype: newAccountForm.type === "credit_card" ? "Credit Card" : "Bank",
+      is_active: true, old_text_id: companyId + "-" + nextCode
+    }]).select("id").maybeSingle();
+    if (glErr) { pmError("PM-5001", { raw: glErr, context: "creating GL account for bank feed" }); return; }
+    // Create bank_account_feed
+    const { data: newFeed, error: feedErr } = await supabase.from("bank_account_feed").insert([{
+      company_id: companyId, gl_account_id: glAcct?.id, account_name: newAccountForm.name.trim(),
+      masked_number: newAccountForm.masked_number, account_type: newAccountForm.type,
+      institution_name: newAccountForm.institution_name, connection_type: "csv"
+    }]).select("id").maybeSingle();
+    if (feedErr) { pmError("PM-5002", { raw: feedErr, context: "creating bank account feed" }); return; }
+    showToast("Bank account created.", "success");
+    setShowNewAccount(false);
+    setNewAccountForm({ name: "", type: "checking", masked_number: "", institution_name: "" });
+    if (newFeed?.id) setWizFeedId(newFeed.id);
+    fetchAll();
+    if (onRefreshAccounting) onRefreshAccounting(); // Refresh parent's acctAccounts so BS/GL see the new bank account
+    } finally { setCreatingFeed(false); }
+  }
+
+  // --- Teller Connect ---
+  async function connectBank() {
+    setPlaidConnecting(true);
+    try {
+      const tellerAppId = window.__TELLER_APP_ID || process.env.REACT_APP_TELLER_APP_ID || "";
+      if (!tellerAppId) { showToast("Teller Application ID not configured. Set REACT_APP_TELLER_APP_ID.", "error"); return; }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) { showToast("Not authenticated.", "error"); return; }
+      // Load Teller Connect SDK
+      if (!window.TellerConnect) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdn.teller.io/connect/connect.js";
+          script.onload = resolve; script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+      const tellerConnect = window.TellerConnect.setup({
+        applicationId: tellerAppId,
+        environment: "development",
+        onSuccess: async (enrollment) => {
+          showToast("Connecting accounts...", "success");
+          const saveRes = await fetch("/api/teller-save-enrollment", {
+            method: "POST",
+            headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              access_token: enrollment.accessToken,
+              enrollment_id: enrollment.enrollment?.id || "",
+              institution: enrollment.enrollment?.institution || {},
+              company_id: companyId
+            })
+          });
+          const saveData = await saveRes.json();
+          if (!saveRes.ok || saveData.error || saveData.message === "Invalid JWT") {
+            pmError("PM-5003", { raw: new Error(saveData.error || saveData.message || `HTTP ${saveRes.status}`), context: "saving Teller enrollment" });
+          } else {
+            // Show post-connection setup modal
+            await fetchAll();
+            const ninetyDaysAgo = new Date(); ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+            setPostConnectRange({ from: formatLocalDate(ninetyDaysAgo), to: formatLocalDate(new Date()) });
+            // Build default mappings + select all accounts by default
+            const mappings = {};
+            const selected = new Set();
+            (saveData.accounts || []).forEach(a => { if (a.id && a.gl_account_id) mappings[a.id] = a.gl_account_id; selected.add(a.id); });
+            setPostConnectMappings(mappings);
+            setPostConnectSelected(selected);
+            setPostConnectNewAcct(null);
+            setPostConnectModal({ accounts: saveData.accounts || [], connectionId: saveData.connection_id, institutionName: enrollment.enrollment?.institution?.name || "Bank" });
+          }
+        },
+        onExit: () => { /* user closed */ },
+      });
+      tellerConnect.open();
+    } catch (e) { pmError("PM-5004", { raw: e, context: "connecting bank via Teller" }); }
+    finally { setPlaidConnecting(false); }
+  }
+
+  async function syncTransactions(opts = {}) {
+    setSyncing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) { showToast("Not authenticated.", "error"); return; }
+      const payload = { company_id: companyId };
+      if (opts.from_date) payload.from_date = opts.from_date;
+      if (opts.to_date) payload.to_date = opts.to_date;
+      const res = await fetch("/api/teller-sync-transactions", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) { showToast("Sync error: " + (data.error || `HTTP ${res.status}`), "error"); }
+      else {
+        showToast(`Synced: ${data.total_added} new transaction${data.total_added !== 1 ? "s" : ""}`, "success");
+        fetchAll();
+      }
+    } catch (e) { showToast("Sync failed: " + e.message, "error"); }
+    finally { setSyncing(false); }
+  }
+
+  async function disconnectFeed(feedId) {
+    const feed = feeds.find(f => f.id === feedId);
+    if (!feed) return;
+    if (!await showConfirm({ message: `Disconnect "${feed.account_name}"? Existing transactions will be kept but no new ones will sync.` })) return;
+    const { error } = await supabase.from("bank_account_feed").update({ status: "inactive" }).eq("id", feedId).eq("company_id", companyId);
+    if (error) { showToast("Error disconnecting feed: " + error.message, "error"); return; }
+    // If no more active feeds for this connection, mark connection as disconnected
+    if (feed.bank_connection_id) {
+      const { data: remaining } = await supabase.from("bank_account_feed").select("id").eq("bank_connection_id", feed.bank_connection_id).eq("status", "active").eq("company_id", companyId);
+      if (!remaining || remaining.length === 0) {
+        await supabase.from("bank_connection").update({ connection_status: "disconnected" }).eq("id", feed.bank_connection_id).eq("company_id", companyId);
+      }
+    }
+    if (selectedFeed === feedId) setSelectedFeed("all");
+    showToast(`"${feed.account_name}" disconnected.`, "success");
+    fetchAll();
+  }
+
+  async function updateFeedMapping(feedId, glAccountId) {
+    const { error } = await supabase.from("bank_account_feed").update({ gl_account_id: glAccountId }).eq("id", feedId).eq("company_id", companyId);
+    if (error) { showToast("Error updating mapping: " + error.message, "error"); return; }
+    showToast("GL mapping updated.", "success");
+    fetchAll();
+  }
+
+  // --- CSV Import Wizard ---
+  function startImport() {
+    setWizStep(1); setWizFile(null); setWizFeedId(feeds[0]?.id || ""); setWizParsed(null);
+    setWizMapping({ date:"",description:"",amount:"",debit:"",credit:"",memo:"",check_number:"",reference:"",payee:"" });
+    setWizPreview([]); setWizResult(null); setWizDetected(null); setWizInvertSign(false);
+    setShowImportWizard(true);
+  }
+
+  function wizHandleUpload() {
+    if (!wizFile) { showToast("Please select a CSV file.", "error"); return; }
+    if (!wizFeedId) { showToast("Please select a bank account first.", "error"); return; }
+    try {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const parsed = csvParseText(e.target.result);
+          if (parsed.headers.length === 0) { showToast("Could not parse CSV — no headers found.", "error"); return; }
+          const detected = csvDetectFormat(parsed.headers);
+          const m = { date:"",description:"",amount:"",debit:"",credit:"",memo:"",check_number:"",reference:"",payee:"" };
+          if (detected) { Object.entries(detected.mapping).forEach(([k,v])=>{m[k]=v;}); }
+          else { parsed.headers.forEach(h=>{const hl=h.toLowerCase();if(!m.date&&hl.includes("date"))m.date=h;if(!m.description&&(hl.includes("desc")||hl.includes("name")||hl==="payee"))m.description=h;if(!m.amount&&(hl==="amount"||hl==="amt"))m.amount=h;if(!m.debit&&hl.includes("debit"))m.debit=h;if(!m.credit&&hl.includes("credit"))m.credit=h;if(!m.memo&&hl.includes("memo"))m.memo=h;if(!m.payee&&hl==="payee")m.payee=h;}); }
+          setWizMapping(m);
+          setWizParsed(parsed);
+          setWizDetected(detected);
+          setWizStep(3); // skip to mapping
+        } catch (parseErr) {
+          pmError("PM-5001", { raw: parseErr, context: "parsing CSV file " + wizFile?.name });
+        }
+      };
+      reader.onerror = () => { pmError("PM-5001", { raw: { message: "FileReader error" }, context: "reading CSV file" }); };
+      reader.readAsText(wizFile);
+    } catch (err) {
+      pmError("PM-5001", { raw: err, context: "CSV upload handler" });
+    }
+  }
+
+  function wizBuildPreview() {
+    if (!wizParsed) return;
+    const rows = wizParsed.rows.map((row, idx) => {
+      const rawAmt = wizMapping.amount ? row[wizMapping.amount] : undefined;
+      const rawDb = wizMapping.debit ? row[wizMapping.debit] : undefined;
+      const rawCr = wizMapping.credit ? row[wizMapping.credit] : undefined;
+      let amount = csvParseAmount(rawAmt, rawDb, rawCr);
+      if (wizInvertSign) amount = -amount;
+      const date = csvParseDate(wizMapping.date ? row[wizMapping.date] : "");
+      const desc = wizMapping.description ? row[wizMapping.description] : "(no description)";
+      const memo = wizMapping.memo ? row[wizMapping.memo] : "";
+      const payee = wizMapping.payee ? row[wizMapping.payee] : "";
+      const checkNum = wizMapping.check_number ? row[wizMapping.check_number] : "";
+      const ref = wizMapping.reference ? row[wizMapping.reference] : "";
+      const fingerprint = csvBuildFingerprint(wizFeedId, date, amount, desc);
+      const valid = !!date && !isNaN(amount) && amount !== 0;
+      return { idx, date, amount, direction: amount >= 0 ? "inflow" : "outflow", description: desc, memo, payee, checkNum, ref, fingerprint, valid, rawRow: row };
+    });
+    setWizPreview(rows);
+    setWizStep(4);
+  }
+
+  async function wizExecuteImport() {
+    if (!wizFeedId || wizPreview.length === 0) return;
+    const validRows = wizPreview.filter(r => r.valid);
+    if (validRows.length === 0) { showToast("No valid rows to import.", "error"); return; }
+
+    // Create batch
+    const { data: batch, error: batchErr } = await supabase.from("bank_import_batch").insert([{
+      company_id: companyId, bank_account_feed_id: wizFeedId, source_type: "csv",
+      original_filename: wizFile?.name || "import.csv", file_hash: shortId(),
+      imported_by: userProfile?.email || "", row_count: validRows.length,
+      mapping_json: wizMapping, status: "imported"
+    }]).select("id").maybeSingle();
+    if (batchErr) { showToast("Error creating import batch: " + batchErr.message, "error"); return; }
+    const batchId = batch?.id;
+
+    // Check existing fingerprints for dedup
+    const { data: existingFps } = await supabase.from("bank_feed_transaction").select("fingerprint_hash")
+      .eq("company_id", companyId).eq("bank_account_feed_id", wizFeedId);
+    const existingSet = new Set((existingFps || []).map(f => f.fingerprint_hash));
+
+    let imported = 0, skipped = 0, duplicates = 0;
+    const batchInserts = [];
+
+    for (const row of validRows) {
+      if (wizOptions.skipDuplicates && existingSet.has(row.fingerprint)) {
+        duplicates++;
+        continue;
+      }
+      batchInserts.push({
+        company_id: companyId, bank_account_feed_id: wizFeedId, bank_import_batch_id: batchId,
+        source_type: "csv", posted_date: row.date, amount: Math.abs(row.amount),
+        direction: row.direction, bank_description_raw: row.description,
+        bank_description_clean: row.description, memo: row.memo || null,
+        check_number: row.checkNum || null, payee_raw: row.payee || null,
+        payee_normalized: row.payee || null, reference_number: row.ref || null,
+        fingerprint_hash: row.fingerprint, status: "for_review",
+        raw_payload_json: row.rawRow
+      });
+    }
+
+    // Insert in batches of 50
+    for (let i = 0; i < batchInserts.length; i += 50) {
+      const chunk = batchInserts.slice(i, i + 50);
+      const { error: insErr } = await supabase.from("bank_feed_transaction").insert(chunk);
+      if (insErr) {
+        // Handle individual duplicate conflicts gracefully
+        for (const item of chunk) {
+          const { error: singleErr } = await supabase.from("bank_feed_transaction").insert([item]);
+          if (singleErr) { if (singleErr.message?.includes("unique")) duplicates++; else skipped++; }
+          else imported++;
+        }
+      } else {
+        imported += chunk.length;
+      }
+    }
+
+    // Update batch stats
+    await supabase.from("bank_import_batch").update({
+      accepted_count: imported, skipped_count: skipped, duplicate_count: duplicates
+    }).eq("id", batchId);
+
+    // Apply rules to newly imported transactions
+    let ruleApplied = 0;
+    if (wizOptions.autoApplyRules && rules.length > 0 && imported > 0) {
+      const { data: newTxns } = await supabase.from("bank_feed_transaction").select("id")
+        .eq("company_id", companyId).eq("bank_import_batch_id", batchId).eq("status", "for_review");
+      if (newTxns && newTxns.length > 0) {
+        ruleApplied = await applyRulesToTransactions(newTxns.map(t => t.id));
+      }
+    }
+
+    setWizResult({ imported, skipped, duplicates, total: validRows.length, ruleApplied });
+    setWizStep(6);
+    fetchAll();
+  }
+
+  // --- Transaction Actions ---
+  async function acceptTransaction(txn, accountId, accountName, memo, classId, entityType, entityId, entityName) {
+    if (!guardSubmit("bankAccept", txn.id)) { showToast("Already processing this transaction.", "warning"); return; }
+    try {
+    if (!accountId) { showToast("Please select a category/account.", "error"); return; }
+    if (await checkPeriodLock(companyId, txn.posted_date)) { showToast("This transaction date falls in a locked accounting period.", "error"); return; }
+    // Verify transaction is still for_review (prevents double-post from concurrent tabs/clicks)
+    const { data: freshTxn } = await supabase.from("bank_feed_transaction").select("status").eq("id", txn.id).eq("company_id", companyId).maybeSingle();
+    if (!freshTxn || freshTxn.status !== "for_review") { showToast("This transaction has already been processed.", "warning"); fetchAll(); return; }
+    const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
+    if (!feed?.gl_account_id) { showToast("Bank account not linked to GL.", "error"); return; }
+    const bankAcct = accounts.find(a => a.id === feed.gl_account_id);
+    const abs = Math.abs(txn.amount);
+    const isInflow = txn.direction === "inflow";
+
+    // Build human-readable description: "Payee — Full Description"
+    const bankDesc = memo || [txn.payee_normalized, txn.bank_description_raw || txn.bank_description_clean].filter(Boolean).join(" — ") || "Bank transaction";
+    const lineMemo = txn.bank_description_raw || txn.bank_description_clean || "";
+
+    // Create JE
+    const lines = isInflow
+      ? [{ account_id: feed.gl_account_id, account_name: bankAcct?.name || "Bank", debit: abs, credit: 0, class_id: classId || null, memo: lineMemo },
+         { account_id: accountId, account_name: accountName, debit: 0, credit: abs, class_id: classId || null, memo: lineMemo }]
+      : [{ account_id: accountId, account_name: accountName, debit: abs, credit: 0, class_id: classId || null, memo: lineMemo },
+         { account_id: feed.gl_account_id, account_name: bankAcct?.name || "Bank", debit: 0, credit: abs, class_id: classId || null, memo: lineMemo }];
+
+    // Get next JE number
+    const { data: maxJE } = await supabase.from("acct_journal_entries").select("number").eq("company_id", companyId).order("number", { ascending: false }).limit(1).maybeSingle();
+    let nextNum = 1;
+    if (maxJE?.number) { const parsed = parseInt(maxJE.number.replace("JE-",""), 10); if (!isNaN(parsed)) nextNum = parsed + 1; }
+    const jeNumber = `JE-${String(nextNum).padStart(4,"0")}`;
+
+    // Resolve property from class if selected
+    const classProperty = classId ? (classes.find(c => c.id === classId)?.name || "") : "";
+
+    const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
+      company_id: companyId, number: jeNumber, date: txn.posted_date,
+      description: bankDesc,
+      reference: "Bank Import", property: classProperty, status: "posted"
+    }]).select("id").maybeSingle();
+
+    if (jeErr || !jeRow) { showToast("Error creating JE: " + (jeErr?.message || "no ID"), "error"); return; }
+
+    // Validate UUIDs — some IDs may be integers from older data
+    const isUUID = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+    const safeUUID = (v) => (v && isUUID(String(v))) ? v : null;
+
+    const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({
+      journal_entry_id: jeRow.id, company_id: companyId,
+      account_id: l.account_id, account_name: l.account_name,
+      debit: safeNum(l.debit), credit: safeNum(l.credit),
+      class_id: safeUUID(l.class_id), memo: l.memo || "",
+      entity_type: entityType || null, entity_id: safeUUID(entityId), entity_name: entityName || null,
+      bank_feed_transaction_id: txn.id
+    })));
+
+    if (linesErr) {
+      // Clean up orphaned JE header
+      await supabase.from("acct_journal_entries").delete().eq("id", jeRow.id).eq("company_id", companyId);
+      pmError("PM-4003", { raw: linesErr, context: "bank transaction JE lines insert" });
+      return;
+    }
+
+    // Create posting decision record
+    const { data: decision, error: decErr } = await supabase.from("bank_posting_decision").insert([{
+      company_id: companyId, bank_feed_transaction_id: txn.id,
+      decision_type: "add", payee: txn.payee_normalized || "", memo: memo || "",
+      header_class_id: classId || null, status: "posted", created_by: userProfile?.email || ""
+    }]).select("id").maybeSingle();
+    if (decErr) { showToast("Error saving posting decision: " + decErr.message, "error"); return; }
+
+    // Create decision line
+    if (decision) {
+      const { error: dlErr } = await supabase.from("bank_posting_decision_line").insert([{
+        company_id: companyId, bank_posting_decision_id: decision.id,
+        gl_account_id: accountId, gl_account_name: accountName,
+        amount: abs, entry_side: isInflow ? "credit" : "debit", memo: memo || ""
+      }]);
+      if (dlErr) { showToast("Error saving decision line: " + dlErr.message, "error"); return; }
+    }
+
+    // Create link
+    const { error: linkErr } = await supabase.from("bank_feed_transaction_link").insert([{
+      company_id: companyId, bank_feed_transaction_id: txn.id,
+      linked_object_type: "journal_entry", linked_object_id: jeRow.id,
+      link_role: "created_from"
+    }]);
+    if (linkErr) { showToast("Error linking transaction: " + linkErr.message, "error"); return; }
+
+    // Update transaction status
+    await supabase.from("bank_feed_transaction").update({
+      status: "categorized", accepted_at: new Date().toISOString(),
+      accepted_by: userProfile?.email || "", journal_entry_id: jeRow.id,
+      posting_decision_id: decision?.id
+    }).eq("id", txn.id).eq("company_id", companyId);
+
+    // Audit
+    logAudit("create", "banking", `Accepted bank txn: ${txn.bank_description_clean} → ${accountName}`, txn.id, userProfile?.email, "", companyId);
+    trackCategorizationPattern(txn, accountId, accountName, classId);
+
+    showToast("Transaction categorized and posted.", "success");
+    setExpandedTxn(null);
+    setAddForm({ accountId: "", accountName: "", memo: "", classId: "", entityType: "", entityId: "", entityName: "" });
+    fetchAll();
+    if (onRefreshAccounting) onRefreshAccounting();
+    } finally { guardRelease("bankAccept", txn.id); }
+  }
+
+  async function excludeTransaction(txn, reason) {
+    if (!guardSubmit("bankExclude", txn.id)) return;
+    try {
+    if (!reason) { showToast("Please select a reason.", "error"); return; }
+    await supabase.from("bank_feed_transaction").update({
+      status: "excluded", exclusion_reason: reason,
+      excluded_at: new Date().toISOString(), excluded_by: userProfile?.email || ""
+    }).eq("id", txn.id).eq("company_id", companyId);
+
+    const { error: decErr } = await supabase.from("bank_posting_decision").insert([{
+      company_id: companyId, bank_feed_transaction_id: txn.id,
+      decision_type: "exclude", memo: reason, status: "posted",
+      created_by: userProfile?.email || ""
+    }]);
+    if (decErr) { showToast("Error saving exclusion decision: " + decErr.message, "error"); return; }
+
+    logAudit("update", "banking", `Excluded bank txn: ${txn.bank_description_clean} (${reason})`, txn.id, userProfile?.email, "", companyId);
+    showToast("Transaction excluded.", "success");
+    fetchAll();
+    } finally { guardRelease("bankExclude", txn.id); }
+  }
+
+  // --- Match: find existing JEs that could be this bank transaction ---
+  async function findMatches(txn) {
+    setMatchLoading(true);
+    setMatchCandidates([]);
+    const abs = Math.abs(txn.amount);
+    const dateTolerance = 10; // days
+    // Find JEs within date tolerance that have a line matching this amount on the bank account
+    const { data: candidates } = await supabase.from("acct_journal_entries").select("*, lines:acct_journal_lines(*)")
+      .eq("company_id", companyId).eq("status", "posted")
+      .gte("date", (() => { const d = new Date(txn.posted_date); d.setDate(d.getDate() - dateTolerance); return d.toISOString().slice(0, 10); })())
+      .lte("date", (() => { const d = new Date(txn.posted_date); d.setDate(d.getDate() + dateTolerance); return d.toISOString().slice(0, 10); })())
+      .order("date", { ascending: false }).limit(50);
+    // Check which JEs are already linked to a bank feed transaction
+    const { data: existingLinks } = await supabase.from("bank_feed_transaction_link").select("linked_object_id")
+      .eq("company_id", companyId).eq("linked_object_type", "journal_entry");
+    const linkedJEIds = new Set((existingLinks || []).map(l => l.linked_object_id));
+    // Score candidates
+    const scored = (candidates || []).filter(je => !linkedJEIds.has(je.id)).map(je => {
+      const jeTotal = (je.lines || []).reduce((s, l) => s + safeNum(l.debit), 0);
+      const amountDiff = Math.abs(jeTotal - abs);
+      const dateDiff = Math.abs(Math.round((new Date(je.date) - new Date(txn.posted_date)) / 86400000));
+      let score = 0;
+      if (amountDiff < 0.01) score += 50; // exact amount
+      else if (amountDiff < 1) score += 30;
+      if (dateDiff === 0) score += 30; // same day
+      else if (dateDiff <= 3) score += 20;
+      else if (dateDiff <= 7) score += 10;
+      // Description similarity
+      const jeDesc = (je.description || "").toLowerCase();
+      const txnDesc = (txn.bank_description_clean || "").toLowerCase();
+      if (jeDesc && txnDesc) {
+        const words = txnDesc.split(/\s+/).filter(w => w.length > 3);
+        const matchedWords = words.filter(w => jeDesc.includes(w));
+        if (matchedWords.length > 0) score += Math.min(20, matchedWords.length * 5);
+      }
+      return { ...je, _score: score, _amountDiff: amountDiff, _dateDiff: dateDiff, _jeTotal: jeTotal };
+    }).filter(c => c._score >= 20).sort((a, b) => b._score - a._score).slice(0, 10);
+    setMatchCandidates(scored);
+    setMatchLoading(false);
+  }
+
+  async function confirmMatch(txn, targetJE) {
+    if (!guardSubmit("bankMatch", txn.id)) return;
+    try {
+    // Link bank transaction to existing JE without creating a new one
+    const { error: linkErr } = await supabase.from("bank_feed_transaction_link").insert([{
+      company_id: companyId, bank_feed_transaction_id: txn.id,
+      linked_object_type: "journal_entry", linked_object_id: targetJE.id,
+      link_role: "matched_to"
+    }]);
+    if (linkErr) { showToast("Error linking transaction: " + linkErr.message, "error"); return; }
+    const { error: decErr } = await supabase.from("bank_posting_decision").insert([{
+      company_id: companyId, bank_feed_transaction_id: txn.id,
+      decision_type: "match", memo: `Matched to ${targetJE.number}`,
+      status: "posted", created_by: userProfile?.email || ""
+    }]);
+    if (decErr) { showToast("Error saving match decision: " + decErr.message, "error"); return; }
+    await supabase.from("bank_feed_transaction").update({
+      status: "matched", accepted_at: new Date().toISOString(),
+      accepted_by: userProfile?.email || "", journal_entry_id: targetJE.id,
+      matched_target_type: "journal_entry", matched_target_id: targetJE.id
+    }).eq("id", txn.id).eq("company_id", companyId);
+    logAudit("update", "banking", `Matched bank txn to ${targetJE.number}: ${txn.bank_description_clean}`, txn.id, userProfile?.email, "", companyId);
+    showToast(`Matched to ${targetJE.number}.`, "success");
+    setExpandedTxn(null); setMatchCandidates([]);
+    fetchAll();
+    if (onRefreshAccounting) onRefreshAccounting();
+    } finally { guardRelease("bankMatch", txn.id); }
+  }
+
+  // --- Transfer: between balance sheet accounts ---
+  async function acceptTransfer(txn, toAccountId, toAccountName, memo) {
+    if (!guardSubmit("bankTransfer", txn.id)) return;
+    try {
+    if (!toAccountId) { showToast("Please select a transfer account.", "error"); return; }
+    if (await checkPeriodLock(companyId, txn.posted_date)) { showToast("This transaction date falls in a locked accounting period.", "error"); return; }
+    const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
+    if (!feed?.gl_account_id) { showToast("Bank account not linked to GL.", "error"); return; }
+    if (toAccountId === feed.gl_account_id) { showToast("Cannot transfer to the same account.", "error"); return; }
+    const bankAcct = accounts.find(a => a.id === feed.gl_account_id);
+    const abs = Math.abs(txn.amount);
+    const isInflow = txn.direction === "inflow";
+    // Transfer: debit one BS account, credit the other (no P&L)
+    const lines = isInflow
+      ? [{ account_id: feed.gl_account_id, account_name: bankAcct?.name || "Bank", debit: abs, credit: 0, class_id: null, memo: memo || "Transfer" },
+         { account_id: toAccountId, account_name: toAccountName, debit: 0, credit: abs, class_id: null, memo: memo || "Transfer" }]
+      : [{ account_id: toAccountId, account_name: toAccountName, debit: abs, credit: 0, class_id: null, memo: memo || "Transfer" },
+         { account_id: feed.gl_account_id, account_name: bankAcct?.name || "Bank", debit: 0, credit: abs, class_id: null, memo: memo || "Transfer" }];
+
+    const { data: maxJE } = await supabase.from("acct_journal_entries").select("number").eq("company_id", companyId).order("number", { ascending: false }).limit(1).maybeSingle();
+    let nextNum = 1; if (maxJE?.number) { const p = parseInt(maxJE.number.replace("JE-",""), 10); if (!isNaN(p)) nextNum = p + 1; }
+
+    const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
+      company_id: companyId, number: `JE-${String(nextNum).padStart(4,"0")}`, date: txn.posted_date,
+      description: memo || `Transfer — ${txn.bank_description_clean}`,
+      reference: `XFER-${txn.id}`, property: "", status: "posted" // transfers don't have a class/property
+    }]).select("id").maybeSingle();
+    if (jeErr || !jeRow) { showToast("Error creating JE: " + (jeErr?.message || ""), "error"); return; }
+
+    const { error: xlErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({
+      journal_entry_id: jeRow.id, company_id: companyId,
+      account_id: l.account_id, account_name: l.account_name,
+      debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: null, memo: l.memo || "",
+      bank_feed_transaction_id: txn.id
+    })));
+    if (xlErr) { showToast("Error saving transfer JE lines: " + xlErr.message, "error"); return; }
+
+    const { error: xdErr } = await supabase.from("bank_posting_decision").insert([{
+      company_id: companyId, bank_feed_transaction_id: txn.id,
+      decision_type: "transfer", memo: memo || "", transfer_gl_account_id: toAccountId,
+      status: "posted", created_by: userProfile?.email || ""
+    }]);
+    if (xdErr) { showToast("Error saving transfer decision: " + xdErr.message, "error"); return; }
+    const { error: xkErr } = await supabase.from("bank_feed_transaction_link").insert([{
+      company_id: companyId, bank_feed_transaction_id: txn.id,
+      linked_object_type: "journal_entry", linked_object_id: jeRow.id, link_role: "created_from"
+    }]);
+    if (xkErr) { showToast("Error linking transfer: " + xkErr.message, "error"); return; }
+    await supabase.from("bank_feed_transaction").update({
+      status: "categorized", accepted_at: new Date().toISOString(),
+      accepted_by: userProfile?.email || "", journal_entry_id: jeRow.id
+    }).eq("id", txn.id).eq("company_id", companyId);
+    logAudit("create", "banking", `Transfer: ${txn.bank_description_clean} → ${toAccountName}`, txn.id, userProfile?.email, "", companyId);
+    showToast("Transfer posted.", "success");
+    setExpandedTxn(null); setTransferForm({ accountId: "", accountName: "", memo: "" });
+    fetchAll();
+    if (onRefreshAccounting) onRefreshAccounting();
+    } finally { guardRelease("bankTransfer", txn.id); }
+  }
+
+  // --- Split: one bank txn → multiple GL lines ---
+  async function acceptSplit(txn, lines) {
+    if (!guardSubmit("bankSplit", txn.id)) return;
+    try {
+    if (await checkPeriodLock(companyId, txn.posted_date)) { showToast("This transaction date falls in a locked accounting period.", "error"); return; }
+    const feed = feeds.find(f => f.id === txn.bank_account_feed_id);
+    if (!feed?.gl_account_id) { showToast("Bank account not linked to GL.", "error"); return; }
+    const validLines = lines.filter(l => l.accountId && safeNum(l.amount) > 0);
+    if (validLines.length < 2) { showToast("Split requires at least 2 lines.", "error"); return; }
+    const total = validLines.reduce((s, l) => s + safeNum(l.amount), 0);
+    const abs = Math.abs(txn.amount);
+    const splitTolerance = validLines.length > 2 ? 0.10 : 0.02;
+    if (Math.abs(total - abs) > splitTolerance) { showToast(`Split total ($${total.toFixed(2)}) must equal transaction amount ($${abs.toFixed(2)}).`, "error"); return; }
+
+    const bankAcct = accounts.find(a => a.id === feed.gl_account_id);
+    const isInflow = txn.direction === "inflow";
+
+    const { data: maxJE } = await supabase.from("acct_journal_entries").select("number").eq("company_id", companyId).order("number", { ascending: false }).limit(1).maybeSingle();
+    let nextNum = 1; if (maxJE?.number) { const p = parseInt(maxJE.number.replace("JE-",""), 10); if (!isNaN(p)) nextNum = p + 1; }
+
+    // Resolve property from first split line's class if available
+    const splitClassId = lines.find(l => l.classId)?.classId;
+    const splitProperty = splitClassId ? (classes.find(c => c.id === splitClassId)?.name || "") : "";
+
+    const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
+      company_id: companyId, number: `JE-${String(nextNum).padStart(4,"0")}`, date: txn.posted_date,
+      description: `Split — ${txn.bank_description_clean}`,
+      reference: `SPLIT-${txn.id}`, property: splitProperty, status: "posted"
+    }]).select("id").maybeSingle();
+    if (jeErr || !jeRow) { pmError("PM-4002", { raw: jeErr, context: "create journal entry" }); return; }
+
+    // Build JE lines: bank side + each split line
+    const jeLines = [];
+    // Bank side (single line for full amount)
+    jeLines.push({
+      journal_entry_id: jeRow.id, company_id: companyId,
+      account_id: feed.gl_account_id, account_name: bankAcct?.name || "Bank",
+      debit: isInflow ? abs : 0, credit: isInflow ? 0 : abs,
+      class_id: null, memo: "Split transaction", bank_feed_transaction_id: txn.id
+    });
+    // Category lines
+    for (const l of validLines) {
+      jeLines.push({
+        journal_entry_id: jeRow.id, company_id: companyId,
+        account_id: l.accountId, account_name: l.accountName,
+        debit: isInflow ? 0 : safeNum(l.amount), credit: isInflow ? safeNum(l.amount) : 0,
+        class_id: l.classId || null, memo: l.memo || "", bank_feed_transaction_id: txn.id
+      });
+    }
+    const { error: slErr } = await supabase.from("acct_journal_lines").insert(jeLines);
+    if (slErr) { showToast("Error saving split JE lines: " + slErr.message, "error"); return; }
+
+    // Decision + lines
+    const { data: decision, error: sdErr } = await supabase.from("bank_posting_decision").insert([{
+      company_id: companyId, bank_feed_transaction_id: txn.id,
+      decision_type: "split", memo: `Split into ${validLines.length} lines`,
+      status: "posted", created_by: userProfile?.email || ""
+    }]).select("id").maybeSingle();
+    if (sdErr) { showToast("Error saving split decision: " + sdErr.message, "error"); return; }
+    if (decision) {
+      const { error: sdlErr } = await supabase.from("bank_posting_decision_line").insert(validLines.map((l, i) => ({
+        company_id: companyId, bank_posting_decision_id: decision.id,
+        line_no: i + 1, gl_account_id: l.accountId, gl_account_name: l.accountName,
+        amount: safeNum(l.amount), entry_side: isInflow ? "credit" : "debit",
+        memo: l.memo || "", class_id: l.classId || null
+      })));
+      if (sdlErr) { showToast("Error saving split lines: " + sdlErr.message, "error"); return; }
+    }
+
+    const { error: skErr } = await supabase.from("bank_feed_transaction_link").insert([{
+      company_id: companyId, bank_feed_transaction_id: txn.id,
+      linked_object_type: "journal_entry", linked_object_id: jeRow.id, link_role: "created_from"
+    }]);
+    if (skErr) { showToast("Error linking split: " + skErr.message, "error"); return; }
+    await supabase.from("bank_feed_transaction").update({
+      status: "categorized", accepted_at: new Date().toISOString(),
+      accepted_by: userProfile?.email || "", journal_entry_id: jeRow.id,
+      posting_decision_id: decision?.id
+    }).eq("id", txn.id).eq("company_id", companyId);
+    logAudit("create", "banking", `Split: ${txn.bank_description_clean} → ${validLines.length} lines`, txn.id, userProfile?.email, "", companyId);
+    showToast(`Split into ${validLines.length} lines and posted.`, "success");
+    setExpandedTxn(null); setSplitLines([{ accountId: "", accountName: "", amount: "", memo: "", classId: "" }, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }]);
+    fetchAll();
+    if (onRefreshAccounting) onRefreshAccounting();
+    } finally { guardRelease("bankSplit", txn.id); }
+  }
+
+  async function undoTransaction(txn) {
+    if (!guardSubmit("bankUndo", txn.id)) return;
+    try {
+    if (txn.status === "locked") { showToast("Cannot undo a locked/reconciled transaction.", "error"); return; }
+    if (await checkPeriodLock(companyId, txn.posted_date)) { showToast("This transaction is in a locked accounting period.", "error"); return; }
+    if (!await showConfirm({ message: "Undo this transaction? The linked journal entry will be voided." })) return;
+
+    // Void the linked JE if exists
+    if (txn.journal_entry_id) {
+      await supabase.from("acct_journal_entries").update({ status: "voided" }).eq("id", txn.journal_entry_id).eq("company_id", companyId);
+    }
+
+    // Reset transaction status
+    await supabase.from("bank_feed_transaction").update({
+      status: "for_review", accepted_at: null, accepted_by: null,
+      excluded_at: null, excluded_by: null, exclusion_reason: null,
+      journal_entry_id: null, posting_decision_id: null,
+      matched_target_type: null, matched_target_id: null
+    }).eq("id", txn.id).eq("company_id", companyId);
+
+    // Mark decision as undone
+    if (txn.posting_decision_id) {
+      await supabase.from("bank_posting_decision").update({ status: "undone" }).eq("id", txn.posting_decision_id);
+    }
+
+    logAudit("update", "banking", `Undid bank txn: ${txn.bank_description_clean}`, txn.id, userProfile?.email, "", companyId);
+    showToast("Transaction returned to For Review.", "success");
+    fetchAll();
+    } finally { guardRelease("bankUndo", txn.id); }
+  }
+
+  // --- Rules Engine (V2 multi-condition + V1 fallback) ---
+  function evaluateTextOp(op, text, val) {
+    switch (op) {
+      case "contains": return text.includes(val);
+      case "does_not_contain": return !text.includes(val);
+      case "is_exactly": return text === val;
+      case "starts_with": return text.startsWith(val);
+      case "ends_with": return text.endsWith(val);
+      case "regex": try { return new RegExp(val, "i").test(text); } catch { return false; }
+      default: return text.includes(val);
+    }
+  }
+  function evaluateAmountOp(op, amt, val, val2) {
+    const numVal = Number(val) || 0;
+    const numVal2 = Number(val2) || 0;
+    switch (op) {
+      case "is_exactly": return Math.abs(amt - numVal) < 0.01;
+      case "greater_than": return amt > numVal;
+      case "less_than": return amt < numVal;
+      case "between": return amt >= numVal && amt <= numVal2;
+      default: return false;
+    }
+  }
+  function evaluateSingleCondition(cond, descClean, descRaw, amt) {
+    const field = cond.field || "description";
+    const op = cond.operator || "contains";
+    const val = (cond.value || "").toLowerCase();
+    const val2 = (cond.value2 || "").toLowerCase();
+    if (field === "description") return evaluateTextOp(op, descClean, val);
+    if (field === "bank_text") return evaluateTextOp(op, descRaw, val);
+    if (field === "amount") return evaluateAmountOp(op, amt, val, val2);
+    return false;
+  }
+  function evaluateRules(txn, rulesList) {
+    const descClean = (txn.bank_description_clean || "").toLowerCase();
+    const descRaw = (txn.bank_description_raw || "").toLowerCase();
+    const amt = Math.abs(safeNum(txn.amount));
+    for (const rule of rulesList) {
+      if (!rule.enabled) continue;
+      const condJson = rule.condition_json || {};
+      // V2 multi-condition format
+      if (condJson.conditions) {
+        if (condJson.direction && condJson.direction !== "all" && txn.direction !== condJson.direction) continue;
+        if (rule.bank_account_feed_id && rule.bank_account_feed_id !== txn.bank_account_feed_id) continue;
+        const logic = condJson.logic || "all";
+        const conditions = condJson.conditions || [];
+        if (conditions.length === 0) continue;
+        const results = conditions.map(c => evaluateSingleCondition(c, descClean, descRaw, amt));
+        const matched = logic === "all" ? results.every(r => r) : results.some(r => r);
+        if (matched) return { rule, action: rule.action_json || {} };
+        continue;
+      }
+      // V1 legacy fallback
+      const desc = descClean || descRaw;
+      let matched = false;
+      const val = (condJson.value || "").toLowerCase();
+      if (val) {
+        switch (condJson.operator || "contains") {
+          case "contains": matched = desc.includes(val); break;
+          case "starts_with": matched = desc.startsWith(val); break;
+          case "ends_with": matched = desc.endsWith(val); break;
+          case "equals": matched = desc === val; break;
+          case "regex": try { matched = new RegExp(condJson.value, "i").test(desc); } catch { matched = false; } break;
+          default: matched = desc.includes(val);
+        }
+      } else { matched = true; }
+      if (condJson.direction && condJson.direction !== "all" && txn.direction !== condJson.direction) matched = false;
+      if (condJson.amount_min && amt < Number(condJson.amount_min)) matched = false;
+      if (condJson.amount_max && amt > Number(condJson.amount_max)) matched = false;
+      if (rule.bank_account_feed_id && rule.bank_account_feed_id !== txn.bank_account_feed_id) matched = false;
+      if (matched) return { rule, action: rule.action_json || {} };
+    }
+    return null;
+  }
+
+  async function applyRulesToTransactions(txnIds) {
+    const enabledRules = rules.filter(r => r.enabled);
+    if (enabledRules.length === 0) return 0;
+    const { data: txns } = await supabase.from("bank_feed_transaction").select("*").in("id", txnIds).eq("status", "for_review");
+    if (!txns || txns.length === 0) return 0;
+    let applied = 0;
+    for (const txn of txns) {
+      const result = evaluateRules(txn, enabledRules);
+      if (!result) continue;
+      const { rule, action } = result;
+      const actionType = action.type || "assign";
+
+      // --- EXCLUDE RULES ---
+      if (actionType === "exclude") {
+        if (rule.auto_accept) {
+          await excludeTransaction(txn, action.exclude_reason || "auto-rule");
+        } else {
+          await supabase.from("bank_feed_transaction").update({
+            suggestion_status: "suggested_exclude",
+            raw_payload_json: { ...(txn.raw_payload_json || {}), _suggestion: { type: "exclude", reason: action.exclude_reason || "auto-rule", ruleId: rule.id, ruleName: rule.name } }
+          }).eq("id", txn.id).eq("company_id", companyId);
+        }
+        applied++;
+        await incrementRuleStats(rule.id);
+        continue;
+      }
+
+      // --- ASSIGN RULES (single or split) ---
+      const lines = action.lines || [];
+      const primaryLine = lines[0] || {};
+      const isSplit = action.split && lines.length >= 2;
+
+      await supabase.from("bank_feed_transaction").update({
+        suggestion_status: "suggested_rule",
+        raw_payload_json: { ...(txn.raw_payload_json || {}), _suggestion: {
+          type: isSplit ? "split" : "assign",
+          transactionType: action.transaction_type || "expense",
+          accountId: primaryLine.account_id || "", accountName: primaryLine.account_name || "",
+          classId: primaryLine.class_id || "", payee: action.payee || "", memo: action.memo || "",
+          split: isSplit, splitBy: action.split_by || null, lines: lines,
+          ruleId: rule.id, ruleName: rule.name
+        }}
+      }).eq("id", txn.id).eq("company_id", companyId);
+
+      if (rule.auto_accept && primaryLine.account_id) {
+        if (isSplit) {
+          const abs = Math.abs(txn.amount);
+          const splitLines = lines.map(l => ({
+            accountId: l.account_id, accountName: l.account_name, classId: l.class_id || "",
+            memo: action.memo || "",
+            amount: action.split_by === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0)
+          }));
+          await acceptSplit(txn, splitLines);
+        } else if (action.transaction_type === "transfer") {
+          await acceptTransfer(txn, primaryLine.account_id, primaryLine.account_name || "", action.memo || "");
+        } else {
+          await acceptTransaction(txn, primaryLine.account_id, primaryLine.account_name || "", action.memo || "", primaryLine.class_id || "");
+        }
+      }
+      applied++;
+      await incrementRuleStats(rule.id);
+    }
+    return applied;
+  }
+
+  function resetRuleForm() {
+    setEditingRule(null);
+    setRuleForm({
+      name: "", conditions: [{ ...EMPTY_CONDITION }], condLogic: "all", condDirection: "all", bankAccountFeedId: "",
+      ruleType: "assign", transactionType: "expense", actionPayee: "", actionMemo: "", excludeReason: "personal",
+      split: false, splitBy: null, lines: [{ ...EMPTY_LINE }], autoAccept: false, priority: 100
+    });
+  }
+  // Condition helpers
+  function addCondition() {
+    if (ruleForm.conditions.length >= 5) { showToast("Maximum 5 conditions per rule.", "warning"); return; }
+    setRuleForm(f => ({ ...f, conditions: [...f.conditions, { ...EMPTY_CONDITION }] }));
+  }
+  function removeCondition(idx) {
+    if (ruleForm.conditions.length <= 1) return;
+    setRuleForm(f => ({ ...f, conditions: f.conditions.filter((_, i) => i !== idx) }));
+  }
+  function updateCondition(idx, field, value) {
+    setRuleForm(f => ({ ...f, conditions: f.conditions.map((c, i) => i === idx ? { ...c, [field]: value } : c) }));
+  }
+  // Split line helpers
+  function addSplitLine() {
+    setRuleForm(f => ({ ...f, split: true, splitBy: f.splitBy || "percentage", lines: [...f.lines, { ...EMPTY_LINE }] }));
+  }
+  function removeSplitLine(idx) {
+    setRuleForm(f => {
+      const newLines = f.lines.filter((_, i) => i !== idx);
+      return { ...f, lines: newLines, split: newLines.length >= 2, splitBy: newLines.length < 2 ? null : f.splitBy };
+    });
+  }
+  function updateLine(idx, field, value) {
+    setRuleForm(f => ({ ...f, lines: f.lines.map((l, i) => i === idx ? { ...l, [field]: value } : l) }));
+  }
+  async function saveRule() {
+    if (!ruleForm.name.trim()) { showToast("Rule name is required.", "error"); return; }
+    const validConditions = ruleForm.conditions.filter(c =>
+      (c.field === "amount" && c.value) || ((c.field === "description" || c.field === "bank_text") && c.value.trim())
+    );
+    if (validConditions.length === 0) { showToast("At least one condition with a value is required.", "error"); return; }
+    if (ruleForm.ruleType === "assign") {
+      const validLines = ruleForm.lines.filter(l => l.accountId);
+      if (validLines.length === 0) { showToast("At least one category/account is required.", "error"); return; }
+      if (ruleForm.split && ruleForm.splitBy === "percentage") {
+        const totalPct = validLines.reduce((s, l) => s + (Number(l.percentage) || 0), 0);
+        if (Math.abs(totalPct - 100) > 0.01) { showToast(`Split percentages must add up to 100% (currently ${totalPct}%).`, "error"); return; }
+      }
+    }
+    const conditionJson = {
+      logic: ruleForm.condLogic, direction: ruleForm.condDirection,
+      conditions: validConditions.map(c => {
+        const obj = { field: c.field, operator: c.operator, value: c.value };
+        if (c.operator === "between" && c.value2) obj.value2 = c.value2;
+        return obj;
+      })
+    };
+    let actionJson;
+    if (ruleForm.ruleType === "exclude") {
+      actionJson = { type: "exclude", exclude_reason: ruleForm.excludeReason || "personal" };
+    } else {
+      const validLines = ruleForm.lines.filter(l => l.accountId);
+      actionJson = {
+        type: "assign", transaction_type: ruleForm.transactionType || "expense",
+        payee: ruleForm.actionPayee || "", memo: ruleForm.actionMemo || "",
+        split: ruleForm.split && validLines.length >= 2, split_by: ruleForm.split ? ruleForm.splitBy : null,
+        lines: validLines.map(l => ({
+          account_id: l.accountId, account_name: l.accountName, class_id: l.classId || null,
+          percentage: ruleForm.splitBy === "percentage" ? Number(l.percentage) || null : null,
+          amount: ruleForm.splitBy === "amount" ? Number(l.amount) || null : null
+        }))
+      };
+    }
+    const payload = {
+      name: ruleForm.name.trim(), priority: Number(ruleForm.priority) || 100,
+      condition_json: conditionJson, action_json: actionJson,
+      auto_accept: ruleForm.autoAccept, rule_type: ruleForm.ruleType,
+      bank_account_feed_id: ruleForm.bankAccountFeedId || null
+    };
+    if (editingRule) {
+      const { error } = await supabase.from("bank_transaction_rule").update(payload).eq("id", editingRule.id);
+      if (error) { pmError("PM-5008", { raw: error, context: "update bank rule" }); return; }
+      showToast("Rule updated.", "success");
+    } else {
+      const { error } = await supabase.from("bank_transaction_rule").insert([{ ...payload, company_id: companyId, enabled: true }]);
+      if (error) { pmError("PM-5008", { raw: error, context: "create bank rule" }); return; }
+      showToast("Rule created.", "success");
+    }
+    resetRuleForm();
+    setShowRuleDrawer(false);
+    fetchAll();
+  }
+
+  async function deleteRule(ruleId) {
+    if (!await showConfirm({ message: "Delete this rule?" })) return;
+    if (!guardSubmit("deleteRule", ruleId)) return;
+    try {
+    const { error } = await supabase.from("bank_transaction_rule").delete().eq("id", ruleId).eq("company_id", companyId);
+    if (error) { pmError("PM-5008", { raw: error, context: "delete bank rule" }); return; }
+    showToast("Rule deleted.", "success");
+    fetchAll();
+    } finally { guardRelease("deleteRule", ruleId); }
+  }
+
+  async function toggleRule(rule) {
+    const { error } = await supabase.from("bank_transaction_rule").update({ enabled: !rule.enabled }).eq("id", rule.id).eq("company_id", companyId);
+    if (error) { pmError("PM-5008", { raw: error, context: "toggle bank rule" }); return; }
+    fetchAll();
+  }
+
+  async function duplicateRule(rule) {
+    const { error } = await supabase.from("bank_transaction_rule").insert([{
+      company_id: companyId, name: rule.name + " (copy)", priority: (rule.priority || 100) + 1,
+      enabled: false, condition_json: rule.condition_json, action_json: rule.action_json,
+      auto_accept: rule.auto_accept, rule_type: rule.rule_type, bank_account_feed_id: rule.bank_account_feed_id
+    }]);
+    if (error) { pmError("PM-5008", { raw: error, context: "duplicate bank rule" }); return; }
+    showToast("Rule duplicated (disabled). Edit it to enable.", "success");
+    fetchAll();
+  }
+
+  async function incrementRuleStats(ruleId) {
+    try { await supabase.rpc("increment_rule_stats", { rule_id: ruleId }); } catch (_e) { pmError("PM-5008", { raw: _e, context: "increment bank rule stats", silent: true }); }
+  }
+
+  // Migrate V1 rules to V2 JSON format (runs once per company)
+  async function migrateRulesToV2(rulesList) {
+    for (const rule of rulesList) {
+      const oldCond = rule.condition_json || {};
+      if (oldCond.conditions) continue; // already V2
+      const conditions = [];
+      if (oldCond.value) {
+        conditions.push({ field: oldCond.field || "description", operator: oldCond.operator || "contains", value: oldCond.value });
+      }
+      if (oldCond.amount_min && oldCond.amount_max) {
+        conditions.push({ field: "amount", operator: "between", value: String(oldCond.amount_min), value2: String(oldCond.amount_max) });
+      } else if (oldCond.amount_min) {
+        conditions.push({ field: "amount", operator: "greater_than", value: String(oldCond.amount_min) });
+      } else if (oldCond.amount_max) {
+        conditions.push({ field: "amount", operator: "less_than", value: String(oldCond.amount_max) });
+      }
+      const newCond = { logic: "all", direction: oldCond.direction || "all", conditions: conditions.length > 0 ? conditions : [{ field: "description", operator: "contains", value: "" }] };
+      const oldAction = rule.action_json || {};
+      const newAction = {
+        type: "assign", transaction_type: "expense", payee: oldAction.payee || "", memo: oldAction.memo || "",
+        split: false, split_by: null,
+        lines: [{ account_id: oldAction.account_id || "", account_name: oldAction.account_name || "", class_id: oldAction.class_id || "", percentage: null, amount: null }]
+      };
+      await supabase.from("bank_transaction_rule").update({ condition_json: newCond, action_json: newAction, rule_type: "assign" }).eq("id", rule.id).eq("company_id", companyId);
+    }
+  }
+
+  function trackCategorizationPattern(txn, accountId, accountName, classId) {
+    try {
+      const key = `catPatterns_${companyId}`;
+      const patterns = JSON.parse(localStorage.getItem(key) || "{}");
+      const descKey = (txn.bank_description_clean || "").toLowerCase().replace(/\d+/g, "").replace(/\s+/g, " ").trim().split(" ").slice(0, 3).join("_");
+      if (!descKey) return;
+      if (!patterns[descKey]) patterns[descKey] = { count: 0, accountId: "", accountName: "", classId: "" };
+      const p = patterns[descKey];
+      if (p.accountId === accountId || !p.accountId) {
+        p.count++; p.accountId = accountId; p.accountName = accountName; p.classId = classId; p.lastDesc = txn.bank_description_clean || "";
+      } else {
+        p.count = 1; p.accountId = accountId; p.accountName = accountName; p.classId = classId; p.lastDesc = txn.bank_description_clean || "";
+      }
+      localStorage.setItem(key, JSON.stringify(patterns));
+      if (p.count === 2) {
+        showToast(
+          `You've categorized "${(p.lastDesc || "").slice(0, 30)}..." the same way twice. Open the Rules tab to create a rule!`,
+          "info"
+        );
+      }
+    } catch (_e) { pmError("PM-8006", { raw: _e, context: "bank categorization pattern learning", silent: true }); }
+  }
+
+  const RENTAL_RULE_PRESETS = [
+    { name: "Mortgage / Loan Payments", conditions: [{ field: "description", operator: "contains", value: "mortgage" }], direction: "outflow", action: { type: "assign", transaction_type: "expense", lines: [{ accountName: "Mortgage Interest" }] }, description: "Auto-categorize mortgage payments" },
+    { name: "Insurance Premiums", conditions: [{ field: "description", operator: "contains", value: "insurance" }], direction: "outflow", action: { type: "assign", transaction_type: "expense", lines: [{ accountName: "Insurance" }] }, description: "Property and liability insurance" },
+    { name: "Utility Payments", conditions: [{ field: "description", operator: "contains", value: "dominion" }, { field: "description", operator: "contains", value: "energy" }], condLogic: "any", direction: "outflow", action: { type: "assign", transaction_type: "expense", lines: [{ accountName: "Utilities" }] }, description: "Electric, gas, water payments" },
+    { name: "Tenant Rent Deposits", conditions: [{ field: "amount", operator: "greater_than", value: "500" }], direction: "inflow", action: { type: "assign", transaction_type: "deposit", lines: [{ accountName: "Rental Income" }] }, description: "Incoming rent payments" },
+    { name: "Home Depot / Lowe's", conditions: [{ field: "description", operator: "contains", value: "home depot" }, { field: "description", operator: "contains", value: "lowes" }], condLogic: "any", direction: "outflow", action: { type: "assign", transaction_type: "expense", lines: [{ accountName: "Repairs & Maintenance" }] }, description: "Hardware store purchases for property repairs" },
+    { name: "Personal / Non-Business", conditions: [{ field: "description", operator: "contains", value: "amazon" }, { field: "description", operator: "contains", value: "netflix" }, { field: "description", operator: "contains", value: "spotify" }], condLogic: "any", direction: "outflow", action: { type: "exclude", exclude_reason: "personal" }, description: "Exclude personal purchases" },
+  ];
+
+  function applyPreset(preset) {
+    const matchedAcct = preset.action.lines?.[0]?.accountName ? accounts.find(a => a.name.toLowerCase().includes(preset.action.lines[0].accountName.toLowerCase())) : null;
+    setRuleForm({
+      name: preset.name,
+      conditions: preset.conditions.map(c => ({ ...c, value2: "" })),
+      condLogic: preset.condLogic || "all", condDirection: preset.direction || "all", bankAccountFeedId: "",
+      ruleType: preset.action.type || "assign", transactionType: preset.action.transaction_type || "expense",
+      actionPayee: "", actionMemo: "", excludeReason: preset.action.exclude_reason || "personal",
+      split: false, splitBy: null,
+      lines: [{ accountId: matchedAcct?.id || "", accountName: matchedAcct?.name || preset.action.lines?.[0]?.accountName || "", classId: "", percentage: null, amount: null }],
+      autoAccept: false, priority: 100
+    });
+    setEditingRule(null);
+    setShowRuleDrawer(true);
+  }
+
+  function createRuleFromTransaction(txn) {
+    const desc = txn.bank_description_clean || txn.bank_description_raw || "";
+    const sug = txn.raw_payload_json?._suggestion;
+    const initialConditions = [];
+    if (desc) {
+      const cleanedDesc = desc.replace(/\d{4,}/g, "").replace(/[#*]/g, "").trim().split(/\s+/).slice(0, 4).join(" ");
+      initialConditions.push({ field: "description", operator: "contains", value: cleanedDesc, value2: "" });
+    }
+    setRuleForm({
+      name: desc.split(/\s+/).slice(0, 3).join(" "),
+      conditions: initialConditions.length > 0 ? initialConditions : [{ ...EMPTY_CONDITION }],
+      condLogic: "all", condDirection: txn.direction || "all", bankAccountFeedId: "",
+      ruleType: "assign", transactionType: "expense",
+      actionPayee: txn.payee_normalized || "", actionMemo: "",
+      excludeReason: "personal", split: false, splitBy: null,
+      lines: [{ accountId: sug?.accountId || addForm.accountId || "", accountName: sug?.accountName || addForm.accountName || "", classId: sug?.classId || addForm.classId || "", percentage: null, amount: null }],
+      autoAccept: false, priority: 100
+    });
+    setEditingRule(null);
+    setShowRuleDrawer(true);
+  }
+
+  function startEditRule(rule) {
+    const c = rule.condition_json || {};
+    const a = rule.action_json || {};
+    setEditingRule(rule);
+    // V2 format
+    if (c.conditions) {
+      const lines = (a.lines || []).map(l => ({
+        accountId: l.account_id || "", accountName: l.account_name || "",
+        classId: l.class_id || "", percentage: l.percentage, amount: l.amount
+      }));
+      setRuleForm({
+        name: rule.name, conditions: c.conditions.map(cnd => ({ field: cnd.field || "description", operator: cnd.operator || "contains", value: cnd.value || "", value2: cnd.value2 || "" })),
+        condLogic: c.logic || "all", condDirection: c.direction || "all",
+        bankAccountFeedId: rule.bank_account_feed_id || "",
+        ruleType: a.type || rule.rule_type || "assign", transactionType: a.transaction_type || "expense",
+        actionPayee: a.payee || "", actionMemo: a.memo || "",
+        excludeReason: a.exclude_reason || "personal",
+        split: a.split || false, splitBy: a.split_by || null,
+        lines: lines.length > 0 ? lines : [{ ...EMPTY_LINE }],
+        autoAccept: rule.auto_accept || false, priority: rule.priority || 100
+      });
+    } else {
+      // V1 legacy
+      setRuleForm({
+        name: rule.name,
+        conditions: [{ field: c.field || "description", operator: c.operator || "contains", value: c.value || "", value2: "" }],
+        condLogic: "all", condDirection: c.direction || "all", bankAccountFeedId: rule.bank_account_feed_id || "",
+        ruleType: "assign", transactionType: "expense",
+        actionPayee: a.payee || "", actionMemo: a.memo || "", excludeReason: "personal",
+        split: false, splitBy: null,
+        lines: [{ accountId: a.account_id || "", accountName: a.account_name || "", classId: a.class_id || "", percentage: null, amount: null }],
+        autoAccept: rule.auto_accept || false, priority: rule.priority || 100
+      });
+    }
+    setShowRuleDrawer(true);
+  }
+
+  // Bulk actions
+  async function bulkAccept(accountId, accountName) {
+    const selected = transactions.filter(t => selectedTxns.has(t.id) && t.status === "for_review");
+    for (const txn of selected) {
+      await acceptTransaction(txn, accountId, accountName, "", "");
+    }
+    setSelectedTxns(new Set());
+  }
+
+  async function bulkExclude(reason) {
+    const selected = transactions.filter(t => selectedTxns.has(t.id) && t.status === "for_review");
+    for (const txn of selected) {
+      await excludeTransaction(txn, reason);
+    }
+    setSelectedTxns(new Set());
+  }
+
+  // --- Filtering ---
+  const filtered = transactions.filter(t => {
+    if (activeTab === "for_review" && t.status !== "for_review") return false;
+    if (activeTab === "recognized" && !(t.status === "for_review" && (t.suggestion_status === "suggested_rule" || t.suggestion_status === "suggested_exclude"))) return false;
+    if (activeTab === "categorized" && !["categorized", "matched", "posted"].includes(t.status)) return false;
+    if (activeTab === "excluded" && t.status !== "excluded") return false;
+    if (activeTab === "rules") return false; // Rules tab shows rules, not transactions
+    if (selectedFeed !== "all" && t.bank_account_feed_id !== selectedFeed) return false;
+    if (directionFilter !== "all" && t.direction !== directionFilter) return false;
+    if (dateFrom && t.posted_date < dateFrom) return false;
+    if (dateTo && t.posted_date > dateTo) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      if (!(t.bank_description_clean || "").toLowerCase().includes(q) &&
+          !(t.payee_normalized || "").toLowerCase().includes(q) &&
+          !(t.memo || "").toLowerCase().includes(q) &&
+          !String(t.amount).includes(q)) return false;
+    }
+    return true;
+  });
+  const txnTotalPages = Math.max(1, Math.ceil(filtered.length / TXN_PAGE_SIZE));
+  const safeTxnPage = Math.min(txnPage, txnTotalPages - 1);
+  const paginatedTxns = filtered.slice(safeTxnPage * TXN_PAGE_SIZE, (safeTxnPage + 1) * TXN_PAGE_SIZE);
+
+  const feedTxns = selectedFeed === "all" ? transactions : transactions.filter(t => t.bank_account_feed_id === selectedFeed);
+  const counts = {
+    for_review: feedTxns.filter(t => t.status === "for_review").length,
+    recognized: feedTxns.filter(t => t.status === "for_review" && (t.suggestion_status === "suggested_rule" || t.suggestion_status === "suggested_exclude")).length,
+    categorized: feedTxns.filter(t => ["categorized", "matched", "posted"].includes(t.status)).length,
+    excluded: feedTxns.filter(t => t.status === "excluded").length,
+  };
+
+  if (loading) return <Spinner />;
+
+  // --- RENDER ---
+  return (
+  <div className="space-y-4">
+  {/* Header */}
+  <div className="flex items-center justify-between">
+    <div><h3 className="text-lg font-semibold text-neutral-900">Bank Transactions</h3><p className="text-sm text-neutral-400">Import, review, and categorize bank transactions</p></div>
+    <div className="flex gap-2 flex-wrap">
+      {connections.some(c => c.connection_status === "active") && <button onClick={syncTransactions} disabled={syncing} className="text-xs bg-success-100 text-success-700 px-3 py-1.5 rounded-lg font-semibold hover:bg-success-200 disabled:opacity-50">{syncing ? "Syncing..." : "Sync"}</button>}
+      <button onClick={connectBank} disabled={plaidConnecting} className="bg-info-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-info-700 disabled:opacity-50 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">link</span>{plaidConnecting ? "Connecting..." : "Connect Bank"}</button>
+      <button onClick={startImport} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-neutral-700 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">upload_file</span>Import CSV</button>
+    </div>
+  </div>
+
+  {/* Connection Banners */}
+  {connections.filter(c => c.connection_status === "needs_reauth").length > 0 && (
+  <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 flex items-center justify-between">
+    <div className="text-sm text-warn-800"><strong>Action needed:</strong> {connections.filter(c => c.connection_status === "needs_reauth").length} bank connection(s) need re-authentication.</div>
+    <button onClick={connectBank} className="text-xs bg-warn-200 text-warn-800 px-3 py-1.5 rounded-lg font-medium hover:bg-warn-300">Fix Now</button>
+  </div>
+  )}
+  {connections.filter(c => c.connection_status === "errored").length > 0 && (
+  <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 flex items-center justify-between">
+    <div className="text-sm text-warn-800">
+      <strong>Sync issue:</strong> {connections.filter(c => c.connection_status === "errored").map(c => {
+        const msg = c.last_error_message || "Unknown error";
+        if (msg.includes("gateway_timeout") || msg.includes("taking too long")) return `${c.institution_name || "Bank"}: The bank took too long to respond. Try syncing again.`;
+        if (msg.includes("AUTH_FAILED")) return `${c.institution_name || "Bank"}: Re-authentication required. Click Connect Bank to reconnect.`;
+        return `${c.institution_name || "Bank"}: ${msg.replace(/\{.*\}/g, "").trim() || "Temporary error. Try again."}`;
+      }).join(" · ")}
+    </div>
+    <button onClick={() => syncTransactions()} className="shrink-0 text-xs bg-warn-600 text-white px-3 py-1.5 rounded-lg hover:bg-warn-700">Retry Sync</button>
+  </div>
+  )}
+
+  {/* Account Cards */}
+  {feeds.length > 0 && (
+  <div className="flex gap-3 overflow-x-auto pb-1">
+    {feeds.map(feed => {
+      const reviewCount = transactions.filter(t => t.bank_account_feed_id === feed.id && t.status === "for_review").length;
+      const isSelected = selectedFeed === feed.id;
+      const isMenuOpen = feedMenuOpen === feed.id;
+      const isUnmapped = !feed.gl_account_id;
+      return (
+      <div key={feed.id} className="relative shrink-0">
+      <button onClick={() => { setSelectedFeed(isSelected ? "all" : feed.id); setFeedMenuOpen(null); }}
+        className={`rounded-xl border-2 p-3 min-w-48 text-left transition-all w-full ${isUnmapped ? "border-warn-300 bg-warn-50/30" : isSelected ? "border-brand-600 bg-brand-50" : "border-neutral-200 bg-white hover:border-neutral-300"}`}>
+        <div className="flex items-start justify-between">
+          <div className="text-xs text-neutral-400 truncate">{feed.institution_name || feed.account_type}</div>
+          <span onClick={e => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setFeedMenuPos({ top: r.bottom + 4, left: r.right - 160 }); setFeedMenuOpen(isMenuOpen ? null : feed.id); }}
+            className="text-neutral-300 hover:text-neutral-600 -mt-0.5 -mr-1 cursor-pointer">
+            <span className="material-icons-outlined text-base">more_vert</span>
+          </span>
+        </div>
+        <div className="font-semibold text-neutral-800 truncate">{feed.account_name}</div>
+        {feed.masked_number && <div className="text-xs text-neutral-400">••••{feed.masked_number}</div>}
+        {isUnmapped && <div className="text-xs text-warn-600 mt-1 font-medium">Not mapped to GL</div>}
+        <div className="flex justify-between mt-2">
+          <span className={`text-xs px-1.5 py-0.5 rounded ${feed.connection_type === "teller" ? "bg-info-100 text-info-700" : feed.connection_type === "plaid" ? "bg-info-100 text-info-700" : "bg-neutral-100 text-neutral-500"}`}>{feed.connection_type === "teller" ? "Teller" : feed.connection_type === "plaid" ? "Plaid" : "CSV"}</span>
+          {feed.last_synced_at && <span className="text-xs text-neutral-400">{new Date(feed.last_synced_at).toLocaleDateString()}</span>}
+          {reviewCount > 0 && <span className="text-xs bg-warn-100 text-warn-700 px-1.5 py-0.5 rounded-full font-bold">{reviewCount}</span>}
+        </div>
+      </button>
+      {isMenuOpen && <>
+        <div className="fixed inset-0 z-30" onClick={() => setFeedMenuOpen(null)} />
+        <div className="fixed z-40 bg-white border border-neutral-200 rounded-xl shadow-lg py-1 min-w-40" style={{ top: feedMenuPos.top, left: Math.max(8, feedMenuPos.left) }}>
+          <button onClick={() => { const glId = prompt("Enter GL Account ID to map (or use Chart of Accounts)"); if (glId) updateFeedMapping(feed.id, glId); setFeedMenuOpen(null); }}
+            className="w-full text-left px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-2">
+            <span className="material-icons-outlined text-sm">link</span>Change GL Mapping
+          </button>
+          <button onClick={() => { disconnectFeed(feed.id); setFeedMenuOpen(null); }}
+            className="w-full text-left px-3 py-2 text-sm text-danger-600 hover:bg-danger-50 flex items-center gap-2">
+            <span className="material-icons-outlined text-sm">link_off</span>Disconnect
+          </button>
+        </div>
+      </>}
+      </div>
+      );
+    })}
+    <button onClick={() => setShowNewAccount(true)} className="shrink-0 rounded-xl border-2 border-dashed border-neutral-200 p-3 min-w-36 flex flex-col items-center justify-center gap-1 text-neutral-400 hover:border-neutral-400 hover:text-neutral-600">
+      <span className="material-icons-outlined">add</span>
+      <span className="text-xs">New Account</span>
+    </button>
+  </div>
+  )}
+
+  {feeds.length === 0 && (
+  <div className="bg-white rounded-xl border border-neutral-200 p-8 text-center">
+    <div className="text-3xl mb-3">🏦</div>
+    <h4 className="font-semibold text-neutral-800 mb-1">No bank accounts set up</h4>
+    <p className="text-sm text-neutral-400 mb-4">Create a bank account to start importing transactions</p>
+    <button onClick={() => setShowNewAccount(true)} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-brand-700">+ Add Bank Account</button>
+  </div>
+  )}
+
+  {/* Tabs */}
+  {feeds.length > 0 && (<>
+  <div className="flex gap-1 border-b border-neutral-200">
+    {[["for_review", `For Review (${counts.for_review})`], ["recognized", `Recognized (${counts.recognized})`], ["categorized", `Categorized (${counts.categorized})`], ["excluded", `Excluded (${counts.excluded})`], ["rules", `Rules (${rules.length})`]].map(([id, label]) => (
+    <button key={id} onClick={() => { setActiveTab(id); setSelectedTxns(new Set()); setTxnPage(0); }}
+      className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-600"}`}>{label}</button>
+    ))}
+  </div>
+
+  {/* Rules Tab Content */}
+  {activeTab === "rules" && (
+  <div className="space-y-4">
+    <div className="flex items-center justify-between">
+      <p className="text-sm text-neutral-500">Rules run in priority order. First matching rule wins.</p>
+      <button onClick={() => { resetRuleForm(); setShowRuleDrawer(true); }} className="bg-accent-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-accent-700 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">add</span>New Rule</button>
+    </div>
+    <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
+      <table className="w-full text-sm">
+        <thead className="bg-neutral-50 border-b border-neutral-200">
+          <tr>
+            <th className="px-3 py-2.5 w-12 text-center text-xs font-semibold text-neutral-500">#</th>
+            <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">RULE NAME</th>
+            <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">CONDITIONS</th>
+            <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">ACTION</th>
+            <th className="px-3 py-2.5 text-center text-xs font-semibold text-neutral-500">MATCHED</th>
+            <th className="px-3 py-2.5 text-center text-xs font-semibold text-neutral-500">STATUS</th>
+            <th className="px-3 py-2.5 text-right text-xs font-semibold text-neutral-500">ACTIONS</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rules.map(r => {
+            const cond = r.condition_json || {};
+            const act = r.action_json || {};
+            const conditions = cond.conditions || [];
+            const lines = act.lines || [];
+            return (
+            <tr key={r.id} className="border-b border-neutral-100 hover:bg-neutral-50">
+              <td className="px-3 py-3 text-center"><span className="font-mono text-xs text-neutral-400">{r.priority}</span></td>
+              <td className="px-3 py-3"><span className="font-semibold text-neutral-800">{r.name}</span>{r.auto_accept && <span className="ml-2 text-xs bg-warn-100 text-warn-700 px-1.5 py-0.5 rounded">auto-add</span>}</td>
+              <td className="px-3 py-3 text-xs text-neutral-500 max-w-48">
+                <span className="text-accent-600 font-medium">{(cond.logic || "all").toUpperCase()}</span>{" of: "}
+                {conditions.map((c, i) => <span key={i}>{i > 0 && ", "}{c.field} {c.operator} "{c.value}"</span>)}
+                {cond.direction !== "all" && <span className="ml-1">· {cond.direction}</span>}
+              </td>
+              <td className="px-3 py-3 text-xs">
+                {act.type === "exclude" ? <span className="text-danger-600 font-medium">Exclude ({act.exclude_reason})</span>
+                  : <span className="text-info-600">{lines.map(l => l.account_name).join(" + ") || "—"}{act.split && <span className="text-highlight-500 ml-1">(split)</span>}</span>}
+              </td>
+              <td className="px-3 py-3 text-center text-xs text-neutral-400">{r.apply_count || 0}</td>
+              <td className="px-3 py-3 text-center">
+                <button onClick={() => toggleRule(r)} className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.enabled ? "bg-success-100 text-success-700" : "bg-neutral-100 text-neutral-400"}`}>{r.enabled ? "On" : "Off"}</button>
+              </td>
+              <td className="px-3 py-3 text-right">
+                <button onClick={() => startEditRule(r)} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>
+                <button onClick={() => duplicateRule(r)} className="text-xs text-neutral-400 hover:underline mr-2">Copy</button>
+                <button onClick={() => deleteRule(r.id)} className="text-xs text-danger-400 hover:text-danger-600">Delete</button>
+              </td>
+            </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {rules.length === 0 && (
+        <div className="py-8 text-center text-neutral-400">
+          <div className="text-3xl mb-2">📋</div>
+          <p className="font-medium">No rules yet</p>
+          <p className="text-xs mt-1 mb-4">Rules auto-categorize imported transactions. Start with a template or create your own!</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-left max-w-3xl mx-auto">
+            {RENTAL_RULE_PRESETS.map((preset, i) => (
+              <button key={i} onClick={() => applyPreset(preset)} className="bg-white border border-accent-100 rounded-xl p-3 hover:border-accent-300 hover:shadow-sm transition-all text-left">
+                <p className="text-sm font-semibold text-neutral-700">{preset.name}</p>
+                <p className="text-xs text-neutral-400 mt-1">{preset.description}</p>
+                <div className="flex gap-1 mt-2">
+                  {preset.action.type === "exclude" ? <span className="text-xs bg-danger-100 text-danger-600 px-1.5 py-0.5 rounded">Exclude</span> : <span className="text-xs bg-accent-100 text-accent-600 px-1.5 py-0.5 rounded">Assign</span>}
+                  <span className="text-xs bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded">{preset.conditions.length} condition{preset.conditions.length > 1 ? "s" : ""}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+    {rules.length > 0 && counts.for_review > 0 && (
+      <button onClick={async () => { const ids = transactions.filter(t => t.status === "for_review").map(t => t.id); const n = await applyRulesToTransactions(ids); showToast(`Rules applied to ${n} transaction(s).`, "success"); }} className="text-sm text-accent-600 hover:underline">Re-apply all rules to {counts.for_review} "For Review" transactions</button>
+    )}
+  </div>
+  )}
+
+  {/* Filters (hidden on Rules tab) */}
+  {activeTab !== "rules" && (
+  <div className="flex items-center gap-2">
+    <Input placeholder="Search description, payee, amount..." value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setTxnPage(0); }} className="flex-1 min-w-40 !py-1.5 text-sm" />
+    <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setTxnPage(0); }} className="w-32 !py-1.5 text-xs" />
+    <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setTxnPage(0); }} className="w-32 !py-1.5 text-xs" />
+    <select value={directionFilter} onChange={e => { setDirectionFilter(e.target.value); setTxnPage(0); }} className="border border-brand-100 rounded-xl px-2 py-1.5 text-xs">
+      <option value="all">All</option><option value="inflow">Money In</option><option value="outflow">Money Out</option>
+    </select>
+  </div>
+  )}
+
+  {activeTab !== "rules" && (<>
+  {/* Bulk Action Bar */}
+  {selectedTxns.size > 0 && activeTab === "for_review" && (
+  <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-3 flex items-center justify-between">
+    <span className="text-sm font-medium text-brand-800">{selectedTxns.size} selected</span>
+    <div className="flex gap-2">
+      <button onClick={() => bulkExclude("duplicate")} className="text-xs bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg hover:bg-danger-100">Exclude All</button>
+      <button onClick={() => setSelectedTxns(new Set())} className="text-xs text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect</button>
+    </div>
+  </div>
+  )}
+
+  {/* Counter + Pagination */}
+  <div className="flex items-center justify-between">
+    <div className="text-xs text-neutral-500">{filtered.length} of {transactions.length} transactions{filtered.length !== transactions.length ? " (filtered)" : ""}</div>
+    {txnTotalPages > 1 && (
+    <div className="flex items-center gap-2">
+      <button onClick={() => setTxnPage(Math.max(0, safeTxnPage - 1))} disabled={safeTxnPage === 0} className="text-xs px-2 py-1 rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed">← Prev</button>
+      <span className="text-xs text-neutral-500">Page {safeTxnPage + 1} of {txnTotalPages}</span>
+      <button onClick={() => setTxnPage(Math.min(txnTotalPages - 1, safeTxnPage + 1))} disabled={safeTxnPage >= txnTotalPages - 1} className="text-xs px-2 py-1 rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed">Next →</button>
+    </div>
+    )}
+  </div>
+
+  {/* Transaction Table */}
+  <div className="bg-white rounded-xl border border-neutral-200 overflow-x-auto">
+  <table className="w-full text-sm">
+  <thead className="bg-neutral-50 border-b border-neutral-200">
+    <tr>
+      {activeTab === "for_review" && <th className="px-3 py-2.5 w-8"><input type="checkbox" checked={selectedTxns.size === filtered.length && filtered.length > 0} onChange={e => { if (e.target.checked) setSelectedTxns(new Set(filtered.map(t => t.id))); else setSelectedTxns(new Set()); }} className="accent-brand-600" /></th>}
+      <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">DATE</th>
+      <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">DESCRIPTION</th>
+      <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">PAYEE</th>
+      {activeTab === "categorized" && <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">CATEGORY</th>}
+      {activeTab === "excluded" && <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">REASON</th>}
+      <th className="px-3 py-2.5 text-right text-xs font-semibold text-neutral-500">AMOUNT</th>
+      <th className="px-3 py-2.5 text-right text-xs font-semibold text-neutral-500">ACTION</th>
+    </tr>
+  </thead>
+  <tbody>
+  {paginatedTxns.map(txn => {
+    const isExpanded = expandedTxn === txn.id;
+    return (
+    <React.Fragment key={txn.id}>
+    <tr data-txn-id={txn.id} className={`border-b border-neutral-100 hover:bg-neutral-50 cursor-pointer ${isExpanded ? "bg-brand-50/50" : ""}`} onClick={() => setExpandedTxn(isExpanded ? null : txn.id)}>
+      {activeTab === "for_review" && <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><input type="checkbox" checked={selectedTxns.has(txn.id)} onChange={e => { const s = new Set(selectedTxns); e.target.checked ? s.add(txn.id) : s.delete(txn.id); setSelectedTxns(s); }} className="accent-brand-600" /></td>}
+      <td className="px-3 py-2.5 text-neutral-600 whitespace-nowrap">{txn.posted_date}</td>
+      <td className="px-3 py-2.5 text-neutral-800 max-w-xs truncate">
+        {txn.bank_description_clean || txn.bank_description_raw}
+        {txn.suggestion_status === "suggested_rule" && (() => { const sug = txn.raw_payload_json?._suggestion; const sugType = sug?.type || "assign"; return <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${sugType === "split" ? "bg-highlight-100 text-highlight-600" : "bg-accent-100 text-accent-600"}`}>{sugType === "split" ? "Rule: Split" : "Rule"}</span>; })()}
+        {txn.suggestion_status === "suggested_exclude" && <span className="ml-1.5 text-xs bg-danger-100 text-danger-600 px-1.5 py-0.5 rounded-full">Rule: Exclude</span>}
+      </td>
+      <td className="px-3 py-2.5 text-neutral-500 truncate max-w-32">{txn.payee_normalized || "—"}</td>
+      {activeTab === "categorized" && <td className="px-3 py-2.5 text-xs"><span className="bg-success-100 text-success-700 px-2 py-0.5 rounded-full">Posted</span></td>}
+      {activeTab === "excluded" && <td className="px-3 py-2.5 text-xs text-danger-600">{txn.exclusion_reason || "—"}</td>}
+      <td className={`px-3 py-2.5 text-right font-mono font-semibold ${txn.direction === "inflow" ? "text-success-700" : "text-danger-600"}`}>{txn.direction === "inflow" ? "+" : "-"}${safeNum(txn.amount).toFixed(2)}</td>
+      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+        {txn.status === "for_review" && <button onClick={e => { e.stopPropagation(); if (isExpanded) { setExpandedTxn(null); } else { setExpandedTxn(txn.id); const sug = txn.raw_payload_json?._suggestion; if (sug?.type === "split" && sug.lines?.length >= 2) { setActionMode("split"); const abs = Math.abs(txn.amount); setSplitLines(sug.lines.map(l => ({ accountId: l.account_id || "", accountName: l.account_name || "", classId: l.class_id || "", memo: sug.memo || "", amount: sug.splitBy === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0) }))); } else if (sug) { setActionMode("add"); setAddForm({ accountId: sug.accountId || "", accountName: sug.accountName || "", memo: sug.memo || "", classId: sug.classId || "" }); } else { setActionMode("add"); setAddForm({ accountId: "", accountName: "", memo: "", classId: "" }); } }}} className="text-xs text-brand-600 font-semibold hover:underline">{txn.suggestion_status === "suggested_rule" || txn.suggestion_status === "suggested_exclude" ? "Review" : "Add"}</button>}
+        {["categorized", "matched", "posted"].includes(txn.status) && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-neutral-400 hover:underline">Undo</button>}
+        {txn.status === "excluded" && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-info-600 hover:underline">Restore</button>}
+      </td>
+    </tr>
+    {/* Inline Action Panel */}
+    {isExpanded && txn.status === "for_review" && (
+    <tr><td colSpan={7} className="px-4 py-3 bg-brand-50/30 border-b border-brand-100">
+      {/* Action Tabs */}
+      <div className="flex gap-1 mb-3 border-b border-brand-100 pb-2">
+        {[["add","Add"],["match","Match"],["transfer","Transfer"],["split","Split"]].map(([id,label]) => (
+          <button key={id} onClick={() => { setActionMode(id); if (id === "match") findMatches(txn); }}
+            className={`px-3 py-1 text-xs font-medium rounded-lg ${actionMode === id ? "bg-brand-600 text-white" : "bg-white text-neutral-500 hover:bg-neutral-50 border border-neutral-200"}`}>{label}</button>
+        ))}
+        <button onClick={() => { const reason = prompt("Exclude reason: duplicate / personal / noise / error"); if (reason) excludeTransaction(txn, reason); }}
+          className="px-3 py-1 text-xs text-danger-500 hover:bg-danger-50 rounded-lg ml-auto border border-danger-200">Exclude</button>
+      </div>
+      {/* Rule Suggestion Indicator */}
+      {txn.raw_payload_json?._suggestion?.ruleName && (
+        <div className="text-xs text-accent-600 mb-2 flex items-center gap-1"><span className="material-icons-outlined text-sm">auto_fix_high</span>Suggested by rule: <strong>{txn.raw_payload_json._suggestion.ruleName}</strong>
+        {txn.suggestion_status === "suggested_exclude" && <span className="ml-2 text-danger-500">— This rule suggests excluding this transaction ({txn.raw_payload_json._suggestion.reason || "auto-rule"}). <button onClick={() => excludeTransaction(txn, txn.raw_payload_json._suggestion.reason || "auto-rule")} className="text-danger-600 font-semibold hover:underline ml-1">Confirm Exclude</button></span>}
+        </div>
+      )}
+
+      {/* ADD */}
+      {actionMode === "add" && (
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 items-end">
+        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Category *</label>
+          <AccountPicker value={addForm.accountId} onChange={v => { if (v === "__new__") { setShowNewBankAcct(true); return; } const a = accounts.find(a => a.id === v); setAddForm({...addForm, accountId: v, accountName: a?.name || ""}); }} accounts={accounts} accountTypes={ACCOUNT_TYPES} showNewOption placeholder="Search accounts..." /></div>
+        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Tenant/Vendor</label>
+          <select value={addForm.entityId ? `${addForm.entityType}:${addForm.entityId}` : ""} onChange={e => { if (!e.target.value) { setAddForm(f => ({...f, entityType: "", entityId: "", entityName: ""})); return; } const [type, id] = e.target.value.split(":"); const name = type === "customer" ? tenants.find(t => t.id === id)?.name : vendors.find(v => v.id === id)?.name; setAddForm(f => ({...f, entityType: type, entityId: id, entityName: name || ""})); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+            <option value="">None</option><optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup><optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup>
+          </select></div>
+        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Memo</label>
+          <input type="text" value={addForm.memo} onChange={e => setAddForm({...addForm, memo: e.target.value})} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Class</label>
+          <select value={addForm.classId} onChange={e => setAddForm({...addForm, classId: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+            <option value="">No class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></div>
+        <button onClick={() => acceptTransaction(txn, addForm.accountId, addForm.accountName, addForm.memo, addForm.classId, addForm.entityType, addForm.entityId, addForm.entityName)} disabled={!addForm.accountId} className="bg-success-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-success-700">Add & Post</button>
+      </div>
+      )}
+      {showNewBankAcct && (
+      <div className="bg-brand-50 rounded-xl p-3 mt-2 border border-brand-200">
+      <div className="text-xs font-semibold text-brand-700 mb-2">Create New Account</div>
+      <div className="grid grid-cols-3 gap-2">
+      <div><label className="text-xs text-neutral-500 block mb-1">Type *</label><select value={newBankAcctForm.type} onChange={e => setNewBankAcctForm({...newBankAcctForm, type: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">{ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+      <div><label className="text-xs text-neutral-500 block mb-1">Code</label><input value={newBankAcctForm.code} onChange={e => setNewBankAcctForm({...newBankAcctForm, code: e.target.value})} placeholder="Auto" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+      <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><input value={newBankAcctForm.name} onChange={e => setNewBankAcctForm({...newBankAcctForm, name: e.target.value})} placeholder="e.g. Office Supplies" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+      </div>
+      <div className="flex gap-2 mt-2"><button onClick={createInlineBankAcct} className="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg">Create</button><button onClick={() => setShowNewBankAcct(false)} className="text-xs text-neutral-500 px-3 py-1.5">Cancel</button></div>
+      </div>
+      )}
+
+      {/* MATCH */}
+      {actionMode === "match" && (
+      <div>
+        {matchLoading && <div className="text-xs text-neutral-400 py-4 text-center">Searching for matches...</div>}
+        {!matchLoading && matchCandidates.length === 0 && <div className="text-xs text-neutral-400 py-4 text-center">No matching journal entries found within 10 days.</div>}
+        {!matchLoading && matchCandidates.length > 0 && (
+        <div className="space-y-2 max-h-48 overflow-y-auto">
+          <p className="text-xs text-neutral-500 mb-1">{matchCandidates.length} potential match{matchCandidates.length !== 1 ? "es" : ""}</p>
+          {matchCandidates.map(c => (
+          <div key={c.id} className="flex items-center justify-between bg-white rounded-lg border border-neutral-200 px-3 py-2">
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium text-neutral-800 truncate">{c.number} — {c.description}</div>
+              <div className="text-xs text-neutral-400">{c.date} · ${safeNum(c._jeTotal).toFixed(2)} · Score: {c._score}/100</div>
+            </div>
+            <button onClick={() => confirmMatch(txn, c)} className="shrink-0 bg-brand-600 text-white text-xs px-3 py-1 rounded-lg ml-2 hover:bg-brand-700">Match</button>
+          </div>
+          ))}
+        </div>
+        )}
+      </div>
+      )}
+
+      {/* TRANSFER */}
+      {actionMode === "transfer" && (
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Transfer to Account *</label>
+          <select value={transferForm.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); setTransferForm({...transferForm, accountId: e.target.value, accountName: a?.name || ""}); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+            <option value="">Select account...</option>{accounts.filter(a => a.is_active && (a.type === "Asset" || a.type === "Liability")).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}
+          </select></div>
+        <div><label className="text-xs font-medium text-neutral-500 block mb-1">Memo</label>
+          <input type="text" value={transferForm.memo} onChange={e => setTransferForm({...transferForm, memo: e.target.value})} placeholder="e.g. Transfer to savings" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+        <button onClick={() => acceptTransfer(txn, transferForm.accountId, transferForm.accountName, transferForm.memo)} disabled={!transferForm.accountId} className="bg-info-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-info-700">Post Transfer</button>
+      </div>
+      )}
+
+      {/* SPLIT */}
+      {actionMode === "split" && (
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-neutral-500">Split into lines (total must equal ${Math.abs(txn.amount).toFixed(2)})</span>
+          <button onClick={() => setSplitLines(prev => [...prev, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }])} className="text-xs text-brand-600 hover:underline">+ Add Line</button>
+        </div>
+        <div className="space-y-2">
+          {splitLines.map((line, i) => (
+          <div key={i} className="grid grid-cols-5 gap-2 items-end">
+            <AccountPicker value={line.accountId} onChange={v => { const a = accounts.find(a => a.id === v); const l = [...splitLines]; l[i] = {...l[i], accountId: v, accountName: a?.name || ""}; setSplitLines(l); }} accounts={accounts} accountTypes={ACCOUNT_TYPES} placeholder="Account..." />
+            <input type="text" inputMode="decimal" value={line.amount} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], amount: e.target.value.replace(/[^0-9.]/g, "")}; setSplitLines(l); }} placeholder="0.00" className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs text-right font-mono" />
+            <input type="text" value={line.memo} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], memo: e.target.value}; setSplitLines(l); }} placeholder="Memo..." className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs" />
+            <select value={line.classId} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], classId: e.target.value}; setSplitLines(l); }} className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+              <option value="">Class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            {splitLines.length > 2 && <button onClick={() => setSplitLines(prev => prev.filter((_, j) => j !== i))} className="text-danger-400 hover:text-danger-600 text-xs">✕</button>}
+          </div>
+          ))}
+        </div>
+        <div className="flex items-center justify-between mt-2">
+          <span className={`text-xs font-mono ${Math.abs(splitLines.reduce((s,l) => s + safeNum(l.amount), 0) - Math.abs(txn.amount)) < 0.01 ? "text-success-600" : "text-danger-500"}`}>
+            Total: ${splitLines.reduce((s,l) => s + safeNum(l.amount), 0).toFixed(2)} / ${Math.abs(txn.amount).toFixed(2)}
+          </span>
+          <button onClick={() => acceptSplit(txn, splitLines)} disabled={splitLines.filter(l => l.accountId && safeNum(l.amount) > 0).length < 2} className="bg-highlight-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-highlight-700">Post Split</button>
+        </div>
+      </div>
+      )}
+
+      {/* Transaction Details */}
+      <div className="mt-2 text-xs text-neutral-400 border-t border-brand-100 pt-2">
+        <span className="mr-3">Source: {txn.source_type?.toUpperCase() || "CSV"}</span>
+        <span className="mr-3">Raw: {txn.bank_description_raw}</span>
+        {txn.check_number && <span className="mr-3">Check #: {txn.check_number}</span>}
+        {txn.reference_number && <span className="mr-3">Ref: {txn.reference_number}</span>}
+        {txn.payee_raw && <span>Payee: {txn.payee_raw}</span>}
+      </div>
+      {/* Create Rule from Transaction */}
+      <div className="mt-2 pt-2 border-t border-brand-100">
+        <button onClick={() => createRuleFromTransaction(txn)} className="text-xs text-accent-600 hover:text-accent-800 hover:underline flex items-center gap-1">
+          <span className="material-icons-outlined text-sm">auto_fix_high</span>Create a rule from this transaction
+        </button>
+      </div>
+    </td></tr>
+    )}
+    </React.Fragment>
+    );
+  })}
+  {filtered.length === 0 && <tr><td colSpan={7} className="px-4 py-12 text-center text-neutral-400">No transactions in this tab</td></tr>}
+  </tbody>
+  </table>
+  </div>
+  {/* Bottom Pagination */}
+  {txnTotalPages > 1 && (
+  <div className="flex items-center justify-between">
+    <div className="text-xs text-neutral-400">Showing {safeTxnPage * TXN_PAGE_SIZE + 1}–{Math.min((safeTxnPage + 1) * TXN_PAGE_SIZE, filtered.length)} of {filtered.length}</div>
+    <div className="flex items-center gap-2">
+      <button onClick={() => setTxnPage(Math.max(0, safeTxnPage - 1))} disabled={safeTxnPage === 0} className="text-xs px-2 py-1 rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed">← Prev</button>
+      <span className="text-xs text-neutral-500">Page {safeTxnPage + 1} of {txnTotalPages}</span>
+      <button onClick={() => setTxnPage(Math.min(txnTotalPages - 1, safeTxnPage + 1))} disabled={safeTxnPage >= txnTotalPages - 1} className="text-xs px-2 py-1 rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed">Next →</button>
+    </div>
+  </div>
+  )}
+  </>)}
+  </>)}
+
+  {/* New Account Modal */}
+  {showNewAccount && (
+  <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+  <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+    <h3 className="font-semibold text-neutral-800 mb-4">Add Bank Account</h3>
+    <div className="space-y-3">
+      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Account Name *</label><Input value={newAccountForm.name} onChange={e => setNewAccountForm({...newAccountForm, name: e.target.value})} placeholder="e.g. Chase Checking" /></div>
+      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Account Type</label>
+        <select value={newAccountForm.type} onChange={e => setNewAccountForm({...newAccountForm, type: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm">
+          <option value="checking">Checking</option><option value="savings">Savings</option><option value="credit_card">Credit Card</option><option value="loan">Loan</option><option value="other">Other</option>
+        </select>
+      </div>
+      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Last 4 Digits</label><Input maxLength={4} value={newAccountForm.masked_number} onChange={e => setNewAccountForm({...newAccountForm, masked_number: e.target.value})} placeholder="1234" /></div>
+      <div><label className="text-xs font-medium text-neutral-500 block mb-1">Institution</label><Input value={newAccountForm.institution_name} onChange={e => setNewAccountForm({...newAccountForm, institution_name: e.target.value})} placeholder="e.g. Chase, Bank of America" /></div>
+    </div>
+    <div className="flex gap-2 mt-4">
+      <Btn onClick={createFeed} disabled={creatingFeed}>{creatingFeed ? "Creating..." : "Create"}</Btn>
+      <button onClick={() => setShowNewAccount(false)} className="text-sm text-neutral-400 px-4 py-2">Cancel</button>
+    </div>
+  </div>
+  </div>
+  )}
+
+  {/* Import CSV Wizard Modal */}
+  {showImportWizard && (
+  <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+  <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+    <div className="p-6">
+    <div className="flex items-center justify-between mb-4">
+      <h3 className="font-semibold text-neutral-800">Import Bank Transactions</h3>
+      <button onClick={() => setShowImportWizard(false)} className="text-neutral-400 hover:text-neutral-700 text-xl">✕</button>
+    </div>
+
+    {/* Step Bar */}
+    <div className="flex items-center gap-0 mb-6">
+    {[{n:1,l:"Account"},{n:2,l:"Upload"},{n:3,l:"Map"},{n:4,l:"Preview"},{n:5,l:"Options"},{n:6,l:"Done"}].map((s,i)=>(
+      <div key={s.n} className="flex items-center flex-1">
+      <div className="flex flex-col items-center gap-1">
+        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 ${wizStep>s.n?"bg-success-500 border-success-500 text-white":wizStep===s.n?"bg-neutral-800 border-neutral-800 text-white":"bg-white border-neutral-200 text-neutral-400"}`}>{wizStep>s.n?"✓":s.n}</div>
+        <span className={`text-xs ${wizStep===s.n?"text-neutral-800 font-medium":"text-neutral-400"}`}>{s.l}</span>
+      </div>
+      {i<5&&<div className={`flex-1 h-0.5 mb-4 mx-1 ${wizStep>s.n?"bg-success-400":"bg-neutral-200"}`}/>}
+      </div>
+    ))}
+    </div>
+
+    {/* Step 1: Select Account */}
+    {wizStep === 1 && (
+    <div className="space-y-4">
+      <label className="text-sm font-medium text-neutral-700 block">Import into which account?</label>
+      <select value={wizFeedId} onChange={e => { if (e.target.value === "__new__") { setShowNewAccount(true); } else setWizFeedId(e.target.value); }} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm">
+        <option value="">Select bank account...</option>
+        {feeds.map(f => <option key={f.id} value={f.id}>{f.account_name} ({f.account_type}){f.masked_number ? ` ••••${f.masked_number}` : ""}</option>)}
+        <option value="__new__">+ Create New Account</option>
+      </select>
+      <div className="flex justify-end"><button onClick={() => { if (!wizFeedId) { showToast("Select an account.", "error"); return; } setWizStep(2); }} disabled={!wizFeedId} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Next →</button></div>
+    </div>
+    )}
+
+    {/* Step 2: Upload CSV */}
+    {wizStep === 2 && (
+    <div className="space-y-4">
+      <div onClick={() => fileRef.current?.click()} onDragOver={e => { e.preventDefault(); e.stopPropagation(); }} onDragEnter={e => { e.preventDefault(); e.stopPropagation(); }} onDrop={e => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer?.files?.[0]; if (f && (f.name.endsWith(".csv") || f.name.endsWith(".tsv") || f.name.endsWith(".txt"))) setWizFile(f); else if (f) showToast("Please drop a CSV, TSV, or TXT file.", "error"); }} className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer ${wizFile ? "border-success-300 bg-success-50/50" : "border-neutral-200 hover:border-neutral-400"}`}>
+        <input ref={fileRef} type="file" accept=".csv,.txt,.tsv" className="hidden" onChange={e => { if (e.target.files[0]) setWizFile(e.target.files[0]); }} />
+        {wizFile ? <><p className="text-2xl">📄</p><p className="font-semibold text-success-800">{wizFile.name}</p><p className="text-xs text-success-600">{(wizFile.size/1024).toFixed(1)} KB</p></> : <><p className="text-2xl">📤</p><p className="font-semibold text-neutral-700">Drop CSV here or click to browse</p></>}
+      </div>
+      <div className="bg-info-50 border border-info-100 rounded-xl p-3 text-xs text-info-700"><strong>Supported:</strong> Chase, Bank of America, Wells Fargo, Citibank, Capital One, US Bank, and generic CSV</div>
+      <div className="flex justify-between"><button onClick={() => setWizStep(1)} className="text-sm text-neutral-400">← Back</button><button onClick={wizHandleUpload} disabled={!wizFile} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Parse & Continue →</button></div>
+    </div>
+    )}
+
+    {/* Step 3: Map Columns */}
+    {wizStep === 3 && wizParsed && (
+    <div className="space-y-4">
+      {wizDetected && <div className="text-xs bg-success-100 text-success-700 px-3 py-1.5 rounded-full inline-block">Auto-detected: {wizDetected.name}</div>}
+      <div className="bg-neutral-50 rounded-xl p-3"><p className="text-xs text-neutral-400 mb-2">Headers found:</p><div className="flex flex-wrap gap-1.5">{wizParsed.headers.map(h => <span key={h} className="text-xs bg-white border border-neutral-200 text-neutral-700 px-2 py-0.5 rounded-lg font-mono">{h}</span>)}</div></div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {[{f:"date",l:"Date *"},{f:"description",l:"Description *"},{f:"amount",l:"Amount"},{f:"debit",l:"Debit"},{f:"credit",l:"Credit"},{f:"memo",l:"Memo"},{f:"payee",l:"Payee"},{f:"check_number",l:"Check #"},{f:"reference",l:"Reference"}].map(({f,l})=>(
+        <div key={f}><label className="text-xs font-medium text-neutral-500">{l}</label><select value={wizMapping[f]} onChange={e=>setWizMapping(m=>({...m,[f]:e.target.value}))} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs mt-1"><option value="">— Not mapped —</option>{wizParsed.headers.map(h=><option key={h} value={h}>{h}</option>)}</select></div>
+        ))}
+      </div>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={wizInvertSign} onChange={e => setWizInvertSign(e.target.checked)} className="accent-brand-600" /> Invert sign (negative = inflow)</label>
+      {!(wizMapping.date && wizMapping.description && (wizMapping.amount || wizMapping.debit || wizMapping.credit)) && <p className="text-xs text-warn-600 bg-warn-50 rounded-lg px-3 py-2">Date, Description, and at least one amount column required</p>}
+      <div className="flex justify-between"><button onClick={() => setWizStep(2)} className="text-sm text-neutral-400">← Back</button><button onClick={wizBuildPreview} disabled={!(wizMapping.date && wizMapping.description && (wizMapping.amount || wizMapping.debit || wizMapping.credit))} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Preview →</button></div>
+    </div>
+    )}
+
+    {/* Step 4: Preview */}
+    {wizStep === 4 && (
+    <div className="space-y-4">
+      <div className="flex gap-3 text-sm">
+        <div className="bg-success-50 text-success-700 px-3 py-1.5 rounded-lg"><strong>{wizPreview.filter(r=>r.valid).length}</strong> valid</div>
+        <div className="bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg"><strong>{wizPreview.filter(r=>!r.valid).length}</strong> invalid</div>
+        <div className="bg-info-50 text-info-600 px-3 py-1.5 rounded-lg"><strong>{wizPreview.length}</strong> total</div>
+      </div>
+      <div className="max-h-64 overflow-y-auto rounded-xl border border-neutral-200">
+        <table className="w-full text-xs">
+          <thead className="bg-neutral-50 sticky top-0"><tr><th className="px-3 py-2 text-left">Date</th><th className="px-3 py-2 text-left">Description</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2">Status</th></tr></thead>
+          <tbody>{wizPreview.slice(0, 50).map((r, i) => (
+            <tr key={i} className={`border-t ${r.valid ? "" : "bg-danger-50/50"}`}>
+              <td className="px-3 py-1.5">{r.date || "—"}</td>
+              <td className="px-3 py-1.5 truncate max-w-48">{r.description}</td>
+              <td className={`px-3 py-1.5 text-right font-mono ${r.amount >= 0 ? "text-success-700" : "text-danger-600"}`}>{r.amount >= 0 ? "+" : ""}{r.amount.toFixed(2)}</td>
+              <td className="px-3 py-1.5 text-center">{r.valid ? <span className="text-success-600">✓</span> : <span className="text-danger-500" title="Invalid date or amount">✗</span>}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+      {wizPreview.length > 50 && <p className="text-xs text-neutral-400">Showing first 50 of {wizPreview.length} rows</p>}
+      <div className="flex justify-between"><button onClick={() => setWizStep(3)} className="text-sm text-neutral-400">← Back</button><button onClick={() => setWizStep(5)} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg">Continue →</button></div>
+    </div>
+    )}
+
+    {/* Step 5: Import Options */}
+    {wizStep === 5 && (
+    <div className="space-y-4">
+      <div className="space-y-3">
+        <label className="flex items-center gap-3 bg-white rounded-xl border border-neutral-200 px-4 py-3 cursor-pointer">
+          <input type="checkbox" checked={wizOptions.skipDuplicates} onChange={e => setWizOptions({...wizOptions, skipDuplicates: e.target.checked})} className="accent-brand-600" />
+          <div><span className="text-sm font-medium text-neutral-700">Skip duplicates automatically</span><p className="text-xs text-neutral-400">Transactions with matching fingerprints will be skipped</p></div>
+        </label>
+        <label className="flex items-center gap-3 bg-white rounded-xl border border-neutral-200 px-4 py-3 cursor-pointer">
+          <input type="checkbox" checked={wizOptions.autoApplyRules} onChange={e => setWizOptions({...wizOptions, autoApplyRules: e.target.checked})} className="accent-brand-600" />
+          <div><span className="text-sm font-medium text-neutral-700">Auto-apply categorization rules</span><p className="text-xs text-neutral-400">Rules will suggest categories for matching transactions</p></div>
+        </label>
+        <label className="flex items-center gap-3 bg-white rounded-xl border border-neutral-200 px-4 py-3 cursor-pointer">
+          <input type="checkbox" checked={wizOptions.markForReview} onChange={e => setWizOptions({...wizOptions, markForReview: e.target.checked})} className="accent-brand-600" />
+          <div><span className="text-sm font-medium text-neutral-700">Mark all as "For Review"</span><p className="text-xs text-neutral-400">Transactions require manual review before posting</p></div>
+        </label>
+      </div>
+      <div className="bg-white rounded-xl border border-neutral-200 p-4">
+        <div className="flex justify-between text-sm"><span className="text-neutral-400">Valid rows</span><span className="font-bold text-neutral-800">{wizPreview.filter(r=>r.valid).length}</span></div>
+        <div className="flex justify-between text-sm mt-1"><span className="text-neutral-400">Will skip (invalid)</span><span className="text-danger-500">{wizPreview.filter(r=>!r.valid).length}</span></div>
+      </div>
+      <div className="flex justify-between"><button onClick={() => setWizStep(4)} className="text-sm text-neutral-400">← Back</button><Btn variant="success-fill" onClick={wizExecuteImport}>Import {wizPreview.filter(r=>r.valid).length} Transactions</Btn></div>
+    </div>
+    )}
+
+    {/* Step 6: Done */}
+    {wizStep === 6 && wizResult && (
+    <div className="text-center py-8">
+      <div className="w-16 h-16 bg-success-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">✓</div>
+      <h4 className="text-xl font-bold text-neutral-900 mb-2">Import Complete</h4>
+      <div className="space-y-1 text-sm text-neutral-500 mb-6">
+        <p><strong>{wizResult.imported}</strong> transactions imported</p>
+        {wizResult.duplicates > 0 && <p>{wizResult.duplicates} duplicates skipped</p>}
+        {wizResult.skipped > 0 && <p>{wizResult.skipped} rows skipped (errors)</p>}
+        {wizResult.ruleApplied > 0 && <p className="text-accent-600">{wizResult.ruleApplied} auto-categorized by rules</p>}
+      </div>
+      <button onClick={() => { setShowImportWizard(false); setActiveTab("for_review"); }} className="bg-neutral-800 text-white text-sm px-6 py-2 rounded-lg">Review Transactions</button>
+    </div>
+    )}
+    </div>
+  </div>
+  </div>
+  )}
+
+
+  {/* ========== RULE DRAWER (slide from right) ========== */}
+  {showRuleDrawer && (
+  <>
+  <div className="fixed inset-0 bg-black/30 z-40" onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }} />
+  <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-white shadow-2xl z-50 overflow-y-auto">
+    <div className="sticky top-0 bg-white border-b border-neutral-200 px-5 py-4 flex items-center justify-between z-10">
+      <h3 className="text-lg font-bold text-neutral-800">{editingRule ? "Edit Rule" : "Create New Rule"}</h3>
+      <button onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }} className="text-neutral-400 hover:text-neutral-600 text-xl">✕</button>
+    </div>
+    <div className="px-5 py-4 space-y-5">
+
+      {/* Rule Name */}
+      <div>
+        <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Rule Name *</label>
+        <input type="text" value={ruleForm.name} onChange={e => setRuleForm({...ruleForm, name: e.target.value})} placeholder="e.g. Home Depot Supplies" className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm focus:border-accent-400 focus:outline-none" />
+      </div>
+
+      {/* Direction + Bank Account Scope */}
+      <div className="flex gap-3">
+        <div className="flex-1">
+          <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Apply to</label>
+          <select value={ruleForm.condDirection} onChange={e => setRuleForm({...ruleForm, condDirection: e.target.value})} className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm">
+            <option value="all">All transactions</option><option value="outflow">Money out</option><option value="inflow">Money in</option>
+          </select>
+        </div>
+        <div className="flex-1">
+          <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Bank Account</label>
+          <select value={ruleForm.bankAccountFeedId} onChange={e => setRuleForm({...ruleForm, bankAccountFeedId: e.target.value})} className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm">
+            <option value="">All bank accounts</option>{feeds.map(f => <option key={f.id} value={f.id}>{f.account_name}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Conditions */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest">When transaction meets</label>
+          <select value={ruleForm.condLogic} onChange={e => setRuleForm({...ruleForm, condLogic: e.target.value})} className="border border-accent-200 rounded-lg px-2 py-1 text-xs font-semibold text-accent-700">
+            <option value="all">ALL</option><option value="any">ANY</option>
+          </select>
+          <span className="text-xs text-neutral-400">conditions:</span>
+        </div>
+        {ruleForm.conditions.map((cond, idx) => {
+          const isAmount = cond.field === "amount";
+          const textOps = [["contains","Contains"],["does_not_contain","Doesn't contain"],["is_exactly","Is exactly"],["starts_with","Starts with"],["ends_with","Ends with"],["regex","Regex"]];
+          const amtOps = [["is_exactly","Is exactly"],["greater_than","Greater than"],["less_than","Less than"],["between","Between"]];
+          const ops = isAmount ? amtOps : textOps;
+          return (
+          <div key={idx} className="flex items-center gap-2 mb-2">
+            <select value={cond.field} onChange={e => { updateCondition(idx, "field", e.target.value); updateCondition(idx, "operator", e.target.value === "amount" ? "greater_than" : "contains"); }} className="border border-accent-200 rounded-lg px-2 py-1.5 text-xs min-w-[120px]">
+              <option value="description">Description</option><option value="bank_text">Bank text</option><option value="amount">Amount</option>
+            </select>
+            <select value={cond.operator} onChange={e => updateCondition(idx, "operator", e.target.value)} className="border border-accent-200 rounded-lg px-2 py-1.5 text-xs min-w-[130px]">
+              {ops.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <input type={isAmount ? "number" : "text"} value={cond.value} onChange={e => updateCondition(idx, "value", e.target.value)} placeholder={isAmount ? "0.00" : "Enter text..."} className="flex-1 border border-accent-200 rounded-lg px-2 py-1.5 text-xs" />
+            {cond.operator === "between" && <>
+              <span className="text-xs text-neutral-400">and</span>
+              <input type="number" value={cond.value2 || ""} onChange={e => updateCondition(idx, "value2", e.target.value)} placeholder="0.00" className="w-24 border border-accent-200 rounded-lg px-2 py-1.5 text-xs" />
+            </>}
+            {ruleForm.conditions.length > 1 && <button onClick={() => removeCondition(idx)} className="text-danger-400 hover:text-danger-600 text-sm shrink-0">✕</button>}
+          </div>
+          );
+        })}
+        {ruleForm.conditions.length < 5 && (
+          <button onClick={addCondition} className="text-xs text-accent-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">add</span>Add a condition</button>
+        )}
+      </div>
+
+      {/* Divider: Then */}
+      <div className="flex items-center gap-2"><div className="flex-1 border-t border-neutral-200" /><span className="text-xs font-semibold text-neutral-400 uppercase">Then</span><div className="flex-1 border-t border-neutral-200" /></div>
+
+      {/* Assign vs Exclude */}
+      <div className="flex gap-4">
+        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="ruleType" checked={ruleForm.ruleType === "assign"} onChange={() => setRuleForm({...ruleForm, ruleType: "assign"})} className="accent-accent-600" /><span className="font-medium text-neutral-700">Assign</span></label>
+        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="ruleType" checked={ruleForm.ruleType === "exclude"} onChange={() => setRuleForm({...ruleForm, ruleType: "exclude"})} className="accent-accent-600" /><span className="font-medium text-neutral-700">Exclude</span></label>
+      </div>
+
+      {/* Assign Fields */}
+      {ruleForm.ruleType === "assign" && (<>
+        <div>
+          <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Transaction Type</label>
+          <select value={ruleForm.transactionType} onChange={e => setRuleForm({...ruleForm, transactionType: e.target.value})} className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm">
+            <option value="expense">Expense</option><option value="deposit">Deposit</option><option value="transfer">Transfer</option><option value="check">Check</option>
+          </select>
+        </div>
+
+        {/* Category Lines (split support) */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest">Category *</label>
+            {!ruleForm.split && <button onClick={addSplitLine} className="text-xs text-accent-600 hover:underline">+ Add a split</button>}
+          </div>
+          {ruleForm.split && ruleForm.lines.length >= 2 && (
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs text-neutral-400">Split by:</span>
+              <select value={ruleForm.splitBy || "percentage"} onChange={e => setRuleForm({...ruleForm, splitBy: e.target.value})} className="border border-accent-200 rounded-lg px-2 py-1 text-xs">
+                <option value="percentage">Percentage</option><option value="amount">Amount</option>
+              </select>
+            </div>
+          )}
+          {ruleForm.lines.map((line, idx) => (
+          <div key={idx} className="flex items-center gap-2 mb-2">
+            <AccountPicker value={line.accountId} onChange={v => { if (v === "__new__") { setShowNewBankAcct(true); return; } const a = accounts.find(a => a.id === v); updateLine(idx, "accountId", v); updateLine(idx, "accountName", a?.name || ""); }} accounts={accounts} accountTypes={ACCOUNT_TYPES} showNewOption placeholder="Search accounts..." className="flex-1" />
+            {ruleForm.split && ruleForm.splitBy === "percentage" && (
+              <input type="number" value={line.percentage ?? ""} onChange={e => updateLine(idx, "percentage", e.target.value)} placeholder="%" className="w-20 border border-accent-200 rounded-lg px-2 py-1.5 text-xs text-right" />
+            )}
+            {ruleForm.split && ruleForm.splitBy === "amount" && (
+              <input type="number" value={line.amount ?? ""} onChange={e => updateLine(idx, "amount", e.target.value)} placeholder="$" className="w-24 border border-accent-200 rounded-lg px-2 py-1.5 text-xs text-right" />
+            )}
+            <select value={line.classId} onChange={e => updateLine(idx, "classId", e.target.value)} className="w-36 border border-accent-200 rounded-lg px-2 py-1.5 text-xs">
+              <option value="">No class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            {ruleForm.lines.length > 1 && <button onClick={() => removeSplitLine(idx)} className="text-danger-400 hover:text-danger-600 text-sm shrink-0">✕</button>}
+          </div>
+          ))}
+          {ruleForm.split && ruleForm.lines.length < 5 && (
+            <button onClick={addSplitLine} className="text-xs text-accent-600 hover:underline">+ Add line</button>
+          )}
+          {ruleForm.split && ruleForm.splitBy === "percentage" && (
+            <div className={`text-xs mt-1 ${Math.abs(ruleForm.lines.reduce((s, l) => s + (Number(l.percentage) || 0), 0) - 100) < 0.01 ? "text-success-600" : "text-danger-500"}`}>
+              Total: {ruleForm.lines.reduce((s, l) => s + (Number(l.percentage) || 0), 0)}%
+            </div>
+          )}
+        </div>
+        {showNewBankAcct && (
+        <div className="bg-brand-50 rounded-xl p-3 mt-2 border border-brand-200">
+        <div className="text-xs font-semibold text-brand-700 mb-2">Create New Account</div>
+        <div className="grid grid-cols-3 gap-2">
+        <div><label className="text-xs text-neutral-500 block mb-1">Type *</label><select value={newBankAcctForm.type} onChange={e => setNewBankAcctForm({...newBankAcctForm, type: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">{ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+        <div><label className="text-xs text-neutral-500 block mb-1">Code</label><input value={newBankAcctForm.code} onChange={e => setNewBankAcctForm({...newBankAcctForm, code: e.target.value})} placeholder="Auto" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+        <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><input value={newBankAcctForm.name} onChange={e => setNewBankAcctForm({...newBankAcctForm, name: e.target.value})} placeholder="e.g. Office Supplies" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+        </div>
+        <div className="flex gap-2 mt-2"><button onClick={createInlineBankAcct} className="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg">Create</button><button onClick={() => setShowNewBankAcct(false)} className="text-xs text-neutral-500 px-3 py-1.5">Cancel</button></div>
+        </div>
+        )}
+
+        {/* Payee + Memo */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Payee</label>
+            <input type="text" value={ruleForm.actionPayee} onChange={e => setRuleForm({...ruleForm, actionPayee: e.target.value})} placeholder="Optional" className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Memo</label>
+            <input type="text" value={ruleForm.actionMemo} onChange={e => setRuleForm({...ruleForm, actionMemo: e.target.value})} placeholder="Optional" className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+        </div>
+      </>)}
+
+      {/* Exclude Fields */}
+      {ruleForm.ruleType === "exclude" && (
+        <div>
+          <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Exclude Reason</label>
+          <select value={ruleForm.excludeReason} onChange={e => setRuleForm({...ruleForm, excludeReason: e.target.value})} className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm">
+            <option value="personal">Personal</option><option value="duplicate">Duplicate</option><option value="noise">Noise</option><option value="other">Other</option>
+          </select>
+        </div>
+      )}
+
+      {/* How to apply */}
+      <div>
+        <div className="flex items-center gap-2 mb-2"><div className="flex-1 border-t border-neutral-200" /><span className="text-xs font-semibold text-neutral-400 uppercase">How to apply</span><div className="flex-1 border-t border-neutral-200" /></div>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="autoAccept" checked={!ruleForm.autoAccept} onChange={() => setRuleForm({...ruleForm, autoAccept: false})} className="accent-accent-600" /><span className="text-neutral-700">Auto-categorize, then I'll review manually</span></label>
+          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="autoAccept" checked={ruleForm.autoAccept} onChange={() => setRuleForm({...ruleForm, autoAccept: true})} className="accent-accent-600" /><span className="text-neutral-700">Auto-add (skip review entirely)</span></label>
+        </div>
+      </div>
+
+      {/* Priority */}
+      <div>
+        <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Priority (lower = runs first)</label>
+        <input type="number" value={ruleForm.priority} onChange={e => setRuleForm({...ruleForm, priority: e.target.value})} min="1" max="999" className="w-24 border border-accent-200 rounded-lg px-3 py-2 text-sm" />
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-3 pt-2 border-t border-neutral-200">
+        <button onClick={saveRule} className="bg-accent-600 text-white text-sm px-6 py-2.5 rounded-lg hover:bg-accent-700 font-semibold">{editingRule ? "Update Rule" : "Save Rule"}</button>
+        <button onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }} className="text-sm text-neutral-500 px-4 py-2.5 hover:text-neutral-700">Cancel</button>
+      </div>
+    </div>
+  </div>
+  </>
+  )}
+
+  {/* Post-Connection Setup Modal */}
+  {postConnectModal && (() => {
+    const selectedAccts = postConnectModal.accounts.filter(a => postConnectSelected.has(a.id));
+    const allMapped = selectedAccts.length > 0 && selectedAccts.every(acct => postConnectMappings[acct.id]);
+    return (
+  <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+      <div className="p-6">
+        <div className="flex items-center gap-3 mb-1">
+          <span className="text-2xl">🏦</span>
+          <h3 className="text-lg font-bold text-neutral-800">Bank Connected</h3>
+        </div>
+        <p className="text-sm text-neutral-500 mb-5">{postConnectModal.institutionName} — {postConnectModal.accounts.length} account{postConnectModal.accounts.length !== 1 ? "s" : ""} found</p>
+
+        {/* Connected Accounts + GL Mapping */}
+        <div className="mb-5">
+          <label className="text-xs font-semibold text-neutral-600 uppercase tracking-wide block mb-2">Select Accounts to Connect</label>
+          <p className="text-xs text-neutral-400 mb-3">Check the accounts you want, then map each to a GL account.</p>
+          <div className="space-y-3">
+            {postConnectModal.accounts.map(acct => {
+              const isChecked = postConnectSelected.has(acct.id);
+              const isMapped = !!postConnectMappings[acct.id];
+              const isCreating = postConnectNewAcct === acct.id;
+              return (
+            <div key={acct.id} className={`rounded-xl p-3 border transition-all ${!isChecked ? "bg-neutral-50 border-neutral-100 opacity-60" : isMapped ? "bg-neutral-50 border-neutral-200" : "bg-warn-50/30 border-warn-300"}`}>
+              <div className="flex items-center gap-3 mb-2">
+                <input type="checkbox" checked={isChecked} onChange={() => {
+                  setPostConnectSelected(prev => { const next = new Set(prev); if (next.has(acct.id)) next.delete(acct.id); else next.add(acct.id); return next; });
+                }} className="accent-brand-600 w-4 h-4 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm text-neutral-800 truncate">{acct.name || "Bank Account"}</div>
+                  <div className="text-xs text-neutral-400">{acct.type}{acct.mask ? ` · ••••${acct.mask}` : ""}</div>
+                </div>
+                {acct.is_existing && <span className="text-xs bg-success-100 text-success-700 px-2 py-0.5 rounded-full shrink-0">Reconnected</span>}
+              </div>
+              {isChecked && (
+              <div className="ml-7">
+                <label className="text-xs text-neutral-500 block mb-1">GL Account {!isMapped && <span className="text-danger-500 font-semibold">*Required</span>}</label>
+                <AccountPicker
+                  value={postConnectMappings[acct.id] || ""}
+                  onChange={v => {
+                    if (v === "__new__") { setPostConnectNewAcct(acct.id); setNewBankAcctForm({ code: "", name: acct.name || "", type: acct.suggested_gl_type || "Asset" }); return; }
+                    setPostConnectMappings(prev => ({ ...prev, [acct.id]: v }));
+                    setPostConnectNewAcct(null);
+                  }}
+                  accounts={accounts}
+                  accountTypes={ACCOUNT_TYPES}
+                  showNewOption
+                  placeholder="Select or create GL account..."
+                />
+                {isCreating && (
+                <div className="bg-brand-50 rounded-xl p-3 mt-2 border border-brand-200">
+                  <div className="text-xs font-semibold text-brand-700 mb-2">Create New Account</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div><label className="text-xs text-neutral-500 block mb-1">Type *</label><select value={newBankAcctForm.type} onChange={e => setNewBankAcctForm(f => ({...f, type: e.target.value}))} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">{ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                    <div><label className="text-xs text-neutral-500 block mb-1">Code</label><input value={newBankAcctForm.code} onChange={e => setNewBankAcctForm(f => ({...f, code: e.target.value}))} placeholder="Auto" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+                    <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><input value={newBankAcctForm.name} onChange={e => setNewBankAcctForm(f => ({...f, name: e.target.value}))} placeholder="e.g. Business Checking" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <button onClick={async () => {
+                      if (!newBankAcctForm.name.trim()) { showToast("Account name is required.", "error"); return; }
+                      const code = newBankAcctForm.code.trim() || nextAccountCode(accounts, newBankAcctForm.type);
+                      const { data: newAcct, error } = await supabase.from("acct_accounts").insert({ company_id: companyId, code, name: newBankAcctForm.name.trim(), type: newBankAcctForm.type, subtype: newBankAcctForm.type === "Asset" ? "Bank" : newBankAcctForm.type === "Liability" ? "Credit Card" : "", is_active: true, old_text_id: companyId + "-" + code }).select("id").single();
+                      if (error) { pmError("PM-4006", { raw: error, context: "create bank GL account" }); return; }
+                      showToast(`Account "${newBankAcctForm.name}" created.`, "success");
+                      await fetchAll();
+                      setPostConnectMappings(prev => ({ ...prev, [acct.id]: newAcct.id }));
+                      setPostConnectNewAcct(null);
+                    }} className="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg">Create</button>
+                    <button onClick={() => setPostConnectNewAcct(null)} className="text-xs text-neutral-500 px-3 py-1.5">Cancel</button>
+                  </div>
+                </div>
+                )}
+              </div>
+              )}
+            </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Date Range Picker */}
+        <div className="mb-5">
+          <label className="text-xs font-semibold text-neutral-600 uppercase tracking-wide block mb-2">Import Transactions</label>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-neutral-500 block mb-1">From</label>
+              <Input type="date" value={postConnectRange.from} onChange={e => setPostConnectRange(prev => ({ ...prev, from: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-xs text-neutral-500 block mb-1">To</label>
+              <Input type="date" value={postConnectRange.to} onChange={e => setPostConnectRange(prev => ({ ...prev, to: e.target.value }))} />
+            </div>
+          </div>
+          <div className="flex gap-2 mt-2">
+            {[30, 60, 90, 180, 365].map(days => {
+              const d = new Date(); d.setDate(d.getDate() - days);
+              return <button key={days} onClick={() => setPostConnectRange({ from: formatLocalDate(d), to: formatLocalDate(new Date()) })}
+                className="text-xs px-2 py-1 rounded-lg bg-neutral-100 text-neutral-600 hover:bg-neutral-200">{days}d</button>;
+            })}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-3 pt-3 border-t border-neutral-200">
+          <Btn onClick={async () => {
+            if (!allMapped) { showToast("Please map all selected accounts to a GL account before importing.", "error"); return; }
+            if (selectedAccts.length === 0) { showToast("Please select at least one account.", "error"); return; }
+            setPostConnectSyncing(true);
+            try {
+              // Save GL mappings for selected accounts
+              for (const acct of selectedAccts) {
+                const glId = postConnectMappings[acct.id];
+                if (glId) {
+                  await supabase.from("bank_account_feed").update({ gl_account_id: glId }).eq("id", acct.id).eq("company_id", companyId);
+                }
+              }
+              // Deactivate unselected feeds
+              const unselected = postConnectModal.accounts.filter(a => !postConnectSelected.has(a.id));
+              for (const acct of unselected) {
+                await supabase.from("bank_account_feed").update({ status: "inactive" }).eq("id", acct.id).eq("company_id", companyId);
+              }
+              // Sync transactions with date range
+              const { data: { session } } = await supabase.auth.getSession();
+              if (!session?.access_token) { showToast("Not authenticated.", "error"); return; }
+              const res = await fetch("/api/teller-sync-transactions", {
+                method: "POST",
+                headers: { "Authorization": "Bearer " + session.access_token, "Content-Type": "application/json" },
+                body: JSON.stringify({ company_id: companyId, from_date: postConnectRange.from, to_date: postConnectRange.to })
+              });
+              const data = await res.json();
+              if (!res.ok || data.error) { showToast("Sync error: " + (data.error || `HTTP ${res.status}`), "error"); }
+              else { showToast(`Imported ${data.total_added} transaction${data.total_added !== 1 ? "s" : ""} from ${postConnectModal.institutionName}`, "success"); }
+              fetchAll();
+            } catch (e) { showToast("Sync failed: " + e.message, "error"); }
+            finally { setPostConnectSyncing(false); setPostConnectModal(null); }
+          }} disabled={postConnectSyncing || !postConnectRange.from || !allMapped || selectedAccts.length === 0}>
+            {postConnectSyncing ? "Importing..." : allMapped ? "Import Transactions" : "Map All Accounts First"}
+          </Btn>
+          <Btn variant="ghost" onClick={() => { setPostConnectModal(null); fetchAll(); }}>Skip for Now</Btn>
+        </div>
+      </div>
+    </div>
+  </div>
+    );
+  })()}
+
+  </div>
+  );
+}

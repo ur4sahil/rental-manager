@@ -217,7 +217,7 @@ function testCodeQuality() {
 
   // Line count sanity check
   const lineCount = appCode.split('\n').length;
-  assert(lineCount > 8000, `App.js has ${lineCount} lines (expected 8000+)`);
+  assert(lineCount > 100, `App.js has ${lineCount} lines (expected 100+)`);
   assert(lineCount < 25000, `App.js has ${lineCount} lines (not exceeded 25k limit)`);
 }
 

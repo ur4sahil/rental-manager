@@ -1,0 +1,1246 @@
+import React, { useState, useEffect } from "react";
+import { supabase } from "../supabase";
+import { Input, Select, Btn, PageHeader, EmptyState } from "../ui";
+import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput } from "../utils/helpers";
+import { pmError } from "../utils/errors";
+import { guardSubmit, guardRelease } from "../utils/guards";
+import { logAudit } from "../utils/audit";
+import { runDataIntegrityChecks } from "../utils/company";
+import { Spinner } from "./shared";
+
+// ============ ROLE DEFINITIONS ============
+const ROLES = {
+  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","insurance","accounting","owners","notifications","admin","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
+  office_assistant: { label: "Office Assistant", color: "bg-info-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","accounting","notifications","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
+  accountant: { label: "Accountant", color: "bg-positive-600", pages: ["dashboard","accounting","payments","utilities"] },
+  maintenance: { label: "Maintenance", color: "bg-notice-500", pages: ["maintenance","vendors"] },
+  tenant: { label: "Tenant", color: "bg-brand-50/300", pages: ["tenant_portal"] },
+  owner: { label: "Owner", color: "bg-highlight-600", pages: ["owner_portal","loans"] },
+};
+
+const ALL_NAV = [
+  { id: "dashboard", label: "Dashboard", icon: "dashboard" },
+  { id: "tasks", label: "Tasks & Approvals", icon: "assignment" },
+  { id: "properties", label: "Properties", icon: "apartment", children: [
+    { id: "maintenance", label: "Maintenance", icon: "build" },
+    { id: "inspections", label: "Inspections", icon: "checklist" },
+    { id: "utilities", label: "Utilities", icon: "bolt" },
+    { id: "hoa", label: "HOA Payments", icon: "holiday_village" },
+    { id: "loans", label: "Loans", icon: "account_balance_wallet" },
+    { id: "insurance", label: "Insurance", icon: "verified_user" },
+  ]},
+  { id: "tenants", label: "Tenants", icon: "people" },
+  { id: "payments", label: "Payments", icon: "payments" },
+  { id: "accounting", label: "Accounting", icon: "account_balance" },
+  { id: "doc_builder", label: "Document Builder", icon: "description" },
+  { id: "vendors", label: "Vendors", icon: "engineering" },
+  { id: "owners", label: "Owners", icon: "person" },
+  { id: "notifications", label: "Notifications", icon: "notifications_active" },
+];
+// Flat list of all nav IDs including children (for settings UI and allowedPages)
+const ALL_NAV_FLAT = ALL_NAV.flatMap(n => n.children ? [n, ...n.children] : [n]);
+// Child page IDs that live under a parent in sidebar
+const NAV_CHILD_IDS = new Set(ALL_NAV.flatMap(n => (n.children || []).map(c => c.id)));
+
+
+// ============ REUSABLE ARCHIVED ITEMS COMPONENT ============
+function ArchivedItems({ tableName, label, fields, companyId, addNotification, onRestore, showConfirm, userProfile, userRole }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { fetchItems(); }, [companyId]);
+
+  async function fetchItems() {
+  setLoading(true);
+  const { data } = await supabase.from(tableName).select(fields).eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200);
+  setItems(data || []);
+  setLoading(false);
+  }
+
+  async function restore(item) {
+  if (!await showConfirm({ message: "Restore this " + label.toLowerCase() + "?" })) return;
+  const { error } = await supabase.from(tableName).update({ archived_at: null, archived_by: null }).eq("id", item.id).eq("company_id", companyId);
+  if (error) { pmError("PM-8006", { raw: error, context: "restoring archived " + label.toLowerCase() }); return; }
+  addNotification("♻️", "Restored " + label + ": " + (item.address || item.name || item.issue || item.tenant || "item"));
+  fetchItems();
+  if (onRestore) onRestore();
+  }
+
+  async function permanentDelete(item) {
+  if (!await showConfirm({ message: "PERMANENTLY delete this " + label.toLowerCase() + "? This cannot be undone.", variant: "danger", confirmText: "Delete" })) return;
+  const { error } = await supabase.from(tableName).delete().eq("id", item.id).eq("company_id", companyId);
+  if (error) { pmError("PM-8006", { raw: error, context: "permanently deleting " + label.toLowerCase() }); return; }
+  logAudit("delete", tableName, "Permanently deleted " + label + ": " + (item.name || item.address || item.id), item.id, userProfile?.email, userRole, companyId);
+  addNotification("🗑️", "Deleted " + label);
+  fetchItems();
+  }
+
+  if (loading) return <Spinner />;
+
+  return (
+  <div>
+  {items.length === 0 ? (
+  <div className="text-center py-12 bg-white rounded-xl border border-subtle-100"><div className="text-subtle-400">No archived {label.toLowerCase()}s</div></div>
+  ) : (
+  <div className="space-y-2">
+  {items.map(item => (
+  <div key={item.id} className="bg-white rounded-xl border border-subtle-200 p-4 flex items-center gap-4 opacity-70">
+  <div className="flex-1">
+  <div className="font-semibold text-subtle-700 text-sm">{item.address || item.name || item.issue || item.tenant || "Item"}</div>
+  <div className="text-xs text-subtle-400">
+  {item.property && <span>{item.property} · </span>}
+  {item.amount && <span>${Number(item.amount).toLocaleString()} · </span>}
+  Archived {item.archived_at ? new Date(item.archived_at).toLocaleDateString() : ""}
+  {item.archived_by && <span> by {item.archived_by}</span>}
+  </div>
+  <div className="text-xs text-warn-600 mt-1">{item.archived_at ? Math.max(0, 180 - Math.floor((Date.now() - new Date(item.archived_at)) / 86400000)) : "?"} days until auto-purge</div>
+  </div>
+  <button onClick={() => restore(item)} className="text-xs bg-success-50 text-success-700 px-3 py-1.5 rounded-lg hover:bg-success-100 border border-success-200">♻️ Restore</button>
+  <button onClick={() => permanentDelete(item)} className="text-xs bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg hover:bg-danger-100 border border-danger-200">🗑️ Delete</button>
+  </div>
+  ))}
+  </div>
+  )}
+  </div>
+  );
+}
+
+
+// ============ ROLE MANAGEMENT ============
+function RoleManagement({ addNotification, companyId, showToast, showConfirm }) {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingUser, setEditingUser] = useState(null); // user being edited
+  const [form, setForm] = useState({ email: "", role: "office_assistant", name: "", first_name: "", mi: "", last_name: "" });
+  // customPages: which modules are toggled ON when adding/editing a user
+  const [customPages, setCustomPages] = useState([]);
+
+  // All modules that can be assigned (admin and tenant are fixed, not customizable)
+  const CUSTOMIZABLE_ROLES = ["office_assistant", "accountant", "maintenance"];
+
+  useEffect(() => { fetchUsers(); }, [companyId]);
+
+  async function fetchUsers() {
+  const { data } = await supabase.from("app_users").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false });
+  setUsers(data || []);
+  setLoading(false);
+  }
+
+  // When role changes in the form, pre-fill the default pages for that role
+  function handleRoleChange(role) {
+  setForm(f => ({ ...f, role }));
+  setCustomPages(ROLES[role]?.pages ? [...ROLES[role].pages] : []);
+  }
+
+  function togglePage(pageId) {
+  setCustomPages(prev =>
+  prev.includes(pageId) ? prev.filter(p => p !== pageId) : [...prev, pageId]
+  );
+  }
+
+  function startAdd() {
+  setEditingUser(null);
+  setForm({ email: "", role: "office_assistant", name: "", first_name: "", mi: "", last_name: "" });
+  setCustomPages([...ROLES["office_assistant"].pages]);
+  setShowForm(true);
+  }
+
+  function startEdit(u) {
+  setEditingUser(u);
+  const parsed = parseNameParts(u.name);
+  setForm({ email: u.email, role: u.role, name: u.name, first_name: u.first_name || parsed.first_name, mi: u.middle_initial || parsed.middle_initial, last_name: u.last_name || parsed.last_name });
+  // Load their custom pages if saved, otherwise use role defaults
+  const savedPages = u.custom_pages ? JSON.parse(u.custom_pages) : ROLES[u.role]?.pages || [];
+  setCustomPages([...savedPages]);
+  setShowForm(true);
+  }
+
+  async function saveUser() {
+  if (!guardSubmit("saveUser")) return;
+  try {
+  if (!form.email.trim()) { showToast("Email is required.", "error"); return; }
+  if (!form.name.trim()) { showToast("Name is required.", "error"); return; }
+  if (!form.email.trim() || !form.email.includes("@")) { showToast("Please enter a valid email address.", "error"); return; }
+  if (customPages.length === 0) { showToast("Please select at least one module.", "error"); return; }
+
+  const payload = {
+  email: form.email,
+  role: form.role,
+  name: form.name,
+  first_name: form.first_name,
+  middle_initial: form.mi,
+  last_name: form.last_name,
+  custom_pages: JSON.stringify(customPages),
+  company_id: companyId,
+  };
+
+  if (editingUser) {
+  const emailChanged = editingUser.email && normalizeEmail(editingUser.email) !== normalizeEmail(payload.email);
+  if (emailChanged) {
+  // Atomic email change: delete old membership + update user + create new membership in one transaction
+  try {
+  const { error: rpcErr } = await supabase.rpc("change_user_email", {
+  p_company_id: companyId,
+  p_user_id: String(editingUser.id),
+  p_old_email: editingUser.email,
+  p_new_email: payload.email,
+  p_name: payload.name,
+  p_role: payload.role,
+  p_custom_pages: JSON.stringify(customPages),
+  });
+  if (rpcErr) throw new Error(rpcErr.message);
+  } catch (rpcE) {
+  pmError("PM-1009", { raw: rpcE, context: "update user email via RPC" });
+  return;
+  }
+  } else {
+  // No email change — just update role/name/pages
+  const { error } = await supabase.from("app_users").update({ email: normalizeEmail(payload.email), role: payload.role, name: payload.name, custom_pages: payload.custom_pages, company_id: payload.company_id }).eq("company_id", companyId).eq("id", editingUser.id);
+  if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
+  await supabase.from("company_members").upsert([{ company_id: companyId, user_email: (form.email || "").toLowerCase(), user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
+  }
+  addNotification("👥", `${form.name}'s access updated`);
+  } else {
+  const { error, data: newUser } = await supabase.from("app_users").insert([{ ...payload, email: normalizeEmail(payload.email) }]).select();
+  if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
+  // Also add to company_members
+  await supabase.from("company_members").upsert([{ company_id: companyId, user_email: (form.email || "").toLowerCase(), user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
+  addNotification("👥", `${form.name} added as ${ROLES[form.role]?.label}`);
+  // Offer to send invite
+  if (newUser?.[0] && await showConfirm({ message: `${form.name} has been added!\n\nWould you like to send them a login invite now?` })) {
+  await inviteUser({ ...newUser[0], ...payload });
+  }
+  }
+
+  setShowForm(false);
+  setEditingUser(null);
+  setForm({ email: "", role: "office_assistant", name: "", first_name: "", mi: "", last_name: "" });
+  setCustomPages([]);
+  fetchUsers();
+  } finally { guardRelease("saveUser"); }
+  }
+
+  async function removeUser(id, name, email) {
+  if (!guardSubmit("removeUser")) return;
+  try {
+  if (!await showConfirm({ message: `Remove ${name}?`, variant: "danger", confirmText: "Delete" })) return;
+  await supabase.from("app_users").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", id).eq("company_id", companyId);
+  // Also deactivate their company membership
+  if (email) {
+  const { error: _err7920 } = await supabase.from("company_members").update({ status: "removed" }).eq("company_id", companyId).eq("user_email", email.toLowerCase());
+  if (_err7920) { showToast("Error updating company_members: " + _err7920.message, "error"); return; }
+  }
+  addNotification("👥", `${name} removed`);
+  fetchUsers();
+  } finally { guardRelease("removeUser"); }
+  }
+
+  async function inviteUser(user) {
+  if (!guardSubmit("inviteUser")) return;
+  try {
+  if (!user.email) { showToast("This user has no email address.", "error"); return; }
+  const roleName = ROLES[user.role]?.label || user.role;
+  if (!await showConfirm({ message: `Send login invite to ${user.name} (${user.email})?\n\nRole: ${roleName}\n\nThis will:\n1. Create their authentication account\n2. Send a magic link to their email\n3. They can log in and access their assigned modules` })) return;
+  try {
+  const { error: authErr } = await supabase.auth.signInWithOtp({
+  email: (user.email || "").trim().toLowerCase(),
+  options: { data: { name: user.name, role: user.role } }
+  });
+  if (authErr) {
+  pmError("PM-1007", { raw: authErr, context: "send team invitation to " + user.email });
+  return;
+  }
+  // Auth succeeded — create membership as "invited" only (no app_users until they sign up)
+  const { error: memErr } = await supabase.from("company_members").upsert([{
+  company_id: companyId, user_email: (user.email || "").toLowerCase(), user_name: user.name,
+  role: user.role, status: "invited", invited_by: "admin",
+  }], { onConflict: "company_id,user_email" });
+  if (memErr) { showToast("Error creating invite: " + memErr.message, "error"); return; }
+  addNotification("✉️", `Invite sent to ${user.name} (${roleName})`);
+  logAudit("create", "team", "Invited " + user.name + " as " + roleName + ": " + user.email, user.id || "", "", "admin", companyId);
+  showToast(`Invite sent to ${user.email}!\n\nThey will receive a magic link to log in.\n\nIf they don't see it, they can use 'Forgot Password' on the login page to set their password.`, "success");
+  } catch (e) {
+  showToast("Error sending invite: " + e.message, "error");
+  }
+  } finally { guardRelease("inviteUser"); }
+  }
+
+  // Get the effective pages for a user — custom_pages takes priority over role default
+  function getEffectivePages(u) {
+  if (u.custom_pages) {
+  try { return JSON.parse(u.custom_pages); } catch { /* fall through */ }
+  }
+  return ROLES[u.role]?.pages || [];
+  }
+
+  if (loading) return <Spinner />;
+
+  const isCustomizable = CUSTOMIZABLE_ROLES.includes(form.role);
+
+  return (
+  <div>
+  <div className="flex items-center justify-between mb-5">
+  <div>
+  <PageHeader title="Team & Role Management" />
+  <p className="text-xs text-neutral-400 mt-0.5">Add team members and choose exactly which modules they can access</p>
+  </div>
+  <Btn onClick={startAdd}>+ Add User</Btn>
+  </div>
+
+  {/* Role legend */}
+  <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-5">
+  {Object.entries(ROLES).map(([key, r]) => (
+  <div key={key} className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
+  <div className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold text-white mb-1 ${r.color}`}>{r.label}</div>
+  <div className="text-xs text-neutral-400">{key === "admin" ? "Full access" : key === "tenant" ? "Portal only" : "Customizable"}</div>
+  </div>
+  ))}
+  </div>
+
+  {/* Add / Edit form */}
+  {showForm && (
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
+  <h3 className="font-semibold text-neutral-700 mb-4">{editingUser ? `Edit — ${editingUser.name}` : "Add Team Member"}</h3>
+
+  {/* Basic info */}
+  <div className="grid grid-cols-2 gap-3 mb-4">
+  <div className="col-span-2"><div className="grid grid-cols-6 gap-3">
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">First Name *</label><input value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  <div className="col-span-1"><label className="text-xs font-medium text-neutral-400 mb-1 block">MI</label><input maxLength={1} value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} placeholder="M" className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full text-center" /></div>
+  <div className="col-span-3"><label className="text-xs font-medium text-neutral-400 mb-1 block">Last Name *</label><input value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} placeholder="Last" className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
+  </div></div>
+  <input
+  placeholder="Email address"
+  value={form.email}
+  onChange={e => setForm({ ...form, email: e.target.value })}
+  disabled={!!editingUser}
+  className="border border-brand-100 rounded-2xl px-3 py-2 text-sm disabled:bg-brand-50/30 disabled:text-neutral-400"
+  />
+  <Select
+  value={form.role}
+  onChange={e => handleRoleChange(e.target.value)}
+  className="col-span-2"
+  >
+  {Object.entries(ROLES).filter(([k]) => k !== "tenant").map(([key, r]) => (
+  <option key={key} value={key}>{r.label}</option>
+  ))}
+  </Select>
+  </div>
+
+  {/* Module picker — only shown for customizable roles */}
+  {isCustomizable && (
+  <div className="border border-brand-50 rounded-3xl p-4 bg-brand-50/30">
+  <div className="flex items-center justify-between mb-3">
+  <div className="text-sm font-semibold text-neutral-700">Choose which modules this person can access</div>
+  <div className="flex gap-2">
+  <button
+  onClick={() => setCustomPages(ALL_NAV_FLAT.map(n => n.id))}
+  className="text-xs text-brand-600 hover:underline"
+  >Select all</button>
+  <span className="text-neutral-300">|</span>
+  <button
+  onClick={() => setCustomPages([])}
+  className="text-xs text-neutral-400 hover:underline"
+  >Clear all</button>
+  </div>
+  </div>
+  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+  {ALL_NAV_FLAT.map(nav => {
+  const isOn = customPages.includes(nav.id);
+  return (
+  <button
+  key={nav.id}
+  onClick={() => togglePage(nav.id)}
+  className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all text-left ${
+  isOn
+  ? "bg-brand-600 border-brand-600 text-white"
+  : "bg-white border-brand-100 text-neutral-500 hover:border-brand-300"
+  }`}
+  >
+  <span className="text-base">{nav.icon}</span>
+  <span>{nav.label}</span>
+  {isOn && <span className="ml-auto text-brand-200 text-xs">✓</span>}
+  </button>
+  );
+  })}
+  </div>
+  <div className="mt-3 text-xs text-neutral-400">
+  {customPages.length} module{customPages.length !== 1 ? "s" : ""} selected
+  </div>
+  </div>
+  )}
+
+  {/* Admin / Maintenance / Tenant — fixed access notice */}
+  {!isCustomizable && (
+  <div className="bg-info-50 border border-info-100 rounded-xl p-3 text-xs text-info-700">
+  <strong>{ROLES[form.role]?.label}</strong> has fixed access and cannot be customized.
+  {form.role === "admin" && " Admins always have full access to everything."}
+  {form.role === "maintenance" && " Maintenance staff can only see the Maintenance page."}
+  </div>
+  )}
+
+  <div className="flex gap-2 mt-4">
+  <Btn size="lg" onClick={saveUser}>
+  {editingUser ? "Save Changes" : "Add User"}
+  </Btn>
+  <Btn variant="secondary" onClick={() => { setShowForm(false); setEditingUser(null); }}>
+  Cancel
+  </Btn>
+  </div>
+  </div>
+  )}
+
+  {/* User list */}
+  <div className="space-y-3">
+  {users.map(u => {
+  const effectivePages = getEffectivePages(u);
+  return (
+  <div key={u.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
+  <div className="flex justify-between items-center">
+  <div className="flex items-center gap-3">
+  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold ${ROLES[u.role]?.color || "bg-neutral-400"}`}>
+  {u.name?.[0]}
+  </div>
+  <div>
+  <div className="font-semibold text-neutral-800 text-sm">{u.name}</div>
+  <div className="text-xs text-neutral-400">{u.email}</div>
+  </div>
+  </div>
+  <div className="flex items-center gap-2">
+  <span className={`text-xs font-semibold text-white px-2 py-0.5 rounded-full ${ROLES[u.role]?.color || "bg-neutral-400"}`}>
+  {ROLES[u.role]?.label}
+  </span>
+  <Btn variant="secondary" size="xs" onClick={() => inviteUser(u)}>
+  ✉️ Invite
+  </Btn>
+  <Btn variant="secondary" size="xs" onClick={() => startEdit(u)}>
+  ✏️ Edit
+  </Btn>
+  <Btn variant="danger" size="xs" onClick={() => removeUser(u.id, u.name, u.email)}>
+  Remove
+  </Btn>
+  </div>
+  </div>
+  {/* Show their current module access */}
+  <div className="mt-3 flex flex-wrap gap-1">
+  {effectivePages.map(p => {
+  const nav = ALL_NAV_FLAT.find(n => n.id === p);
+  return (
+  <span key={p} className="text-xs bg-brand-50 text-brand-700 border border-brand-100 px-2 py-0.5 rounded-full">
+  {nav ? `${nav.icon} ${nav.label}` : p}
+  </span>
+  );
+  })}
+  </div>
+  {u.custom_pages && (
+  <div className="mt-1 text-xs text-neutral-400">Custom access · {effectivePages.length} modules</div>
+  )}
+  </div>
+  );
+  })}
+  {users.length === 0 && (
+  <div className="text-center py-10 text-neutral-400">No team members added yet. Click + Add User to get started.</div>
+  )}
+  </div>
+  </div>
+  );
+}
+
+
+// ============ ARCHIVE (SOFT-DELETED ITEMS) ============
+// NOTE: Stale "invited" membership records (>30 days old, never accepted) should be
+// periodically cleaned up. Run: DELETE FROM company_members WHERE status = 'invited'
+// AND created_at < NOW() - INTERVAL '30 days';
+
+function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("all");
+
+  useEffect(() => { fetchArchived(); }, [companyId]);
+
+  async function fetchArchived() {
+  setLoading(true);
+  const tables = [
+  { name: "properties", label: "Property", fields: "id, address, type, status, archived_at, archived_by" },
+  { name: "tenants", label: "Tenant", fields: "id, name, email, property, archived_at, archived_by" },
+  { name: "work_orders", label: "Work Order", fields: "id, issue, property, status, archived_at" },
+  { name: "documents", label: "Document", fields: "id, name, property, type, archived_at" },
+  { name: "leases", label: "Lease", fields: "id, tenant_name, property, status, archived_at" },
+  { name: "payments", label: "Payment", fields: "id, tenant, property, amount, archived_at" },
+  { name: "vendors", label: "Vendor", fields: "id, name, email, phone, archived_at, archived_by" },
+  { name: "hoa_payments", label: "HOA Payment", fields: "id, property, amount, due_date, status, archived_at, archived_by" },
+  { name: "autopay_schedules", label: "Autopay Schedule", fields: "id, tenant, property, amount, archived_at, archived_by" },
+  { name: "recurring_journal_entries", label: "Recurring Entry", fields: "id, description, status, archived_at, archived_by" },
+  { name: "late_fee_rules", label: "Late Fee Rule", fields: "id, name, fee_type, fee_amount, archived_at, archived_by" },
+  { name: "app_users", label: "Team Member", fields: "id, name, email, role, archived_at, archived_by" },
+  { name: "doc_generated", label: "Generated Doc", fields: "id, template_name, property, archived_at, archived_by" },
+  ];
+  let all = [];
+  for (const t of tables) {
+  const { data } = await supabase.from(t.name).select(t.fields).eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false });
+  if (data) {
+  all = all.concat(data.map(d => ({ ...d, _table: t.name, _label: t.label })));
+  }
+  }
+  all.sort((a, b) => new Date(b.archived_at) - new Date(a.archived_at));
+  setItems(all);
+  setLoading(false);
+  }
+
+  async function restoreItem(item) {
+  if (!await showConfirm({ message: `Restore this ${item._label.toLowerCase()}?` })) return;
+  const { error } = await supabase.from(item._table).update({ archived_at: null, archived_by: null }).eq("id", item.id).eq("company_id", companyId);
+  if (error) {
+  pmError("PM-2004", { raw: error, context: "restore archived item" });
+  return;
+  }
+  // If restoring a property, also offer to restore its archived tenant
+  if (item._table === "properties" && item.address) {
+  const { data: archivedTenants } = await supabase.from("tenants").select("id, name").eq("company_id", companyId).eq("property", item.address).not("archived_at", "is", null);
+  if (archivedTenants?.length > 0) {
+  const shouldRestore = await showConfirm({ message: `Found ${archivedTenants.length} archived tenant(s) for this property: ${archivedTenants.map(t => t.name).join(", ")}\n\nWould you like to restore them too?` });
+  if (shouldRestore) {
+  for (const t of archivedTenants) {
+  const { error: tErr } = await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", t.id).eq("company_id", companyId);
+  if (tErr) pmError("PM-3002", { raw: tErr, context: "restore tenant " + t.name, silent: true });
+  }
+  // Also restore associated leases
+  const { error: lErr } = await supabase.from("leases").update({ archived_at: null, status: "active" }).eq("company_id", companyId).eq("property", item.address).not("archived_at", "is", null);
+  if (lErr) pmError("PM-3004", { raw: lErr, context: "restore leases", silent: true });
+  addNotification("♻️", `Restored property + ${archivedTenants.length} tenant(s)`);
+  }
+  }
+  }
+  // If restoring a tenant, update their property back to occupied
+  if (item._table === "tenants" && item.property) {
+  const { error: propErr } = await supabase.from("properties").update({ status: "occupied", tenant: item.name }).eq("company_id", companyId).eq("address", item.property).is("archived_at", null);
+  if (propErr) pmError("PM-2002", { raw: propErr, context: "update property on restore", silent: true });
+  }
+  // Reactivate accounting class if restoring a property
+  if (item._table === "properties" && item.address) {
+  await supabase.from("acct_classes").update({ is_active: true }).eq("company_id", companyId).eq("name", item.address);
+  }
+  addNotification("♻️", `Restored ${item._label}: ${item.address || item.name || item.issue || item.tenant_name || item.tenant || "item"}`);
+  fetchArchived();
+  }
+
+  async function permanentDelete(item) {
+  if (!await showConfirm({ message: `PERMANENTLY delete this ${item._label.toLowerCase()}? This cannot be undone.`, variant: "danger", confirmText: "Delete" })) return;
+  const { error } = await supabase.from(item._table).delete().eq("id", item.id).eq("company_id", companyId);
+  if (error) { pmError("PM-8006", { raw: error, context: "permanent delete" }); return; }
+  logAudit("delete", item._table, "Permanently deleted " + item._label + ": " + (item.name || item.address || item.id), item.id, userProfile?.email, userRole, companyId);
+  addNotification("🗑️", `Permanently deleted ${item._label}`);
+  fetchArchived();
+  }
+
+  const filtered = filter === "all" ? items : items.filter(i => i._table === filter);
+  const tables = [...new Set(items.map(i => i._table))];
+  const daysUntilPurge = (item) => Math.max(0, 180 - Math.floor((new Date() - new Date(item.archived_at)) / 86400000));
+
+  function getItemTitle(item) {
+  return item.address || item.name || item.issue || item.tenant_name || item.tenant || item.description || item.template_name || "Unnamed";
+  }
+
+  function getItemSubtitle(item) {
+  return item.property || item.email || item.type || item.status || item.fee_type || item.role || item.due_date || "";
+  }
+
+  return (
+  <div>
+  <div className="flex items-center justify-between mb-5">
+  <div>
+  <PageHeader title="Archive" />
+  <p className="text-xs text-neutral-400 mt-1">Archived items are auto-purged after 180 days</p>
+  </div>
+  <div className="text-sm text-neutral-400">{items.length} archived item{items.length !== 1 ? "s" : ""}</div>
+  </div>
+
+  <div className="flex gap-2 mb-4 flex-wrap">
+  <button onClick={() => setFilter("all")} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === "all" ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-500"}`}>All ({items.length})</button>
+  {tables.map(t => {
+  const count = items.filter(i => i._table === t).length;
+  const label = t.replace("_", " ").replace(/\b\w/g, c => c.toUpperCase());
+  return <button key={t} onClick={() => setFilter(t)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === t ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-500"}`}>{label} ({count})</button>;
+  })}
+  </div>
+
+  {loading ? <div className="text-center py-8 text-neutral-400">Loading...</div> : filtered.length === 0 ? (
+  <div className="text-center py-16">
+  <div className="text-4xl mb-3">📦</div>
+  <div className="text-neutral-400">No archived items</div>
+  <div className="text-xs text-neutral-300 mt-1">Deleted items will appear here for 180 days</div>
+  </div>
+  ) : (
+  <div className="space-y-2">
+  {filtered.map(item => (
+  <div key={item._table + item.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-4 flex items-center gap-4">
+  <div className="w-10 h-10 rounded-full bg-neutral-100 flex items-center justify-center text-lg">
+  {item._table === "properties" ? "🏠" : item._table === "tenants" ? "👤" : item._table === "work_orders" ? "🔧" : item._table === "documents" || item._table === "doc_generated" ? "📄" : item._table === "leases" ? "📋" : item._table === "vendors" ? "🏗️" : item._table === "hoa_payments" ? "🏘️" : item._table === "autopay_schedules" ? "🔄" : item._table === "recurring_journal_entries" ? "📊" : item._table === "late_fee_rules" ? "⚠️" : item._table === "app_users" ? "👥" : "💰"}
+  </div>
+  <div className="flex-1 min-w-0">
+  <div className="font-semibold text-neutral-800 text-sm">{getItemTitle(item)}</div>
+  <div className="text-xs text-neutral-400">{item._label} · {getItemSubtitle(item)}</div>
+  <div className="text-xs text-neutral-300 mt-0.5">Archived {new Date(item.archived_at).toLocaleDateString()} {item.archived_by ? "by " + item.archived_by : ""} · <span className={daysUntilPurge(item) < 30 ? "text-danger-400 font-semibold" : "text-neutral-400"}>{daysUntilPurge(item)} days until auto-purge</span></div>
+  </div>
+  <div className="flex gap-2 shrink-0">
+  <button onClick={() => restoreItem(item)} className="text-xs bg-success-50 text-success-700 px-3 py-1.5 rounded-lg hover:bg-success-100 font-medium">♻️ Restore</button>
+  <button onClick={() => permanentDelete(item)} className="text-xs bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg hover:bg-danger-100 font-medium">🗑️ Delete</button>
+  </div>
+  </div>
+  ))}
+  </div>
+  )}
+  </div>
+  );
+}
+
+
+// ============ TASKS & APPROVALS PAGE ============
+function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userProfile, userRole, addNotification }) {
+  const [loading, setLoading] = useState(true);
+  const [approvals, setApprovals] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [activeTab, setActiveTab] = useState("all");
+
+  useEffect(() => { fetchAll(); }, [companyId]);
+
+  async function fetchAll() {
+  setLoading(true);
+  const allApprovals = [];
+  const allTasks = [];
+  try {
+  const [propReqs, docExceptions, memberReqs, tenants, workOrders, leases, hoaDue] = await Promise.all([
+  supabase.from("property_change_requests").select("*").eq("company_id", companyId).eq("status", "pending").order("requested_at", { ascending: false }),
+  supabase.from("doc_exception_requests").select("*").eq("company_id", companyId).eq("status", "pending").order("created_at", { ascending: false }),
+  supabase.from("company_members").select("*").eq("company_id", companyId).eq("status", "pending").order("created_at", { ascending: false }),
+  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null),
+  supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null),
+  supabase.from("leases").select("*").eq("company_id", companyId).eq("status", "active"),
+  supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("status", "unpaid").is("archived_at", null),
+  ]);
+  // Approvals
+  (propReqs.data || []).forEach(r => allApprovals.push({ id: "prop-" + r.id, type: "property", icon: "🏠", title: (r.request_type === "add" ? "New Property" : "Edit Property") + ": " + r.address, subtitle: "Requested by " + r.requested_by + " · " + new Date(r.requested_at).toLocaleDateString(), data: r, link: "properties" }));
+  (docExceptions.data || []).forEach(r => allApprovals.push({ id: "doc-" + r.id, type: "document", icon: "📄", title: "Document Exception: " + r.tenant_name, subtitle: (r.reason || "No reason provided") + " · " + new Date(r.created_at).toLocaleDateString(), data: r, link: "tenants" }));
+  (memberReqs.data || []).forEach(r => allApprovals.push({ id: "member-" + r.id, type: "member", icon: "👤", title: "Join Request: " + r.user_email, subtitle: "Role: " + (r.role || "pending") + " · " + new Date(r.created_at).toLocaleDateString(), data: r, link: "roles" }));
+  // Tasks
+  const t = tenants.data || [];
+  const wo = workOrders.data || [];
+  const hoa = hoaDue.data || [];
+  t.filter(x => x.doc_status === "pending_docs").forEach(x => allTasks.push({ icon: "📄", title: x.name + " — documents pending", subtitle: x.property, link: "tenants", priority: "medium" }));
+  t.filter(x => safeNum(x.balance) > 0).forEach(x => allTasks.push({ icon: "💰", title: x.name + " — balance due " + formatCurrency(x.balance), subtitle: x.property, link: "tenants", priority: safeNum(x.balance) > 1000 ? "high" : "medium" }));
+  wo.filter(x => x.priority === "emergency" && x.status !== "completed").forEach(x => allTasks.push({ icon: "🚨", title: (x.property || "Property") + " — " + x.issue, subtitle: "Emergency · " + x.status, link: "maintenance", priority: "high" }));
+  t.filter(x => { const end = x.lease_end_date || x.move_out; if (!end) return false; const days = Math.ceil((parseLocalDate(end) - new Date()) / 86400000); return days > 0 && days <= 30; }).forEach(x => allTasks.push({ icon: "📅", title: x.name + " — lease expires " + (x.lease_end_date || x.move_out), subtitle: x.property, link: "tenants", priority: "high" }));
+  hoa.forEach(x => { const daysLeft = Math.ceil((new Date(x.due_date).getTime() - Date.now()) / 86400000); allTasks.push({ icon: "🏘️", title: (x.hoa_name || x.property || "HOA") + " — " + formatCurrency(x.amount) + " due " + x.due_date, subtitle: x.property, link: "hoa", priority: daysLeft <= 3 ? "high" : "medium" }); });
+  } catch (e) { pmError("PM-8006", { raw: e, context: "tasks fetch", silent: true }); }
+  setApprovals(allApprovals);
+  setTasks(allTasks);
+  setLoading(false);
+  }
+
+  async function handleApproval(item, action) {
+  if (action === "approve") {
+  if (item.type === "document") {
+  await supabase.from("doc_exception_requests").update({ status: "approved", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() }).eq("id", item.data.id);
+  await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", escapeFilterValue(item.data.tenant_name)).is("archived_at", null);
+  showToast("Document exception approved for " + item.data.tenant_name, "success");
+  logAudit("approve", "tenants", "Document exception approved for " + item.data.tenant_name, "", userProfile?.email, userRole, companyId);
+  } else if (item.type === "member") {
+  try {
+  const { error } = await supabase.rpc("approve_member_request", { p_member_id: item.data.id });
+  if (error) throw error;
+  showToast("Approved join request for " + item.data.user_email, "success");
+  } catch (e) {
+  await supabase.from("company_members").update({ status: "active" }).eq("id", item.data.id).eq("company_id", companyId);
+  showToast("Approved " + item.data.user_email, "success");
+  }
+  } else if (item.type === "property") {
+  showToast("Navigate to Properties to review this request.", "info");
+  setPage("properties");
+  return;
+  }
+  } else {
+  if (item.type === "document") {
+  await supabase.from("doc_exception_requests").update({ status: "rejected", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() }).eq("id", item.data.id);
+  showToast("Document exception rejected.", "info");
+  } else if (item.type === "member") {
+  await supabase.from("company_members").update({ status: "rejected" }).eq("id", item.data.id).eq("company_id", companyId);
+  showToast("Rejected join request for " + item.data.user_email, "info");
+  } else if (item.type === "property") {
+  await supabase.from("property_change_requests").update({ status: "rejected", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() }).eq("id", item.data.id).eq("company_id", companyId);
+  showToast("Property request rejected.", "info");
+  }
+  }
+  fetchAll();
+  }
+
+  if (loading) return <Spinner />;
+
+  const filtered = activeTab === "approvals" ? [] : activeTab === "tasks" ? [] : [...approvals.map(a => ({ ...a, _kind: "approval" })), ...tasks.map(t => ({ ...t, _kind: "task" }))];
+  const showApprovals = activeTab === "all" || activeTab === "approvals";
+  const showTasks = activeTab === "all" || activeTab === "tasks";
+
+  return (
+  <div>
+  <div className="flex items-center justify-between mb-5">
+  <PageHeader title="Tasks & Approvals" />
+  <Btn variant="ghost" size="xs" onClick={fetchAll}>Refresh</Btn>
+  </div>
+
+  <div className="flex gap-2 mb-5">
+  {[["all", "All (" + (approvals.length + tasks.length) + ")"], ["approvals", "Approvals (" + approvals.length + ")"], ["tasks", "Tasks (" + tasks.length + ")"]].map(([id, label]) => (
+  <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium rounded-xl " + (activeTab === id ? "bg-brand-600 text-white" : "bg-subtle-100 text-subtle-600 hover:bg-subtle-200")}>{label}</button>
+  ))}
+  </div>
+
+  {/* Approvals Section */}
+  {showApprovals && approvals.length > 0 && (
+  <div className="mb-6">
+  {activeTab === "all" && <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-wide mb-3">Awaiting Approval</h3>}
+  <div className="space-y-3">
+  {approvals.map(a => (
+  <div key={a.id} className="bg-white rounded-xl border border-warn-200 p-4 flex items-center justify-between">
+  <div className="flex items-center gap-3 flex-1 min-w-0">
+  <span className="text-2xl">{a.icon}</span>
+  <div className="min-w-0">
+  <div className="font-semibold text-neutral-800 truncate">{a.title}</div>
+  <div className="text-xs text-neutral-400">{a.subtitle}</div>
+  </div>
+  </div>
+  <div className="flex gap-2 shrink-0 ml-3">
+  <Btn variant="success-fill" size="xs" onClick={() => handleApproval(a, "approve")}>Approve</Btn>
+  <Btn variant="danger" size="xs" onClick={() => handleApproval(a, "reject")}>Reject</Btn>
+  </div>
+  </div>
+  ))}
+  </div>
+  </div>
+  )}
+
+  {/* Tasks Section */}
+  {showTasks && tasks.length > 0 && (
+  <div className="mb-6">
+  {activeTab === "all" && <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-wide mb-3">Pending Tasks</h3>}
+  <div className="space-y-2">
+  {tasks.map((t, i) => (
+  <div key={i} onClick={() => setPage(t.link)} className="bg-white rounded-xl border border-brand-50 p-4 flex items-center gap-3 cursor-pointer hover:border-brand-200 hover:shadow-sm transition-all">
+  <span className="text-xl">{t.icon}</span>
+  <div className="flex-1 min-w-0">
+  <div className="text-sm font-semibold text-neutral-800 truncate">{t.title}</div>
+  <div className="text-xs text-neutral-400">{t.subtitle}</div>
+  </div>
+  <span className={"text-xs px-2 py-0.5 rounded-full font-bold " + (t.priority === "high" ? "bg-danger-100 text-danger-600" : "bg-warn-100 text-warn-700")}>{t.priority}</span>
+  <span className="material-icons-outlined text-neutral-300 text-sm">arrow_forward</span>
+  </div>
+  ))}
+  </div>
+  </div>
+  )}
+
+  {approvals.length === 0 && tasks.length === 0 && (
+  <div className="text-center py-16">
+  <span className="material-icons-outlined text-5xl text-neutral-200 mb-3">task_alt</span>
+  <div className="text-lg font-semibold text-neutral-400">All caught up!</div>
+  <div className="text-sm text-neutral-300">No pending tasks or approvals</div>
+  </div>
+  )}
+  </div>
+  );
+}
+
+
+// ============ ERROR LOG DASHBOARD ============
+function ErrorLogDashboard({ companyId, showToast }) {
+  const [errors, setErrors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState({ module: "", severity: "", reported: false, unresolved: true, range: "7d" });
+  const [stats, setStats] = useState({ critical: 0, error: 0, reported: 0, resolved: 0 });
+  const [runningCheck, setRunningCheck] = useState(false);
+  const [violations, setViolations] = useState([]);
+
+  useEffect(() => { fetchErrors(); }, [filter]);
+
+  async function fetchErrors() {
+    setLoading(true);
+    let q = supabase.from("error_log").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(200);
+    if (filter.module) q = q.eq("module", filter.module);
+    if (filter.severity) q = q.eq("severity", filter.severity);
+    if (filter.reported) q = q.eq("reported_by_user", true);
+    if (filter.unresolved) q = q.eq("resolved", false);
+    const rangeMap = { "1d": 1, "7d": 7, "30d": 30 };
+    if (rangeMap[filter.range]) {
+      const since = new Date(); since.setDate(since.getDate() - rangeMap[filter.range]);
+      q = q.gte("created_at", since.toISOString());
+    }
+    const { data } = await q;
+    setErrors(data || []);
+    // Fetch 24h stats
+    const since24h = new Date(); since24h.setDate(since24h.getDate() - 1);
+    const since7d = new Date(); since7d.setDate(since7d.getDate() - 7);
+    const { data: recentAll } = await supabase.from("error_log").select("severity, reported_by_user, resolved").eq("company_id", companyId).gte("created_at", since7d.toISOString());
+    const recent24h = (recentAll || []).filter(e => new Date(e.created_at) >= since24h);
+    setStats({
+      critical: (recentAll || []).filter(e => e.severity === "critical" && !e.resolved).length,
+      error: (recentAll || []).filter(e => e.severity === "error" && !e.resolved).length,
+      reported: (recentAll || []).filter(e => e.reported_by_user).length,
+      resolved: (recentAll || []).filter(e => e.resolved).length,
+    });
+    setLoading(false);
+  }
+
+  async function markResolved(id) {
+    await supabase.from("error_log").update({ resolved: true, resolved_at: new Date().toISOString() }).eq("id", id);
+    fetchErrors();
+  }
+
+  async function handleHealthCheck() {
+    setRunningCheck(true);
+    const v = await runDataIntegrityChecks(companyId, { deep: true });
+    setViolations(v);
+    setRunningCheck(false);
+    showToast(v.length === 0 ? "Health check passed — no issues found" : `Health check found ${v.length} issue(s)`, v.length === 0 ? "success" : "warning");
+  }
+
+  const severityColor = { critical: "bg-danger-50 text-danger-700 border-danger-200", error: "bg-danger-50 text-danger-600 border-danger-200", warning: "bg-warning-50 text-warning-700 border-warning-200", info: "bg-info-50 text-info-700 border-info-200" };
+  const severityDot = { critical: "text-danger-500", error: "text-danger-400", warning: "text-warning-500", info: "text-info-400" };
+  const modules = ["auth", "properties", "tenants", "accounting", "banking", "payments", "work_orders", "infrastructure", "data_integrity"];
+
+  return (
+  <div>
+  <div className="flex items-center justify-between mb-4">
+  <PageHeader title="Error Log" />
+  <Btn size="sm" onClick={handleHealthCheck} disabled={runningCheck}>{runningCheck ? "Running..." : "Run Health Check"}</Btn>
+  </div>
+
+  {/* Summary Cards */}
+  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+  <div className="bg-danger-50 border border-danger-200 rounded-xl p-3 text-center">
+  <p className="text-2xl font-bold text-danger-700">{stats.critical}</p>
+  <p className="text-xs text-danger-400">Critical (7d)</p>
+  </div>
+  <div className="bg-warning-50 border border-warning-200 rounded-xl p-3 text-center">
+  <p className="text-2xl font-bold text-warning-700">{stats.error}</p>
+  <p className="text-xs text-warning-400">Errors (7d)</p>
+  </div>
+  <div className="bg-brand-50 border border-brand-200 rounded-xl p-3 text-center">
+  <p className="text-2xl font-bold text-brand-700">{stats.reported}</p>
+  <p className="text-xs text-brand-400">User-Reported</p>
+  </div>
+  <div className="bg-positive-50 border border-positive-200 rounded-xl p-3 text-center">
+  <p className="text-2xl font-bold text-positive-700">{stats.resolved}</p>
+  <p className="text-xs text-positive-400">Resolved (7d)</p>
+  </div>
+  </div>
+
+  {/* Health Check Violations */}
+  {violations.length > 0 && (
+  <div className="mb-4 p-3 bg-warning-50 border border-warning-200 rounded-xl">
+  <div className="font-semibold text-warning-700 text-sm mb-2">Health Check Results ({violations.length} issues)</div>
+  {violations.map((v, i) => (
+  <div key={i} className="flex items-start gap-2 text-sm py-1">
+  <span className="font-mono text-xs bg-warning-100 text-warning-700 px-1.5 py-0.5 rounded font-bold shrink-0">{v.code}</span>
+  <span className="text-neutral-600">{v.details}</span>
+  </div>
+  ))}
+  </div>
+  )}
+
+  {/* Filters */}
+  <div className="flex flex-wrap gap-2 mb-4 items-center">
+  <Select value={filter.module} onChange={e => setFilter(f => ({ ...f, module: e.target.value }))} className="text-xs w-auto">
+  <option value="">All Modules</option>
+  {modules.map(m => <option key={m} value={m}>{m.replace("_", " ")}</option>)}
+  </Select>
+  <Select value={filter.severity} onChange={e => setFilter(f => ({ ...f, severity: e.target.value }))} className="text-xs w-auto">
+  <option value="">All Severities</option>
+  {["critical", "error", "warning", "info"].map(s => <option key={s} value={s}>{s}</option>)}
+  </Select>
+  <Select value={filter.range} onChange={e => setFilter(f => ({ ...f, range: e.target.value }))} className="text-xs w-auto">
+  <option value="1d">Last 24h</option>
+  <option value="7d">Last 7 days</option>
+  <option value="30d">Last 30 days</option>
+  <option value="">All time</option>
+  </Select>
+  <label className="flex items-center gap-1 text-xs text-neutral-500 cursor-pointer">
+  <input type="checkbox" checked={filter.reported} onChange={e => setFilter(f => ({ ...f, reported: e.target.checked }))} className="rounded" /> User-reported only
+  </label>
+  <label className="flex items-center gap-1 text-xs text-neutral-500 cursor-pointer">
+  <input type="checkbox" checked={filter.unresolved} onChange={e => setFilter(f => ({ ...f, unresolved: e.target.checked }))} className="rounded" /> Unresolved only
+  </label>
+  </div>
+
+  {/* Error List */}
+  {loading ? <p className="text-sm text-neutral-400">Loading...</p> : errors.length === 0 ? (
+  <EmptyState icon="check-circle" message="No errors match your filters" />
+  ) : (
+  <div className="space-y-2">
+  {errors.map(e => (
+  <div key={e.id} className={"border rounded-xl p-3 " + (severityColor[e.severity] || "bg-subtle-50 border-subtle-200")}>
+  <div className="flex items-start justify-between gap-2">
+  <div className="flex-1 min-w-0">
+  <div className="flex items-center gap-2 mb-1 flex-wrap">
+  <span className={"text-xs font-mono px-1.5 py-0.5 rounded font-bold " + (e.severity === "critical" || e.severity === "error" ? "bg-danger-100 text-danger-700" : "bg-warning-100 text-warning-700")}>{e.error_code}</span>
+  <span className="text-xs text-neutral-400 capitalize">{e.severity}</span>
+  <span className="text-xs text-neutral-300">{new Date(e.created_at).toLocaleString()}</span>
+  {e.user_email && <span className="text-xs text-neutral-400">{e.user_email}</span>}
+  {e.reported_by_user && <span className="text-xs bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded">Reported</span>}
+  </div>
+  <p className="text-sm font-medium text-neutral-700">{e.message}</p>
+  {e.context && <p className="text-xs text-neutral-400 mt-0.5">Context: {e.context}</p>}
+  {e.raw_message && e.raw_message !== e.message && <p className="text-xs text-neutral-300 mt-0.5 font-mono truncate">Raw: {e.raw_message}</p>}
+  </div>
+  <div className="shrink-0">
+  {!e.resolved && <Btn size="xs" variant="ghost" onClick={() => markResolved(e.id)}>Resolve</Btn>}
+  {e.resolved && <span className="text-xs text-positive-600">Resolved</span>}
+  </div>
+  </div>
+  </div>
+  ))}
+  </div>
+  )}
+  </div>
+  );
+}
+
+// ============ ADMIN PAGE (Audit Trail + Team & Roles + Error Log) ============
+function AdminPage({ companyId, activeCompany, addNotification, userProfile, userRole, showToast, showConfirm, currentUser }) {
+  const [adminTab, setAdminTab] = useState("audit");
+  const isAdmin = userRole === "admin";
+  return (
+  <div>
+  <PageHeader title="Admin" />
+  <p className="text-sm text-neutral-400 mb-4">Manage team access and view activity logs</p>
+  <div className="flex gap-1 mb-4 border-b border-brand-50">
+  {[["audit", "Audit Trail"], ...(isAdmin ? [["team", "Team & Roles"], ["errors", "Error Log"]] : [])].map(([id, label]) => (
+  <button key={id} onClick={() => setAdminTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (adminTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}</button>
+  ))}
+  </div>
+  {adminTab === "audit" && <AuditTrail companyId={companyId} />}
+  {adminTab === "team" && isAdmin && <RoleManagement companyId={companyId} activeCompany={activeCompany} addNotification={addNotification} userProfile={userProfile} userRole={userRole} showToast={showToast} showConfirm={showConfirm} currentUser={currentUser} />}
+  {adminTab === "errors" && isAdmin && <ErrorLogDashboard companyId={companyId} showToast={showToast} />}
+  </div>
+  );
+}
+
+// ============ AUDIT TRAIL ============
+function AuditTrail({ companyId }) {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filterModule, setFilterModule] = useState("all");
+  const [filterAction, setFilterAction] = useState("all");
+  const [filterUser, setFilterUser] = useState("");
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  const PAGE_SIZE = 50;
+
+  useEffect(() => { fetchLogs(); }, [companyId, page, filterModule, filterAction, filterUser]);
+
+  async function fetchLogs() {
+  setLoading(true);
+  let query = supabase.from("audit_trail").select("*", { count: "exact" }).eq("company_id", companyId);
+  if (filterModule !== "all") query = query.eq("module", filterModule);
+  if (filterAction !== "all") query = query.eq("action", filterAction);
+  if (filterUser) query = query.ilike("user_email", `%${escapeFilterValue(filterUser)}%`);
+  const { data, count } = await query.order("created_at", { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+  setLogs(data || []);
+  setTotalCount(count || 0);
+  setLoading(false);
+  }
+
+  // Fetch distinct filter values once
+  const [filterOptions, setFilterOptions] = useState({ modules: [], actions: [], users: [] });
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("audit_trail").select("module, action, user_email").eq("company_id", companyId).limit(1000);
+      if (data) {
+        setFilterOptions({
+          modules: [...new Set(data.map(l => l.module))].sort(),
+          actions: [...new Set(data.map(l => l.action))].sort(),
+          users: [...new Set(data.map(l => l.user_email))].sort(),
+        });
+      }
+    })();
+  }, [companyId]);
+
+  const modules = filterOptions.modules;
+  const actions = filterOptions.actions;
+  const users = filterOptions.users;
+
+  const paged = logs;
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
+  const actionColors = {
+  create: "bg-success-100 text-success-700",
+  update: "bg-info-100 text-info-700",
+  delete: "bg-danger-100 text-danger-700",
+  request: "bg-warn-100 text-warn-700",
+  approve: "bg-success-100 text-success-700",
+  reject: "bg-danger-100 text-danger-700",
+  };
+
+  const moduleIcons = {
+  properties: "🏠", tenants: "👤", payments: "💳", maintenance: "🔧",
+  utilities: "⚡", accounting: "📊", documents: "📄", inspections: "🔍",
+  autopay: "🔁",
+  };
+
+  if (loading) return <Spinner />;
+
+  return (
+  <div>
+  <PageHeader title="Audit Trail" />
+  <p className="text-sm text-neutral-400 mb-4">Complete activity log across all modules</p>
+
+  {/* Filters */}
+  <div className="flex flex-wrap gap-2 mb-4">
+  <Select value={filterModule} onChange={e => { setFilterModule(e.target.value); setPage(0); }} >
+  <option value="all">All Modules</option>
+  {modules.map(m => <option key={m} value={m}>{moduleIcons[m] || "📌"} {m}</option>)}
+  </Select>
+  <Select value={filterAction} onChange={e => { setFilterAction(e.target.value); setPage(0); }} >
+  <option value="all">All Actions</option>
+  {actions.map(a => <option key={a} value={a}>{a}</option>)}
+  </Select>
+  <Input placeholder="Filter by user email..." value={filterUser} onChange={e => { setFilterUser(e.target.value); setPage(0); }} className="flex-1 min-w-48" />
+  <Btn variant="slate" size="sm" onClick={fetchLogs}>Refresh</Btn>
+  </div>
+
+  {/* Stats */}
+  <div className="grid grid-cols-4 gap-3 mb-4">
+  <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
+  <p className="text-lg font-manrope font-bold text-neutral-800">{totalCount}</p>
+  <p className="text-xs text-neutral-400">Total Actions</p>
+  </div>
+  <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
+  <p className="text-lg font-manrope font-bold text-neutral-800">{users.length}</p>
+  <p className="text-xs text-neutral-400">Users Active</p>
+  </div>
+  <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
+  <p className="text-lg font-bold text-success-600">{logs.filter(l => l.action === "create").length}</p>
+  <p className="text-xs text-neutral-400">Created</p>
+  </div>
+  <div className="bg-white rounded-3xl border border-brand-50 p-3 text-center">
+  <p className="text-lg font-bold text-danger-500">{logs.filter(l => l.action === "delete").length}</p>
+  <p className="text-xs text-neutral-400">Deleted</p>
+  </div>
+  </div>
+
+  {/* Log Table */}
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-hidden">
+  <table className="w-full text-sm">
+  <thead className="bg-brand-50/30 text-xs text-neutral-400 uppercase">
+  <tr>
+  <th className="px-4 py-3 text-left">Time</th>
+  <th className="px-4 py-3 text-left">User</th>
+  <th className="px-4 py-3 text-left">Role</th>
+  <th className="px-4 py-3 text-left">Module</th>
+  <th className="px-4 py-3 text-left">Action</th>
+  <th className="px-4 py-3 text-left">Details</th>
+  </tr>
+  </thead>
+  <tbody>
+  {paged.map(log => (
+  <tr key={log.id} className="border-t border-brand-50/50 hover:bg-brand-50/30/50">
+  <td className="px-4 py-2.5 text-xs text-neutral-400 whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
+  <td className="px-4 py-2.5 text-neutral-700 font-medium text-xs">{log.user_email}</td>
+  <td className="px-4 py-2.5"><span className={`text-xs px-1.5 py-0.5 rounded-full ${log.user_role === "admin" ? "bg-brand-100 text-brand-700" : "bg-neutral-100 text-neutral-500"}`}>{log.user_role}</span></td>
+  <td className="px-4 py-2.5 text-xs"><span className="flex items-center gap-1">{moduleIcons[log.module] || "📌"} {log.module}</span></td>
+  <td className="px-4 py-2.5"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${actionColors[log.action] || "bg-neutral-100 text-neutral-700"}`}>{log.action}</span></td>
+  <td className="px-4 py-2.5 text-xs text-neutral-500 max-w-xs truncate">{log.details}</td>
+  </tr>
+  ))}
+  {paged.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-neutral-400">No audit logs found</td></tr>}
+  </tbody>
+  </table>
+  </div>
+
+  {/* Pagination */}
+  {totalPages > 1 && (
+  <div className="flex items-center justify-between mt-3">
+  <span className="text-xs text-neutral-400">Page {page + 1} of {totalPages} ({totalCount} records)</span>
+  <div className="flex gap-1">
+  <Btn variant="slate" size="xs" onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0}>← Prev</Btn>
+  <Btn variant="slate" size="xs" onClick={() => setPage(Math.min(totalPages - 1, page + 1))} disabled={page >= totalPages - 1}>Next →</Btn>
+  </div>
+  </div>
+  )}
+  </div>
+  );
+}
+
+// ============ USER PROFILE PAGE ============
+function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
+  const [displayName, setDisplayName] = useState(currentUser?.user_metadata?.name || currentUser?.email?.split("@")[0] || "");
+  const [phone, setPhone] = useState(currentUser?.user_metadata?.phone || "");
+  const [avatarUrl, setAvatarUrl] = useState(currentUser?.user_metadata?.avatar_url || "");
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteText, setDeleteText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [darkMode, setDarkMode] = useState(localStorage.getItem("theme") === "dark");
+
+  async function saveProfile() {
+  setSaving(true);
+  const { error } = await supabase.auth.updateUser({ data: { name: displayName.trim(), phone: phone.trim(), avatar_url: avatarUrl } });
+  if (error) pmError("PM-1009", { raw: error, context: "update user profile" });
+  else showToast("Profile updated!", "success");
+  setSaving(false);
+  }
+
+  async function sendPasswordReset() {
+  const { error } = await supabase.auth.resetPasswordForEmail(currentUser?.email, { redirectTo: window.location.origin });
+  if (error) pmError("PM-1004", { raw: error, context: "send password reset email" });
+  else { setResetSent(true); showToast("Password reset link sent to " + currentUser?.email, "success"); }
+  }
+
+  async function uploadAvatar(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const ALLOWED_AVATAR_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+  if (!ALLOWED_AVATAR_TYPES.includes(file.type)) { showToast("Only image files allowed (JPG, PNG, GIF, WebP).", "error"); return; }
+  if (file.size > 2 * 1024 * 1024) { showToast("Image must be under 2MB.", "error"); return; }
+  setUploading(true);
+  const ext = file.type.split("/")[1] || "jpg";
+  const path = `avatars/${currentUser.id}.${ext}`;
+  const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+  if (error) { pmError("PM-7002", { raw: error, context: "upload avatar" }); setUploading(false); return; }
+  const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
+  const publicUrl = urlData?.publicUrl + "?t=" + Date.now();
+  setAvatarUrl(publicUrl);
+  await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
+  showToast("Avatar updated!", "success");
+  setUploading(false);
+  }
+
+  async function deleteAccount() {
+  if (deleteText !== "DELETE") return;
+  setDeleting(true);
+  // Remove all company memberships
+  const { data: memberships } = await supabase.from("company_members").select("company_id").ilike("user_email", currentUser?.email);
+  if (memberships) {
+  for (const m of memberships) {
+  await supabase.from("company_members").update({ status: "removed" }).eq("company_id", m.company_id).ilike("user_email", currentUser?.email);
+  }
+  }
+  // Sign out (actual auth account deletion requires admin API — flag for manual cleanup)
+  await supabase.from("app_users").update({ status: "deleted", deleted_at: new Date().toISOString() }).ilike("email", currentUser?.email);
+  showToast("Account deactivated. You will be signed out.", "info");
+  setTimeout(async () => { await supabase.auth.signOut(); }, 1500);
+  }
+
+  function toggleDarkMode() {
+  const next = !darkMode;
+  setDarkMode(next);
+  localStorage.setItem("theme", next ? "dark" : "light");
+  document.documentElement.classList.toggle("dark", next);
+  }
+
+  return (
+  <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
+  <div className="w-full max-w-lg">
+  <Btn variant="ghost" size="sm" onClick={onBack} className="mb-6">
+  <span className="material-icons-outlined text-sm">arrow_back</span> Back to Companies
+  </Btn>
+
+  <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-6 mb-4">
+  <PageHeader title="Profile" />
+
+  {/* Avatar */}
+  <div className="flex items-center gap-4 mb-6">
+  <div className="relative">
+  {avatarUrl ? (
+  <img src={avatarUrl} alt="Avatar" className="w-16 h-16 rounded-full object-cover border-2 border-brand-100" />
+  ) : (
+  <div className="w-16 h-16 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold text-2xl">
+  {displayName?.[0]?.toUpperCase() || "U"}
+  </div>
+  )}
+  <label className="absolute -bottom-1 -right-1 w-7 h-7 bg-brand-600 text-white rounded-full flex items-center justify-center cursor-pointer hover:bg-brand-700 transition-colors">
+  <span className="material-icons-outlined text-sm">photo_camera</span>
+  <input type="file" accept="image/*" onChange={uploadAvatar} className="hidden" />
+  </label>
+  </div>
+  <div>
+  <div className="font-semibold text-neutral-800">{displayName || "User"}</div>
+  <div className="text-xs text-neutral-400">{currentUser?.email}</div>
+  {uploading && <div className="text-xs text-brand-500 mt-1">Uploading...</div>}
+  </div>
+  </div>
+
+  {/* Name & Phone */}
+  <div className="space-y-3 mb-5">
+  <div>
+  <label className="text-xs font-medium text-neutral-500 block mb-1">Display Name</label>
+  <Input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Your name" />
+  </div>
+  <div>
+  <label className="text-xs font-medium text-neutral-500 block mb-1">Phone Number</label>
+  <Input value={phone} onChange={e => setPhone(formatPhoneInput(e.target.value))} placeholder="(555) 123-4567" maxLength={14} />
+  </div>
+  <div>
+  <label className="text-xs font-medium text-neutral-500 block mb-1">Email</label>
+  <Input value={currentUser?.email || ""} disabled className="bg-neutral-50 text-neutral-400" />
+  </div>
+  </div>
+
+  <Btn size="lg" className="w-full mb-3" onClick={saveProfile} disabled={saving}>
+  {saving ? "Saving..." : "Save Changes"}
+  </Btn>
+  </div>
+
+  {/* Password Reset */}
+  <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-6 mb-4">
+  <h3 className="font-semibold text-neutral-800 mb-2">Password</h3>
+  <p className="text-xs text-neutral-400 mb-3">We'll send a password reset link to your email.</p>
+  <Btn variant="slate" size="sm" onClick={sendPasswordReset} disabled={resetSent}>
+  {resetSent ? "Reset Link Sent" : "Send Password Reset Email"}
+  </Btn>
+  </div>
+
+  {/* Preferences */}
+  <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-6 mb-4">
+  <h3 className="font-semibold text-neutral-800 mb-3">Preferences</h3>
+  <div className="flex items-center justify-between py-2">
+  <div>
+  <div className="text-sm text-neutral-700">Dark Mode</div>
+  <div className="text-xs text-neutral-400">Switch between light and dark theme</div>
+  </div>
+  <button onClick={toggleDarkMode} className={"relative w-10 h-5 rounded-full transition-colors " + (darkMode ? "bg-brand-600" : "bg-neutral-300")}>
+  <span className={"absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow " + (darkMode ? "left-5" : "left-0.5")} />
+  </button>
+  </div>
+  </div>
+
+  {/* 2FA */}
+  <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-6 mb-4">
+  <h3 className="font-semibold text-neutral-800 mb-2">Two-Factor Authentication</h3>
+  <p className="text-xs text-neutral-400 mb-3">Add an extra layer of security to your account.</p>
+  <div className="bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-400 text-center">Coming Soon</div>
+  </div>
+
+  {/* Delete Account */}
+  <div className="bg-white rounded-2xl border border-danger-100 shadow-sm p-6">
+  <h3 className="font-semibold text-danger-600 mb-2">Delete Account</h3>
+  <p className="text-xs text-neutral-400 mb-3">This will deactivate your account and remove you from all companies. This action cannot be undone.</p>
+  {!showDeleteConfirm ? (
+  <Btn variant="danger" size="sm" onClick={() => setShowDeleteConfirm(true)}>Delete My Account</Btn>
+  ) : (
+  <div className="space-y-3">
+  <p className="text-sm text-danger-600 font-medium">Type "DELETE" to confirm:</p>
+  <Input value={deleteText} onChange={e => setDeleteText(e.target.value.toUpperCase())} placeholder="Type DELETE" className="border-danger-200" />
+  <div className="flex gap-2">
+  <Btn variant="danger-fill" onClick={deleteAccount} disabled={deleteText !== "DELETE" || deleting}>{deleting ? "Deleting..." : "Permanently Delete"}</Btn>
+  <Btn variant="slate" size="sm" onClick={() => { setShowDeleteConfirm(false); setDeleteText(""); }}>Cancel</Btn>
+  </div>
+  </div>
+  )}
+  </div>
+  </div>
+  </div>
+  );
+}
+
+export { ArchivedItems, RoleManagement, ArchivePage, TasksAndApprovals, ErrorLogDashboard, AdminPage, AuditTrail, UserProfile, ROLES, ALL_NAV, ALL_NAV_FLAT, NAV_CHILD_IDS };

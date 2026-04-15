@@ -10,7 +10,17 @@ const fs = require('fs');
 const path = require('path');
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-const APP_CODE = fs.readFileSync(path.resolve(__dirname, '../src/App.js'), 'utf8');
+// Read all source files (App.js + utils/ + components/) since code was split into modules
+const srcDir = path.resolve(__dirname, '../src');
+function readAllSrc(dir) {
+  let code = '';
+  for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (f.isDirectory()) code += readAllSrc(path.join(dir, f.name));
+    else if (f.name.endsWith('.js')) code += fs.readFileSync(path.join(dir, f.name), 'utf8') + '\n';
+  }
+  return code;
+}
+const APP_CODE = readAllSrc(srcDir);
 
 let pass = 0, fail = 0, errors = [];
 function assert(ok, name) {

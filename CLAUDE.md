@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture
 
-- **Monolithic single-page React app** — nearly all UI lives in `src/App.js` (~19,500+ lines), bootstrapped with create-react-app (via CRACO)
+- **Multi-file React SPA** — `src/App.js` (~800 lines, thin router) + 8 utils in `src/utils/` + 23 components in `src/components/`, bootstrapped with create-react-app (via CRACO)
 - **Backend:** Supabase (PostgreSQL + Auth + Storage + RLS + RPCs)
 - **Hosting:** Vercel (https://rental-manager-one.vercel.app)
 - **Payments:** Stripe
@@ -43,6 +43,40 @@ Tests use `dotenv` to load Supabase credentials from `tests/.env` (not committed
 - Unit tests: custom `assert()` function, no framework, direct Supabase queries
 - E2E tests: Playwright, shared `helpers.js` (login, navigateTo, goToPage)
 - New bank/accounting features MUST add tests to `bank-transactions.test.js` and/or E2E specs
+
+## File Structure
+
+```
+src/
+  App.js              → Thin router (~800 lines): imports, Sentry, ROLES, NAV, pageComponents, AppInner
+  supabase.js         → Supabase client
+  ui.js               → Reusable UI primitives (Btn, Card, Input, etc.)
+  utils/
+    helpers.js         → Pure functions: safeNum, formatLocalDate, formatCurrency, escapeFilterValue, etc.
+    errors.js          → PM_ERRORS catalog, pmError(), reportError(), logErrorToSupabase()
+    guards.js          → guardSubmit/Release, requireCompanyId
+    encryption.js      → AES-256-GCM credential encryption
+    accounting.js      → safeLedgerInsert, autoPostJournalEntry, resolveAccountId, recurring entries
+    audit.js           → logAudit with sanitization
+    notifications.js   → queueNotification (email + push)
+    company.js         → companyQuery/Insert/Upsert, RPC health check, data integrity checks
+  components/
+    shared.js          → Badge, StatCard, Spinner, Modal, ToastContainer, ConfirmModal, DocUploadModal, etc.
+    Accounting.js      → Accounting + all Acct* sub-components + report helpers + CSV import
+    Banking.js         → BankTransactions
+    Properties.js      → Properties + PropertySetupWizard
+    Tenants.js         → Tenants
+    (+ 18 more page components: Dashboard, Payments, Maintenance, Documents, etc.)
+```
+
+## Security Patterns
+
+- **`escapeFilterValue(val)`** — MUST be used for all `.or()`, `.ilike()`, `.like()` calls with user/dynamic input
+- **`tenant_id` over `tenant.name`** — always prefer ID-based queries to prevent cross-tenant data leaks
+- **File uploads** — MIME type whitelist + magic bytes validation + size limit. Only `text/plain` and `text/csv` allowed for text types
+- **DOMPurify** — all `dangerouslySetInnerHTML` content goes through `DOMPurify.sanitize()` via `sanitizeTemplateHtml()`
+- **DB unique index** — `idx_je_company_reference_unique` on `(company_id, reference)` prevents double-posting
+- **Autopay/lease operations** — always scope by BOTH tenant name AND property to prevent same-name collisions
 
 ## Key Code Patterns
 
