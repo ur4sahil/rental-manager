@@ -11230,8 +11230,16 @@ function BankTransactions({ accounts, journalEntries, classes, tenants = [], ven
   </div>
   )}
   {connections.filter(c => c.connection_status === "errored").length > 0 && (
-  <div className="bg-danger-50 border border-danger-200 rounded-xl p-3">
-    <div className="text-sm text-danger-800"><strong>Sync errors:</strong> {connections.filter(c => c.connection_status === "errored").map(c => `${c.institution_name}: ${c.last_error_message || "Unknown error"}`).join("; ")}</div>
+  <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 flex items-center justify-between">
+    <div className="text-sm text-warn-800">
+      <strong>Sync issue:</strong> {connections.filter(c => c.connection_status === "errored").map(c => {
+        const msg = c.last_error_message || "Unknown error";
+        if (msg.includes("gateway_timeout") || msg.includes("taking too long")) return `${c.institution_name || "Bank"}: The bank took too long to respond. Try syncing again.`;
+        if (msg.includes("AUTH_FAILED")) return `${c.institution_name || "Bank"}: Re-authentication required. Click Connect Bank to reconnect.`;
+        return `${c.institution_name || "Bank"}: ${msg.replace(/\{.*\}/g, "").trim() || "Temporary error. Try again."}`;
+      }).join(" · ")}
+    </div>
+    <button onClick={() => syncTransactions()} className="shrink-0 text-xs bg-warn-600 text-white px-3 py-1.5 rounded-lg hover:bg-warn-700">Retry Sync</button>
   </div>
   )}
 
