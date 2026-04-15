@@ -69,17 +69,21 @@ module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "https://rental-manager-one.vercel.app");
   res.setHeader("Access-Control-Allow-Headers", "authorization, x-client-info, apikey, content-type");
   if (req.method === "OPTIONS") return res.status(200).end("ok");
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "POST" && req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
 
   try {
     const supabase = createClient(process.env.REACT_APP_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-    const body = req.body || {};
+    const body = req.method === "GET" ? {} : (req.body || {});
 
-    // Auth: JWT or CRON_SECRET
+    // Auth: JWT, CRON_SECRET in body, or Vercel Cron (GET with Bearer CRON_SECRET)
     let companyFilter = null;
     const authHeader = req.headers.authorization;
+    const isCronAuth = CRON_SECRET && CRON_SECRET.length >= 8 && (
+      body.cron_secret === CRON_SECRET ||
+      (req.method === "GET" && authHeader === `Bearer ${CRON_SECRET}`)
+    );
 
-    if (CRON_SECRET && CRON_SECRET.length >= 8 && body.cron_secret === CRON_SECRET) {
+    if (isCronAuth) {
       companyFilter = null; // sync all
     } else if (authHeader) {
       const token = authHeader.replace("Bearer ", "");
