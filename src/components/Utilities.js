@@ -388,11 +388,11 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   {/* Toolbar */}
   <div className="flex flex-col md:flex-row gap-3 mb-4">
   <div className="mr-auto"></div>
-  <Input placeholder="Search..." value={utilSearch} onChange={e => setUtilSearch(e.target.value)} className="w-full sm:w-40" />
-  <Select value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} >
+  <Input placeholder="Search..." value={utilSearch} onChange={e => setUtilSearch(e.target.value)} className="w-64" />
+  <Select filter value={utilFilterStatus} onChange={e => setUtilFilterStatus(e.target.value)} >
   <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
   </Select>
-  <Select value={utilFilterProp} onChange={e => setUtilFilterProp(e.target.value)} >
+  <Select filter value={utilFilterProp} onChange={e => setUtilFilterProp(e.target.value)} >
   <option value="all">All Properties</option>
   {[...new Set(utilities.map(u => u.property).filter(Boolean))].map(p => <option key={p} value={p}>{p}</option>)}
   </Select>

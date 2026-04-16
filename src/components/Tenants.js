@@ -1112,18 +1112,18 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   {/* Filters */}
   <div className="flex items-center gap-2 mb-4 flex-wrap">
-  <Input placeholder="Search name, email, phone, property..." value={tenantSearch || ""} onChange={e => setTenantSearch(e.target.value)} className="flex-1 min-w-[180px]" />
-  <Select value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} className="w-auto text-sm" >
+  <Input placeholder="Search name, email, phone, property..." value={tenantSearch || ""} onChange={e => setTenantSearch(e.target.value)} className="w-64" />
+  <Select filter value={tenantFilter || "all"} onChange={e => setTenantFilter(e.target.value)} className="w-auto text-sm" >
   <option value="all">All Status</option><option value="active">Active</option><option value="notice">Notice</option><option value="expired">Expired</option><option value="inactive">Inactive</option>
   </Select>
-  <Select value={tenantFilterProp} onChange={e => setTenantFilterProp(e.target.value)} className="w-auto text-sm" >
+  <Select filter value={tenantFilterProp} onChange={e => setTenantFilterProp(e.target.value)} className="w-auto text-sm" >
   <option value="all">All Properties</option>
   {[...new Set(tenants.map(t => t.property).filter(Boolean))].sort().map(p => <option key={p} value={p}>{p.length > 30 ? p.slice(0, 30) + "..." : p}</option>)}
   </Select>
-  <Select value={tenantFilterBalance} onChange={e => setTenantFilterBalance(e.target.value)} className="w-auto text-sm" >
+  <Select filter value={tenantFilterBalance} onChange={e => setTenantFilterBalance(e.target.value)} className="w-auto text-sm" >
   <option value="all">All Balances</option><option value="delinquent">Delinquent (owes)</option><option value="current">Current ($0)</option><option value="credit">Credit (overpaid)</option>
   </Select>
-  <Select value={tenantFilterLeaseExpiry} onChange={e => setTenantFilterLeaseExpiry(e.target.value)} className="w-auto text-sm" >
+  <Select filter value={tenantFilterLeaseExpiry} onChange={e => setTenantFilterLeaseExpiry(e.target.value)} className="w-auto text-sm" >
   <option value="all">All Leases</option><option value="30">Expires in 30 days</option><option value="60">Expires in 60 days</option><option value="90">Expires in 90 days</option><option value="expired">Expired</option><option value="no_lease">No lease date</option>
   </Select>
   {(tenantFilter !== "all" || tenantFilterProp !== "all" || tenantFilterBalance !== "all" || tenantFilterLeaseExpiry !== "all" || tenantSearch) && (

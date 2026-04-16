@@ -667,8 +667,8 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
 
   {/* Filters */}
   <div className="flex flex-wrap gap-2 mb-4">
-  <Input placeholder="Search tenant or property..." value={evSearch} onChange={e => setEvSearch(e.target.value)} className="flex-1 min-w-40" />
-  <Select value={filterStage} onChange={e => setFilterStage(e.target.value)} >
+  <Input placeholder="Search tenant or property..." value={evSearch} onChange={e => setEvSearch(e.target.value)} className="w-64" />
+  <Select filter value={filterStage} onChange={e => setFilterStage(e.target.value)} >
   <option value="all">All Cases</option>
   <option value="active">Active Only</option>
   <option value="closed">Closed Only</option>

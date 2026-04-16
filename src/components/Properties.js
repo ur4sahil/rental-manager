@@ -2294,29 +2294,29 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
 
   <div className="flex items-center gap-2 mb-4 flex-wrap">
-  <Input placeholder="Search properties..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 min-w-[180px]" />
-  <Select value={filter} onChange={e => setFilter(e.target.value)} className="w-auto text-sm" >
+  <Input placeholder="Search properties..." value={search} onChange={e => setSearch(e.target.value)} className="w-64" />
+  <Select filter value={filter} onChange={e => setFilter(e.target.value)} className="w-auto text-sm" >
   <option value="all">All Status</option><option value="occupied">Occupied</option><option value="vacant">Vacant</option><option value="maintenance">Maintenance</option>
   </Select>
-  <Select value={filterType} onChange={e => setFilterType(e.target.value)} className="w-auto text-sm" >
+  <Select filter value={filterType} onChange={e => setFilterType(e.target.value)} className="w-auto text-sm" >
   <option value="all">All Types</option>
   {propertyTypes.map(t => <option key={t} value={t}>{t}</option>)}
   </Select>
   {hasManagedProps && (
-  <Select value={filterOwnership} onChange={e => setFilterOwnership(e.target.value)} className="w-auto text-sm" >
+  <Select filter value={filterOwnership} onChange={e => setFilterOwnership(e.target.value)} className="w-auto text-sm" >
   <option value="all">All Properties</option>
   <option value="owned">Owned by Us</option>
   <option value="managed">PM-Managed</option>
   </Select>
   )}
   {propertyOwners.length > 1 && (
-  <Select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} className="w-auto text-sm" >
+  <Select filter value={filterOwner} onChange={e => setFilterOwner(e.target.value)} className="w-auto text-sm" >
   <option value="all">All Owners</option>
   {propertyOwners.map(o => <option key={o} value={o}>{o}</option>)}
   </Select>
   )}
   {propertyCities.length > 1 && (
-  <Select value={filterCity} onChange={e => setFilterCity(e.target.value)} className="w-auto text-sm" >
+  <Select filter value={filterCity} onChange={e => setFilterCity(e.target.value)} className="w-auto text-sm" >
   <option value="all">All Cities</option>
   {propertyCities.map(c => <option key={c} value={c}>{c}</option>)}
   </Select>

@@ -1009,11 +1009,11 @@ function AuditTrail({ companyId }) {
 
   {/* Filters */}
   <div className="flex flex-wrap gap-2 mb-4">
-  <Select value={filterModule} onChange={e => { setFilterModule(e.target.value); setPage(0); }} >
+  <Select filter value={filterModule} onChange={e => { setFilterModule(e.target.value); setPage(0); }} >
   <option value="all">All Modules</option>
   {modules.map(m => <option key={m} value={m}>{moduleIcons[m] || "📌"} {m}</option>)}
   </Select>
-  <Select value={filterAction} onChange={e => { setFilterAction(e.target.value); setPage(0); }} >
+  <Select filter value={filterAction} onChange={e => { setFilterAction(e.target.value); setPage(0); }} >
   <option value="all">All Actions</option>
   {actions.map(a => <option key={a} value={a}>{a}</option>)}
   </Select>

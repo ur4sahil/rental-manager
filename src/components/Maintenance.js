@@ -331,12 +331,12 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <button key={s} onClick={() => setFilter(s)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === s ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"}`}>{s.replace("_", " ")}</button>
   ))}
   <div className="flex-1" />
-  <Input placeholder="Search issue, property, tenant..." value={woSearch} onChange={e => setWoSearch(e.target.value)} className="flex-1 min-w-0 sm:min-w-40" />
-  <Select value={woFilterProp} onChange={e => setWoFilterProp(e.target.value)} className="py-1.5">
+  <Input placeholder="Search issue, property, tenant..." value={woSearch} onChange={e => setWoSearch(e.target.value)} className="w-64" />
+  <Select filter value={woFilterProp} onChange={e => setWoFilterProp(e.target.value)} className="py-1.5">
   <option value="all">All Properties</option>
   {[...new Set(workOrders.map(w => w.property).filter(Boolean))].sort().map(p => <option key={p} value={p}>{p.length > 30 ? p.slice(0, 30) + "..." : p}</option>)}
   </Select>
-  <Select value={woFilterAssigned} onChange={e => setWoFilterAssigned(e.target.value)} className="py-1.5">
+  <Select filter value={woFilterAssigned} onChange={e => setWoFilterAssigned(e.target.value)} className="py-1.5">
   <option value="all">All Assigned</option><option value="_unassigned">Unassigned</option>
   {[...new Set(workOrders.map(w => w.assigned).filter(Boolean))].sort().map(a => <option key={a} value={a}>{a}</option>)}
   </Select>
@@ -860,7 +860,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   {activeTab === "vendors" && (
   <div>
   <div className="flex gap-2 mb-4">
-  <Input placeholder="Search vendors..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="flex-1" />
+  <Input placeholder="Search vendors..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-64" />
   <Select value={filterSpecialty} onChange={e => setFilterSpecialty(e.target.value)} >
   <option value="all">All Specialties</option>
   {specialties.map(s => <option key={s} value={s}>{s}</option>)}

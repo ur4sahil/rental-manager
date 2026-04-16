@@ -92,7 +92,7 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
   </div>
 
   <div className="flex flex-wrap gap-2 mb-4">
-  <Input placeholder="Search tenant or property..." value={paySearch} onChange={e => setPaySearch(e.target.value)} className="flex-1 min-w-0 sm:min-w-40" />
+  <Input placeholder="Search tenant or property..." value={paySearch} onChange={e => setPaySearch(e.target.value)} className="w-64" />
   <Input type="date" value={payDateFrom} onChange={e => setPayDateFrom(e.target.value)} title="From date" />
   <Input type="date" value={payDateTo} onChange={e => setPayDateTo(e.target.value)} title="To date" />
   {(paySearch || payDateFrom || payDateTo) && (

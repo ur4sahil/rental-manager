@@ -72,7 +72,8 @@ export function Input({ className = "", ...props }) {
 }
 
 // ---- SELECT ----
-export function Select({ className = "", children, ...props }) {
+export function Select({ className = "", filter, children, ...props }) {
+  if (filter) return <select className={`${INPUT_CORE} w-auto text-sm ${className}`} {...props}>{children}</select>;
   const base = /\bw-/.test(className) ? INPUT_CORE : INPUT_BASE;
   return <select className={`${base} ${className}`} {...props}>{children}</select>;
 }

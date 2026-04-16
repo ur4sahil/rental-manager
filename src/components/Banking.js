@@ -1465,7 +1465,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   {/* Filters (hidden on Rules tab) */}
   {activeTab !== "rules" && (
   <div className="flex items-center gap-2">
-    <Input placeholder="Search description, payee, amount..." value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setTxnPage(0); }} className="flex-1 min-w-40 !py-1.5 text-sm" />
+    <Input placeholder="Search description, payee, amount..." value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setTxnPage(0); }} className="w-64 !py-1.5 text-sm" />
     <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setTxnPage(0); }} className="w-32 !py-1.5 text-xs" />
     <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setTxnPage(0); }} className="w-32 !py-1.5 text-xs" />
     <select value={directionFilter} onChange={e => { setDirectionFilter(e.target.value); setTxnPage(0); }} className="border border-brand-100 rounded-xl px-2 py-1.5 text-xs">
