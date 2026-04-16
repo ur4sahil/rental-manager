@@ -1116,6 +1116,13 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                       <span className="material-icons-outlined text-positive-500 text-base">check_circle</span>
                       <span className="text-positive-800 font-medium truncate">{doc.name}</span>
                       <span className="text-xs text-positive-600 bg-positive-100 px-2 py-0.5 rounded-full ml-auto">{doc.type}</span>
+                      <button onClick={async () => {
+                        await supabase.from("documents").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email || "user" }).eq("company_id", companyId).eq("property", savedAddress).ilike("name", doc.name);
+                        setUploadedDocs(prev => prev.filter((_, i) => i !== idx));
+                        showToast("Document removed.", "success");
+                      }} className="text-danger-400 hover:text-danger-600 ml-1" title="Remove">
+                        <span className="material-icons-outlined text-sm">close</span>
+                      </button>
                     </div>
                   ))}
                 </div>
