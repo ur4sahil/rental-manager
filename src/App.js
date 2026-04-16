@@ -733,7 +733,7 @@ function AppInner() {
   <div className="relative">
   <button onClick={() => setShowUserMenu(!showUserMenu)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-2xl hover:bg-brand-50 transition-colors ${showUserMenu ? "bg-brand-50" : ""}`}>
   <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${ROLES[userRole]?.color || "bg-brand-600"}`}>{userProfile?.name?.[0]?.toUpperCase() || "U"}</div>
-  <span className={`hidden md:inline text-xs font-semibold uppercase tracking-wide ${ROLES[userRole]?.color?.replace("bg-", "text-") || "text-brand-600"}`}>{ROLES[userRole]?.label}</span>
+  <span className="hidden md:inline text-xs font-semibold text-neutral-700">{userProfile?.name || currentUser?.email?.split("@")[0] || "User"}</span>
   <span className="material-icons-outlined text-sm text-neutral-400">expand_more</span>
   </button>
   {showUserMenu && <>

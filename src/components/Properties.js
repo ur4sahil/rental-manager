@@ -1898,14 +1898,15 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   await supabase.from("recurring_journal_entries").update({ ...arch, status: "inactive" }).eq("company_id", companyId).eq("property", address).is("archived_at", null);
 
   // 6. Archive all operational data (parallel with error collection)
+  const archAt = { archived_at: archiveTs };
   const archiveResults = await Promise.allSettled([
   supabase.from("work_orders").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null),
   supabase.from("utilities").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null),
   supabase.from("documents").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null),
-  supabase.from("vendor_invoices").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null),
+  supabase.from("vendor_invoices").update(archAt).eq("company_id", companyId).eq("property", address).is("archived_at", null),
   supabase.from("hoa_payments").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null),
-  supabase.from("inspections").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null),
-  supabase.from("payments").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null),
+  supabase.from("inspections").update(archAt).eq("company_id", companyId).eq("property", address).is("archived_at", null),
+  supabase.from("payments").update(archAt).eq("company_id", companyId).eq("property", address).is("archived_at", null),
   supabase.from("property_loans").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null),
   supabase.from("property_insurance").update(arch).eq("company_id", companyId).eq("property", address).is("archived_at", null),
   supabase.from("property_setup_wizard").update({ status: "dismissed", updated_at: new Date().toISOString() }).eq("company_id", companyId).eq("property_address", address).eq("status", "in_progress"),
