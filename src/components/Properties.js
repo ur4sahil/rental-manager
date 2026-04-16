@@ -1327,8 +1327,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                     <button onClick={() => setStep(steps.indexOf("hoa") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
                   </div>
                 </div>
-                {completedSteps.has("hoa") && hoa.enabled ? (
-                  <div className="text-xs text-neutral-500">{hoa.hoa_name} — ${Number(hoa.amount || 0).toLocaleString()} {hoa.frequency}</div>
+                {completedSteps.has("hoa") && hoas.length > 0 && hoas[0].enabled ? (
+                  <div className="text-xs text-neutral-500">{hoas[0].hoa_name} — ${Number(hoas[0].amount || 0).toLocaleString()} {hoas[0].frequency}{hoas.length > 1 ? ` (+${hoas.length - 1} more)` : ""}</div>
                 ) : completedSteps.has("hoa") ? <p className="text-xs text-neutral-400">No HOA</p> : null}
               </div>
 
