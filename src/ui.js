@@ -56,7 +56,8 @@ export function Card({ className = "", padding = "p-5", children, ...props }) {
 }
 
 // ---- INPUT ----
-const INPUT_BASE = "border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full focus:border-brand-300 focus:outline-none transition-colors";
+const INPUT_CORE = "border border-brand-100 rounded-2xl px-3 py-2 text-sm focus:border-brand-300 focus:outline-none transition-colors";
+const INPUT_BASE = INPUT_CORE + " w-full";
 
 export function Input({ className = "", ...props }) {
   // Auto-apply sensible defaults by type
@@ -66,12 +67,14 @@ export function Input({ className = "", ...props }) {
   else if (props.type === "tel") { defaults.maxLength = props.maxLength || 14; }
   else if (props.type === "number") { defaults.step = props.step || "any"; }
   else if (props.type === "text" && !props.maxLength) { defaults.maxLength = 200; }
-  return <input className={`${INPUT_BASE} ${className}`} {...defaults} {...props} />;
+  const base = /\bw-/.test(className) ? INPUT_CORE : INPUT_BASE;
+  return <input className={`${base} ${className}`} {...defaults} {...props} />;
 }
 
 // ---- SELECT ----
 export function Select({ className = "", children, ...props }) {
-  return <select className={`${INPUT_BASE} ${className}`} {...props}>{children}</select>;
+  const base = /\bw-/.test(className) ? INPUT_CORE : INPUT_BASE;
+  return <select className={`${base} ${className}`} {...props}>{children}</select>;
 }
 
 // ---- TEXTAREA ----
