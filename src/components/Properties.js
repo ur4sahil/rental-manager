@@ -630,6 +630,16 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       showToast(uploaded + " document" + (uploaded > 1 ? "s" : "") + " uploaded", "success");
       setDocUploadType("Lease");
       setDocDescription("");
+      // Check if all required docs uploaded → update tenant doc_status
+      const allUploaded = [...uploadedDocs, ...Array(uploaded).fill(null).map((_, i) => ({ type: docUploadType }))];
+      const { data: allDocs } = await supabase.from("documents").select("type").eq("company_id", companyId).eq("property", savedAddress).is("archived_at", null);
+      const types = (allDocs || []).map(d => (d.type || "").toLowerCase());
+      const hasLease = types.some(t => t.includes("lease"));
+      const hasId = types.some(t => t.includes("id"));
+      const hasInsurance = types.some(t => t.includes("insurance"));
+      if (hasLease && hasId && hasInsurance && tenantForm.tenant) {
+        await supabase.from("tenants").update({ doc_status: "docs_complete" }).eq("company_id", companyId).ilike("name", tenantForm.tenant).is("archived_at", null);
+      }
     }
     setSaving(false);
     if (fileInputRef.current) fileInputRef.current.value = "";

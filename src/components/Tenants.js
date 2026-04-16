@@ -7,6 +7,8 @@ import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges } from "../utils/accounting";
 import { Badge, Spinner, Modal, PropertySelect, RecurringEntryModal, DocUploadModal } from "./shared";
+import { LeaseManagement } from "./Leases";
+import { MoveOutWizard, EvictionWorkflow } from "./Lifecycle";
 
 const acctToday = () => formatLocalDate(new Date());
 
@@ -263,7 +265,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   // Deactivate tenant AR sub-accounts
   await supabase.from("acct_accounts").update({ is_active: false }).eq("company_id", companyId).eq("tenant_id", id);
   addNotification("\u{1F5D1}\uFE0F", `Tenant deleted: ${name}`);
-  logAudit("delete", "tenants", `Deleted tenant: ${name} (property\u2192vacant, lease terminated, autopay disabled)`, id, userProfile?.email, userRole, companyId);
+  logAudit("delete", "tenants", `Deleted tenant: ${name} (property→vacant, lease terminated, autopay disabled)`, id, userProfile?.email, userRole, companyId);
   fetchTenants();
   } finally { guardRelease("deleteTenant"); }
   }
@@ -807,7 +809,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="text-sm font-medium text-brand-800">\u270D\uFE0F Generate & E-Sign Lease</div>
   <div className="text-xs text-brand-400">Opens PDF with signature canvas</div>
   </div>
-  <span className="text-brand-300">\u2192</span>
+  <span className="text-brand-300">→</span>
   </button>
   {[
   { label: "\u{1F504} Renew Lease", desc: "Extend lease term", modal: "renew" },
@@ -818,7 +820,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="text-sm font-medium text-neutral-800">{item.label}</div>
   <div className="text-xs text-neutral-400">{item.desc}</div>
   </div>
-  <span className="text-neutral-300">\u2192</span>
+  <span className="text-neutral-300">→</span>
   </button>
   ))}
   </div>
@@ -1016,7 +1018,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   </div>
 
-  {tenantTab === "leases" && <LeaseManagement addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
+  {tenantTab === "leases" && <LeaseManagement addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} showToast={showToast} showConfirm={showConfirm} />}
   {tenantTab === "archived" && (
   <div>
   {archivedTenants.length === 0 ? (
@@ -1032,8 +1034,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ))}
   </div>
   )}
-  {tenantTab === "moveout" && <MoveOutWizard addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
-  {tenantTab === "evictions" && <EvictionWorkflow addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} />}
+  {tenantTab === "moveout" && <MoveOutWizard addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} setPage={setPage} showToast={showToast} showConfirm={showConfirm} />}
+  {tenantTab === "evictions" && <EvictionWorkflow addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} showToast={showToast} showConfirm={showConfirm} />}
 
   {tenantTab === "tenants" && (<>
   {/* Required Documents Prompt */}
@@ -1381,7 +1383,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="flex items-center justify-between mt-3 pt-2 border-t border-brand-50">
   <button onClick={e => { e.stopPropagation(); setSelectedTenant(t); setActivePanel("ledger"); openLedger(t); }} className="text-xs text-brand-600 hover:text-brand-800 font-medium">View Ledger</button>
   {safeNum(t.balance) > 0 && safeNum(t.late_fee_amount) > 0 && <button onClick={e => { e.stopPropagation(); applyLateFeeForTenant(t); }} className="text-xs text-danger-600 hover:text-danger-800 font-medium flex items-center gap-0.5"><span className="material-icons-outlined text-xs">gavel</span>Late Fee</button>}
-  <span className="text-xs text-neutral-300">Click for details \u2192</span>
+  <span className="text-xs text-neutral-300">Click for details →</span>
   </div>
   </div>
   ))}
