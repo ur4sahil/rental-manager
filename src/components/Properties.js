@@ -2691,7 +2691,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <span className="material-icons-outlined text-warn-600">construction</span>
   <div>
   <div className="text-sm font-semibold text-warn-800">Setup incomplete: {w.property_address?.split(",")[0]}</div>
-  <div className="text-xs text-warn-600">Step {w.current_step} of 7 · {(w.completed_steps || []).length} steps completed</div>
+  <div className="text-xs text-warn-600">{(w.completed_steps || []).length} steps completed · {w.status === "in_progress" ? "In progress" : w.status}</div>
   </div>
   </div>
   <button onClick={() => {
@@ -2776,7 +2776,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </thead>
   <tbody>
   {filtered.map(p => (
-  <tr key={p.id} className="border-t border-brand-50/50 hover:bg-brand-50/30/50">
+  <tr key={p.id} onClick={() => openPropertyDetail(p)} className="border-t border-brand-50/50 hover:bg-brand-50/30/50 cursor-pointer">
   {visibleCols.includes("address") && <td className="px-4 py-2.5 font-medium text-neutral-800">{p.address}</td>}
   {visibleCols.includes("type") && <td className="px-4 py-2.5 text-neutral-500">{p.type}</td>}
   {visibleCols.includes("status") && <td className="px-4 py-2.5"><Badge status={p.status} label={p.status} /></td>}
@@ -2785,7 +2785,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {visibleCols.includes("lease_end") && <td className="px-4 py-2.5 text-neutral-400">{p.lease_end || "—"}</td>}
   {visibleCols.includes("owner_name") && <td className="px-4 py-2.5 text-neutral-500">{p.owner_name || "—"}</td>}
   {visibleCols.includes("notes") && <td className="px-4 py-2.5 text-xs text-neutral-400 max-w-32 truncate">{p.notes || "—"}</td>}
-  <td className="px-4 py-2.5 text-right whitespace-nowrap">
+  <td className="px-4 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
   {p.pm_company_name && <span className="text-xs bg-highlight-100 text-highlight-600 px-1.5 py-0.5 rounded mr-2">PM</span>}
   {isReadOnly(p) && <span className="text-xs text-highlight-500 mr-2">🔒 view only</span>}
   {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>}
@@ -2806,7 +2806,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {viewMode === "compact" && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 divide-y divide-brand-50/50">
   {filtered.map(p => (
-  <div key={p.id} className={`flex items-center gap-3 px-4 py-2.5 hover:bg-brand-50/30/50 ${isReadOnly(p) ? "bg-highlight-50/30" : ""}`}>
+  <div key={p.id} onClick={() => openPropertyDetail(p)} className={`flex items-center gap-3 px-4 py-2.5 hover:bg-brand-50/30/50 cursor-pointer ${isReadOnly(p) ? "bg-highlight-50/30" : ""}`}>
   <div className={`w-2 h-2 rounded-full ${p.status === "occupied" ? "bg-success-500" : p.status === "vacant" ? "bg-warn-500" : "bg-danger-500"}`} />
   <div className="flex-1 min-w-0">
   <span className="text-sm font-medium text-neutral-800">{p.address}</span>
@@ -2816,7 +2816,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <span className="text-sm font-semibold text-neutral-700">${safeNum(p.rent).toLocaleString()}</span>
   <span className="text-xs text-neutral-400 w-28 truncate">{p.tenant || "—"}</span>
   <Badge status={p.status} label={p.status} />
-  {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline">Edit</button>}
+  {!isReadOnly(p) && <button onClick={(e) => { e.stopPropagation(); setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline">Edit</button>}
   {isReadOnly(p) && <span className="text-xs text-highlight-400">🔒</span>}
   </div>
   ))}
