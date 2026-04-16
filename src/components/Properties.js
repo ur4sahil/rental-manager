@@ -510,12 +510,16 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       // Find tenant ID
       const { data: tRow } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", tName).eq("property", addr).is("archived_at", null).maybeSingle();
       const tenantId = tRow?.id;
+      // Check if accounting entries already exist (prevents double-posting on re-edit)
+      const { data: existingJEs } = await supabase.from("acct_journal_entries").select("id, description").eq("company_id", companyId).eq("property", addr).neq("status", "voided").limit(5);
+      const hasRentJE = (existingJEs || []).some(je => je.description?.includes(tName) && (je.description?.includes("rent") || je.description?.includes("Rent")));
+      const hasDepJE = (existingJEs || []).some(je => je.description?.includes(tName) && je.description?.includes("deposit"));
       if (tenantId) {
       // Create AR sub-account
       await getOrCreateTenantAR(companyId, tName, tenantId);
-      // Post security deposit JE
+      // Post security deposit JE (skip if already posted)
       const dep = Number(tenantForm.security_deposit) || 0;
-      if (dep > 0) {
+      if (dep > 0 && !hasDepJE) {
       const classId = await getPropertyClassId(addr, companyId);
       const tenantArId = await getOrCreateTenantAR(companyId, tName, tenantId);
       const depOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start, description: "Security deposit received — " + tName + " — " + addr, reference: "DEP-" + shortId(), property: addr,
@@ -526,9 +530,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       });
       if (depOk) await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: addr, date: tenantForm.lease_start, description: "Security deposit collected", amount: dep, type: "deposit", balance: 0 });
       }
-      // Post first month rent (prorated if mid-month)
+      // Post first month rent (prorated if mid-month) — skip if already posted
       const monthlyRent = Number(tenantForm.rent) || Number(recurring?.amount) || 0;
-      if (monthlyRent > 0 && tenantForm.lease_start) {
+      if (monthlyRent > 0 && tenantForm.lease_start && !hasRentJE) {
       try {
         const leaseStart = parseLocalDate(tenantForm.lease_start);
         const startDay = leaseStart.getDate();
