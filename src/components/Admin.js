@@ -915,6 +915,17 @@ function AdminPage({ companyId, activeCompany, addNotification, userProfile, use
   <div>
   <PageHeader title="Admin" />
   <p className="text-sm text-neutral-400 mb-4">Manage team access and view activity logs</p>
+  {isAdmin && activeCompany?.company_code && (
+  <div className="bg-brand-50/50 border border-brand-100 rounded-xl px-4 py-3 mb-4 flex items-center justify-between">
+  <div>
+  <div className="text-xs font-medium text-neutral-500">Company Join Code</div>
+  <div className="text-lg font-bold font-mono text-brand-700 tracking-wider">{activeCompany.company_code}</div>
+  </div>
+  <button onClick={() => { navigator.clipboard.writeText(activeCompany.company_code); showToast("Code copied!", "success"); }} className="text-xs text-brand-600 hover:text-brand-800 font-medium flex items-center gap-1">
+  <span className="material-icons-outlined text-sm">content_copy</span>Copy
+  </button>
+  </div>
+  )}
   <div className="flex gap-1 mb-4 border-b border-brand-50">
   {[["audit", "Audit Trail"], ...(isAdmin ? [["team", "Team & Roles"], ["errors", "Error Log"]] : [])].map(([id, label]) => (
   <button key={id} onClick={() => setAdminTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (adminTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}</button>

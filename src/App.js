@@ -378,13 +378,7 @@ function AppInner() {
   const { data: company } = await supabase.from("companies").select("*").eq("id", tenantMembership.company_id).maybeSingle();
   if (company) { handleSelectCompany(company, tenantMembership.role); return; }
   }
-  // Always show company selector — removed auto-restore from localStorage
-  // If only one company, auto-select it
-  if (memberships.length === 1) {
-    const { data: company } = await supabase.from("companies").select("*").eq("id", memberships[0].company_id).maybeSingle();
-    if (company) { handleSelectCompany(company, memberships[0].role); return; }
-  }
-  // Multiple companies, no saved preference — show selector
+  // Always show company selector for non-tenant roles
   setScreen("company_select");
   }
 
