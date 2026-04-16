@@ -8,7 +8,7 @@ export function LandingPage({ onGetStarted }) {
   <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shadow-lg shadow-brand-200">
   <span className="material-icons-outlined text-white text-sm">domain</span>
   </div>
-  <span className="font-manrope font-extrabold text-xl tracking-tight text-brand-900">Estate Logic</span>
+  <span className="font-manrope font-extrabold text-xl tracking-tight text-brand-900">PropManager</span>
   </div>
   <button onClick={() => onGetStarted("login")} className="bg-brand-600 text-white text-sm px-5 py-2.5 rounded-2xl hover:bg-brand-700 font-semibold transition-colors">Sign In</button>
   </nav>
@@ -74,7 +74,7 @@ export function LandingPage({ onGetStarted }) {
   </div>
   </div>
   <footer className="border-t border-brand-50 px-8 py-6 text-center text-xs text-neutral-400">
-  © 2025 Estate Logic by Sigma Housing LLC. All rights reserved.
+  © 2026 PropManager by Sigma Housing LLC. All rights reserved.
   </footer>
   </div>
   );

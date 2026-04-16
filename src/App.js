@@ -264,6 +264,7 @@ function AppInner() {
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
+  const [showUserProfile, setShowUserProfile] = useState(false);
   const [customAllowedPages, setCustomAllowedPages] = useState(null);
   // Company context
   const [activeCompany, setActiveCompany] = useState(null);
@@ -689,7 +690,7 @@ function AppInner() {
   <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shadow-lg shadow-brand-200">
   <span className="material-icons-outlined text-white text-sm">domain</span>
   </div>
-  <span className="font-manrope font-extrabold text-lg tracking-tight text-brand-900">Estate Logic</span>
+  <span className="font-manrope font-extrabold text-lg tracking-tight text-brand-900">PropManager</span>
   </div>
   {activeCompany && (
   <div className="flex items-center justify-between mt-2">
@@ -744,6 +745,7 @@ function AppInner() {
   {showUserMenu && <>
   <div className="fixed inset-0 z-30" onClick={() => setShowUserMenu(false)} />
   <div className="absolute right-0 top-full mt-1 bg-white border border-neutral-200 rounded-xl shadow-lg py-1 w-48 z-40">
+    <button onClick={() => { setShowUserMenu(false); setShowUserProfile(true); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">person</span>Profile</button>
     <button onClick={() => { setShowUserMenu(false); switchCompany(); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">swap_horiz</span>Switch Company</button>
     <button onClick={() => { setShowUserMenu(false); setPage("admin"); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">settings</span>Settings</button>
     <div className="border-t border-neutral-100 my-1" />
@@ -831,6 +833,13 @@ function AppInner() {
 
   {sidebarOpen && <div className="fixed inset-0 bg-black bg-opacity-20 z-10 md:hidden" onClick={() => setSidebarOpen(false)} />}
   {showNotifications && <div className="fixed inset-0 z-30" onClick={() => setShowNotifications(false)} />}
+  {showUserProfile && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+  <UserProfile currentUser={currentUser} onBack={() => setShowUserProfile(false)} showToast={showToast} showConfirm={showConfirm} />
+  </div>
+  </div>
+  )}
   <ToastContainer toasts={toasts} removeToast={removeToast} />
   <ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} />
   </div>
