@@ -10,7 +10,8 @@ import { guardSubmit, guardRelease, guarded, requireCompanyId } from "./utils/gu
 import { encryptCredential, decryptCredential } from "./utils/encryption";
 import { AUDIT_ACTIONS, AUDIT_MODULES, logAudit } from "./utils/audit";
 import { queueNotification } from "./utils/notifications";
-import { companyQuery, companyInsert, companyUpsert, checkRPCHealth, runDataIntegrityChecks } from "./utils/company";
+import { companyQuery, companyInsert, companyUpsert, checkRPCHealth, runDataIntegrityChecks, loadCompanySettings } from "./utils/company";
+import { COMPANY_DEFAULTS } from "./config";
 import { safeLedgerInsert, atomicPostJEAndLedger, postAccountingTransaction, checkPeriodLock, autoPostJournalEntry, checkAccrualExists, autoOwnerDistribution, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _acctCodeToName, _tenantArCache, _zipCache, lookupZip } from "./utils/accounting";
 import { ErrorBoundary, Badge, StatCard, Spinner, Modal, ToastContainer, ConfirmModal, PropertyDropdown, TenantSelect, PropertySelect, RecurringEntryModal, DocUploadModal, formatAllTenants, generatePaymentReceipt } from "./components/shared";
 
@@ -268,6 +269,7 @@ function AppInner() {
   const [customAllowedPages, setCustomAllowedPages] = useState(null);
   // Company context
   const [activeCompany, setActiveCompany] = useState(null);
+  const [companySettings, setCompanySettings] = useState({ ...COMPANY_DEFAULTS });
 
   // Browser back button support
   useEffect(() => {
@@ -425,6 +427,7 @@ function AppInner() {
   setActiveCompany(company);
   try { localStorage.setItem("lastCompanyId", company.id); } catch (_e) { pmError("PM-8006", { raw: _e, context: "save lastCompanyId to localStorage", silent: true }); }
   checkRPCHealth(company.id).then(m => setMissingRPCs(m)).catch(() => {});
+  loadCompanySettings(company.id).then(s => setCompanySettings(s)).catch(() => {});
   loadInboxNotifications(company.id);
   registerPushNotifications();
   // Auto-run daily notification check (rent reminders, lease expiry)
@@ -817,6 +820,8 @@ function AppInner() {
   activeCompany={activeCompany}
   showToast={showToast}
   showConfirm={showConfirm}
+  companySettings={companySettings}
+  setCompanySettings={setCompanySettings}
   />
   </ErrorBoundary>
   </main>

@@ -5,7 +5,8 @@ import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPerso
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
-import { runDataIntegrityChecks } from "../utils/company";
+import { runDataIntegrityChecks, saveCompanySettings } from "../utils/company";
+import { COMPANY_DEFAULTS } from "../config";
 import { Spinner } from "./shared";
 
 // ============ ROLE DEFINITIONS ============
@@ -908,7 +909,119 @@ function ErrorLogDashboard({ companyId, showToast }) {
 }
 
 // ============ ADMIN PAGE (Audit Trail + Team & Roles + Error Log) ============
-function AdminPage({ companyId, activeCompany, addNotification, userProfile, userRole, showToast, showConfirm, currentUser }) {
+// ============ COMPANY SETTINGS PANEL ============
+function CompanySettingsPanel({ companyId, showToast, userProfile, companySettings, setCompanySettings }) {
+  const [form, setForm] = useState({ ...companySettings });
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  function update(key, value) {
+    setForm(f => ({ ...f, [key]: value }));
+    setDirty(true);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await saveCompanySettings(companyId, form, userProfile?.email);
+      setCompanySettings({ ...form });
+      setDirty(false);
+      showToast("Settings saved!", "success");
+      logAudit("update", "settings", "Updated company settings", "", userProfile?.email, "admin", companyId);
+    } catch (e) {
+      showToast("Error: " + e.message, "error");
+    }
+    setSaving(false);
+  }
+
+  function resetDefaults() {
+    setForm({ ...COMPANY_DEFAULTS });
+    setDirty(true);
+  }
+
+  const Field = ({ label, field, type = "number", suffix, min, max, step }) => (
+    <div>
+      <label className="text-xs font-medium text-neutral-500 block mb-1">{label}</label>
+      <div className="flex items-center gap-1">
+        <Input type={type} value={form[field] ?? ""} onChange={e => update(field, type === "number" ? Number(e.target.value) : e.target.value)} min={min} max={max} step={step || "1"} className="w-full" />
+        {suffix && <span className="text-xs text-neutral-400 shrink-0">{suffix}</span>}
+      </div>
+    </div>
+  );
+
+  return (
+  <div className="space-y-6">
+  <div className="flex items-center justify-between">
+  <div>
+  <h3 className="text-sm font-bold text-neutral-700">Company Settings</h3>
+  <p className="text-xs text-neutral-400">Configure defaults for this company. Changes apply to new entries only.</p>
+  </div>
+  <div className="flex items-center gap-2">
+  <button onClick={resetDefaults} className="text-xs text-neutral-400 hover:text-neutral-600 hover:underline">Reset to Defaults</button>
+  <Btn onClick={handleSave} disabled={saving || !dirty}>{saving ? "Saving..." : "Save Settings"}</Btn>
+  </div>
+  </div>
+
+  {/* Late Fees */}
+  <div className="bg-white rounded-xl border border-neutral-200 p-4">
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">gavel</span>Late Fee Defaults</div>
+  <div className="grid grid-cols-3 gap-4">
+  <Field label="Grace Period" field="late_fee_grace_days" suffix="days" min={0} max={30} />
+  <Field label="Fee Amount" field="late_fee_amount" suffix={form.late_fee_type === "percent" ? "%" : "$"} min={0} step="0.01" />
+  <div>
+  <label className="text-xs font-medium text-neutral-500 block mb-1">Fee Type</label>
+  <Select value={form.late_fee_type} onChange={e => update("late_fee_type", e.target.value)}>
+  <option value="flat">Flat ($)</option><option value="percent">Percent (%)</option>
+  </Select>
+  </div>
+  </div>
+  </div>
+
+  {/* Lease Defaults */}
+  <div className="bg-white rounded-xl border border-neutral-200 p-4">
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">description</span>Lease Defaults</div>
+  <div className="grid grid-cols-3 gap-4">
+  <Field label="Default Lease Term" field="default_lease_months" suffix="months" min={1} max={60} />
+  <Field label="Security Deposit" field="default_deposit_months" suffix="month(s) rent" min={0} max={3} />
+  <Field label="Rent Escalation" field="rent_escalation_pct" suffix="% / year" min={0} max={25} step="0.5" />
+  <Field label="Payment Due Day" field="payment_due_day" suffix="of month" min={1} max={31} />
+  <Field label="Renewal Notice" field="renewal_notice_days" suffix="days" min={0} max={180} />
+  </div>
+  </div>
+
+  {/* Notifications */}
+  <div className="bg-white rounded-xl border border-neutral-200 p-4">
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">notifications</span>Notification Thresholds</div>
+  <div className="grid grid-cols-3 gap-4">
+  <Field label="Rent Due Reminder" field="rent_due_reminder_days" suffix="days before" min={1} max={14} />
+  <Field label="Lease Expiry Warning" field="lease_expiry_warning_days" suffix="days before" min={7} max={180} />
+  <Field label="Insurance Expiry Warning" field="insurance_expiry_warning_days" suffix="days before" min={7} max={180} />
+  </div>
+  </div>
+
+  {/* Legal */}
+  <div className="bg-white rounded-xl border border-neutral-200 p-4">
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">balance</span>Legal & Lease Terms</div>
+  <div className="grid grid-cols-3 gap-4">
+  <Field label="Deposit Return Deadline" field="deposit_return_days" suffix="days after move-out" min={1} max={90} />
+  <Field label="Termination Notice Required" field="termination_notice_days" suffix="days written" min={1} max={90} />
+  <Field label="Archive Retention" field="archive_retention_days" suffix="days" min={30} max={365} />
+  </div>
+  </div>
+
+  {/* Other */}
+  <div className="bg-white rounded-xl border border-neutral-200 p-4">
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">tune</span>Other Settings</div>
+  <div className="grid grid-cols-3 gap-4">
+  <Field label="HOA Upcoming Window" field="hoa_upcoming_window_days" suffix="days" min={1} max={60} />
+  <Field label="Voucher Reexam Window" field="voucher_reexam_window_days" suffix="days" min={7} max={365} />
+  </div>
+  </div>
+  </div>
+  );
+}
+
+function AdminPage({ companyId, activeCompany, addNotification, userProfile, userRole, showToast, showConfirm, currentUser, companySettings, setCompanySettings }) {
   const [adminTab, setAdminTab] = useState("audit");
   const isAdmin = userRole === "admin";
   return (
@@ -927,12 +1040,13 @@ function AdminPage({ companyId, activeCompany, addNotification, userProfile, use
   </div>
   )}
   <div className="flex gap-1 mb-4 border-b border-brand-50">
-  {[["audit", "Audit Trail"], ...(isAdmin ? [["team", "Team & Roles"], ["errors", "Error Log"]] : [])].map(([id, label]) => (
+  {[["audit", "Audit Trail"], ...(isAdmin ? [["team", "Team & Roles"], ["settings", "Settings"], ["errors", "Error Log"]] : [])].map(([id, label]) => (
   <button key={id} onClick={() => setAdminTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (adminTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}</button>
   ))}
   </div>
   {adminTab === "audit" && <AuditTrail companyId={companyId} />}
   {adminTab === "team" && isAdmin && <RoleManagement companyId={companyId} activeCompany={activeCompany} addNotification={addNotification} userProfile={userProfile} userRole={userRole} showToast={showToast} showConfirm={showConfirm} currentUser={currentUser} />}
+  {adminTab === "settings" && isAdmin && <CompanySettingsPanel companyId={companyId} showToast={showToast} userProfile={userProfile} companySettings={companySettings} setCompanySettings={setCompanySettings} />}
   {adminTab === "errors" && isAdmin && <ErrorLogDashboard companyId={companyId} showToast={showToast} />}
   </div>
   );

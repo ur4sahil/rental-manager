@@ -1,6 +1,7 @@
 import { supabase } from "../supabase";
 import { pmError } from "./errors";
 import { safeNum } from "./helpers";
+import { COMPANY_DEFAULTS } from "../config";
 
 // ============ COMPANY-SCOPED SUPABASE HELPERS ============
 // Use these instead of raw supabase.from() to automatically filter by company_id
@@ -122,4 +123,36 @@ export async function runDataIntegrityChecks(companyId, { deep = false } = {}) {
     pmError("PM-8006", { raw: e, context: "data integrity checks", silent: true });
   }
   return violations;
+}
+
+// ============ COMPANY SETTINGS ============
+// Loads company settings, merging DB values over COMPANY_DEFAULTS.
+// Returns a plain object with all setting keys guaranteed.
+export async function loadCompanySettings(companyId) {
+  if (!companyId) return { ...COMPANY_DEFAULTS };
+  try {
+    const { data } = await supabase.from("company_settings").select("*").eq("company_id", companyId).maybeSingle();
+    if (!data) return { ...COMPANY_DEFAULTS };
+    // Merge: DB values override defaults, skip nulls/undefined
+    const merged = { ...COMPANY_DEFAULTS };
+    for (const key of Object.keys(COMPANY_DEFAULTS)) {
+      if (data[key] != null) merged[key] = data[key];
+    }
+    return merged;
+  } catch (e) {
+    pmError("PM-8006", { raw: e, context: "load company settings", silent: true });
+    return { ...COMPANY_DEFAULTS };
+  }
+}
+
+// Saves company settings (upsert).
+export async function saveCompanySettings(companyId, settings, userEmail) {
+  if (!companyId) throw new Error("companyId required");
+  const row = { company_id: companyId, updated_at: new Date().toISOString(), updated_by: userEmail || "" };
+  for (const key of Object.keys(COMPANY_DEFAULTS)) {
+    if (settings[key] != null) row[key] = settings[key];
+  }
+  const { error } = await supabase.from("company_settings").upsert([row], { onConflict: "company_id" });
+  if (error) throw new Error("Failed to save settings: " + error.message);
+  return row;
 }
