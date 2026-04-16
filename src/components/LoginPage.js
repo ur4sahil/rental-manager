@@ -126,7 +126,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   {isSignup && (
   <div className="text-center mb-4">
   <span className="text-3xl">{typeInfo.icon}</span>
-  <PageHeader title="{typeInfo.title}" />
+  <PageHeader title={typeInfo.title} />
   <p className="text-sm text-neutral-400">{typeInfo.subtitle}</p>
   </div>
   )}
