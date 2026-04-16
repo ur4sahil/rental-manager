@@ -258,7 +258,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
   <div className="min-w-0">
   <div className="font-semibold text-neutral-800 truncate">{c.name}</div>
-  <div className="text-xs text-neutral-400">{c.type} \u00B7 {c.memberRole}</div>
+  <div className="text-xs text-neutral-400">{c.type} · {c.memberRole}</div>
   </div>
   </div>
   <div className="flex items-center gap-2 shrink-0 ml-3">
@@ -414,7 +414,7 @@ function PendingRequestsPanel({ companyId, addNotification }) {
   <div key={r.id} className="flex items-center justify-between bg-white rounded-lg p-3">
   <div>
   <div className="text-sm font-semibold text-neutral-800">{r.user_name || r.user_email}</div>
-  <div className="text-xs text-neutral-400">{r.user_email} \u00B7 Requested: {new Date(r.created_at).toLocaleDateString()}</div>
+  <div className="text-xs text-neutral-400">{r.user_email} · Requested: {new Date(r.created_at).toLocaleDateString()}</div>
   </div>
   <div className="flex gap-2">
   <Btn variant="success-fill" size="xs" onClick={() => handleRequest(r, "approve")}>Approve</Btn>
@@ -477,7 +477,7 @@ function PendingPMAssignments({ companyId, addNotification }) {
   <div key={r.id} className="flex items-center justify-between bg-white rounded-lg p-3">
   <div>
   <div className="text-sm font-semibold text-neutral-800">{r.property_address}</div>
-  <div className="text-xs text-neutral-400">Owner requested: {new Date(r.requested_at).toLocaleDateString()} \u00B7 {r.requested_by}</div>
+  <div className="text-xs text-neutral-400">Owner requested: {new Date(r.requested_at).toLocaleDateString()} · {r.requested_by}</div>
   </div>
   <div className="flex gap-2">
   <Btn variant="success-fill" size="xs" onClick={() => handleRequest(r, "accept")}>Accept</Btn>
