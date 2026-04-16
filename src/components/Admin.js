@@ -352,15 +352,15 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   <button
   key={nav.id}
   onClick={() => togglePage(nav.id)}
-  className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all text-left ${
+  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all text-left ${
   isOn
   ? "bg-brand-600 border-brand-600 text-white"
   : "bg-white border-brand-100 text-neutral-500 hover:border-brand-300"
   }`}
   >
-  <span className="text-base">{nav.icon}</span>
+  <span className={`material-icons-outlined text-sm ${isOn ? "text-brand-200" : "text-neutral-400"}`}>{nav.icon}</span>
   <span>{nav.label}</span>
-  {isOn && <span className="ml-auto text-brand-200 text-xs">✓</span>}
+  {isOn && <span className="ml-auto text-xs">✓</span>}
   </button>
   );
   })}
@@ -427,8 +427,8 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   {effectivePages.map(p => {
   const nav = ALL_NAV_FLAT.find(n => n.id === p);
   return (
-  <span key={p} className="text-xs bg-brand-50 text-brand-700 border border-brand-100 px-2 py-0.5 rounded-full">
-  {nav ? `${nav.icon} ${nav.label}` : p}
+  <span key={p} className="inline-flex items-center gap-1 text-xs bg-brand-50 text-brand-700 border border-brand-100 px-2 py-0.5 rounded-full">
+  {nav ? <><span className="material-icons-outlined text-xs">{nav.icon}</span>{nav.label}</> : p}
   </span>
   );
   })}
