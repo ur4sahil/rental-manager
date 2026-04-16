@@ -12,10 +12,6 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   const [pendingRequests, setPendingRequests] = useState([]);
   const [invites, setInvites] = useState([]);
   const [acceptingInvite, setAcceptingInvite] = useState(null);
-  const [showSetPassword, setShowSetPassword] = useState(null); // company object after invite accepted
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [settingPassword, setSettingPassword] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
@@ -76,28 +72,10 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
     email, name: currentUser?.user_metadata?.name || email.split("@")[0],
   }], { onConflict: "email" });
   showToast(`Joined ${company.name}!`, "success");
-  // Show password setup before entering company
-  setShowSetPassword(company);
+  onSelectCompany(company, company.memberRole);
   } catch (e) {
   showToast("Error accepting invite: " + e.message, "error");
   } finally { setAcceptingInvite(null); }
-  }
-
-  async function handleSetPassword(company) {
-  if (newPassword.length < 8) { showToast("Password must be at least 8 characters.", "error"); return; }
-  if (newPassword !== confirmPassword) { showToast("Passwords do not match.", "error"); return; }
-  setSettingPassword(true);
-  try {
-  const { error } = await supabase.auth.updateUser({ password: newPassword });
-  if (error) { showToast("Error setting password: " + error.message, "error"); return; }
-  showToast("Password set! You can now log in with email and password.", "success");
-  setShowSetPassword(null);
-  setNewPassword("");
-  setConfirmPassword("");
-  onSelectCompany(company, company.memberRole);
-  } catch (e) {
-  showToast("Error: " + e.message, "error");
-  } finally { setSettingPassword(false); }
   }
 
   async function createCompany() {
@@ -276,32 +254,6 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   if (loading) return <div className="flex items-center justify-center h-screen bg-brand-50/30"><Spinner /></div>;
 
   if (showProfile) return <UserProfile currentUser={currentUser} onBack={() => setShowProfile(false)} showToast={showToast} showConfirm={showConfirm} />;
-
-  if (showSetPassword) return (
-  <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 w-full max-w-sm text-center">
-  <span className="material-icons-outlined text-4xl text-positive-500 mb-2">check_circle</span>
-  <h2 className="text-xl font-bold text-neutral-800 mb-1">Welcome to {showSetPassword.name}!</h2>
-  <p className="text-sm text-neutral-400 mb-6">Set a password so you can log in anytime.</p>
-  <div className="space-y-3 text-left">
-  <div>
-  <label className="text-xs font-medium text-neutral-600 mb-1 block">New Password</label>
-  <Input type="password" placeholder="Min 8 characters" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
-  </div>
-  <div>
-  <label className="text-xs font-medium text-neutral-600 mb-1 block">Confirm Password</label>
-  <Input type="password" placeholder="Re-enter password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} />
-  </div>
-  </div>
-  <Btn variant="primary" className="w-full mt-5" onClick={() => handleSetPassword(showSetPassword)} disabled={settingPassword}>
-  {settingPassword ? "Setting..." : "Set Password & Continue"}
-  </Btn>
-  <button onClick={() => { setShowSetPassword(null); onSelectCompany(showSetPassword, showSetPassword.memberRole); }} className="text-xs text-neutral-400 hover:text-neutral-600 mt-3 block mx-auto">
-  Skip for now
-  </button>
-  </div>
-  </div>
-  );
 
   return (
   <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">

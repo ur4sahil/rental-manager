@@ -172,6 +172,37 @@ const pageComponents = {
   owner_portal: OwnerPortal,
 };
 
+function SetPasswordScreen({ currentUser, onComplete, showToast }) {
+  const [pw, setPw] = React.useState("");
+  const [pw2, setPw2] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  async function handleSet() {
+    if (pw.length < 8) { showToast("Password must be at least 8 characters.", "error"); return; }
+    if (pw !== pw2) { showToast("Passwords do not match.", "error"); return; }
+    setSaving(true);
+    const { error } = await supabase.auth.updateUser({ password: pw });
+    setSaving(false);
+    if (error) { showToast("Error: " + error.message, "error"); return; }
+    showToast("Password set! You can now log in with email and password.", "success");
+    onComplete();
+  }
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
+    <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 w-full max-w-sm text-center">
+    <span className="material-icons-outlined text-4xl text-brand-500 mb-2">lock</span>
+    <h2 className="text-xl font-bold text-neutral-800 mb-1">Set Your Password</h2>
+    <p className="text-sm text-neutral-400 mb-6">Welcome, {currentUser?.email}. Create a password so you can log in anytime.</p>
+    <div className="space-y-3 text-left">
+    <div><label className="text-xs font-medium text-neutral-600 mb-1 block">New Password</label><Input type="password" placeholder="Min 8 characters" value={pw} onChange={e => setPw(e.target.value)} /></div>
+    <div><label className="text-xs font-medium text-neutral-600 mb-1 block">Confirm Password</label><Input type="password" placeholder="Re-enter password" value={pw2} onChange={e => setPw2(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSet()} /></div>
+    </div>
+    <Btn variant="primary" className="w-full mt-5" onClick={handleSet} disabled={saving}>{saving ? "Setting..." : "Set Password & Continue"}</Btn>
+    <button onClick={onComplete} className="text-xs text-neutral-400 hover:text-neutral-600 mt-3 block mx-auto">Skip for now</button>
+    </div>
+    </div>
+  );
+}
+
 function AppInner() {
   const [screen, setScreenRaw] = useState("loading");
   const [page, setPageRaw] = useState(() => {
@@ -272,6 +303,12 @@ function AppInner() {
   // On initial load, getSession already handles it — skip duplicate
   // On new login (initialCheckDone=true), always proceed
   if (!initialCheckDone) return;
+  // Detect magic link (OTP) login — prompt password setup
+  const isOtp = session.user?.amr?.some(a => a.method === "otp");
+  if (isOtp && _event === "SIGNED_IN") {
+  setScreen("set_password");
+  return;
+  }
   setActiveCompany(prev => {
   if (!prev) { setScreen("company_select"); autoSelectCompany(session.user); }
   return prev;
@@ -617,6 +654,7 @@ function AppInner() {
   if (screen === "loading") return <><div className="flex items-center justify-center h-screen bg-brand-50/30"><Spinner /></div><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
   if (screen === "landing") return <><LandingPage onGetStarted={(mode) => { setLoginMode(mode); setScreen("login"); }} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
   if (screen === "login") return <><LoginPage onLogin={() => {}} onBack={() => setScreen("landing")} initialMode={loginMode} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
+  if (screen === "set_password") return <><SetPasswordScreen currentUser={currentUser} onComplete={() => { setScreen("company_select"); autoSelectCompany(currentUser); }} showToast={showToast} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
   if (screen === "company_select") return <><CompanySelector currentUser={currentUser} onSelectCompany={handleSelectCompany} onLogout={handleLogout} showToast={showToast} showConfirm={showConfirm} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
 
   if (!activeCompany?.id || !roleLoaded) {
