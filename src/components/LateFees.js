@@ -9,13 +9,13 @@ import { queueNotification } from "../utils/notifications";
 import { atomicPostJEAndLedger, getPropertyClassId } from "../utils/accounting";
 import { Spinner } from "./shared";
 
-function LateFees({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
+function LateFees({ companySettings = {}, addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [rules, setRules] = useState([]);
   const [flagged, setFlagged] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "Standard Late Fee", grace_days: "5", fee_amount: "50", fee_type: "flat" });
+  const [form, setForm] = useState({ name: "Standard Late Fee", grace_days: String(companySettings.late_fee_grace_days || 5), fee_amount: String(companySettings.late_fee_amount || 50), fee_type: companySettings.late_fee_type || "flat" });
 
   useEffect(() => { fetchData(); }, [companyId]);
 

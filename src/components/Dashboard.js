@@ -6,7 +6,7 @@ import { pmError } from "../utils/errors";
 import { Badge, StatCard, Spinner } from "./shared";
 
 // ============ DASHBOARD ============
-function Dashboard({ notifications, setPage, companyId, addNotification, showToast, showConfirm }) {
+function Dashboard({ companySettings = {}, notifications, setPage, companyId, addNotification, showToast, showConfirm }) {
   const [properties, setProperties] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [workOrders, setWorkOrders] = useState([]);
@@ -39,7 +39,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   setPayments(pay.data || []);
   setUtilities(u.data || []);
   // Fetch upcoming HOA payments (due within 14 days)
-  const fourteenDays = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+  const fourteenDays = new Date(Date.now() + (companySettings.hoa_upcoming_window_days || 14) * 86400000).toISOString().slice(0, 10);
   const { data: hoaData } = await supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("status", "unpaid").is("archived_at", null).lte("due_date", fourteenDays).order("due_date", { ascending: true });
   setHoaDue(hoaData || []);
   // Count pending approvals (lightweight — full data loaded on Tasks page)
@@ -187,7 +187,7 @@ function Dashboard({ notifications, setPage, companyId, addNotification, showToa
   </div>
   )}
   {/* Voucher Re-examination Alerts */}
-  {(() => { const reexamTenants = tenants.filter(t => t.is_voucher && t.reexam_date && Math.ceil((new Date(t.reexam_date).getTime() - Date.now()) / 86400000) <= 120 && Math.ceil((new Date(t.reexam_date).getTime() - Date.now()) / 86400000) >= -30); return reexamTenants.length > 0 ? (
+  {(() => { const reexamTenants = tenants.filter(t => t.is_voucher && t.reexam_date && Math.ceil((new Date(t.reexam_date).getTime() - Date.now()) / 86400000) <= (companySettings.voucher_reexam_window_days || 120) && Math.ceil((new Date(t.reexam_date).getTime() - Date.now()) / 86400000) >= -30); return reexamTenants.length > 0 ? (
   <div className="bg-white rounded-3xl shadow-card border border-highlight-200 p-4">
   <h3 className="font-semibold text-highlight-700 mb-3"><span className="material-icons-outlined text-sm align-middle mr-1">event</span>Voucher Re-examination Due</h3>
   {reexamTenants.map(t => {

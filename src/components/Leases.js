@@ -9,7 +9,7 @@ import { queueNotification } from "../utils/notifications";
 import { safeLedgerInsert, autoPostJournalEntry, getPropertyClassId, autoPostRentCharges } from "../utils/accounting";
 import { Badge, StatCard, Spinner, Modal, PropertySelect } from "./shared";
 
-function LeaseManagement({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
+function LeaseManagement({ companySettings = {}, addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [leases, setLeases] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -28,15 +28,15 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
 
   const [form, setForm] = useState({
   tenant_name: "", property: "", start_date: "", end_date: "",
-  rent_amount: "", security_deposit: "", rent_escalation_pct: "3",
-  escalation_frequency: "annual", payment_due_day: "1",
-  lease_type: "fixed", auto_renew: false, renewal_notice_days: "60",
+  rent_amount: "", security_deposit: "", rent_escalation_pct: String(companySettings.rent_escalation_pct || 3),
+  escalation_frequency: "annual", payment_due_day: String(companySettings.payment_due_day || 1),
+  lease_type: "fixed", auto_renew: false, renewal_notice_days: String(companySettings.renewal_notice_days || 60),
   clauses: "", special_terms: "", template_id: "",
-  late_fee_amount: "50", late_fee_type: "flat", late_fee_grace_days: "5",
+  late_fee_amount: String(companySettings.late_fee_amount || 50), late_fee_type: companySettings.late_fee_type || "flat", late_fee_grace_days: String(companySettings.late_fee_grace_days || 5),
   });
   const [showRentIncrease, setShowRentIncrease] = useState(null);
   const [rentIncreaseForm, setRentIncreaseForm] = useState({ new_amount: "", effective_date: "", reason: "" });
-  const [templateForm, setTemplateForm] = useState({ name: "", description: "", clauses: "", special_terms: "", default_deposit_months: "1", default_lease_months: "12", default_escalation_pct: "3", payment_due_day: "1" });
+  const [templateForm, setTemplateForm] = useState({ name: "", description: "", clauses: "", special_terms: "", default_deposit_months: String(companySettings.default_deposit_months || 1), default_lease_months: String(companySettings.default_lease_months || 12), default_escalation_pct: String(companySettings.rent_escalation_pct || 3), payment_due_day: "1" });
   const [depositForm, setDepositForm] = useState({ amount_returned: "", deductions: "", return_date: formatLocalDate(new Date()) });
 
   useEffect(() => { fetchData(); }, [companyId]);
@@ -169,7 +169,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
 
   function resetForm() {
   setShowForm(false); setEditingLease(null);
-  setForm({ tenant_name: "", property: "", start_date: "", end_date: "", rent_amount: "", security_deposit: "", rent_escalation_pct: "3", escalation_frequency: "annual", payment_due_day: "1", lease_type: "fixed", auto_renew: false, renewal_notice_days: "60", clauses: "", special_terms: "", template_id: "", late_fee_amount: "50", late_fee_type: "flat", late_fee_grace_days: "5" });
+  setForm({ tenant_name: "", property: "", start_date: "", end_date: "", rent_amount: "", security_deposit: "", rent_escalation_pct: String(companySettings.rent_escalation_pct || 3), escalation_frequency: "annual", payment_due_day: String(companySettings.payment_due_day || 1), lease_type: "fixed", auto_renew: false, renewal_notice_days: String(companySettings.renewal_notice_days || 60), clauses: "", special_terms: "", template_id: "", late_fee_amount: String(companySettings.late_fee_amount || 50), late_fee_type: companySettings.late_fee_type || "flat", late_fee_grace_days: String(companySettings.late_fee_grace_days || 5) });
   }
 
   function startEdit(lease) {
@@ -327,7 +327,7 @@ function LeaseManagement({ addNotification, userProfile, userRole, companyId, sh
   if (!templateForm.name) { showToast("Template name is required.", "error"); return; }
   const { error } = await supabase.from("lease_templates").insert([{ ...templateForm, default_deposit_months: Number(templateForm.default_deposit_months || 1), default_lease_months: Number(templateForm.default_lease_months || 12), default_escalation_pct: Number(templateForm.default_escalation_pct || 3), payment_due_day: Math.max(1, Math.min(31, Number(templateForm.payment_due_day || 1))), company_id: companyId }]);
   if (error) { pmError("PM-3004", { raw: error, context: "save lease template" }); return; }
-  setShowTemplateForm(false); setTemplateForm({ name: "", description: "", clauses: "", special_terms: "", default_deposit_months: "1", default_lease_months: "12", default_escalation_pct: "3", payment_due_day: "1" });
+  setShowTemplateForm(false); setTemplateForm({ name: "", description: "", clauses: "", special_terms: "", default_deposit_months: String(companySettings.default_deposit_months || 1), default_lease_months: String(companySettings.default_lease_months || 12), default_escalation_pct: String(companySettings.rent_escalation_pct || 3), payment_due_day: String(companySettings.payment_due_day || 1) });
   fetchData();
   } finally { guardRelease("saveTemplate"); }
   }

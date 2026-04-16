@@ -22,7 +22,7 @@ export function RecurringJournalEntries({ companyId, addNotification, userProfil
   description: "", frequency: "monthly", day_of_month: 1, amount: "",
   tenant_name: "", property: "", debit_account_id: "1200", debit_account_name: "Accounts Receivable",
   credit_account_id: "4000", credit_account_name: "Rental Income",
-  late_fee_enabled: true, grace_period_days: 5, late_fee_amount: 50,
+  late_fee_enabled: true, grace_period_days: companySettings.late_fee_grace_days || 5, late_fee_amount: companySettings.late_fee_amount || 50,
   });
 
   useEffect(() => { fetchEntries(); fetchTenants(); }, [companyId]);
@@ -64,7 +64,7 @@ export function RecurringJournalEntries({ companyId, addNotification, userProfil
   addNotification("🔄", "Created recurring entry: " + form.description);
   }
   setShowForm(false); setEditingEntry(null);
-  setForm({ description: "", frequency: "monthly", day_of_month: 1, amount: "", tenant_name: "", property: "", debit_account_id: "1200", debit_account_name: "Accounts Receivable", credit_account_id: "4000", credit_account_name: "Rental Income", late_fee_enabled: true, grace_period_days: 5, late_fee_amount: 50 });
+  setForm({ description: "", frequency: "monthly", day_of_month: 1, amount: "", tenant_name: "", property: "", debit_account_id: "1200", debit_account_name: "Accounts Receivable", credit_account_id: "4000", credit_account_name: "Rental Income", late_fee_enabled: true, grace_period_days: companySettings.late_fee_grace_days || 5, late_fee_amount: companySettings.late_fee_amount || 50 });
   fetchEntries();
   }
 
@@ -105,7 +105,7 @@ export function RecurringJournalEntries({ companyId, addNotification, userProfil
   </div>
   <div className="flex gap-2">
   <Btn variant="warning-fill" size="xs" onClick={runNow}>⚡ Post Now</Btn>
-  <Btn onClick={() => { setEditingEntry(null); setForm({ description: "", frequency: "monthly", day_of_month: 1, amount: "", tenant_name: "", property: "", debit_account_id: "1200", debit_account_name: "Accounts Receivable", credit_account_id: "4000", credit_account_name: "Rental Income", late_fee_enabled: true, grace_period_days: 5, late_fee_amount: 50 }); setShowForm(true); }} variant="primary" size="xs">+ Add Entry</Btn>
+  <Btn onClick={() => { setEditingEntry(null); setForm({ description: "", frequency: "monthly", day_of_month: 1, amount: "", tenant_name: "", property: "", debit_account_id: "1200", debit_account_name: "Accounts Receivable", credit_account_id: "4000", credit_account_name: "Rental Income", late_fee_enabled: true, grace_period_days: companySettings.late_fee_grace_days || 5, late_fee_amount: companySettings.late_fee_amount || 50 }); setShowForm(true); }} variant="primary" size="xs">+ Add Entry</Btn>
   </div>
   </div>
 
@@ -501,7 +501,7 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 px-4 sm:px-6 py-2 sm:py-3 border-b border-brand-50 bg-neutral-50/50 overflow-x-auto">
   {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border font-medium whitespace-nowrap ${period === p ? "bg-neutral-800 text-white border-neutral-800" : "bg-white text-neutral-400 border-brand-100"}`}>{p}</button>)}
   {period === "Custom" && <><Input type="date" value={customDates.start} onChange={e => setCustomDates(d => ({...d, start: e.target.value}))} className="text-xs w-auto" /><span className="text-xs text-neutral-400">to</span><Input type="date" value={customDates.end} onChange={e => setCustomDates(d => ({...d, end: e.target.value}))} className="text-xs w-auto" /></>}
-  {properties.length > 1 && <Select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)} className="text-xs py-1.5 rounded-xl"><option value="">All Properties</option>{properties.map(p => <option key={p} value={p}>{p.split(",")[0]}</option>)}</Select>}
+  {properties.length > 1 && <Select filter value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)} className="text-xs py-1.5 rounded-xl"><option value="">All Properties</option>{properties.map(p => <option key={p} value={p}>{p.split(",")[0]}</option>)}</Select>}
   </div>
   {/* Summary bar */}
   <div className="flex flex-wrap items-center gap-3 sm:gap-6 px-4 sm:px-6 py-2 border-b border-brand-50 text-xs text-neutral-500">
@@ -895,7 +895,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   {[{k:"all",l:`All (${counts.all})`},{k:"posted",l:`Posted (${counts.posted})`},{k:"draft",l:`Drafts (${counts.draft})`},{k:"voided",l:`Voided (${counts.voided})`}].map(f => (
   <button key={f.k} onClick={() => setFilterStatus(f.k)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${filterStatus === f.k ? "bg-positive-600 text-white border-positive-600" : "bg-white text-neutral-500 border-neutral-200 hover:border-positive-300"}`}>{f.l}</button>
   ))}
-  <Select value={searchProperty} onChange={e => setSearchProperty(e.target.value)} className="text-xs py-1.5 rounded-xl ml-auto">
+  <Select filter value={searchProperty} onChange={e => setSearchProperty(e.target.value)} className="text-xs py-1.5 rounded-xl ml-auto">
   <option value="">All Properties</option>
   {jeProperties.map(p => <option key={p} value={p}>{p.split(",")[0]}</option>)}
   </Select>
@@ -2681,7 +2681,7 @@ export function csvBuildFingerprint(feedId, date, amount, description) {
   return `${feedId}|${date}|${Math.round(amount * 100)}|${norm}`;
 }
 
-export function Accounting({ companyId, activeCompany, addNotification, userProfile, showToast, showConfirm, initialAction }) {
+export function Accounting({ companySettings = {}, companyId, activeCompany, addNotification, userProfile, showToast, showConfirm, initialAction }) {
   const [acctAccounts, setAcctAccounts] = useState([]);
   const [journalEntries, setJournalEntries] = useState([]);
   const [acctClasses, setAcctClasses] = useState([]);

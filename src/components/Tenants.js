@@ -42,7 +42,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [newCharge, setNewCharge] = useState({ description: "", amount: "", type: "charge" });
-  const [form, setForm] = useState({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "", late_fee_amount: "", late_fee_type: "flat", is_voucher: false, voucher_number: "", reexam_date: "", case_manager_name: "", case_manager_email: "", case_manager_phone: "", voucher_portion: "", tenant_portion: "" });
+  const [form, setForm] = useState({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "", late_fee_amount: "", late_fee_type: companySettings?.late_fee_type || "flat", is_voucher: false, voucher_number: "", reexam_date: "", case_manager_name: "", case_manager_email: "", case_manager_phone: "", voucher_portion: "", tenant_portion: "" });
   const [tenantView, setTenantView] = useState("card");
   const [tenantSearch, setTenantSearch] = useState("");
   const [tenantFilter, setTenantFilter] = useState("all");
@@ -606,11 +606,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div class="field"><strong>Move-Out Date:</strong> ${escapeHtml(tenant.move_out || "\u2014")}</div>
   <h2>Terms & Conditions</h2>
   <div class="clause">1. <strong>Rent Payment.</strong> Tenant agrees to pay $${escapeHtml(String(tenant.rent))} per month on the 1st of each month. A late fee will be applied after the grace period.</div>
-  <div class="clause">2. <strong>Security Deposit.</strong> A security deposit equal to one month's rent is required prior to occupancy and will be returned within 30 days of move-out, less any deductions for damages.</div>
+  <div class="clause">2. <strong>Security Deposit.</strong> A security deposit equal to one month's rent is required prior to occupancy and will be returned within " + (companySettings?.deposit_return_days || 30) + " days of move-out, less any deductions for damages.</div>
   <div class="clause">3. <strong>Property Use.</strong> The property shall be used solely as a private residence. No illegal activities are permitted on the premises.</div>
   <div class="clause">4. <strong>Maintenance.</strong> Tenant is responsible for minor maintenance. Landlord is responsible for major repairs.</div>
   <div class="clause">5. <strong>Entry.</strong> Landlord may enter the property with 24-hour notice for inspections, repairs, or showings.</div>
-  <div class="clause">6. <strong>Termination.</strong> Either party may terminate this lease with 30 days written notice.</div>
+  <div class="clause">6. <strong>Termination.</strong> Either party may terminate this lease with " + (companySettings?.termination_notice_days || 30) + " days written notice.</div>
   <div class="signature-section">
   <div>
   <h2>Landlord Signature</h2>

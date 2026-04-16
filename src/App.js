@@ -576,7 +576,7 @@ function AppInner() {
   if (lease.end_date) {
   const endDate = new Date(lease.end_date);
   const daysLeft = Math.ceil((endDate - todayDate) / 86400000);
-  if (daysLeft <= 60 && daysLeft > 0) {
+  if (daysLeft <= (companySettings.lease_expiry_warning_days || 60) && daysLeft > 0) {
   const { data: tenant } = await supabase.from("tenants").select("email").eq("company_id", cid).eq("name", lease.tenant_name).is("archived_at", null).maybeSingle();
   if (tenant?.email) {
   const { data: already } = await supabase.from("notification_queue").select("id")

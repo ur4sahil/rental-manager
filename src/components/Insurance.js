@@ -8,7 +8,7 @@ import { encryptCredential, decryptCredential } from "../utils/encryption";
 import { logAudit } from "../utils/audit";
 import { Spinner, Modal, PropertySelect } from "./shared";
 
-function InsuranceTracker({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
+function InsuranceTracker({ companySettings = {}, addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -101,7 +101,7 @@ function InsuranceTracker({ addNotification, userProfile, userRole, companyId, s
   <div>
   <div className="flex flex-col md:flex-row gap-3 mb-4">
   <PageHeader title="Insurance" />
-  <Select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
+  <Select filter value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
   <option value="all">All Properties</option>
   {uniqueProperties.map(p => <option key={p} value={p}>{p}</option>)}
   </Select>
