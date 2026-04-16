@@ -331,7 +331,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   {/* Pending Requests */}
   {pendingRequests.length > 0 && (
   <div className="mb-6 bg-warn-50 border border-warn-200 rounded-3xl p-4">
-  <div className="text-sm font-semibold text-warn-800 mb-1">\u23F3 Pending Requests</div>
+  <div className="text-sm font-semibold text-warn-800 mb-1">⏳ Pending Requests</div>
   <div className="text-xs text-warn-600">You have {pendingRequests.length} pending request(s) waiting for admin approval.</div>
   </div>
   )}
@@ -401,7 +401,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   <h3 className="font-bold text-neutral-800 mb-4">Join a Company</h3>
   <div className="space-y-3">
   <div><label className="text-xs font-medium text-neutral-500">Company ID (8-digit code)</label><Input value={joinCode} onChange={e => setJoinCode(e.target.value.replace(/\D/g, "").slice(0, 8))} className="mt-1" placeholder="e.g. 12345678" maxLength={8} /></div>
-  <div className="text-xs text-neutral-400 text-center">\u2014 or \u2014</div>
+  <div className="text-xs text-neutral-400 text-center">— or —</div>
   <div><label className="text-xs font-medium text-neutral-500">Search by Name</label><Input value={joinSearch} onChange={e => setJoinSearch(e.target.value)} className="mt-1" placeholder="e.g. Sigma Housing" /></div>
   <div className="flex gap-2">
   <Btn size="lg" onClick={searchCompanies}>Search</Btn>
@@ -464,7 +464,7 @@ function PendingRequestsPanel({ companyId, addNotification }) {
   return (
   <div className="bg-warn-50 border border-warn-200 rounded-3xl p-4 mb-4">
   <div className="flex items-center justify-between mb-3">
-  <div className="text-sm font-bold text-warn-800">\u23F3 Pending Join Requests ({requests.length})</div>
+  <div className="text-sm font-bold text-warn-800">⏳ Pending Join Requests ({requests.length})</div>
   </div>
   <div className="space-y-2">
   {requests.map(r => (

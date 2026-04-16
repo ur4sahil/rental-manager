@@ -117,7 +117,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   <div className="w-10 h-10 bg-warn-200 text-warn-800 rounded-full flex items-center justify-center font-bold text-lg">{taskCount}</div>
   <div>
   <div className="font-manrope font-bold text-warn-800">Tasks & Approvals</div>
-  <div className="text-xs text-warn-600">{pendingApprovalCount > 0 ? pendingApprovalCount + " awaiting approval \u00b7 " : ""}{taskCount - pendingApprovalCount} pending tasks</div>
+  <div className="text-xs text-warn-600">{pendingApprovalCount > 0 ? pendingApprovalCount + " awaiting approval · " : ""}{taskCount - pendingApprovalCount} pending tasks</div>
   </div>
   </div>
   <span className="material-icons-outlined text-warn-500">arrow_forward</span>
@@ -157,7 +157,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   <div key={u.id} className="flex justify-between items-center py-2 border-b border-brand-50/50 last:border-0">
   <div>
   <div className="text-sm font-medium text-neutral-800">{u.provider}</div>
-  <div className="text-xs text-neutral-400">{u.property} \u00b7 {u.responsibility}</div>
+  <div className="text-xs text-neutral-400">{u.property} · {u.responsibility}</div>
   </div>
   <div className="text-right">
   <div className="text-sm font-semibold text-neutral-800">${u.amount}</div>
@@ -196,7 +196,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   <div key={t.id} className="flex justify-between items-center py-2 border-b border-highlight-50 last:border-0">
   <div>
   <div className="text-sm font-medium text-neutral-800">{t.name} <span className="text-xs bg-highlight-100 text-highlight-700 px-1.5 py-0.5 rounded-full ml-1">Voucher</span></div>
-  <div className="text-xs text-neutral-400">{t.property}{t.voucher_number ? " \u00b7 " + t.voucher_number : ""}</div>
+  <div className="text-xs text-neutral-400">{t.property}{t.voucher_number ? " · " + t.voucher_number : ""}</div>
   </div>
   <div className="text-right">
   <div className="text-sm font-semibold">{t.reexam_date}</div>

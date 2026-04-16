@@ -522,7 +522,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
 
   if (error) return (
   <div className="max-w-lg mx-auto mt-16 text-center">
-  <div className="text-5xl mb-4">\ud83c\udfe0</div>
+  <div className="text-5xl mb-4">🏠</div>
   <PageHeader title="Owner Portal" />
   <p className="text-neutral-400 mb-4">{error}</p>
   <p className="text-sm text-neutral-400">Please contact your property manager to set up your owner portal access.</p>
@@ -572,7 +572,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
 
   {/* Tabs */}
   <div className="flex gap-1 mb-5 border-b border-brand-50">
-  {[["overview","\ud83c\udfe0 Overview"],["statements","\ud83d\udcca Statements"],["distributions","💰 Distributions"],["properties","\ud83c\udfe2 Properties"],["maintenance","🔧 Maintenance"]].map(([id, label]) => (
+  {[["overview","🏠 Overview"],["statements","\ud83d\udcca Statements"],["distributions","💰 Distributions"],["properties","\ud83c\udfe2 Properties"],["maintenance","🔧 Maintenance"]].map(([id, label]) => (
   <button key={id} onClick={() => { setActiveTab(id); setViewStatement(null); }} className={"px-4 py-2.5 text-sm font-medium border-b-2 transition-colors " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-700")}>{label}</button>
   ))}
   </div>

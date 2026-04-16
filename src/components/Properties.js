@@ -1506,9 +1506,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             <button onClick={handleSkip} className="text-sm text-neutral-400 hover:text-neutral-600">Skip</button>
           )}
           {step < totalSteps ? (
-            <Btn variant="success-fill" onClick={handleNext} disabled={saving}>{saving ? "Saving..." : "Next \u2192"}</Btn>
+            <Btn variant="success-fill" onClick={handleNext} disabled={saving}>{saving ? "Saving..." : "Next →"}</Btn>
           ) : (
-            <Btn variant="success-fill" onClick={handleComplete} disabled={saving}>{saving ? "Completing..." : "Complete Setup \u2713"}</Btn>
+            <Btn variant="success-fill" onClick={handleComplete} disabled={saving}>{saving ? "Completing..." : "Complete Setup ✓"}</Btn>
           )}
         </div>
       </div>

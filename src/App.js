@@ -275,12 +275,12 @@ function AppInner() {
   useEffect(() => {
   const handlePopState = (e) => {
   if (e.state?.page) {
-  _setPage(e.state.page);
+  setPageRaw(e.state.page);
   } else if (e.state?.screen) {
-  _setScreen(e.state.screen);
+  setScreenRaw(e.state.screen);
   } else {
   // No state — go to dashboard or landing
-  if (screen === "app") _setPage("dashboard");
+  if (screen === "app") setPageRaw("dashboard");
   }
   };
   window.addEventListener("popstate", handlePopState);

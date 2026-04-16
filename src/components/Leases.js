@@ -773,7 +773,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
 
   {allSigned && (
   <div className="bg-positive-50 border border-positive-200 rounded-3xl p-4 text-center">
-  <div className="text-2xl mb-1">\u2705</div>
+  <div className="text-2xl mb-1">✅</div>
   <div className="text-sm font-bold text-positive-700">Lease Fully Signed</div>
   <div className="text-xs text-positive-600">All parties have signed this lease agreement.</div>
   </div>
