@@ -627,7 +627,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   <div class="no-print" style="text-align:center;margin-top:30px;display:flex;gap:12px;justify-content:center;">
   <button class="btn btn-primary" onclick="saveAndPrint()">\u2713 Sign & Save as PDF</button>
-  <button class="btn btn-clear" onclick="window.print()">{"\u{1F5A8}"}\uFE0F Print</button>
+  <button class="btn btn-clear" onclick="window.print()">\u{1F5A8}\uFE0F Print</button>
   </div>
   <div id="signed-badge" class="signed-badge" style="text-align:center;margin-top:20px;">\u2705 SIGNED \u2014 ${new Date().toLocaleDateString()}</div>
   <script>

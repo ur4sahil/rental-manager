@@ -10,6 +10,8 @@ import { Spinner } from "./shared";
 function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, showConfirm }) {
   const [companies, setCompanies] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
+  const [invites, setInvites] = useState([]);
+  const [acceptingInvite, setAcceptingInvite] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
@@ -32,20 +34,48 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   const { data: memberships } = await supabase.from("company_members").select("company_id, role, status").ilike("user_email", email);
   const active = (memberships || []).filter(m => m.status === "active");
   const pending = (memberships || []).filter(m => m.status === "pending");
+  const invited = (memberships || []).filter(m => m.status === "invited");
   setPendingRequests(pending);
-  if (active.length > 0) {
-  const companyIds = active.map(m => m.company_id);
-  const { data: companyData } = await supabase.from("companies").select("*").in("id", companyIds).is("archived_at", null);
-  // Attach role to each company
-  const withRoles = (companyData || []).map(c => {
+  // Fetch company details for both active and invited memberships
+  const allCompanyIds = [...new Set([...active, ...invited].map(m => m.company_id))];
+  if (allCompanyIds.length > 0) {
+  const { data: companyData } = await supabase.from("companies").select("*").in("id", allCompanyIds).is("archived_at", null);
+  const companyMap = Object.fromEntries((companyData || []).map(c => [c.id, c]));
+  // Active companies
+  const withRoles = active.map(m => companyMap[m.company_id]).filter(Boolean).map(c => {
   const membership = active.find(m => m.company_id === c.id);
   return { ...c, memberRole: membership?.role || "tenant" };
   });
   setCompanies(withRoles);
+  // Invited companies
+  const inviteList = invited.map(m => companyMap[m.company_id]).filter(Boolean).map(c => {
+  const membership = invited.find(m => m.company_id === c.id);
+  return { ...c, memberRole: membership?.role || "tenant" };
+  });
+  setInvites(inviteList);
   } else {
   setCompanies([]);
+  setInvites([]);
   }
   setLoading(false);
+  }
+
+  async function acceptInvite(company) {
+  setAcceptingInvite(company.id);
+  try {
+  const email = normalizeEmail(currentUser?.email);
+  const { error } = await supabase.from("company_members").update({ status: "active" })
+    .eq("company_id", company.id).ilike("user_email", email).eq("status", "invited");
+  if (error) { showToast("Error accepting invite: " + error.message, "error"); return; }
+  // Also ensure app_users row exists
+  await supabase.from("app_users").upsert([{
+    email, name: currentUser?.user_metadata?.name || email.split("@")[0],
+  }], { onConflict: "email" });
+  showToast(`Joined ${company.name}!`, "success");
+  onSelectCompany(company, company.memberRole);
+  } catch (e) {
+  showToast("Error accepting invite: " + e.message, "error");
+  } finally { setAcceptingInvite(null); }
   }
 
   async function createCompany() {
@@ -264,6 +294,33 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   <div className="flex items-center gap-2 shrink-0 ml-3">
   <a href={window.location.origin + window.location.pathname + "?company=" + encodeURIComponent(c.id) + "#dashboard"} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.stopPropagation(); }} className="text-brand-600 text-xs font-medium hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>Open</a>
   {!["tenant", "owner"].includes(c.memberRole) && <button onClick={(e) => { e.stopPropagation(); deleteCompany(c); }} disabled={deleting === c.id} className="text-xs text-danger-400 hover:text-danger-600 hover:bg-danger-50 px-2 py-1 rounded-lg transition-colors disabled:opacity-50">{deleting === c.id ? "Deleting..." : "Delete"}</button>}
+  </div>
+  </div>
+  ))}
+  </div>
+  </div>
+  )}
+
+  {/* Invites */}
+  {invites.length > 0 && (
+  <div className="mb-6">
+  <h2 className="text-sm font-bold text-neutral-700 uppercase tracking-wide mb-3">Pending Invites</h2>
+  <div className="space-y-2">
+  {invites.map(c => (
+  <div key={c.id} className="w-full bg-positive-50 rounded-xl border border-positive-200 p-4 flex items-center justify-between">
+  <div className="flex items-center gap-3 flex-1 min-w-0">
+  <div className="w-10 h-10 rounded-xl bg-positive-100 flex items-center justify-center text-positive-700 font-bold text-lg shrink-0">
+  <span className="material-icons-outlined text-xl">mail</span>
+  </div>
+  <div className="min-w-0">
+  <div className="font-semibold text-neutral-800 truncate">{c.name}</div>
+  <div className="text-xs text-neutral-500">You've been invited as <span className="font-medium">{c.memberRole}</span></div>
+  </div>
+  </div>
+  <div className="flex items-center gap-2 shrink-0 ml-3">
+  <Btn variant="success-fill" size="sm" onClick={() => acceptInvite(c)} disabled={acceptingInvite === c.id}>
+  {acceptingInvite === c.id ? "Joining..." : "Accept & Open"}
+  </Btn>
   </div>
   </div>
   ))}
