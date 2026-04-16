@@ -26,6 +26,19 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   setLoading(false);
   };
 
+  const [resetSent, setResetSent] = useState(false);
+
+  const handleForgotPassword = async () => {
+  if (!email) { setError("Enter your email address first."); return; }
+  setLoading(true);
+  setError("");
+  setResetSent(false);
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+  if (error) { setError(error.message); }
+  else { setResetSent(true); }
+  setLoading(false);
+  };
+
   const handleSignup = async (userType) => {
   if (!email || !password) { setError("Email and password are required."); return; }
   if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
@@ -137,6 +150,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   </>
   )}
   {error && <div className="bg-danger-50 text-danger-600 text-xs rounded-lg px-3 py-2 mb-4">{error}</div>}
+  {resetSent && <div className="bg-positive-50 text-positive-700 text-xs rounded-lg px-3 py-2 mb-4">Password reset link sent to {email}. Check your inbox.</div>}
 
   {isSignup && (
   <div className="mb-4">
@@ -150,7 +164,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   </div>
   <div className="mb-4">
   <label className="text-xs font-medium text-neutral-500 block mb-1">Password</label>
-  <Input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" onKeyDown={e => e.key === "Enter" && (isSignup ? handleSignup(mode.replace("signup_", "")) : handleLogin())} />
+  <Input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && (isSignup ? handleSignup(mode.replace("signup_", "")) : handleLogin())} />
   </div>
 
   {mode === "signup_tenant" && (
@@ -167,9 +181,12 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
 
   <div className="text-center mt-4 space-y-2">
   {isSignup ? (
-  <button onClick={() => { setMode("login"); setError(""); }} className="text-xs text-brand-600 hover:underline">Already have an account? Sign in</button>
+  <button onClick={() => { setMode("login"); setError(""); setResetSent(false); }} className="text-xs text-brand-600 hover:underline">Already have an account? Sign in</button>
   ) : (
-  <button onClick={onBack} className="text-xs text-brand-600 hover:underline">Back to role selection</button>
+  <>
+  <button onClick={handleForgotPassword} disabled={loading} className="text-xs text-neutral-400 hover:text-brand-600 hover:underline">Forgot password?</button>
+  <button onClick={onBack} className="text-xs text-brand-600 hover:underline block mx-auto">Back to role selection</button>
+  </>
   )}
   </div>
   </div>
