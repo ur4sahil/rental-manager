@@ -749,12 +749,6 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 </div>
               </div>
               {/* Additional tenants */}
-              {tenantForm.tenantCount < 5 && (
-                <button type="button" onClick={() => setTenantForm(f => ({ ...f, tenantCount: f.tenantCount + 1 }))} className="text-sm text-brand-600 hover:underline flex items-center gap-1 mt-2">
-                  <span className="material-icons-outlined text-sm">person_add</span>
-                  + Add Tenant {tenantForm.tenantCount + 1}
-                </button>
-              )}
               {[2, 3, 4, 5].filter(n => n <= tenantForm.tenantCount).map(n => (
                 <div key={n} className="border-t border-neutral-200 pt-4 mt-4">
                   <div className="flex items-center justify-between mb-2">
@@ -781,6 +775,12 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   </div>
                 </div>
               ))}
+              {tenantForm.tenantCount < 5 && (
+                <button type="button" onClick={() => setTenantForm(f => ({ ...f, tenantCount: f.tenantCount + 1 }))} className="text-sm text-brand-600 hover:underline flex items-center gap-1 mt-2">
+                  <span className="material-icons-outlined text-sm">person_add</span>
+                  + Add Tenant {tenantForm.tenantCount + 1}
+                </button>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-neutral-500 block mb-1">Monthly Rent ($) *</label>
