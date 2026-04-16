@@ -911,12 +911,21 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* Required docs checklist */}
   <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-4">
   <div className="text-xs font-bold text-warn-800 mb-2">Required Documents</div>
-  {["Signed Lease Agreement", "Government-Issued ID", "Renters Insurance", "Proof of Utility Transfer"].map(doc => {
-  const uploaded = tenantDocs.some(d => d.name?.toLowerCase().includes(doc.toLowerCase().split(" ")[0]));
+  {[
+    { label: "Signed Lease Agreement", match: ["lease"] },
+    { label: "Government-Issued ID", match: ["id", "government"] },
+    { label: "Renters Insurance", match: ["insurance"] },
+    { label: "Proof of Utility Transfer", match: ["utility"] },
+  ].map(({ label, match }) => {
+  const uploaded = tenantDocs.some(d => {
+    const n = (d.name || "").toLowerCase();
+    const t = (d.type || "").toLowerCase();
+    return match.some(m => n.includes(m) || t.includes(m));
+  });
   return (
-  <div key={doc} className="flex items-center gap-2 py-1 text-sm">
+  <div key={label} className="flex items-center gap-2 py-1 text-sm">
   <span className={uploaded ? "text-positive-500" : "text-warn-400"}>{uploaded ? "\u2705" : "\u2610"}</span>
-  <span className={uploaded ? "text-neutral-700" : "text-warn-700"}>{doc}</span>
+  <span className={uploaded ? "text-neutral-700" : "text-warn-700"}>{label}</span>
   {uploaded && <span className="text-xs text-positive-600 bg-positive-50 px-2 py-0.5 rounded-full">Uploaded</span>}
   </div>
   );
