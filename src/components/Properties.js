@@ -383,19 +383,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     // Always check duplicate (even on edit if address changed)
     const { data: dup } = await supabase.from("properties").select("id").eq("company_id", companyId).eq("address", compositeAddress).is("archived_at", null).maybeSingle();
     if (dup && String(dup.id) !== String(savedPropertyId)) throw new Error("A property with this address already exists");
-    // Non-admin: submit change request instead of direct save
-    if (userRole !== "admin") {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error: reqErr } = await supabase.from("property_change_requests").insert([{
-        company_id: companyId, request_type: savedPropertyId ? "edit" : "add",
-        property_id: savedPropertyId || null, requested_by: user?.email || "unknown",
-        address: compositeAddress, type: propForm.type, property_status: propForm.status, notes: propForm.notes,
-      }]);
-      if (reqErr) throw new Error("Failed to submit request: " + reqErr.message);
-      showToast("Change request submitted for admin approval", "success");
-      return true;
-    }
-    // Admin: direct save
+    // Direct save for all roles with Properties access
     if (savedPropertyId) {
       const { error: upErr } = await supabase.from("properties").update({ address: compositeAddress, address_line_1: propForm.address_line_1, address_line_2: propForm.address_line_2, city: propForm.city, state: propForm.state, zip: propForm.zip, type: propForm.type, status: propForm.status, notes: propForm.notes }).eq("id", savedPropertyId).eq("company_id", companyId);
       if (upErr) throw new Error("Failed to update property: " + upErr.message);
@@ -1825,6 +1813,23 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   fetchProperties();
   }
 
+  async function requestDeleteProperty(property) {
+  if (!guardSubmit("requestDeleteProperty")) return;
+  try {
+  if (!await showConfirm({ message: `Request to delete "${property.address}"?\n\nAn admin will review and approve this request.` })) return;
+  const { data: { user } } = await supabase.auth.getUser();
+  const { error } = await supabase.from("property_change_requests").insert([{
+    company_id: companyId, request_type: "delete", property_id: property.id,
+    requested_by: user?.email || "unknown", address: property.address,
+    type: property.type, property_status: property.status, notes: "Delete requested",
+  }]);
+  if (error) throw new Error("Failed to submit request: " + error.message);
+  showToast("Delete request submitted for admin approval.", "success");
+  logAudit("create", "property_requests", "Requested delete: " + property.address, property.id, user?.email, userRole, companyId);
+  } catch (e) { showToast(e.message, "error"); }
+  finally { guardRelease("requestDeleteProperty"); }
+  }
+
   async function deleteProperty(id, address) {
   if (!guardSubmit("deleteProperty")) return;
   try {
@@ -1977,6 +1982,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (cascErr) showToast("Property updated but cascade rename failed: " + cascErr.message + ". Some related records may still show the old address.", "error");
   }
   addNotification("✅", `Property edit approved: ${req.address}`);
+  } else if (req.request_type === "delete" && req.property_id) {
+  await deleteProperty(req.property_id, req.address);
+  addNotification("✅", `Property delete approved: ${req.address}`);
   }
   const { data: { user } } = await supabase.auth.getUser();
   const { error: statusErr } = await supabase.from("property_change_requests").update({ status: "approved", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNotes[req.id] || "" }).eq("company_id", companyId).eq("id", req.id);
@@ -2273,7 +2281,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   )}
   <Btn onClick={() => { setShowPropertyWizard({ propertyId: null, address: "", isOccupied: false, tenant: "", rent: 0, isNew: true }); }} >
-  {isAdmin ? "+ Add" : "+ Request"}
+  + Add
   </Btn>
   </div>
 
@@ -2733,6 +2741,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {!isReadOnly(p) && isAdmin && p.status !== "inactive" && <button onClick={() => deactivateProperty(p)} className="text-xs text-warn-600 hover:underline">Deactivate</button>}
   {!isReadOnly(p) && isAdmin && p.status === "inactive" && <button onClick={() => reactivateProperty(p)} className="text-xs text-positive-600 hover:underline">Reactivate</button>}
   {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-danger-500 hover:underline">Delete</button>}
+  {!isReadOnly(p) && !isAdmin && <button onClick={() => requestDeleteProperty(p)} className="text-xs text-danger-400 hover:underline">Request Delete</button>}
   {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-highlight-600 hover:underline">Assign PM</button>}
   {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-notice-600 hover:underline">Remove PM</button>}
   <button onClick={() => loadTimeline(p)} className="text-xs text-neutral-400 hover:underline ml-auto">Timeline</button>
@@ -2774,6 +2783,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {isReadOnly(p) && <span className="text-xs text-highlight-500 mr-2">🔒 view only</span>}
   {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>}
   {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-danger-500 hover:underline mr-2">Delete</button>}
+  {!isReadOnly(p) && !isAdmin && <button onClick={() => requestDeleteProperty(p)} className="text-xs text-danger-400 hover:underline mr-2">Request Delete</button>}
   {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-highlight-600 hover:underline mr-2">PM</button>}
   {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-notice-600 hover:underline mr-2">-PM</button>}
   <button onClick={() => loadTimeline(p)} className="text-xs text-neutral-400 hover:underline">TL</button>
