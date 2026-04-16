@@ -122,8 +122,12 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   useEffect(() => { fetchUsers(); }, [companyId]);
 
   async function fetchUsers() {
-  const { data } = await supabase.from("app_users").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false });
-  setUsers(data || []);
+  const [{ data }, { data: mems }] = await Promise.all([
+    supabase.from("app_users").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }),
+    supabase.from("company_members").select("user_email, status").eq("company_id", companyId),
+  ]);
+  const memMap = Object.fromEntries((mems || []).map(m => [m.user_email?.toLowerCase(), m.status]));
+  setUsers((data || []).map(u => ({ ...u, _memberStatus: memMap[u.email?.toLowerCase()] || null })));
   setLoading(false);
   }
 
@@ -412,7 +416,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
   {ROLES[u.role]?.label}
   </span>
   <Btn variant="secondary" size="xs" onClick={() => inviteUser(u)}>
-  ✉️ Invite
+  {u._memberStatus ? "✉️ Resend Invite" : "✉️ Invite"}
   </Btn>
   <Btn variant="secondary" size="xs" onClick={() => startEdit(u)}>
   ✏️ Edit
