@@ -209,6 +209,18 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   async function deleteTenant(id, name) {
   if (!guardSubmit("deleteTenant")) return;
   try {
+  // Check if already archived
+  const { data: checkRow } = await supabase.from("tenants").select("archived_at").eq("id", id).eq("company_id", companyId).maybeSingle();
+  if (checkRow?.archived_at) { showToast("This tenant is already archived.", "info"); return; }
+  // Non-admin: submit delete request for admin approval
+  if (!isAdmin) {
+  if (!await showConfirm({ message: `Request to delete tenant "${name}"?\n\nAn admin will review and approve this request.` })) return;
+  const { data: { user } } = await supabase.auth.getUser();
+  await supabase.from("property_change_requests").insert([{ company_id: companyId, request_type: "delete_tenant", requested_by: user?.email || "unknown", address: name, notes: "Delete tenant: " + name }]);
+  showToast("Delete request submitted for admin approval.", "success");
+  logAudit("request", "tenants", "Requested delete: " + name, id, user?.email, userRole, companyId);
+  return;
+  }
   // Check for outstanding balance before allowing deletion
   const { data: tenantRow } = await supabase.from("tenants").select("balance").eq("id", id).eq("company_id", companyId).maybeSingle();
   if (tenantRow && safeNum(tenantRow.balance) > 0) {
@@ -321,7 +333,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   invited_by: userProfile?.email || "admin",
   }], { onConflict: "company_id,user_email" });
   if (memErr) { showToast("Error creating invite: " + memErr.message, "error"); return; }
-  addNotification("\u2709\uFE0F", "Invite code generated for " + tenant.email);
+  addNotification("✉️", "Invite code generated for " + tenant.email);
   logAudit("create", "tenants", "Invited tenant to portal: " + tenant.email, tenant.id, userProfile?.email, userRole, companyId);
   // Show masked code — full code sent via email only
   const maskedCode = code.slice(0, 2) + "****" + code.slice(-2);
@@ -628,10 +640,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   </div>
   <div class="no-print" style="text-align:center;margin-top:30px;display:flex;gap:12px;justify-content:center;">
-  <button class="btn btn-primary" onclick="saveAndPrint()">\u2713 Sign & Save as PDF</button>
+  <button class="btn btn-primary" onclick="saveAndPrint()">✓ Sign & Save as PDF</button>
   <button class="btn btn-clear" onclick="window.print()">\u{1F5A8}\uFE0F Print</button>
   </div>
-  <div id="signed-badge" class="signed-badge" style="text-align:center;margin-top:20px;">\u2705 SIGNED \u2014 ${new Date().toLocaleDateString()}</div>
+  <div id="signed-badge" class="signed-badge" style="text-align:center;margin-top:20px;">✅ SIGNED — ${new Date().toLocaleDateString()}</div>
   <script>
   function makeDrawable(canvasId) {
   const canvas = document.getElementById(canvasId);
@@ -806,7 +818,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="space-y-2">
   <button onClick={() => openLeaseForSigning(selectedTenant)} className="w-full flex items-center justify-between bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-2xl px-4 py-3 text-left">
   <div>
-  <div className="text-sm font-medium text-brand-800">\u270D\uFE0F Generate & E-Sign Lease</div>
+  <div className="text-sm font-medium text-brand-800">✍️ Generate & E-Sign Lease</div>
   <div className="text-xs text-brand-400">Opens PDF with signature canvas</div>
   </div>
   <span className="text-brand-300">→</span>
@@ -987,10 +999,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {activePanel === "actions" && (
   <div className="grid grid-cols-2 gap-3">
   <button onClick={() => startEdit(selectedTenant)} className="bg-brand-50/30 rounded-3xl p-4 text-center hover:bg-brand-50/50 transition-all">
-  <div className="text-2xl mb-1">\u270F\uFE0F</div><div className="text-sm font-semibold text-neutral-700">Edit Tenant</div>
+  <div className="text-2xl mb-1">✏️</div><div className="text-sm font-semibold text-neutral-700">Edit Tenant</div>
   </button>
   <button onClick={() => inviteTenant(selectedTenant)} className="bg-highlight-50 rounded-3xl p-4 text-center hover:bg-highlight-100 transition-all">
-  <div className="text-2xl mb-1">\u2709\uFE0F</div><div className="text-sm font-semibold text-highlight-700">Send Invite</div>
+  <div className="text-2xl mb-1">✉️</div><div className="text-sm font-semibold text-highlight-700">Send Invite</div>
   </button>
   <button onClick={() => { setLeaseModal("renew"); setLeaseInput(""); }} className="bg-positive-50 rounded-3xl p-4 text-center hover:bg-positive-100 transition-all">
   <div className="text-2xl mb-1">{"\u{1F504}"}</div><div className="text-sm font-semibold text-positive-700">Renew Lease</div>
@@ -1043,13 +1055,13 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="bg-warn-50 border border-warn-200 rounded-3xl p-4 mb-4">
   <div className="flex items-center justify-between mb-2">
   <div className="text-sm font-bold text-warn-800">{"\u{1F4CB}"} Required Documents for {showTenantDocPrompt}</div>
-  <button onClick={() => setShowTenantDocPrompt(null)} className="text-warn-400 hover:text-warn-600">\u2715</button>
+  <button onClick={() => setShowTenantDocPrompt(null)} className="text-warn-400 hover:text-warn-600">✕</button>
   </div>
   <p className="text-xs text-warn-600 mb-3">Before this tenant can move in, the following documents must be uploaded. These are required for lease compliance.</p>
   <div className="space-y-2">
   {["Signed Lease Agreement", "Government-Issued ID", "Renters Insurance Certificate", "Proof of Utility Transfer"].map(doc => (
   <div key={doc} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-warn-100">
-  <span className="text-warn-400">\u2610</span>
+  <span className="text-warn-400">☐</span>
   <span className="text-sm text-neutral-700">{doc}</span>
   </div>
   ))}
@@ -1179,10 +1191,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div><label className="text-xs font-medium text-neutral-400 block mb-1">Amount ($)</label><Input id="bulk-charge-amt" type="number" placeholder="50.00" /></div>
   <div><label className="text-xs font-medium text-neutral-400 block mb-1">Revenue Account</label>
   <Select id="bulk-charge-acct" >
-  <option value="4100">4100 \u2014 Other Income</option>
-  <option value="4000">4000 \u2014 Rental Income</option>
-  <option value="4010">4010 \u2014 Late Fee Income</option>
-  <option value="4200">4200 \u2014 Management Fee Income</option>
+  <option value="4100">4100 — Other Income</option>
+  <option value="4000">4000 — Rental Income</option>
+  <option value="4010">4010 — Late Fee Income</option>
+  <option value="4200">4200 — Management Fee Income</option>
   </Select>
   </div>
   <Btn variant="primary" className="w-full" onClick={async () => {
@@ -1221,7 +1233,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </Modal>
   )}
   {bulkAction === "status" && (
-  <Modal title={`Change Status \u2014 ${selectedTenants.size} Tenant(s)`} onClose={() => setBulkAction(null)}>
+  <Modal title={`Change Status — ${selectedTenants.size} Tenant(s)`} onClose={() => setBulkAction(null)}>
   <div className="space-y-3">
   <div><label className="text-xs font-medium text-neutral-400 block mb-1">New Status</label>
   <Select id="bulk-status-val"  >
@@ -1250,7 +1262,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="space-y-3">
   <p className="text-sm text-danger-600">This will archive the selected tenants. They can be restored from the Archive page within 180 days.</p>
   <div className="bg-danger-50 rounded-lg p-3 text-xs text-danger-700 space-y-1">
-  {[...selectedTenants].map(tid => { const t = tenants.find(x => x.id === tid); return t ? <div key={tid}>{t.name} \u2014 {t.property}{safeNum(t.balance) > 0 ? ` (owes ${formatCurrency(t.balance)})` : ""}</div> : null; })}
+  {[...selectedTenants].map(tid => { const t = tenants.find(x => x.id === tid); return t ? <div key={tid}>{t.name} — {t.property}{safeNum(t.balance) > 0 ? ` (owes ${formatCurrency(t.balance)})` : ""}</div> : null; })}
   </div>
   <button onClick={async () => {
   if (!guardSubmit("bulkArchive")) return;
