@@ -1548,14 +1548,22 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   setSelectedProperty(p);
   setPropertyDetailTab("overview");
   setHistoricalTenantDetail(null);
-  const [docsRes, wosRes, archivedTenantsRes, terminatedLeasesRes] = await Promise.all([
+  const [docsRes, wosRes, archivedTenantsRes, terminatedLeasesRes, utilRes, hoaRes, loanRes, insRes] = await Promise.all([
   supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100),
   supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("created", { ascending: false }).limit(100),
   supabase.from("tenants").select("*").eq("company_id", companyId).eq("property", p.address).not("archived_at", "is", null).order("archived_at", { ascending: false }),
   supabase.from("leases").select("*").eq("company_id", companyId).eq("property", p.address).in("status", ["terminated", "expired"]).order("end_date", { ascending: false }),
+  supabase.from("utilities").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null),
+  supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null),
+  supabase.from("property_loans").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null),
+  supabase.from("property_insurance").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null),
   ]);
   setPropertyDocs(docsRes.data || []);
   setPropertyWorkOrders(wosRes.data || []);
+  setPropertyUtilities(utilRes.data || []);
+  setPropertyHoas(hoaRes.data || []);
+  setPropertyLoans(loanRes.data || []);
+  setPropertyInsurance(insRes.data || []);
   // Combine archived tenants + terminated lease tenants, deduplicate by name
   const archivedTenants = archivedTenantsRes.data || [];
   const terminatedLeases = terminatedLeasesRes.data || [];
@@ -2083,6 +2091,10 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const [propertyDocs, setPropertyDocs] = useState([]);
   const [propertyWorkOrders, setPropertyWorkOrders] = useState([]);
   const [historicalTenants, setHistoricalTenants] = useState([]);
+  const [propertyUtilities, setPropertyUtilities] = useState([]);
+  const [propertyHoas, setPropertyHoas] = useState([]);
+  const [propertyLoans, setPropertyLoans] = useState([]);
+  const [propertyInsurance, setPropertyInsurance] = useState([]);
   const [historicalTenantDetail, setHistoricalTenantDetail] = useState(null); // { tenant, ledger, docs, messages, leases, activeTab }
   const [pmCode, setPmCode] = useState("");
   const [incompleteWizards, setIncompleteWizards] = useState([]);
@@ -2344,20 +2356,121 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   {/* Tab Navigation */}
   <div className="flex border-b border-neutral-200 px-6 overflow-x-auto">
-  {[["overview","Overview"],["documents","Documents"],["workorders","Work Orders"],["actions","Actions"],["history","Historical Tenants"]].map(([id, label]) => (
+  {[["overview","Details"],["documents","Documents"],["workorders","Work Orders"],["history","History"]].map(([id, label]) => (
   <button key={id} onClick={() => { setPropertyDetailTab(id); if (id === "history") setHistoricalTenantDetail(null); }} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + (propertyDetailTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}{id === "documents" ? ` (${propertyDocs.length})` : id === "workorders" ? ` (${propertyWorkOrders.length})` : id === "history" ? ` (${historicalTenants.length})` : ""}</button>
   ))}
   </div>
 
-  {/* Overview Tab */}
+  {/* Details Tab — comprehensive property info */}
   {propertyDetailTab === "overview" && (
-  <div className="px-6 py-4">
-  <div className="grid grid-cols-2 gap-3 text-sm">
-  <div><span className="text-neutral-400 text-xs block">Security Deposit</span><span className="font-semibold text-neutral-700">{selectedProperty.security_deposit ? "$" + safeNum(selectedProperty.security_deposit).toLocaleString() : "—"}</span></div>
-  <div><span className="text-neutral-400 text-xs block">Lease Start</span><span className="font-semibold text-neutral-700">{selectedProperty.lease_start || "—"}</span></div>
-  {selectedProperty.pm_company_name && <div><span className="text-neutral-400 text-xs block">Property Manager</span><span className="font-semibold text-highlight-700">{selectedProperty.pm_company_name}</span></div>}
-  {selectedProperty.notes && <div className="col-span-2"><span className="text-neutral-400 text-xs block">Notes</span><span className="text-neutral-500">{selectedProperty.notes}</span></div>}
+  <div className="px-6 py-4 space-y-4">
+
+  {/* Quick Actions */}
+  <div className="flex gap-2">
+  {!isReadOnly(selectedProperty) && <Btn variant="primary" size="sm" onClick={() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "", rent: Number(selectedProperty.rent) || 0, leaseStart: selectedProperty.lease_start || "", leaseEnd: selectedProperty.lease_end || "", securityDeposit: Number(selectedProperty.security_deposit) || 0, isEdit: true }); setSelectedProperty(null); }}><span className="material-icons-outlined text-sm">edit</span>Edit Setup</Btn>}
+  <Btn variant="secondary" size="sm" onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })}><span className="material-icons-outlined text-sm">upload_file</span>Upload Doc</Btn>
+  <Btn variant="secondary" size="sm" onClick={() => { setPage("maintenance"); setSelectedProperty(null); }}><span className="material-icons-outlined text-sm">build</span>Work Order</Btn>
   </div>
+
+  {/* Lease & Financials */}
+  {selectedProperty.status === "occupied" && (
+  <div className="bg-neutral-50 rounded-xl p-4">
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3">Lease & Financials</div>
+  <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+  <div><span className="text-neutral-400 text-xs">Monthly Rent</span><div className="font-semibold text-neutral-800">{formatCurrency(selectedProperty.rent)}</div></div>
+  <div><span className="text-neutral-400 text-xs">Security Deposit</span><div className="font-semibold text-neutral-800">{selectedProperty.security_deposit ? formatCurrency(selectedProperty.security_deposit) : "—"}</div></div>
+  <div><span className="text-neutral-400 text-xs">Lease Start</span><div className="font-medium text-neutral-700">{selectedProperty.lease_start || "—"}</div></div>
+  <div><span className="text-neutral-400 text-xs">Lease End</span><div className="font-medium text-neutral-700">{selectedProperty.lease_end || "—"}</div></div>
+  </div>
+  </div>
+  )}
+
+  {/* Utilities */}
+  <div className="bg-neutral-50 rounded-xl p-4">
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">bolt</span>Utilities</div>
+  {propertyUtilities.length === 0 ? <p className="text-xs text-neutral-400">No utilities configured</p> : (
+  <div className="space-y-2">
+  {propertyUtilities.map((u, i) => (
+  <div key={u.id || i} className="flex items-center justify-between text-sm">
+  <div className="flex items-center gap-2">
+  <span className="text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-medium">{u.type || "Other"}</span>
+  <span className="text-neutral-700">{u.provider}</span>
+  </div>
+  <span className="text-xs text-neutral-400">{u.responsibility === "tenant_pays" ? "Tenant pays" : "Owner pays"}{u.due_date ? " · Due " + u.due_date : ""}</span>
+  </div>
+  ))}
+  </div>
+  )}
+  </div>
+
+  {/* HOA */}
+  <div className="bg-neutral-50 rounded-xl p-4">
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">holiday_village</span>HOA</div>
+  {propertyHoas.length === 0 ? <p className="text-xs text-neutral-400">No HOA</p> : (
+  <div className="space-y-2">
+  {propertyHoas.map((h, i) => (
+  <div key={h.id || i} className="flex items-center justify-between text-sm">
+  <span className="text-neutral-700 font-medium">{h.hoa_name || h.name}</span>
+  <span className="text-neutral-500">{formatCurrency(h.amount)} · {h.frequency || "Monthly"}</span>
+  </div>
+  ))}
+  </div>
+  )}
+  </div>
+
+  {/* Loans — admin/owner only */}
+  {(userRole === "admin" || userRole === "owner") && (
+  <div className="bg-neutral-50 rounded-xl p-4">
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">account_balance</span>Loan / Mortgage</div>
+  {propertyLoans.length === 0 ? <p className="text-xs text-neutral-400">No loan configured</p> : (
+  <div className="space-y-2">
+  {propertyLoans.map((l, i) => (
+  <div key={l.id || i} className="text-sm">
+  <div className="flex items-center justify-between">
+  <span className="text-neutral-700 font-medium">{l.lender_name}</span>
+  <span className="text-xs bg-neutral-200 text-neutral-600 px-2 py-0.5 rounded-full">{l.loan_type || "Conventional"}</span>
+  </div>
+  <div className="grid grid-cols-3 gap-2 mt-2 text-xs text-neutral-500">
+  <div><span className="block text-neutral-400">Payment</span>{l.monthly_payment ? formatCurrency(l.monthly_payment) : "—"}</div>
+  <div><span className="block text-neutral-400">Balance</span>{l.current_balance ? formatCurrency(l.current_balance) : "—"}</div>
+  <div><span className="block text-neutral-400">Rate</span>{l.interest_rate ? l.interest_rate + "%" : "—"}</div>
+  </div>
+  </div>
+  ))}
+  </div>
+  )}
+  </div>
+  )}
+
+  {/* Insurance */}
+  <div className="bg-neutral-50 rounded-xl p-4">
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">verified_user</span>Insurance</div>
+  {propertyInsurance.length === 0 ? <p className="text-xs text-neutral-400">No insurance configured</p> : (
+  <div className="space-y-2">
+  {propertyInsurance.map((ins, i) => (
+  <div key={ins.id || i} className="flex items-center justify-between text-sm">
+  <div>
+  <span className="text-neutral-700 font-medium">{ins.provider}</span>
+  {ins.policy_number && <span className="text-xs text-neutral-400 ml-2">#{ins.policy_number}</span>}
+  </div>
+  <div className="text-right text-xs text-neutral-500">
+  {ins.premium_amount ? formatCurrency(ins.premium_amount) + "/" + (ins.premium_frequency || "year").toLowerCase().slice(0, 3) : "—"}
+  {ins.expiration_date && <div className={new Date(ins.expiration_date) < new Date() ? "text-danger-500 font-medium" : ""}>{ins.expiration_date < new Date().toISOString().slice(0, 10) ? "Expired " : "Exp "}{ins.expiration_date}</div>}
+  </div>
+  </div>
+  ))}
+  </div>
+  )}
+  </div>
+
+  {/* Property Manager & Notes */}
+  {(selectedProperty.pm_company_name || selectedProperty.notes) && (
+  <div className="bg-neutral-50 rounded-xl p-4">
+  {selectedProperty.pm_company_name && <div className="text-sm mb-2"><span className="text-neutral-400 text-xs block">Property Manager</span><span className="font-semibold text-highlight-700">{selectedProperty.pm_company_name}</span></div>}
+  {selectedProperty.notes && <div className="text-sm"><span className="text-neutral-400 text-xs block">Notes</span><span className="text-neutral-500">{selectedProperty.notes}</span></div>}
+  </div>
+  )}
+
   </div>
   )}
 
@@ -2429,41 +2542,6 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   ))}
   </div>
   )}
-  </div>
-  )}
-
-  {/* Actions Tab */}
-  {propertyDetailTab === "actions" && (
-  <div className="px-6 py-4">
-  <div className="space-y-2">
-  {!isReadOnly(selectedProperty) && <button onClick={() => { setEditingProperty(selectedProperty); setForm({ address_line_1: selectedProperty.address_line_1 || selectedProperty.address || "", address_line_2: selectedProperty.address_line_2 || "", city: selectedProperty.city || "", state: selectedProperty.state || "", zip: selectedProperty.zip || "", type: selectedProperty.type, status: selectedProperty.status, rent: selectedProperty.rent || "", security_deposit: selectedProperty.security_deposit || "", tenant: selectedProperty.tenant || "", tenant_email: selectedProperty._tenantEmail || "", tenant_phone: selectedProperty._tenantPhone || "", lease_start: selectedProperty.lease_start || "", lease_end: selectedProperty.lease_end || "", notes: selectedProperty.notes || "" }); setShowForm(true); setSelectedProperty(null); }} className="w-full flex items-center gap-3 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-brand-300 hover:bg-brand-50/30 transition-colors"><span className="material-icons-outlined text-brand-600">edit</span>Edit Property</button>}
-  <button onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })} className="w-full flex items-center gap-3 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-brand-300 hover:bg-brand-50/30 transition-colors"><span className="material-icons-outlined text-brand-600">upload_file</span>Upload Document</button>
-  <button onClick={() => { setPage("maintenance"); setSelectedProperty(null); }} className="w-full flex items-center gap-3 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-brand-300 hover:bg-brand-50/30 transition-colors"><span className="material-icons-outlined text-brand-600">build</span>New Work Order</button>
-  {(() => {
-  const ss = getSetupStatus(selectedProperty);
-  const isInProg = ss.isInProgress;
-  const hasMissing = ss.missing.length > 0;
-  const label = isInProg ? "Resume Property Setup" : hasMissing ? `Complete Setup (${ss.missing.length} remaining)` : "Edit Property Setup";
-  const icon = isInProg ? "construction" : hasMissing ? "pending" : "settings";
-  const colors = isInProg || hasMissing ? "bg-warn-50 border-warn-200 text-warn-800 hover:bg-warn-100" : "bg-white border-neutral-200 text-neutral-700 hover:border-brand-300 hover:bg-brand-50/30";
-  return (
-  <button onClick={() => {
-  setShowPropertyWizard({
-  propertyId: selectedProperty.id,
-  address: selectedProperty.address,
-  isOccupied: selectedProperty.status === "occupied",
-  tenant: selectedProperty.tenant || "",
-  rent: Number(selectedProperty.rent) || 0,
-  leaseStart: selectedProperty.lease_start || "",
-  leaseEnd: selectedProperty.lease_end || "",
-  securityDeposit: Number(selectedProperty.security_deposit) || 0,
-  isEdit: true,
-  });
-  setSelectedProperty(null);
-  }} className={`w-full flex items-center gap-3 border rounded-xl px-4 py-3 text-sm transition-colors ${colors}`}><span className={`material-icons-outlined ${isInProg || hasMissing ? "text-warn-600" : "text-brand-600"}`}>{icon}</span>{label}</button>
-  );
-  })()}
-  </div>
   </div>
   )}
 
@@ -2626,39 +2704,6 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   )}
 
-  {showForm && editingProperty && (
-  <div className="bg-white p-4 rounded-xl border border-brand-50 shadow-sm mb-4">
-  <h3 className="text-sm font-semibold text-neutral-700 mb-3">{editingProperty ? "Edit Property" : "Add Property"}</h3>
-  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Address Line 1 *</label><Input placeholder="123 Main St" value={form.address_line_1} onChange={e => setForm({ ...form, address_line_1: e.target.value })} autoComplete="address-line1" name="address-line1" required /></div>
-  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Address Line 2</label><Input placeholder="Apt 4B, Suite 200, etc." value={form.address_line_2} onChange={e => setForm({ ...form, address_line_2: e.target.value })} autoComplete="address-line2" name="address-line2" /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">City *</label><Input placeholder="Greenbelt" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} autoComplete="address-level2" name="city" required /></div>
-  <div className="grid grid-cols-2 gap-2">
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">State *</label><Select value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} autoComplete="address-level1" name="state" required><option value="">--</option>{US_STATES.map(s => <option key={s} value={s}>{s}</option>)}</Select></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">ZIP *</label><Input placeholder="20770" value={form.zip} onChange={async e => { const z = e.target.value.replace(/\D/g, "").slice(0, 5); setForm(f => ({ ...f, zip: z })); if (z.length === 5) { const loc = await lookupZip(z); if (loc) setForm(f => ({ ...f, city: f.city || loc.city, state: f.state || loc.state })); } }} maxLength={5} autoComplete="postal-code" name="postal-code" required /></div>
-  </div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Type *</label><Select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}><option>Single Family</option><option>Multi-Family</option><option>Apartment</option><option>Townhouse</option><option>Condo</option><option>Commercial</option></Select></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Status *</label><Select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}><option value="vacant">Vacant</option><option value="occupied">Occupied</option><option value="maintenance">Maintenance</option><option value="inactive">Inactive</option></Select></div>
-  {form.status === "occupied" && (<>
-  <div className="col-span-1 sm:col-span-2 bg-brand-50 rounded-lg px-3 py-2"><div className="text-xs font-semibold text-brand-700">Tenant Information</div></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant Name *</label><Input placeholder="Jane Doe" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} required /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant Email *</label><Input type="email" placeholder="tenant@email.com" value={form.tenant_email} onChange={e => setForm({ ...form, tenant_email: e.target.value })} required /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant Phone *</label><Input type="tel" placeholder="(555) 123-4567" value={form.tenant_phone} onChange={e => setForm({ ...form, tenant_phone: formatPhoneInput(e.target.value) })} maxLength={14} required /></div>
-  <div className="col-span-1 sm:col-span-2 bg-brand-50 rounded-lg px-3 py-2 mt-1"><div className="text-xs font-semibold text-brand-700">Lease Details</div></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Monthly Rent ($) *</label><Input placeholder="1500" value={form.rent} onChange={e => setForm({ ...form, rent: e.target.value })} required /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Security Deposit ($) *</label><Input placeholder="1500" value={form.security_deposit} onChange={e => setForm({ ...form, security_deposit: e.target.value })} required /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Late Fee</label><div className="flex gap-1 items-center"><input type="number" min="0" step="0.01" placeholder="50" value={form.late_fee_amount || ""} onChange={e => setForm({ ...form, late_fee_amount: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm flex-1 min-w-0 focus:border-brand-300 focus:outline-none" /><select value={form.late_fee_type || "flat"} onChange={e => setForm({ ...form, late_fee_type: e.target.value })} className="border border-brand-100 rounded-2xl px-2 py-2 text-sm w-12 shrink-0 focus:outline-none"><option value="flat">$</option><option value="percent">%</option></select></div></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lease Start Date *</label><Input type="date" value={form.lease_start} onChange={e => setForm({ ...form, lease_start: e.target.value })} required /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Lease End Date *</label><Input type="date" value={form.lease_end} min={form.lease_start || undefined} onChange={e => setForm({ ...form, lease_end: e.target.value })} required /></div>
-  </>)}
-  <div className="col-span-1 sm:col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Textarea placeholder="Any additional notes" value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
-  </div>
-  <div className="flex gap-2 mt-3">
-  <Btn onClick={saveProperty} disabled={_submitGuards["saveProperty"]}>{_submitGuards["saveProperty"] ? "Saving..." : "Save Changes"}</Btn>
-  <Btn variant="ghost" onClick={() => { setShowForm(false); setEditingProperty(null); }}>Cancel</Btn>
-  </div>
-  </div>
-  )}
 
   {incompleteWizards.length > 0 && !showPropertyWizard && (
   <div className="mb-4 space-y-2">
@@ -2719,8 +2764,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {p.status === "inactive" && <div className="mt-2 text-xs text-warn-600 bg-warn-50 rounded-lg px-2 py-1">⏸ Inactive — accounting history preserved</div>}
   {(() => { const ss = getSetupStatus(p); return (!ss.isComplete && ss.total > 0) ? <div onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0 }); }} className="mt-2 text-xs text-info-600 bg-info-50 rounded-lg px-2 py-1 flex items-center gap-1 cursor-pointer hover:bg-info-100 transition-colors"><span className="material-icons-outlined text-sm">pending</span>Setup Incomplete — {ss.missing.length} step{ss.missing.length !== 1 ? "s" : ""} remaining</div> : null; })()}
   <div className="flex gap-2 mt-3 pt-3 border-t border-brand-50/50 flex-wrap" onClick={e => e.stopPropagation()}>
-  {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline">Edit</button>}
-  {!isReadOnly(p) && <button onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0 }); }} className="text-xs text-brand-600 hover:underline">Edit Setup</button>}
+  {!isReadOnly(p) && <button onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0, isEdit: true }); }} className="text-xs text-brand-600 hover:underline">Edit</button>}
   {!isReadOnly(p) && p.status === "vacant" && <button onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: false, tenant: "", rent: 0, isNew: false }); }} className="text-xs text-positive-600 hover:underline">Add Tenant</button>}
   {!isReadOnly(p) && isAdmin && p.status !== "inactive" && <button onClick={() => deactivateProperty(p)} className="text-xs text-warn-600 hover:underline">Deactivate</button>}
   {!isReadOnly(p) && isAdmin && p.status === "inactive" && <button onClick={() => reactivateProperty(p)} className="text-xs text-positive-600 hover:underline">Reactivate</button>}
@@ -2765,7 +2809,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <td className="px-4 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
   {p.pm_company_name && <span className="text-xs bg-highlight-100 text-highlight-600 px-1.5 py-0.5 rounded mr-2">PM</span>}
   {isReadOnly(p) && <span className="text-xs text-highlight-500 mr-2">🔒 view only</span>}
-  {!isReadOnly(p) && <button onClick={() => { setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>}
+  {!isReadOnly(p) && <button onClick={() => { setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0, isEdit: true }); }} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>}
   {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-danger-500 hover:underline mr-2">Delete</button>}
   {!isReadOnly(p) && !isAdmin && <button onClick={() => requestDeleteProperty(p)} className="text-xs text-danger-400 hover:underline mr-2">Request Delete</button>}
   {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-highlight-600 hover:underline mr-2">PM</button>}
@@ -2793,7 +2837,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <span className="text-sm font-semibold text-neutral-700">${safeNum(p.rent).toLocaleString()}</span>
   <span className="text-xs text-neutral-400 w-28 truncate">{p.tenant || "—"}</span>
   <Badge status={p.status} label={p.status} />
-  {!isReadOnly(p) && <button onClick={(e) => { e.stopPropagation(); setEditingProperty(p); setForm({ address_line_1: p.address_line_1 || p.address || "", address_line_2: p.address_line_2 || "", city: p.city || "", state: p.state || "", zip: p.zip || "", type: p.type, status: p.status, rent: p.rent || "", security_deposit: p.security_deposit || "", tenant: p.tenant || "", tenant_email: p._tenantEmail || "", tenant_phone: p._tenantPhone || "", lease_start: p.lease_start || "", lease_end: p.lease_end || "", notes: p.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline">Edit</button>}
+  {!isReadOnly(p) && <button onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0, isEdit: true }); }} className="text-xs text-brand-600 hover:underline">Edit</button>}
   {isReadOnly(p) && <span className="text-xs text-highlight-400">🔒</span>}
   </div>
   ))}
