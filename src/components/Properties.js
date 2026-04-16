@@ -39,7 +39,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         lease_start: wizardData.leaseStart || "", lease_end: wizardData.leaseEnd || ""
       };
     }
-    return { tenant: "", tenant_first: "", tenant_mi: "", tenant_last: "", tenant_email: "", tenant_phone: "", tenant_2: "", tenant_2_email: "", tenant_2_phone: "", tenant_3: "", tenant_3_email: "", tenant_3_phone: "", tenant_4: "", tenant_4_email: "", tenant_4_phone: "", tenant_5: "", tenant_5_email: "", tenant_5_phone: "", tenantCount: 1, rent: "", security_deposit: "", lease_start: "", lease_end: "" };
+    return { tenant: "", tenant_first: "", tenant_mi: "", tenant_last: "", tenant_email: "", tenant_phone: "", tenant_2: "", tenant_2_email: "", tenant_2_phone: "", tenant_3: "", tenant_3_email: "", tenant_3_phone: "", tenant_4: "", tenant_4_email: "", tenant_4_phone: "", tenant_5: "", tenant_5_email: "", tenant_5_phone: "", tenantCount: 1, rent: "", security_deposit: "", lease_start: "", lease_end: "", is_voucher: false, voucher_number: "", reexam_date: "", case_manager_name: "", case_manager_email: "", case_manager_phone: "", voucher_portion: "", tenant_portion: "" };
   });
   const [savedPropertyId, setSavedPropertyId] = useState(wizardData.propertyId || null);
   const [savedAddress, setSavedAddress] = useState(wizardData.address || "");
@@ -434,12 +434,12 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     }
     let tenantId = existingTenant?.id;
     if (!existingTenant) {
-      const { data: newT, error: tErr } = await supabase.from("tenants").insert([{ company_id: companyId, name: tenantForm.tenant.trim(), first_name: tenantForm.tenant_first.trim(), middle_initial: tenantForm.tenant_mi.trim(), last_name: tenantForm.tenant_last.trim(), email: tenantForm.tenant_email.toLowerCase(), phone: tenantForm.tenant_phone, property: addr, rent: Number(tenantForm.rent), late_fee_amount: safeNum(tenantForm.late_fee_amount) || null, late_fee_type: tenantForm.late_fee_type || "flat", lease_status: "active", lease_start: tenantForm.lease_start, lease_end_date: tenantForm.lease_end, move_in: tenantForm.lease_start, balance: 0 }]).select("id").maybeSingle();
+      const { data: newT, error: tErr } = await supabase.from("tenants").insert([{ company_id: companyId, name: tenantForm.tenant.trim(), first_name: tenantForm.tenant_first.trim(), middle_initial: tenantForm.tenant_mi.trim(), last_name: tenantForm.tenant_last.trim(), email: tenantForm.tenant_email.toLowerCase(), phone: tenantForm.tenant_phone, property: addr, rent: Number(tenantForm.rent), late_fee_amount: safeNum(tenantForm.late_fee_amount) || null, late_fee_type: tenantForm.late_fee_type || "flat", lease_status: "active", lease_start: tenantForm.lease_start, lease_end_date: tenantForm.lease_end, move_in: tenantForm.lease_start, balance: 0, is_voucher: tenantForm.is_voucher || false, voucher_number: tenantForm.voucher_number || null, reexam_date: tenantForm.reexam_date || null, case_manager_name: tenantForm.case_manager_name || null, case_manager_email: tenantForm.case_manager_email || null, case_manager_phone: tenantForm.case_manager_phone || null, voucher_portion: safeNum(tenantForm.voucher_portion) || null, tenant_portion: safeNum(tenantForm.tenant_portion) || null }]).select("id").maybeSingle();
       if (tErr) throw new Error("Failed to create tenant: " + tErr.message);
       tenantId = newT?.id;
     } else {
       // Update existing tenant with latest info from wizard
-      await supabase.from("tenants").update({ name: tenantForm.tenant.trim(), first_name: tenantForm.tenant_first.trim(), middle_initial: tenantForm.tenant_mi.trim(), last_name: tenantForm.tenant_last.trim(), email: tenantForm.tenant_email.toLowerCase(), phone: tenantForm.tenant_phone, rent: Number(tenantForm.rent), late_fee_amount: safeNum(tenantForm.late_fee_amount) || null, late_fee_type: tenantForm.late_fee_type || "flat" }).eq("id", existingTenant.id).eq("company_id", companyId);
+      await supabase.from("tenants").update({ name: tenantForm.tenant.trim(), first_name: tenantForm.tenant_first.trim(), middle_initial: tenantForm.tenant_mi.trim(), last_name: tenantForm.tenant_last.trim(), email: tenantForm.tenant_email.toLowerCase(), phone: tenantForm.tenant_phone, rent: Number(tenantForm.rent), late_fee_amount: safeNum(tenantForm.late_fee_amount) || null, late_fee_type: tenantForm.late_fee_type || "flat", is_voucher: tenantForm.is_voucher || false, voucher_number: tenantForm.voucher_number || null, reexam_date: tenantForm.reexam_date || null, case_manager_name: tenantForm.case_manager_name || null, case_manager_email: tenantForm.case_manager_email || null, case_manager_phone: tenantForm.case_manager_phone || null, voucher_portion: safeNum(tenantForm.voucher_portion) || null, tenant_portion: safeNum(tenantForm.tenant_portion) || null }).eq("id", existingTenant.id).eq("company_id", companyId);
     }
     // Create lease
     if (tenantForm.lease_start && tenantForm.lease_end) {
@@ -811,6 +811,56 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <input type="date" value={tenantForm.lease_end} onChange={e => setTenantForm({ ...tenantForm, lease_end: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
               </div>
+              {/* Voucher Tenant Toggle */}
+              <div className="border-t border-neutral-200 pt-4 mt-2">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" checked={tenantForm.is_voucher || false} onChange={e => setTenantForm({ ...tenantForm, is_voucher: e.target.checked })} className="w-4 h-4 rounded border-neutral-300 text-brand-600 focus:ring-brand-500" />
+                  <div>
+                    <span className="text-sm font-medium text-neutral-700">Housing Voucher Tenant</span>
+                    <span className="text-xs text-neutral-400 block">Section 8, HCV, VASH, or other housing assistance program</span>
+                  </div>
+                </label>
+              </div>
+              {tenantForm.is_voucher && (
+                <div className="bg-brand-50/50 rounded-xl p-4 space-y-3 border border-brand-100">
+                  <div className="text-xs font-semibold text-brand-700 uppercase">Voucher Details</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Voucher Number</label>
+                      <input type="text" value={tenantForm.voucher_number || ""} onChange={e => setTenantForm({ ...tenantForm, voucher_number: e.target.value })} placeholder="e.g. HCV-12345" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Re-examination Date</label>
+                      <input type="date" value={tenantForm.reexam_date || ""} onChange={e => setTenantForm({ ...tenantForm, reexam_date: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Voucher Portion ($)</label>
+                      <input type="number" value={tenantForm.voucher_portion || ""} onChange={e => setTenantForm({ ...tenantForm, voucher_portion: e.target.value })} placeholder="HAP amount" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Tenant Portion ($)</label>
+                      <input type="number" value={tenantForm.tenant_portion || ""} onChange={e => setTenantForm({ ...tenantForm, tenant_portion: e.target.value })} placeholder="Tenant share" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                  </div>
+                  <div className="text-xs font-semibold text-brand-700 uppercase mt-2">Case Manager</div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Name</label>
+                      <input type="text" value={tenantForm.case_manager_name || ""} onChange={e => setTenantForm({ ...tenantForm, case_manager_name: e.target.value })} placeholder="Name" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Email</label>
+                      <input type="email" value={tenantForm.case_manager_email || ""} onChange={e => setTenantForm({ ...tenantForm, case_manager_email: e.target.value })} placeholder="Email" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Phone</label>
+                      <input type="tel" value={tenantForm.case_manager_phone || ""} onChange={e => setTenantForm({ ...tenantForm, case_manager_phone: formatPhoneInput(e.target.value) })} placeholder="Phone" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         );
