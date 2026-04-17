@@ -1154,24 +1154,24 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
               {propForm.status === "occupied" && (
                 <div className="bg-warn-50 border border-warn-200 rounded-xl p-4 mb-4">
                   <div className="text-sm font-semibold text-warn-800 mb-2">Required Documents</div>
-                  {["Lease", "ID", "Insurance"].map(doc => {
-                    const uploaded = uploadedDocs.some(d => d.type === doc);
+                  {[
+                    { type: "Lease", label: "Lease Agreement" },
+                    { type: "ID", label: "Government-Issued ID" },
+                    { type: "Insurance", label: "Renters Insurance" },
+                    { type: "Utility Transfer", label: "Proof of Utility Transfer" },
+                    { type: "RFTA", label: "Rental Application (RFTA)" },
+                    ...(tenantForm.is_voucher ? [{ type: "HAP", label: "HAP Contract" }] : []),
+                  ].map(doc => {
+                    const uploaded = uploadedDocs.some(d => d.type === doc.type || (d.name || "").toLowerCase().includes(doc.type.toLowerCase()));
                     return (
-                      <div key={doc} className="flex items-center gap-2 py-1 text-sm">
+                      <div key={doc.type} className="flex items-center gap-2 py-1 text-sm">
                         <span className={uploaded ? "text-positive-500" : "text-warn-400"}>{uploaded ? "✅" : "☐"}</span>
-                        <span className={uploaded ? "text-neutral-700" : "text-warn-700"}>
-                          {doc === "Lease" ? "Lease Agreement" : doc === "ID" ? "Government-Issued ID" : "Renters Insurance"}
-                        </span>
+                        <span className={uploaded ? "text-neutral-700" : "text-warn-700"}>{doc.label}</span>
                         <span className="text-danger-500 text-xs">*</span>
                         {uploaded && <span className="text-xs text-positive-600 bg-positive-50 px-2 py-0.5 rounded-full">Uploaded</span>}
                       </div>
                     );
                   })}
-                  <div className="flex items-center gap-2 py-1 text-sm">
-                    {uploadedDocs.some(d => d.type === "Utility Transfer") ? <span className="text-positive-500">✅</span> : <span className="text-neutral-300">☐</span>}
-                    <span className="text-neutral-500">Proof of Utility Transfer</span>
-                    <span className="text-xs text-neutral-400">(optional)</span>
-                  </div>
                 </div>
               )}
               {propForm.status !== "occupied" && (
@@ -1184,7 +1184,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                     { id: "Lease", label: "Lease Agreement", icon: "description", required: true },
                     { id: "ID", label: "Government ID", icon: "badge", required: true },
                     { id: "Insurance", label: "Renters Insurance", icon: "verified_user", required: true },
-                    { id: "Utility Transfer", label: "Utility Transfer Proof", icon: "swap_horiz", required: false },
+                    { id: "Utility Transfer", label: "Utility Transfer Proof", icon: "swap_horiz", required: true },
+                    { id: "RFTA", label: "Rental Application", icon: "assignment", required: true },
+                    ...(tenantForm.is_voucher ? [{ id: "HAP", label: "HAP Contract", icon: "handshake", required: true }] : []),
                     { id: "Other", label: "Other", icon: "insert_drive_file", required: false },
                   ].map(dt => (
                     <button key={dt.id} type="button" onClick={() => setDocUploadType(dt.id)}
