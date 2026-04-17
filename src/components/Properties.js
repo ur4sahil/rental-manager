@@ -507,13 +507,20 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       if (propForm.status === "occupied" && tenantForm.tenant.trim() && savedAddress) {
       const addr = savedAddress;
       const tName = tenantForm.tenant.trim();
-      // Find tenant ID
+      // Find tenant ID — try exact match first, then contains match
+      let tenantId = null;
       const { data: tRow } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", tName).eq("property", addr).is("archived_at", null).maybeSingle();
-      const tenantId = tRow?.id;
+      if (tRow) { tenantId = tRow.id; }
+      else {
+        // Fallback: find any active tenant at this property
+        const { data: tFallback } = await supabase.from("tenants").select("id").eq("company_id", companyId).eq("property", addr).is("archived_at", null).eq("lease_status", "active").maybeSingle();
+        if (tFallback) tenantId = tFallback.id;
+      }
       // Check if accounting entries already exist (prevents double-posting on re-edit)
-      const { data: existingJEs } = await supabase.from("acct_journal_entries").select("id, description").eq("company_id", companyId).eq("property", addr).neq("status", "voided").limit(5);
-      const hasRentJE = (existingJEs || []).some(je => je.description?.includes(tName) && (je.description?.includes("rent") || je.description?.includes("Rent")));
-      const hasDepJE = (existingJEs || []).some(je => je.description?.includes(tName) && je.description?.includes("deposit"));
+      const { data: existingJEs } = await supabase.from("acct_journal_entries").select("id, description").eq("company_id", companyId).eq("property", addr).neq("status", "voided").limit(10);
+      const tNameLower = tName.toLowerCase();
+      const hasRentJE = (existingJEs || []).some(je => je.description?.toLowerCase().includes(tNameLower) && (je.description?.toLowerCase().includes("rent")));
+      const hasDepJE = (existingJEs || []).some(je => je.description?.toLowerCase().includes(tNameLower) && je.description?.toLowerCase().includes("deposit"));
       if (tenantId) {
       // Create AR sub-account
       await getOrCreateTenantAR(companyId, tName, tenantId);
