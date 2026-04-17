@@ -722,7 +722,7 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   {form.subtype === "__custom__" && <Input value={form.customSubtype} onChange={e => setForm({...form, customSubtype: e.target.value})} className="mt-1 bg-brand-50" placeholder="Enter new subtype" />}
   </div>
   </div>
-  <div><label className="text-xs font-medium text-neutral-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
+  <div><label className="text-xs font-medium text-neutral-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form, description:e.target.value})} className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm mt-1" rows={2} /></div>
   <div className="flex justify-end gap-2 pt-2">
   <Btn variant="slate" onClick={() => setModal(null)}>Cancel</Btn>
   <Btn variant="success-fill" onClick={saveAccount}>{modal === "add" ? "Create" : "Save"}</Btn>
@@ -1041,7 +1041,7 @@ export function AcctClassTracking({ accounts, journalEntries, classes, onAdd, on
   <AcctModal isOpen={!!modal} onClose={() => setModal(null)} title={modal === "add" ? "New Class" : "Edit Class"} size="sm">
   <div className="space-y-3">
   <div><label className="text-xs font-medium text-neutral-500">Name *</label><Input placeholder="e.g. 123 Main St" value={form.name} onChange={e => setForm({...form,name:e.target.value})} className="mt-1" /></div>
-  <div><label className="text-xs font-medium text-neutral-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form,description:e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mt-1" rows={2} /></div>
+  <div><label className="text-xs font-medium text-neutral-500">Description</label><Textarea value={form.description} onChange={e => setForm({...form,description:e.target.value})} className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm mt-1" rows={2} /></div>
   <div><label className="text-xs font-medium text-neutral-500 block mb-2">Color</label><div className="flex gap-2 flex-wrap">{COLORS.map(c => <button key={c} type="button" onClick={() => setForm({...form,color:c})} className={`w-7 h-7 rounded-full border-2 ${form.color===c?"border-subtle-800 scale-110":"border-transparent"}`} style={{background:c}} />)}</div></div>
   <div className="flex justify-end gap-2 pt-2">
   <Btn variant="slate" onClick={() => setModal(null)}>Cancel</Btn>

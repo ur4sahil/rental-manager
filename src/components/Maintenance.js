@@ -317,7 +317,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   </Select></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Assigned To</label><Input placeholder="Vendor or staff name" value={form.assigned} onChange={e => setForm({ ...form, assigned: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Cost ($)</label><Input placeholder="0.00" type="number" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} /></div>
-  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Textarea placeholder="Completion details, parts used, etc." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Textarea placeholder="Completion details, parts used, etc." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-xl px-3 py-1.5 text-sm w-full" rows={2} /></div>
   </div>
   <div className="flex gap-2 mt-3">
   <Btn onClick={saveWorkOrder}>Save</Btn>
@@ -507,7 +507,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   </Select></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Inspector</label><Input placeholder="Inspector name" value={form.inspector} onChange={e => setForm({ ...form, inspector: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Date</label><Input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
-  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Textarea placeholder="General notes about the inspection" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Textarea placeholder="General notes about the inspection" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-xl px-3 py-1.5 text-sm w-full" rows={2} /></div>
   </div>
 
   {/* Checklist */}
@@ -823,7 +823,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div><label className="text-xs text-neutral-400 mb-1 block">Hourly Rate ($)</label><Input placeholder="0.00" type="number" value={form.hourly_rate} onChange={e => setForm({...form, hourly_rate: e.target.value})} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Flat Rate ($)</label><Input placeholder="0.00" type="number" value={form.flat_rate} onChange={e => setForm({...form, flat_rate: e.target.value})} /></div>
   </div>
-  <div className="mb-4"><label className="text-xs text-neutral-400 mb-1 block">Notes</label><Textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={2} /></div>
+  <div className="mb-4"><label className="text-xs text-neutral-400 mb-1 block">Notes</label><Textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm" rows={2} /></div>
   <div className="flex gap-2">
   <Btn onClick={saveVendor}>{editingVendor ? "Update" : "Add Vendor"}</Btn>
   <Btn variant="ghost" onClick={resetVendorForm}>Cancel</Btn>

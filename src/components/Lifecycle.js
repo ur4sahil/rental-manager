@@ -656,7 +656,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <option value="3">3 days</option><option value="5">5 days</option><option value="7">7 days</option><option value="10">10 days</option><option value="14">14 days</option><option value="30">30 days</option><option value="60">60 days</option>
   </Select>
   </div>
-  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Textarea placeholder="Additional context or details..." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" rows={2} /></div>
+  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Textarea placeholder="Additional context or details..." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-xl px-3 py-1.5 text-sm w-full" rows={2} /></div>
   </div>
   <div className="flex gap-2 mt-3">
   <Btn variant="danger-fill" onClick={createCase}>Start Case</Btn>

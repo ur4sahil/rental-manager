@@ -105,7 +105,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   <div>
   <div className="flex flex-col md:flex-row gap-3 mb-4">
   <PageHeader title="HOA Payments" />
-  <Select value={hoaFilter} onChange={e => setHoaFilter(e.target.value)} >
+  <Select filter value={hoaFilter} onChange={e => setHoaFilter(e.target.value)} >
   <option value="all">All Status</option><option value="pending">Pending</option><option value="paid">Paid</option>
   </Select>
   <Btn onClick={() => { setEditingHoa(null); setForm({ property: "", hoa_name: "", amount: "", due_date: "", frequency: "monthly", status: "pending", notes: "", website: "", username: "", password: "" }); setShowForm(!showForm); }}>+ Add HOA</Btn>

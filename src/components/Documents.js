@@ -122,10 +122,10 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Document Name *</label><Input placeholder="Lease Agreement 2026" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property</label><PropertySelect value={form.property} onChange={(addr, prop) => setForm({ ...form, property: addr, tenant: prop?.tenant || form.tenant })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant</label><Input placeholder="Optional — link to a tenant" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Document Type</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full">
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Document Type</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-brand-100 rounded-xl px-3 py-1.5 text-sm w-full">
   {["Lease", "Inspection", "Maintenance", "Financial", "Notice", "Other"].map(t => <option key={t}>{t}</option>)}
   </select></div>
-  <label className="flex items-center gap-2 text-sm text-neutral-500 border border-brand-100 rounded-2xl px-3 py-2 cursor-pointer">
+  <label className="flex items-center gap-2 text-sm text-neutral-500 border border-brand-100 rounded-xl px-3 py-1.5 cursor-pointer">
   <input type="checkbox" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} />
   Visible to Tenant
   </label>
@@ -1210,7 +1210,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   const renderField = (f) => {
   if (!isFieldVisible(f.name, fieldValues, fc)) return null;
-  const base = "border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full focus:border-brand-300 focus:outline-none";
+  const base = "border border-brand-100 rounded-xl px-3 py-1.5 text-sm w-full focus:border-brand-300 focus:outline-none";
 
   // Calculated field — read-only display
   if (isCalc(f.name)) {

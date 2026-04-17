@@ -285,7 +285,7 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   <option value="check">Check</option><option value="ach">ACH</option><option value="wire">Wire</option>
   </Select>
   </div>
-  <div className="col-span-2"><label className="text-xs text-neutral-400 mb-1 block">Notes</label><Textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={2} /></div>
+  <div className="col-span-2"><label className="text-xs text-neutral-400 mb-1 block">Notes</label><Textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm" rows={2} /></div>
   </div>
   <div className="flex gap-2">
   <Btn onClick={saveOwner}>{editingOwner ? "Update" : "Add Owner"}</Btn>

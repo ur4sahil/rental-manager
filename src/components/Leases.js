@@ -399,7 +399,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   <div className="space-y-3">
   <div className="bg-highlight-50 rounded-lg p-3 text-sm"><div className="flex justify-between"><span className="text-neutral-400">Original Deposit:</span><span className="font-bold">${safeNum(showDepositModal.security_deposit).toLocaleString()}</span></div></div>
   <div><label className="text-xs text-neutral-400">Amount to Return ($)</label><Input type="number" value={depositForm.amount_returned} onChange={e => setDepositForm({...depositForm, amount_returned: e.target.value})} placeholder={String(showDepositModal.security_deposit)} /></div>
-  <div><label className="text-xs text-neutral-400">Deduction Reasons</label><Textarea value={depositForm.deductions} onChange={e => setDepositForm({...depositForm, deductions: e.target.value})} placeholder="Cleaning, damages, unpaid rent..." className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={3} /></div>
+  <div><label className="text-xs text-neutral-400">Deduction Reasons</label><Textarea value={depositForm.deductions} onChange={e => setDepositForm({...depositForm, deductions: e.target.value})} placeholder="Cleaning, damages, unpaid rent..." className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm" rows={3} /></div>
   <div><label className="text-xs text-neutral-400">Return Date</label><Input type="date" value={depositForm.return_date} onChange={e => setDepositForm({...depositForm, return_date: e.target.value})} /></div>
   {Number(depositForm.amount_returned || 0) < safeNum(showDepositModal.security_deposit) && depositForm.amount_returned && (
   <div className="bg-danger-50 rounded-lg p-2 text-xs text-danger-700">Deducting ${(safeNum(showDepositModal.security_deposit) - Number(depositForm.amount_returned)).toLocaleString()} from deposit</div>
@@ -462,8 +462,8 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   <p className="text-xs text-warn-600 mt-2">Late fees auto-apply to tenant ledger after grace period. Admin can waive from ledger.</p>
   </div>
   <div className="flex items-center gap-2 mb-4"><input type="checkbox" checked={form.auto_renew} onChange={e => setForm({...form, auto_renew: e.target.checked})} className="rounded" /><label className="text-sm text-neutral-500">Auto-renew at end of term</label></div>
-  <div className="mb-3"><label className="text-xs text-neutral-400 mb-1 block">Lease Clauses</label><Textarea value={form.clauses} onChange={e => setForm({...form, clauses: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={3} placeholder="Standard clauses..." /></div>
-  <div className="mb-4"><label className="text-xs text-neutral-400 mb-1 block">Special Terms</label><Textarea value={form.special_terms} onChange={e => setForm({...form, special_terms: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm" rows={2} placeholder="Pet deposit, parking, storage..." /></div>
+  <div className="mb-3"><label className="text-xs text-neutral-400 mb-1 block">Lease Clauses</label><Textarea value={form.clauses} onChange={e => setForm({...form, clauses: e.target.value})} className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm" rows={3} placeholder="Standard clauses..." /></div>
+  <div className="mb-4"><label className="text-xs text-neutral-400 mb-1 block">Special Terms</label><Textarea value={form.special_terms} onChange={e => setForm({...form, special_terms: e.target.value})} className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm" rows={2} placeholder="Pet deposit, parking, storage..." /></div>
   <div className="flex gap-2">
   <Btn onClick={saveLease}>{editingLease ? "Update Lease" : "Create Lease"}</Btn>
   <Btn variant="ghost" onClick={resetForm}>Cancel</Btn>
@@ -745,7 +745,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
   ) : (
   <div>
   <input value={typedName} onChange={e => setTypedName(e.target.value)} placeholder="Type your full legal name"
-  className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm mb-1" />
+  className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm mb-1" />
   {typedName && <div className="text-2xl text-brand-800 italic font-serif py-2 px-3 bg-brand-50/30 rounded-lg">{typedName}</div>}
   </div>
   )}

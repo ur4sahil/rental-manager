@@ -134,7 +134,7 @@ export function PropertyDropdown({ value, onChange, className = "", required = f
   return (
   <div>
   {label && <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">{label} {required && "*"}</label>}
-  <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel ? sel.id : null); }} className={`border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full focus:border-brand-300 focus:outline-none transition-colors ${className}`} required={required}>
+  <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel ? sel.id : null); }} className={`border border-brand-100 rounded-xl px-3 py-1.5 text-sm w-full focus:border-brand-300 focus:outline-none transition-colors ${className}`} required={required}>
   <option value="">Select property...</option>
   {properties.map(p => <option key={p.id} value={p.address}>{p.address} ({p.type})</option>)}
   </select>
@@ -148,7 +148,7 @@ export function TenantSelect({ value, onChange, className = "", companyId }) {
   supabase.from("tenants").select("id, name, property").eq("company_id", companyId).is("archived_at", null).order("name").then(({ data }) => setTenants(data || []));
   }, [companyId]);
   return (
-  <select value={value || ""} onChange={e => { const sel = tenants.find(t => t.name === e.target.value); onChange(e.target.value, sel); }} className={`border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full ${className}`}>
+  <select value={value || ""} onChange={e => { const sel = tenants.find(t => t.name === e.target.value); onChange(e.target.value, sel); }} className={`border border-brand-100 rounded-xl px-3 py-1.5 text-sm w-full ${className}`}>
   <option value="">Select tenant...</option>
   {tenants.map(t => <option key={t.id} value={t.name}>{t.name}{t.property ? " — " + t.property : ""}</option>)}
   </select>
@@ -161,7 +161,7 @@ export function PropertySelect({ value, onChange, className = "", companyId }) {
   supabase.from("properties").select("id, address, type, tenant, tenant_2, tenant_3, tenant_4, rent, status").eq("company_id", companyId).is("archived_at", null).order("address").then(({ data }) => setProperties(data || []));
   }, [companyId]);
   return (
-  <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel || null); }} className={`w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm ${className}`}>
+  <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel || null); }} className={`w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm ${className}`}>
   <option value="">Select property...</option>
   {properties.map(p => <option key={p.id} value={p.address}>{p.address}</option>)}
   </select>
@@ -316,7 +316,7 @@ export function DocUploadModal({ onClose, companyId, property, tenant, showToast
   </div>
   <div>
   <label className="text-xs font-medium text-neutral-400 block mb-1">Type</label>
-  <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm">
+  <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm">
   {["Lease","Notice","ID","Insurance","Inspection","Receipt","Other"].map(t => <option key={t} value={t}>{t}</option>)}
   </select>
   </div>

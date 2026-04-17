@@ -2498,7 +2498,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   {viewMode === "table" && (
   <div className="relative">
-  <button onClick={() => setShowColPicker(!showColPicker)} className="border border-brand-100 rounded-2xl px-3 py-2 text-xs text-neutral-400 hover:bg-brand-50/30">⚙️ Columns</button>
+  <button onClick={() => setShowColPicker(!showColPicker)} className="border border-brand-100 rounded-xl px-3 py-1.5 text-xs text-neutral-400 hover:bg-brand-50/30">⚙️ Columns</button>
   {showColPicker && (
   <div className="absolute right-0 top-10 bg-white border border-brand-100 rounded-3xl shadow-lg p-3 z-50 w-48 max-w-[calc(100vw-2rem)]">
   {allCols.map(c => (

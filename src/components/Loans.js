@@ -117,11 +117,11 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   <div>
   <div className="flex flex-col md:flex-row gap-3 mb-4">
   <PageHeader title="Loans" />
-  <Select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
+  <Select filter value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)}>
   <option value="all">All Properties</option>
   {uniqueProperties.map(p => <option key={p} value={p}>{p}</option>)}
   </Select>
-  <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+  <Select filter value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
   <option value="all">All Status</option><option value="active">Active</option><option value="paid_off">Paid Off</option>
   </Select>
   <Btn variant="success-fill" onClick={() => { setEditingLoan(null); setForm(emptyForm); setShowForm(true); }}>+ Add Loan</Btn>

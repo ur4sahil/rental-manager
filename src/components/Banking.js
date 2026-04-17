@@ -1694,7 +1694,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     <div className="space-y-3">
       <div><label className="text-xs font-medium text-neutral-500 block mb-1">Account Name *</label><Input value={newAccountForm.name} onChange={e => setNewAccountForm({...newAccountForm, name: e.target.value})} placeholder="e.g. Chase Checking" /></div>
       <div><label className="text-xs font-medium text-neutral-500 block mb-1">Account Type</label>
-        <select value={newAccountForm.type} onChange={e => setNewAccountForm({...newAccountForm, type: e.target.value})} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm">
+        <select value={newAccountForm.type} onChange={e => setNewAccountForm({...newAccountForm, type: e.target.value})} className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm">
           <option value="checking">Checking</option><option value="savings">Savings</option><option value="credit_card">Credit Card</option><option value="loan">Loan</option><option value="other">Other</option>
         </select>
       </div>
@@ -1736,7 +1736,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     {wizStep === 1 && (
     <div className="space-y-4">
       <label className="text-sm font-medium text-neutral-700 block">Import into which account?</label>
-      <select value={wizFeedId} onChange={e => { if (e.target.value === "__new__") { setShowNewAccount(true); } else setWizFeedId(e.target.value); }} className="w-full border border-brand-100 rounded-2xl px-3 py-2 text-sm">
+      <select value={wizFeedId} onChange={e => { if (e.target.value === "__new__") { setShowNewAccount(true); } else setWizFeedId(e.target.value); }} className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm">
         <option value="">Select bank account...</option>
         {feeds.map(f => <option key={f.id} value={f.id}>{f.account_name} ({f.account_type}){f.masked_number ? ` ••••${f.masked_number}` : ""}</option>)}
         <option value="__new__">+ Create New Account</option>
