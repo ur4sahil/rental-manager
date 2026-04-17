@@ -240,6 +240,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const [sendModal, setSendModal] = useState(null);
   const [sendTo, setSendTo] = useState({ self: false, tenant: false, custom: "" });
   const [sending, setSending] = useState(false);
+  const [signerEmails, setSignerEmails] = useState({});       // { [role]: "email" }
+  const [signerNames, setSignerNames] = useState({});         // { [role]: "Full Name" }
+  const [signaturesByDoc, setSignaturesByDoc] = useState({}); // { [docId]: [signerRow, ...] }
 
   const previewRef = useRef();
 
@@ -503,6 +506,16 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // Fetch generated documents
   const { data: docs } = await supabase.from("doc_generated").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at", { ascending: false }).limit(200);
   setGeneratedDocs(docs || []);
+  // Fetch signatures for envelope-bearing docs so History can show progress
+  const envelopeDocIds = (docs || []).filter(d => d.envelope_status && d.envelope_status !== "draft").map(d => d.id);
+  if (envelopeDocIds.length > 0) {
+  const { data: sigs } = await supabase.from("doc_signatures").select("*").eq("company_id", companyId).in("doc_id", envelopeDocIds).order("sign_order", { ascending: true });
+  const bucket = {};
+  (sigs || []).forEach(s => { (bucket[s.doc_id] = bucket[s.doc_id] || []).push(s); });
+  setSignaturesByDoc(bucket);
+  } else {
+  setSignaturesByDoc({});
+  }
   setLoading(false);
   }
 
@@ -589,7 +602,38 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const pdf = await loadPdfForPreview(template.pdf_storage_path);
   if (pdf && pdfContainerRef.current) await renderPdfPages(pdf, pdfScale, pdfContainerRef.current);
   }
+  // Seed signer email/name defaults from the new template's roles
+  if (template.signing_mode && template.signing_mode !== "none") {
+    const emails = {};
+    const names = {};
+    for (const r of (template.signer_roles || [])) {
+      const g = guessSignerDefaultsFor(r.role, docMode === "prefill" && prefillProperty ? await loadPrefillData(prefillProperty) : {});
+      emails[r.role] = g.email;
+      names[r.role] = g.name;
+    }
+    setSignerEmails(emails);
+    setSignerNames(names);
+  } else {
+    setSignerEmails({});
+    setSignerNames({});
+  }
   setStep("fill");
+  }
+
+  // Stateless version used during startDocument (fieldValues isn't populated yet).
+  function guessSignerDefaultsFor(role, data) {
+  const r = (role || "").toLowerCase();
+  const d = data || {};
+  if (r.includes("tenant") || r === "renter" || r === "lessee") {
+    return { email: d.tenant_email || "", name: d.tenant_name || "" };
+  }
+  if (r.includes("co_sign") || r.includes("cosigner") || r === "co_signer_2") {
+    return { email: d.tenant_2_email || "", name: d.tenant_2 || "" };
+  }
+  if (r.includes("landlord") || r.includes("owner") || r.includes("manager") || r.includes("agent") || r.includes("lessor")) {
+    return { email: userProfile?.email || "", name: userProfile?.name || "" };
+  }
+  return { email: "", name: "" };
   }
 
   // ---- Merge + render ----
@@ -850,6 +894,92 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   setSendModal(null);
   setSending(false);
   fetchAll();
+  }
+
+  // ---- Send for signature (envelope flow) ----
+  function guessSignerDefaults(role) {
+  // Returns { email, name } best-guess. Role strings are case-insensitive.
+  const r = (role || "").toLowerCase();
+  if (r.includes("tenant") || r === "renter" || r === "lessee") {
+    return { email: fieldValues.tenant_email || "", name: fieldValues.tenant_name || "" };
+  }
+  if (r.includes("co_sign") || r.includes("cosigner") || r === "co_signer_2") {
+    return { email: fieldValues.tenant_2_email || "", name: fieldValues.tenant_2 || "" };
+  }
+  if (r.includes("landlord") || r.includes("owner") || r.includes("manager") || r.includes("agent") || r.includes("lessor")) {
+    return { email: userProfile?.email || "", name: userProfile?.name || "" };
+  }
+  return { email: "", name: "" };
+  }
+
+  async function sendForSignature() {
+  if (!selectedTemplate) return;
+  const roles = selectedTemplate.signer_roles || [];
+  if (roles.length === 0) { showToast("This template has no signer roles defined", "error"); return; }
+
+  // Validate emails
+  const signers = [];
+  for (const r of roles) {
+    const email = (signerEmails[r.role] || "").trim().toLowerCase();
+    const name = (signerNames[r.role] || "").trim();
+    if (r.required !== false && !email) {
+      showToast("Email required for " + (r.label || r.role), "error");
+      return;
+    }
+    if (!email) continue;
+    if (!email.includes("@") || !email.includes(".")) {
+      showToast("Invalid email for " + (r.label || r.role) + ": " + email, "error");
+      return;
+    }
+    signers.push({ role: r.role, label: r.label || r.role, name, email, order: r.order || 1 });
+  }
+  if (signers.length === 0) { showToast("At least one signer email is required", "error"); return; }
+
+  setSending(true);
+  try {
+    const doc = await saveDocument("sent");
+    if (!doc) { setSending(false); return; }
+
+    const { data: envRows, error: envErr } = await supabase.rpc("create_doc_envelope", { p_doc_id: doc.id, p_signers: signers });
+    if (envErr) {
+      pmError("PM-7003", { raw: envErr, context: "create doc envelope" });
+      setSending(false);
+      return;
+    }
+
+    // Only signers with status='sent' actually need a magic-link email right now.
+    // (Sequential flow leaves later signers in 'pending' until the prior signer finishes.)
+    const origin = window.location.origin;
+    let emailed = 0;
+    for (const row of envRows || []) {
+      if (row.status !== "sent") continue;
+      const signUrl = origin + "/sign/" + row.access_token;
+      const roleLabel = signers.find(s => s.email === row.signer_email)?.label || row.signer_email;
+      const subject = "Signature requested: " + doc.name;
+      const html = '<div style="font-family:Georgia,serif;font-size:14px;line-height:1.6;color:#1a1a1a;max-width:640px;margin:0 auto;">'
+        + '<p>Hello' + (signers.find(s => s.email === row.signer_email)?.name ? " " + signers.find(s => s.email === row.signer_email).name : "") + ',</p>'
+        + '<p>You are requested to review and sign <strong>' + doc.name + '</strong> as <em>' + roleLabel + '</em>.</p>'
+        + '<p><a href="' + signUrl + '" style="display:inline-block;background:#6366f1;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Review &amp; Sign</a></p>'
+        + '<p style="font-size:12px;color:#666;">Or paste this link into your browser: <br/>' + signUrl + '</p>'
+        + '<p style="font-size:11px;color:#999;margin-top:24px;">This link expires in 30 days. If you did not expect this message, you can ignore it.</p>'
+        + '</div>';
+      try {
+        const { error: emailErr } = await supabase.functions.invoke("send-email", { body: { to: row.signer_email, subject, html } });
+        if (emailErr) pmError("PM-1007", { raw: emailErr, context: "signing link email to " + row.signer_email, silent: true });
+        else emailed++;
+      } catch (e) { pmError("PM-1007", { raw: e, context: "signing link email exception", silent: true }); }
+    }
+
+    showToast(emailed + " of " + (envRows || []).length + " signer(s) emailed", "success");
+    addNotification("✍️", "Sent for signature: " + doc.name);
+    logAudit("send", "doc_builder", "Envelope sent: " + doc.name + " to " + signers.map(s => s.email).join(", "), doc.id, userProfile?.email, userRole, companyId);
+    setSignerEmails({});
+    setSignerNames({});
+    resetFlow();
+    fetchAll();
+  } finally {
+    setSending(false);
+  }
   }
 
   // ---- Template CRUD ----
@@ -1515,6 +1645,35 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   </div>
 
+  {selectedTemplate?.signing_mode && selectedTemplate.signing_mode !== "none" ? (
+  /* Envelope / e-sign flow */
+  <div className="bg-white rounded-3xl shadow-card border border-brand-200 p-5">
+  <div className="flex items-center gap-2 mb-1">
+  <span className="material-icons-outlined text-brand-600">draw</span>
+  <h3 className="font-manrope font-bold text-neutral-700">Send for Signature</h3>
+  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-brand-100 text-brand-700 font-semibold uppercase">{selectedTemplate.signing_mode}</span>
+  </div>
+  <p className="text-xs text-neutral-400 mb-3">Each signer will receive a unique magic-link email. No account required on their end; the link expires in 30 days.</p>
+  <div className="space-y-2 mb-3">
+  {(selectedTemplate.signer_roles || []).sort((a,b) => (a.order||0) - (b.order||0)).map(r => (
+  <div key={r.role} className="border border-brand-50 rounded-xl p-2.5 bg-brand-50/20">
+  <div className="flex items-center justify-between mb-1">
+  <span className="text-xs font-semibold text-neutral-600">{r.label || r.role}{r.required === false && <span className="text-[10px] text-neutral-400 font-normal ml-1">(optional)</span>}</span>
+  {selectedTemplate.signing_mode === "sequential" && <span className="text-[10px] text-brand-600">#{r.order || 1}</span>}
+  </div>
+  <div className="grid grid-cols-2 gap-1.5">
+  <Input size="sm" value={signerNames[r.role] || ""} onChange={e => setSignerNames(prev => ({ ...prev, [r.role]: e.target.value }))} placeholder="Full name" />
+  <Input size="sm" type="email" value={signerEmails[r.role] || ""} onChange={e => setSignerEmails(prev => ({ ...prev, [r.role]: e.target.value }))} placeholder="email@example.com" />
+  </div>
+  </div>
+  ))}
+  </div>
+  <Btn variant="success-fill" className="w-full" onClick={sendForSignature} disabled={sending}>
+  {sending ? "Sending…" : (selectedTemplate.signing_mode === "sequential" ? "Send to first signer" : "Send to all signers")}
+  </Btn>
+  </div>
+  ) : (
+  /* Plain email flow (no signing required) */
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <h3 className="font-manrope font-bold text-neutral-700 mb-3">Send via Email</h3>
   <div className="space-y-2 mb-3">
@@ -1532,6 +1691,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {sending ? "Sending..." : "Send Email"}
   </Btn>
   </div>
+  )}
 
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <h3 className="font-manrope font-bold text-neutral-700 mb-3">Save</h3>
@@ -1653,29 +1813,58 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   ) : (
   <div className="space-y-3">
-  {generatedDocs.map(d => (
-  <div key={d.id} className="bg-white rounded-2xl border border-brand-50 shadow-sm p-4 flex items-center justify-between">
-  <div>
-  <div className="font-semibold text-neutral-800 text-sm">{d.name}</div>
-  <div className="flex items-center gap-2 mt-1">
+  {generatedDocs.map(d => {
+  const sigs = signaturesByDoc[d.id] || [];
+  const hasEnvelope = d.envelope_status && d.envelope_status !== "draft";
+  const envBadge = d.envelope_status === "completed" ? { cls: "bg-success-100 text-success-700", label: "✓ All signed" }
+    : d.envelope_status === "out_for_signature" ? { cls: "bg-brand-100 text-brand-700", label: "Awaiting signatures" }
+    : d.envelope_status === "declined" ? { cls: "bg-danger-100 text-danger-700", label: "Declined" }
+    : d.envelope_status === "voided" ? { cls: "bg-neutral-100 text-neutral-500", label: "Voided" }
+    : null;
+  return (
+  <div key={d.id} className="bg-white rounded-2xl border border-brand-50 shadow-sm p-4">
+  <div className="flex items-center justify-between">
+  <div className="flex-1 min-w-0">
+  <div className="font-semibold text-neutral-800 text-sm truncate">{d.name}</div>
+  <div className="flex items-center gap-2 mt-1 flex-wrap">
   <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (d.status === "sent" ? "bg-success-50 text-success-700" : d.status === "final" ? "bg-info-50 text-info-700" : "bg-neutral-50 text-neutral-500")}>{d.status}</span>
+  {envBadge && <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + envBadge.cls}>{envBadge.label}</span>}
   {d.tenant_name && <span className="text-xs text-neutral-400">{d.tenant_name}</span>}
   {d.property_address && <span className="text-xs text-neutral-400">· {d.property_address}</span>}
   <span className="text-xs text-neutral-400">· {new Date(d.created_at).toLocaleDateString()}</span>
   </div>
   </div>
-  <div className="flex gap-2">
+  <div className="flex gap-2 shrink-0">
   <Btn variant="danger" size="xs" onClick={() => { const t = templates.find(t => t.id === d.template_id); exportPDF({ ...d, _template: t }); }} title="PDF">PDF</Btn>
   <Btn variant="secondary" size="xs" onClick={() => exportDOCX(d)} title="DOCX">DOCX</Btn>
   <Btn variant="slate" size="xs" onClick={() => exportTXT(d)} title="TXT">TXT</Btn>
-  <Btn variant="success-fill" size="xs" onClick={() => {
+  {!hasEnvelope && <Btn variant="success-fill" size="xs" onClick={() => {
   setSendModal(d);
   setSendTo({ self: false, tenant: false, custom: "" });
-  }}>Email</Btn>
+  }}>Email</Btn>}
   <button onClick={() => deleteGeneratedDoc(d)} className="text-xs text-danger-400 hover:text-danger-600">✕</button>
   </div>
   </div>
-  ))}
+  {hasEnvelope && sigs.length > 0 && (
+  <div className="mt-3 pt-3 border-t border-brand-50 grid grid-cols-1 md:grid-cols-2 gap-1.5">
+  {sigs.map(s => {
+  const cls = s.status === "signed" ? "text-success-700 bg-success-50" : s.status === "viewed" ? "text-brand-700 bg-brand-50" : s.status === "sent" ? "text-highlight-700 bg-highlight-50" : "text-neutral-500 bg-neutral-50";
+  const icon = s.status === "signed" ? "check_circle" : s.status === "viewed" ? "visibility" : s.status === "sent" ? "mail" : "hourglass_empty";
+  return (
+  <div key={s.id} className={"flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-lg " + cls}>
+  <span className="material-icons-outlined text-sm">{icon}</span>
+  <span className="font-semibold truncate">{s.signer_name || s.signer_email}</span>
+  <span className="text-neutral-400 truncate">· {s.signer_role}</span>
+  {s.signed_at && <span className="text-neutral-400 ml-auto shrink-0">{new Date(s.signed_at).toLocaleDateString()}</span>}
+  {!s.signed_at && s.status === "sent" && <button onClick={() => navigator.clipboard?.writeText(window.location.origin + "/sign/" + s.access_token).then(() => showToast("Signing link copied", "success"))} className="ml-auto shrink-0 text-brand-600 hover:underline">copy link</button>}
+  </div>
+  );
+  })}
+  </div>
+  )}
+  </div>
+  );
+  })}
   </div>
   )}
 
