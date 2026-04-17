@@ -253,11 +253,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (archiveErr) { pmError("PM-3003", { raw: archiveErr, context: "archive tenant" }); return; }
   // Update property to vacant when tenant archived
   if (tenantProperty) {
-  const { error: propErr } = await supabase.from("properties").update({ status: "vacant", tenant: "", lease_end: null, lease_start: "" }).eq("company_id", companyId).eq("address", tenantProperty).ilike("tenant", escapeFilterValue(name));
+  const { error: propErr } = await supabase.from("properties").update({ status: "vacant", tenant: "", tenant_2: "", tenant_2_email: "", tenant_2_phone: "", tenant_3: "", tenant_3_email: "", tenant_3_phone: "", tenant_4: "", tenant_4_email: "", tenant_4_phone: "", tenant_5: "", tenant_5_email: "", tenant_5_phone: "", lease_end: null, lease_start: "", rent: null, security_deposit: null }).eq("company_id", companyId).eq("address", tenantProperty);
   if (propErr) pmError("PM-2002", { raw: propErr, context: "update property to vacant", silent: true });
   }
-  // Terminate active leases for this tenant
-  const { error: leaseErr } = await supabase.from("leases").update({ status: "terminated", archived_at: new Date().toISOString() }).eq("company_id", companyId).ilike("tenant_name", escapeFilterValue(name)).eq("status", "active");
+  // Terminate active leases for this tenant (match by name or property)
+  const { error: leaseErr } = await supabase.from("leases").update({ status: "terminated", archived_at: new Date().toISOString() }).eq("company_id", companyId).eq("status", "active").or(`tenant_name.ilike.%${escapeFilterValue(name)}%,property.eq.${escapeFilterValue(tenantProperty)}`);
   if (leaseErr) pmError("PM-3004", { raw: leaseErr, context: "terminate leases on archive", silent: true });
   // Archive autopay schedules for this tenant
   await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", name).eq("property", tenantProperty);
