@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, PageHeader } from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, normalizeEmail } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, normalizeEmail, escapeHtml } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -392,7 +392,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   </Modal>
   )}
 
-  {showESign && <ESignatureModal lease={showESign} onClose={() => setShowESign(null)} onSigned={() => fetchData()} userProfile={userProfile} companyId={companyId} />}
+  {showESign && <ESignatureModal lease={showESign} onClose={() => setShowESign(null)} onSigned={() => fetchData()} userProfile={userProfile} userRole={userRole} companyId={companyId} showToast={showToast} addNotification={addNotification} />}
 
   {showDepositModal && (
   <Modal title={"Return Deposit — " + showDepositModal.tenant_name} onClose={() => setShowDepositModal(null)}>
@@ -548,238 +548,245 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   );
 }
 
-function ESignatureModal({ lease, onClose, onSigned, userProfile, companyId }) {
-  const canvasRef = useRef(null);
-  const [signing, setSigning] = useState(false);
-  const [signers, setSigners] = useState([]);
+// E-signature for a lease. Uses the unified doc_signatures engine: creates
+// (or loads) a doc_generated row tied to the lease and fires magic-link
+// envelopes so tenant + landlord can sign remotely at /sign/:token.
+// Previously this modal wrote to lease_signatures + called sign_lease; that
+// old path never saw production traffic (0 rows at migration time) and has
+// been retired in favor of the unified engine.
+function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, companyId, showToast, addNotification }) {
   const [loading, setLoading] = useState(true);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [typedName, setTypedName] = useState("");
-  const [signMethod, setSignMethod] = useState("draw");
-  const [consentAgreed, setConsentAgreed] = useState(false);
+  const [doc, setDoc] = useState(null);
+  const [sigs, setSigs] = useState([]);
+  const [sending, setSending] = useState(false);
+  const [tenantEmail, setTenantEmail] = useState("");
+  const [landlordEmail, setLandlordEmail] = useState(userProfile?.email || "");
 
-  useEffect(() => { fetchSigners(); }, [lease]);
+  useEffect(() => { loadEnvelope(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [lease.id]);
 
-  async function fetchSigners() {
-  const { data } = await supabase.from("lease_signatures").select("*").eq("company_id", companyId).eq("lease_id", lease.id).order("created_at");
-  setSigners(data || []);
-  setLoading(false);
-  }
-
-  async function initSignatureRequest() {
-  // Create signature requests for tenant and landlord
-  const existing = signers.map(s => s.signer_role);
-  const toCreate = [];
-  if (!existing.includes("tenant")) {
-  // Find tenant email for signature tracking
-  const { data: sigTenant } = await supabase.from("tenants").select("email").eq("company_id", companyId).eq("name", lease.tenant_name).maybeSingle();
-  toCreate.push({ lease_id: lease.id, signer_name: lease.tenant_name, signer_email: sigTenant?.email || "", signer_role: "tenant", status: "pending" });
-  }
-  if (!existing.includes("landlord")) {
-  toCreate.push({ lease_id: lease.id, signer_name: userProfile?.name || "Property Manager", signer_email: userProfile?.email || "", signer_role: "landlord", status: "pending" });
-  }
-  if (toCreate.length > 0) {
-  const { error: sigInitErr } = await supabase.from("lease_signatures").insert(toCreate.map(s => ({ ...s, company_id: companyId })));
-  if (sigInitErr) { showToast("Error creating signature requests: " + sigInitErr.message, "error"); return; }
-  const { error: _err6295 } = await supabase.from("leases").update({ signature_status: "pending" }).eq("company_id", companyId).eq("id", lease.id);
-  if (_err6295) { showToast("Error updating leases: " + _err6295.message, "error"); return; }
-  }
-  fetchSigners();
-  }
-
-  function startDraw(e) {
-  const canvas = canvasRef.current;
-  if (!canvas) return;
-  setIsDrawing(true);
-  const ctx = canvas.getContext("2d");
-  const rect = canvas.getBoundingClientRect();
-  const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-  const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
-  ctx.beginPath();
-  ctx.moveTo(x, y);
+  async function loadEnvelope() {
+    setLoading(true);
+    // Find existing lease envelope (doc_generated with field_values.lease_id = this lease)
+    const { data: existing } = await supabase
+      .from("doc_generated")
+      .select("*")
+      .eq("company_id", companyId)
+      .eq("output_type", "lease")
+      .contains("field_values", { lease_id: lease.id })
+      .is("archived_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (existing) {
+      setDoc(existing);
+      const { data: ss } = await supabase
+        .from("doc_signatures")
+        .select("*")
+        .eq("company_id", companyId)
+        .eq("doc_id", existing.id)
+        .order("sign_order", { ascending: true });
+      setSigs(ss || []);
+    } else {
+      const { data: tenant } = await supabase
+        .from("tenants")
+        .select("email")
+        .eq("company_id", companyId)
+        .ilike("name", lease.tenant_name || "")
+        .is("archived_at", null)
+        .maybeSingle();
+      if (tenant?.email) setTenantEmail(tenant.email);
+    }
+    setLoading(false);
   }
 
-  function draw(e) {
-  if (!isDrawing) return;
-  const canvas = canvasRef.current;
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  const rect = canvas.getBoundingClientRect();
-  const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-  const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
-  ctx.lineWidth = 2;
-  ctx.lineCap = "round";
-  ctx.strokeStyle = "#1e3a5f";
-  ctx.lineTo(x, y);
-  ctx.stroke();
+  function buildLeaseHtml() {
+    const l = lease;
+    return ''
+      + '<h1 style="text-align:center;color:#1e3a5f;">Residential Lease Agreement</h1>'
+      + '<table style="width:100%;margin:20px 0;border-collapse:collapse;">'
+      + '<tr><td style="padding:6px 10px;font-weight:600;width:30%;">Property</td><td style="padding:6px 10px;">' + escapeHtml(l.property || "") + '</td></tr>'
+      + '<tr><td style="padding:6px 10px;font-weight:600;">Tenant</td><td style="padding:6px 10px;">' + escapeHtml(l.tenant_name || "") + '</td></tr>'
+      + '<tr><td style="padding:6px 10px;font-weight:600;">Lease Term</td><td style="padding:6px 10px;">' + escapeHtml(l.start_date || "") + ' through ' + escapeHtml(l.end_date || "") + '</td></tr>'
+      + '<tr><td style="padding:6px 10px;font-weight:600;">Monthly Rent</td><td style="padding:6px 10px;">$' + safeNum(l.rent_amount).toLocaleString() + '</td></tr>'
+      + '<tr><td style="padding:6px 10px;font-weight:600;">Security Deposit</td><td style="padding:6px 10px;">$' + safeNum(l.security_deposit).toLocaleString() + '</td></tr>'
+      + '</table>'
+      + (l.clauses ? '<h3 style="color:#1e3a5f;margin-top:24px;">Lease Terms</h3><div style="white-space:pre-wrap;line-height:1.7;">' + escapeHtml(l.clauses) + '</div>' : '')
+      + (l.special_terms ? '<h3 style="color:#1e3a5f;margin-top:24px;">Special Terms</h3><div style="white-space:pre-wrap;line-height:1.7;">' + escapeHtml(l.special_terms) + '</div>' : '')
+      + '<hr style="margin-top:32px;"/><p style="font-size:11px;color:#666;">By signing below each party confirms they have read and agree to the terms set out above.</p>';
   }
 
-  function endDraw() { setIsDrawing(false); }
+  async function sendForSignature() {
+    if (!guardSubmit("leaseSend", lease.id)) return;
+    const te = (tenantEmail || "").trim().toLowerCase();
+    const le = (landlordEmail || "").trim().toLowerCase();
+    if (!te || !te.includes("@")) { showToast("Tenant email is required", "error"); guardRelease("leaseSend", lease.id); return; }
+    if (!le || !le.includes("@")) { showToast("Landlord email is required", "error"); guardRelease("leaseSend", lease.id); return; }
 
-  function clearCanvas() {
-  const canvas = canvasRef.current;
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setSending(true);
+    try {
+      const rendered = buildLeaseHtml();
+      const docName = "Lease Agreement — " + (lease.tenant_name || "") + " — " + (lease.property || "");
+      const { data: newDoc, error: docErr } = await supabase.from("doc_generated").insert([{
+        company_id: companyId,
+        template_id: null,
+        name: docName,
+        rendered_body: rendered,
+        field_values: { lease_id: lease.id },
+        property_address: lease.property || "",
+        tenant_name: lease.tenant_name || "",
+        output_type: "lease",
+        status: "sent",
+        created_by: userProfile?.email || null,
+      }]).select().single();
+      if (docErr) { pmError("PM-3004", { raw: docErr, context: "create lease envelope doc" }); return; }
+
+      const signers = [
+        { role: "tenant", label: "Tenant", name: lease.tenant_name || "", email: te, order: 1 },
+        { role: "landlord", label: "Landlord", name: userProfile?.name || "Property Manager", email: le, order: 2 },
+      ];
+      const { data: envRows, error: envErr } = await supabase.rpc("create_doc_envelope", { p_doc_id: newDoc.id, p_signers: signers });
+      if (envErr) { pmError("PM-3004", { raw: envErr, context: "lease create_doc_envelope" }); return; }
+
+      const origin = window.location.origin;
+      for (const row of envRows || []) {
+        if (row.status !== "sent") continue;
+        const url = origin + "/sign/" + row.access_token;
+        const matching = signers.find(s => s.email === row.signer_email);
+        const html = '<div style="font-family:Georgia,serif;font-size:14px;line-height:1.6;color:#1a1a1a;max-width:640px;margin:0 auto;">'
+          + '<p>Hello' + (matching?.name ? " " + matching.name : "") + ',</p>'
+          + '<p>You are requested to review and sign the <strong>' + docName + '</strong> as <em>' + (matching?.label || "signer") + '</em>.</p>'
+          + '<p><a href="' + url + '" style="display:inline-block;background:#6366f1;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Review &amp; Sign</a></p>'
+          + '<p style="font-size:12px;color:#666;">Or paste this link into your browser:<br/>' + url + '</p>'
+          + '<p style="font-size:11px;color:#999;margin-top:24px;">This link expires in 30 days. If you did not expect this message, you can ignore it.</p>'
+          + '</div>';
+        try {
+          const { error: emailErr } = await supabase.functions.invoke("send-email", { body: { to: row.signer_email, subject: "Signature requested: " + docName, html } });
+          if (emailErr) pmError("PM-1007", { raw: emailErr, context: "lease signing email to " + row.signer_email, silent: true });
+        } catch (e) { pmError("PM-1007", { raw: e, context: "lease signing email exception", silent: true }); }
+      }
+
+      await supabase.from("leases").update({ signature_status: "pending" }).eq("id", lease.id).eq("company_id", companyId);
+      logAudit("update", "leases", "Lease sent for e-signature (unified engine): " + lease.tenant_name + " → " + te + " + " + le, lease.id, userProfile?.email, userRole, companyId);
+      if (addNotification) addNotification("✍️", "Lease sent for signature: " + (lease.tenant_name || ""));
+      showToast("Lease sent — both parties emailed magic links", "success");
+
+      setDoc(newDoc);
+      const { data: ss } = await supabase.from("doc_signatures").select("*").eq("company_id", companyId).eq("doc_id", newDoc.id).order("sign_order", { ascending: true });
+      setSigs(ss || []);
+      if (onSigned) onSigned();
+    } finally {
+      setSending(false);
+      guardRelease("leaseSend", lease.id);
+    }
   }
 
-  async function submitSignature(signer) {
-  if (!guardSubmit("submitSignature")) return;
-  try {
-  let sigData = "";
-  if (signMethod === "draw") {
-  const canvas = canvasRef.current;
-  if (!canvas) return;
-  sigData = canvas.toDataURL("image/png");
-  const ctx = canvas.getContext("2d");
-  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-  const hasContent = pixels.some((v, i) => i % 4 === 3 && v > 0);
-  if (!hasContent) { showToast("Please draw your signature first.", "error"); return; }
-  } else {
-  if (!typedName.trim()) { showToast("Please type your name.", "error"); return; }
-  sigData = "typed:" + typedName.trim() + "|ts:" + new Date().toISOString();
+  async function resendSignerEmail(sig) {
+    if (!sig?.access_token) return;
+    const url = window.location.origin + "/sign/" + sig.access_token;
+    const docName = doc?.name || "Lease";
+    const html = '<div style="font-family:Georgia,serif;font-size:14px;line-height:1.6;"><p>Hello ' + escapeHtml(sig.signer_name || "") + ',</p>'
+      + '<p>Reminder — you still need to sign <strong>' + escapeHtml(docName) + '</strong>.</p>'
+      + '<p><a href="' + url + '" style="display:inline-block;background:#6366f1;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Review &amp; Sign</a></p></div>';
+    try {
+      await supabase.functions.invoke("send-email", { body: { to: sig.signer_email, subject: "Reminder: " + docName, html } });
+      showToast("Reminder sent to " + sig.signer_email, "success");
+    } catch (e) { pmError("PM-1007", { raw: e, context: "lease reminder email", silent: true }); }
   }
 
-  setSigning(true);
-  // Server-side signing: identity verified, IP captured, integrity hash generated
-  try {
-  const { data: signResult, error: signErr } = await supabase.rpc("sign_lease", {
-  p_company_id: companyId,
-  p_lease_id: lease.id,
-  p_signer_id: signer.id,
-  p_signature_data: sigData,
-  p_signing_method: signMethod,
-  p_consent_text: "I agree that my electronic signature is the legal equivalent of my manual/handwritten signature and I consent to be legally bound by this lease agreement.",
-  p_user_agent: navigator.userAgent || "",
-  });
-  if (signErr) throw new Error(signErr.message);
-  if (signResult?.all_signed) {
-  addNotification("✅", "All parties have signed — lease is fully executed");
-  }
-  logAudit("update", "leases", "E-signature (server-verified): " + signer.signer_name + " signed lease for " + lease.tenant_name + " [hash:" + (signResult?.integrity_hash || "").slice(0, 12) + "]", lease.id, userProfile?.email, "", companyId);
-  } catch (rpcErr) {
-  // No client-side fallback — server-side signing is required for legal compliance
-  showToast("Signature failed: " + rpcErr.message + "\n\nPlease ensure the e-signature system is properly configured. Contact your administrator if this persists.", "error");
-  setSigning(false);
-  return;
-  }
-  setSigning(false);
-  fetchSigners();
-  if (onSigned) onSigned();
-  } finally { guardRelease("submitSignature"); }
+  async function copySignerLink(sig) {
+    const url = window.location.origin + "/sign/" + sig.access_token;
+    try { await navigator.clipboard.writeText(url); showToast("Signing link copied", "success"); }
+    catch { showToast("Copy failed — link: " + url, "info"); }
   }
 
   if (loading) return <Modal title="E-Signature" onClose={onClose}><Spinner /></Modal>;
 
-  const pendingSigners = signers.filter(s => s.status === "pending");
-  const signedSigners = signers.filter(s => s.status === "signed");
-  const allSigned = signers.length > 0 && signers.every(s => s.status === "signed");
+  const allSigned = doc && sigs.length > 0 && sigs.every(s => s.status === "signed");
+  const envelopeOpen = doc && !allSigned;
 
   return (
-  <Modal title={"E-Signature — " + lease.tenant_name} onClose={onClose}>
-  <div className="space-y-4">
-  {/* Lease Summary */}
-  <div className="bg-brand-50 rounded-lg p-3">
-  <div className="text-sm font-semibold text-brand-800">{lease.property}</div>
-  <div className="text-xs text-brand-600">{lease.start_date} to {lease.end_date} · ${safeNum(lease.rent_amount).toLocaleString()}/mo</div>
-  </div>
+    <Modal title={"E-Signature — " + (lease.tenant_name || "Lease")} onClose={onClose}>
+      <div className="space-y-4">
+        {/* Lease summary */}
+        <div className="bg-brand-50 rounded-lg p-3">
+          <div className="text-sm font-semibold text-brand-800">{lease.property}</div>
+          <div className="text-xs text-brand-600">{lease.start_date} to {lease.end_date} · ${safeNum(lease.rent_amount).toLocaleString()}/mo</div>
+        </div>
 
-  {/* Lease Terms Preview */}
-  <div className="bg-brand-50/30 rounded-lg p-3 max-h-32 overflow-y-auto">
-  <div className="text-xs font-semibold text-neutral-500 mb-1">Lease Terms</div>
-  <div className="text-xs text-neutral-400 whitespace-pre-wrap">{lease.clauses || "Standard residential lease terms apply."}</div>
-  {lease.special_terms && <div className="text-xs text-neutral-400 mt-1"><span className="font-semibold">Special Terms:</span> {lease.special_terms}</div>}
-  </div>
+        {!doc && (
+          <div className="border border-brand-100 rounded-2xl p-4 bg-white">
+            <div className="text-sm font-semibold text-neutral-700 mb-2">Send Lease for Signature</div>
+            <p className="text-xs text-neutral-400 mb-3">Both parties will receive a secure magic link by email. No account required to sign. Links expire in 30 days.</p>
+            <div className="space-y-2 mb-3">
+              <div>
+                <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-1">Tenant email</label>
+                <Input size="sm" type="email" value={tenantEmail} onChange={e => setTenantEmail(e.target.value)} placeholder="tenant@example.com" />
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-1">Landlord / PM email</label>
+                <Input size="sm" type="email" value={landlordEmail} onChange={e => setLandlordEmail(e.target.value)} placeholder="you@example.com" />
+              </div>
+            </div>
+            <Btn variant="primary" className="w-full" onClick={sendForSignature} disabled={sending}>
+              {sending ? "Sending…" : "Send for Signature"}
+            </Btn>
+          </div>
+        )}
 
-  {/* Signer Status */}
-  <div>
-  <div className="text-sm font-semibold text-neutral-700 mb-2">Signatures</div>
-  {signers.length === 0 && (
-  <div className="text-center py-4">
-  <div className="text-sm text-neutral-400 mb-3">No signature requests yet</div>
-  <Btn onClick={initSignatureRequest}>Send for Signature</Btn>
-  </div>
-  )}
-  {signers.map(s => (
-  <div key={s.id} className={"flex items-center justify-between px-3 py-2 rounded-lg mb-2 " + (s.status === "signed" ? "bg-positive-50 border border-positive-200" : "bg-warn-50 border border-warn-200")}>
-  <div>
-  <div className="text-sm font-medium text-neutral-800">{s.signer_name}</div>
-  <div className="text-xs text-neutral-400 capitalize">{s.signer_role}</div>
-  </div>
-  <div className="flex items-center gap-2">
-  {s.status === "signed" ? (
-  <div className="text-right">
-  <span className={"text-xs font-bold px-2 py-0.5 rounded-full " + (s.verified_server_side ? "text-positive-700 bg-positive-100" : "text-warn-700 bg-warn-100")}>{s.verified_server_side ? "🔒 Verified" : "✓ Signed"}</span>
-  <div className="text-xs text-neutral-400 mt-0.5">{new Date(s.signed_at).toLocaleDateString()}</div>
-  {s.integrity_hash && <div className="text-xs text-neutral-300 font-mono mt-0.5">{s.integrity_hash.slice(0, 12)}...</div>}
-  </div>
-  ) : (
-  <span className="text-xs font-bold text-warn-700 bg-warn-100 px-2 py-0.5 rounded-full">Pending</span>
-  )}
-  </div>
-  </div>
-  ))}
-  </div>
+        {doc && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-semibold text-neutral-700">Signer progress</div>
+              {allSigned ? (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-success-100 text-success-700">✓ Fully signed</span>
+              ) : (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-brand-100 text-brand-700">Awaiting signatures</span>
+              )}
+            </div>
+            <div className="space-y-2">
+              {sigs.map(s => {
+                const cls = s.status === "signed" ? "bg-positive-50 border-positive-200"
+                  : s.status === "viewed" ? "bg-brand-50 border-brand-200"
+                  : s.status === "sent" ? "bg-warn-50 border-warn-200"
+                  : "bg-neutral-50 border-neutral-200";
+                return (
+                  <div key={s.id} className={"flex items-center justify-between px-3 py-2 rounded-lg border " + cls}>
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-neutral-800 truncate">{s.signer_name || s.signer_email}</div>
+                      <div className="text-xs text-neutral-400 capitalize">{(s.signer_role || "").replace(/_/g, " ")} · {s.signer_email}</div>
+                      {s.signed_at && <div className="text-[10px] text-neutral-400 mt-0.5">Signed {new Date(s.signed_at).toLocaleString()}{s.integrity_hash ? " · " + s.integrity_hash.slice(0, 12) + "…" : ""}</div>}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {s.status === "signed" ? (
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full text-positive-700 bg-positive-100">🔒 Signed</span>
+                      ) : (
+                        <>
+                          <button onClick={() => copySignerLink(s)} className="text-xs text-brand-600 hover:underline px-1.5 py-0.5" title="Copy signing link">Copy link</button>
+                          <button onClick={() => resendSignerEmail(s)} className="text-xs text-neutral-500 hover:text-brand-700 hover:underline px-1.5 py-0.5" title="Resend signing email">Resend</button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
 
-  {/* Signing Pad - show for pending signers */}
-  {pendingSigners.length > 0 && !allSigned && (
-  <div className="border border-brand-100 rounded-3xl p-4">
-  <div className="text-sm font-semibold text-neutral-700 mb-2">Sign as: {pendingSigners[0].signer_name} ({pendingSigners[0].signer_role})</div>
+            {envelopeOpen && (
+              <p className="text-[10px] text-neutral-400 mt-3">
+                Signers receive a unique link per role. Signatures are verified server-side; IP, user-agent, and a SHA-256 integrity hash are captured at signing time.
+              </p>
+            )}
 
-  <div className="flex gap-2 mb-3">
-  <button onClick={() => setSignMethod("draw")} className={"text-xs px-3 py-1.5 rounded-lg font-medium " + (signMethod === "draw" ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-500")}>Draw Signature</button>
-  <button onClick={() => setSignMethod("type")} className={"text-xs px-3 py-1.5 rounded-lg font-medium " + (signMethod === "type" ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-500")}>Type Name</button>
-  </div>
-
-  {signMethod === "draw" ? (
-  <div>
-  <div className="border-2 border-dashed border-brand-200 rounded-lg bg-white relative mb-2">
-  <canvas ref={canvasRef} width={400} height={120}
-  onMouseDown={startDraw} onMouseMove={draw} onMouseUp={endDraw} onMouseLeave={endDraw}
-  onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={endDraw}
-  className="w-full cursor-crosshair" style={{ touchAction: "none" }} />
-  <div className="absolute bottom-1 left-3 text-xs text-neutral-300">Sign above this line</div>
-  </div>
-  <Btn variant="ghost" size="xs" onClick={clearCanvas}>Clear</Btn>
-  </div>
-  ) : (
-  <div>
-  <input value={typedName} onChange={e => setTypedName(e.target.value)} placeholder="Type your full legal name"
-  className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm mb-1" />
-  {typedName && <div className="text-2xl text-brand-800 italic font-serif py-2 px-3 bg-brand-50/30 rounded-lg">{typedName}</div>}
-  </div>
-  )}
-
-  <div className="flex items-start gap-2 mt-3 mb-3 bg-warn-50 rounded-lg p-2">
-  <input type="checkbox" checked={consentAgreed} onChange={(e) => setConsentAgreed(e.target.checked)} className="mt-1" />
-  <label className="text-xs text-neutral-500">I agree that my electronic signature is the legal equivalent of my manual/handwritten signature and I consent to be legally bound by this lease agreement.</label>
-  </div>
-
-  <button onClick={() => {
-  if (!consentAgreed) { showToast("You must agree to the electronic signature consent before signing.", "error"); return; }
-  // Verify current user is authorized to sign as this signer
-  const signer = pendingSigners[0];
-  if (signer.signer_email && userProfile?.email && signer.signer_email.toLowerCase() !== userProfile.email.toLowerCase()) {
-  showToast("You are signed in as " + userProfile.email + " but this signature is for " + signer.signer_email + ". Please sign in with the correct account.", "warning");
-  return;
-  }
-  submitSignature(signer);
-  }} disabled={signing || !consentAgreed}
-  className={"w-full py-2.5 rounded-lg text-white font-semibold text-sm " + (signing || !consentAgreed ? "bg-neutral-400 cursor-not-allowed" : "bg-brand-600 hover:bg-brand-700")}>
-  {signing ? "Signing..." : !consentAgreed ? "Agree to terms above to sign" : "Apply Signature"}
-  </button>
-  </div>
-  )}
-
-  {allSigned && (
-  <div className="bg-positive-50 border border-positive-200 rounded-3xl p-4 text-center">
-  <div className="text-2xl mb-1">✅</div>
-  <div className="text-sm font-bold text-positive-700">Lease Fully Signed</div>
-  <div className="text-xs text-positive-600">All parties have signed this lease agreement.</div>
-  </div>
-  )}
-  </div>
-  </Modal>
+            {allSigned && (
+              <div className="bg-positive-50 border border-positive-200 rounded-2xl p-3 mt-3 text-center">
+                <div className="text-sm font-bold text-positive-700">Lease fully executed</div>
+                <div className="text-xs text-positive-600 mt-1">Download the signed document and certificate of completion from the Documents tab → History.</div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 
