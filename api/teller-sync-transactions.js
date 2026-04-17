@@ -120,10 +120,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ synced: 0, message: "No active Teller connections" });
     }
 
-    let totalAdded = 0;
-    let totalErrors = 0;
-
-    for (const conn of connections) {
+    async function syncOneConnection(conn) {
       // Create sync event
       const { data: syncEvent } = await supabase
         .from("plaid_sync_event")
@@ -250,9 +247,8 @@ module.exports = async function handler(req, res) {
           .update({ completed_at: new Date().toISOString(), added_count: added, status: "success" })
           .eq("id", syncEvent?.id);
 
-        totalAdded += added;
+        return { added, error: null };
       } catch (e) {
-        totalErrors++;
         await supabase
           .from("plaid_sync_event")
           .update({ completed_at: new Date().toISOString(), status: "failed", error_json: { message: e.message } })
@@ -264,8 +260,25 @@ module.exports = async function handler(req, res) {
             .update({ connection_status: "errored", last_error_message: e.message })
             .eq("id", conn.id);
         }
+        return { added: 0, error: e.message };
       }
     }
+
+    // Run connections in parallel with a concurrency cap. One slow/stuck
+    // institution no longer blocks the rest of the tenants' syncs.
+    const results = new Array(connections.length);
+    let cursor = 0;
+    async function worker() {
+      while (cursor < connections.length) {
+        const i = cursor++;
+        results[i] = await syncOneConnection(connections[i]);
+      }
+    }
+    await Promise.all(
+      Array.from({ length: Math.min(CRON_CONCURRENCY, connections.length) }, worker)
+    );
+    const totalAdded = results.reduce((s, r) => s + (r?.added || 0), 0);
+    const totalErrors = results.filter((r) => r?.error).length;
 
     return res.status(200).json({ connections_processed: connections.length, total_added: totalAdded, errors: totalErrors });
   } catch (e) {
