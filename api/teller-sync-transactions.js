@@ -6,6 +6,8 @@ const { createClient } = require("@supabase/supabase-js");
 
 const TELLER_API = "https://api.teller.io";
 const CRON_SECRET = process.env.CRON_SECRET || "";
+const FETCH_TIMEOUT_MS = 25000;
+const CRON_CONCURRENCY = 3;
 
 // Decrypt AES-GCM
 function decrypt(encryptedB64, ivHex, companyId) {
@@ -60,6 +62,9 @@ function tellerFetch(url, accessToken) {
       r.on("end", () => resolve({ ok: r.statusCode >= 200 && r.statusCode < 300, status: r.statusCode, body }));
     });
     req.on("error", reject);
+    req.setTimeout(FETCH_TIMEOUT_MS, () => {
+      req.destroy(new Error(`Teller request timeout after ${FETCH_TIMEOUT_MS}ms`));
+    });
     req.end();
   });
 }
@@ -105,8 +110,9 @@ module.exports = async function handler(req, res) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    // Get active Teller connections
-    let query = supabase.from("bank_connection").select("*").eq("connection_status", "active").eq("source_type", "teller");
+    // Include 'errored' so transient Teller failures (504s etc.) auto-retry on next run.
+    // 'needs_reauth' is excluded — that requires the user to re-link.
+    let query = supabase.from("bank_connection").select("*").in("connection_status", ["active", "errored"]).eq("source_type", "teller");
     if (companyFilter) query = query.eq("company_id", companyFilter);
     const { data: connections } = await query;
 
