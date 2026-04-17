@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader, IconBtn } from "../ui";
+import { Input, Select, Btn, PageHeader, IconBtn } from "../ui";
 import { formatLocalDate, shortId, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, formatCurrency, getSignedUrl, sanitizeFileName, buildAddress, escapeHtml, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { Spinner, Modal, PropertyDropdown, PropertySelect } from "./shared";
+import RichTextEditor from "./RichTextEditor";
 
 // ============ DOCUMENTS ============
 function Documents({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
@@ -1170,19 +1171,20 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </>
   ) : (
   <>
-  {/* HTML body editor + preview (existing) */}
+  {/* HTML body editor + preview — TipTap WYSIWYG */}
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5 flex flex-col">
   <div className="flex items-center justify-between mb-2">
-  <h3 className="font-manrope font-bold text-neutral-700">Document Body (HTML + Merge Fields)</h3>
-  {templateForm.fields.length > 0 && (
-  <div className="flex gap-1 flex-wrap max-w-[60%]">
-  {templateForm.fields.filter(f => f.name).map(f => (
-  <button key={f.name} onClick={() => insertMergeField(f.name)} className="text-[10px] bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full hover:bg-brand-200">{"{{}}" + f.label}</button>
-  ))}
+  <h3 className="font-manrope font-bold text-neutral-700">Document Body</h3>
+  <span className="text-[10px] text-neutral-400">Use the toolbar to format &middot; Insert merge fields via the chip row</span>
   </div>
-  )}
-  </div>
-  <Textarea value={templateForm.body} onChange={e => setTemplateForm({...templateForm, body: e.target.value})} className="text-xs font-mono flex-1 min-h-[400px]" rows={30} placeholder='<h1>Document Title</h1>\n<p>Dear {{tenant_name}},</p>\n<p>Your rent at {{property_address}} is...</p>' />
+  <RichTextEditor
+  key={editingTemplate?.id || "new-template"}
+  value={templateForm.body}
+  onChange={html => setTemplateForm(prev => ({ ...prev, body: html }))}
+  mergeFields={templateForm.fields}
+  placeholder="Start typing… use {{tenant_name}}, {{property_address}} etc. for merge fields."
+  minHeight="400px"
+  />
   </div>
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
   <h3 className="font-manrope font-bold text-neutral-700 mb-2">Preview</h3>
