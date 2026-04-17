@@ -10,6 +10,132 @@ import { queueNotification } from "../utils/notifications";
 import { safeLedgerInsert, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, _classIdCache, _acctIdCache, _tenantArCache, lookupZip } from "../utils/accounting";
 import { Badge, Spinner, Modal, RecurringEntryModal, DocUploadModal, formatAllTenants } from "./shared";
 
+const LICENSE_TYPE_OPTIONS = [
+  { value: "rental_license", label: "Rental License" },
+  { value: "rental_registration", label: "Rental Registration" },
+  { value: "lead_paint", label: "Lead Paint Certificate" },
+  { value: "lead_risk_assessment", label: "Lead Risk Assessment" },
+  { value: "fire_inspection", label: "Fire Inspection Certificate" },
+  { value: "bbl", label: "Business License (DC BBL)" },
+  { value: "other", label: "Other" },
+];
+const LICENSE_TYPE_LABELS = LICENSE_TYPE_OPTIONS.reduce((m, o) => { m[o.value] = o.label; return m; }, {});
+
+function LicenseFormModal({ license, propertyId, propertyAddress, companyId, userProfile, userRole, showToast, showConfirm, onClose, onSaved }) {
+  const isEdit = !!license;
+  const [form, setForm] = useState({
+    license_type: license?.license_type || "rental_license",
+    license_type_custom: license?.license_type_custom || "",
+    license_number: license?.license_number || "",
+    jurisdiction: license?.jurisdiction || "",
+    issue_date: license?.issue_date || "",
+    expiry_date: license?.expiry_date || "",
+    fee_amount: license?.fee_amount ?? "",
+    status: license?.status || "active",
+    notes: license?.notes || "",
+  });
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    if (!form.expiry_date) { showToast("Expiry date is required", "error"); return; }
+    if (form.license_type === "other" && !form.license_type_custom.trim()) { showToast("Please describe the license type", "error"); return; }
+    if (!guardSubmit("licSave", license?.id || "new")) return;
+    setSaving(true);
+    try {
+      const payload = {
+        company_id: companyId,
+        property_id: propertyId,
+        license_type: form.license_type,
+        license_type_custom: form.license_type === "other" ? form.license_type_custom.trim() : null,
+        license_number: form.license_number.trim() || null,
+        jurisdiction: form.jurisdiction.trim() || null,
+        issue_date: form.issue_date || null,
+        expiry_date: form.expiry_date,
+        fee_amount: form.fee_amount === "" ? null : safeNum(form.fee_amount),
+        status: form.status,
+        notes: form.notes.trim() || null,
+      };
+      if (isEdit) {
+        const { error } = await supabase.from("property_licenses").update(payload).eq("id", license.id).eq("company_id", companyId);
+        if (error) { pmError("PM-2002", { raw: error, context: "license update" }); return; }
+        showToast("License updated", "success");
+        logAudit("update", "property_licenses", `Updated license: ${LICENSE_TYPE_LABELS[form.license_type] || form.license_type_custom}`, license.id, userProfile?.email, userRole, companyId);
+      } else {
+        payload.created_by = userProfile?.email || null;
+        const { error } = await supabase.from("property_licenses").insert([payload]);
+        if (error) { pmError("PM-2002", { raw: error, context: "license insert" }); return; }
+        showToast("License added", "success");
+        logAudit("create", "property_licenses", `Added license at ${propertyAddress}: ${LICENSE_TYPE_LABELS[form.license_type] || form.license_type_custom}`, "", userProfile?.email, userRole, companyId);
+      }
+      onSaved();
+      onClose();
+    } finally {
+      setSaving(false);
+      guardRelease("licSave", license?.id || "new");
+    }
+  }
+
+  return (
+    <Modal title={isEdit ? "Edit License" : "Add License"} onClose={onClose}>
+      <div className="space-y-3">
+        <div className="text-xs text-neutral-400">Property: <span className="font-semibold text-neutral-600">{propertyAddress}</span></div>
+        <div>
+          <label className="text-xs font-medium text-neutral-400 block mb-1">License Type *</label>
+          <Select value={form.license_type} onChange={e => setForm({ ...form, license_type: e.target.value })}>
+            {LICENSE_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </Select>
+        </div>
+        {form.license_type === "other" && (
+          <div>
+            <label className="text-xs font-medium text-neutral-400 block mb-1">Describe *</label>
+            <Input value={form.license_type_custom} onChange={e => setForm({ ...form, license_type_custom: e.target.value })} placeholder="e.g. Short-term Rental Permit" />
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-neutral-400 block mb-1">License Number</label>
+            <Input value={form.license_number} onChange={e => setForm({ ...form, license_number: e.target.value })} placeholder="e.g. RLC-2026-4812" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-neutral-400 block mb-1">Jurisdiction</label>
+            <Input value={form.jurisdiction} onChange={e => setForm({ ...form, jurisdiction: e.target.value })} placeholder="e.g. Fairfax County, VA" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-neutral-400 block mb-1">Issue Date</label>
+            <Input type="date" value={form.issue_date} onChange={e => setForm({ ...form, issue_date: e.target.value })} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-neutral-400 block mb-1">Expiry Date *</label>
+            <Input type="date" value={form.expiry_date} onChange={e => setForm({ ...form, expiry_date: e.target.value })} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-neutral-400 block mb-1">Fee Paid</label>
+            <Input type="number" step="0.01" value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} placeholder="e.g. 150.00" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-neutral-400 block mb-1">Status</label>
+            <Select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
+              <option value="active">Active</option>
+              <option value="pending_renewal">Pending Renewal</option>
+              <option value="expired">Expired</option>
+              <option value="revoked">Revoked</option>
+            </Select>
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-neutral-400 block mb-1">Notes</label>
+          <Textarea rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Renewal reminders, lead paint exemption, etc." />
+        </div>
+        <Btn className="w-full" onClick={handleSave} disabled={saving}>{saving ? "Saving..." : (isEdit ? "Save Changes" : "Add License")}</Btn>
+      </div>
+    </Modal>
+  );
+}
+
 function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, userRole, onComplete, onDismiss }) {
   // wizardData: { propertyId, address, isOccupied, tenant, rent, leaseStart, leaseEnd, securityDeposit }
   const [step, setStep] = useState(1);
@@ -1652,7 +1778,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   setSelectedProperty(p);
   setPropertyDetailTab("overview");
   setHistoricalTenantDetail(null);
-  const [docsRes, wosRes, archivedTenantsRes, terminatedLeasesRes, utilRes, hoaRes, loanRes, insRes] = await Promise.all([
+  const [docsRes, wosRes, archivedTenantsRes, terminatedLeasesRes, utilRes, hoaRes, loanRes, insRes, licRes] = await Promise.all([
   supabase.from("documents").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100),
   supabase.from("work_orders").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null).order("created", { ascending: false }).limit(100),
   supabase.from("tenants").select("*").eq("company_id", companyId).eq("property", p.address).not("archived_at", "is", null).order("archived_at", { ascending: false }),
@@ -1661,6 +1787,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null),
   supabase.from("property_loans").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null),
   supabase.from("property_insurance").select("*").eq("company_id", companyId).eq("property", p.address).is("archived_at", null),
+  supabase.from("property_licenses").select("*").eq("company_id", companyId).eq("property_id", p.id).is("archived_at", null).order("expiry_date", { ascending: true }),
   ]);
   setPropertyDocs(docsRes.data || []);
   setPropertyWorkOrders(wosRes.data || []);
@@ -1668,6 +1795,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   setPropertyHoas(hoaRes.data || []);
   setPropertyLoans(loanRes.data || []);
   setPropertyInsurance(insRes.data || []);
+  setPropertyLicenses(licRes.data || []);
   // Combine archived tenants + terminated lease tenants, deduplicate by name
   const archivedTenants = archivedTenantsRes.data || [];
   const terminatedLeases = terminatedLeasesRes.data || [];
@@ -2199,6 +2327,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const [propertyHoas, setPropertyHoas] = useState([]);
   const [propertyLoans, setPropertyLoans] = useState([]);
   const [propertyInsurance, setPropertyInsurance] = useState([]);
+  const [propertyLicenses, setPropertyLicenses] = useState([]);
+  const [showLicenseForm, setShowLicenseForm] = useState(null); // null | { license? , propertyId, propertyAddress }
   const [historicalTenantDetail, setHistoricalTenantDetail] = useState(null); // { tenant, ledger, docs, messages, leases, activeTab }
   const [pmCode, setPmCode] = useState("");
   const [incompleteWizards, setIncompleteWizards] = useState([]);
@@ -2460,8 +2590,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   {/* Tab Navigation */}
   <div className="flex border-b border-neutral-200 px-6 overflow-x-auto">
-  {[["overview","Details"],["documents","Documents"],["workorders","Work Orders"],["history","History"]].map(([id, label]) => (
-  <button key={id} onClick={() => { setPropertyDetailTab(id); if (id === "history") setHistoricalTenantDetail(null); }} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + (propertyDetailTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}{id === "documents" ? ` (${propertyDocs.length})` : id === "workorders" ? ` (${propertyWorkOrders.length})` : id === "history" ? ` (${historicalTenants.length})` : ""}</button>
+  {[["overview","Details"],["documents","Documents"],["licenses","Licenses"],["workorders","Work Orders"],["history","History"]].map(([id, label]) => (
+  <button key={id} onClick={() => { setPropertyDetailTab(id); if (id === "history") setHistoricalTenantDetail(null); }} className={"px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap " + (propertyDetailTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}{id === "documents" ? ` (${propertyDocs.length})` : id === "licenses" ? ` (${propertyLicenses.length})` : id === "workorders" ? ` (${propertyWorkOrders.length})` : id === "history" ? ` (${historicalTenants.length})` : ""}</button>
   ))}
   </div>
 
@@ -2619,6 +2749,85 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   </div>
   ))}
+  </div>
+  )}
+  </div>
+  )}
+
+  {/* Licenses Tab */}
+  {propertyDetailTab === "licenses" && (
+  <div className="px-6 py-4">
+  <div className="flex items-center justify-between mb-3">
+  <div>
+  <div className="text-sm font-semibold text-neutral-700">Rental Licenses & Permits</div>
+  <div className="text-xs text-neutral-400 mt-0.5">Track license numbers, jurisdictions, and expiry dates</div>
+  </div>
+  <Btn variant="primary" size="sm" onClick={() => setShowLicenseForm({ propertyId: selectedProperty.id, propertyAddress: selectedProperty.address })}><span className="material-icons-outlined text-sm">add</span>Add License</Btn>
+  </div>
+  {propertyLicenses.length === 0 ? (
+  <div className="text-center py-8">
+  <span className="material-icons-outlined text-4xl text-neutral-300 mb-2">verified</span>
+  <div className="text-sm text-neutral-400">No licenses on file</div>
+  <div className="text-xs text-neutral-400 mt-1">Add rental licenses, lead paint certs, fire inspections, etc.</div>
+  </div>
+  ) : (
+  <div className="space-y-2">
+  {propertyLicenses.map(lic => {
+  const today = new Date();
+  const expiry = new Date(lic.expiry_date + "T00:00:00");
+  const daysLeft = Math.floor((expiry - today) / 86400000);
+  const isExpired = daysLeft < 0;
+  const isUrgent = daysLeft >= 0 && daysLeft <= 30;
+  const isSoon = daysLeft > 30 && daysLeft <= 90;
+  const badgeColor = isExpired ? "bg-danger-100 text-danger-700 border-danger-200"
+    : isUrgent ? "bg-amber-100 text-amber-700 border-amber-200"
+    : isSoon ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+    : "bg-emerald-50 text-emerald-700 border-emerald-200";
+  const statusLabel = isExpired ? `Expired ${-daysLeft}d ago` : daysLeft === 0 ? "Expires today" : `${daysLeft}d left`;
+  const typeLabel = LICENSE_TYPE_LABELS[lic.license_type] || lic.license_type_custom || lic.license_type;
+  return (
+  <div key={lic.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3">
+  <div className="flex-1 min-w-0">
+  <div className="flex items-center gap-2 flex-wrap">
+  <div className="text-sm font-medium text-neutral-700">{typeLabel}</div>
+  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${badgeColor}`}>{statusLabel}</span>
+  {lic.status === "pending_renewal" && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-brand-50 text-brand-700 border-brand-200">Renewal filed</span>}
+  </div>
+  <div className="text-xs text-neutral-400 mt-0.5">
+  {lic.license_number && <span>#{lic.license_number}</span>}
+  {lic.jurisdiction && <span>{lic.license_number ? " · " : ""}{lic.jurisdiction}</span>}
+  <span>{(lic.license_number || lic.jurisdiction) ? " · " : ""}Expires {lic.expiry_date}</span>
+  </div>
+  </div>
+  <div className="flex items-center gap-2 shrink-0">
+  {lic.status !== "pending_renewal" && !isExpired && (
+  <button onClick={async () => {
+  if (!guardSubmit("licRenew", lic.id)) return;
+  try {
+  const { error } = await supabase.from("property_licenses").update({ status: "pending_renewal" }).eq("id", lic.id).eq("company_id", companyId);
+  if (error) { pmError("PM-2002", { raw: error, context: "license mark pending renewal" }); return; }
+  showToast("Marked as pending renewal", "success");
+  logAudit("update", "property_licenses", `Marked license pending renewal: ${typeLabel}`, lic.id, userProfile?.email, userRole, companyId);
+  setPropertyLicenses(propertyLicenses.map(l => l.id === lic.id ? { ...l, status: "pending_renewal" } : l));
+  } finally { guardRelease("licRenew", lic.id); }
+  }} className="text-xs text-brand-600 hover:underline" title="Mark as pending renewal">Renew</button>
+  )}
+  <button onClick={() => setShowLicenseForm({ license: lic, propertyId: selectedProperty.id, propertyAddress: selectedProperty.address })} className="text-xs text-neutral-500 hover:text-neutral-700 flex items-center gap-0.5"><span className="material-icons-outlined text-sm">edit</span>Edit</button>
+  <button onClick={async () => {
+  if (!guardSubmit("licDel", lic.id)) return;
+  try {
+  if (!await showConfirm({ message: `Archive license "${typeLabel}"?\n\nIt can be restored within 180 days.`, variant: "danger", confirmText: "Archive" })) return;
+  const { error } = await supabase.from("property_licenses").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", lic.id).eq("company_id", companyId);
+  if (error) { pmError("PM-2003", { raw: error, context: "license archive" }); return; }
+  showToast("License archived", "success");
+  logAudit("delete", "property_licenses", `Archived license: ${typeLabel}`, lic.id, userProfile?.email, userRole, companyId);
+  setPropertyLicenses(propertyLicenses.filter(l => l.id !== lic.id));
+  } finally { guardRelease("licDel", lic.id); }
+  }} className="text-xs text-danger-500 hover:text-danger-600 flex items-center gap-0.5"><span className="material-icons-outlined text-sm">delete</span>Archive</button>
+  </div>
+  </div>
+  );
+  })}
   </div>
   )}
   </div>
@@ -3054,6 +3263,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   )}
   {showPropertyWizard && <PropertySetupWizard wizardData={showPropertyWizard} companyId={companyId} showToast={showToast} userProfile={userProfile} userRole={userRole} onComplete={() => { setShowPropertyWizard(null); setPendingRecurringEntry(null); fetchProperties(); showToast("Property setup complete!", "success"); }} onDismiss={() => { setShowPropertyWizard(null); setPendingRecurringEntry(null); fetchProperties(); }} />}
   {pendingRecurringEntry && <RecurringEntryModal entry={pendingRecurringEntry} companyId={companyId} showToast={showToast} onComplete={() => setPendingRecurringEntry(null)} />}
+  {showLicenseForm && <LicenseFormModal license={showLicenseForm.license} propertyId={showLicenseForm.propertyId} propertyAddress={showLicenseForm.propertyAddress} companyId={companyId} userProfile={userProfile} userRole={userRole} showToast={showToast} showConfirm={showConfirm} onClose={() => setShowLicenseForm(null)} onSaved={async () => { if (selectedProperty) { const { data } = await supabase.from("property_licenses").select("*").eq("company_id", companyId).eq("property_id", selectedProperty.id).is("archived_at", null).order("expiry_date", { ascending: true }); setPropertyLicenses(data || []); } }} />}
   </div>
   );
 }
