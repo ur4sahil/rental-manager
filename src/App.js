@@ -37,6 +37,7 @@ import { HOAPayments } from "./components/HOA";
 import { Loans } from "./components/Loans";
 import { InsuranceTracker } from "./components/Insurance";
 import { LateFees } from "./components/LateFees";
+import PublicSignPage from "./components/PublicSignPage";
 
 // ============ SENTRY INITIALIZATION ============
 Sentry.init({
@@ -846,5 +847,12 @@ function AppInner() {
 }
 
 export default function App() {
+  // Intercept the public signing route before any auth bootstrapping so anon
+  // signers never trigger company/role lookups or landing redirects.
+  const path = typeof window !== "undefined" ? window.location.pathname : "";
+  if (path.startsWith("/sign/")) {
+    const token = path.slice("/sign/".length).split(/[?#]/)[0];
+    return <ErrorBoundary><PublicSignPage token={token} /></ErrorBoundary>;
+  }
   return <ErrorBoundary><AppInner /></ErrorBoundary>;
 }
