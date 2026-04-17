@@ -148,6 +148,27 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
           }
           // No completed wizard found — create one with existing property data pre-filled
         }
+        // For existing properties, load data from DB to pre-fill
+        if (wizardData.propertyId) {
+          const { data: existProp } = await supabase.from("properties").select("*").eq("id", wizardData.propertyId).eq("company_id", companyId).maybeSingle();
+          if (existProp) {
+            const filledProp = { ...propForm, address_line_1: existProp.address_line_1 || existProp.address || "", address_line_2: existProp.address_line_2 || "", city: existProp.city || "", state: existProp.state || "", zip: existProp.zip || "", type: existProp.type || "Single Family", status: existProp.status || "vacant", notes: existProp.notes || "" };
+            setPropForm(filledProp);
+            setSavedPropertyId(wizardData.propertyId);
+            setSavedAddress(existProp.address);
+            // Load related data
+            const [utilRes, hoaRes, loanRes, insRes] = await Promise.all([
+              supabase.from("utilities").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
+              supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
+              supabase.from("property_loans").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
+              supabase.from("property_insurance").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
+            ]);
+            if (utilRes.data?.length) setUtilities(utilRes.data.map(u => ({ provider: u.provider, type: u.type, account_number: u.account_number || "", due_date: u.due_date || "", responsibility: u.responsibility || "owner_pays", website: u.website || "", username: u.username || "", password: u.password || "" })));
+            if (hoaRes.data?.length) setHoas(hoaRes.data.map(h => ({ enabled: true, hoa_name: h.hoa_name || h.name || "", amount: h.amount || "", due_date: h.due_date || "", frequency: h.frequency || "Monthly", notes: h.notes || "", website: h.website || "", username: h.username || "", password: h.password || "" })));
+            if (loanRes.data?.[0]) { const l = loanRes.data[0]; setLoan({ enabled: true, lender_name: l.lender_name || "", loan_type: l.loan_type || "Conventional", original_amount: l.original_amount || "", current_balance: l.current_balance || "", interest_rate: l.interest_rate || "", monthly_payment: l.monthly_payment || "", escrow_included: l.escrow_included || false, escrow_amount: l.escrow_amount || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", notes: l.notes || "", setup_recurring: false }); }
+            if (insRes.data?.[0]) { const i = insRes.data[0]; setInsurance({ enabled: true, provider: i.provider || "", policy_number: i.policy_number || "", premium_amount: i.premium_amount || "", premium_frequency: i.premium_frequency || "Annual", coverage_amount: i.coverage_amount || "", expiration_date: i.expiration_date || "", notes: i.notes || "" }); }
+          }
+        }
         // Create new wizard entry
         const { data: created, error } = await supabase.from("property_setup_wizard").insert([{
           company_id: companyId,
