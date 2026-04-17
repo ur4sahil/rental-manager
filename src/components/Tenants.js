@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Select, Btn, PageHeader, IconBtn } from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -925,12 +925,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* Required docs checklist */}
   <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-4">
   <div className="text-xs font-bold text-warn-800 mb-2">Required Documents</div>
-  {[
-    { label: "Signed Lease Agreement", match: ["lease"] },
-    { label: "Government-Issued ID", match: ["id", "government"] },
-    { label: "Renters Insurance", match: ["insurance"] },
-    { label: "Proof of Utility Transfer", match: ["utility"] },
-  ].map(({ label, match }) => {
+  {REQUIRED_TENANT_DOCS.map(({ label, match }) => {
   const uploaded = tenantDocs.some(d => {
     const n = (d.name || "").toLowerCase();
     const t = (d.type || "").toLowerCase();
@@ -963,6 +958,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (!await showConfirm({ message: `Delete document "${d.name}"?\n\nThis will remove the document from active views. It can be recovered within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from("documents").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", d.id).eq("company_id", companyId);
   if (error) { pmError("PM-7004", { raw: error, context: "delete document" }); return; }
+  if (selectedTenant?.name) await recomputeTenantDocStatus(companyId, selectedTenant.name);
   showToast("Document deleted: " + d.name, "success");
   logAudit("delete", "documents", "Deleted document: " + d.name + " (tenant: " + (selectedTenant?.name || "") + ")", d.id, userProfile?.email, userRole, companyId);
   fetchTenantDocs(selectedTenant);

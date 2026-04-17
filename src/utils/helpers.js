@@ -104,6 +104,54 @@ export function formatPhoneInput(value) {
   return "";
 }
 
+// Canonical list of required docs per tenant. The match keywords are tested as
+// case-insensitive substrings against both document.name and document.type.
+// A doc counts as satisfying a requirement if ANY of its keywords matches.
+export const REQUIRED_TENANT_DOCS = [
+  { label: "Signed Lease Agreement", match: ["lease"] },
+  { label: "Government-Issued ID", match: ["id", "government"] },
+  { label: "Renters Insurance", match: ["insurance"] },
+  { label: "Proof of Utility Transfer", match: ["utility"] },
+];
+
+// True if the given list of documents covers every REQUIRED_TENANT_DOCS entry.
+export function hasAllRequiredTenantDocs(docs) {
+  return REQUIRED_TENANT_DOCS.every(({ match }) =>
+    (docs || []).some(d => {
+      const n = (d?.name || "").toLowerCase();
+      const t = (d?.type || "").toLowerCase();
+      return match.some(m => n.includes(m) || t.includes(m));
+    })
+  );
+}
+
+// Recompute and persist tenants.doc_status based on the tenant's current documents.
+// - Preserves "exception_approved" (admin-approved override)
+// - Otherwise sets "complete" when all required docs are present, else "pending_docs"
+export async function recomputeTenantDocStatus(companyId, tenantName) {
+  if (!companyId || !tenantName) return;
+  const { data: rows } = await supabase
+    .from("tenants")
+    .select("id, doc_status")
+    .eq("company_id", companyId)
+    .ilike("name", tenantName)
+    .is("archived_at", null);
+  const targets = (rows || []).filter(r => r.doc_status !== "exception_approved");
+  if (targets.length === 0) return;
+  const { data: docs } = await supabase
+    .from("documents")
+    .select("name, type")
+    .eq("company_id", companyId)
+    .ilike("tenant", tenantName)
+    .is("archived_at", null);
+  const nextStatus = hasAllRequiredTenantDocs(docs) ? "complete" : "pending_docs";
+  await supabase
+    .from("tenants")
+    .update({ doc_status: nextStatus })
+    .in("id", targets.map(r => r.id))
+    .eq("company_id", companyId);
+}
+
 export function sanitizeFileName(name) {
   if (!name) return "file";
   return String(name).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100);

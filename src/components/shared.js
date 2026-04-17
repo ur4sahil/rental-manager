@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { Input, Btn } from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, sanitizeFileName, escapeHtml, escapeFilterValue, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, statusColors } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, sanitizeFileName, escapeHtml, escapeFilterValue, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, statusColors, recomputeTenantDocStatus } from "../utils/helpers";
 import { pmError, reportError, logErrorToSupabase } from "../utils/errors";
 import { getOrCreateTenantAR, resolveAccountId } from "../utils/accounting";
 
@@ -297,10 +297,7 @@ export function DocUploadModal({ onClose, companyId, property, tenant, showToast
   tenant_visible: form.tenant_visible, uploaded_at: new Date().toISOString(),
   }]);
   if (insertErr) { pmError("PM-7003", { raw: insertErr, context: "document record insert after upload" }); setUploading(false); return; }
-  // Update tenant doc_status to complete when a doc is uploaded for them
-  if (tenant) {
-  await supabase.from("tenants").update({ doc_status: "complete" }).eq("company_id", companyId).ilike("name", escapeFilterValue(tenant)).eq("doc_status", "pending_docs");
-  }
+  if (tenant) await recomputeTenantDocStatus(companyId, tenant);
   showToast("Document uploaded", "success");
   setUploading(false);
   if (onUploaded) onUploaded();
