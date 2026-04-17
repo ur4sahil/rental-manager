@@ -225,7 +225,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   // Template editor
   const [editingTemplate, setEditingTemplate] = useState(null);
-  const [templateForm, setTemplateForm] = useState({ name: "", category: "general", description: "", body: "", fields: [], field_config: {}, template_type: "html", pdf_storage_path: "", pdf_page_count: 0, pdf_field_placements: [] });
+  const [templateForm, setTemplateForm] = useState({ name: "", category: "general", description: "", body: "", fields: [], field_config: {}, template_type: "html", pdf_storage_path: "", pdf_page_count: 0, pdf_field_placements: [], signing_mode: "none", signer_roles: [] });
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
 
   // PDF overlay state
@@ -973,7 +973,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="grid grid-cols-3 gap-2 mb-2">
   <Input value={f.label} onChange={e => updateField(i, "label", e.target.value)} placeholder="Label" className="text-xs" />
   <Select value={f.type} onChange={e => updateField(i, "type", e.target.value)} className="text-xs">
-  {["text","textarea","number","currency","date","checkbox","select","address_block","signature_placeholder"].map(t => <option key={t} value={t}>{t}</option>)}
+  {["text","textarea","number","currency","date","checkbox","select","address_block","signature"].map(t => <option key={t} value={t}>{t}</option>)}
   </Select>
   <Input value={f.section || ""} onChange={e => updateField(i, "section", e.target.value)} placeholder="Section" className="text-xs" />
   </div>
@@ -988,6 +988,16 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   {f.type === "select" && (
   <Input value={(f.options || []).join(", ")} onChange={e => updateField(i, "options", e.target.value.split(",").map(s => s.trim()))} placeholder="Options (comma-separated)" className="text-xs mt-2" />
+  )}
+  {f.type === "signature" && (
+  <div className="mt-2 flex items-center gap-2">
+  <label className="text-xs text-neutral-500 shrink-0">Signer role:</label>
+  <Select value={f.signer_role || ""} onChange={e => updateField(i, "signer_role", e.target.value)} className="text-xs flex-1">
+  <option value="">— choose a signer —</option>
+  {(templateForm.signer_roles || []).map(r => <option key={r.role} value={r.role}>{r.label || r.role}</option>)}
+  </Select>
+  {(templateForm.signer_roles || []).length === 0 && <span className="text-[10px] text-warn-600">Define signer roles in the Signature Workflow section ↓</span>}
+  </div>
   )}
   <div className="text-xs text-neutral-400 mt-1">Merge tag: <code className="bg-neutral-100 px-1 rounded">{"{{" + (f.name || "field_name") + "}}"}</code></div>
   </div>
@@ -1061,6 +1071,73 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   </div>
   )}
+
+  {/* Signature Workflow */}
+  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
+  <h3 className="font-manrope font-bold text-neutral-700 mb-1">Signature Workflow</h3>
+  <p className="text-xs text-neutral-400 mb-3">Choose how this document gets signed. Each signer gets a unique magic-link email; no account required on their end.</p>
+
+  <div className="flex gap-2 mb-4">
+  {[
+    { value: "none", label: "No signing", desc: "Generate doc only" },
+    { value: "parallel", label: "Parallel", desc: "All signers at once" },
+    { value: "sequential", label: "Sequential", desc: "One after another, in order" },
+  ].map(opt => (
+    <button key={opt.value} type="button" onClick={() => setTemplateForm(prev => ({ ...prev, signing_mode: opt.value }))}
+      className={"flex-1 text-left px-3 py-2 rounded-xl border transition-colors " + (templateForm.signing_mode === opt.value ? "border-brand-500 bg-brand-50 text-brand-700" : "border-brand-100 bg-white text-neutral-500 hover:border-brand-300")}>
+      <div className="text-xs font-semibold">{opt.label}</div>
+      <div className="text-[10px] text-neutral-400 mt-0.5">{opt.desc}</div>
+    </button>
+  ))}
+  </div>
+
+  {templateForm.signing_mode !== "none" && (
+  <div className="space-y-2">
+  <div className="flex items-center justify-between mb-1">
+  <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Signer Roles</span>
+  <button type="button" onClick={() => setTemplateForm(prev => ({ ...prev, signer_roles: [...(prev.signer_roles || []), { role: "signer_" + ((prev.signer_roles || []).length + 1), label: "Signer " + ((prev.signer_roles || []).length + 1), order: (prev.signer_roles || []).length + 1, required: true }] }))} className="text-xs text-brand-600 hover:underline">+ Add signer</button>
+  </div>
+  {(templateForm.signer_roles || []).length === 0 && <p className="text-xs text-neutral-400 italic">No signers yet. Add at least one role, then use it in a signature field above.</p>}
+  {(templateForm.signer_roles || []).sort((a,b) => (a.order||0) - (b.order||0)).map((r, i) => (
+  <div key={i} className="grid grid-cols-12 gap-2 items-center bg-brand-50/30 border border-brand-50 rounded-xl p-2">
+  {templateForm.signing_mode === "sequential" && (
+  <Input size="sm" type="number" value={r.order || i + 1} onChange={e => {
+    const next = [...(templateForm.signer_roles || [])];
+    const idx = next.findIndex(x => x.role === r.role);
+    if (idx >= 0) next[idx] = { ...next[idx], order: parseInt(e.target.value, 10) || 1 };
+    setTemplateForm(prev => ({ ...prev, signer_roles: next }));
+  }} className="col-span-2 text-center" title="Sign order" />
+  )}
+  <Input size="sm" value={r.role} onChange={e => {
+    const next = [...(templateForm.signer_roles || [])];
+    const idx = next.findIndex(x => x.role === r.role);
+    if (idx >= 0) next[idx] = { ...next[idx], role: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") };
+    setTemplateForm(prev => ({ ...prev, signer_roles: next }));
+  }} placeholder="role_id" className={templateForm.signing_mode === "sequential" ? "col-span-3" : "col-span-4"} title="Stable identifier" />
+  <Input size="sm" value={r.label || ""} onChange={e => {
+    const next = [...(templateForm.signer_roles || [])];
+    const idx = next.findIndex(x => x.role === r.role);
+    if (idx >= 0) next[idx] = { ...next[idx], label: e.target.value };
+    setTemplateForm(prev => ({ ...prev, signer_roles: next }));
+  }} placeholder="Display label (e.g. Tenant)" className={templateForm.signing_mode === "sequential" ? "col-span-5" : "col-span-6"} />
+  <label className="col-span-1 flex items-center justify-center text-[10px] text-neutral-500"><input type="checkbox" checked={r.required !== false} onChange={e => {
+    const next = [...(templateForm.signer_roles || [])];
+    const idx = next.findIndex(x => x.role === r.role);
+    if (idx >= 0) next[idx] = { ...next[idx], required: e.target.checked };
+    setTemplateForm(prev => ({ ...prev, signer_roles: next }));
+  }} className="accent-brand-600 mr-1" />req</label>
+  <button type="button" onClick={() => setTemplateForm(prev => ({ ...prev, signer_roles: (prev.signer_roles || []).filter(x => x.role !== r.role) }))} className="col-span-1 text-danger-400 hover:text-danger-600 text-sm" title="Remove signer">✕</button>
+  </div>
+  ))}
+  {(templateForm.signer_roles || []).length > 0 && (
+  <div className="text-[10px] text-neutral-400 border-t border-brand-50 pt-2 mt-2">
+  Add <code className="bg-neutral-100 px-1 rounded">signature</code>-type fields above, assign each to one of these roles, and place <code className="bg-neutral-100 px-1 rounded">{"{{field_name}}"}</code> in the body where signatures should appear.
+  </div>
+  )}
+  </div>
+  )}
+  </div>
+
   </div>
 
   {/* Drag handle */}
@@ -1254,7 +1331,10 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   if (f.type === "checkbox") return (
   <label className="flex items-center gap-2"><input type="checkbox" checked={!!val} onChange={e => updateVal(f.name, e.target.checked)} className="accent-brand-600" />{f.label}</label>
   );
-  if (f.type === "signature_placeholder") return <div className="border-b-2 border-neutral-300 py-4 text-xs text-neutral-400 italic">Signature placeholder — will be available after e-sign integration</div>;
+  if (f.type === "signature" || f.type === "signature_placeholder") {
+    const roleLabel = f.signer_role ? " (" + f.signer_role + ")" : "";
+    return <div className="border-2 border-dashed border-brand-300 bg-brand-50/40 rounded-lg py-5 px-3 text-center text-xs text-brand-600 italic">Signature field{roleLabel} — will be filled when this doc is signed via the e-sign flow.</div>;
+  }
   const inputType = f.type === "date" ? "date" : f.type === "number" ? "number" : f.type === "currency" ? "text" : "text";
   const extraProps = inputType === "date" ? { min: "2000-01-01", max: "2099-12-31" } : inputType === "number" ? { step: "any" } : { maxLength: 200 };
   return <input type={inputType} value={val} onChange={e => updateVal(f.name, e.target.value)} className={base} placeholder={f.type === "currency" ? "$0.00" : ""} {...extraProps} />;
@@ -1538,7 +1618,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {tab === "templates" && (
   <div>
   <div className="flex justify-end mb-4">
-  <Btn size="sm" onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", category: "general", description: "", body: "", fields: [], field_config: {}, template_type: "html", pdf_storage_path: "", pdf_page_count: 0, pdf_field_placements: [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); }}>+ New Template</Btn>
+  <Btn size="sm" onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", category: "general", description: "", body: "", fields: [], field_config: {}, template_type: "html", pdf_storage_path: "", pdf_page_count: 0, pdf_field_placements: [], signing_mode: "none", signer_roles: [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); }}>+ New Template</Btn>
   </div>
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
   {templates.map(t => (
@@ -1553,7 +1633,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <p className="text-xs text-neutral-400 mt-2">{t.description}</p>
   <div className="text-xs text-neutral-500 mt-2">{(t.fields || []).length} fields{t.template_type === "pdf_overlay" ? " · PDF" : ""}</div>
   <div className="mt-3 flex gap-2">
-  <Btn variant="secondary" size="xs" onClick={async () => { setEditingTemplate(t); setTemplateForm({ name: t.name, category: t.category, description: t.description || "", body: t.body || "", fields: t.fields || [], field_config: t.field_config || {}, template_type: t.template_type || "html", pdf_storage_path: t.pdf_storage_path || "", pdf_page_count: t.pdf_page_count || 0, pdf_field_placements: t.pdf_field_placements || [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); if (t.template_type === "pdf_overlay" && t.pdf_storage_path) { setTimeout(async () => { const pdf = await loadPdfForPreview(t.pdf_storage_path); if (pdf) await renderPdfPages(pdf, pdfScale, pdfContainerRef.current); }, 100); } }}>Edit</Btn>
+  <Btn variant="secondary" size="xs" onClick={async () => { setEditingTemplate(t); setTemplateForm({ name: t.name, category: t.category, description: t.description || "", body: t.body || "", fields: t.fields || [], field_config: t.field_config || {}, template_type: t.template_type || "html", pdf_storage_path: t.pdf_storage_path || "", pdf_page_count: t.pdf_page_count || 0, pdf_field_placements: t.pdf_field_placements || [], signing_mode: t.signing_mode || "none", signer_roles: t.signer_roles || [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); if (t.template_type === "pdf_overlay" && t.pdf_storage_path) { setTimeout(async () => { const pdf = await loadPdfForPreview(t.pdf_storage_path); if (pdf) await renderPdfPages(pdf, pdfScale, pdfContainerRef.current); }, 100); } }}>Edit</Btn>
   <Btn variant="success-fill" size="xs" onClick={() => { setSelectedTemplate(t); setMode("blank"); setFieldValues(applyDefaults(t)); setStep("fill"); setTab("create"); }}>Use</Btn>
   <Btn variant="danger" size="xs" onClick={() => deleteTemplate(t)} className="ml-auto">Delete</Btn>
   </div>
