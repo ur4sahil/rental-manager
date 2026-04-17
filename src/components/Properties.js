@@ -780,18 +780,28 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                       setTenantForm(f => ({ ...f, ...updates }));
                     }} className="text-xs text-danger-400 hover:text-danger-600">Remove</button>
                   </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="col-span-3">
-                      <label className="text-xs font-medium text-neutral-500 block mb-1">Full Name</label>
-                      <input type="text" value={tenantForm["tenant_" + n] || ""} onChange={e => setTenantForm(f => ({ ...f, ["tenant_" + n]: e.target.value }))} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" placeholder="Full name" />
+                  <div className="grid grid-cols-6 gap-3">
+                    <div className="col-span-2">
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">First Name *</label>
+                      <input type="text" value={tenantForm["tenant_" + n + "_first"] || ""} onChange={e => { const v = e.target.value; setTenantForm(f => ({ ...f, ["tenant_" + n + "_first"]: v, ["tenant_" + n]: formatPersonName(v, f["tenant_" + n + "_mi"] || "", f["tenant_" + n + "_last"] || "") })); }} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" placeholder="First" />
                     </div>
+                    <div className="col-span-1">
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">MI</label>
+                      <input type="text" maxLength={1} value={tenantForm["tenant_" + n + "_mi"] || ""} onChange={e => { const v = e.target.value.toUpperCase(); setTenantForm(f => ({ ...f, ["tenant_" + n + "_mi"]: v, ["tenant_" + n]: formatPersonName(f["tenant_" + n + "_first"] || "", v, f["tenant_" + n + "_last"] || "") })); }} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm text-center" placeholder="M" />
+                    </div>
+                    <div className="col-span-3">
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Last Name *</label>
+                      <input type="text" value={tenantForm["tenant_" + n + "_last"] || ""} onChange={e => { const v = e.target.value; setTenantForm(f => ({ ...f, ["tenant_" + n + "_last"]: v, ["tenant_" + n]: formatPersonName(f["tenant_" + n + "_first"] || "", f["tenant_" + n + "_mi"] || "", v) })); }} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" placeholder="Last" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs font-medium text-neutral-500 block mb-1">Email</label>
                       <input type="email" value={tenantForm["tenant_" + n + "_email"] || ""} onChange={e => setTenantForm(f => ({ ...f, ["tenant_" + n + "_email"]: e.target.value }))} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" placeholder="Email" />
                     </div>
-                    <div className="col-span-2">
+                    <div>
                       <label className="text-xs font-medium text-neutral-500 block mb-1">Phone</label>
-                      <input type="tel" value={tenantForm["tenant_" + n + "_phone"] || ""} onChange={e => setTenantForm(f => ({ ...f, ["tenant_" + n + "_phone"]: e.target.value }))} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" placeholder="Phone" />
+                      <input type="tel" value={tenantForm["tenant_" + n + "_phone"] || ""} onChange={e => setTenantForm(f => ({ ...f, ["tenant_" + n + "_phone"]: formatPhoneInput(e.target.value) }))} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" placeholder="(555) 123-4567" />
                     </div>
                   </div>
                 </div>
