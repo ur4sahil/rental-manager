@@ -125,7 +125,6 @@ const ROLES = {
 
 const ALL_NAV = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard" },
-  { id: "tasks", label: "Tasks & Approvals", icon: "assignment" },
   { id: "properties", label: "Properties", icon: "apartment", children: [
     { id: "maintenance", label: "Maintenance", icon: "build" },
     { id: "inspections", label: "Inspections", icon: "checklist" },
@@ -139,6 +138,7 @@ const ALL_NAV = [
   { id: "accounting", label: "Accounting", icon: "account_balance" },
   { id: "doc_builder", label: "Document Builder", icon: "description" },
   { id: "vendors", label: "Vendors", icon: "engineering" },
+  { id: "tasks", label: "Tasks & Approvals", icon: "assignment" },
   { id: "owners", label: "Owners", icon: "person" },
   { id: "notifications", label: "Notifications", icon: "notifications_active" },
 ];

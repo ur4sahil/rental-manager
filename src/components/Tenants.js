@@ -1041,7 +1041,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="font-semibold text-subtle-700 text-sm">{t.name}</div>
   <div className="text-xs text-subtle-400">{t.property} · Archived {t.archived_at ? new Date(t.archived_at).toLocaleDateString() : ""}</div>
   </div>
-  <button onClick={async () => { if (!guardSubmit("restoreTenant", t.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", t.id).eq("company_id", companyId); addNotification("\u267B\uFE0F", "Restored: " + t.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); fetchTenants(); } finally { guardRelease("restoreTenant", t.id); } }} className="text-xs bg-success-50 text-success-700 px-3 py-1.5 rounded-lg hover:bg-success-100 border border-success-200">\u267B\uFE0F Restore</button>
+  <button onClick={async () => { if (!guardSubmit("restoreTenant", t.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", t.id).eq("company_id", companyId); addNotification("\u267B\uFE0F", "Restored: " + t.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); fetchTenants(); } finally { guardRelease("restoreTenant", t.id); } }} className="text-xs bg-success-50 text-success-700 px-3 py-1.5 rounded-lg hover:bg-success-100 border border-success-200">♻️ Restore</button>
   </div>
   ))}
   </div>
