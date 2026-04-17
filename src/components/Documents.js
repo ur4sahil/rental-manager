@@ -770,6 +770,137 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   showToast("PDF downloaded", "success");
   }
 
+  // ---- Signed PDF + Certificate of Completion (envelope flow) ----
+  function escapeForHtml(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+  function renderSignaturesBlock(sigs) {
+  if (!sigs || sigs.length === 0) return "";
+  const rows = sigs.map(s => {
+    const dateStr = s.signed_at ? new Date(s.signed_at).toLocaleString() : "";
+    let sigVisual = "";
+    if (s.signature_data) {
+      if (s.signature_data.startsWith("data:image")) {
+        sigVisual = '<img src="' + escapeForHtml(s.signature_data) + '" style="max-height:52px;max-width:220px;border-bottom:1px solid #333;display:block;" alt="signature" />';
+      } else if (s.signature_data.startsWith("typed:")) {
+        const nm = s.signature_data.slice(6).split("|")[0];
+        sigVisual = '<div style="font-family:\'Brush Script MT\',cursive;font-size:28px;color:#1e3a5f;border-bottom:1px solid #333;padding-bottom:4px;">' + escapeForHtml(nm) + '</div>';
+      }
+    } else {
+      sigVisual = '<div style="color:#999;font-style:italic;border-bottom:1px solid #ccc;padding-bottom:4px;">(awaiting signature)</div>';
+    }
+    return ''
+      + '<div style="margin-bottom:28px;">'
+      + '<div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">' + escapeForHtml(s.signer_role || "signer") + '</div>'
+      + sigVisual
+      + '<div style="font-size:12px;color:#333;margin-top:4px;"><strong>' + escapeForHtml(s.signer_name || "") + '</strong>'
+      + (s.signer_email ? ' <span style="color:#666;">&middot; ' + escapeForHtml(s.signer_email) + '</span>' : '')
+      + '</div>'
+      + (dateStr ? '<div style="font-size:11px;color:#666;">Signed ' + escapeForHtml(dateStr) + '</div>' : '')
+      + '</div>';
+  }).join("");
+  return '<div style="margin-top:40px;padding-top:20px;border-top:2px solid #1e3a5f;"><h3 style="font-family:Georgia,serif;color:#1e3a5f;margin-bottom:16px;">Signed By</h3>' + rows + '</div>';
+  }
+
+  function renderCertificateHtml(doc, sigs, companyName) {
+  const signedCount = (sigs || []).filter(s => s.status === "signed").length;
+  const total = (sigs || []).length;
+  const rows = (sigs || []).map((s, idx) => ''
+    + '<tr style="border-bottom:1px solid #e5e7eb;">'
+    + '<td style="padding:10px 8px;font-size:11px;color:#333;vertical-align:top;">' + (idx + 1) + '</td>'
+    + '<td style="padding:10px 8px;font-size:11px;color:#333;vertical-align:top;">'
+    + '<div style="font-weight:600;">' + escapeForHtml(s.signer_name || "(no name)") + '</div>'
+    + '<div style="color:#666;">' + escapeForHtml(s.signer_email || "") + '</div>'
+    + '<div style="color:#999;text-transform:uppercase;letter-spacing:0.04em;font-size:9px;margin-top:2px;">' + escapeForHtml(s.signer_role || "") + '</div>'
+    + '</td>'
+    + '<td style="padding:10px 8px;font-size:11px;color:#333;vertical-align:top;">' + (s.signed_at ? escapeForHtml(new Date(s.signed_at).toLocaleString()) : '<span style="color:#c00;">Not signed</span>') + '</td>'
+    + '<td style="padding:10px 8px;font-size:10px;color:#666;vertical-align:top;">' + escapeForHtml(s.signer_ip || "—") + '</td>'
+    + '<td style="padding:10px 8px;font-size:10px;color:#666;vertical-align:top;font-family:monospace;word-break:break-all;">' + (s.integrity_hash ? escapeForHtml(s.integrity_hash.slice(0, 24)) + "…" : "—") + '</td>'
+    + '</tr>'
+  ).join("");
+  const uaList = (sigs || []).filter(s => s.user_agent).map(s => ''
+    + '<div style="font-size:9px;color:#888;margin-bottom:2px;"><strong>' + escapeForHtml(s.signer_email) + ':</strong> ' + escapeForHtml(s.user_agent) + '</div>'
+  ).join("");
+  return ''
+    + '<div style="font-family:Georgia,serif;color:#111;padding:40px;max-width:720px;margin:0 auto;">'
+    + '<div style="text-align:center;padding-bottom:24px;border-bottom:3px solid #6366f1;margin-bottom:24px;">'
+    + '<div style="font-size:11px;color:#6366f1;text-transform:uppercase;letter-spacing:0.2em;margin-bottom:6px;">Certificate of Completion</div>'
+    + '<div style="font-size:22px;font-weight:700;color:#1e3a5f;">' + escapeForHtml(doc.name) + '</div>'
+    + (companyName ? '<div style="font-size:13px;color:#666;margin-top:6px;">Issued by ' + escapeForHtml(companyName) + '</div>' : '')
+    + '</div>'
+    + '<div style="font-size:13px;color:#333;margin-bottom:24px;line-height:1.7;">'
+    + '<p>This certifies that the document above was signed electronically on behalf of all parties listed below.</p>'
+    + '<ul style="padding-left:20px;">'
+    + '<li><strong>Document ID:</strong> ' + escapeForHtml(doc.id) + '</li>'
+    + (doc.property_address ? '<li><strong>Property:</strong> ' + escapeForHtml(doc.property_address) + '</li>' : '')
+    + '<li><strong>Envelope sent:</strong> ' + escapeForHtml(doc.envelope_sent_at ? new Date(doc.envelope_sent_at).toLocaleString() : "—") + '</li>'
+    + '<li><strong>Envelope completed:</strong> ' + escapeForHtml(doc.envelope_completed_at ? new Date(doc.envelope_completed_at).toLocaleString() : "not yet complete") + '</li>'
+    + '<li><strong>Signers:</strong> ' + signedCount + ' of ' + total + ' completed</li>'
+    + '</ul>'
+    + '</div>'
+    + '<table style="width:100%;border-collapse:collapse;margin-bottom:24px;">'
+    + '<thead><tr style="background:#f3f4f6;text-align:left;">'
+    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:#666;letter-spacing:0.05em;">#</th>'
+    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:#666;letter-spacing:0.05em;">Signer</th>'
+    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:#666;letter-spacing:0.05em;">Signed at</th>'
+    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:#666;letter-spacing:0.05em;">IP</th>'
+    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:#666;letter-spacing:0.05em;">Integrity hash</th>'
+    + '</tr></thead>'
+    + '<tbody>' + rows + '</tbody>'
+    + '</table>'
+    + (uaList ? '<div style="margin-top:16px;padding:12px;background:#f9fafb;border-radius:6px;"><div style="font-size:10px;font-weight:600;color:#666;margin-bottom:6px;">BROWSER INFORMATION</div>' + uaList + '</div>' : '')
+    + '<div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:10px;color:#999;text-align:center;">'
+    + 'Each integrity hash is a SHA-256 digest over the document body, signer email, signature payload, and timestamp at the moment of signing. Any alteration to the signed document or signature will cause the hash to no longer match. Certificate generated ' + escapeForHtml(new Date().toLocaleString()) + '.'
+    + '</div>'
+    + '</div>';
+  }
+
+  async function loadSignaturesForDoc(docId) {
+  const cached = signaturesByDoc[docId];
+  if (cached && cached.length > 0) return cached;
+  const { data } = await supabase.from("doc_signatures").select("*").eq("company_id", companyId).eq("doc_id", docId).order("sign_order", { ascending: true });
+  return data || [];
+  }
+
+  async function downloadCertificate(doc) {
+  showToast("Generating certificate…", "info");
+  const sigs = await loadSignaturesForDoc(doc.id);
+  const html2pdf = (await import("html2pdf.js")).default;
+  const container = document.createElement("div");
+  container.innerHTML = renderCertificateHtml(doc, sigs, doc._companyName);
+  document.body.appendChild(container);
+  const filename = "cert-" + (doc.name || "document").replace(/[^a-zA-Z0-9_-]/g, "_") + ".pdf";
+  try {
+    await html2pdf().set({ margin: [0.5, 0.6, 0.5, 0.6], filename, image: { type: "jpeg", quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: "in", format: "letter" } }).from(container).save();
+    logAudit("export", "doc_builder", "Downloaded Certificate of Completion: " + doc.name, doc.id, userProfile?.email, userRole, companyId);
+    showToast("Certificate downloaded", "success");
+  } finally {
+    document.body.removeChild(container);
+  }
+  }
+
+  async function downloadSignedPDF(doc) {
+  showToast("Generating signed document…", "info");
+  const sigs = await loadSignaturesForDoc(doc.id);
+  const html2pdf = (await import("html2pdf.js")).default;
+  const signedBlock = renderSignaturesBlock(sigs);
+  const certBlock = renderCertificateHtml(doc, sigs, doc._companyName);
+  const bodyHtml = DOMPurify.sanitize(doc?.rendered_body || "", { ADD_TAGS: ["table","thead","tbody","tr","td","th","br","hr","ul","ol","li","p","h1","h2","h3","h4","h5","h6","strong","em","u","s","sub","sup","blockquote","pre","code","img","span","div","a"], ADD_ATTR: ["style","class","href","src","alt","width","height","colspan","rowspan","align","valign"] });
+  const container = document.createElement("div");
+  container.innerHTML = ''
+    + '<div style="font-family:Georgia,serif;font-size:13px;line-height:1.6;color:#1a1a1a;padding:40px;max-width:720px;margin:0 auto;">' + bodyHtml + signedBlock + '</div>'
+    + '<div style="page-break-before:always;"></div>'
+    + certBlock;
+  document.body.appendChild(container);
+  const filename = "signed-" + (doc.name || "document").replace(/[^a-zA-Z0-9_-]/g, "_") + ".pdf";
+  try {
+    await html2pdf().set({ margin: [0.5, 0.6, 0.5, 0.6], filename, image: { type: "jpeg", quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: "in", format: "letter" }, pagebreak: { mode: ["avoid-all","css","legacy"] } }).from(container).save();
+    logAudit("export", "doc_builder", "Downloaded signed PDF: " + doc.name, doc.id, userProfile?.email, userRole, companyId);
+    showToast("Signed document downloaded", "success");
+  } finally {
+    document.body.removeChild(container);
+  }
+  }
+
   // ---- Export: DOCX ----
   async function exportDOCX(doc) {
   const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = await import("docx");
@@ -1838,6 +1969,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <Btn variant="danger" size="xs" onClick={() => { const t = templates.find(t => t.id === d.template_id); exportPDF({ ...d, _template: t }); }} title="PDF">PDF</Btn>
   <Btn variant="secondary" size="xs" onClick={() => exportDOCX(d)} title="DOCX">DOCX</Btn>
   <Btn variant="slate" size="xs" onClick={() => exportTXT(d)} title="TXT">TXT</Btn>
+  {d.envelope_status === "completed" && <Btn variant="success-fill" size="xs" onClick={() => downloadSignedPDF(d)} title="Download the doc with every signature + a cert of completion appended">Signed PDF</Btn>}
+  {hasEnvelope && <Btn variant="purple" size="xs" onClick={() => downloadCertificate(d)} title="Audit certificate with signer identity/IP/hash">Certificate</Btn>}
   {!hasEnvelope && <Btn variant="success-fill" size="xs" onClick={() => {
   setSendModal(d);
   setSendTo({ self: false, tenant: false, custom: "" });
