@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Select, Btn, PageHeader, EmptyState } from "../ui";
-import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput } from "../utils/helpers";
+import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -108,7 +108,7 @@ function ArchivedItems({ tableName, label, fields, companyId, addNotification, o
 
 
 // ============ ROLE MANAGEMENT ============
-function RoleManagement({ addNotification, companyId, showToast, showConfirm }) {
+function RoleManagement({ addNotification, companyId, showToast, showConfirm, userProfile }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -429,7 +429,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
 // periodically cleaned up. Run: DELETE FROM company_members WHERE status = 'invited'
 // AND created_at < NOW() - INTERVAL '30 days';
 
-function ArchivePage({ addNotification, userProfile, userRole, companyId }) {
+function ArchivePage({ addNotification, userProfile, userRole, companyId, showConfirm, showToast }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
