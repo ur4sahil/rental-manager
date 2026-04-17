@@ -55,11 +55,19 @@ export function Card({ className = "", padding = "p-5", children, ...props }) {
   );
 }
 
-// ---- INPUT ----
-const INPUT_CORE = "border border-brand-100 rounded-2xl px-3 py-2 text-sm focus:border-brand-300 focus:outline-none transition-colors";
-const INPUT_BASE = INPUT_CORE + " w-full";
+// ---- INPUT / SELECT / TEXTAREA ----
+// Size tokens — keep "md" as the default so existing screens don't shift.
+// Use size="sm" for dense admin/settings forms where vertical space matters.
+const INPUT_SIZES = {
+  sm: "px-2.5 py-1.5 text-xs rounded-xl",
+  md: "px-3 py-2 text-sm rounded-2xl",
+};
+const INPUT_COMMON = "border border-brand-100 focus:border-brand-300 focus:outline-none transition-colors";
+function inputBase(size, hasExplicitWidth) {
+  return `${INPUT_COMMON} ${INPUT_SIZES[size] || INPUT_SIZES.md}${hasExplicitWidth ? "" : " w-full"}`;
+}
 
-export function Input({ className = "", ...props }) {
+export function Input({ className = "", size = "md", ...props }) {
   // Auto-apply sensible defaults by type
   const defaults = {};
   if (props.type === "date") { defaults.min = props.min || "2000-01-01"; defaults.max = props.max || "2099-12-31"; }
@@ -67,28 +75,30 @@ export function Input({ className = "", ...props }) {
   else if (props.type === "tel") { defaults.maxLength = props.maxLength || 14; }
   else if (props.type === "number") { defaults.step = props.step || "any"; }
   else if (props.type === "text" && !props.maxLength) { defaults.maxLength = 200; }
-  const base = /\bw-/.test(className) ? INPUT_CORE : INPUT_BASE;
+  const base = inputBase(size, /\bw-/.test(className));
   return <input className={`${base} ${className}`} {...defaults} {...props} />;
 }
 
-// ---- SELECT ----
-export function Select({ className = "", filter, children, ...props }) {
-  if (filter) return <select className={`${INPUT_CORE} w-auto text-sm ${className}`} {...props}>{children}</select>;
-  const base = /\bw-/.test(className) ? INPUT_CORE : INPUT_BASE;
-  return <select className={`${base} ${className}`} {...props}>{children}</select>;
+export function Select({ className = "", filter, size = "md", children, ...props }) {
+  const base = inputBase(size, filter || /\bw-/.test(className));
+  const widthCls = filter ? " w-auto" : "";
+  return <select className={`${base}${widthCls} ${className}`} {...props}>{children}</select>;
 }
 
-// ---- TEXTAREA ----
-export function Textarea({ className = "", rows = 3, ...props }) {
-  return <textarea className={`${INPUT_BASE} ${className}`} rows={rows} maxLength={props.maxLength || 5000} {...props} />;
+export function Textarea({ className = "", rows = 3, size = "md", ...props }) {
+  const base = inputBase(size, /\bw-/.test(className));
+  return <textarea className={`${base} ${className}`} rows={rows} maxLength={props.maxLength || 5000} {...props} />;
 }
 
 // ---- FORM FIELD (label + input wrapper) ----
-export function FormField({ label, required, className = "", children }) {
+export function FormField({ label, required, className = "", size = "md", children }) {
+  const labelCls = size === "sm"
+    ? "text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-1"
+    : "text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1";
   return (
     <div className={className}>
       {label && (
-        <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">
+        <label className={labelCls}>
           {label} {required && "*"}
         </label>
       )}
@@ -279,7 +289,7 @@ export function AccountPicker({ value, onChange, accounts = [], accountTypes = [
         onChange={e => { setSearch(e.target.value); setHighlighted(-1); if (!open) setOpen(true); }}
         onFocus={() => { setOpen(true); setSearch(""); }}
         onKeyDown={handleKeyDown}
-        className={`${INPUT_BASE} ${className} pr-7 text-xs`}
+        className={`${inputBase("md", false)} ${className} pr-7 text-xs`}
         autoComplete="off"
       />
       <span className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-300 pointer-events-none text-xs">▾</span>
