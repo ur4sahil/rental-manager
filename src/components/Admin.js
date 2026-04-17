@@ -305,91 +305,62 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm }) 
 
   {/* Add / Edit form */}
   {showForm && (
-  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-5 mb-5">
-  <h3 className="font-semibold text-neutral-700 mb-4">{editingUser ? `Edit — ${editingUser.name}` : "Add Team Member"}</h3>
+  <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-4">
+  <h3 className="text-sm font-semibold text-neutral-700 mb-3">{editingUser ? `Edit — ${editingUser.name}` : "Add Team Member"}</h3>
 
   {/* Basic info */}
-  <div className="grid grid-cols-2 gap-3 mb-4">
-  <div className="col-span-2"><div className="grid grid-cols-6 gap-3">
-  <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">First Name *</label><input value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
-  <div className="col-span-1"><label className="text-xs font-medium text-neutral-400 mb-1 block">MI</label><input maxLength={1} value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} placeholder="M" className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full text-center" /></div>
-  <div className="col-span-3"><label className="text-xs font-medium text-neutral-400 mb-1 block">Last Name *</label><input value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} placeholder="Last" className="border border-brand-100 rounded-2xl px-3 py-2 text-sm w-full" /></div>
-  </div></div>
-  <input
-  placeholder="Email address"
-  value={form.email}
-  onChange={e => setForm({ ...form, email: e.target.value })}
-  disabled={!!editingUser}
-  className="border border-brand-100 rounded-2xl px-3 py-2 text-sm disabled:bg-brand-50/30 disabled:text-neutral-400"
-  />
-  <Select
-  value={form.role}
-  onChange={e => handleRoleChange(e.target.value)}
-  className="col-span-2"
-  >
+  <div className="grid grid-cols-6 gap-2 mb-3">
+  <div className="col-span-2"><label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-1 block">First Name *</label><Input size="sm" value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" /></div>
+  <div className="col-span-1"><label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-1 block">MI</label><Input size="sm" maxLength={1} value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} placeholder="M" className="text-center" /></div>
+  <div className="col-span-3"><label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-1 block">Last Name *</label><Input size="sm" value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} placeholder="Last" /></div>
+  <div className="col-span-4"><label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-1 block">Email *</label><Input size="sm" placeholder="Email address" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} disabled={!!editingUser} className="disabled:bg-brand-50/30 disabled:text-neutral-400" /></div>
+  <div className="col-span-2"><label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-1 block">Role</label><Select size="sm" value={form.role} onChange={e => handleRoleChange(e.target.value)}>
   {Object.entries(ROLES).filter(([k]) => k !== "tenant").map(([key, r]) => (
   <option key={key} value={key}>{r.label}</option>
   ))}
-  </Select>
+  </Select></div>
   </div>
 
   {/* Module picker — only shown for customizable roles */}
   {isCustomizable && (
-  <div className="border border-brand-50 rounded-3xl p-4 bg-brand-50/30">
-  <div className="flex items-center justify-between mb-3">
-  <div className="text-sm font-semibold text-neutral-700">Choose which modules this person can access</div>
-  <div className="flex gap-2">
-  <button
-  onClick={() => setCustomPages(ALL_NAV_FLAT.map(n => n.id))}
-  className="text-xs text-brand-600 hover:underline"
-  >Select all</button>
+  <div className="border border-brand-100 rounded-2xl p-3 bg-brand-50/20">
+  <div className="flex items-center justify-between mb-2">
+  <div className="text-xs font-semibold text-neutral-700">Module access <span className="ml-1 text-neutral-400 font-normal">· {customPages.length} of {ALL_NAV_FLAT.length}</span></div>
+  <div className="flex gap-2 text-xs">
+  <button onClick={() => setCustomPages(ALL_NAV_FLAT.map(n => n.id))} className="text-brand-600 hover:underline">Select all</button>
   <span className="text-neutral-300">|</span>
-  <button
-  onClick={() => setCustomPages([])}
-  className="text-xs text-neutral-400 hover:underline"
-  >Clear all</button>
+  <button onClick={() => setCustomPages([])} className="text-neutral-400 hover:underline">Clear all</button>
   </div>
   </div>
-  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+  <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-0.5">
   {ALL_NAV_FLAT.map(nav => {
   const isOn = customPages.includes(nav.id);
   return (
-  <button
-  key={nav.id}
-  onClick={() => togglePage(nav.id)}
-  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all text-left ${
-  isOn
-  ? "bg-brand-600 border-brand-600 text-white"
-  : "bg-white border-brand-100 text-neutral-500 hover:border-brand-300"
-  }`}
-  >
-  <span className={`material-icons-outlined text-sm ${isOn ? "text-brand-200" : "text-neutral-400"}`}>{nav.icon}</span>
-  <span>{nav.label}</span>
-  {isOn && <span className="ml-auto text-xs">✓</span>}
-  </button>
+  <label key={nav.id} className="flex items-center gap-2 py-1 px-1 rounded hover:bg-brand-50 cursor-pointer text-xs text-neutral-600">
+  <input type="checkbox" checked={isOn} onChange={() => togglePage(nav.id)} className="accent-brand-600 w-3.5 h-3.5" />
+  <span className="material-icons-outlined text-sm text-neutral-400">{nav.icon}</span>
+  <span className={isOn ? "text-neutral-700 font-medium" : ""}>{nav.label}</span>
+  </label>
   );
   })}
-  </div>
-  <div className="mt-3 text-xs text-neutral-400">
-  {customPages.length} module{customPages.length !== 1 ? "s" : ""} selected
   </div>
   </div>
   )}
 
   {/* Admin / Maintenance / Tenant — fixed access notice */}
   {!isCustomizable && (
-  <div className="bg-info-50 border border-info-100 rounded-xl p-3 text-xs text-info-700">
+  <div className="bg-info-50 border border-info-100 rounded-xl p-2.5 text-xs text-info-700">
   <strong>{ROLES[form.role]?.label}</strong> has fixed access and cannot be customized.
   {form.role === "admin" && " Admins always have full access to everything."}
   {form.role === "maintenance" && " Maintenance staff can only see the Maintenance page."}
   </div>
   )}
 
-  <div className="flex gap-2 mt-4">
-  <Btn size="lg" onClick={saveUser}>
+  <div className="flex gap-2 mt-3">
+  <Btn size="sm" onClick={saveUser}>
   {editingUser ? "Save Changes" : "Add User"}
   </Btn>
-  <Btn variant="secondary" onClick={() => { setShowForm(false); setEditingUser(null); }}>
+  <Btn size="sm" variant="secondary" onClick={() => { setShowForm(false); setEditingUser(null); }}>
   Cancel
   </Btn>
   </div>
