@@ -103,4 +103,34 @@ test.describe('Leases Module', () => {
     await page.waitForTimeout(1500);
     await assertNoHorizontalOverflow(page);
   });
+
+  // ── E-Sign modal (unified doc_signatures engine) ──
+  // The old per-lease signing flow was retired in commit 905bbdf; the modal
+  // now drives the same envelope + magic-link UX used by the Documents module.
+  test('E-Sign opens the unified envelope modal (no inline canvas)', async ({ page }) => {
+    await page.waitForTimeout(2000);
+    // Match the exact button label from Leases.js:501 ("✍️ E-Sign") — no "Sign"
+    // fallback because that matches "Sign In" / "Sign Out" elsewhere.
+    const signBtn = page.locator('button:has-text("E-Sign")').first();
+    if (!(await signBtn.isVisible({ timeout: 5000 }).catch(() => false))) test.skip(true, 'No lease with an E-Sign button on this seed');
+
+    await signBtn.click();
+    await page.waitForTimeout(1500);
+
+    // Modal title leads with "E-Signature". The name after the em-dash varies,
+    // so match on the word alone.
+    await expect(page.locator('text=E-Signature').first()).toBeVisible({ timeout: 8000 });
+
+    // Landlord + Tenant email inputs are the hallmark of the unified flow —
+    // the old flow had a canvas and no email inputs.
+    await expect(page.locator('text=Tenant email').first()).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('text=/Landlord|PM email/').first()).toBeVisible();
+
+    // CTA reads "Send for Signature", not the old "Apply Signature".
+    await expect(page.locator('button:has-text("Send for Signature")').first()).toBeVisible();
+
+    // No inline signature canvas — drawing happens on the public /sign/:token page.
+    const canvasCount = await page.locator('canvas').count();
+    expect(canvasCount).toBe(0);
+  });
 });

@@ -205,4 +205,31 @@ test.describe('Team & Roles (Admin Page)', () => {
     await page.waitForTimeout(1500);
     await assertNoHorizontalOverflow(page);
   });
+
+  // ── Module access picker (commit 45bf4e5 replaced giant purple tiles with checkboxes) ──
+  test('add-user form uses checkbox module picker, not the old tile grid', async ({ page }) => {
+    const addBtn = page.locator('button:has-text("Add User"), button:has-text("Add Team"), button:has-text("Add")').first();
+    if (!(await addBtn.isVisible({ timeout: 5000 }).catch(() => false))) test.skip(true, 'Add User button not available');
+    await addBtn.click();
+    await page.waitForTimeout(600);
+
+    // Pick a customizable role so the module picker appears
+    const roleSelect = page.locator('select').filter({ hasText: /Office Assistant|Property Manager|Accountant/i }).first();
+    if (await roleSelect.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await roleSelect.selectOption({ label: /Office Assistant/i }).catch(() => {});
+      await page.waitForTimeout(300);
+    }
+
+    // New dense "Module access" heading (old was "Choose which modules this person can access")
+    await expect(page.locator('text=/Module access|Choose which modules/i').first()).toBeVisible({ timeout: 3000 });
+
+    // The new UI renders <input type="checkbox"> rows, not full-width purple <button> tiles.
+    // Assert at least a few checkboxes exist in the module picker area.
+    const checkboxCount = await page.locator('input[type="checkbox"]').count();
+    expect(checkboxCount).toBeGreaterThanOrEqual(5); // many modules
+
+    // Select all / Clear all links still present
+    await expect(page.locator('button:has-text("Select all")').first()).toBeVisible();
+    await expect(page.locator('button:has-text("Clear all")').first()).toBeVisible();
+  });
 });

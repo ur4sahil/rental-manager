@@ -112,4 +112,34 @@ test.describe('Document Builder', () => {
     await page.waitForTimeout(1500);
     await assertNoHorizontalOverflow(page);
   });
+
+  // ── TipTap editor + Signature Workflow (shipped in commits e5a94f4 + 454069f) ──
+  test('template editor uses TipTap (not raw textarea) and exposes Signature Workflow', async ({ page }) => {
+    await page.locator('button:has-text("Templates")').first().click();
+    await page.waitForTimeout(1500);
+    const newBtn = page.locator('button:has-text("New Template")').first();
+    if (!(await newBtn.isVisible({ timeout: 3000 }).catch(() => false))) test.skip(true, 'New Template button not available');
+    await newBtn.click();
+    await page.waitForTimeout(800);
+
+    // TipTap surfaces a contenteditable ProseMirror div; the old UI had a plain <textarea>
+    // whose monospace class and rows=30 were the giveaway. Assert both.
+    await expect(page.locator('.ProseMirror').first()).toBeVisible({ timeout: 5000 });
+    const legacyTextareaCount = await page.locator('textarea[rows="30"]').count();
+    expect(legacyTextareaCount).toBe(0);
+
+    // Toolbar button exists — Bold is the first button in the toolbar
+    await expect(page.locator('button[title="Bold"]').first()).toBeVisible();
+
+    // Signature Workflow section with the 3 mode pills
+    await expect(page.locator('text=Signature Workflow').first()).toBeVisible();
+    await expect(page.locator('text=No signing').first()).toBeVisible();
+    await expect(page.locator('text=Parallel').first()).toBeVisible();
+    await expect(page.locator('text=Sequential').first()).toBeVisible();
+
+    // Picking Parallel reveals "Signer Roles" + an "Add signer" button
+    await page.locator('text=Parallel').first().click();
+    await expect(page.locator('text=/Signer Roles|SIGNER ROLES/i').first()).toBeVisible({ timeout: 2000 });
+    await expect(page.locator('button:has-text("Add signer")').first()).toBeVisible();
+  });
 });
