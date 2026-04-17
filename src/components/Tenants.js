@@ -56,6 +56,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [tenantDocs, setTenantDocs] = useState([]);
   const [tenantTab, setTenantTab] = useState(initialTab || "tenants");
   const [archivedTenants, setArchivedTenants] = useState([]);
+  const [portalMembers, setPortalMembers] = useState({}); // email(lower) → 'invited' | 'active' | 'removed'
   const [showTenantDocPrompt, setShowTenantDocPrompt] = useState(null);
   const [showDocUpload, setShowDocUpload] = useState(null);
   const [docExceptions, setDocExceptions] = useState([]);
@@ -66,6 +67,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   useEffect(() => {
   fetchTenants();
   fetchDocExceptions();
+  fetchPortalMembers();
   supabase.from("properties").select("*").eq("company_id", companyId).is("archived_at", null)
   .then(({ data, error }) => { if (error) pmError("PM-8006", { raw: error, context: "tenants property fetch", silent: true }); setProperties(data || []); });
   }, [companyId]);
@@ -74,6 +76,12 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null);
   setTenants(data || []);
   setLoading(false);
+  }
+  async function fetchPortalMembers() {
+  const { data } = await supabase.from("company_members").select("user_email, status").eq("company_id", companyId).eq("role", "tenant");
+  const map = {};
+  (data || []).forEach(m => { if (m.user_email) map[m.user_email.toLowerCase()] = m.status; });
+  setPortalMembers(map);
   }
   async function fetchDocExceptions() {
   const { data } = await supabase.from("doc_exception_requests").select("*").eq("company_id", companyId).order("created_at", { ascending: false });
@@ -335,6 +343,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (memErr) { showToast("Error creating invite: " + memErr.message, "error"); return; }
   addNotification("✉️", "Invite code generated for " + tenant.email);
   logAudit("create", "tenants", "Invited tenant to portal: " + tenant.email, tenant.id, userProfile?.email, userRole, companyId);
+  fetchPortalMembers();
   // Show masked code — full code sent via email only
   const maskedCode = code.slice(0, 2) + "****" + code.slice(-2);
   showToast("Tenant invite created!\n\nA magic link and invite code have been sent to " + tenant.email + ".\n\nCode hint: " + maskedCode + " (full code in their email)\n\n" + tenant.name + " can sign up by selecting 'I'm a Tenant' and entering the code from their email.", "success");
@@ -1374,27 +1383,45 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   return <>
   {tenantView === "card" && (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-  {ft.map(t => (
+  {ft.map(t => {
+  const portalStatus = t.email ? portalMembers[t.email.toLowerCase()] : null;
+  return (
   <div key={t.id} onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }} className={"rounded-3xl shadow-card border p-4 cursor-pointer hover:shadow-md transition-all " + (t.doc_status === "pending_docs" ? "bg-neutral-50 border-warn-200 opacity-60" : "bg-white border-brand-50 hover:border-brand-200")}>
   <div className="flex justify-between items-start mb-2">
   <div className="flex items-center gap-3">
   <div className={"w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg " + (t.doc_status === "pending_docs" ? "bg-warn-100 text-warn-700" : "bg-brand-100 text-brand-700")}>{t.name?.[0]}</div>
   <div><div className="font-semibold text-neutral-800">{t.name}</div><div className="text-xs text-neutral-400">{t.property}</div>{t.doc_status === "pending_docs" && <div className="text-xs text-warn-600 font-medium">Pending documents</div>}</div>
   </div>
-  <div className="flex items-center gap-1"><Badge status={t.lease_status} />{t.is_voucher && <span className="text-xs bg-highlight-100 text-highlight-700 px-1.5 py-0.5 rounded-full font-semibold">Voucher</span>}</div>
+  <div className="flex items-center gap-1">
+  <Badge status={t.lease_status} />
+  {t.is_voucher && <span className="text-xs bg-highlight-100 text-highlight-700 px-1.5 py-0.5 rounded-full font-semibold">Voucher</span>}
+  {portalStatus === "active" && <span className="text-[10px] bg-success-100 text-success-700 px-1.5 py-0.5 rounded-full font-semibold" title="Tenant has signed up for the portal">Portal Active</span>}
+  {portalStatus === "invited" && <span className="text-[10px] bg-highlight-50 text-highlight-700 px-1.5 py-0.5 rounded-full font-semibold" title="Invite sent, not yet accepted">Invited</span>}
+  </div>
   </div>
   <div className="grid grid-cols-3 gap-2 text-xs mt-2">
   <div><span className="text-neutral-400">Email</span><div className="font-semibold text-neutral-700 truncate">{t.email || "\u2014"}</div></div>
   <div><span className="text-neutral-400">Balance</span><div className={`font-semibold ${t.balance > 0 ? "text-danger-500" : "text-neutral-700"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</div></div>
   <div><span className="text-neutral-400">Rent</span><div className="font-semibold text-neutral-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</div></div>
   </div>
-  <div className="flex items-center justify-between mt-3 pt-2 border-t border-brand-50">
-  <button onClick={e => { e.stopPropagation(); setSelectedTenant(t); setActivePanel("ledger"); openLedger(t); }} className="text-xs text-brand-600 hover:text-brand-800 font-medium">View Ledger</button>
-  {safeNum(t.balance) > 0 && safeNum(t.late_fee_amount) > 0 && <button onClick={e => { e.stopPropagation(); applyLateFeeForTenant(t); }} className="text-xs text-danger-600 hover:text-danger-800 font-medium flex items-center gap-0.5"><span className="material-icons-outlined text-xs">gavel</span>Late Fee</button>}
-  <span className="text-xs text-neutral-300">Click for details →</span>
+  <div className="flex items-center justify-between mt-3 pt-2 border-t border-brand-50 gap-2">
+  <button onClick={e => { e.stopPropagation(); setSelectedTenant(t); setActivePanel("ledger"); openLedger(t); }} className="text-xs text-brand-600 hover:text-brand-800 font-medium shrink-0">View Ledger</button>
+  {safeNum(t.balance) > 0 && safeNum(t.late_fee_amount) > 0 && <button onClick={e => { e.stopPropagation(); applyLateFeeForTenant(t); }} className="text-xs text-danger-600 hover:text-danger-800 font-medium flex items-center gap-0.5 shrink-0"><span className="material-icons-outlined text-xs">gavel</span>Late Fee</button>}
+  {portalStatus !== "active" && (
+  <button
+    onClick={e => { e.stopPropagation(); inviteTenant(t); }}
+    disabled={!t.email}
+    title={!t.email ? "Add an email to this tenant first" : portalStatus === "invited" ? "Re-send the portal invite email" : "Send portal access invite to this tenant"}
+    className={"ml-auto text-xs font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors " + (!t.email ? "bg-neutral-100 text-neutral-400 cursor-not-allowed" : portalStatus === "invited" ? "bg-highlight-50 text-highlight-700 hover:bg-highlight-100 border border-highlight-200" : "bg-brand-600 text-white hover:bg-brand-700")}
+  >
+    <span className="material-icons-outlined text-xs">{portalStatus === "invited" ? "refresh" : "mail"}</span>
+    {portalStatus === "invited" ? "Resend Invite" : "Invite to Portal"}
+  </button>
+  )}
   </div>
   </div>
-  ))}
+  );
+  })}
   </div>
   )}
   {tenantView === "table" && (
