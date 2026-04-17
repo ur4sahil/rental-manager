@@ -139,9 +139,12 @@ test.describe('Tenant Invite to Portal', () => {
     }], { onConflict: 'company_id,user_email' });
     if (mErr) test.skip(true, 'Could not upsert invited membership: ' + mErr.message);
 
-    await page.reload();
-    await page.waitForTimeout(2000);
-    // Filter is wiped by reload — reapply so the seeded card is visible.
+    // Navigate away and back to force a fresh fetchPortalMembers — simpler
+    // and more reliable than page.reload() which can lose the session/hash.
+    await goToPage(page, 'dashboard');
+    await page.waitForTimeout(800);
+    await goToPage(page, 'tenants');
+    await page.waitForTimeout(1500);
     const search = page.locator('input[placeholder*="Search name" i]').first();
     if (await search.isVisible({ timeout: 3000 }).catch(() => false)) {
       await search.fill('ZZZ-E2E');
@@ -169,9 +172,12 @@ test.describe('Tenant Invite to Portal', () => {
     }], { onConflict: 'company_id,user_email' });
     if (mErr) test.skip(true, 'Could not upsert active membership: ' + mErr.message);
 
-    await page.reload();
-    await page.waitForTimeout(2000);
-    // Filter is wiped by reload — reapply so the seeded card is visible.
+    // Navigate away and back to force a fresh fetchPortalMembers — simpler
+    // and more reliable than page.reload() which can lose the session/hash.
+    await goToPage(page, 'dashboard');
+    await page.waitForTimeout(800);
+    await goToPage(page, 'tenants');
+    await page.waitForTimeout(1500);
     const search = page.locator('input[placeholder*="Search name" i]').first();
     if (await search.isVisible({ timeout: 3000 }).catch(() => false)) {
       await search.fill('ZZZ-E2E');

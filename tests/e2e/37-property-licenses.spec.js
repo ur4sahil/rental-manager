@@ -23,27 +23,24 @@ const svc = (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY)
   : null;
 const COMPANY_ID = 'sandbox-llc';
 
-// Avoid underscores/brackets in addresses — Playwright's text= engine
-// treats some non-word chars as tokens and can fail to match. Use a
-// plain-text prefix that's still unique to our run.
-const addr = 'ZZZ-E2E-LIC 4242 License Test Way, Fairfax, VA 22030';
+// properties table has a BEFORE INSERT trigger (sync_addr) that overwrites
+// the `address` column by composing it from address_line_1/line_2/city/state/zip.
+// Passing `address` alone silently blanks the row. Seed must populate the
+// structured fields; the trigger then computes `address` deterministically.
+const ADDR_LINE_1 = 'ZZZ-E2E-LIC 4242 License Test Way';
+const ADDR_CITY = 'Fairfax';
+const ADDR_STATE = 'VA';
+const ADDR_ZIP = '22030';
 
 async function openSeededProperty(page) {
-  // NOTE: despite the service-role seed landing in the DB, the authenticated
-  // Properties UI occasionally doesn't show the new card during the test run
-  // (total count reflects it, grid doesn't). Likely a render-timing or
-  // RLS-visibility nuance that needs more debugging. Tests that rely on
-  // opening the detail modal will test.skip() when the address isn't
-  // reachable — keeps the green tests green while preserving the
-  // assertion code for when the UI path stabilizes.
   await page.locator('text=/Total\\b/').first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
   const search = page.locator('input[placeholder*="Search propert" i]').first();
   if (await search.isVisible({ timeout: 3000 }).catch(() => false)) {
     await search.fill('ZZZ-E2E-LIC');
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(1200);
   }
   const addrNode = page.getByText('ZZZ-E2E-LIC', { exact: false }).first();
-  if (!(await addrNode.isVisible({ timeout: 8000 }).catch(() => false))) return false;
+  await addrNode.waitFor({ state: 'visible', timeout: 10000 });
   await addrNode.scrollIntoViewIfNeeded().catch(() => {});
   await addrNode.click();
   await page.waitForTimeout(900);
@@ -52,7 +49,10 @@ async function openSeededProperty(page) {
 
 async function seedPropertyWithLicenses() {
   const { data: prop, error: pErr } = await svc.from('properties').insert([{
-    address: addr,
+    address_line_1: ADDR_LINE_1,
+    city: ADDR_CITY,
+    state: ADDR_STATE,
+    zip: ADDR_ZIP,
     type: 'Single Family',
     status: 'vacant',
     rent: 2000,
@@ -119,8 +119,7 @@ test.describe('Property Licenses', () => {
     await goToPage(page, 'properties');
     await page.waitForTimeout(1500);
 
-    const opened = await openSeededProperty(page);
-    if (!opened) test.skip(true, 'Seeded property card not found in UI');
+    await openSeededProperty(page);
 
     // Tab strip: Details | Documents | Licenses (2) | Work Orders | History
     const licTab = page.locator('button:has-text("Licenses")').first();
@@ -132,11 +131,7 @@ test.describe('Property Licenses', () => {
   test('Licenses tab body shows type label + jurisdiction + expiry chip', async ({ page }) => {
     await goToPage(page, 'properties');
     await page.waitForTimeout(1500);
-
-    const propCard = page.locator('div', { has: page.locator('text=' + addr) }).first();
-    if (!(await propCard.isVisible({ timeout: 5000 }).catch(() => false))) test.skip(true, 'Seeded property card not found in UI');
-    await propCard.click();
-    await page.waitForTimeout(800);
+    await openSeededProperty(page);
 
     await page.locator('button:has-text("Licenses")').first().click();
     await page.waitForTimeout(600);
@@ -160,11 +155,7 @@ test.describe('Property Licenses', () => {
   test('Add License opens the form modal with the expected fields', async ({ page }) => {
     await goToPage(page, 'properties');
     await page.waitForTimeout(1500);
-
-    const propCard = page.locator('div', { has: page.locator('text=' + addr) }).first();
-    if (!(await propCard.isVisible({ timeout: 5000 }).catch(() => false))) test.skip(true, 'Seeded property card not found in UI');
-    await propCard.click();
-    await page.waitForTimeout(800);
+    await openSeededProperty(page);
 
     await page.locator('button:has-text("Licenses")').first().click();
     await page.waitForTimeout(400);
