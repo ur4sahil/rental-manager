@@ -368,29 +368,36 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
 
   async function saveRecurringRent() {
     if (!recurring.amount || Number(recurring.amount) <= 0) throw new Error("Rent amount is required");
+    const allTenants = [tenantForm.tenant, tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4, tenantForm.tenant_5].filter(t => t?.trim()).join(" / ");
     const tenantArId = await getOrCreateTenantAR(companyId, tenantForm.tenant, null);
     const revenueId = await resolveAccountId("4000", companyId);
     const today = new Date();
     const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
     const nextPostDate = formatLocalDate(nextMonth);
-    const { error } = await supabase.from("recurring_journal_entries").insert([{
-      company_id: companyId,
-      description: "Monthly rent — " + tenantForm.tenant + " — " + savedAddress.split(",")[0],
-      frequency: recurring.frequency,
-      day_of_month: recurring.day_of_month,
-      amount: Number(recurring.amount),
-      tenant_name: tenantForm.tenant,
-      property: savedAddress,
-      debit_account_id: tenantArId,
-      debit_account_name: "AR - " + tenantForm.tenant,
-      credit_account_id: revenueId,
-      credit_account_name: "Rental Income",
-      status: "active",
-      next_post_date: nextPostDate,
-      created_by: userProfile?.email || ""
-    }]);
-    if (error) throw new Error("Failed to save recurring rent: " + error.message);
-    showToast("Recurring rent entry saved.", "success");
+    // Check for existing recurring entry to prevent duplicates
+    const { data: existRecur } = await supabase.from("recurring_journal_entries").select("id").eq("company_id", companyId).eq("property", savedAddress).eq("status", "active").maybeSingle();
+    if (existRecur) {
+      // Update existing instead of creating duplicate
+      await supabase.from("recurring_journal_entries").update({ amount: Number(recurring.amount), frequency: recurring.frequency, day_of_month: recurring.day_of_month, tenant_name: allTenants, description: "Monthly rent — " + allTenants + " — " + savedAddress.split(",")[0], debit_account_name: "AR - " + allTenants }).eq("id", existRecur.id).eq("company_id", companyId);
+    } else {
+      const { error } = await supabase.from("recurring_journal_entries").insert([{
+        company_id: companyId,
+        description: "Monthly rent — " + allTenants + " — " + savedAddress.split(",")[0],
+        frequency: recurring.frequency,
+        day_of_month: recurring.day_of_month,
+        amount: Number(recurring.amount),
+        tenant_name: allTenants,
+        property: savedAddress,
+        debit_account_id: tenantArId,
+        debit_account_name: "AR - " + allTenants,
+        credit_account_id: revenueId,
+        credit_account_name: "Rental Income",
+        status: "active",
+        next_post_date: nextPostDate,
+        created_by: userProfile?.email || ""
+      }]);
+      if (error) throw new Error("Failed to save recurring rent: " + error.message);
+    }
     return true;
   }
 
@@ -1249,7 +1256,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             </div>
             <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
               <div className="bg-brand-50 rounded-xl p-3 space-y-1">
-                <div className="flex justify-between text-sm"><span className="text-neutral-500">Tenant</span><span className="font-medium text-neutral-800">{tenantForm.tenant}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-neutral-500">Tenant{[tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4, tenantForm.tenant_5].some(t => t?.trim()) ? "s" : ""}</span><span className="font-medium text-neutral-800">{[tenantForm.tenant, tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4, tenantForm.tenant_5].filter(t => t?.trim()).join(" / ")}</span></div>
                 <div className="flex justify-between text-sm"><span className="text-neutral-500">Property</span><span className="font-medium text-neutral-800">{savedAddress.split(",")[0]}</span></div>
                 {tenantForm.lease_start && tenantForm.lease_end && (
                   <div className="flex justify-between text-sm"><span className="text-neutral-500">Lease</span><span className="font-medium text-neutral-800">{tenantForm.lease_start} - {tenantForm.lease_end}</span></div>
@@ -1273,7 +1280,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 </div>
               </div>
               <div className="bg-neutral-50 rounded-xl p-3 text-xs text-neutral-500">
-                <div className="flex justify-between"><span>Debit</span><span className="font-medium">AR - {tenantForm.tenant}</span></div>
+                <div className="flex justify-between"><span>Debit</span><span className="font-medium">AR - {[tenantForm.tenant, tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4, tenantForm.tenant_5].filter(t => t?.trim()).join(" / ")}</span></div>
                 <div className="flex justify-between mt-1"><span>Credit</span><span className="font-medium">4000 Rental Income</span></div>
               </div>
             </div>
