@@ -24,8 +24,8 @@ const BTN_VARIANTS = {
 const BTN_SIZES = {
   xs: "text-xs px-2 py-1 rounded-lg gap-1",
   sm: "text-xs px-3 py-1.5 rounded-lg gap-1.5",
-  md: "text-sm px-4 py-2 rounded-2xl gap-2",
-  lg: "text-sm px-5 py-2.5 rounded-2xl gap-2",
+  md: "text-sm px-3.5 py-1.5 rounded-xl gap-1.5",
+  lg: "text-sm px-5 py-2 rounded-2xl gap-2",
 };
 
 export function Btn({ variant = "primary", size = "md", className = "", icon, children, ...props }) {
@@ -59,8 +59,8 @@ export function Card({ className = "", padding = "p-5", children, ...props }) {
 // Size tokens — keep "md" as the default so existing screens don't shift.
 // Use size="sm" for dense admin/settings forms where vertical space matters.
 const INPUT_SIZES = {
-  sm: "px-2.5 py-1.5 text-xs rounded-xl",
-  md: "px-3 py-2 text-sm rounded-2xl",
+  sm: "px-2.5 py-1 text-xs rounded-lg",
+  md: "px-3 py-1.5 text-sm rounded-xl",
 };
 const INPUT_COMMON = "border border-brand-100 focus:border-brand-300 focus:outline-none transition-colors";
 function inputBase(size, hasExplicitWidth) {
