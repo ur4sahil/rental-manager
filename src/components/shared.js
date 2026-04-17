@@ -275,6 +275,7 @@ export function RecurringEntryModal({ entry, companyId, showToast, onComplete })
 export function DocUploadModal({ onClose, companyId, property, tenant, showToast, onUploaded, isTenantUpload }) {
   const [form, setForm] = useState({ name: "", type: "Lease", tenant_visible: !!isTenantUpload });
   const [uploading, setUploading] = useState(false);
+  const [fileName, setFileName] = useState("");
   const fileRef = useRef();
 
   async function handleUpload() {
@@ -321,7 +322,14 @@ export function DocUploadModal({ onClose, companyId, property, tenant, showToast
   </div>
   <div>
   <label className="text-xs font-medium text-neutral-400 block mb-1">File *</label>
-  <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv" className="text-sm" />
+  <div className="flex items-center gap-3 flex-wrap">
+  <label className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-brand-50 text-brand-700 border border-brand-200 hover:bg-brand-100 cursor-pointer text-sm font-medium transition-colors">
+  <span className="material-icons-outlined text-base">upload_file</span>
+  <span>Choose File</span>
+  <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv" className="hidden" onChange={e => setFileName(e.target.files?.[0]?.name || "")} />
+  </label>
+  <span className="text-xs text-neutral-500 truncate max-w-[220px]" title={fileName}>{fileName || "No file selected"}</span>
+  </div>
   </div>
   {!isTenantUpload && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} className="accent-brand-600" />Visible to tenant</label>}
   <Btn className="w-full" onClick={handleUpload} disabled={uploading}>{uploading ? "Uploading..." : "Upload"}</Btn>
