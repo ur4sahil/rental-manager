@@ -3460,7 +3460,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
       )}
       <div className="grid grid-cols-2 gap-3">
         <div><label className="text-xs font-medium text-neutral-500 block mb-1">Lock Date</label>
-          <Input type="date" value={lockDate} onChange={e => setLockDate(e.target.value)} /></div>
+          <Input type="date" value={lockDate} onChange={e => setLockDate(e.target.value)} className="w-40" /></div>
         <div className="flex items-end"><Btn variant="danger-fill" className="w-full" onClick={savePeriodLock} disabled={!lockDate}>Lock Period</Btn></div>
       </div>
       <div className="mt-3 text-xs text-neutral-400">

@@ -2116,11 +2116,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-neutral-500 block mb-1">From</label>
-              <Input type="date" value={postConnectRange.from} onChange={e => setPostConnectRange(prev => ({ ...prev, from: e.target.value }))} />
+              <Input type="date" value={postConnectRange.from} onChange={e => setPostConnectRange(prev => ({ ...prev, from: e.target.value }))} className="w-40" />
             </div>
             <div>
               <label className="text-xs text-neutral-500 block mb-1">To</label>
-              <Input type="date" value={postConnectRange.to} onChange={e => setPostConnectRange(prev => ({ ...prev, to: e.target.value }))} />
+              <Input type="date" value={postConnectRange.to} onChange={e => setPostConnectRange(prev => ({ ...prev, to: e.target.value }))} className="w-40" />
             </div>
           </div>
           <div className="flex gap-2 mt-2">

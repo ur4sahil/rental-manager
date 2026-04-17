@@ -13,7 +13,7 @@ import { MoveOutWizard, EvictionWorkflow } from "./Lifecycle";
 const acctToday = () => formatLocalDate(new Date());
 
 // ============ TENANTS ============
-function Tenants({ addNotification, userProfile, userRole, companyId, setPage, initialTab, showToast, showConfirm, activeCompany }) {
+function Tenants({ addNotification, userProfile, userRole, companyId, setPage, initialTab, showToast, showConfirm, activeCompany, companySettings = {} }) {
   const isAdmin = userRole === "admin";
   const [pendingRecurringEntry, setPendingRecurringEntry] = useState(null);
   function exportTenants() {

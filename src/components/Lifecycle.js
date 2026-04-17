@@ -234,7 +234,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <>
   <div>
   <label className="text-xs font-medium text-neutral-400 uppercase tracking-widest block mb-1">Move-Out Date</label>
-  <Input type="date" value={moveOutDate} onChange={e => setMoveOutDate(e.target.value)}  />
+  <Input type="date" value={moveOutDate} onChange={e => setMoveOutDate(e.target.value)}  className="w-40" />
   </div>
   <div className="bg-brand-50/30 rounded-2xl p-4 space-y-2 text-sm">
   <div className="flex justify-between"><span className="text-neutral-400">Property</span><span className="font-medium text-neutral-700">{selectedTenant.property}</span></div>

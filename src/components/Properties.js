@@ -2451,7 +2451,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   {/* Utilities */}
   <div className="bg-neutral-50 rounded-xl p-4">
-  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">bolt</span>Utilities</div>
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center justify-between"><div className="flex items-center gap-1"><span className="material-icons-outlined text-sm">bolt</span>Utilities</div>{!isReadOnly(selectedProperty) && <button onClick={() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "", rent: Number(selectedProperty.rent) || 0, isEdit: true }); setSelectedProperty(null); }} className="text-xs text-brand-600 hover:underline">Edit</button>}</div>
   {propertyUtilities.length === 0 ? <p className="text-xs text-neutral-400">No utilities configured</p> : (
   <div className="space-y-2">
   {propertyUtilities.map((u, i) => (
@@ -2469,7 +2469,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   {/* HOA */}
   <div className="bg-neutral-50 rounded-xl p-4">
-  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">holiday_village</span>HOA</div>
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center justify-between"><div className="flex items-center gap-1"><span className="material-icons-outlined text-sm">holiday_village</span>HOA</div>{!isReadOnly(selectedProperty) && <button onClick={() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "", rent: Number(selectedProperty.rent) || 0, isEdit: true }); setSelectedProperty(null); }} className="text-xs text-brand-600 hover:underline">Edit</button>}</div>
   {propertyHoas.length === 0 ? <p className="text-xs text-neutral-400">No HOA</p> : (
   <div className="space-y-2">
   {propertyHoas.map((h, i) => (
@@ -2485,7 +2485,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {/* Loans — admin/owner only */}
   {(userRole === "admin" || userRole === "owner") && (
   <div className="bg-neutral-50 rounded-xl p-4">
-  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">account_balance</span>Loan / Mortgage</div>
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center justify-between"><div className="flex items-center gap-1"><span className="material-icons-outlined text-sm">account_balance</span>Loan / Mortgage</div>{!isReadOnly(selectedProperty) && <button onClick={() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "", rent: Number(selectedProperty.rent) || 0, isEdit: true }); setSelectedProperty(null); }} className="text-xs text-brand-600 hover:underline">Edit</button>}</div>
   {propertyLoans.length === 0 ? <p className="text-xs text-neutral-400">No loan configured</p> : (
   <div className="space-y-2">
   {propertyLoans.map((l, i) => (
@@ -2508,7 +2508,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   {/* Insurance */}
   <div className="bg-neutral-50 rounded-xl p-4">
-  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">verified_user</span>Insurance</div>
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center justify-between"><div className="flex items-center gap-1"><span className="material-icons-outlined text-sm">verified_user</span>Insurance</div>{!isReadOnly(selectedProperty) && <button onClick={() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "", rent: Number(selectedProperty.rent) || 0, isEdit: true }); setSelectedProperty(null); }} className="text-xs text-brand-600 hover:underline">Edit</button>}</div>
   {propertyInsurance.length === 0 ? <p className="text-xs text-neutral-400">No insurance configured</p> : (
   <div className="space-y-2">
   {propertyInsurance.map((ins, i) => (
@@ -2564,7 +2564,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   <div className="flex items-center gap-2">
   <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-brand-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</button>
-  {isAdmin && <button onClick={async () => {
+  <button onClick={async () => {
   if (!guardSubmit("delPropDoc", d.id)) return;
   try {
   if (!await showConfirm({ message: `Delete document "${d.name}"?\n\nThis will remove the document from active views. It can be recovered within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
@@ -2575,7 +2575,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const { data: refreshed } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("property", selectedProperty.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100);
   setPropertyDocs(refreshed || []);
   } finally { guardRelease("delPropDoc", d.id); }
-  }} className="text-xs text-danger-400 hover:text-danger-600 flex items-center gap-0.5"><span className="material-icons-outlined text-sm">delete</span></button>}
+  }} className="text-xs text-danger-400 hover:text-danger-600 flex items-center gap-0.5"><span className="material-icons-outlined text-sm">delete</span></button>
   </div>
   </div>
   ))}

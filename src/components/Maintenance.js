@@ -861,7 +861,7 @@ function VendorManagement({ addNotification, userProfile, userRole, companyId, s
   <div>
   <div className="flex gap-2 mb-4">
   <Input placeholder="Search vendors..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-64" />
-  <Select value={filterSpecialty} onChange={e => setFilterSpecialty(e.target.value)} >
+  <Select filter value={filterSpecialty} onChange={e => setFilterSpecialty(e.target.value)} >
   <option value="all">All Specialties</option>
   {specialties.map(s => <option key={s} value={s}>{s}</option>)}
   </Select>

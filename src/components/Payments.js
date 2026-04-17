@@ -93,8 +93,8 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
 
   <div className="flex flex-wrap gap-2 mb-4">
   <Input placeholder="Search tenant or property..." value={paySearch} onChange={e => setPaySearch(e.target.value)} className="w-64" />
-  <Input type="date" value={payDateFrom} onChange={e => setPayDateFrom(e.target.value)} title="From date" />
-  <Input type="date" value={payDateTo} onChange={e => setPayDateTo(e.target.value)} title="To date" />
+  <Input type="date" value={payDateFrom} onChange={e => setPayDateFrom(e.target.value)} title="From date" className="w-40" />
+  <Input type="date" value={payDateTo} onChange={e => setPayDateTo(e.target.value)} title="To date" className="w-40" />
   {(paySearch || payDateFrom || payDateTo) && (
   <Btn variant="danger" size="xs" onClick={() => { setPaySearch(""); setPayDateFrom(""); setPayDateTo(""); }}>Clear</Btn>
   )}
@@ -301,11 +301,11 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   </Select></div>
   <div>
   <label className="text-xs text-neutral-400 mb-1 block">Start Date</label>
-  <Input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })}  />
+  <Input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })}  className="w-40" />
   </div>
   <div>
   <label className="text-xs text-neutral-400 mb-1 block">End Date (optional)</label>
-  <Input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })}  />
+  <Input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })}  className="w-40" />
   </div>
   </div>
   <div className="flex gap-2 mt-3">
