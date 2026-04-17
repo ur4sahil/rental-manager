@@ -954,7 +954,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   <div className="flex items-center gap-2">
   <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-brand-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</button>
-  {isAdmin && <button onClick={async () => {
+  {userRole !== "tenant" && <button onClick={async () => {
   if (!await showConfirm({ message: `Delete document "${d.name}"?\n\nThis will remove the document from active views. It can be recovered within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from("documents").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", d.id).eq("company_id", companyId);
   if (error) { pmError("PM-7004", { raw: error, context: "delete document" }); return; }
@@ -962,7 +962,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   showToast("Document deleted: " + d.name, "success");
   logAudit("delete", "documents", "Deleted document: " + d.name + " (tenant: " + (selectedTenant?.name || "") + ")", d.id, userProfile?.email, userRole, companyId);
   fetchTenantDocs(selectedTenant);
-  }} className="text-xs text-danger-400 hover:text-danger-600 flex items-center gap-0.5"><span className="material-icons-outlined text-sm">delete</span></button>}
+  }} className="text-xs text-danger-500 hover:text-danger-600 flex items-center gap-1" title="Delete document"><span className="material-icons-outlined text-sm">delete</span>Delete</button>}
   </div>
   </div>
   ))}
