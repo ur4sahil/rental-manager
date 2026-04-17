@@ -1084,20 +1084,23 @@ export function AcctReports({ accounts, journalEntries, classes, companyName, co
   const [tenants, setTenants] = useState([]);
   const [leases, setLeases] = useState([]);
   const [workOrders, setWorkOrders] = useState([]);
+  const [licenses, setLicenses] = useState([]);
   const [extraDataLoaded, setExtraDataLoaded] = useState(false);
 
   async function loadExtraData() {
     if (extraDataLoaded) return;
-    const [propRes, tenRes, leaseRes, woRes] = await Promise.all([
+    const [propRes, tenRes, leaseRes, woRes, licRes] = await Promise.all([
       supabase.from("properties").select("*").eq("company_id", companyId).is("archived_at", null),
       supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null),
       supabase.from("leases").select("*").eq("company_id", companyId),
       supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null),
+      supabase.from("property_licenses").select("*").eq("company_id", companyId).is("archived_at", null),
     ]);
     setProperties(propRes.data || []);
     setTenants(tenRes.data || []);
     setLeases(leaseRes.data || []);
     setWorkOrders(woRes.data || []);
+    setLicenses(licRes.data || []);
     setExtraDataLoaded(true);
   }
 
@@ -1159,6 +1162,7 @@ export function AcctReports({ accounts, journalEntries, classes, companyName, co
       { id: "work_orders_summary", title: "Work Order Summary", description: "Work orders by status, property, cost", icon: "build" },
       { id: "security_deposits", title: "Security Deposit Ledger", description: "Deposits held per tenant", icon: "savings" },
       { id: "noi_by_property", title: "NOI by Property", description: "Net Operating Income per property", icon: "insights" },
+      { id: "license_compliance", title: "License Compliance", description: "All property licenses & expirations", icon: "verified" },
     ]},
   ];
 
@@ -1168,7 +1172,7 @@ export function AcctReports({ accounts, journalEntries, classes, companyName, co
     setCurrentReport(report);
     setActiveView("viewer");
     // Load extra data for property reports
-    if (["rent_roll","vacancy","lease_expirations","rent_collection","work_orders_summary","security_deposits","collections","noi_by_property"].includes(report.id)) {
+    if (["rent_roll","vacancy","lease_expirations","rent_collection","work_orders_summary","security_deposits","collections","noi_by_property","license_compliance"].includes(report.id)) {
       loadExtraData();
     }
     if (report.id === "audit_log") { getAuditLog(start, end).then(d => setAuditData(d)); }
@@ -1225,6 +1229,28 @@ export function AcctReports({ accounts, journalEntries, classes, companyName, co
       const days = Math.ceil((end - today) / 86400000);
       return { tenant: l.tenant_name, property: l.property, leaseStart: l.start_date, leaseEnd: l.end_date, daysUntilExpiration: days, rent: safeNum(l.rent_amount) };
     }).filter(l => l.daysUntilExpiration <= windowDays && l.daysUntilExpiration >= 0).sort((a,b) => a.daysUntilExpiration - b.daysUntilExpiration);
+  }
+
+  const LIC_TYPE_LABELS = { rental_license: "Rental License", rental_registration: "Rental Registration", lead_paint: "Lead Paint Certificate", lead_risk_assessment: "Lead Risk Assessment", fire_inspection: "Fire Inspection Certificate", bbl: "Business License (DC BBL)", other: "Other" };
+  function getLicenseCompliance() {
+    const today = new Date();
+    const propById = Object.fromEntries(properties.map(p => [p.id, p.address]));
+    return licenses.map(lic => {
+      const expiry = parseLocalDate(lic.expiry_date);
+      const daysUntil = Math.ceil((expiry - today) / 86400000);
+      return {
+        property: propById[lic.property_id] || "(unknown)",
+        type: LIC_TYPE_LABELS[lic.license_type] || lic.license_type_custom || lic.license_type,
+        number: lic.license_number || "",
+        jurisdiction: lic.jurisdiction || "",
+        issueDate: lic.issue_date || "",
+        expiryDate: lic.expiry_date,
+        daysUntil,
+        status: daysUntil < 0 ? "expired" : (lic.status === "pending_renewal" ? "pending_renewal" : (daysUntil <= 30 ? "urgent" : (daysUntil <= 90 ? "soon" : "active"))),
+        fee: safeNum(lic.fee_amount),
+        notes: lic.notes || "",
+      };
+    }).sort((a, b) => a.daysUntil - b.daysUntil);
   }
 
   function getWorkOrderSummary(startDate, endDate) {
@@ -1952,6 +1978,17 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       const dEnd = ws.rowCount;
       const totR = ws.addRow(["", "", "", "", "", dEnd >= dStart ? { formula: `SUM(F${dStart}:F${dEnd})` } : 0]); totR.getCell(6).numFmt = money; styleTotalRow(totR, 6, true);
 
+    // ===================== LICENSE COMPLIANCE =====================
+    } else if (id === "license_compliance") {
+      const data = getLicenseCompliance();
+      addTitle("License Compliance Report", null, `As of ${acctFmtDate(asOfDate)}`);
+      const hr = ws.addRow(["Property", "Type", "Number", "Jurisdiction", "Issue Date", "Expiry Date", "Days Until", "Status", "Fee"]); styleHeaderRow(hr, 9);
+      ws.getColumn(1).width = 32; ws.getColumn(2).width = 22; ws.getColumn(3).width = 16; ws.getColumn(4).width = 26; ws.getColumn(5).width = 12; ws.getColumn(6).width = 12; ws.getColumn(7).width = 10; ws.getColumn(8).width = 16; ws.getColumn(9).width = 12; ws.getColumn(9).numFmt = money;
+      const dStart = ws.rowCount + 1;
+      data.forEach(r => { const row = ws.addRow([r.property, r.type, r.number || "—", r.jurisdiction || "—", r.issueDate || "—", r.expiryDate, r.daysUntil, r.status.replace("_", " "), $(r.fee || 0)]); row.getCell(9).numFmt = money; });
+      const dEnd = ws.rowCount;
+      const totR = ws.addRow(["", "", "", "", "", "", "", "TOTAL FEES", dEnd >= dStart ? { formula: `SUM(I${dStart}:I${dEnd})` } : 0]); totR.getCell(9).numFmt = money; styleTotalRow(totR, 9, true);
+
     // ===================== LEASE EXPIRATIONS =====================
     } else if (id === "lease_expirations") {
       const data = getLeaseExpirations(90);
@@ -2472,6 +2509,26 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Vacancy Report</p></div>
       {(() => { const data = getVacancyReport(); return data.length === 0 ? <p className="text-center py-8 text-neutral-400">No vacant properties</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Last Tenant</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Days Vacant</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Est. Lost Revenue</th></tr></thead>
       <tbody>{data.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.property}</td><td className="px-4 py-2 text-neutral-500">{r.lastTenant}</td><td className="px-4 py-2 text-right font-mono">{r.daysVacant}</td><td className="px-4 py-2 text-right font-mono text-danger-600">{acctFmt(r.estimatedLost)}</td></tr>)}</tbody></table>); })()}
+    </div>)}
+
+    {/* License Compliance */}
+    {reportId === "license_compliance" && (<div>
+      <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">License Compliance Report</p><p className="text-xs text-neutral-400 mt-0.5">As of {acctFmtDate(asOfDate)}</p></div>
+      {(() => { const data = getLicenseCompliance(); if (data.length === 0) return <p className="text-center py-8 text-neutral-400">No licenses on file</p>;
+        const counts = data.reduce((a, r) => { a[r.status] = (a[r.status] || 0) + 1; return a; }, {});
+        return (<>
+        <div className="grid grid-cols-5 gap-3 mb-4">
+          <div className="bg-neutral-50 rounded-lg p-3 text-center"><div className="text-lg font-bold">{data.length}</div><div className="text-xs text-neutral-400">Total</div></div>
+          <div className="bg-success-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-success-600">{counts.active || 0}</div><div className="text-xs text-neutral-400">Active</div></div>
+          <div className="bg-warn-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-warn-600">{counts.soon || 0}</div><div className="text-xs text-neutral-400">≤90d</div></div>
+          <div className="bg-danger-50 rounded-lg p-3 text-center"><div className="text-lg font-bold text-danger-500">{counts.urgent || 0}</div><div className="text-xs text-neutral-400">≤30d</div></div>
+          <div className="bg-danger-100 rounded-lg p-3 text-center"><div className="text-lg font-bold text-danger-700">{counts.expired || 0}</div><div className="text-xs text-neutral-400">Expired</div></div>
+        </div>
+        <table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Property</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Type</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Number</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Jurisdiction</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Expiry</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Days</th><th className="px-3 py-2 text-center text-xs font-semibold text-neutral-500">Status</th><th className="px-3 py-2 text-right text-xs font-semibold text-neutral-500">Fee</th></tr></thead>
+        <tbody>{data.map((r, i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-neutral-700 max-w-48 truncate">{r.property}</td><td className="px-3 py-2 text-neutral-600">{r.type}</td><td className="px-3 py-2 text-xs text-neutral-500">{r.number || "—"}</td><td className="px-3 py-2 text-xs text-neutral-500">{r.jurisdiction || "—"}</td><td className="px-3 py-2 text-xs text-neutral-500">{r.expiryDate}</td><td className={`px-3 py-2 text-right font-mono ${r.daysUntil < 0 ? "text-danger-700 font-bold" : r.daysUntil <= 30 ? "text-danger-500 font-semibold" : r.daysUntil <= 90 ? "text-warn-600" : ""}`}>{r.daysUntil < 0 ? `${r.daysUntil}` : r.daysUntil}</td><td className="px-3 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status === "expired" ? "bg-danger-100 text-danger-700" : r.status === "urgent" ? "bg-danger-50 text-danger-600" : r.status === "soon" ? "bg-warn-50 text-warn-700" : r.status === "pending_renewal" ? "bg-brand-50 text-brand-700" : "bg-success-50 text-success-700"}`}>{r.status.replace("_", " ")}</span></td><td className="px-3 py-2 text-right font-mono">{r.fee ? acctFmt(r.fee) : "—"}</td></tr>)}</tbody>
+        <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td colSpan={7} className="px-3 py-2">TOTAL FEES</td><td className="px-3 py-2 text-right font-mono">{acctFmt(data.reduce((s, r) => s + r.fee, 0))}</td></tr></tfoot></table>
+        </>);
+      })()}
     </div>)}
 
     {/* Lease Expirations */}
