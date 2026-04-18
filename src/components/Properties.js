@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, PageHeader, IconBtn } from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, escapeFilterValue, recomputeTenantDocStatus } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
@@ -151,10 +151,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         address_line_1: parts[0] || "", address_line_2: "", city: parts.length >= 3 ? parts[parts.length - 2] : "",
         state: parts.length >= 2 ? (parts[parts.length - 1] || "").split(" ")[0] || "" : "",
         zip: parts.length >= 2 ? (parts[parts.length - 1] || "").split(" ")[1] || "" : "",
+        county: "",
         type: "Single Family", status: wizardData.isOccupied ? "occupied" : "vacant", notes: ""
       };
     }
-    return { address_line_1: "", address_line_2: "", city: "", state: "", zip: "", type: "Single Family", status: "vacant", notes: "" };
+    return { address_line_1: "", address_line_2: "", city: "", state: "", zip: "", county: "", type: "Single Family", status: "vacant", notes: "" };
   });
   // Tenant & lease details (Step 2, only if occupied)
   const [tenantForm, setTenantForm] = useState(() => {
@@ -278,7 +279,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         if (wizardData.propertyId) {
           const { data: existProp } = await supabase.from("properties").select("*").eq("id", wizardData.propertyId).eq("company_id", companyId).maybeSingle();
           if (existProp) {
-            const filledProp = { ...propForm, address_line_1: existProp.address_line_1 || existProp.address || "", address_line_2: existProp.address_line_2 || "", city: existProp.city || "", state: existProp.state || "", zip: existProp.zip || "", type: existProp.type || "Single Family", status: existProp.status || "vacant", notes: existProp.notes || "" };
+            const filledProp = { ...propForm, address_line_1: existProp.address_line_1 || existProp.address || "", address_line_2: existProp.address_line_2 || "", city: existProp.city || "", state: existProp.state || "", zip: existProp.zip || "", county: existProp.county || "", type: existProp.type || "Single Family", status: existProp.status || "vacant", notes: existProp.notes || "" };
             setPropForm(filledProp);
             setSavedPropertyId(wizardData.propertyId);
             setSavedAddress(existProp.address);
@@ -533,16 +534,17 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     if (!propForm.city.trim()) throw new Error("City is required");
     if (!propForm.state) throw new Error("State is required");
     if (!propForm.zip.trim() || !/^\d{5}$/.test(propForm.zip.trim())) throw new Error("ZIP must be 5 digits");
+    if (!propForm.county) throw new Error("County is required");
     const compositeAddress = [propForm.address_line_1, propForm.address_line_2, propForm.city, propForm.state + " " + propForm.zip].filter(Boolean).join(", ");
     // Always check duplicate (even on edit if address changed)
     const { data: dup } = await supabase.from("properties").select("id").eq("company_id", companyId).eq("address", compositeAddress).is("archived_at", null).maybeSingle();
     if (dup && String(dup.id) !== String(savedPropertyId)) throw new Error("A property with this address already exists");
     // Direct save for all roles with Properties access
     if (savedPropertyId) {
-      const { error: upErr } = await supabase.from("properties").update({ address: compositeAddress, address_line_1: propForm.address_line_1, address_line_2: propForm.address_line_2, city: propForm.city, state: propForm.state, zip: propForm.zip, type: propForm.type, status: propForm.status, notes: propForm.notes }).eq("id", savedPropertyId).eq("company_id", companyId);
+      const { error: upErr } = await supabase.from("properties").update({ address: compositeAddress, address_line_1: propForm.address_line_1, address_line_2: propForm.address_line_2, city: propForm.city, state: propForm.state, zip: propForm.zip, county: propForm.county, type: propForm.type, status: propForm.status, notes: propForm.notes }).eq("id", savedPropertyId).eq("company_id", companyId);
       if (upErr) throw new Error("Failed to update property: " + upErr.message);
     } else {
-      const { data: newProp, error: propErr } = await supabase.from("properties").insert([{ address: compositeAddress, address_line_1: propForm.address_line_1, address_line_2: propForm.address_line_2, city: propForm.city, state: propForm.state, zip: propForm.zip, type: propForm.type, status: propForm.status, notes: propForm.notes, company_id: companyId }]).select("id").maybeSingle();
+      const { data: newProp, error: propErr } = await supabase.from("properties").insert([{ address: compositeAddress, address_line_1: propForm.address_line_1, address_line_2: propForm.address_line_2, city: propForm.city, state: propForm.state, zip: propForm.zip, county: propForm.county, type: propForm.type, status: propForm.status, notes: propForm.notes, company_id: companyId }]).select("id").maybeSingle();
       if (propErr) throw new Error("Failed to save property: " + propErr.message);
       setSavedPropertyId(newProp?.id || null);
       // Create accounting class
@@ -845,7 +847,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 </div>
                 <div>
                   <label className="text-xs font-medium text-neutral-500 block mb-1">State *</label>
-                  <select value={propForm.state} onChange={e => setPropForm({ ...propForm, state: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
+                  <select value={propForm.state} onChange={e => setPropForm({ ...propForm, state: e.target.value, county: "" })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
                     <option value="">Select</option>
                     {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
@@ -854,6 +856,25 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <label className="text-xs font-medium text-neutral-500 block mb-1">ZIP *</label>
                   <input type="text" value={propForm.zip} onChange={e => setPropForm({ ...propForm, zip: e.target.value.replace(/\D/g, "").slice(0, 5) })} placeholder="00000" maxLength={5} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-neutral-500 block mb-1">County *</label>
+                <select
+                  value={propForm.county || ""}
+                  onChange={e => setPropForm({ ...propForm, county: e.target.value })}
+                  disabled={!propForm.state || !COUNTIES_BY_STATE[propForm.state]}
+                  className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm disabled:bg-neutral-50 disabled:text-neutral-400"
+                >
+                  <option value="">
+                    {!propForm.state ? "Select state first" : !COUNTIES_BY_STATE[propForm.state] ? "No counties configured for " + propForm.state : "Select county"}
+                  </option>
+                  {(COUNTIES_BY_STATE[propForm.state] || []).map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                {propForm.state && !COUNTIES_BY_STATE[propForm.state] && (
+                  <p className="text-[10px] text-warn-600 mt-1">This state isn't in the operating area; ask an admin to extend COUNTIES_BY_STATE.</p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -3060,7 +3081,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div key={p.id} onClick={() => openPropertyDetail(p)} className={`bg-white rounded-xl border shadow-sm p-4 cursor-pointer hover:shadow-md hover:border-brand-200 transition-all ${isReadOnly(p) ? "border-highlight-200 bg-highlight-50/30" : "border-brand-50"}`}>
   <div className="flex items-start justify-between mb-2">
   <div>
-  <h3 className="font-semibold text-neutral-800 text-sm">{p.address_line_1 || p.address}</h3>{(p.city || p.state) && <div className="text-xs text-neutral-400">{[p.city, p.state, p.zip].filter(Boolean).join(", ")}</div>}
+  <h3 className="font-semibold text-neutral-800 text-sm">{p.address_line_1 || p.address}</h3>{(p.city || p.state) && <div className="text-xs text-neutral-400">{[p.city, p.state, p.zip].filter(Boolean).join(", ")}{p.county && <span className="ml-1 text-neutral-500">· {p.county}</span>}</div>}
   <p className="text-xs text-neutral-400">{p.type}</p>
   </div>
   <div className="flex flex-col items-end gap-1">
