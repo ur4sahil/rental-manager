@@ -8,6 +8,7 @@ import { encryptCredential } from "../utils/encryption";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { safeLedgerInsert, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, _classIdCache, _acctIdCache, _tenantArCache, lookupZip } from "../utils/accounting";
+import { generateBillsForProperty } from "../utils/taxes";
 import { Badge, Spinner, Modal, RecurringEntryModal, DocUploadModal, formatAllTenants } from "./shared";
 
 const LICENSE_TYPE_OPTIONS = [
@@ -541,49 +542,22 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       if (error) throw new Error("Failed to save property tax: " + error.message);
     }
 
-    // Optional recurring JE (DR 5700 Property Taxes / CR 1000 Checking). Skip
-    // when lender escrow covers taxes — that's already captured via the
-    // property_loans.escrow_covers.taxes flag and the mortgage recurring entry.
-    if (taxes.setup_recurring && !taxes.escrow_paid_by_lender) {
-      // 5710 not 5700 — some companies have 5700 pre-allocated to
-      // "Legal & Professional" from older seed data, so we avoid the
-      // collision and give Property Taxes its own code.
-      const taxesAcctId = await resolveAccountId("5710", companyId);
-      const checkingId = await resolveAccountId("1000", companyId);
-      const periodsPerYear = taxes.billing_frequency === "annual" ? 1
-        : taxes.billing_frequency === "semi_annual" ? 2
-        : taxes.billing_frequency === "quarterly" ? 4
-        : 12;
-      const perPeriodAmount = Number(taxes.annual_tax_amount) / periodsPerYear;
-      // recurring_journal_entries uses hyphenated forms — "semi-annual", "annual", "quarterly".
-      const freq = taxes.billing_frequency === "semi_annual" ? "semi-annual"
-        : taxes.billing_frequency === "annual" ? "annual"
-        : taxes.billing_frequency === "quarterly" ? "quarterly"
-        : "monthly";
-      const nextPost = taxes.next_due_date || formatLocalDate(new Date());
-      // Dedup by description + property
-      const description = "Property tax — " + savedAddress.split(",")[0];
-      const { data: existRecur } = await supabase.from("recurring_journal_entries").select("id").eq("company_id", companyId).eq("property", savedAddress).eq("description", description).eq("status", "active").maybeSingle();
-      if (existRecur) {
-        await supabase.from("recurring_journal_entries").update({ amount: perPeriodAmount, frequency: freq, next_post_date: nextPost }).eq("id", existRecur.id).eq("company_id", companyId);
-      } else {
-        const { error: recurErr } = await supabase.from("recurring_journal_entries").insert([{
-          company_id: companyId,
-          description,
-          frequency: freq,
-          day_of_month: nextPost ? Number(nextPost.slice(8, 10)) || 1 : 1,
-          amount: perPeriodAmount,
-          property: savedAddress,
-          debit_account_id: taxesAcctId,
-          debit_account_name: "Property Taxes",
-          credit_account_id: checkingId,
-          credit_account_name: "Checking Account",
-          next_post_date: nextPost,
-          created_by: userProfile?.email || "",
-        }]);
-        if (recurErr) throw new Error("Failed to create recurring tax entry: " + recurErr.message);
-      }
-    }
+    // Refresh the per-installment bill rows with the new annual amount
+    // so each bill's expected_amount = annual / N. Idempotent; only
+    // backfills still-pending rows (paid bills are never touched).
+    try {
+      await generateBillsForProperty({
+        companyId,
+        propertyAddress: savedAddress,
+        propertyId: savedPropertyId || null,
+        county: propForm.county,
+        state: propForm.state,
+        taxYear: Number(taxes.tax_year) || new Date().getFullYear(),
+        expectedAnnualAmount: Number(taxes.annual_tax_amount) || null,
+      });
+    } catch (e) { pmError("PM-8006", { raw: e, context: "regenerate tax bills after saveTaxes", silent: true }); }
+    // No journal-entry creation here — tracking-only for now. Bank-recon
+    // auto-posting will land as a follow-up.
     return true;
   }
 
@@ -656,6 +630,20 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     if (wizardId) {
       await supabase.from("property_setup_wizard").update({ property_address: compositeAddress, property_id: String(savedPropertyId || "") }).eq("id", wizardId).eq("company_id", companyId);
     }
+    // Auto-generate property-tax bills for the current year based on the
+    // county's schedule. Idempotent — safe on re-save. Skips silently if
+    // the jurisdiction has no schedule registered (e.g. out-of-area state).
+    try {
+      const propIdForBills = savedPropertyId || (await supabase.from("properties").select("id").eq("company_id", companyId).eq("address", compositeAddress).maybeSingle()).data?.id || null;
+      await generateBillsForProperty({
+        companyId,
+        propertyAddress: compositeAddress,
+        propertyId: propIdForBills,
+        county: propForm.county,
+        state: propForm.state,
+        taxYear: new Date().getFullYear(),
+      });
+    } catch (e) { pmError("PM-8006", { raw: e, context: "auto-generate tax bills on property save", silent: true }); }
     showToast("Property saved", "success");
     return true;
   }
@@ -1664,11 +1652,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   </div>
                   <label className="flex items-start gap-2 text-sm text-neutral-600">
                     <input type="checkbox" checked={taxes.escrow_paid_by_lender} onChange={e => setTaxes({ ...taxes, escrow_paid_by_lender: e.target.checked })} className="accent-brand-600 mt-0.5" />
-                    <span>Paid by lender through escrow<span className="text-xs text-neutral-400 ml-1">(skips recurring expense entry to avoid double-counting with the mortgage escrow)</span></span>
-                  </label>
-                  <label className="flex items-start gap-2 text-sm text-neutral-600">
-                    <input type="checkbox" checked={taxes.setup_recurring} disabled={taxes.escrow_paid_by_lender} onChange={e => setTaxes({ ...taxes, setup_recurring: e.target.checked })} className="accent-brand-600 mt-0.5" />
-                    <span className={taxes.escrow_paid_by_lender ? "text-neutral-400" : ""}>Auto-post recurring journal entry (DR 5710 Property Taxes / CR 1000 Checking)</span>
+                    <span>Paid by lender through escrow<span className="text-xs text-neutral-400 ml-1">(skips auto-generated bill tracking — lender handles due dates)</span></span>
                   </label>
                   <div>
                     <label className="text-xs font-medium text-neutral-500 block mb-1">Notes</label>
@@ -1830,8 +1814,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <div className="text-xs text-neutral-500">
                     <div>${Number(taxes.annual_tax_amount || 0).toLocaleString()}/yr · {taxes.billing_frequency.replace("_"," ")}{propForm.county ? " · " + propForm.county : ""}</div>
                     {taxes.next_due_date && <div>Next due: {taxes.next_due_date}</div>}
-                    {taxes.escrow_paid_by_lender && <div className="text-neutral-400 italic">Paid by lender escrow — no recurring JE</div>}
-                    {!taxes.escrow_paid_by_lender && taxes.setup_recurring && <div className="text-brand-600">Recurring JE scheduled (DR 5710 / CR 1000)</div>}
+                    {taxes.escrow_paid_by_lender && <div className="text-neutral-400 italic">Paid by lender escrow</div>}
+                    {!taxes.escrow_paid_by_lender && <div className="text-brand-600 text-[10px]">Bill reminders auto-generated from jurisdiction schedule</div>}
                   </div>
                 ) : completedSteps.has("property_tax") ? <p className="text-xs text-neutral-400">Not tracked</p> : null}
               </div>

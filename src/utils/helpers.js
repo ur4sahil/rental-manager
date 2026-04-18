@@ -285,7 +285,9 @@ export const COUNTY_TAX_SCHEDULES = {
   "Stafford County|VA":         [{ label: "1st half (VA)", month: 6, day: 5  }, { label: "2nd half (VA)", month: 12, day: 5  }],
   "Spotsylvania County|VA":     [{ label: "1st half (VA)", month: 6, day: 5  }, { label: "2nd half (VA)", month: 12, day: 5  }],
   "Fauquier County|VA":         [{ label: "1st half (VA)", month: 6, day: 5  }, { label: "2nd half (VA)", month: 12, day: 5  }],
-  "Fredericksburg City|VA":     [{ label: "1st half (VA)", month: 6, day: 5  }, { label: "2nd half (VA)", month: 12, day: 5  }],
+  // Fredericksburg City — fiscal-year FY ending Jun 30, so 1st half is
+  // Dec 5 of the prior calendar year and 2nd half Jun 5 of the tax year.
+  "Fredericksburg City|VA":     [{ label: "1st half (VA)", month: 12, day: 5 }, { label: "2nd half (VA)", month: 6,  day: 5  }],
   // Fairfax County: Jul 28 (not Jun 5) + Dec 5. Fairfax City defaults
   // to same for now; user can adjust per property.
   "Fairfax County|VA":          [{ label: "1st half (VA)", month: 7, day: 28 }, { label: "2nd half (VA)", month: 12, day: 5  }],
@@ -297,9 +299,10 @@ export const COUNTY_TAX_SCHEDULES = {
   // Falls Church + Manassas Park: fiscal-year billing Dec 5 + Jun 5.
   "Falls Church City|VA":       [{ label: "1st half (VA)", month: 12, day: 5 }, { label: "2nd half (VA)", month: 6,  day: 5  }],
   "Manassas Park City|VA":      [{ label: "1st half (VA)", month: 12, day: 5 }, { label: "2nd half (VA)", month: 6,  day: 5  }],
-  // Prince William + Manassas City: Jul 15 + Dec 5.
+  // Prince William County: Jul 15 + Dec 5 (calendar year).
   "Prince William County|VA":   [{ label: "1st half (VA)", month: 7, day: 15 }, { label: "2nd half (VA)", month: 12, day: 5  }],
-  "Manassas City|VA":           [{ label: "1st half (VA)", month: 7, day: 15 }, { label: "2nd half (VA)", month: 12, day: 5  }],
+  // Manassas City — fiscal-year like Manassas Park + Falls Church: Dec 5 + Jun 5.
+  "Manassas City|VA":           [{ label: "1st half (VA)", month: 12, day: 5 }, { label: "2nd half (VA)", month: 6,  day: 5  }],
   // Richmond City: Jan 14 + Jun 14 — uniquely early for VA.
   "Richmond City|VA":           [{ label: "1st half (VA)", month: 1, day: 14 }, { label: "2nd half (VA)", month: 6, day: 14  }],
 
