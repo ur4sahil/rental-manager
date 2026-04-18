@@ -1870,41 +1870,43 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // ============ MAIN VIEW: TABS ============
   return (
   <div>
-  <div className="flex items-center justify-between mb-5">
+  <div className="flex items-center justify-between mb-4">
   <PageHeader title="Document Builder" />
-  <div className="flex gap-1">
-  {[["create","Create"],["templates","Templates"],["history","History"]].map(([id,label]) => (
-  <button key={id} onClick={() => setTab(id)} className={"px-4 py-2 text-sm font-medium rounded-2xl " + (tab === id ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200")}>{label}</button>
-  ))}
   </div>
+  {/* Tabbed bar — underline-style, Zoho/Docs convention */}
+  <div className="flex items-center border-b border-neutral-100 mb-5 gap-6">
+  {[["create","Create","add_circle_outline"],["templates","Templates","description"],["history","History",generatedDocs.length > 0 ? "history" : "history"]].map(([id,label,icon]) => (
+  <button key={id} onClick={() => setTab(id)} className={"flex items-center gap-1.5 pb-2 -mb-px text-sm font-medium border-b-2 transition-colors " + (tab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-500 hover:text-neutral-700")}>
+  <span className="material-icons-outlined text-base">{icon}</span>
+  {label}
+  {id === "history" && generatedDocs.length > 0 && <span className={"text-[10px] px-1.5 py-0.5 rounded-full " + (tab === id ? "bg-brand-100 text-brand-700" : "bg-neutral-100 text-neutral-500")}>{generatedDocs.length}</span>}
+  </button>
+  ))}
   </div>
 
   {/* ---- CREATE TAB ---- */}
   {tab === "create" && (
   <div>
-  {/* Mode selection */}
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-  <button onClick={() => setMode("blank")} className={"rounded-xl border-2 p-5 text-left transition-all " + (mode === "blank" ? "border-brand-600 bg-brand-50" : "border-brand-100 bg-white hover:border-brand-300")}>
-  <div className="flex items-center gap-3 mb-2">
-  <span className="w-10 h-10 rounded-2xl bg-brand-100 flex items-center justify-center"><span className="material-icons-outlined text-brand-600">edit_note</span></span>
-  <h3 className="font-manrope font-bold text-neutral-800">Blank Mode</h3>
-  </div>
-  <p className="text-sm text-neutral-400">Start with an empty form. Fill everything out manually.</p>
+  {/* Mode selection — segmented control */}
+  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4 mb-5">
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">How do you want to start?</h3>
+  <div className="flex gap-2 flex-wrap">
+  <button onClick={() => setMode("blank")} className={"flex items-center gap-2 px-4 py-2 rounded-lg border text-sm transition-colors " + (mode === "blank" ? "border-brand-500 bg-brand-50 text-brand-700" : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300")}>
+  <span className="material-icons-outlined text-base">edit_note</span>
+  <span className="font-medium">Blank</span>
+  <span className="text-[10px] text-neutral-400 hidden md:inline">· fill manually</span>
   </button>
-  <div className={"rounded-xl border-2 p-5 transition-all " + (mode === "prefill" ? "border-success-600 bg-success-50" : "border-brand-100 bg-white")}>
-  <button onClick={() => setMode("prefill")} className="w-full text-left">
-  <div className="flex items-center gap-3 mb-2">
-  <span className="w-10 h-10 rounded-2xl bg-success-100 flex items-center justify-center"><span className="material-icons-outlined text-success-600">auto_fix_high</span></span>
-  <h3 className="font-manrope font-bold text-neutral-800">Prefill from Property</h3>
-  </div>
-  <p className="text-sm text-neutral-400">Select a property to auto-fill tenant, lease, and property data.</p>
+  <button onClick={() => setMode("prefill")} className={"flex items-center gap-2 px-4 py-2 rounded-lg border text-sm transition-colors " + (mode === "prefill" ? "border-success-500 bg-success-50 text-success-700" : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300")}>
+  <span className="material-icons-outlined text-base">auto_fix_high</span>
+  <span className="font-medium">Prefill from Property</span>
+  <span className="text-[10px] text-neutral-400 hidden md:inline">· tenant + lease autofill</span>
   </button>
+  </div>
   {mode === "prefill" && (
-  <div className="mt-3">
+  <div className="mt-3 max-w-md">
   <PropertyDropdown value={prefillProperty} onChange={(addr) => setPrefillProperty(addr)} companyId={companyId} label="Select Property" required />
   </div>
   )}
-  </div>
   </div>
 
   {/* Template selection */}
@@ -1942,24 +1944,37 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <Btn size="sm" onClick={() => { setEditingTemplate(null); setTemplateForm({ name: "", category: "general", description: "", body: "", fields: [], field_config: {}, template_type: "html", pdf_storage_path: "", pdf_page_count: 0, pdf_field_placements: [], signing_mode: "none", signer_roles: [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); }}>+ New Template</Btn>
   </div>
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-  {templates.map(t => (
-  <div key={t.id} className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
-  <div className="flex items-start justify-between">
-  <div>
-  <div className="font-manrope font-bold text-neutral-800">{t.name}</div>
-  <span className="text-xs bg-brand-50 text-brand-600 px-2 py-0.5 rounded-full">{t.category}</span>
+  {templates.map(t => {
+  const isPdf = t.template_type === "pdf_overlay";
+  const hasESign = t.signing_mode && t.signing_mode !== "none";
+  return (
+  <div key={t.id} className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4 flex flex-col">
+  <div className="flex items-start justify-between mb-2">
+  <div className="flex items-center gap-2 min-w-0">
+  <span className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0 " + (isPdf ? "bg-danger-50 text-danger-600" : "bg-brand-50 text-brand-600")}>
+  <span className="material-icons-outlined text-base">{isPdf ? "picture_as_pdf" : "description"}</span>
+  </span>
+  <div className="min-w-0">
+  <div className="font-semibold text-neutral-800 text-sm truncate">{t.name}</div>
+  <div className="text-[10px] text-neutral-400 capitalize">{t.category}</div>
   </div>
-  {t.is_system && <span className="text-[10px] bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded-full">System</span>}
   </div>
-  <p className="text-xs text-neutral-400 mt-2">{t.description}</p>
-  <div className="text-xs text-neutral-500 mt-2">{(t.fields || []).length} fields{t.template_type === "pdf_overlay" ? " · PDF" : ""}</div>
-  <div className="mt-3 flex gap-2">
+  {t.is_system && <span className="text-[10px] bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded-full shrink-0">System</span>}
+  </div>
+  {t.description && <p className="text-xs text-neutral-400 mb-2 line-clamp-2">{t.description}</p>}
+  <div className="flex items-center gap-1.5 flex-wrap text-[10px] mb-3">
+  <span className="text-neutral-500">{(t.fields || []).length} fields</span>
+  {isPdf && <span className="px-1.5 py-0.5 rounded-full bg-danger-50 text-danger-600 uppercase tracking-wide font-semibold">PDF overlay</span>}
+  {hasESign && <span className="px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700 uppercase tracking-wide font-semibold flex items-center gap-0.5"><span className="material-icons-outlined text-[10px]">draw</span>e-sign</span>}
+  </div>
+  <div className="flex gap-1 mt-auto">
+  <Btn variant="success-fill" size="xs" className="flex-1" onClick={() => { setSelectedTemplate(t); setMode("blank"); setFieldValues(applyDefaults(t)); setStep("fill"); setTab("create"); }}>Use</Btn>
   <Btn variant="secondary" size="xs" onClick={async () => { setEditingTemplate(t); setTemplateForm({ name: t.name, category: t.category, description: t.description || "", body: t.body || "", fields: t.fields || [], field_config: t.field_config || {}, template_type: t.template_type || "html", pdf_storage_path: t.pdf_storage_path || "", pdf_page_count: t.pdf_page_count || 0, pdf_field_placements: t.pdf_field_placements || [], signing_mode: t.signing_mode || "none", signer_roles: t.signer_roles || [] }); setPdfPages([]); setPdfDoc(null); setShowTemplateEditor(true); if (t.template_type === "pdf_overlay" && t.pdf_storage_path) { setTimeout(async () => { const pdf = await loadPdfForPreview(t.pdf_storage_path); if (pdf) await renderPdfPages(pdf, pdfScale, pdfContainerRef.current); }, 100); } }}>Edit</Btn>
-  <Btn variant="success-fill" size="xs" onClick={() => { setSelectedTemplate(t); setMode("blank"); setFieldValues(applyDefaults(t)); setStep("fill"); setTab("create"); }}>Use</Btn>
-  <Btn variant="danger" size="xs" onClick={() => deleteTemplate(t)} className="ml-auto">Delete</Btn>
+  <Btn variant="danger" size="xs" onClick={() => deleteTemplate(t)}>✕</Btn>
   </div>
   </div>
-  ))}
+  );
+  })}
   </div>
   </div>
   )}
@@ -2010,11 +2025,15 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   {hasEnvelope && sigs.length > 0 && (
   <div className="mt-3 pt-3 border-t border-neutral-100 grid grid-cols-1 md:grid-cols-2 gap-1.5">
-  {sigs.map(s => {
+  {sigs.map((s, idx) => {
   const cls = s.status === "signed" ? "text-success-700 bg-success-50" : s.status === "viewed" ? "text-brand-700 bg-brand-50" : s.status === "sent" ? "text-highlight-700 bg-highlight-50" : "text-neutral-500 bg-neutral-50";
   const icon = s.status === "signed" ? "check_circle" : s.status === "viewed" ? "visibility" : s.status === "sent" ? "mail" : "hourglass_empty";
+  // Recipient color dot — index into ROLE_COLORS by signer order across
+  // this doc's signer roster. Matches the template editor coloring.
+  const roleColor = ROLE_COLORS[idx % ROLE_COLORS.length];
   return (
   <div key={s.id} className={"flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-lg " + cls}>
+  <span className={`w-2 h-2 rounded-full ${roleColor.dot} shrink-0`} title="Recipient color" />
   <span className="material-icons-outlined text-sm">{icon}</span>
   <span className="font-semibold truncate">{s.signer_name || s.signer_email}</span>
   <span className="text-neutral-400 truncate">· {s.signer_role}</span>
