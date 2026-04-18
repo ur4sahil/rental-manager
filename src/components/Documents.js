@@ -1185,17 +1185,21 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const sections = [...new Set(templateForm.fields.map(f => f.section).filter(Boolean))];
   return (
   <div className="fixed inset-0 z-50 bg-[#fcf8ff] flex flex-col">
-  {/* Toolbar */}
-  <div className="h-14 border-b border-brand-100 bg-white/80 backdrop-blur-md flex items-center px-5 gap-3 shrink-0">
+  {/* Top ribbon — breadcrumb + mode toggle + primary action */}
+  <div className="h-14 border-b border-neutral-100 bg-white flex items-center px-5 gap-3 shrink-0">
   <IconBtn icon="arrow_back" onClick={() => { setShowTemplateEditor(false); setEditingTemplate(null); }} />
-  <div className="flex-1 min-w-0">
-  <h2 className="text-lg font-manrope font-bold text-neutral-800 truncate">{editingTemplate ? "Edit Template" : "New Template"}{templateForm.name ? ": " + templateForm.name : ""}</h2>
+  <div className="flex-1 min-w-0 flex items-center gap-1.5 text-sm">
+  <span className="text-neutral-400 shrink-0">Document Builder</span>
+  <span className="text-neutral-300 shrink-0">›</span>
+  <span className="text-neutral-400 shrink-0">Templates</span>
+  <span className="text-neutral-300 shrink-0">›</span>
+  <span className="font-semibold text-neutral-800 truncate">{editingTemplate ? (templateForm.name || "Edit Template") : (templateForm.name || "New Template")}</span>
   </div>
   <div className="flex bg-neutral-100 rounded-xl p-0.5">
   <button onClick={() => setTemplateForm(prev => ({ ...prev, template_type: "html" }))} className={"px-3 py-1.5 text-xs font-medium rounded-lg transition-colors " + (templateForm.template_type === "html" ? "bg-white text-brand-700 shadow-sm" : "text-neutral-500 hover:text-neutral-700")}>HTML</button>
   <button onClick={() => setTemplateForm(prev => ({ ...prev, template_type: "pdf_overlay" }))} className={"px-3 py-1.5 text-xs font-medium rounded-lg transition-colors " + (templateForm.template_type === "pdf_overlay" ? "bg-white text-brand-700 shadow-sm" : "text-neutral-500 hover:text-neutral-700")}>PDF Overlay</button>
   </div>
-  <Btn size="lg" onClick={saveTemplate}>{editingTemplate ? "Update Template" : "Create Template"}</Btn>
+  <Btn onClick={saveTemplate}>{editingTemplate ? "Save" : "Create"}</Btn>
   <span className="text-xs text-neutral-300 ml-2">Esc to close</span>
   </div>
 
@@ -1618,12 +1622,14 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   return (
   <div className="fixed inset-0 z-50 bg-[#fcf8ff] flex flex-col">
-  {/* Toolbar */}
-  <div className="h-14 border-b border-brand-100 bg-white/80 backdrop-blur-md flex items-center px-5 gap-3 shrink-0">
+  {/* Top ribbon — breadcrumb + mode hint + Preview CTA */}
+  <div className="h-14 border-b border-neutral-100 bg-white flex items-center px-5 gap-3 shrink-0">
   <IconBtn icon="arrow_back" onClick={resetFlow} />
-  <div className="flex-1 min-w-0">
-  <h2 className="text-lg font-manrope font-bold text-neutral-800 truncate">{selectedTemplate.name}</h2>
-  <p className="text-xs text-neutral-400">{mode === "prefill" ? "Prefilled from " + (prefillProperty || "property") : "Blank mode"} · Fill the form, then preview</p>
+  <div className="flex-1 min-w-0 flex items-center gap-1.5 text-sm">
+  <span className="text-neutral-400 shrink-0">Document Builder</span>
+  <span className="text-neutral-300 shrink-0">›</span>
+  <span className="font-semibold text-neutral-800 truncate">{selectedTemplate.name}</span>
+  <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500 uppercase tracking-wide shrink-0">{mode === "prefill" ? "Prefilled" : "Blank"}</span>
   </div>
   <Btn onClick={() => {
   const errors = validateFields(selectedTemplate, fieldValues);
@@ -1642,7 +1648,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   if (sectionFields.length === 0) return null;
   return (
   <div key={section} className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
-  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 text-sm mb-3 uppercase tracking-wide">{section}</h3>
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">{section}</h3>
   <div className="space-y-3">{sectionFields}</div>
   </div>
   );
@@ -1686,7 +1692,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   ) : (
   <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
-  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 text-sm mb-3">Live Preview</h3>
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">Live Preview</h3>
   <div className="prose prose-sm max-w-none border border-neutral-100 rounded-xl p-6 bg-white" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }}
   dangerouslySetInnerHTML={{ __html: renderMergedBody(selectedTemplate.body, fieldValues, fc) }} />
   </div>
@@ -1702,21 +1708,23 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const rendered = renderMergedBody(selectedTemplate.body, fieldValues, selectedTemplate.field_config);
   return (
   <div className="fixed inset-0 z-50 bg-[#fcf8ff] flex flex-col">
-  {/* Toolbar */}
-  <div className="h-14 border-b border-brand-100 bg-white/80 backdrop-blur-md flex items-center px-5 gap-3 shrink-0">
+  {/* Top ribbon — breadcrumb + inline export shortcuts */}
+  <div className="h-14 border-b border-neutral-100 bg-white flex items-center px-5 gap-3 shrink-0">
   <IconBtn icon="arrow_back" onClick={() => setStep("fill")} />
-  <div className="flex-1 min-w-0">
-  <h2 className="text-lg font-manrope font-bold text-neutral-800 truncate">Document Preview</h2>
-  <p className="text-xs text-neutral-400">Review the final document, then export or send</p>
+  <div className="flex-1 min-w-0 flex items-center gap-1.5 text-sm">
+  <span className="text-neutral-400 shrink-0">Document Builder</span>
+  <span className="text-neutral-300 shrink-0">›</span>
+  <span className="font-semibold text-neutral-800 truncate">{selectedTemplate.name}</span>
+  <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500 uppercase tracking-wide shrink-0">Preview</span>
   </div>
-  <div className="flex items-center gap-2">
-  <Btn variant="danger" size="xs" onClick={() => exportPDF()}>
+  <div className="flex items-center gap-1">
+  <Btn variant="secondary" size="xs" onClick={() => exportPDF()} title="Download PDF">
   <span className="material-icons-outlined text-sm">picture_as_pdf</span>PDF
   </Btn>
-  <Btn variant="secondary" size="xs" onClick={() => exportDOCX()}>
+  <Btn variant="secondary" size="xs" onClick={() => exportDOCX()} title="Download DOCX">
   <span className="material-icons-outlined text-sm">article</span>DOCX
   </Btn>
-  <Btn variant="slate" size="xs" onClick={() => exportTXT()}>
+  <Btn variant="secondary" size="xs" onClick={() => exportTXT()} title="Download TXT">
   <span className="material-icons-outlined text-sm">text_snippet</span>TXT
   </Btn>
   </div>
@@ -1759,23 +1767,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {/* Drag handle */}
   <div onMouseDown={startDrag} className="w-1.5 bg-brand-100 hover:bg-brand-300 cursor-col-resize shrink-0 transition-colors" />
 
-  {/* Right: Actions sidebar */}
+  {/* Right: Actions sidebar (Send). Export lives in the top ribbon. Save/Finalize
+      moved to a sticky bottom action bar below, Zoho-style. */}
   <div style={{ width: (100 - splitPercent) + "%" }} className="overflow-y-auto p-6 space-y-4">
-  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
-  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">Export</h3>
-  <div className="space-y-2">
-  <Btn variant="danger" className="w-full justify-start" onClick={() => exportPDF()}>
-  <span className="material-icons-outlined text-lg">picture_as_pdf</span>Download PDF
-  </Btn>
-  <Btn variant="secondary" className="w-full justify-start" onClick={() => exportDOCX()}>
-  <span className="material-icons-outlined text-lg">article</span>Download DOCX
-  </Btn>
-  <Btn variant="slate" className="w-full justify-start" onClick={() => exportTXT()}>
-  <span className="material-icons-outlined text-lg">text_snippet</span>Download TXT
-  </Btn>
-  </div>
-  </div>
-
   {selectedTemplate?.signing_mode && selectedTemplate.signing_mode !== "none" ? (
   /* Envelope / e-sign flow */
   <div className="bg-white rounded-xl shadow-sm border border-brand-200 p-5">
@@ -1823,15 +1817,15 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </Btn>
   </div>
   )}
+  </div>
+  </div>
 
-  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
-  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">Save</h3>
-  <div className="space-y-2">
-  <Btn className="w-full" onClick={async () => { await saveDocument("draft"); resetFlow(); }}>Save as Draft</Btn>
-  <Btn variant="slate" className="w-full" onClick={async () => { await saveDocument("final"); resetFlow(); }}>Finalize</Btn>
-  </div>
-  </div>
-  </div>
+  {/* Bottom action bar — sticky primary actions */}
+  <div className="border-t border-neutral-100 bg-white px-5 py-3 flex items-center gap-2 shrink-0">
+  <span className="text-xs text-neutral-400 hidden md:inline">Document is ready. Save as a draft to edit later, or finalize to lock it.</span>
+  <div className="flex-1" />
+  <Btn variant="secondary" onClick={async () => { await saveDocument("draft"); resetFlow(); }}>Save as Draft</Btn>
+  <Btn onClick={async () => { await saveDocument("final"); resetFlow(); }}>Finalize</Btn>
   </div>
   </div>
   );
