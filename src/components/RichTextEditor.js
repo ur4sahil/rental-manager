@@ -36,7 +36,48 @@ function ToolbarBtn({ onClick, active, title, children }) {
   );
 }
 
-export default function RichTextEditor({ value = "", onChange, mergeFields = [], placeholder = "", minHeight = "400px" }) {
+// Standalone toolbar that can be rendered anywhere (e.g. top ribbon) given
+// a TipTap editor instance. Mirrors the internal toolbar one-to-one.
+export function RichTextToolbar({ editor, compact = false }) {
+  if (!editor) return null;
+  const setLink = () => {
+    const prev = editor.getAttributes("link").href || "";
+    // eslint-disable-next-line no-alert
+    const url = window.prompt("Link URL", prev);
+    if (url === null) return;
+    if (url === "") { editor.chain().focus().extendMarkRange("link").unsetLink().run(); return; }
+    editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+  };
+  const insertTable = () => {
+    editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+  };
+  const gap = compact ? "gap-0.5" : "gap-1";
+  return (
+    <div className={"flex items-center flex-wrap " + gap}>
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive("bold")} title="Bold"><b>B</b></ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive("italic")} title="Italic"><i>I</i></ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleUnderline().run()} active={editor.isActive("underline")} title="Underline"><span className="underline">U</span></ToolbarBtn>
+      <span className="w-px h-5 bg-neutral-200 mx-1" />
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} active={editor.isActive("heading", { level: 1 })} title="Heading 1">H1</ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} active={editor.isActive("heading", { level: 2 })} title="Heading 2">H2</ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} active={editor.isActive("heading", { level: 3 })} title="Heading 3">H3</ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().setParagraph().run()} active={editor.isActive("paragraph")} title="Paragraph">¶</ToolbarBtn>
+      <span className="w-px h-5 bg-neutral-200 mx-1" />
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive("bulletList")} title="Bulleted list">•</ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive("orderedList")} title="Numbered list">1.</ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().toggleBlockquote().run()} active={editor.isActive("blockquote")} title="Blockquote">&ldquo;</ToolbarBtn>
+      <span className="w-px h-5 bg-neutral-200 mx-1" />
+      <ToolbarBtn onClick={setLink} active={editor.isActive("link")} title="Link">🔗</ToolbarBtn>
+      <ToolbarBtn onClick={insertTable} title="Insert table">⊞</ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Horizontal rule">―</ToolbarBtn>
+      <span className="w-px h-5 bg-neutral-200 mx-1" />
+      <ToolbarBtn onClick={() => editor.chain().focus().undo().run()} title="Undo">↶</ToolbarBtn>
+      <ToolbarBtn onClick={() => editor.chain().focus().redo().run()} title="Redo">↷</ToolbarBtn>
+    </div>
+  );
+}
+
+export default function RichTextEditor({ value = "", onChange, mergeFields = [], placeholder = "", minHeight = "400px", hideToolbar = false, onEditorReady = null, paperCanvas = false }) {
   const [dragOver, setDragOver] = useState(false);
   const editor = useEditor({
     extensions: [
@@ -54,6 +95,10 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
   });
 
   useEffect(() => () => { if (editor) editor.destroy(); }, [editor]);
+
+  // Hand the editor instance up to the parent so it can mount the
+  // standalone RichTextToolbar elsewhere (e.g. in the ribbon).
+  useEffect(() => { if (editor && onEditorReady) onEditorReady(editor); }, [editor, onEditorReady]);
 
   if (!editor) return null;
 
@@ -101,30 +146,62 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
     }
   };
 
+  // Paper canvas mode: center an 8.5in letter-size page with shadow, on a
+  // subtle grey gutter. Used by the template editor where the canvas IS
+  // the preview.
+  if (paperCanvas) {
+    return (
+      <div className="flex flex-col flex-1 min-h-0">
+        {!hideToolbar && (
+          <div className="px-2 py-1.5 border-b border-neutral-100 bg-white">
+            <RichTextToolbar editor={editor} compact />
+          </div>
+        )}
+        {mergeFields.length > 0 && (
+          <div className="flex items-center gap-1 flex-wrap px-3 py-1.5 border-b border-neutral-100 bg-white">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400 mr-1">Drag or click a field</span>
+            {mergeFields.filter(f => f.name).map(f => (
+              <button
+                key={f.name}
+                type="button"
+                draggable
+                onDragStart={e => {
+                  e.dataTransfer.setData("application/x-merge-field", f.name);
+                  e.dataTransfer.effectAllowed = "copy";
+                }}
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => insertMerge(f.name)}
+                title={"Drag onto the page or click to insert {{" + f.name + "}}"}
+                className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full hover:bg-brand-100 border border-brand-200 cursor-grab active:cursor-grabbing"
+              >
+                {"{{" + (f.label || f.name) + "}}"}
+              </button>
+            ))}
+          </div>
+        )}
+        <div
+          className={"flex-1 overflow-y-auto bg-neutral-100/50 flex justify-center p-6 transition-colors " + (dragOver ? "bg-brand-50/40" : "")}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClick={() => editor.chain().focus().run()}
+        >
+          <div className={"bg-white shadow-[0_8px_24px_-12px_rgba(0,0,0,0.15)] border w-full max-w-[8.5in] min-h-[11in] px-16 py-14 transition-colors " + (dragOver ? "border-brand-400" : "border-neutral-200")} style={{ fontFamily: "Georgia, serif" }}>
+            <EditorContent editor={editor} className="prose prose-sm max-w-none outline-none focus:outline-none [&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[200px]" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* Toolbar */}
-      <div className="flex items-center gap-1 flex-wrap p-2 border border-neutral-100 rounded-t-xl bg-neutral-50">
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive("bold")} title="Bold"><b>B</b></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive("italic")} title="Italic"><i>I</i></ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleUnderline().run()} active={editor.isActive("underline")} title="Underline"><span className="underline">U</span></ToolbarBtn>
-        <span className="w-px h-5 bg-brand-100 mx-1" />
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} active={editor.isActive("heading", { level: 1 })} title="Heading 1">H1</ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} active={editor.isActive("heading", { level: 2 })} title="Heading 2">H2</ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} active={editor.isActive("heading", { level: 3 })} title="Heading 3">H3</ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().setParagraph().run()} active={editor.isActive("paragraph")} title="Paragraph">¶</ToolbarBtn>
-        <span className="w-px h-5 bg-brand-100 mx-1" />
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive("bulletList")} title="Bulleted list">•</ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive("orderedList")} title="Numbered list">1.</ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().toggleBlockquote().run()} active={editor.isActive("blockquote")} title="Blockquote">&ldquo;</ToolbarBtn>
-        <span className="w-px h-5 bg-brand-100 mx-1" />
-        <ToolbarBtn onClick={setLink} active={editor.isActive("link")} title="Link">🔗</ToolbarBtn>
-        <ToolbarBtn onClick={insertTable} title="Insert table">⊞</ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Horizontal rule">―</ToolbarBtn>
-        <span className="w-px h-5 bg-brand-100 mx-1" />
-        <ToolbarBtn onClick={() => editor.chain().focus().undo().run()} title="Undo">↶</ToolbarBtn>
-        <ToolbarBtn onClick={() => editor.chain().focus().redo().run()} title="Redo">↷</ToolbarBtn>
-      </div>
+      {!hideToolbar && (
+        <div className="p-2 border border-neutral-100 rounded-t-xl bg-neutral-50">
+          <RichTextToolbar editor={editor} />
+        </div>
+      )}
 
       {/* Merge fields row — click OR drag onto the canvas to insert */}
       {mergeFields.length > 0 && (

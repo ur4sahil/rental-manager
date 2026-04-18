@@ -7,7 +7,7 @@ import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { Spinner, Modal, PropertyDropdown, PropertySelect } from "./shared";
-import RichTextEditor from "./RichTextEditor";
+import RichTextEditor, { RichTextToolbar } from "./RichTextEditor";
 
 // ============ DOCUMENTS ============
 function Documents({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
@@ -259,6 +259,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const [signerEmails, setSignerEmails] = useState({});       // { [role]: "email" }
   const [signerNames, setSignerNames] = useState({});         // { [role]: "Full Name" }
   const [signaturesByDoc, setSignaturesByDoc] = useState({}); // { [docId]: [signerRow, ...] }
+  // Phase 5 — template editor 3-col layout
+  const [htmlEditor, setHtmlEditor] = useState(null);         // TipTap instance so the ribbon can mount the toolbar
+  const [advancedOpen, setAdvancedOpen] = useState(false);    // Advanced Field Config (right rail, collapsed)
 
   const previewRef = useRef();
 
@@ -1219,34 +1222,21 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <span className="text-xs text-neutral-300 ml-2">Esc to close</span>
   </div>
 
-  {/* Split pane */}
-  <div className="flex-1 flex overflow-hidden">
-  {/* Left: Template config + fields */}
-  <div style={{ width: splitPercent + "%" }} className="overflow-y-auto p-6 space-y-4">
-  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
-  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">Template Details</h3>
-  <div className="grid grid-cols-2 gap-3">
-  <div>
-  <label className="text-xs font-medium text-neutral-400 block mb-1">Name *</label>
-  <Input value={templateForm.name} onChange={e => setTemplateForm({...templateForm, name: e.target.value})} placeholder="e.g. Pet Addendum" />
+  {/* Sub-ribbon — TipTap formatting toolbar (HTML templates only) */}
+  {templateForm.template_type === "html" && htmlEditor && (
+  <div className="px-5 py-1.5 border-b border-neutral-100 bg-white shrink-0">
+  <RichTextToolbar editor={htmlEditor} />
   </div>
-  <div>
-  <label className="text-xs font-medium text-neutral-400 block mb-1">Category</label>
-  <Select value={templateForm.category} onChange={e => setTemplateForm({...templateForm, category: e.target.value})}>
-  {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
-  </Select>
-  </div>
-  </div>
-  <div className="mt-3">
-  <label className="text-xs font-medium text-neutral-400 block mb-1">Description</label>
-  <Input value={templateForm.description} onChange={e => setTemplateForm({...templateForm, description: e.target.value})} placeholder="Brief description" />
-  </div>
-  </div>
+  )}
 
-  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
-  <div className="flex items-center justify-between mb-3">
+  {/* 3-column layout: left fields rail | center canvas | right inspector rail */}
+  <div className="flex-1 flex overflow-hidden">
+  {/* LEFT RAIL — Form Fields palette */}
+  <div className="w-[260px] shrink-0 border-r border-neutral-100 overflow-y-auto bg-white">
+  <div className="p-3">
+  <div className="flex items-center justify-between mb-2 sticky top-0 bg-white pb-2">
   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Form Fields ({templateForm.fields.length})</h3>
-  <Btn size="sm" onClick={addField}>+ Add Field</Btn>
+  <Btn size="xs" onClick={addField}>+ Add</Btn>
   </div>
   <div className="space-y-3">
   {templateForm.fields.map((f, i) => (
@@ -1288,11 +1278,46 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   ))}
   </div>
   </div>
+  </div>
+  {/* END LEFT RAIL */}
 
-  {/* Advanced Field Config */}
+  {/* RIGHT RAIL — Template Details / Signature Workflow / Advanced Config.
+      DOM-ordered before the center pane but positioned last in the flex
+      container via `order-last` so the center (old right pane) stays
+      flex-1 between them visually. */}
+  <div className="w-[340px] shrink-0 order-last border-l border-neutral-100 overflow-y-auto bg-white">
+  <div className="p-3 space-y-3">
+
+  {/* Template Details */}
+  <div className="bg-white border border-neutral-100 rounded-xl p-3">
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-2">Template Details</h3>
+  <div className="space-y-2">
+  <div>
+  <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-0.5">Name *</label>
+  <Input size="sm" value={templateForm.name} onChange={e => setTemplateForm({...templateForm, name: e.target.value})} placeholder="e.g. Pet Addendum" />
+  </div>
+  <div>
+  <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-0.5">Category</label>
+  <Select size="sm" value={templateForm.category} onChange={e => setTemplateForm({...templateForm, category: e.target.value})}>
+  {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+  </Select>
+  </div>
+  <div>
+  <label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider block mb-0.5">Description</label>
+  <Input size="sm" value={templateForm.description} onChange={e => setTemplateForm({...templateForm, description: e.target.value})} placeholder="Brief description" />
+  </div>
+  </div>
+  </div>
+
+  {/* Advanced Field Config — collapsible */}
   {templateForm.fields.length > 0 && (
-  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
-  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">Advanced Field Config</h3>
+  <div className="bg-white border border-neutral-100 rounded-xl">
+  <button type="button" onClick={() => setAdvancedOpen(o => !o)} className="w-full flex items-center justify-between p-3 text-xs font-semibold uppercase tracking-wide text-neutral-500 hover:bg-neutral-50 rounded-xl">
+  <span className="flex items-center gap-1.5"><span className="material-icons-outlined text-sm text-neutral-400">{advancedOpen ? "expand_more" : "chevron_right"}</span>Advanced Field Config</span>
+  <span className="text-[10px] text-neutral-400 font-normal normal-case tracking-normal">{Object.keys(templateForm.field_config?.calculated || {}).length + Object.keys(templateForm.field_config?.conditional || {}).length} rules</span>
+  </button>
+  {advancedOpen && (
+  <div className="px-3 pb-3">
 
   {/* Calculated Fields */}
   <div className="mb-4">
@@ -1355,9 +1380,11 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   </div>
   )}
+  </div>
+  )}
 
   {/* Signature Workflow */}
-  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
+  <div className="bg-white border border-neutral-100 rounded-xl p-3">
   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-1">Signature Workflow</h3>
   <p className="text-xs text-neutral-400 mb-3">Choose how this document gets signed. Each signer gets a unique magic-link email; no account required on their end.</p>
 
@@ -1427,14 +1454,13 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
 
   </div>
+  </div>
+  {/* END RIGHT RAIL */}
 
-  {/* Drag handle */}
-  <div onMouseDown={startDrag} className="w-1.5 bg-brand-100 hover:bg-brand-300 cursor-col-resize shrink-0 transition-colors" />
-
-  {/* Right pane */}
-  <div style={{ width: (100 - splitPercent) + "%" }} className="overflow-y-auto p-6 space-y-4">
+  {/* CENTER — canvas (was the old right pane). flex-1 fills the middle. */}
+  <div className="flex-1 overflow-y-auto bg-neutral-100/30 flex flex-col">
   {templateForm.template_type === "pdf_overlay" ? (
-  <>
+  <div className="p-6 space-y-4">
   {/* PDF Upload + Viewer */}
   {!templateForm.pdf_storage_path ? (
   <div className="bg-white rounded-xl shadow-sm border border-neutral-100 p-8 text-center">
@@ -1533,36 +1559,20 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   </>
   )}
-  </>
-  ) : (
-  <>
-  {/* HTML body editor + preview — TipTap WYSIWYG */}
-  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4 flex flex-col">
-  <div className="flex items-center justify-between mb-2">
-  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Document Body</h3>
-  <span className="text-[10px] text-neutral-400">Use the toolbar to format &middot; Insert merge fields via the chip row</span>
   </div>
+  ) : (
+  /* HTML mode — a single paperCanvas WYSIWYG editor. Toolbar lives in the
+     sub-ribbon at the top. Canvas IS the preview (no separate preview card). */
   <RichTextEditor
   key={editingTemplate?.id || "new-template"}
   value={templateForm.body}
   onChange={html => setTemplateForm(prev => ({ ...prev, body: html }))}
   mergeFields={templateForm.fields}
-  placeholder="Start typing… use {{tenant_name}}, {{property_address}} etc. for merge fields."
-  minHeight="400px"
+  placeholder="Start typing… drag a field from the left rail or click a merge-chip to insert."
+  hideToolbar
+  paperCanvas
+  onEditorReady={setHtmlEditor}
   />
-  </div>
-  <div>
-  <div className="flex items-center justify-between mb-2 px-1">
-  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Preview</h3>
-  <span className="text-[10px] text-neutral-400">Page View · 8.5in × 11in</span>
-  </div>
-  {/* Paper canvas — Zoho Writer Page View. max-w-[8.5in] mimics letter width,
-      the shadow + bg-subtle gutter gives the familiar paper-on-desk feel. */}
-  <div className="bg-neutral-100/50 rounded-xl p-6 flex justify-center">
-  <div className="bg-white shadow-[0_8px_24px_-12px_rgba(0,0,0,0.15)] border border-neutral-200 w-full max-w-[8.5in] min-h-[11in] px-16 py-14 prose prose-sm max-w-none" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7", color: "#1a1a1a" }} dangerouslySetInnerHTML={{ __html: renderMergedBody(templateForm.body, {}, templateForm.field_config) }} />
-  </div>
-  </div>
-  </>
   )}
   </div>
   </div>
