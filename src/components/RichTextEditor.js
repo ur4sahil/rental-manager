@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { StarterKit } from "@tiptap/starter-kit";
 import { Underline } from "@tiptap/extension-underline";
@@ -29,7 +29,7 @@ function ToolbarBtn({ onClick, active, title, children }) {
       title={title}
       className={"px-2 py-1 rounded text-xs border transition-colors " + (active
         ? "bg-brand-600 border-brand-600 text-white"
-        : "bg-white border-brand-100 text-neutral-600 hover:bg-brand-50 hover:border-brand-300")}
+        : "bg-white border-neutral-200 text-neutral-600 hover:bg-neutral-100 hover:border-neutral-300")}
     >
       {children}
     </button>
@@ -37,6 +37,7 @@ function ToolbarBtn({ onClick, active, title, children }) {
 }
 
 export default function RichTextEditor({ value = "", onChange, mergeFields = [], placeholder = "", minHeight = "400px" }) {
+  const [dragOver, setDragOver] = useState(false);
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -73,10 +74,37 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
     editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
   };
 
+  // Drag-and-drop merge fields onto the canvas.
+  // The left-rail chip sets `application/x-merge-field` to the field name.
+  // On drop we map the mouse coords → doc position via posAtCoords and
+  // insert the {{name}} token there (focus stays on the editor afterward).
+  const handleDragOver = (e) => {
+    if (e.dataTransfer.types.includes("application/x-merge-field")) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      if (!dragOver) setDragOver(true);
+    }
+  };
+  const handleDragLeave = () => setDragOver(false);
+  const handleDrop = (e) => {
+    const name = e.dataTransfer.getData("application/x-merge-field");
+    if (!name) return;
+    e.preventDefault();
+    setDragOver(false);
+    const coords = { left: e.clientX, top: e.clientY };
+    let pos;
+    try { pos = editor.view.posAtCoords(coords)?.pos; } catch { pos = null; }
+    if (pos != null) {
+      editor.chain().focus().insertContentAt(pos, "{{" + name + "}}").run();
+    } else {
+      editor.chain().focus().insertContent("{{" + name + "}}").run();
+    }
+  };
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* Toolbar */}
-      <div className="flex items-center gap-1 flex-wrap p-2 border border-brand-100 rounded-t-xl bg-brand-50/40">
+      <div className="flex items-center gap-1 flex-wrap p-2 border border-neutral-100 rounded-t-xl bg-neutral-50">
         <ToolbarBtn onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive("bold")} title="Bold"><b>B</b></ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive("italic")} title="Italic"><i>I</i></ToolbarBtn>
         <ToolbarBtn onClick={() => editor.chain().focus().toggleUnderline().run()} active={editor.isActive("underline")} title="Underline"><span className="underline">U</span></ToolbarBtn>
@@ -98,18 +126,23 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
         <ToolbarBtn onClick={() => editor.chain().focus().redo().run()} title="Redo">↷</ToolbarBtn>
       </div>
 
-      {/* Merge fields row */}
+      {/* Merge fields row — click OR drag onto the canvas to insert */}
       {mergeFields.length > 0 && (
-        <div className="flex items-center gap-1 flex-wrap px-2 py-1.5 border-x border-brand-100 bg-white">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400 mr-1">Insert field</span>
+        <div className="flex items-center gap-1 flex-wrap px-2 py-1.5 border-x border-neutral-100 bg-white">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400 mr-1">Drag or click a field</span>
           {mergeFields.filter(f => f.name).map(f => (
             <button
               key={f.name}
               type="button"
+              draggable
+              onDragStart={e => {
+                e.dataTransfer.setData("application/x-merge-field", f.name);
+                e.dataTransfer.effectAllowed = "copy";
+              }}
               onMouseDown={e => e.preventDefault()}
               onClick={() => insertMerge(f.name)}
-              title={"Inserts {{" + f.name + "}} at the cursor"}
-              className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full hover:bg-brand-100 border border-brand-100"
+              title={"Drag onto the page or click to insert {{" + f.name + "}}"}
+              className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full hover:bg-brand-100 border border-brand-200 cursor-grab active:cursor-grabbing"
             >
               {"{{" + (f.label || f.name) + "}}"}
             </button>
@@ -117,11 +150,14 @@ export default function RichTextEditor({ value = "", onChange, mergeFields = [],
         </div>
       )}
 
-      {/* Editor canvas */}
+      {/* Editor canvas — accepts drag-drop of merge fields */}
       <div
-        className="border border-brand-100 border-t-0 rounded-b-xl bg-white overflow-y-auto flex-1"
+        className={"border border-t-0 rounded-b-xl bg-white overflow-y-auto flex-1 transition-colors " + (dragOver ? "border-brand-400 bg-brand-50/30" : "border-neutral-100")}
         style={{ minHeight }}
         onClick={() => editor.chain().focus().run()}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       >
         <EditorContent editor={editor} className="prose prose-sm max-w-none p-4 outline-none focus:outline-none [&_.ProseMirror]:outline-none [&_.ProseMirror]:min-h-[200px]" />
       </div>

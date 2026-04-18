@@ -209,6 +209,22 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
 }
 
 // ============ DOCUMENT BUILDER ============
+// Per-recipient color palette (Zoho Sign / DocuSign convention). Signer N gets
+// color N mod 6 so the same role always renders in the same hue across the
+// editor, the Send-for-Signature form, and the signature field placeholder.
+const ROLE_COLORS = [
+  { dot: "bg-brand-500",   ring: "ring-brand-500",   chip: "bg-brand-50 text-brand-700 border-brand-200" },
+  { dot: "bg-amber-500",   ring: "ring-amber-500",   chip: "bg-amber-50 text-amber-700 border-amber-200" },
+  { dot: "bg-emerald-500", ring: "ring-emerald-500", chip: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  { dot: "bg-rose-500",    ring: "ring-rose-500",    chip: "bg-rose-50 text-rose-700 border-rose-200" },
+  { dot: "bg-teal-500",    ring: "ring-teal-500",    chip: "bg-teal-50 text-teal-700 border-teal-200" },
+  { dot: "bg-purple-500",  ring: "ring-purple-500",  chip: "bg-purple-50 text-purple-700 border-purple-200" },
+];
+function getRoleColor(roleId, rolesList) {
+  const idx = (rolesList || []).findIndex(r => r.role === roleId);
+  return ROLE_COLORS[(idx >= 0 ? idx : 0) % ROLE_COLORS.length];
+}
+
 function DocumentBuilder({ addNotification, userProfile, userRole, companyId, activeCompany, showToast, showConfirm }) {
   const [tab, setTab] = useState("create"); // create | templates | history
   const [templates, setTemplates] = useState([]);
@@ -1257,6 +1273,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {f.type === "signature" && (
   <div className="mt-2 flex items-center gap-2">
   <label className="text-xs text-neutral-500 shrink-0">Signer role:</label>
+  {f.signer_role && (
+    <span className={`w-2.5 h-2.5 rounded-full ${getRoleColor(f.signer_role, templateForm.signer_roles).dot} shrink-0`} title="Recipient color" />
+  )}
   <Select value={f.signer_role || ""} onChange={e => updateField(i, "signer_role", e.target.value)} className="text-xs flex-1">
   <option value="">— choose a signer —</option>
   {(templateForm.signer_roles || []).map(r => <option key={r.role} value={r.role}>{r.label || r.role}</option>)}
@@ -1363,15 +1382,18 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <button type="button" onClick={() => setTemplateForm(prev => ({ ...prev, signer_roles: [...(prev.signer_roles || []), { role: "signer_" + ((prev.signer_roles || []).length + 1), label: "Signer " + ((prev.signer_roles || []).length + 1), order: (prev.signer_roles || []).length + 1, required: true }] }))} className="text-xs text-brand-600 hover:underline">+ Add signer</button>
   </div>
   {(templateForm.signer_roles || []).length === 0 && <p className="text-xs text-neutral-400 italic">No signers yet. Add at least one role, then use it in a signature field above.</p>}
-  {(templateForm.signer_roles || []).sort((a,b) => (a.order||0) - (b.order||0)).map((r, i) => (
-  <div key={i} className="grid grid-cols-12 gap-2 items-center bg-brand-50/30 border border-neutral-100 rounded-xl p-2">
+  {(templateForm.signer_roles || []).sort((a,b) => (a.order||0) - (b.order||0)).map((r, i) => {
+  const color = getRoleColor(r.role, templateForm.signer_roles);
+  return (
+  <div key={i} className="grid grid-cols-12 gap-2 items-center bg-white border border-neutral-100 rounded-xl p-2">
+  <span className={`col-span-1 w-2.5 h-2.5 rounded-full ${color.dot} shrink-0`} title={`Color coding: ${r.label || r.role}`} />
   {templateForm.signing_mode === "sequential" && (
   <Input size="sm" type="number" value={r.order || i + 1} onChange={e => {
     const next = [...(templateForm.signer_roles || [])];
     const idx = next.findIndex(x => x.role === r.role);
     if (idx >= 0) next[idx] = { ...next[idx], order: parseInt(e.target.value, 10) || 1 };
     setTemplateForm(prev => ({ ...prev, signer_roles: next }));
-  }} className="col-span-2 text-center" title="Sign order" />
+  }} className="col-span-1 text-center" title="Sign order" />
   )}
   <Input size="sm" value={r.role} onChange={e => {
     const next = [...(templateForm.signer_roles || [])];
@@ -1384,7 +1406,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     const idx = next.findIndex(x => x.role === r.role);
     if (idx >= 0) next[idx] = { ...next[idx], label: e.target.value };
     setTemplateForm(prev => ({ ...prev, signer_roles: next }));
-  }} placeholder="Display label (e.g. Tenant)" className={templateForm.signing_mode === "sequential" ? "col-span-5" : "col-span-6"} />
+  }} placeholder="Display label (e.g. Tenant)" className={templateForm.signing_mode === "sequential" ? "col-span-5" : "col-span-5"} />
   <label className="col-span-1 flex items-center justify-center text-[10px] text-neutral-500"><input type="checkbox" checked={r.required !== false} onChange={e => {
     const next = [...(templateForm.signer_roles || [])];
     const idx = next.findIndex(x => x.role === r.role);
@@ -1393,7 +1415,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }} className="accent-brand-600 mr-1" />req</label>
   <button type="button" onClick={() => setTemplateForm(prev => ({ ...prev, signer_roles: (prev.signer_roles || []).filter(x => x.role !== r.role) }))} className="col-span-1 text-danger-400 hover:text-danger-600 text-sm" title="Remove signer">✕</button>
   </div>
-  ))}
+  );
+  })}
   {(templateForm.signer_roles || []).length > 0 && (
   <div className="text-[10px] text-neutral-400 border-t border-neutral-100 pt-2 mt-2">
   Add <code className="bg-neutral-100 px-1 rounded">signature</code>-type fields above, assign each to one of these roles, and place <code className="bg-neutral-100 px-1 rounded">{"{{field_name}}"}</code> in the body where signatures should appear.
@@ -1528,9 +1551,16 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   minHeight="400px"
   />
   </div>
-  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
-  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-2">Preview</h3>
-  <div className="prose prose-sm max-w-none border border-neutral-100 rounded-xl p-6 bg-white min-h-64" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }} dangerouslySetInnerHTML={{ __html: renderMergedBody(templateForm.body, {}, templateForm.field_config) }} />
+  <div>
+  <div className="flex items-center justify-between mb-2 px-1">
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Preview</h3>
+  <span className="text-[10px] text-neutral-400">Page View · 8.5in × 11in</span>
+  </div>
+  {/* Paper canvas — Zoho Writer Page View. max-w-[8.5in] mimics letter width,
+      the shadow + bg-subtle gutter gives the familiar paper-on-desk feel. */}
+  <div className="bg-neutral-100/50 rounded-xl p-6 flex justify-center">
+  <div className="bg-white shadow-[0_8px_24px_-12px_rgba(0,0,0,0.15)] border border-neutral-200 w-full max-w-[8.5in] min-h-[11in] px-16 py-14 prose prose-sm max-w-none" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7", color: "#1a1a1a" }} dangerouslySetInnerHTML={{ __html: renderMergedBody(templateForm.body, {}, templateForm.field_config) }} />
+  </div>
   </div>
   </>
   )}
@@ -1780,10 +1810,15 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   <p className="text-xs text-neutral-400 mb-3">Each signer will receive a unique magic-link email. No account required on their end; the link expires in 30 days.</p>
   <div className="space-y-2 mb-3">
-  {(selectedTemplate.signer_roles || []).sort((a,b) => (a.order||0) - (b.order||0)).map(r => (
-  <div key={r.role} className="border border-neutral-100 rounded-xl p-2.5 bg-brand-50/20">
+  {(selectedTemplate.signer_roles || []).sort((a,b) => (a.order||0) - (b.order||0)).map(r => {
+  const color = getRoleColor(r.role, selectedTemplate.signer_roles);
+  return (
+  <div key={r.role} className="border border-neutral-100 rounded-xl p-2.5 bg-white">
   <div className="flex items-center justify-between mb-1">
+  <span className="flex items-center gap-1.5">
+  <span className={`w-2.5 h-2.5 rounded-full ${color.dot}`} />
   <span className="text-xs font-semibold text-neutral-600">{r.label || r.role}{r.required === false && <span className="text-[10px] text-neutral-400 font-normal ml-1">(optional)</span>}</span>
+  </span>
   {selectedTemplate.signing_mode === "sequential" && <span className="text-[10px] text-brand-600">#{r.order || 1}</span>}
   </div>
   <div className="grid grid-cols-2 gap-1.5">
@@ -1791,7 +1826,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <Input size="sm" type="email" value={signerEmails[r.role] || ""} onChange={e => setSignerEmails(prev => ({ ...prev, [r.role]: e.target.value }))} placeholder="email@example.com" />
   </div>
   </div>
-  ))}
+  );
+  })}
   </div>
   <Btn variant="success-fill" className="w-full" onClick={sendForSignature} disabled={sending}>
   {sending ? "Sending…" : (selectedTemplate.signing_mode === "sequential" ? "Send to first signer" : "Send to all signers")}
