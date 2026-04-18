@@ -147,14 +147,14 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   ))}
   </div>
 
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-hidden">
+  <div className="bg-white rounded-xl shadow-sm border border-neutral-100 overflow-hidden">
   <table className="w-full text-sm">
   <thead className="bg-brand-50/30 text-xs text-neutral-400 uppercase">
   <tr>{["Document", "Property", "Type", "Date", "Tenant Visible", "Actions"].map(h => <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>)}</tr>
   </thead>
   <tbody>
   {filtered.map(d => (
-  <tr key={d.id} className="border-t border-brand-50/50 hover:bg-brand-50/30">
+  <tr key={d.id} className="border-t border-neutral-100/60 hover:bg-brand-50/30">
   <td className="px-3 py-2.5 font-medium text-neutral-800">📄 {d.name}</td>
   <td className="px-3 py-2.5 text-neutral-400">{d.property}</td>
   <td className="px-3 py-2.5"><span className="bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full text-xs">{d.type}</span></td>
@@ -1203,8 +1203,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="flex-1 flex overflow-hidden">
   {/* Left: Template config + fields */}
   <div style={{ width: splitPercent + "%" }} className="overflow-y-auto p-6 space-y-4">
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
-  <h3 className="font-manrope font-bold text-neutral-700 mb-3">Template Details</h3>
+  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">Template Details</h3>
   <div className="grid grid-cols-2 gap-3">
   <div>
   <label className="text-xs font-medium text-neutral-400 block mb-1">Name *</label>
@@ -1223,14 +1223,14 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   </div>
 
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
+  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
   <div className="flex items-center justify-between mb-3">
-  <h3 className="font-manrope font-bold text-neutral-700">Form Fields ({templateForm.fields.length})</h3>
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Form Fields ({templateForm.fields.length})</h3>
   <Btn size="sm" onClick={addField}>+ Add Field</Btn>
   </div>
   <div className="space-y-3">
   {templateForm.fields.map((f, i) => (
-  <div key={i} className="border border-brand-50 rounded-xl p-3 bg-brand-50/20">
+  <div key={i} className="border border-neutral-100 rounded-xl p-3 bg-brand-50/20">
   <div className="grid grid-cols-3 gap-2 mb-2">
   <Input value={f.label} onChange={e => updateField(i, "label", e.target.value)} placeholder="Label" className="text-xs" />
   <Select value={f.type} onChange={e => updateField(i, "type", e.target.value)} className="text-xs">
@@ -1268,8 +1268,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   {/* Advanced Field Config */}
   {templateForm.fields.length > 0 && (
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
-  <h3 className="font-manrope font-bold text-neutral-700 mb-3">Advanced Field Config</h3>
+  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">Advanced Field Config</h3>
 
   {/* Calculated Fields */}
   <div className="mb-4">
@@ -1327,15 +1327,15 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {Object.keys(templateForm.field_config?.conditional || {}).length === 0 && <p className="text-xs text-neutral-400 italic">No conditions. Show/hide fields based on other field values.</p>}
   </div>
 
-  <div className="text-xs text-neutral-400 border-t border-brand-50 pt-2">
+  <div className="text-xs text-neutral-400 border-t border-neutral-100 pt-2">
   <strong>Address blocks:</strong> Set field type to "address_block" above — it renders as a 5-field structured address (street, apt, city, state, zip).
   </div>
   </div>
   )}
 
   {/* Signature Workflow */}
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
-  <h3 className="font-manrope font-bold text-neutral-700 mb-1">Signature Workflow</h3>
+  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-1">Signature Workflow</h3>
   <p className="text-xs text-neutral-400 mb-3">Choose how this document gets signed. Each signer gets a unique magic-link email; no account required on their end.</p>
 
   <div className="flex gap-2 mb-4">
@@ -1360,7 +1360,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   {(templateForm.signer_roles || []).length === 0 && <p className="text-xs text-neutral-400 italic">No signers yet. Add at least one role, then use it in a signature field above.</p>}
   {(templateForm.signer_roles || []).sort((a,b) => (a.order||0) - (b.order||0)).map((r, i) => (
-  <div key={i} className="grid grid-cols-12 gap-2 items-center bg-brand-50/30 border border-brand-50 rounded-xl p-2">
+  <div key={i} className="grid grid-cols-12 gap-2 items-center bg-brand-50/30 border border-neutral-100 rounded-xl p-2">
   {templateForm.signing_mode === "sequential" && (
   <Input size="sm" type="number" value={r.order || i + 1} onChange={e => {
     const next = [...(templateForm.signer_roles || [])];
@@ -1391,7 +1391,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   ))}
   {(templateForm.signer_roles || []).length > 0 && (
-  <div className="text-[10px] text-neutral-400 border-t border-brand-50 pt-2 mt-2">
+  <div className="text-[10px] text-neutral-400 border-t border-neutral-100 pt-2 mt-2">
   Add <code className="bg-neutral-100 px-1 rounded">signature</code>-type fields above, assign each to one of these roles, and place <code className="bg-neutral-100 px-1 rounded">{"{{field_name}}"}</code> in the body where signatures should appear.
   </div>
   )}
@@ -1410,9 +1410,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <>
   {/* PDF Upload + Viewer */}
   {!templateForm.pdf_storage_path ? (
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 text-center">
+  <div className="bg-white rounded-xl shadow-sm border border-neutral-100 p-8 text-center">
   <div className="text-4xl mb-3">📄</div>
-  <h3 className="font-manrope font-bold text-neutral-700 mb-2">Upload a PDF Template</h3>
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-2">Upload a PDF Template</h3>
   <p className="text-sm text-neutral-400 mb-4">Upload a flat PDF. Blank fields will be auto-detected.</p>
   <label className="inline-flex items-center gap-2 bg-brand-600 text-white text-sm px-5 py-2.5 rounded-2xl hover:bg-brand-700 cursor-pointer font-semibold">
   <span className="material-icons-outlined text-lg">upload_file</span>Choose PDF
@@ -1422,7 +1422,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   ) : (
   <>
   {/* PDF toolbar */}
-  <div className="bg-white rounded-2xl shadow-card border border-brand-50 px-4 py-2 flex items-center gap-3">
+  <div className="bg-white rounded-xl shadow-sm border border-neutral-100 px-4 py-2 flex items-center gap-3">
   <span className="text-xs text-neutral-500">{templateForm.pdf_page_count} pages</span>
   <span className="text-xs text-neutral-300">|</span>
   <span className="text-xs text-neutral-500">{templateForm.pdf_field_placements.length} placements</span>
@@ -1465,7 +1465,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const pageNum = pg.pageNum;
   const pagePlacements = templateForm.pdf_field_placements.map((p, i) => ({ ...p, _idx: i })).filter(p => p.page === pageNum);
   return (
-  <div key={pageNum} className="relative bg-white rounded-xl shadow-card border border-brand-50 overflow-hidden" style={{ width: pg.width + "px" }}>
+  <div key={pageNum} className="relative bg-white rounded-xl shadow-sm border border-neutral-100 overflow-hidden" style={{ width: pg.width + "px" }}>
   <div className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded z-10">Page {pageNum}</div>
   <canvas ref={el => { if (el && el !== pg.canvas) { el.width = pg.canvas.width; el.height = pg.canvas.height; el.getContext("2d").drawImage(pg.canvas, 0, 0); } }} width={pg.width} height={pg.height} className="block" />
   {/* Overlay for click-to-place */}
@@ -1510,9 +1510,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   ) : (
   <>
   {/* HTML body editor + preview — TipTap WYSIWYG */}
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5 flex flex-col">
+  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4 flex flex-col">
   <div className="flex items-center justify-between mb-2">
-  <h3 className="font-manrope font-bold text-neutral-700">Document Body</h3>
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Document Body</h3>
   <span className="text-[10px] text-neutral-400">Use the toolbar to format &middot; Insert merge fields via the chip row</span>
   </div>
   <RichTextEditor
@@ -1524,9 +1524,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   minHeight="400px"
   />
   </div>
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
-  <h3 className="font-manrope font-bold text-neutral-700 mb-2">Preview</h3>
-  <div className="prose prose-sm max-w-none border border-brand-50 rounded-xl p-6 bg-white min-h-64" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }} dangerouslySetInnerHTML={{ __html: renderMergedBody(templateForm.body, {}, templateForm.field_config) }} />
+  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-2">Preview</h3>
+  <div className="prose prose-sm max-w-none border border-neutral-100 rounded-xl p-6 bg-white min-h-64" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }} dangerouslySetInnerHTML={{ __html: renderMergedBody(templateForm.body, {}, templateForm.field_config) }} />
   </div>
   </>
   )}
@@ -1641,8 +1641,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const sectionFields = (selectedTemplate.fields || []).filter(f => f.section === section).map(renderFieldRow).filter(Boolean);
   if (sectionFields.length === 0) return null;
   return (
-  <div key={section} className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
-  <h3 className="font-manrope font-bold text-neutral-700 text-sm mb-3 uppercase tracking-wide">{section}</h3>
+  <div key={section} className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 text-sm mb-3 uppercase tracking-wide">{section}</h3>
   <div className="space-y-3">{sectionFields}</div>
   </div>
   );
@@ -1650,7 +1650,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {unsectioned.length > 0 && (() => {
   const rows = unsectioned.map(renderFieldRow).filter(Boolean);
   return rows.length > 0 ? (
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
+  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
   <div className="space-y-3">{rows}</div>
   </div>
   ) : null;
@@ -1667,7 +1667,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {pdfPages.map(pg => {
   const pagePlacements = (selectedTemplate.pdf_field_placements || []).filter(p => p.page === pg.pageNum);
   return (
-  <div key={pg.pageNum} className="relative bg-white rounded-xl shadow-card border border-brand-50 overflow-hidden" style={{ width: pg.width + "px" }}>
+  <div key={pg.pageNum} className="relative bg-white rounded-xl shadow-sm border border-neutral-100 overflow-hidden" style={{ width: pg.width + "px" }}>
   <div className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded z-10">Page {pg.pageNum}</div>
   <canvas ref={el => { if (el && el !== pg.canvas) { el.width = pg.canvas.width; el.height = pg.canvas.height; el.getContext("2d").drawImage(pg.canvas, 0, 0); } }} width={pg.width} height={pg.height} className="block" />
   <div className="absolute inset-0">
@@ -1685,9 +1685,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {pdfPages.length === 0 && <div className="text-center py-12 text-neutral-400">Loading PDF preview...</div>}
   </div>
   ) : (
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
-  <h3 className="font-manrope font-bold text-neutral-700 text-sm mb-3">Live Preview</h3>
-  <div className="prose prose-sm max-w-none border border-brand-50 rounded-xl p-6 bg-white" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }}
+  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 text-sm mb-3">Live Preview</h3>
+  <div className="prose prose-sm max-w-none border border-neutral-100 rounded-xl p-6 bg-white" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7" }}
   dangerouslySetInnerHTML={{ __html: renderMergedBody(selectedTemplate.body, fieldValues, fc) }} />
   </div>
   )}
@@ -1732,7 +1732,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {pdfPages.map(pg => {
   const pagePlacements = (selectedTemplate.pdf_field_placements || []).filter(p => p.page === pg.pageNum);
   return (
-  <div key={pg.pageNum} className="relative bg-white rounded-xl shadow-card border border-brand-50 overflow-hidden" style={{ width: pg.width + "px" }}>
+  <div key={pg.pageNum} className="relative bg-white rounded-xl shadow-sm border border-neutral-100 overflow-hidden" style={{ width: pg.width + "px" }}>
   <div className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded z-10">Page {pg.pageNum}</div>
   <canvas ref={el => { if (el && el !== pg.canvas) { el.width = pg.canvas.width; el.height = pg.canvas.height; el.getContext("2d").drawImage(pg.canvas, 0, 0); } }} width={pg.width} height={pg.height} className="block" />
   <div className="absolute inset-0">
@@ -1750,7 +1750,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {pdfPages.length === 0 && <div className="text-center py-12 text-neutral-400">Loading PDF preview...</div>}
   </div>
   ) : (
-  <div ref={previewRef} className="bg-white rounded-3xl shadow-card border border-brand-50 p-10 w-full max-w-[8.5in]" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7", color: "#1a1a1a" }}>
+  <div ref={previewRef} className="bg-white rounded-xl shadow-sm border border-neutral-100 p-10 w-full max-w-[8.5in]" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7", color: "#1a1a1a" }}>
   <div dangerouslySetInnerHTML={{ __html: rendered }} />
   </div>
   )}
@@ -1761,8 +1761,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   {/* Right: Actions sidebar */}
   <div style={{ width: (100 - splitPercent) + "%" }} className="overflow-y-auto p-6 space-y-4">
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
-  <h3 className="font-manrope font-bold text-neutral-700 mb-3">Export</h3>
+  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">Export</h3>
   <div className="space-y-2">
   <Btn variant="danger" className="w-full justify-start" onClick={() => exportPDF()}>
   <span className="material-icons-outlined text-lg">picture_as_pdf</span>Download PDF
@@ -1778,16 +1778,16 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
 
   {selectedTemplate?.signing_mode && selectedTemplate.signing_mode !== "none" ? (
   /* Envelope / e-sign flow */
-  <div className="bg-white rounded-3xl shadow-card border border-brand-200 p-5">
+  <div className="bg-white rounded-xl shadow-sm border border-brand-200 p-5">
   <div className="flex items-center gap-2 mb-1">
   <span className="material-icons-outlined text-brand-600">draw</span>
-  <h3 className="font-manrope font-bold text-neutral-700">Send for Signature</h3>
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Send for Signature</h3>
   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-brand-100 text-brand-700 font-semibold uppercase">{selectedTemplate.signing_mode}</span>
   </div>
   <p className="text-xs text-neutral-400 mb-3">Each signer will receive a unique magic-link email. No account required on their end; the link expires in 30 days.</p>
   <div className="space-y-2 mb-3">
   {(selectedTemplate.signer_roles || []).sort((a,b) => (a.order||0) - (b.order||0)).map(r => (
-  <div key={r.role} className="border border-brand-50 rounded-xl p-2.5 bg-brand-50/20">
+  <div key={r.role} className="border border-neutral-100 rounded-xl p-2.5 bg-brand-50/20">
   <div className="flex items-center justify-between mb-1">
   <span className="text-xs font-semibold text-neutral-600">{r.label || r.role}{r.required === false && <span className="text-[10px] text-neutral-400 font-normal ml-1">(optional)</span>}</span>
   {selectedTemplate.signing_mode === "sequential" && <span className="text-[10px] text-brand-600">#{r.order || 1}</span>}
@@ -1805,8 +1805,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   ) : (
   /* Plain email flow (no signing required) */
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
-  <h3 className="font-manrope font-bold text-neutral-700 mb-3">Send via Email</h3>
+  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">Send via Email</h3>
   <div className="space-y-2 mb-3">
   <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.self} onChange={e => setSendTo({...sendTo, self: e.target.checked})} className="accent-brand-600" />Email to myself ({userProfile?.email})</label>
   {fieldValues.tenant_name && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.tenant} onChange={e => setSendTo({...sendTo, tenant: e.target.checked})} className="accent-brand-600" />Email to tenant ({fieldValues.tenant_name})</label>}
@@ -1824,8 +1824,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   )}
 
-  <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
-  <h3 className="font-manrope font-bold text-neutral-700 mb-3">Save</h3>
+  <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">Save</h3>
   <div className="space-y-2">
   <Btn className="w-full" onClick={async () => { await saveDocument("draft"); resetFlow(); }}>Save as Draft</Btn>
   <Btn variant="slate" className="w-full" onClick={async () => { await saveDocument("final"); resetFlow(); }}>Finalize</Btn>
@@ -1854,14 +1854,14 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div>
   {/* Mode selection */}
   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-  <button onClick={() => setMode("blank")} className={"rounded-3xl border-2 p-6 text-left transition-all " + (mode === "blank" ? "border-brand-600 bg-brand-50" : "border-brand-100 bg-white hover:border-brand-300")}>
+  <button onClick={() => setMode("blank")} className={"rounded-xl border-2 p-5 text-left transition-all " + (mode === "blank" ? "border-brand-600 bg-brand-50" : "border-brand-100 bg-white hover:border-brand-300")}>
   <div className="flex items-center gap-3 mb-2">
   <span className="w-10 h-10 rounded-2xl bg-brand-100 flex items-center justify-center"><span className="material-icons-outlined text-brand-600">edit_note</span></span>
   <h3 className="font-manrope font-bold text-neutral-800">Blank Mode</h3>
   </div>
   <p className="text-sm text-neutral-400">Start with an empty form. Fill everything out manually.</p>
   </button>
-  <div className={"rounded-3xl border-2 p-6 transition-all " + (mode === "prefill" ? "border-success-600 bg-success-50" : "border-brand-100 bg-white")}>
+  <div className={"rounded-xl border-2 p-5 transition-all " + (mode === "prefill" ? "border-success-600 bg-success-50" : "border-brand-100 bg-white")}>
   <button onClick={() => setMode("prefill")} className="w-full text-left">
   <div className="flex items-center gap-3 mb-2">
   <span className="w-10 h-10 rounded-2xl bg-success-100 flex items-center justify-center"><span className="material-icons-outlined text-success-600">auto_fix_high</span></span>
@@ -1880,7 +1880,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {/* Template selection */}
   {mode && (
   <div>
-  <h3 className="font-manrope font-bold text-neutral-700 mb-3">Choose a Template</h3>
+  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">Choose a Template</h3>
   {CATEGORIES.map(cat => {
   const catTemplates = templates.filter(t => t.category === cat);
   if (catTemplates.length === 0) return null;
@@ -1890,7 +1890,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
   {catTemplates.map(t => (
   <button key={t.id} onClick={() => startDocument(t, mode)} disabled={mode === "prefill" && !prefillProperty}
-  className="bg-white rounded-2xl border border-brand-50 p-4 text-left hover:border-brand-300 hover:shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+  className="bg-white rounded-2xl border border-neutral-100 p-4 text-left hover:border-brand-300 hover:shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
   <div className="font-semibold text-neutral-800 text-sm">{t.name}</div>
   <div className="text-xs text-neutral-400 mt-1">{t.description}</div>
   <div className="text-xs text-brand-600 mt-2">{(t.fields || []).length} fields</div>
@@ -1913,7 +1913,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
   {templates.map(t => (
-  <div key={t.id} className="bg-white rounded-3xl shadow-card border border-brand-50 p-5">
+  <div key={t.id} className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
   <div className="flex items-start justify-between">
   <div>
   <div className="font-manrope font-bold text-neutral-800">{t.name}</div>
@@ -1938,7 +1938,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {tab === "history" && (
   <div>
   {generatedDocs.length === 0 ? (
-  <div className="text-center py-16 text-neutral-400">
+  <div className="text-center py-10 text-neutral-400">
   <span className="material-icons-outlined text-4xl mb-2">folder_open</span>
   <p className="text-sm">No documents generated yet</p>
   </div>
@@ -1953,7 +1953,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     : d.envelope_status === "voided" ? { cls: "bg-neutral-100 text-neutral-500", label: "Voided" }
     : null;
   return (
-  <div key={d.id} className="bg-white rounded-2xl border border-brand-50 shadow-sm p-4">
+  <div key={d.id} className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
   <div className="flex items-center justify-between">
   <div className="flex-1 min-w-0">
   <div className="font-semibold text-neutral-800 text-sm truncate">{d.name}</div>
@@ -1979,7 +1979,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </div>
   </div>
   {hasEnvelope && sigs.length > 0 && (
-  <div className="mt-3 pt-3 border-t border-brand-50 grid grid-cols-1 md:grid-cols-2 gap-1.5">
+  <div className="mt-3 pt-3 border-t border-neutral-100 grid grid-cols-1 md:grid-cols-2 gap-1.5">
   {sigs.map(s => {
   const cls = s.status === "signed" ? "text-success-700 bg-success-50" : s.status === "viewed" ? "text-brand-700 bg-brand-50" : s.status === "sent" ? "text-highlight-700 bg-highlight-50" : "text-neutral-500 bg-neutral-50";
   const icon = s.status === "signed" ? "check_circle" : s.status === "viewed" ? "visibility" : s.status === "sent" ? "mail" : "hourglass_empty";
