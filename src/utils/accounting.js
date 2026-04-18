@@ -266,7 +266,7 @@ export async function getPropertyClassId(propertyAddress, companyId) {
 // Maps bare account codes ("1000") to UUID primary keys in acct_accounts.
 // Uses the `code` column. Falls back to name matching. Auto-creates missing accounts.
 export const _acctIdCache = {};
-export const _acctCodeToName = { "1000": "Checking Account", "1100": "Accounts Receivable", "2100": "Security Deposits Held", "2200": "Owner Distributions Payable", "4000": "Rental Income", "4010": "Late Fee Income", "4100": "Other Income", "4200": "Management Fee Income", "5300": "Repairs & Maintenance", "5400": "Utilities Expense", "5600": "Mortgage/Loan Payment" };
+export const _acctCodeToName = { "1000": "Checking Account", "1100": "Accounts Receivable", "2100": "Security Deposits Held", "2200": "Owner Distributions Payable", "4000": "Rental Income", "4010": "Late Fee Income", "4100": "Other Income", "4200": "Management Fee Income", "5300": "Repairs & Maintenance", "5400": "Utilities Expense", "5600": "Mortgage/Loan Payment", "5700": "Property Taxes" };
 export async function resolveAccountId(bareCode, companyId) {
   if (!companyId) return null;
   const cid = companyId;
@@ -374,7 +374,10 @@ export async function autoPostRecurringEntries(companyId) {
   for (const entry of entries) {
   if (posted >= MAX) break;
   // Determine frequency interval in months
-  const freqMonths = entry.frequency === "quarterly" ? 3 : entry.frequency === "semi-annual" ? 6 : 1;
+  const freqMonths = entry.frequency === "quarterly" ? 3
+    : entry.frequency === "semi-annual" ? 6
+    : entry.frequency === "annual" ? 12
+    : 1;
   // Calculate which months need posting (catch up missed periods)
   const lastPosted = entry.last_posted_date ? parseLocalDate(entry.last_posted_date) : null;
   let cursor = lastPosted ? new Date(lastPosted.getFullYear(), lastPosted.getMonth() + freqMonths, 1) : new Date(today.getFullYear(), today.getMonth(), 1);

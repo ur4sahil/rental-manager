@@ -199,6 +199,182 @@ export const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA"
 
 export const STATE_NAMES = {AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",CO:"Colorado",CT:"Connecticut",DE:"Delaware",DC:"District of Columbia",FL:"Florida",GA:"Georgia",HI:"Hawaii",ID:"Idaho",IL:"Illinois",IN:"Indiana",IA:"Iowa",KS:"Kansas",KY:"Kentucky",LA:"Louisiana",ME:"Maine",MD:"Maryland",MA:"Massachusetts",MI:"Michigan",MN:"Minnesota",MS:"Mississippi",MO:"Missouri",MT:"Montana",NE:"Nebraska",NV:"Nevada",NH:"New Hampshire",NJ:"New Jersey",NM:"New Mexico",NY:"New York",NC:"North Carolina",ND:"North Dakota",OH:"Ohio",OK:"Oklahoma",OR:"Oregon",PA:"Pennsylvania",RI:"Rhode Island",SC:"South Carolina",SD:"South Dakota",TN:"Tennessee",TX:"Texas",UT:"Utah",VT:"Vermont",VA:"Virginia",WA:"Washington",WV:"West Virginia",WI:"Wisconsin",WY:"Wyoming"};
 
+// Counties / independent cities the portfolio operates in. Drives the
+// wizard Step-1 county dropdown (filtered by the selected state). DC is
+// not a county but is treated as a single jurisdiction. VA has both
+// counties AND independent cities that handle taxes on their own, hence
+// the "... City" entries sitting alongside "... County".
+export const COUNTIES_BY_STATE = {
+  DC: ["District of Columbia"],
+  MD: [
+    "Anne Arundel County",
+    "Calvert County",
+    "Charles County",
+    "Frederick County",
+    "Howard County",
+    "Montgomery County",
+    "Prince George's County",
+    "St. Mary's County",
+  ],
+  VA: [
+    "Alexandria City",
+    "Arlington County",
+    "Fairfax City",
+    "Fairfax County",
+    "Falls Church City",
+    "Fauquier County",
+    "Loudoun County",
+    "Manassas City",
+    "Manassas Park City",
+    "Prince William County",
+    "Richmond City",
+    "Spotsylvania County",
+    "Stafford County",
+  ],
+  PA: ["York County"],
+};
+
+// Best-effort ZIP → {state, county} lookup for the DMV + Richmond + York PA
+// operating area. Fed to tests/backfill-property-county.js for legacy rows;
+// NOT authoritative — the wizard dropdown + validation is the source of
+// truth going forward. Any ZIP we don't cover leaves county NULL and the
+// wizard will demand it on the next edit.
+export const ZIP_TO_COUNTY = {
+  // ===== DC — 20001-20099 (residential only; skip gov-only 20500s) =====
+  "20001": { state: "DC", county: "District of Columbia" }, "20002": { state: "DC", county: "District of Columbia" },
+  "20003": { state: "DC", county: "District of Columbia" }, "20004": { state: "DC", county: "District of Columbia" },
+  "20005": { state: "DC", county: "District of Columbia" }, "20007": { state: "DC", county: "District of Columbia" },
+  "20008": { state: "DC", county: "District of Columbia" }, "20009": { state: "DC", county: "District of Columbia" },
+  "20010": { state: "DC", county: "District of Columbia" }, "20011": { state: "DC", county: "District of Columbia" },
+  "20012": { state: "DC", county: "District of Columbia" }, "20015": { state: "DC", county: "District of Columbia" },
+  "20016": { state: "DC", county: "District of Columbia" }, "20017": { state: "DC", county: "District of Columbia" },
+  "20018": { state: "DC", county: "District of Columbia" }, "20019": { state: "DC", county: "District of Columbia" },
+  "20020": { state: "DC", county: "District of Columbia" }, "20024": { state: "DC", county: "District of Columbia" },
+  "20032": { state: "DC", county: "District of Columbia" }, "20036": { state: "DC", county: "District of Columbia" },
+  "20037": { state: "DC", county: "District of Columbia" },
+
+  // ===== MD Montgomery County — 208xx, 209xx =====
+  "20814": { state: "MD", county: "Montgomery County" }, "20815": { state: "MD", county: "Montgomery County" },
+  "20816": { state: "MD", county: "Montgomery County" }, "20817": { state: "MD", county: "Montgomery County" },
+  "20832": { state: "MD", county: "Montgomery County" }, "20833": { state: "MD", county: "Montgomery County" },
+  "20850": { state: "MD", county: "Montgomery County" }, "20851": { state: "MD", county: "Montgomery County" },
+  "20852": { state: "MD", county: "Montgomery County" }, "20853": { state: "MD", county: "Montgomery County" },
+  "20854": { state: "MD", county: "Montgomery County" }, "20855": { state: "MD", county: "Montgomery County" },
+  "20861": { state: "MD", county: "Montgomery County" }, "20862": { state: "MD", county: "Montgomery County" },
+  "20866": { state: "MD", county: "Montgomery County" }, "20871": { state: "MD", county: "Montgomery County" },
+  "20872": { state: "MD", county: "Montgomery County" }, "20874": { state: "MD", county: "Montgomery County" },
+  "20876": { state: "MD", county: "Montgomery County" }, "20877": { state: "MD", county: "Montgomery County" },
+  "20878": { state: "MD", county: "Montgomery County" }, "20879": { state: "MD", county: "Montgomery County" },
+  "20882": { state: "MD", county: "Montgomery County" }, "20886": { state: "MD", county: "Montgomery County" },
+  "20895": { state: "MD", county: "Montgomery County" }, "20896": { state: "MD", county: "Montgomery County" },
+  "20901": { state: "MD", county: "Montgomery County" }, "20902": { state: "MD", county: "Montgomery County" },
+  "20903": { state: "MD", county: "Montgomery County" }, "20904": { state: "MD", county: "Montgomery County" },
+  "20905": { state: "MD", county: "Montgomery County" }, "20906": { state: "MD", county: "Montgomery County" },
+  "20910": { state: "MD", county: "Montgomery County" }, "20912": { state: "MD", county: "Montgomery County" },
+
+  // ===== MD Prince George's County — 207xx, parts of 206xx/208xx =====
+  "20707": { state: "MD", county: "Prince George's County" }, "20708": { state: "MD", county: "Prince George's County" },
+  "20710": { state: "MD", county: "Prince George's County" }, "20712": { state: "MD", county: "Prince George's County" },
+  "20715": { state: "MD", county: "Prince George's County" }, "20716": { state: "MD", county: "Prince George's County" },
+  "20720": { state: "MD", county: "Prince George's County" }, "20721": { state: "MD", county: "Prince George's County" },
+  "20735": { state: "MD", county: "Prince George's County" }, "20737": { state: "MD", county: "Prince George's County" },
+  "20740": { state: "MD", county: "Prince George's County" }, "20742": { state: "MD", county: "Prince George's County" },
+  "20743": { state: "MD", county: "Prince George's County" }, "20744": { state: "MD", county: "Prince George's County" },
+  "20745": { state: "MD", county: "Prince George's County" }, "20746": { state: "MD", county: "Prince George's County" },
+  "20747": { state: "MD", county: "Prince George's County" }, "20748": { state: "MD", county: "Prince George's County" },
+  "20762": { state: "MD", county: "Prince George's County" }, "20769": { state: "MD", county: "Prince George's County" },
+  "20770": { state: "MD", county: "Prince George's County" }, "20772": { state: "MD", county: "Prince George's County" },
+  "20774": { state: "MD", county: "Prince George's County" }, "20781": { state: "MD", county: "Prince George's County" },
+  "20782": { state: "MD", county: "Prince George's County" }, "20783": { state: "MD", county: "Prince George's County" },
+  "20784": { state: "MD", county: "Prince George's County" }, "20785": { state: "MD", county: "Prince George's County" },
+
+  // ===== MD Charles / Frederick / Howard / Anne Arundel / Calvert / St. Mary's — partial =====
+  "20601": { state: "MD", county: "Charles County" }, "20602": { state: "MD", county: "Charles County" },
+  "20603": { state: "MD", county: "Charles County" }, "20640": { state: "MD", county: "Charles County" },
+  "21701": { state: "MD", county: "Frederick County" }, "21702": { state: "MD", county: "Frederick County" },
+  "21703": { state: "MD", county: "Frederick County" }, "21704": { state: "MD", county: "Frederick County" },
+  "21709": { state: "MD", county: "Frederick County" }, "21754": { state: "MD", county: "Frederick County" },
+  "21770": { state: "MD", county: "Frederick County" }, "21771": { state: "MD", county: "Frederick County" },
+  "21774": { state: "MD", county: "Frederick County" }, "21793": { state: "MD", county: "Frederick County" },
+  "21043": { state: "MD", county: "Howard County" }, "21044": { state: "MD", county: "Howard County" },
+  "21045": { state: "MD", county: "Howard County" }, "21046": { state: "MD", county: "Howard County" },
+  "21075": { state: "MD", county: "Howard County" },
+  "21401": { state: "MD", county: "Anne Arundel County" }, "21403": { state: "MD", county: "Anne Arundel County" },
+  "21409": { state: "MD", county: "Anne Arundel County" },
+  "20678": { state: "MD", county: "Calvert County" }, "20657": { state: "MD", county: "Calvert County" },
+  "20653": { state: "MD", county: "St. Mary's County" }, "20650": { state: "MD", county: "St. Mary's County" },
+
+  // ===== VA Arlington — 222xx =====
+  "22201": { state: "VA", county: "Arlington County" }, "22202": { state: "VA", county: "Arlington County" },
+  "22203": { state: "VA", county: "Arlington County" }, "22204": { state: "VA", county: "Arlington County" },
+  "22205": { state: "VA", county: "Arlington County" }, "22206": { state: "VA", county: "Arlington County" },
+  "22207": { state: "VA", county: "Arlington County" }, "22209": { state: "VA", county: "Arlington County" },
+  "22213": { state: "VA", county: "Arlington County" }, "22214": { state: "VA", county: "Arlington County" },
+
+  // ===== VA Fairfax County incl. independent Fairfax City + Falls Church City =====
+  "22003": { state: "VA", county: "Fairfax County" }, "22015": { state: "VA", county: "Fairfax County" },
+  "22027": { state: "VA", county: "Fairfax County" }, "22030": { state: "VA", county: "Fairfax City" },
+  "22031": { state: "VA", county: "Fairfax County" }, "22032": { state: "VA", county: "Fairfax County" },
+  "22033": { state: "VA", county: "Fairfax County" }, "22039": { state: "VA", county: "Fairfax County" },
+  "22041": { state: "VA", county: "Fairfax County" }, "22042": { state: "VA", county: "Fairfax County" },
+  "22043": { state: "VA", county: "Fairfax County" }, "22044": { state: "VA", county: "Falls Church City" },
+  "22046": { state: "VA", county: "Falls Church City" }, "22060": { state: "VA", county: "Fairfax County" },
+  "22066": { state: "VA", county: "Fairfax County" }, "22079": { state: "VA", county: "Fairfax County" },
+  "22101": { state: "VA", county: "Fairfax County" }, "22102": { state: "VA", county: "Fairfax County" },
+  "22124": { state: "VA", county: "Fairfax County" }, "22150": { state: "VA", county: "Fairfax County" },
+  "22151": { state: "VA", county: "Fairfax County" }, "22152": { state: "VA", county: "Fairfax County" },
+  "22153": { state: "VA", county: "Fairfax County" }, "22180": { state: "VA", county: "Fairfax County" },
+  "22181": { state: "VA", county: "Fairfax County" }, "22182": { state: "VA", county: "Fairfax County" },
+  "22303": { state: "VA", county: "Fairfax County" }, "22306": { state: "VA", county: "Fairfax County" },
+  "22307": { state: "VA", county: "Fairfax County" }, "22309": { state: "VA", county: "Fairfax County" },
+  "22310": { state: "VA", county: "Fairfax County" }, "22311": { state: "VA", county: "Fairfax County" },
+  "22312": { state: "VA", county: "Fairfax County" }, "22315": { state: "VA", county: "Fairfax County" },
+
+  // ===== VA Alexandria City — 223xx =====
+  "22301": { state: "VA", county: "Alexandria City" }, "22302": { state: "VA", county: "Alexandria City" },
+  "22304": { state: "VA", county: "Alexandria City" }, "22305": { state: "VA", county: "Alexandria City" },
+  "22314": { state: "VA", county: "Alexandria City" },
+
+  // ===== VA Loudoun — 201xx (Fairfax vs Loudoun overlap noted inline) =====
+  "20105": { state: "VA", county: "Loudoun County" }, "20120": { state: "VA", county: "Fairfax County" },
+  "20147": { state: "VA", county: "Loudoun County" }, "20148": { state: "VA", county: "Loudoun County" },
+  "20151": { state: "VA", county: "Fairfax County" }, "20152": { state: "VA", county: "Loudoun County" },
+  "20164": { state: "VA", county: "Loudoun County" }, "20165": { state: "VA", county: "Loudoun County" },
+  "20166": { state: "VA", county: "Loudoun County" }, "20170": { state: "VA", county: "Fairfax County" },
+  "20171": { state: "VA", county: "Fairfax County" }, "20175": { state: "VA", county: "Loudoun County" },
+  "20176": { state: "VA", county: "Loudoun County" }, "20180": { state: "VA", county: "Loudoun County" },
+  "20190": { state: "VA", county: "Fairfax County" }, "20191": { state: "VA", county: "Fairfax County" },
+  "20194": { state: "VA", county: "Fairfax County" },
+
+  // ===== VA Prince William / Manassas independent cities =====
+  "20109": { state: "VA", county: "Prince William County" }, "20110": { state: "VA", county: "Manassas City" },
+  "20111": { state: "VA", county: "Manassas City" }, "20112": { state: "VA", county: "Prince William County" },
+  "22191": { state: "VA", county: "Prince William County" }, "22192": { state: "VA", county: "Prince William County" },
+  "22193": { state: "VA", county: "Prince William County" },
+
+  // ===== VA Stafford / Spotsylvania / Fauquier — partial =====
+  "22554": { state: "VA", county: "Stafford County" }, "22556": { state: "VA", county: "Stafford County" },
+  "22407": { state: "VA", county: "Spotsylvania County" }, "22551": { state: "VA", county: "Spotsylvania County" },
+  "20186": { state: "VA", county: "Fauquier County" }, "20187": { state: "VA", county: "Fauquier County" },
+
+  // ===== VA Richmond City — 232xx =====
+  "23220": { state: "VA", county: "Richmond City" }, "23221": { state: "VA", county: "Richmond City" },
+  "23222": { state: "VA", county: "Richmond City" }, "23223": { state: "VA", county: "Richmond City" },
+  "23224": { state: "VA", county: "Richmond City" }, "23225": { state: "VA", county: "Richmond City" },
+  "23226": { state: "VA", county: "Richmond City" }, "23227": { state: "VA", county: "Richmond City" },
+  "23230": { state: "VA", county: "Richmond City" }, "23231": { state: "VA", county: "Richmond City" },
+  "23233": { state: "VA", county: "Richmond City" }, "23234": { state: "VA", county: "Richmond City" },
+
+  // ===== PA York County — 173xx–174xx =====
+  "17313": { state: "PA", county: "York County" }, "17315": { state: "PA", county: "York County" },
+  "17331": { state: "PA", county: "York County" }, "17339": { state: "PA", county: "York County" },
+  "17340": { state: "PA", county: "York County" }, "17349": { state: "PA", county: "York County" },
+  "17356": { state: "PA", county: "York County" }, "17401": { state: "PA", county: "York County" },
+  "17402": { state: "PA", county: "York County" }, "17403": { state: "PA", county: "York County" },
+  "17404": { state: "PA", county: "York County" }, "17406": { state: "PA", county: "York County" },
+  "17407": { state: "PA", county: "York County" }, "17408": { state: "PA", county: "York County" },
+};
+
 export const statusColors = {
   occupied: "bg-positive-100 text-positive-700",
   vacant: "bg-caution-100 text-caution-700",
