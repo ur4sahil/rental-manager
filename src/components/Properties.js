@@ -182,6 +182,20 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   const removeHoa = (idx) => setHoas(prev => prev.filter((_, i) => i !== idx));
   const [loan, setLoan] = useState({ enabled: false, lender_name: "", loan_type: "Conventional", original_amount: "", current_balance: "", interest_rate: "", monthly_payment: "", escrow_included: false, escrow_amount: "", escrow_covers: { taxes: false, insurance: false, pmi: false }, loan_start_date: "", maturity_date: "", account_number: "", notes: "", setup_recurring: false, website: "", username: "", password: "" });
   const [insurance, setInsurance] = useState({ enabled: false, provider: "", policy_number: "", premium_amount: "", premium_frequency: "annual", coverage_amount: "", expiration_date: "", notes: "", website: "", username: "", password: "" });
+  const [taxes, setTaxes] = useState({
+    enabled: false,
+    assessed_value: "",
+    tax_year: new Date().getFullYear(),
+    annual_tax_amount: "",
+    billing_frequency: "semi_annual",
+    next_due_date: "",
+    parcel_id: "",
+    exemptions: "",
+    escrow_paid_by_lender: false,
+    records_url: "",
+    notes: "",
+    setup_recurring: false,
+  });
   const [recurring, setRecurring] = useState({ frequency: "monthly", day_of_month: 1, amount: wizardData.rent || 0 });
   const [uploadedDocs, setUploadedDocs] = useState([]);
   const [docUploadType, setDocUploadType] = useState("Lease");
@@ -196,7 +210,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     if (propForm.status === "occupied") s.push("tenant_lease");
     s.push("utilities", "hoa");
     if (userRole === "admin" || userRole === "owner") s.push("loan");
-    s.push("documents", "insurance");
+    s.push("documents", "insurance", "property_tax");
     if (propForm.status === "occupied") s.push("recurring_rent");
     s.push("review");
     return s;
@@ -213,6 +227,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     loan: "Loan",
     documents: "Documents",
     insurance: "Insurance",
+    property_tax: "Property Tax",
     recurring_rent: "Recurring Rent",
     review: "Review"
   };
@@ -242,6 +257,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             if (wd.hoas) setHoas(wd.hoas); else if (wd.hoa?.enabled) setHoas([wd.hoa]);
             if (wd.loan) setLoan(wd.loan);
             if (wd.insurance) setInsurance(wd.insurance);
+            if (wd.taxes) setTaxes(wd.taxes);
             if (wd.recurring) setRecurring(wd.recurring);
             } catch (e) { pmError("PM-2007", { raw: e, context: "wizard data restore", silent: true }); }
           }
@@ -284,16 +300,18 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             setSavedPropertyId(wizardData.propertyId);
             setSavedAddress(existProp.address);
             // Load related data
-            const [utilRes, hoaRes, loanRes, insRes] = await Promise.all([
+            const [utilRes, hoaRes, loanRes, insRes, taxRes] = await Promise.all([
               supabase.from("utilities").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
               supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
               supabase.from("property_loans").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
               supabase.from("property_insurance").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
+              supabase.from("property_taxes").select("*").eq("company_id", companyId).eq("property", existProp.address).is("archived_at", null),
             ]);
             if (utilRes.data?.length) setUtilities(utilRes.data.map(u => ({ provider: u.provider, type: u.type, account_number: u.account_number || "", due_date: u.due_date || "", responsibility: u.responsibility || "owner_pays", website: u.website || "", username: u.username || "", password: u.password || "" })));
             if (hoaRes.data?.length) setHoas(hoaRes.data.map(h => ({ enabled: true, hoa_name: h.hoa_name || h.name || "", amount: h.amount || "", due_date: h.due_date || "", frequency: h.frequency || "Monthly", notes: h.notes || "", website: h.website || "", username: h.username || "", password: h.password || "" })));
             if (loanRes.data?.[0]) { const l = loanRes.data[0]; setLoan({ enabled: true, lender_name: l.lender_name || "", loan_type: l.loan_type || "Conventional", original_amount: l.original_amount || "", current_balance: l.current_balance || "", interest_rate: l.interest_rate || "", monthly_payment: l.monthly_payment || "", escrow_included: l.escrow_included || false, escrow_amount: l.escrow_amount || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", notes: l.notes || "", setup_recurring: false }); }
             if (insRes.data?.[0]) { const i = insRes.data[0]; setInsurance({ enabled: true, provider: i.provider || "", policy_number: i.policy_number || "", premium_amount: i.premium_amount || "", premium_frequency: i.premium_frequency || "Annual", coverage_amount: i.coverage_amount || "", expiration_date: i.expiration_date || "", notes: i.notes || "" }); }
+            if (taxRes.data?.[0]) { const tx = taxRes.data[0]; setTaxes({ enabled: true, assessed_value: tx.assessed_value || "", tax_year: tx.tax_year || new Date().getFullYear(), annual_tax_amount: tx.annual_tax_amount || "", billing_frequency: tx.billing_frequency || "semi_annual", next_due_date: tx.next_due_date || "", parcel_id: tx.parcel_id || "", exemptions: tx.exemptions || "", escrow_paid_by_lender: tx.escrow_paid_by_lender || false, records_url: tx.records_url || "", notes: tx.notes || "", setup_recurring: false }); }
           }
         }
         // Create new wizard entry
@@ -323,7 +341,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       await supabase.from("property_setup_wizard").update({
         current_step: nextStep,
         completed_steps: Array.from(newCompletedSteps),
-        wizard_data: { propForm, tenantForm, savedPropertyId, savedAddress, utilities, hoas, loan, insurance, recurring },
+        wizard_data: { propForm, tenantForm, savedPropertyId, savedAddress, utilities, hoas, loan, insurance, taxes, recurring },
         updated_at: new Date().toISOString()
       }).eq("id", wizardId).eq("company_id", companyId);
     } catch (e) {
@@ -493,6 +511,79 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     return true;
   }
 
+  async function saveTaxes() {
+    if (!taxes.enabled) return true;
+    if (!taxes.annual_tax_amount || Number(taxes.annual_tax_amount) <= 0) throw new Error("Annual tax amount is required");
+    const taxRow = {
+      company_id: companyId,
+      property: savedAddress,
+      property_id: savedPropertyId || null,
+      county: propForm.county || null,
+      jurisdiction: propForm.county && propForm.state ? (propForm.county + ", " + propForm.state) : null,
+      parcel_id: taxes.parcel_id.trim() || null,
+      assessed_value: Number(taxes.assessed_value) || 0,
+      tax_year: Number(taxes.tax_year) || new Date().getFullYear(),
+      annual_tax_amount: Number(taxes.annual_tax_amount),
+      billing_frequency: taxes.billing_frequency || "semi_annual",
+      next_due_date: taxes.next_due_date || null,
+      exemptions: taxes.exemptions.trim() || null,
+      escrow_paid_by_lender: !!taxes.escrow_paid_by_lender,
+      records_url: taxes.records_url.trim() || null,
+      notes: taxes.notes.trim() || null,
+    };
+    // Upsert: one active row per property (matches edit-flow expectations).
+    const { data: existing } = await supabase.from("property_taxes").select("id").eq("company_id", companyId).eq("property", savedAddress).is("archived_at", null).maybeSingle();
+    if (existing) {
+      const { error } = await supabase.from("property_taxes").update(taxRow).eq("id", existing.id).eq("company_id", companyId);
+      if (error) throw new Error("Failed to update property tax: " + error.message);
+    } else {
+      const { error } = await supabase.from("property_taxes").insert([taxRow]);
+      if (error) throw new Error("Failed to save property tax: " + error.message);
+    }
+
+    // Optional recurring JE (DR 5700 Property Taxes / CR 1000 Checking). Skip
+    // when lender escrow covers taxes — that's already captured via the
+    // property_loans.escrow_covers.taxes flag and the mortgage recurring entry.
+    if (taxes.setup_recurring && !taxes.escrow_paid_by_lender) {
+      const taxesAcctId = await resolveAccountId("5700", companyId);
+      const checkingId = await resolveAccountId("1000", companyId);
+      const periodsPerYear = taxes.billing_frequency === "annual" ? 1
+        : taxes.billing_frequency === "semi_annual" ? 2
+        : taxes.billing_frequency === "quarterly" ? 4
+        : 12;
+      const perPeriodAmount = Number(taxes.annual_tax_amount) / periodsPerYear;
+      // recurring_journal_entries uses hyphenated forms — "semi-annual", "annual", "quarterly".
+      const freq = taxes.billing_frequency === "semi_annual" ? "semi-annual"
+        : taxes.billing_frequency === "annual" ? "annual"
+        : taxes.billing_frequency === "quarterly" ? "quarterly"
+        : "monthly";
+      const nextPost = taxes.next_due_date || formatLocalDate(new Date());
+      // Dedup by description + property
+      const description = "Property tax — " + savedAddress.split(",")[0];
+      const { data: existRecur } = await supabase.from("recurring_journal_entries").select("id").eq("company_id", companyId).eq("property", savedAddress).eq("description", description).eq("status", "active").maybeSingle();
+      if (existRecur) {
+        await supabase.from("recurring_journal_entries").update({ amount: perPeriodAmount, frequency: freq, next_post_date: nextPost }).eq("id", existRecur.id).eq("company_id", companyId);
+      } else {
+        const { error: recurErr } = await supabase.from("recurring_journal_entries").insert([{
+          company_id: companyId,
+          description,
+          frequency: freq,
+          day_of_month: nextPost ? Number(nextPost.slice(8, 10)) || 1 : 1,
+          amount: perPeriodAmount,
+          property: savedAddress,
+          debit_account_id: taxesAcctId,
+          debit_account_name: "Property Taxes",
+          credit_account_id: checkingId,
+          credit_account_name: "Checking Account",
+          next_post_date: nextPost,
+          created_by: userProfile?.email || "",
+        }]);
+        if (recurErr) throw new Error("Failed to create recurring tax entry: " + recurErr.message);
+      }
+    }
+    return true;
+  }
+
   async function saveRecurringRent() {
     if (!recurring.amount || Number(recurring.amount) <= 0) throw new Error("Rent amount is required");
     const allTenants = [tenantForm.tenant, tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4, tenantForm.tenant_5].filter(t => t?.trim()).join(" / ");
@@ -619,6 +710,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       case "hoa": return await saveHoa();
       case "loan": return await saveLoan();
       case "insurance": return await saveInsurance();
+      case "property_tax": return await saveTaxes();
       case "recurring_rent": return await saveRecurringRent();
       case "documents": return true; // docs are uploaded inline
       case "review": return true;
@@ -1500,6 +1592,91 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
           </div>
         );
 
+      case "property_tax":
+        return (
+          <div>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-amber-600 text-2xl">receipt_long</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-manrope font-bold text-neutral-800">Property Tax</h3>
+                <p className="text-sm text-neutral-400">
+                  Annual tax bill, assessment, billing cadence
+                  {propForm.county && propForm.state && <span className="ml-1 text-neutral-500">· {propForm.county}, {propForm.state}</span>}
+                </p>
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-neutral-200 p-4 space-y-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <div className={`w-10 h-6 rounded-full transition-colors ${taxes.enabled ? "bg-positive-500" : "bg-neutral-200"} relative`} onClick={() => setTaxes({ ...taxes, enabled: !taxes.enabled })}>
+                  <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform shadow ${taxes.enabled ? "tranneutral-x-4.5 left-0.5" : "left-0.5"}`} />
+                </div>
+                <span className="text-sm font-medium text-neutral-700">Track property tax for this property?</span>
+              </label>
+              {taxes.enabled && (
+                <div className="space-y-3 pt-2">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Annual Tax Amount ($) *</label>
+                      <input type="number" step="0.01" value={taxes.annual_tax_amount} onChange={e => setTaxes({ ...taxes, annual_tax_amount: e.target.value })} placeholder="0.00" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Billing Frequency</label>
+                      <select value={taxes.billing_frequency} onChange={e => setTaxes({ ...taxes, billing_frequency: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm">
+                        <option value="annual">Annual</option>
+                        <option value="semi_annual">Semi-annual (MD / VA)</option>
+                        <option value="quarterly">Quarterly</option>
+                        <option value="monthly">Monthly</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Assessed Value ($)</label>
+                      <input type="number" step="1" value={taxes.assessed_value} onChange={e => setTaxes({ ...taxes, assessed_value: e.target.value })} placeholder="0" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Tax Year</label>
+                      <input type="number" value={taxes.tax_year} onChange={e => setTaxes({ ...taxes, tax_year: e.target.value })} placeholder={new Date().getFullYear()} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Next Due Date</label>
+                      <input type="date" value={taxes.next_due_date} onChange={e => setTaxes({ ...taxes, next_due_date: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Parcel / Account ID</label>
+                      <input type="text" value={taxes.parcel_id} onChange={e => setTaxes({ ...taxes, parcel_id: e.target.value })} placeholder="DC SSL · MD SDAT · VA GPIN · PA parcel" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-neutral-500 block mb-1">Jurisdiction Records URL</label>
+                      <input type="url" value={taxes.records_url} onChange={e => setTaxes({ ...taxes, records_url: e.target.value })} placeholder="https://..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-neutral-500 block mb-1">Exemptions (Homestead, Senior, etc.)</label>
+                    <input type="text" value={taxes.exemptions} onChange={e => setTaxes({ ...taxes, exemptions: e.target.value })} placeholder="e.g. Homestead, Senior, Disabled Veteran" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                  </div>
+                  <label className="flex items-start gap-2 text-sm text-neutral-600">
+                    <input type="checkbox" checked={taxes.escrow_paid_by_lender} onChange={e => setTaxes({ ...taxes, escrow_paid_by_lender: e.target.checked })} className="accent-brand-600 mt-0.5" />
+                    <span>Paid by lender through escrow<span className="text-xs text-neutral-400 ml-1">(skips recurring expense entry to avoid double-counting with the mortgage escrow)</span></span>
+                  </label>
+                  <label className="flex items-start gap-2 text-sm text-neutral-600">
+                    <input type="checkbox" checked={taxes.setup_recurring} disabled={taxes.escrow_paid_by_lender} onChange={e => setTaxes({ ...taxes, setup_recurring: e.target.checked })} className="accent-brand-600 mt-0.5" />
+                    <span className={taxes.escrow_paid_by_lender ? "text-neutral-400" : ""}>Auto-post recurring journal entry (DR 5700 Property Taxes / CR 1000 Checking)</span>
+                  </label>
+                  <div>
+                    <label className="text-xs font-medium text-neutral-500 block mb-1">Notes</label>
+                    <textarea value={taxes.notes} onChange={e => setTaxes({ ...taxes, notes: e.target.value })} rows={2} placeholder="Any additional notes…" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
       case "review":
         return (
           <div>
@@ -1635,6 +1812,25 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                     {insurance.expiration_date && <div>Expires: {insurance.expiration_date}</div>}
                   </div>
                 ) : completedSteps.has("insurance") ? <p className="text-xs text-neutral-400">No insurance</p> : null}
+              </div>
+
+              {/* Property tax summary */}
+              <div className="bg-white rounded-xl border border-neutral-200 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-semibold text-neutral-700">Property Tax</span>
+                  <div className="flex items-center gap-2">
+                    {completedSteps.has("property_tax") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    <button onClick={() => setStep(steps.indexOf("property_tax") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
+                  </div>
+                </div>
+                {completedSteps.has("property_tax") && taxes.enabled ? (
+                  <div className="text-xs text-neutral-500">
+                    <div>${Number(taxes.annual_tax_amount || 0).toLocaleString()}/yr · {taxes.billing_frequency.replace("_"," ")}{propForm.county ? " · " + propForm.county : ""}</div>
+                    {taxes.next_due_date && <div>Next due: {taxes.next_due_date}</div>}
+                    {taxes.escrow_paid_by_lender && <div className="text-neutral-400 italic">Paid by lender escrow — no recurring JE</div>}
+                    {!taxes.escrow_paid_by_lender && taxes.setup_recurring && <div className="text-brand-600">Recurring JE scheduled (DR 5700 / CR 1000)</div>}
+                  </div>
+                ) : completedSteps.has("property_tax") ? <p className="text-xs text-neutral-400">Not tracked</p> : null}
               </div>
 
               {/* Recurring rent summary */}
