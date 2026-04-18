@@ -151,7 +151,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   { code: "4200", name: "Management Fee Income", type: "Revenue", is_active: true },
   { code: "5300", name: "Repairs & Maintenance", type: "Expense", is_active: true },
   { code: "5400", name: "Utilities Expense", type: "Expense", is_active: true },
-  { code: "5700", name: "Property Taxes", type: "Expense", is_active: true },
+  { code: "5710", name: "Property Taxes", type: "Expense", is_active: true },
   ];
   for (const acct of defaultAccounts) {
   await supabase.from("acct_accounts").insert([{ ...acct, company_id: companyId, old_text_id: companyId + "-" + acct.code }]);

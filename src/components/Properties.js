@@ -545,7 +545,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     // when lender escrow covers taxes — that's already captured via the
     // property_loans.escrow_covers.taxes flag and the mortgage recurring entry.
     if (taxes.setup_recurring && !taxes.escrow_paid_by_lender) {
-      const taxesAcctId = await resolveAccountId("5700", companyId);
+      // 5710 not 5700 — some companies have 5700 pre-allocated to
+      // "Legal & Professional" from older seed data, so we avoid the
+      // collision and give Property Taxes its own code.
+      const taxesAcctId = await resolveAccountId("5710", companyId);
       const checkingId = await resolveAccountId("1000", companyId);
       const periodsPerYear = taxes.billing_frequency === "annual" ? 1
         : taxes.billing_frequency === "semi_annual" ? 2
@@ -1665,7 +1668,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   </label>
                   <label className="flex items-start gap-2 text-sm text-neutral-600">
                     <input type="checkbox" checked={taxes.setup_recurring} disabled={taxes.escrow_paid_by_lender} onChange={e => setTaxes({ ...taxes, setup_recurring: e.target.checked })} className="accent-brand-600 mt-0.5" />
-                    <span className={taxes.escrow_paid_by_lender ? "text-neutral-400" : ""}>Auto-post recurring journal entry (DR 5700 Property Taxes / CR 1000 Checking)</span>
+                    <span className={taxes.escrow_paid_by_lender ? "text-neutral-400" : ""}>Auto-post recurring journal entry (DR 5710 Property Taxes / CR 1000 Checking)</span>
                   </label>
                   <div>
                     <label className="text-xs font-medium text-neutral-500 block mb-1">Notes</label>
@@ -1828,7 +1831,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                     <div>${Number(taxes.annual_tax_amount || 0).toLocaleString()}/yr · {taxes.billing_frequency.replace("_"," ")}{propForm.county ? " · " + propForm.county : ""}</div>
                     {taxes.next_due_date && <div>Next due: {taxes.next_due_date}</div>}
                     {taxes.escrow_paid_by_lender && <div className="text-neutral-400 italic">Paid by lender escrow — no recurring JE</div>}
-                    {!taxes.escrow_paid_by_lender && taxes.setup_recurring && <div className="text-brand-600">Recurring JE scheduled (DR 5700 / CR 1000)</div>}
+                    {!taxes.escrow_paid_by_lender && taxes.setup_recurring && <div className="text-brand-600">Recurring JE scheduled (DR 5710 / CR 1000)</div>}
                   </div>
                 ) : completedSteps.has("property_tax") ? <p className="text-xs text-neutral-400">Not tracked</p> : null}
               </div>
