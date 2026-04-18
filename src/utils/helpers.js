@@ -199,18 +199,27 @@ export const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA"
 
 export const STATE_NAMES = {AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",CO:"Colorado",CT:"Connecticut",DE:"Delaware",DC:"District of Columbia",FL:"Florida",GA:"Georgia",HI:"Hawaii",ID:"Idaho",IL:"Illinois",IN:"Indiana",IA:"Iowa",KS:"Kansas",KY:"Kentucky",LA:"Louisiana",ME:"Maine",MD:"Maryland",MA:"Massachusetts",MI:"Michigan",MN:"Minnesota",MS:"Mississippi",MO:"Missouri",MT:"Montana",NE:"Nebraska",NV:"Nevada",NH:"New Hampshire",NJ:"New Jersey",NM:"New Mexico",NY:"New York",NC:"North Carolina",ND:"North Dakota",OH:"Ohio",OK:"Oklahoma",OR:"Oregon",PA:"Pennsylvania",RI:"Rhode Island",SC:"South Carolina",SD:"South Dakota",TN:"Tennessee",TX:"Texas",UT:"Utah",VT:"Vermont",VA:"Virginia",WA:"Washington",WV:"West Virginia",WI:"Wisconsin",WY:"Wyoming"};
 
-// Counties / independent cities the portfolio operates in. Drives the
-// wizard Step-1 county dropdown (filtered by the selected state). DC is
-// not a county but is treated as a single jurisdiction. VA has both
-// counties AND independent cities that handle taxes on their own, hence
-// the "... City" entries sitting alongside "... County".
+// Counties / independent cities the portfolio operates in. Mirrors the
+// FlipRadar active-counties registry (shared/counties.js) for the DMV,
+// plus Richmond City, Baltimore City, and York County PA that are
+// specific to PropManager's portfolio.
+//
+// Totals: 1 DC + 11 MD + 14 VA + 1 PA = 27 jurisdictions.
+//
+// DC is not a county but is treated as a single jurisdiction. VA has
+// both counties AND independent cities that each levy their own
+// property tax, hence the "... City" entries sitting alongside
+// "... County".
 export const COUNTIES_BY_STATE = {
   DC: ["District of Columbia"],
   MD: [
     "Anne Arundel County",
+    "Baltimore City",
+    "Baltimore County",
     "Calvert County",
     "Charles County",
     "Frederick County",
+    "Harford County",
     "Howard County",
     "Montgomery County",
     "Prince George's County",
@@ -223,6 +232,7 @@ export const COUNTIES_BY_STATE = {
     "Fairfax County",
     "Falls Church City",
     "Fauquier County",
+    "Fredericksburg City",
     "Loudoun County",
     "Manassas City",
     "Manassas Park City",
@@ -232,6 +242,75 @@ export const COUNTIES_BY_STATE = {
     "Stafford County",
   ],
   PA: ["York County"],
+};
+
+// Property-tax billing schedule per jurisdiction. Keyed by
+// "<county>|<state>". Each entry is an array of installments: month/day
+// and a human label. For fiscal-year jurisdictions (Falls Church,
+// Manassas Park) the label still maps to the calendar month/day the bill
+// is due; year rollover happens in the bill generator.
+//
+// Sources (for audit): DC OTR, MD SDAT + individual county treasurers,
+// VA per-locality tax admin pages, York County PA assessment office,
+// Richmond City finance. See research notes in the PR description.
+//
+// These are DEFAULTS — a PM can edit a generated bill's due_date on any
+// property if their specific jurisdiction shifts a date (not uncommon).
+export const COUNTY_TAX_SCHEDULES = {
+  // DC
+  "District of Columbia|DC": [
+    { label: "1st half (DC)",    month: 3, day: 31 },
+    { label: "2nd half (DC)",    month: 9, day: 15 },
+  ],
+
+  // MD — statewide pattern: annual bill issued July 1, semi-annual
+  // option for all classes but LLCs/investment pay annually by Sept 30
+  // or split Sept 30 + Dec 31. Baltimore City is slightly unique; see
+  // below. Everything else shares the same default schedule.
+  "Anne Arundel County|MD":     [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
+  "Baltimore County|MD":        [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
+  "Calvert County|MD":          [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
+  "Charles County|MD":          [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
+  "Frederick County|MD":        [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
+  "Harford County|MD":          [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
+  "Howard County|MD":           [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
+  "Montgomery County|MD":       [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
+  "Prince George's County|MD":  [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
+  "St. Mary's County|MD":       [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
+  // Baltimore City — same statutory schedule; discount programs differ.
+  "Baltimore City|MD":          [{ label: "1st half (MD)", month: 9, day: 30 }, { label: "2nd half (MD)", month: 12, day: 31 }],
+
+  // VA standard NoVA/surrounding counties: Jun 5 + Dec 5.
+  "Loudoun County|VA":          [{ label: "1st half (VA)", month: 6, day: 5  }, { label: "2nd half (VA)", month: 12, day: 5  }],
+  "Stafford County|VA":         [{ label: "1st half (VA)", month: 6, day: 5  }, { label: "2nd half (VA)", month: 12, day: 5  }],
+  "Spotsylvania County|VA":     [{ label: "1st half (VA)", month: 6, day: 5  }, { label: "2nd half (VA)", month: 12, day: 5  }],
+  "Fauquier County|VA":         [{ label: "1st half (VA)", month: 6, day: 5  }, { label: "2nd half (VA)", month: 12, day: 5  }],
+  "Fredericksburg City|VA":     [{ label: "1st half (VA)", month: 6, day: 5  }, { label: "2nd half (VA)", month: 12, day: 5  }],
+  // Fairfax County: Jul 28 (not Jun 5) + Dec 5. Fairfax City defaults
+  // to same for now; user can adjust per property.
+  "Fairfax County|VA":          [{ label: "1st half (VA)", month: 7, day: 28 }, { label: "2nd half (VA)", month: 12, day: 5  }],
+  "Fairfax City|VA":            [{ label: "1st half (VA)", month: 7, day: 28 }, { label: "2nd half (VA)", month: 12, day: 5  }],
+  // Arlington: Jun 15 + Oct 5 (unusual — not Dec 5).
+  "Arlington County|VA":        [{ label: "1st half (VA)", month: 6, day: 15 }, { label: "2nd half (VA)", month: 10, day: 5  }],
+  // Alexandria City: Jun 15 + Nov 15.
+  "Alexandria City|VA":         [{ label: "1st half (VA)", month: 6, day: 15 }, { label: "2nd half (VA)", month: 11, day: 15 }],
+  // Falls Church + Manassas Park: fiscal-year billing Dec 5 + Jun 5.
+  "Falls Church City|VA":       [{ label: "1st half (VA)", month: 12, day: 5 }, { label: "2nd half (VA)", month: 6,  day: 5  }],
+  "Manassas Park City|VA":      [{ label: "1st half (VA)", month: 12, day: 5 }, { label: "2nd half (VA)", month: 6,  day: 5  }],
+  // Prince William + Manassas City: Jul 15 + Dec 5.
+  "Prince William County|VA":   [{ label: "1st half (VA)", month: 7, day: 15 }, { label: "2nd half (VA)", month: 12, day: 5  }],
+  "Manassas City|VA":           [{ label: "1st half (VA)", month: 7, day: 15 }, { label: "2nd half (VA)", month: 12, day: 5  }],
+  // Richmond City: Jan 14 + Jun 14 — uniquely early for VA.
+  "Richmond City|VA":           [{ label: "1st half (VA)", month: 1, day: 14 }, { label: "2nd half (VA)", month: 6, day: 14  }],
+
+  // PA York County — 3 bills per year per property: county + municipal
+  // (combined) + school district. All delinquent Dec 31. For tracking we
+  // represent the two distinct bill cycles; the discount/face/penalty
+  // windows are notes the user can eyeball via the records URL.
+  "York County|PA": [
+    { label: "County & Municipal (PA)", month: 4, day: 30  },   // face amount window
+    { label: "School District (PA)",    month: 10, day: 31 },   // face amount window
+  ],
 };
 
 // Best-effort ZIP → {state, county} lookup for the DMV + Richmond + York PA
@@ -303,6 +382,39 @@ export const ZIP_TO_COUNTY = {
   "21409": { state: "MD", county: "Anne Arundel County" },
   "20678": { state: "MD", county: "Calvert County" }, "20657": { state: "MD", county: "Calvert County" },
   "20653": { state: "MD", county: "St. Mary's County" }, "20650": { state: "MD", county: "St. Mary's County" },
+
+  // ===== MD Baltimore City (21201-21231) — independent of Baltimore County =====
+  "21201": { state: "MD", county: "Baltimore City" }, "21202": { state: "MD", county: "Baltimore City" },
+  "21205": { state: "MD", county: "Baltimore City" }, "21206": { state: "MD", county: "Baltimore City" },
+  "21210": { state: "MD", county: "Baltimore City" }, "21211": { state: "MD", county: "Baltimore City" },
+  "21212": { state: "MD", county: "Baltimore City" }, "21213": { state: "MD", county: "Baltimore City" },
+  "21214": { state: "MD", county: "Baltimore City" }, "21215": { state: "MD", county: "Baltimore City" },
+  "21216": { state: "MD", county: "Baltimore City" }, "21217": { state: "MD", county: "Baltimore City" },
+  "21218": { state: "MD", county: "Baltimore City" }, "21223": { state: "MD", county: "Baltimore City" },
+  "21224": { state: "MD", county: "Baltimore City" }, "21225": { state: "MD", county: "Baltimore City" },
+  "21226": { state: "MD", county: "Baltimore City" }, "21229": { state: "MD", county: "Baltimore City" },
+  "21230": { state: "MD", county: "Baltimore City" }, "21231": { state: "MD", county: "Baltimore City" },
+
+  // ===== MD Baltimore County — surrounds the City; primary residential ZIPs =====
+  "21204": { state: "MD", county: "Baltimore County" }, "21207": { state: "MD", county: "Baltimore County" },
+  "21208": { state: "MD", county: "Baltimore County" }, "21209": { state: "MD", county: "Baltimore County" },
+  "21219": { state: "MD", county: "Baltimore County" }, "21220": { state: "MD", county: "Baltimore County" },
+  "21221": { state: "MD", county: "Baltimore County" }, "21222": { state: "MD", county: "Baltimore County" },
+  "21227": { state: "MD", county: "Baltimore County" }, "21228": { state: "MD", county: "Baltimore County" },
+  "21234": { state: "MD", county: "Baltimore County" }, "21236": { state: "MD", county: "Baltimore County" },
+  "21237": { state: "MD", county: "Baltimore County" }, "21244": { state: "MD", county: "Baltimore County" },
+
+  // ===== MD Harford County — 210xx–215xx =====
+  "21001": { state: "MD", county: "Harford County" }, "21009": { state: "MD", county: "Harford County" },
+  "21014": { state: "MD", county: "Harford County" }, "21015": { state: "MD", county: "Harford County" },
+  "21017": { state: "MD", county: "Harford County" }, "21028": { state: "MD", county: "Harford County" },
+  "21034": { state: "MD", county: "Harford County" }, "21040": { state: "MD", county: "Harford County" },
+  "21050": { state: "MD", county: "Harford County" }, "21078": { state: "MD", county: "Harford County" },
+  "21084": { state: "MD", county: "Harford County" }, "21085": { state: "MD", county: "Harford County" },
+  "21154": { state: "MD", county: "Harford County" }, "21160": { state: "MD", county: "Harford County" },
+
+  // ===== VA Fredericksburg City — 22401-22408 (some are surrounding counties, keep to city proper) =====
+  "22401": { state: "VA", county: "Fredericksburg City" }, "22408": { state: "VA", county: "Fredericksburg City" },
 
   // ===== VA Arlington — 222xx =====
   "22201": { state: "VA", county: "Arlington County" }, "22202": { state: "VA", county: "Arlington County" },
