@@ -31,14 +31,15 @@ async function login(page) {
   await page.locator('text=/YOUR COMPANIES|Your Companies|PropManager/i').first().waitFor({ state: 'visible', timeout: 15000 });
   await page.waitForTimeout(1000);
 
-  // Step 5: Click Sandbox LLC row (where test data lives), or fall back to first company row
-  // Company rows have font-semibold name text inside a clickable div
-  const sandboxRow = page.locator('.font-semibold:has-text("Sandbox")').first();
-  if (await sandboxRow.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await sandboxRow.click();
+  // Step 5: Click into Sandbox LLC. Clickable area is a <div onClick> that
+  // wraps the avatar + name. Clicking the visible name text reliably hits
+  // that handler (event bubbles up).
+  const sandboxName = page.locator('.font-semibold:has-text("Sandbox")').first();
+  if (await sandboxName.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await sandboxName.click();
   } else {
-    // Fall back to first company name
-    const firstCompany = page.locator('.font-semibold.text-slate-800').first();
+    // Fall back to any first-company clickable div
+    const firstCompany = page.locator('div.cursor-pointer:has(.font-semibold)').first();
     if (await firstCompany.isVisible({ timeout: 2000 }).catch(() => false)) {
       await firstCompany.click();
     }
