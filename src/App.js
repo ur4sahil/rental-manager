@@ -36,6 +36,7 @@ import { CompanySelector, PendingRequestsPanel, PendingPMAssignments } from "./c
 import { HOAPayments } from "./components/HOA";
 import { Loans } from "./components/Loans";
 import { InsuranceTracker } from "./components/Insurance";
+import { TaxBills } from "./components/TaxBills";
 import { LateFees } from "./components/LateFees";
 import PublicSignPage from "./components/PublicSignPage";
 
@@ -116,8 +117,8 @@ let _toastIdCounter = 0;
 
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
-  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","insurance","accounting","owners","notifications","admin","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
-  office_assistant: { label: "Office Assistant", color: "bg-info-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","accounting","notifications","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
+  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","insurance","tax_bills","accounting","owners","notifications","admin","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
+  office_assistant: { label: "Office Assistant", color: "bg-info-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting","notifications","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
   accountant: { label: "Accountant", color: "bg-positive-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-notice-500", pages: ["maintenance","vendors"] },
   tenant: { label: "Tenant", color: "bg-brand-50/300", pages: ["tenant_portal"] },
@@ -133,6 +134,7 @@ const ALL_NAV = [
     { id: "hoa", label: "HOA Payments", icon: "holiday_village" },
     { id: "loans", label: "Loans", icon: "account_balance_wallet" },
     { id: "insurance", label: "Insurance", icon: "verified_user" },
+    { id: "tax_bills", label: "Tax Bills", icon: "receipt_long" },
   ]},
   { id: "tenants", label: "Tenants", icon: "people" },
   { id: "payments", label: "Payments", icon: "payments" },
@@ -162,6 +164,7 @@ const pageComponents = {
   hoa: HOAPayments,
   loans: Loans,
   insurance: InsuranceTracker,
+  tax_bills: TaxBills,
   admin: AdminPage,
   leases: LeaseManagement,
   vendors: VendorManagement,
