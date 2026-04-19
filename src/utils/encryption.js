@@ -1,31 +1,52 @@
+import { supabase } from "../supabase";
 import { pmError } from "./errors";
 
-// ============ CREDENTIAL ENCRYPTION (AES-256-GCM via Web Crypto + PBKDF2) ============
-// Master key from environment — required for credential encryption
-const _MASTER_KEY = process.env.REACT_APP_ENCRYPTION_KEY || "";
-async function _deriveKey(companyId, usage) {
-  if (!_MASTER_KEY) throw new Error("REACT_APP_ENCRYPTION_KEY not configured — credential encryption unavailable");
-  const salt = new TextEncoder().encode("propmanager_" + companyId + "_v2");
-  const baseKey = await crypto.subtle.importKey("raw", new TextEncoder().encode(_MASTER_KEY), "PBKDF2", false, ["deriveKey"]);
-  return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" }, baseKey, { name: "AES-GCM", length: 256 }, false, usage);
+// ============ CREDENTIAL ENCRYPTION (server-side) ============
+// Encryption now happens in /api/encrypt.js with the master key held as
+// a server-only Vercel secret (ENCRYPTION_KEY). The previous version
+// used REACT_APP_ENCRYPTION_KEY which shipped to every browser in the
+// bundle — defeating the point of encrypting at rest. Function
+// signatures are identical so callers don't need to change.
+//
+// Migration note: rows already encrypted with the old client-side key
+// decrypt correctly as long as ENCRYPTION_KEY is set to the same value
+// REACT_APP_ENCRYPTION_KEY held. Once rotated, a one-time re-encrypt
+// migration is required (future task).
+
+async function callEncryptApi(body) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error("No active session");
+  const resp = await fetch("/api/encrypt", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    let msg = "encrypt API " + resp.status;
+    try { msg = (await resp.json()).error || msg; } catch (_) {}
+    throw new Error(msg);
+  }
+  return resp.json();
 }
+
 export async function encryptCredential(plaintext, companyId) {
   if (!plaintext) return { encrypted: "", iv: "" };
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await _deriveKey(companyId, ["encrypt"]);
-  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(plaintext));
-  const ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, "0")).join("");
-  return { encrypted: btoa(String.fromCharCode(...new Uint8Array(ciphertext))), iv: ivHex };
+  try {
+    return await callEncryptApi({ action: "encrypt", plaintext, companyId });
+  } catch (e) {
+    pmError("PM-8006", { raw: e, context: "encryptCredential", silent: true });
+    return { encrypted: "", iv: "" };
+  }
 }
+
 export async function decryptCredential(encryptedB64, ivHex, companyId) {
   if (!encryptedB64 || !ivHex) return "";
   try {
-    const key = await _deriveKey(companyId, ["decrypt"]);
-    const hexParts = ivHex.match(/.{2}/g);
-    if (!hexParts) return "••••••";
-    const iv = new Uint8Array(hexParts.map(h => parseInt(h, 16)));
-    const ciphertext = Uint8Array.from(atob(encryptedB64), c => c.charCodeAt(0));
-    const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
-    return new TextDecoder().decode(decrypted);
-  } catch (e) { pmError("PM-8006", { raw: e, context: "credential decryption", silent: true }); return "���•••••"; }
+    const { plaintext } = await callEncryptApi({ action: "decrypt", ciphertext: encryptedB64, iv: ivHex, companyId });
+    return plaintext || "";
+  } catch (e) {
+    pmError("PM-8006", { raw: e, context: "decryptCredential", silent: true });
+    return "••••••";
+  }
 }

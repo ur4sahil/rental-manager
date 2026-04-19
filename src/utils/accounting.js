@@ -118,6 +118,23 @@ export async function checkPeriodLock(companyId, date) {
 export async function autoPostJournalEntry({ date, description, reference, property, lines, status = "posted", companyId }) {
   try {
   if (!companyId) { pmError("PM-4002", { raw: { message: "missing companyId" }, context: "autoPostJournalEntry", silent: true }); return null; }
+  // DR=CR balance guard. Interactive JE creation validates via validateJE(),
+  // but every programmatic caller (autopay, recurring rent, owner dist,
+  // late fees) used to bypass that check — letting unbalanced JEs post and
+  // corrupt the GL silently. Reject at the gate so callers fail fast and
+  // the nightly integrity sweep has less to clean up.
+  if (lines?.length > 0) {
+    const trDebit = lines.reduce((s, l) => s + safeNum(l.debit), 0);
+    const trCredit = lines.reduce((s, l) => s + safeNum(l.credit), 0);
+    if (Math.abs(trDebit - trCredit) > 0.005) {
+      pmError("PM-4001", {
+        raw: { message: `JE out of balance: DR $${trDebit.toFixed(2)} vs CR $${trCredit.toFixed(2)}` },
+        context: `autoPostJournalEntry ref=${reference || "(none)"} desc=${description || "(none)"}`,
+        meta: { trDebit, trCredit, diff: trDebit - trCredit, lineCount: lines.length },
+      });
+      return null;
+    }
+  }
   // Period lock check
   if (await checkPeriodLock(companyId, date)) { pmError("PM-4004", { raw: { message: "blocked by period lock" }, context: "autoPostJournalEntry, date: " + date, silent: true }); return null; }
   const cid = companyId;
@@ -200,18 +217,28 @@ export async function autoOwnerDistribution(companyId, propertyAddress, paymentA
   const hasAccrual = await checkAccrualExists(companyId, month, tenantName);
   if (!hasAccrual) return; // No accrual to reclassify — distribution handled when payment was direct revenue
   const feePct = safeNum(owner.management_fee_pct || 10);
-  // Use integer cents to avoid floating point precision loss
+  // Integer cents avoids fp precision loss, and the DR must match the sum
+  // of CR cents exactly — not the caller's (possibly un-rounded) paymentAmount.
+  // Without this, DR/CR could drift by fractional cents on float inputs and
+  // trip the new PM-4001 balance guard in autoPostJournalEntry.
   const paymentCents = Math.round(paymentAmount * 100);
   const mgmtFeeCents = Math.round(paymentCents * feePct / 100);
   const mgmtFee = mgmtFeeCents / 100;
   const ownerNet = (paymentCents - mgmtFeeCents) / 100;
+  const paymentRounded = paymentCents / 100;
   const classId = await getPropertyClassId(propertyAddress, companyId);
+  // Deterministic reference so a retry can't double-distribute. Scope to
+  // owner + tenant + date + amount so legitimate split payments differ but
+  // identical replays collide on the unique (company_id, reference) index.
+  const tenantSlug = (tenantName || "anon").toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 32);
+  const refDate = paymentDate.replace(/-/g, "");
+  const ref = `ODIST-${owner.id}-${tenantSlug}-${refDate}-${paymentCents}`;
   const jeId = await autoPostJournalEntry({
   companyId, date: paymentDate,
   description: `Owner distribution accrual — ${owner.name} — ${tenantName}`,
-  reference: `ODIST-${shortId()}`, property: propertyAddress,
+  reference: ref, property: propertyAddress,
   lines: [
-  { account_id: "4000", account_name: "Rental Income", debit: paymentAmount, credit: 0, class_id: classId, memo: `Reclassify to owner dist — ${tenantName}` },
+  { account_id: "4000", account_name: "Rental Income", debit: paymentRounded, credit: 0, class_id: classId, memo: `Reclassify to owner dist — ${tenantName}` },
   { account_id: "4200", account_name: "Management Fee Income", debit: 0, credit: mgmtFee, class_id: classId, memo: `Mgmt fee ${feePct}% — ${owner.name}` },
   { account_id: "2200", account_name: "Owner Distributions Payable", debit: 0, credit: ownerNet, class_id: classId, memo: `Net to ${owner.name}` },
   ]

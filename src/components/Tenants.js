@@ -372,7 +372,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
       const result = await atomicPostJEAndLedger({ companyId,
         date: today,
         description: "Late fee \u2014 " + t.name + " \u2014 " + t.property,
-        reference: "LATEFEE-" + shortId(),
+        reference: "LATEFEE-" + t.id + "-" + thisMonth.replace("-", ""),
         property: t.property,
         lines: [
           { account_id: "1100", account_name: "Accounts Receivable", debit: feeAmount, credit: 0, class_id: classId, memo: "Late fee: " + t.name },

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Select, Btn, PageHeader } from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, formatCurrency } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -84,10 +84,14 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   const classId = await getPropertyClassId(payment.property, companyId);
   // Unified: JE first → ledger → balance (all gated on JE success)
   if (feeAmount > 0) {
+  // Deterministic reference so a cron re-run can't double-charge.
+  // tenant_id + YYYYMM aligns with the one-per-tenant-per-month policy
+  // already enforced by the SELECT check above.
+  const refKey = tenant?.id ? String(tenant.id) : (payment.tenant || "anon").toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 32);
   const result = await atomicPostJEAndLedger({ companyId,
   date: today,
   description: "Late fee - " + payment.tenant + " - " + payment.property,
-  reference: "LATE-" + shortId(),
+  reference: "LATE-" + refKey + "-" + thisMonth.replace("-", ""),
   property: payment.property,
   lines: [
   { account_id: "1100", account_name: "Accounts Receivable", debit: feeAmount, credit: 0, class_id: classId, memo: "Late fee: " + payment.tenant },

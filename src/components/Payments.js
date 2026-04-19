@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Btn, Select, PageHeader } from "../ui";
-import { safeNum, formatLocalDate, shortId, formatCurrency, escapeFilterValue, exportToCSV, parseLocalDate } from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency, escapeFilterValue, exportToCSV, parseLocalDate } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -201,22 +201,33 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   }
 
   async function runNow(s) {
-  if (s._processing) return; s._processing = true;
-  if (!s.amount || safeNum(s.amount) <= 0) { showToast("Invalid autopay amount.", "error"); s._processing = false; return; }
+  if (!guardSubmit("runNow", s.id)) return;
+  try {
+  if (!s.amount || safeNum(s.amount) <= 0) { showToast("Invalid autopay amount.", "error"); return; }
   const today = formatLocalDate(new Date());
-  // Duplicate guard: check for existing payment today
-  const { data: todayPay } = await supabase.from("payments").select("id").eq("company_id", companyId).eq("tenant", s.tenant).eq("date", today).eq("method", s.method).limit(1);
-  if (todayPay?.length > 0) { if (!await showConfirm({ message: "A payment from " + s.tenant + " was already recorded today. Run again?" })) { s._processing = false; return; } }
-  const { error } = await supabase.from("payments").insert([{ company_id: companyId, tenant: s.tenant, property: s.property, amount: s.amount, type: "rent", method: s.method, status: "paid", date: today }]);
-  if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
-  // AUTO-POST TO ACCOUNTING: Same smart AR logic as manual payments
-  const classId = await getPropertyClassId(s.property, companyId);
   const amt = safeNum(s.amount);
+  // Look up tenant FIRST — we need tenant_id for the deterministic JE
+  // reference so the unique index on (company_id, reference) catches
+  // double-posts. Scoping by (tenant_id, property) avoids the same-name
+  // collision bug that sent autopay to the wrong tenant before.
+  const { data: tenantRow } = await supabase.from("tenants")
+    .select("id, balance, email")
+    .eq("name", s.tenant)
+    .eq("company_id", companyId)
+    .eq("property", s.property)
+    .maybeSingle();
+  // Duplicate guard — by tenant_id + date + method when possible, else fall back to name.
+  let dupQ = supabase.from("payments").select("id").eq("company_id", companyId).eq("date", today).eq("method", s.method).limit(1);
+  dupQ = tenantRow?.id ? dupQ.eq("tenant_id", tenantRow.id) : dupQ.eq("tenant", s.tenant).eq("property", s.property);
+  const { data: todayPay } = await dupQ;
+  if (todayPay?.length > 0) {
+    if (!await showConfirm({ message: "A payment from " + s.tenant + " was already recorded today. Run again?" })) return;
+  }
+  const { error } = await supabase.from("payments").insert([{ company_id: companyId, tenant: s.tenant, tenant_id: tenantRow?.id || null, property: s.property, amount: s.amount, type: "rent", method: s.method, status: "paid", date: today }]);
+  if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
+  const classId = await getPropertyClassId(s.property, companyId);
   const month = today.slice(0, 7);
-  let hasAccrual = false;
-  hasAccrual = await checkAccrualExists(companyId, month, s.tenant);
-  // Look up tenant for balance update
-  const { data: tenantRow } = await supabase.from("tenants").select("id, balance, email").eq("name", s.tenant).eq("company_id", companyId).maybeSingle();
+  const hasAccrual = await checkAccrualExists(companyId, month, s.tenant);
   const jeLines = hasAccrual
   ? [
   { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay " + s.method + " from " + s.tenant },
@@ -227,24 +238,28 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: s.tenant + " — " + s.property },
   ];
   const jeDesc = hasAccrual ? "Autopay received — " + s.tenant + " — " + s.property + " (settling AR)" : "Autopay — " + s.tenant + " — " + s.property;
-  // Unified: JE → ledger → balance (gated on JE success)
+  // Deterministic reference — the unique index on (company_id, reference)
+  // is only useful if refs are predictable. APAY-<tenantId>-<yyyymmdd>
+  // collides on double-post, which is exactly what we want.
+  const refKey = tenantRow?.id ? String(tenantRow.id) : (s.tenant || "anon").replace(/\s+/g, "_");
+  const jeRef = "APAY-" + refKey + "-" + today.replace(/-/g, "");
   const result = await atomicPostJEAndLedger({ companyId,
-  date: today, description: jeDesc, reference: "APAY-" + shortId(), property: s.property,
+  date: today, description: jeDesc, reference: jeRef, property: s.property,
   lines: jeLines,
   ledgerEntry: { tenant: s.tenant, property: s.property, date: today, description: "Autopay payment (" + s.method + ")", amount: -amt, type: "payment", balance: 0 },
   balanceUpdate: tenantRow ? { tenantId: tenantRow.id, amount: -amt } : null,
   });
-  if (!result.jeId) { s._processing = false; fetchData(); return; } // toast already shown
+  if (!result.jeId) { fetchData(); return; } // toast already shown
   logAudit("create", "payments", "Autopay: $" + s.amount + " from " + s.tenant + " at " + s.property, "", userProfile?.email, userRole, companyId);
   addNotification("\ud83d\udcb3", "Autopay $" + s.amount + " processed for " + s.tenant);
   if (tenantRow?.email) {
   queueNotification("payment_received", tenantRow.email, { tenant: s.tenant, amount: amt, date: today, property: s.property, method: s.method }, companyId);
   }
-
-  // Auto-create owner distribution for autopay rent (#3)
   await autoOwnerDistribution(companyId, s.property, amt, today, s.tenant);
-
   fetchData();
+  } finally {
+  guardRelease("runNow", s.id);
+  }
   }
 
   function nextDue(s) {
