@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, PageHeader, IconBtn } from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus } from "../utils/helpers";
@@ -663,7 +663,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     if (propUpErr) throw new Error("Failed to update property: " + propUpErr.message);
     // Create/find tenant — check by name+property first, then by property only to prevent duplicates
     let existingTenant = null;
-    const { data: byName } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", tenantForm.tenant.trim()).eq("property", addr).is("archived_at", null).maybeSingle();
+    const { data: byName } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", escapeFilterValue(tenantForm.tenant.trim())).eq("property", addr).is("archived_at", null).maybeSingle();
     if (byName) { existingTenant = byName; }
     else {
       // Also check if ANY active tenant exists at this property (prevents duplicate from re-running wizard)
@@ -748,7 +748,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       const tName = tenantForm.tenant.trim();
       // Find tenant ID — try exact match first, then contains match
       let tenantId = null;
-      const { data: tRow } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", tName).eq("property", addr).is("archived_at", null).maybeSingle();
+      const { data: tRow } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", escapeFilterValue(tName)).eq("property", addr).is("archived_at", null).maybeSingle();
       if (tRow) { tenantId = tRow.id; }
       else {
         // Fallback: find any active tenant at this property
@@ -1451,7 +1451,14 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                       <span className="text-positive-800 font-medium truncate">{doc.name}</span>
                       <span className="text-xs text-positive-600 bg-positive-100 px-2 py-0.5 rounded-full ml-auto">{doc.type}</span>
                       <button onClick={async () => {
-                        await supabase.from("documents").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email || "user" }).eq("company_id", companyId).eq("property", savedAddress).ilike("name", doc.name);
+                        // Escape the user-controlled doc.name so a crafted name
+                        // (wildcards, commas) can't broaden the match. Wildcards
+                        // in .ilike would otherwise archive multiple rows.
+                        await supabase.from("documents")
+                          .update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email || "user" })
+                          .eq("company_id", companyId)
+                          .eq("property", savedAddress)
+                          .ilike("name", escapeFilterValue(doc.name));
                         setUploadedDocs(prev => prev.filter((_, i) => i !== idx));
                         showToast("Document removed.", "success");
                       }} className="text-danger-400 hover:text-danger-600 ml-1" title="Remove">
@@ -1904,6 +1911,14 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  // Debounce search input — every keystroke previously triggered a filter
+  // pass over the whole properties list. 200ms feels responsive while
+  // avoiding 10× re-runs per typed word.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 200);
+    return () => clearTimeout(t);
+  }, [search]);
   const [filter, setFilter] = useState("all");
   const [showForm, setShowForm] = useState(false);
   const [editingProperty, setEditingProperty] = useState(null);
@@ -2100,7 +2115,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (form.status === "occupied" && form.tenant.trim()) {
   // Check by name first, then by property (prevents duplicates when address varies slightly)
   let existingTenant = null;
-  const { data: byName } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.tenant.trim()).eq("property", compositeAddress).is("archived_at", null).maybeSingle();
+  const { data: byName } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", escapeFilterValue(form.tenant.trim())).eq("property", compositeAddress).is("archived_at", null).maybeSingle();
   if (byName) { existingTenant = byName; }
   else {
     const { data: byProp } = await supabase.from("tenants").select("id").eq("company_id", companyId).eq("property", compositeAddress).is("archived_at", null).eq("lease_status", "active").maybeSingle();
@@ -2581,7 +2596,10 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const pendingRequests = changeRequests.filter(r => r.status === "pending");
 
   if (loading) return <Spinner />;
-  const filtered = properties.filter(p => {
+  // Memoize the filter — at 500+ properties the full-list iteration on every
+  // keystroke was blocking the main thread. Recomputes only when inputs
+  // actually change.
+  const filtered = useMemo(() => properties.filter(p => {
   if (filter !== "all" && p.status !== filter) return false;
   if (filterType !== "all" && p.type !== filterType) return false;
   if (filterOwnership !== "all" && p._ownership !== filterOwnership) return false;
@@ -2591,10 +2609,10 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const city = parts.length >= 2 ? parts[parts.length - 2] : "";
   if (city !== filterCity) return false;
   }
-  const q = search.toLowerCase();
+  const q = debouncedSearch.toLowerCase();
   if (q && !p.address?.toLowerCase().includes(q) && !p.type?.toLowerCase().includes(q) && !p.tenant?.toLowerCase()?.includes(q) && !p.owner_name?.toLowerCase()?.includes(q)) return false;
   return true;
-  });
+  }), [properties, filter, filterType, filterOwnership, filterOwner, filterCity, debouncedSearch]);
 
   return (
   <div>

@@ -9,11 +9,15 @@ export async function safeLedgerInsert(entry) {
   // Auto-calculate running balance unless caller provides a non-zero value
   if (!entry.balance || entry.balance === 0) {
     try {
-      // Find latest ledger entry for this tenant to get previous balance
+      // Find latest ledger entry for this tenant to get previous balance.
+      // When we know the property, scope the lookup to it — a tenant who
+      // rents two units should not see Property A's balance leak into
+      // Property B's running total.
       let query = supabase.from("ledger_entries").select("balance").eq("company_id", entry.company_id).is("archived_at", null);
       if (entry.tenant_id) query = query.eq("tenant_id", entry.tenant_id);
-      else if (entry.tenant) query = query.ilike("tenant", entry.tenant);
+      else if (entry.tenant) query = query.ilike("tenant", escapeFilterValue(entry.tenant));
       else { entry.balance = 0; } // No tenant context — can't compute balance
+      if (entry.property) query = query.eq("property", entry.property);
       if (entry.tenant_id || entry.tenant) {
         const { data: prev } = await query.order("date", { ascending: false }).order("created_at", { ascending: false }).limit(1).maybeSingle();
         const prevBal = safeNum(prev?.balance);

@@ -107,47 +107,59 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
 
   async function handleUnpay(bill) {
     if (!await showConfirm({ message: `Undo the paid status on "${bill.installment_label}" for ${bill.property.split(",")[0]}?` })) return;
-    const res = await unmarkBillPaid({ billId: bill.id, companyId });
-    if (!res.ok) { showToast("Could not undo: " + (res.reason || "unknown"), "error"); return; }
-    logAudit("update", "property_tax_bills", "Reverted paid status", bill.id, userProfile?.email, userRole, companyId);
-    showToast("Reverted to pending", "success");
-    fetchAll();
+    if (!guardSubmit("unpayBill", bill.id)) return;
+    try {
+      const res = await unmarkBillPaid({ billId: bill.id, companyId });
+      if (!res.ok) { showToast("Could not undo: " + (res.reason || "unknown"), "error"); return; }
+      logAudit("update", "property_tax_bills", "Reverted paid status", bill.id, userProfile?.email, userRole, companyId);
+      showToast("Reverted to pending", "success");
+      fetchAll();
+    } finally { guardRelease("unpayBill", bill.id); }
   }
 
   async function handleSkip(bill) {
     const reason = prompt("Reason for skipping this bill? (e.g. \"lender escrow\")");
     if (reason === null) return;
-    const res = await skipBill({ billId: bill.id, companyId, reason });
-    if (!res.ok) { showToast("Could not skip: " + (res.reason || "unknown"), "error"); return; }
-    logAudit("update", "property_tax_bills", `Skipped (${reason})`, bill.id, userProfile?.email, userRole, companyId);
-    showToast("Bill skipped", "success");
-    fetchAll();
+    if (!guardSubmit("skipBill", bill.id)) return;
+    try {
+      const res = await skipBill({ billId: bill.id, companyId, reason });
+      if (!res.ok) { showToast("Could not skip: " + (res.reason || "unknown"), "error"); return; }
+      logAudit("update", "property_tax_bills", `Skipped (${reason})`, bill.id, userProfile?.email, userRole, companyId);
+      showToast("Bill skipped", "success");
+      fetchAll();
+    } finally { guardRelease("skipBill", bill.id); }
   }
 
   async function handleDelete(bill) {
     if (!await showConfirm({ message: `Delete this bill? It can be recovered within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
-    const { error } = await supabase.from("property_tax_bills").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", bill.id).eq("company_id", companyId);
-    if (error) { showToast("Delete failed: " + error.message, "error"); return; }
-    logAudit("delete", "property_tax_bills", `Archived bill ${bill.installment_label} for ${bill.property}`, bill.id, userProfile?.email, userRole, companyId);
-    fetchAll();
+    if (!guardSubmit("deleteBill", bill.id)) return;
+    try {
+      const { error } = await supabase.from("property_tax_bills").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", bill.id).eq("company_id", companyId);
+      if (error) { showToast("Delete failed: " + error.message, "error"); return; }
+      logAudit("delete", "property_tax_bills", `Archived bill ${bill.installment_label} for ${bill.property}`, bill.id, userProfile?.email, userRole, companyId);
+      fetchAll();
+    } finally { guardRelease("deleteBill", bill.id); }
   }
 
   async function handleEditSave() {
     if (!editBill?.bill) return;
-    const patch = {};
-    if (editBill.due_date && editBill.due_date !== editBill.bill.due_date) patch.due_date = editBill.due_date;
-    if (editBill.installment_label && editBill.installment_label !== editBill.bill.installment_label) patch.installment_label = editBill.installment_label;
-    if (editBill.expected_amount !== "" && Number(editBill.expected_amount) !== Number(editBill.bill.expected_amount)) patch.expected_amount = Number(editBill.expected_amount) || null;
-    if (Object.keys(patch).length === 0) { setEditBill(null); return; }
-    // Editing an auto-generated row flags it so future generateBills runs don't
-    // stomp on the user's edits (they stop being treated as "pristine auto").
-    if (editBill.bill.auto_generated) patch.auto_generated = false;
-    const { error } = await supabase.from("property_tax_bills").update(patch).eq("id", editBill.bill.id).eq("company_id", companyId);
-    if (error) { showToast("Save failed: " + error.message, "error"); return; }
-    logAudit("update", "property_tax_bills", `Edited bill ${Object.keys(patch).join(",")}`, editBill.bill.id, userProfile?.email, userRole, companyId);
-    showToast("Bill updated", "success");
-    setEditBill(null);
-    fetchAll();
+    if (!guardSubmit("editBill", editBill.bill.id)) return;
+    try {
+      const patch = {};
+      if (editBill.due_date && editBill.due_date !== editBill.bill.due_date) patch.due_date = editBill.due_date;
+      if (editBill.installment_label && editBill.installment_label !== editBill.bill.installment_label) patch.installment_label = editBill.installment_label;
+      if (editBill.expected_amount !== "" && Number(editBill.expected_amount) !== Number(editBill.bill.expected_amount)) patch.expected_amount = Number(editBill.expected_amount) || null;
+      if (Object.keys(patch).length === 0) { setEditBill(null); return; }
+      // Editing an auto-generated row flags it so future generateBills runs don't
+      // stomp on the user's edits (they stop being treated as "pristine auto").
+      if (editBill.bill.auto_generated) patch.auto_generated = false;
+      const { error } = await supabase.from("property_tax_bills").update(patch).eq("id", editBill.bill.id).eq("company_id", companyId);
+      if (error) { showToast("Save failed: " + error.message, "error"); return; }
+      logAudit("update", "property_tax_bills", `Edited bill ${Object.keys(patch).join(",")}`, editBill.bill.id, userProfile?.email, userRole, companyId);
+      showToast("Bill updated", "success");
+      setEditBill(null);
+      fetchAll();
+    } finally { guardRelease("editBill", editBill.bill.id); }
   }
 
   if (loading) return <Spinner />;

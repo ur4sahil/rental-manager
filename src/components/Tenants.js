@@ -105,7 +105,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
   // #15: Block duplicate tenant (same name + property)
   if (!editingTenant) {
-  const { data: dupCheck } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", form.name.trim()).eq("property", form.property).is("archived_at", null).maybeSingle();
+  const { data: dupCheck } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", escapeFilterValue(form.name.trim())).eq("property", form.property).is("archived_at", null).maybeSingle();
   if (dupCheck) { showToast("A tenant named \"" + form.name.trim() + "\" already exists at this property.", "error"); return; }
   }
   // #3: Keep lease_start/move_in and lease_end_date/move_out in sync
@@ -134,7 +134,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (_isNew && _property && _leaseStart && _leaseEnd && _rent) setSavingTenant(true);
   // Post-save operations (run while spinner shows)
   if (_isNew) {
-  const { data: insertedTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", _name).eq("property", _property).is("archived_at", null).maybeSingle();
+  const { data: insertedTenant } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", escapeFilterValue(_name)).eq("property", _property).is("archived_at", null).maybeSingle();
   const tenantId = insertedTenant?.id || null;
   // Create AR sub-account + update property + create lease in parallel where possible
   const [, ,] = await Promise.all([
@@ -397,7 +397,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
 
   async function fetchTenantDocs(tenant) {
-  const { data } = await supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", tenant.name).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(50);
+  const { data } = await supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", escapeFilterValue(tenant.name)).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(50);
   setTenantDocs(data || []);
   }
 
@@ -453,14 +453,14 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   let data = [];
   if (tenant.id) {
   const { data: byId } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId).eq("tenant_id", tenant.id).order("date", { ascending: false }).limit(200);
-  const { data: byName } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId).ilike("tenant", tenant.name).is("tenant_id", null).order("date", { ascending: false }).limit(200);
+  const { data: byName } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId).ilike("tenant", escapeFilterValue(tenant.name)).is("tenant_id", null).order("date", { ascending: false }).limit(200);
   // Merge and deduplicate by id, sort by date desc
   const merged = {};
   (byId || []).forEach(e => { merged[e.id] = e; });
   (byName || []).forEach(e => { if (!merged[e.id]) merged[e.id] = e; });
   data = Object.values(merged).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   } else {
-  const { data: byName } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId).ilike("tenant", tenant.name).order("date", { ascending: false }).limit(200);
+  const { data: byName } = await supabase.from("ledger_entries").select("*").eq("company_id", companyId).ilike("tenant", escapeFilterValue(tenant.name)).order("date", { ascending: false }).limit(200);
   data = byName || [];
   }
   setLedger(data);
@@ -1083,7 +1083,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="flex gap-2 mt-3">
   <Btn variant="warning-fill" size="sm" onClick={() => { setShowDocUpload({ property: selectedTenant?.property || "", tenant: selectedTenant?.name || showTenantDocPrompt || "" }); setShowTenantDocPrompt(null); }} >Upload Documents Now</Btn>
   {isAdmin ? (
-  <Btn variant="ghost" size="sm" onClick={async () => { if (!guardSubmit("approveException")) return; try { await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", showTenantDocPrompt).is("archived_at", null); showToast("Document exception approved for " + showTenantDocPrompt, "success"); setShowTenantDocPrompt(null); fetchTenants(); } finally { guardRelease("approveException"); } }} >Admin: Approve Exception</Btn>
+  <Btn variant="ghost" size="sm" onClick={async () => { if (!guardSubmit("approveException")) return; try { await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", escapeFilterValue(showTenantDocPrompt)).is("archived_at", null); showToast("Document exception approved for " + showTenantDocPrompt, "success"); setShowTenantDocPrompt(null); fetchTenants(); } finally { guardRelease("approveException"); } }} >Admin: Approve Exception</Btn>
   ) : (
   <Btn variant="ghost" size="sm" onClick={async () => { if (!guardSubmit("reqException")) return; try { if (!await showConfirm({ message: "Skipping requires admin approval. An approval request will be sent. Continue?" })) return; await supabase.from("doc_exception_requests").insert([{ company_id: companyId, tenant_name: showTenantDocPrompt, property: selectedTenant?.property || "", requested_by: userProfile?.email || "" }]); addNotification("\u{1F4CB}", "Document exception request sent for " + showTenantDocPrompt); logAudit("request", "tenants", "Document exception requested for " + showTenantDocPrompt, "", userProfile?.email, userRole, companyId); setShowTenantDocPrompt(null); fetchDocExceptions(); } finally { guardRelease("reqException"); } }} >Request Exception</Btn>
   )}
@@ -1105,7 +1105,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="flex gap-2">
   <button onClick={async () => {
   await supabase.from("doc_exception_requests").update({ status: "approved", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() }).eq("id", r.id);
-  await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", r.tenant_name).is("archived_at", null);
+  await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", escapeFilterValue(r.tenant_name)).is("archived_at", null);
   showToast("Exception approved for " + r.tenant_name, "success");
   logAudit("approve", "tenants", "Document exception approved for " + r.tenant_name, "", userProfile?.email, userRole, companyId);
   fetchDocExceptions(); fetchTenants();

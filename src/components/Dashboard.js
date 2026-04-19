@@ -76,7 +76,10 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   // Pull financials from accounting module (journal entries are the GL source of truth,
   // but dashboard stats also reference payments/tenants tables for quick metrics)
   try {
-  const { data: jeHeaders } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).eq("status", "posted");
+  // Dashboard stats only need recent activity. Unbounded fetch would grow
+  // with the JE table — at 10k entries/month this page would slow to a
+  // crawl. Cap to the most recent 2000 posted entries by date.
+  const { data: jeHeaders } = await supabase.from("acct_journal_entries").select("id").eq("company_id", companyId).eq("status", "posted").order("date", { ascending: false }).limit(2000);
   const jeIds = (jeHeaders || []).map(j => j.id);
   const { data: jeLines } = jeIds.length > 0 ? await supabase.from("acct_journal_lines").select("account_id, debit, credit").eq("company_id", companyId).in("journal_entry_id", jeIds) : { data: [] };
   const { data: accounts } = await supabase.from("acct_accounts").select("id, type").eq("company_id", companyId);

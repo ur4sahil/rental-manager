@@ -3036,7 +3036,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   const tenantName = descParts.length >= 2 ? descParts[1] : "";
 
   if (tenantName.trim()) {
-  const { data: tenantRow } = await supabase.from("tenants").select("id, balance").ilike("name", tenantName.trim()).eq("company_id", companyId).is("archived_at", null).maybeSingle();
+  const { data: tenantRow } = await supabase.from("tenants").select("id, balance").ilike("name", escapeFilterValue(tenantName.trim())).eq("company_id", companyId).is("archived_at", null).maybeSingle();
 
   if (!tenantRow) {
   showToast(`Warning: Tenant "${tenantName}" not found — balance was NOT reversed. Please adjust manually if needed.`, "warning");
