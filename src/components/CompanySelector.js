@@ -64,8 +64,28 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   setAcceptingInvite(company.id);
   try {
   const email = normalizeEmail(currentUser?.email);
+  // Refuse invites older than 30 days — otherwise an unused invite can
+  // sit forever and let an ex-employee (or someone who re-registered the
+  // email) reclaim access years later. The nightly expire-invites cron
+  // also flips them to status="expired", but we guard at accept time in
+  // case the cron hasn't run yet.
+  const { data: invRow } = await supabase.from("company_members")
+    .select("id, created_at")
+    .eq("company_id", company.id)
+    .ilike("user_email", email)
+    .eq("status", "invited")
+    .maybeSingle();
+  if (!invRow) { showToast("Invite not found or already accepted.", "error"); return; }
+  if (invRow.created_at) {
+    const ageMs = Date.now() - new Date(invRow.created_at).getTime();
+    if (ageMs > 30 * 86400000) {
+      await supabase.from("company_members").update({ status: "expired" }).eq("id", invRow.id);
+      showToast("This invite has expired. Please ask the admin to resend it.", "error");
+      return;
+    }
+  }
   const { error } = await supabase.from("company_members").update({ status: "active" })
-    .eq("company_id", company.id).ilike("user_email", email).eq("status", "invited");
+    .eq("id", invRow.id).eq("status", "invited");
   if (error) { showToast("Error accepting invite: " + error.message, "error"); return; }
   // Also ensure app_users row exists
   await supabase.from("app_users").upsert([{

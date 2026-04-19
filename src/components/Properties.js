@@ -1950,6 +1950,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (!await showConfirm({ message: "PERMANENTLY delete \"" + prop.address + "\"?\n\nThis cannot be undone. All related data will be lost.", variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from("properties").delete().eq("id", prop.id).eq("company_id", companyId);
   if (error) { pmError("PM-2003", { raw: error, context: "permanent delete property " + prop.address }); return; }
+  // Hard-delete is irreversible; record it in audit_trail so there's a
+  // breadcrumb even after the row is gone.
+  logAudit("delete", "properties", "Permanently deleted property: " + prop.address, String(prop.id), userProfile?.email, userRole, companyId);
   addNotification("🗑️", "Permanently deleted: " + prop.address);
   fetchArchivedProperties();
   }

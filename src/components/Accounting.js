@@ -2934,6 +2934,9 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   if (!await showConfirm({ message: `Permanently delete account ${acct?.code || ""} ${acct?.name || ""}? This cannot be undone.` })) return;
   const { error } = await supabase.from("acct_accounts").delete().eq("id", id).eq("company_id", companyId);
   if (error) { showToast("Error deleting account: " + error.message, "error"); return; }
+  // Hard deletes of chart-of-account rows deserve a trail — an auditor
+  // who later asks "where did account 5700 go?" needs to see this.
+  logAudit("delete", "accounting", `Permanently deleted account ${acct?.code || ""} ${acct?.name || ""}`, String(id), userProfile?.email, userRole, companyId);
   showToast("Account deleted.", "success");
   fetchAll();
   }
