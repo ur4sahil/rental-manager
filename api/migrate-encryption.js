@@ -134,32 +134,38 @@ async function migrateTable(supabase, tbl) {
     if (!hasAny || !row.encryption_iv) { out.skipped++; continue; }
 
     try {
-      // Try each legacy derivation scheme in order and use the first that
-      // authenticates. For tbl.legacy === "teller" we only need the weak
-      // scheme. For v2 tables, rows may have been encrypted under either the
-      // env-key v2 path OR the pre-env fallback path (see git history:
-      // commit 148cb76 introduced `masterMaterial = _MASTER_KEY || (cid +
-      // "_propmanager_cred_key")`; 7fd7a86 removed the fallback).
+      // Legacy derivation candidates. For tbl.legacy === "teller" only the
+      // weak scheme applies. For v2 tables, rows may have been encrypted
+      // under either the env-key v2 path OR the pre-env fallback path
+      // (see git: 148cb76 introduced the fallback; 7fd7a86 removed it).
       const candidateKeys = tbl.legacy === "teller"
         ? [deriveTellerLegacyKey(row.company_id)]
         : [deriveV2Key(row.company_id), deriveV2FallbackKey(row.company_id)];
 
+      // IMPORTANT: rows have multiple ciphertext fields (username + password)
+      // that were each encrypted with their own random IV, but the schema
+      // only stores ONE encryption_iv column — the last one written. So at
+      // most ONE field decrypts with the stored IV; the other is lost.
+      // Decrypt per-field independently so we salvage what we can instead
+      // of failing the whole row. The unrecoverable field is written back
+      // as empty string — user will re-enter it.
       const plains = {};
-      let lastErr = null;
-      let keyUsed = null;
-      for (const key of candidateKeys) {
-        try {
-          for (const f of tbl.fields) {
-            plains[f] = row[f] ? decryptWith(key, row[f], row.encryption_iv) : "";
-          }
-          keyUsed = key;
-          break;
-        } catch (e) {
-          lastErr = e;
-          for (const f of tbl.fields) delete plains[f];
+      let anyAuthenticated = false;
+      for (const f of tbl.fields) {
+        if (!row[f]) { plains[f] = ""; continue; }
+        let got = null;
+        for (const key of candidateKeys) {
+          try { got = decryptWith(key, row[f], row.encryption_iv); break; }
+          catch (_) { /* wrong key/IV combo — try next */ }
+        }
+        if (got !== null) {
+          plains[f] = got;
+          anyAuthenticated = true;
+        } else {
+          plains[f] = ""; // unrecoverable — user must re-enter
         }
       }
-      if (!keyUsed) throw lastErr || new Error("No legacy key authenticated");
+      if (!anyAuthenticated) throw new Error("No field authenticated under any candidate key");
 
       // Fresh per-row salt. Re-encrypt each field under v3; each field gets a
       // fresh IV. We persist only one IV column (pre-existing schema shape),
