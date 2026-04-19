@@ -34,6 +34,15 @@ function deriveLegacyV2Key(companyId) {
   return deriveKeyFromSalt(Buffer.from("propmanager_" + companyId + "_v2", "utf8"));
 }
 
+// Pre-env fallback scheme used between commits 148cb76..7fd7a86 when
+// REACT_APP_ENCRYPTION_KEY was unset. PBKDF2 input material was
+// `companyId + "_propmanager_cred_key"`, not the master key.
+function deriveLegacyV2FallbackKey(companyId) {
+  const masterMaterial = companyId + "_propmanager_cred_key";
+  const salt = Buffer.from("propmanager_" + companyId + "_v2", "utf8");
+  return crypto.pbkdf2Sync(masterMaterial, salt, 100000, 32, "sha256");
+}
+
 function deriveLegacyTellerKey(companyId) {
   // Matches the old inline scheme in api/teller-save-enrollment.js pre-M15:
   //   (companyId + "_propmanager_cred_key").slice(0,32).padEnd(32,"0")
@@ -114,16 +123,23 @@ module.exports = async function handler(req, res) {
     }
     if (action === "decrypt") {
       if (typeof ciphertext !== "string" || typeof iv !== "string") return res.status(400).json({ error: "Missing ciphertext or iv" });
-      let key;
+      // Try candidate keys in order; use the first that authenticates. This
+      // lets pre-migration rows keep rendering without the frontend needing
+      // to know which legacy scheme was used.
+      let candidates;
       if (typeof salt === "string" && salt.length >= 16) {
-        // v3 — per-credential salt
-        key = deriveKeyFromSalt(Buffer.from(salt, "hex"));
+        candidates = [deriveKeyFromSalt(Buffer.from(salt, "hex"))];
       } else if (legacyScheme === "teller") {
-        key = deriveLegacyTellerKey(companyId);
+        candidates = [deriveLegacyTellerKey(companyId)];
       } else {
-        key = deriveLegacyV2Key(companyId);
+        candidates = [deriveLegacyV2Key(companyId), deriveLegacyV2FallbackKey(companyId)];
       }
-      const plain = decryptPayload(ciphertext, iv, key);
+      let plain = null, lastErr = null;
+      for (const key of candidates) {
+        try { plain = decryptPayload(ciphertext, iv, key); break; }
+        catch (e) { lastErr = e; }
+      }
+      if (plain === null) throw lastErr || new Error("decryption failed");
       return res.status(200).json({ plaintext: plain });
     }
     return res.status(400).json({ error: "Unknown action" });
