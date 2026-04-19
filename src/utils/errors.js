@@ -74,6 +74,7 @@ export const PM_ERRORS = {
   "PM-8004": { message: "The request timed out. Please try again.", action: "retry", severity: "warning" },
   "PM-8005": { message: "A database permission error occurred. Your access may need to be updated.", action: "contact", severity: "error" },
   "PM-8006": { message: "Could not save your changes. The server returned an unexpected response.", action: "retry", severity: "error" },
+  "PM-8007": { message: "An internal validation check failed. The action was not performed.", action: "contact", severity: "warning" },
   // PM-9xxx: DATA INTEGRITY
   "PM-9001": { message: "A journal entry was found with unbalanced debits and credits.", action: "contact", severity: "critical" },
   "PM-9002": { message: "A tenant record has no associated lease.", action: "contact", severity: "warning" },

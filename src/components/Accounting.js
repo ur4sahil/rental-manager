@@ -2865,7 +2865,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   }
   }
   }
-  if (patched > 0) pmError("PM-9001", { raw: { message: "Backfilled class_id on " + patched + " JE lines" }, context: "JE lines class_id backfill", silent: true });
+  if (patched > 0) console.info("[accounting] Backfilled class_id on " + patched + " JE lines");
   }
 
   // Backfill: renumber old JEs with hash-style numbers (JE-MN2L16YX → JE-0001)
