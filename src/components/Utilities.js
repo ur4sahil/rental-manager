@@ -192,6 +192,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
     const resP = await encryptCredential(form.password || "", companyId, resU.salt);
     row.username_encrypted = resU.encrypted;
     row.password_encrypted = resP.encrypted;
+    row.encryption_iv_username = resU.iv || null;
     row.encryption_iv = resP.iv || resU.iv;
     row.encryption_salt = resU.salt || resP.salt;
   }
@@ -485,7 +486,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <td className="px-4 py-2.5 text-neutral-500 capitalize">{u.responsibility}</td>
   <td className="px-4 py-2.5 text-xs">
   {u.website ? <a href={u.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{u.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
-  {u.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(s); } else { u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv, companyId, u.encryption_salt); u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId, u.encryption_salt); s.add(u.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(u.id) ? "Hide" : "Show"} login</button>}
+  {u.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(s); } else { u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv_username || u.encryption_iv, companyId, u.encryption_salt); u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId, u.encryption_salt); s.add(u.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(u.id) ? "Hide" : "Show"} login</button>}
   {showCreds.has(u.id) && <div className="text-neutral-600 mt-0.5">{u._decUser || "—"} / {u._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">

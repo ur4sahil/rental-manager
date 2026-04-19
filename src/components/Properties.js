@@ -387,6 +387,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         const resP = await encryptCredential(u.password || "", companyId, resU.salt);
         row.username_encrypted = resU.encrypted;
         row.password_encrypted = resP.encrypted;
+        row.encryption_iv_username = resU.iv || null;
         row.encryption_iv = resP.iv || resU.iv;
         row.encryption_salt = resU.salt || resP.salt;
       }
@@ -416,6 +417,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         const resP = await encryptCredential(h.password || "", companyId, resU.salt);
         row.username_encrypted = resU.encrypted;
         row.password_encrypted = resP.encrypted;
+        row.encryption_iv_username = resU.iv || null;
         row.encryption_iv = resP.iv || resU.iv;
         row.encryption_salt = resU.salt || resP.salt;
       }
@@ -456,6 +458,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       const resP = await encryptCredential(loan.password || "", companyId, resU.salt);
       loanRow.username_encrypted = resU.encrypted;
       loanRow.password_encrypted = resP.encrypted;
+      loanRow.encryption_iv_username = resU.iv || null;
       loanRow.encryption_iv = resP.iv || resU.iv;
       loanRow.encryption_salt = resU.salt || resP.salt;
     }
@@ -510,6 +513,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       const resP = await encryptCredential(insurance.password || "", companyId, resU.salt);
       insRow.username_encrypted = resU.encrypted;
       insRow.password_encrypted = resP.encrypted;
+      insRow.encryption_iv_username = resU.iv || null;
       insRow.encryption_iv = resP.iv || resU.iv;
       insRow.encryption_salt = resU.salt || resP.salt;
     }

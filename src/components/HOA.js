@@ -35,18 +35,20 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   delete payload.username; delete payload.password;
   payload.website = form.website || "";
   if (form.username || form.password) {
-    // Pair of creds shares one per-row salt (encryption_salt) but each value
-    // still gets its own IV. Username encrypt generates the salt; password
-    // reuses it so decrypt with the row's encryption_salt works for both.
+    // Pair of creds shares one per-row salt (encryption_salt). Each value
+    // gets its OWN IV — both preserved now (encryption_iv_username for
+    // username, encryption_iv for password). Prior schema only held one
+    // slot so username was unreadable after save.
     const resU = await encryptCredential(form.username || "", companyId);
     const resP = await encryptCredential(form.password || "", companyId, resU.salt);
     payload.username_encrypted = resU.encrypted;
     payload.password_encrypted = resP.encrypted;
+    payload.encryption_iv_username = resU.iv || null;
     payload.encryption_iv = resP.iv || resU.iv;
     payload.encryption_salt = resU.salt || resP.salt;
   }
   if (editingHoa) {
-  const { error: hoaErr } = await supabase.from("hoa_payments").update({ property: payload.property, hoa_name: payload.hoa_name, amount: payload.amount, due_date: payload.due_date, frequency: payload.frequency, status: payload.status, notes: payload.notes, website: payload.website, username_encrypted: payload.username_encrypted || editingHoa.username_encrypted || "", password_encrypted: payload.password_encrypted || editingHoa.password_encrypted || "", encryption_iv: payload.encryption_iv || editingHoa.encryption_iv || "", encryption_salt: payload.encryption_salt || editingHoa.encryption_salt || null }).eq("id", editingHoa.id).eq("company_id", companyId);
+  const { error: hoaErr } = await supabase.from("hoa_payments").update({ property: payload.property, hoa_name: payload.hoa_name, amount: payload.amount, due_date: payload.due_date, frequency: payload.frequency, status: payload.status, notes: payload.notes, website: payload.website, username_encrypted: payload.username_encrypted || editingHoa.username_encrypted || "", password_encrypted: payload.password_encrypted || editingHoa.password_encrypted || "", encryption_iv: payload.encryption_iv || editingHoa.encryption_iv || "", encryption_iv_username: payload.encryption_iv_username || editingHoa.encryption_iv_username || null, encryption_salt: payload.encryption_salt || editingHoa.encryption_salt || null }).eq("id", editingHoa.id).eq("company_id", companyId);
   if (hoaErr) { showToast("Error updating HOA: " + hoaErr.message, "error"); return; }
   addNotification("🏘️", `HOA payment updated: ${form.hoa_name}`);
   logAudit("update", "hoa", `HOA updated: ${form.hoa_name} ${formatCurrency(form.amount)}`, editingHoa.id, userProfile?.email, userRole, companyId);
@@ -166,7 +168,7 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   <td className="px-4 py-2.5"><Badge status={h.status} /></td>
   <td className="px-4 py-2.5 text-xs">
   {h.website ? <a href={h.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{h.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
-  {h.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(h.id)) { s.delete(h.id); setShowCreds(s); } else { h._decUser = await decryptCredential(h.username_encrypted, h.encryption_iv, companyId, h.encryption_salt); h._decPass = await decryptCredential(h.password_encrypted, h.encryption_iv, companyId, h.encryption_salt); s.add(h.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(h.id) ? "Hide" : "Show"} login</button>}
+  {h.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(h.id)) { s.delete(h.id); setShowCreds(s); } else { h._decUser = await decryptCredential(h.username_encrypted, h.encryption_iv_username || h.encryption_iv, companyId, h.encryption_salt); h._decPass = await decryptCredential(h.password_encrypted, h.encryption_iv, companyId, h.encryption_salt); s.add(h.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(h.id) ? "Hide" : "Show"} login</button>}
   {showCreds.has(h.id) && <div className="text-neutral-600 mt-0.5">{h._decUser || "—"} / {h._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
