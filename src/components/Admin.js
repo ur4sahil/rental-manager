@@ -248,20 +248,30 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   const roleName = ROLES[user.role]?.label || user.role;
   if (!await showConfirm({ message: `Send login invite to ${user.name} (${user.email})?\n\nRole: ${roleName}\n\nThis will:\n1. Create their authentication account\n2. Send a magic link to their email\n3. They can log in and access their assigned modules` })) return;
   try {
-  const { error: authErr } = await supabase.auth.signInWithOtp({
+  // Routed server-side: /api/invite-user uses service role + admin.inviteUserByEmail,
+  // which bypasses Supabase Bot Protection captcha. An authenticated admin
+  // shouldn't have to solve a captcha every time they add a teammate.
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) { showToast("Session expired — please sign in again.", "error"); return; }
+  const resp = await fetch("/api/invite-user", {
+  method: "POST",
+  headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+  body: JSON.stringify({
   email: (user.email || "").trim().toLowerCase(),
-  options: { data: { name: user.name, role: user.role } }
+  companyId,
+  userName: user.name,
+  role: user.role,
+  inviteType: "team",
+  }),
   });
-  if (authErr) {
-  pmError("PM-1007", { raw: authErr, context: "send team invitation to " + user.email });
+  if (!resp.ok) {
+  let errMsg = "Invite failed (" + resp.status + ")";
+  try { errMsg = (await resp.json()).error || errMsg; } catch (_) {}
+  pmError("PM-1007", { raw: { message: errMsg }, context: "send team invitation to " + user.email });
+  showToast(errMsg, "error");
   return;
   }
-  // Auth succeeded — create membership as "invited" only (no app_users until they sign up)
-  const { error: memErr } = await supabase.from("company_members").upsert([{
-  company_id: companyId, user_email: (user.email || "").toLowerCase(), user_name: user.name,
-  role: user.role, status: "invited", invited_by: "admin",
-  }], { onConflict: "company_id,user_email" });
-  if (memErr) { showToast("Error creating invite: " + memErr.message, "error"); return; }
   addNotification("✉️", `Invite sent to ${user.name} (${roleName})`);
   logAudit("create", "team", "Invited " + user.name + " as " + roleName + ": " + user.email, user.id || "", "", "admin", companyId);
   showToast(`Invite sent to ${user.email}!\n\nThey will receive a magic link to log in.\n\nIf they don't see it, they can use 'Forgot Password' on the login page to set their password.`, "success");

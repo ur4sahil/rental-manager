@@ -319,28 +319,32 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
 
   // Also send magic link — but only if invite code was created successfully
   if (codeInsertError) { pmError("PM-3007", { raw: codeInsertError, context: "create tenant invite code" }); return; }
-  const { error: authErr } = await supabase.auth.signInWithOtp({
+  // Routed server-side: /api/invite-user bypasses Supabase Bot Protection
+  // captcha by using auth.admin.inviteUserByEmail. This single call both
+  // sends the magic link AND upserts the company_members row with
+  // status=invited. Pre-M15 this was two separate client-side calls; the
+  // captcha gate on signInWithOtp would now block admins from every invite.
+  const { data: { session } } = await supabase.auth.getSession();
+  const inviteToken = session?.access_token;
+  if (!inviteToken) { showToast("Session expired — please sign in again.", "error"); return; }
+  const inviteResp = await fetch("/api/invite-user", {
+  method: "POST",
+  headers: { "Content-Type": "application/json", "Authorization": "Bearer " + inviteToken },
+  body: JSON.stringify({
   email: (tenant.email || "").trim().toLowerCase(),
-  options: { data: { name: tenant.name, role: "tenant" } }
+  companyId,
+  userName: tenant.name,
+  role: "tenant",
+  inviteType: "tenant",
+  }),
   });
-  if (authErr) {
-  // Auth failed — do NOT create membership records for a non-deliverable invite
-  pmError("PM-3007", { raw: authErr, context: "send invitation to " + tenant.email });
+  if (!inviteResp.ok) {
+  let errMsg = "Invite failed (" + inviteResp.status + ")";
+  try { errMsg = (await inviteResp.json()).error || errMsg; } catch (_) {}
+  pmError("PM-3007", { raw: { message: errMsg }, context: "send invitation to " + tenant.email });
+  showToast(errMsg, "error");
   return;
   }
-  // Create membership as "invited" — this is a placeholder record only.
-  // Status "invited" grants NO app access (checked in role resolution).
-  // The record is upgraded to "active" only when the user completes signup.
-  // Stale invites (>30 days, never accepted) can be cleaned up by admin.
-  const { error: memErr } = await supabase.from("company_members").upsert([{
-  company_id: companyId,
-  user_email: (tenant.email || "").toLowerCase(),
-  user_name: tenant.name,
-  role: "tenant",
-  status: "invited",
-  invited_by: userProfile?.email || "admin",
-  }], { onConflict: "company_id,user_email" });
-  if (memErr) { showToast("Error creating invite: " + memErr.message, "error"); return; }
   addNotification("✉️", "Invite code generated for " + tenant.email);
   logAudit("create", "tenants", "Invited tenant to portal: " + tenant.email, tenant.id, userProfile?.email, userRole, companyId);
   fetchPortalMembers();
