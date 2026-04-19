@@ -1,7 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
+import HCaptcha from "@hcaptcha/react-hcaptcha";
 import { supabase } from "../supabase";
 import { Input, PageHeader } from "../ui";
 import { PM_ERRORS, pmError } from "../utils/errors";
+
+// hCaptcha site key. When unset the widget doesn't render and captcha isn't
+// required — lets local dev / preview envs work without provisioning a key.
+// Must be set in Vercel env as REACT_APP_HCAPTCHA_SITE_KEY for production.
+const HCAPTCHA_SITE_KEY = process.env.REACT_APP_HCAPTCHA_SITE_KEY || "";
 
 // ============ LOGIN / SIGNUP PAGE (Role-Aware) ============
 function LoginPage({ onLogin, onBack, initialMode = "login" }) {
@@ -13,13 +19,34 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   const [mode, setMode] = useState(initialMode); // "login", "signup_pm", "signup_owner", "signup_tenant"
   const [signupSuccess, setSignupSuccess] = useState(false);
   const [inviteCode, setInviteCode] = useState("");
+  // Captcha token — Supabase rejects auth calls without it when the project
+  // has Bot Protection enabled. Token is one-shot: we consume and reset after
+  // every submit so the next attempt requires a fresh solve.
+  const [captchaToken, setCaptchaToken] = useState(null);
+  const captchaRef = useRef(null);
+
+  const resetCaptcha = () => {
+    setCaptchaToken(null);
+    try { captchaRef.current?.resetCaptcha(); } catch (_) {}
+  };
+
+  const requireCaptcha = () => {
+    if (HCAPTCHA_SITE_KEY && !captchaToken) {
+      setError("Please complete the captcha.");
+      return false;
+    }
+    return true;
+  };
 
   const handleLogin = async () => {
+  if (!requireCaptcha()) return;
   setLoading(true);
   setError("");
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const options = captchaToken ? { captchaToken } : undefined;
+  const { error } = await supabase.auth.signInWithPassword({ email, password, options });
   if (error) {
   setError(error.message);
+  resetCaptcha();
   } else {
   onLogin();
   }
@@ -30,12 +57,15 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
 
   const handleForgotPassword = async () => {
   if (!email) { setError("Enter your email address first."); return; }
+  if (!requireCaptcha()) return;
   setLoading(true);
   setError("");
   setResetSent(false);
-  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
-  if (error) { setError(error.message); }
-  else { setResetSent(true); }
+  const opts = { redirectTo: window.location.origin };
+  if (captchaToken) opts.captchaToken = captchaToken;
+  const { error } = await supabase.auth.resetPasswordForEmail(email, opts);
+  if (error) { setError(error.message); resetCaptcha(); }
+  else { setResetSent(true); resetCaptcha(); }
   setLoading(false);
   };
 
@@ -43,6 +73,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   if (!email || !password) { setError("Email and password are required."); return; }
   if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
   if (!name.trim()) { setError("Name is required."); return; }
+  if (!requireCaptcha()) return;
   setLoading(true);
   setError("");
 
@@ -57,11 +88,13 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   }
 
   // Create auth account FIRST (before redeeming invite to prevent orphaned invites)
-  const { data: signupData, error: signupErr } = await supabase.auth.signUp({
-  email, password,
-  options: { data: { name: name.trim(), user_type: userType } }
-  });
-  if (signupErr) { pmError("PM-1009", { raw: signupErr, context: "user signup" }); setError(PM_ERRORS["PM-1009"].message); setLoading(false); return; }
+  const signUpArgs = {
+    email, password,
+    options: { data: { name: name.trim(), user_type: userType } },
+  };
+  if (captchaToken) signUpArgs.options.captchaToken = captchaToken;
+  const { data: signupData, error: signupErr } = await supabase.auth.signUp(signUpArgs);
+  if (signupErr) { pmError("PM-1009", { raw: signupErr, context: "user signup" }); setError(PM_ERRORS["PM-1009"].message); resetCaptcha(); setLoading(false); return; }
 
   // NOW redeem the invite (auth account exists, safe to consume)
   if (userType === "tenant" && inviteCode) {
@@ -98,6 +131,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   }]).select();
   if (appUserErr && !appUserErr.message.includes("duplicate")) { pmError("PM-1009", { raw: appUserErr, context: "app_users write", silent: true }); }
 
+  resetCaptcha();
   setSignupSuccess(true);
   setLoading(false);
   };
@@ -175,13 +209,25 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   </div>
   )}
 
+  {HCAPTCHA_SITE_KEY && (
+  <div className="mb-4 flex justify-center">
+    <HCaptcha
+      ref={captchaRef}
+      sitekey={HCAPTCHA_SITE_KEY}
+      onVerify={setCaptchaToken}
+      onExpire={() => setCaptchaToken(null)}
+      onError={() => setCaptchaToken(null)}
+    />
+  </div>
+  )}
+
   <button onClick={isSignup ? () => handleSignup(mode.replace("signup_", "")) : handleLogin} disabled={loading} className={`w-full text-white py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50 ${isSignup ? (mode === "signup_pm" ? "bg-brand-600 hover:bg-brand-700" : mode === "signup_owner" ? "bg-success-600 hover:bg-success-700" : "bg-warn-600 hover:bg-warn-700") : "bg-brand-600 hover:bg-brand-700"}`}>
   {loading ? "Please wait..." : isSignup ? "Create Account" : "Sign In"}
   </button>
 
   <div className="text-center mt-4 space-y-2">
   {isSignup ? (
-  <button onClick={() => { setMode("login"); setError(""); setResetSent(false); }} className="text-xs text-brand-600 hover:underline">Already have an account? Sign in</button>
+  <button onClick={() => { setMode("login"); setError(""); setResetSent(false); resetCaptcha(); }} className="text-xs text-brand-600 hover:underline">Already have an account? Sign in</button>
   ) : (
   <>
   <button onClick={handleForgotPassword} disabled={loading} className="text-xs text-neutral-400 hover:text-brand-600 hover:underline">Forgot password?</button>
