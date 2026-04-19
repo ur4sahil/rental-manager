@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { Input, Btn } from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, sanitizeFileName, escapeHtml, escapeFilterValue, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, statusColors, recomputeTenantDocStatus } from "../utils/helpers";
-import { pmError, reportError, logErrorToSupabase } from "../utils/errors";
+import { pmError, reportError } from "../utils/errors";
 import { getOrCreateTenantAR, resolveAccountId } from "../utils/accounting";
 
 // Format all tenants on a property as "John Smith / Jane Doe"
@@ -13,11 +13,17 @@ export function formatAllTenants(property) {
 }
 
 export class ErrorBoundary extends React.Component {
-  constructor(props) { super(props); this.state = { hasError: false, error: null, errorCode: "PM-8006" }; }
-  static getDerivedStateFromError(error) { return { hasError: true, error, errorCode: "PM-8006" }; }
+  constructor(props) { super(props); this.state = { hasError: false, error: null, errorCode: "PM-8009" }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error, errorCode: "PM-8009" }; }
   componentDidCatch(error, info) {
-    if (window.Sentry) { window.Sentry.withScope(scope => { scope.setExtra("componentStack", info.componentStack); window.Sentry.captureException(error); }); }
-    logErrorToSupabase({ code: "PM-8006", message: "A component crashed unexpectedly.", rawMessage: error?.message || "Unknown render error", severity: "critical", context: "React ErrorBoundary", meta: { componentStack: info.componentStack?.slice(0, 500) }, timestamp: new Date().toISOString(), url: window.location.href });
+    // Route through pmError so the event is dedup'd, tagged with company /
+    // role, enriched with component stack, and written to error_log.
+    pmError("PM-8009", {
+      raw: error,
+      context: "React ErrorBoundary",
+      silent: true,
+      meta: { componentStack: (info?.componentStack || "").slice(0, 1500) },
+    });
   }
   render() {
   if (this.state.hasError) {
