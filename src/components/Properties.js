@@ -383,11 +383,12 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       website: u.website || "",
       };
       if (u.username || u.password) {
-        const { encrypted: encUser, iv: ivUser } = await encryptCredential(u.username || "", companyId);
-        const { encrypted: encPass, iv: ivPass } = await encryptCredential(u.password || "", companyId);
-        row.username_encrypted = encUser;
-        row.password_encrypted = encPass;
-        row.encryption_iv = ivPass || ivUser;
+        const resU = await encryptCredential(u.username || "", companyId);
+        const resP = await encryptCredential(u.password || "", companyId, resU.salt);
+        row.username_encrypted = resU.encrypted;
+        row.password_encrypted = resP.encrypted;
+        row.encryption_iv = resP.iv || resU.iv;
+        row.encryption_salt = resU.salt || resP.salt;
       }
       return row;
     });
@@ -411,9 +412,12 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         notes: (h.notes || "").trim(), status: "pending", website: h.website || "",
       };
       if (h.username || h.password) {
-        const { encrypted: encU, iv: ivU } = await encryptCredential(h.username || "", companyId);
-        const { encrypted: encP, iv: ivP } = await encryptCredential(h.password || "", companyId);
-        row.username_encrypted = encU; row.password_encrypted = encP; row.encryption_iv = ivP || ivU;
+        const resU = await encryptCredential(h.username || "", companyId);
+        const resP = await encryptCredential(h.password || "", companyId, resU.salt);
+        row.username_encrypted = resU.encrypted;
+        row.password_encrypted = resP.encrypted;
+        row.encryption_iv = resP.iv || resU.iv;
+        row.encryption_salt = resU.salt || resP.salt;
       }
       return row;
     });
@@ -448,11 +452,12 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       website: loan.website || "",
     };
     if (loan.username || loan.password) {
-      const { encrypted: encU, iv: ivU } = await encryptCredential(loan.username || "", companyId);
-      const { encrypted: encP, iv: ivP } = await encryptCredential(loan.password || "", companyId);
-      loanRow.username_encrypted = encU;
-      loanRow.password_encrypted = encP;
-      loanRow.encryption_iv = ivP || ivU;
+      const resU = await encryptCredential(loan.username || "", companyId);
+      const resP = await encryptCredential(loan.password || "", companyId, resU.salt);
+      loanRow.username_encrypted = resU.encrypted;
+      loanRow.password_encrypted = resP.encrypted;
+      loanRow.encryption_iv = resP.iv || resU.iv;
+      loanRow.encryption_salt = resU.salt || resP.salt;
     }
     const { error } = await supabase.from("property_loans").insert([loanRow]);
     if (error) throw new Error("Failed to save loan: " + error.message);
@@ -501,11 +506,12 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       website: insurance.website || "",
     };
     if (insurance.username || insurance.password) {
-      const { encrypted: encU, iv: ivU } = await encryptCredential(insurance.username || "", companyId);
-      const { encrypted: encP, iv: ivP } = await encryptCredential(insurance.password || "", companyId);
-      insRow.username_encrypted = encU;
-      insRow.password_encrypted = encP;
-      insRow.encryption_iv = ivP || ivU;
+      const resU = await encryptCredential(insurance.username || "", companyId);
+      const resP = await encryptCredential(insurance.password || "", companyId, resU.salt);
+      insRow.username_encrypted = resU.encrypted;
+      insRow.password_encrypted = resP.encrypted;
+      insRow.encryption_iv = resP.iv || resU.iv;
+      insRow.encryption_salt = resU.salt || resP.salt;
     }
     const { error } = await supabase.from("property_insurance").insert([insRow]);
     if (error) throw new Error("Failed to save insurance: " + error.message);

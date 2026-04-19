@@ -10,17 +10,27 @@ const CRON_SECRET = process.env.CRON_SECRET || "";
 const FETCH_TIMEOUT_MS = 25000;
 const CRON_CONCURRENCY = 3;
 
-// Decrypt AES-GCM
-function decrypt(encryptedB64, ivHex, companyId) {
+// Decrypt AES-GCM — supports both the new v3 per-credential-salt scheme
+// (encryption_salt populated) and the legacy Teller key scheme that
+// pre-dates M15. Once a row is rewritten through /api/teller-save-enrollment
+// with the new scheme, the legacy branch stops being hit.
+const MASTER_KEY = process.env.ENCRYPTION_KEY || "";
+function decrypt(encryptedB64, ivHex, companyId, saltHex) {
   if (!encryptedB64 || !ivHex) return "";
   try {
-    const keyStr = (companyId + "_propmanager_cred_key").slice(0, 32).padEnd(32, "0");
+    let key;
+    if (saltHex && saltHex.length >= 16 && MASTER_KEY) {
+      key = crypto.pbkdf2Sync(MASTER_KEY, Buffer.from(saltHex, "hex"), 100000, 32, "sha256");
+    } else {
+      const keyStr = (companyId + "_propmanager_cred_key").slice(0, 32).padEnd(32, "0");
+      key = Buffer.from(keyStr, "utf8");
+    }
     const iv = Buffer.from(ivHex, "hex");
     const raw = Buffer.from(encryptedB64, "base64");
     // AES-GCM: last 16 bytes are the auth tag
     const authTag = raw.slice(raw.length - 16);
     const ciphertext = raw.slice(0, raw.length - 16);
-    const decipher = crypto.createDecipheriv("aes-256-gcm", Buffer.from(keyStr, "utf8"), iv);
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
     decipher.setAuthTag(authTag);
     let decrypted = decipher.update(ciphertext, null, "utf8");
     decrypted += decipher.final("utf8");
@@ -128,7 +138,7 @@ module.exports = async function handler(req, res) {
         .single();
 
       try {
-        const accessToken = decrypt(conn.access_token_encrypted, conn.encryption_iv, conn.company_id);
+        const accessToken = decrypt(conn.access_token_encrypted, conn.encryption_iv, conn.company_id, conn.encryption_salt);
         if (!accessToken) throw new Error("Failed to decrypt access token");
 
         // Get feeds for this connection

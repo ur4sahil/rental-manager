@@ -188,9 +188,12 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   delete row.username; delete row.password; // don't store plaintext
   row.website = form.website || "";
   if (form.username || form.password) {
-    const { encrypted: encU, iv: ivU } = await encryptCredential(form.username || "", companyId);
-    const { encrypted: encP, iv: ivP } = await encryptCredential(form.password || "", companyId);
-    row.username_encrypted = encU; row.password_encrypted = encP; row.encryption_iv = ivP || ivU;
+    const resU = await encryptCredential(form.username || "", companyId);
+    const resP = await encryptCredential(form.password || "", companyId, resU.salt);
+    row.username_encrypted = resU.encrypted;
+    row.password_encrypted = resP.encrypted;
+    row.encryption_iv = resP.iv || resU.iv;
+    row.encryption_salt = resU.salt || resP.salt;
   }
   const { error } = await supabase.from("utilities").insert([row]);
   if (error) { pmError("PM-4005", { raw: error, context: "adding utility bill" }); return; }
@@ -482,7 +485,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <td className="px-4 py-2.5 text-neutral-500 capitalize">{u.responsibility}</td>
   <td className="px-4 py-2.5 text-xs">
   {u.website ? <a href={u.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{u.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
-  {u.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(s); } else { u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv, companyId); u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId); s.add(u.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(u.id) ? "Hide" : "Show"} login</button>}
+  {u.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(s); } else { u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv, companyId, u.encryption_salt); u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId, u.encryption_salt); s.add(u.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(u.id) ? "Hide" : "Show"} login</button>}
   {showCreds.has(u.id) && <div className="text-neutral-600 mt-0.5">{u._decUser || "—"} / {u._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">

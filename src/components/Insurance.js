@@ -33,12 +33,15 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
   delete payload.username; delete payload.password;
   payload.website = form.website || "";
   if (form.username || form.password) {
-    const { encrypted: encU, iv: ivU } = await encryptCredential(form.username || "", companyId);
-    const { encrypted: encP, iv: ivP } = await encryptCredential(form.password || "", companyId);
-    payload.username_encrypted = encU; payload.password_encrypted = encP; payload.encryption_iv = ivP || ivU;
+    const resU = await encryptCredential(form.username || "", companyId);
+    const resP = await encryptCredential(form.password || "", companyId, resU.salt);
+    payload.username_encrypted = resU.encrypted;
+    payload.password_encrypted = resP.encrypted;
+    payload.encryption_iv = resP.iv || resU.iv;
+    payload.encryption_salt = resU.salt || resP.salt;
   }
   if (editingPolicy) {
-  const { error: polErr } = await supabase.from("property_insurance").update({ property: payload.property, provider: payload.provider, policy_number: payload.policy_number, premium_amount: payload.premium_amount, premium_frequency: payload.premium_frequency, coverage_amount: payload.coverage_amount, expiration_date: payload.expiration_date || null, notes: payload.notes, website: payload.website, username_encrypted: payload.username_encrypted || editingPolicy.username_encrypted || "", password_encrypted: payload.password_encrypted || editingPolicy.password_encrypted || "", encryption_iv: payload.encryption_iv || editingPolicy.encryption_iv || "" }).eq("id", editingPolicy.id).eq("company_id", companyId);
+  const { error: polErr } = await supabase.from("property_insurance").update({ property: payload.property, provider: payload.provider, policy_number: payload.policy_number, premium_amount: payload.premium_amount, premium_frequency: payload.premium_frequency, coverage_amount: payload.coverage_amount, expiration_date: payload.expiration_date || null, notes: payload.notes, website: payload.website, username_encrypted: payload.username_encrypted || editingPolicy.username_encrypted || "", password_encrypted: payload.password_encrypted || editingPolicy.password_encrypted || "", encryption_iv: payload.encryption_iv || editingPolicy.encryption_iv || "", encryption_salt: payload.encryption_salt || editingPolicy.encryption_salt || null }).eq("id", editingPolicy.id).eq("company_id", companyId);
   if (polErr) { showToast("Error updating policy: " + polErr.message, "error"); return; }
   addNotification("🛡️", `Policy updated: ${form.provider}`);
   logAudit("update", "insurance", `Policy updated: ${form.provider} ${formatCurrency(form.premium_amount)}`, editingPolicy.id, userProfile?.email, userRole, companyId);
@@ -159,7 +162,7 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
   <td className="px-4 py-2.5 text-neutral-400">{p.expiration_date || "—"}</td>
   <td className="px-4 py-2.5 text-xs">
   {p.website ? <a href={p.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{p.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
-  {p.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(p.id)) { s.delete(p.id); setShowCreds(s); } else { p._decUser = await decryptCredential(p.username_encrypted, p.encryption_iv, companyId); p._decPass = await decryptCredential(p.password_encrypted, p.encryption_iv, companyId); s.add(p.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(p.id) ? "Hide" : "Show"} login</button>}
+  {p.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(p.id)) { s.delete(p.id); setShowCreds(s); } else { p._decUser = await decryptCredential(p.username_encrypted, p.encryption_iv, companyId, p.encryption_salt); p._decPass = await decryptCredential(p.password_encrypted, p.encryption_iv, companyId, p.encryption_salt); s.add(p.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(p.id) ? "Hide" : "Show"} login</button>}
   {showCreds.has(p.id) && <div className="text-neutral-600 mt-0.5">{p._decUser || "—"} / {p._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">

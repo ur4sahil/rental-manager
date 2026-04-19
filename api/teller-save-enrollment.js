@@ -8,15 +8,28 @@ const { setCors } = require("./_cors");
 
 const TELLER_API = "https://api.teller.io";
 
-// AES-GCM encryption (matches frontend encryptCredential)
-async function encrypt(plaintext, companyId) {
-  if (!plaintext) return { encrypted: "", iv: "" };
+// AES-256-GCM + PBKDF2 — matches the unified scheme in /api/encrypt.js.
+// Pre-M15 this used a weak raw text-to-key derivation
+//   (companyId + "_propmanager_cred_key").slice(0,32).padEnd(32,"0")
+// that effectively made the per-company key knowable from company_id
+// alone. Now each access token gets its own 16-byte random salt stored
+// in bank_connection.encryption_salt; the MASTER_KEY is the same
+// server-only secret used elsewhere.
+const MASTER_KEY = process.env.ENCRYPTION_KEY || "";
+async function encrypt(plaintext /*, unused companyId kept for callsite compat */) {
+  if (!plaintext) return { encrypted: "", iv: "", salt: "" };
+  if (!MASTER_KEY) throw new Error("ENCRYPTION_KEY not configured");
   const iv = crypto.randomBytes(12);
-  const keyStr = (companyId + "_propmanager_cred_key").slice(0, 32).padEnd(32, "0");
-  const cipher = crypto.createCipheriv("aes-256-gcm", Buffer.from(keyStr, "utf8"), iv);
-  let enc = cipher.update(plaintext, "utf8");
-  enc = Buffer.concat([enc, cipher.final(), cipher.getAuthTag()]);
-  return { encrypted: enc.toString("base64"), iv: iv.toString("hex") };
+  const salt = crypto.randomBytes(16);
+  const key = crypto.pbkdf2Sync(MASTER_KEY, salt, 100000, 32, "sha256");
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return {
+    encrypted: Buffer.concat([ct, tag]).toString("base64"),
+    iv: iv.toString("hex"),
+    salt: salt.toString("hex"),
+  };
 }
 
 // mTLS fetch to Teller API
@@ -81,8 +94,8 @@ module.exports = async function handler(req, res) {
       return res.status(403).json({ error: "Only admins can connect bank accounts" });
     }
 
-    // Encrypt access token
-    const { encrypted, iv } = await encrypt(access_token, company_id);
+    // Encrypt access token (v3 per-credential salt)
+    const { encrypted, iv, salt } = await encrypt(access_token, company_id);
 
     // Check for existing connection with same enrollment_id (reconnect case)
     let connectionId;
@@ -99,6 +112,7 @@ module.exports = async function handler(req, res) {
         await supabase.from("bank_connection").update({
           access_token_encrypted: encrypted,
           encryption_iv: iv,
+          encryption_salt: salt,
           connection_status: "active",
           last_error_code: null,
           last_error_message: null,
@@ -120,6 +134,7 @@ module.exports = async function handler(req, res) {
           plaid_item_id: enrollment_id || "",
           access_token_encrypted: encrypted,
           encryption_iv: iv,
+          encryption_salt: salt,
           connection_status: "active",
         })
         .select("id")

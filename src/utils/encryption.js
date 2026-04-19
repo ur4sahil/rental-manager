@@ -1,17 +1,22 @@
 import { supabase } from "../supabase";
 import { pmError } from "./errors";
 
-// ============ CREDENTIAL ENCRYPTION (server-side) ============
-// Encryption now happens in /api/encrypt.js with the master key held as
-// a server-only Vercel secret (ENCRYPTION_KEY). The previous version
-// used REACT_APP_ENCRYPTION_KEY which shipped to every browser in the
-// bundle — defeating the point of encrypting at rest. Function
-// signatures are identical so callers don't need to change.
+// ============ CREDENTIAL ENCRYPTION (server-side, per-credential salt) ============
+// Encryption happens in /api/encrypt.js. The master key is a server-only
+// Vercel secret (ENCRYPTION_KEY). Each credential row carries its own random
+// 16-byte salt (encryption_salt column) so compromise of one plaintext does
+// not trivially unlock every other credential in the company.
 //
-// Migration note: rows already encrypted with the old client-side key
-// decrypt correctly as long as ENCRYPTION_KEY is set to the same value
-// REACT_APP_ENCRYPTION_KEY held. Once rotated, a one-time re-encrypt
-// migration is required (future task).
+// Call-site contract:
+//   encryptCredential(plain, companyId)
+//     → { encrypted, iv, salt }  ← callers MUST persist all three
+//   decryptCredential(cipher, iv, companyId, salt?)
+//     → plaintext string; falls back to the legacy company-scoped salt
+//       when a row has no salt column populated yet (pre-M15 rows).
+//
+// For Teller access-token rows created before M15, pass legacyScheme="teller"
+// on the first decrypt — the row is re-written with a fresh salt afterwards
+// by the save-enrollment path or the one-shot migration.
 
 async function callEncryptApi(body) {
   const { data: { session } } = await supabase.auth.getSession();
@@ -30,20 +35,29 @@ async function callEncryptApi(body) {
   return resp.json();
 }
 
-export async function encryptCredential(plaintext, companyId) {
-  if (!plaintext) return { encrypted: "", iv: "" };
+export async function encryptCredential(plaintext, companyId, reuseSalt = null) {
+  if (!plaintext) return { encrypted: "", iv: "", salt: reuseSalt || "" };
   try {
-    return await callEncryptApi({ action: "encrypt", plaintext, companyId });
+    // reuseSalt lets two paired values (e.g. username + password) share a
+    // per-row salt while each still gets its own IV. Persist the salt once
+    // on the row; reuse it on the second encrypt so decrypt with the row's
+    // encryption_salt succeeds for both values.
+    const body = { action: "encrypt", plaintext, companyId };
+    if (reuseSalt) body.salt = reuseSalt;
+    return await callEncryptApi(body);
   } catch (e) {
     pmError("PM-8006", { raw: e, context: "encryptCredential", silent: true });
-    return { encrypted: "", iv: "" };
+    return { encrypted: "", iv: "", salt: reuseSalt || "" };
   }
 }
 
-export async function decryptCredential(encryptedB64, ivHex, companyId) {
+export async function decryptCredential(encryptedB64, ivHex, companyId, salt = null, legacyScheme = null) {
   if (!encryptedB64 || !ivHex) return "";
   try {
-    const { plaintext } = await callEncryptApi({ action: "decrypt", ciphertext: encryptedB64, iv: ivHex, companyId });
+    const body = { action: "decrypt", ciphertext: encryptedB64, iv: ivHex, companyId };
+    if (salt) body.salt = salt;
+    if (legacyScheme) body.legacyScheme = legacyScheme;
+    const { plaintext } = await callEncryptApi(body);
     return plaintext || "";
   } catch (e) {
     pmError("PM-8006", { raw: e, context: "decryptCredential", silent: true });

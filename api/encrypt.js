@@ -1,40 +1,61 @@
 // Vercel API Route: Credential encryption / decryption.
 //
 // Moves AES-256-GCM + PBKDF2 off the client bundle so the master key
-// never ships to a browser. Bit-compatible with the old Web Crypto
-// implementation in src/utils/encryption.js so existing rows still
-// decrypt — same PBKDF2 params (SHA-256, 100k iters), same salt
-// (`propmanager_<companyId>_v2`), same tag-appended GCM layout.
+// never ships to a browser. Holds ENCRYPTION_KEY as a server-only
+// Vercel secret and verifies the caller's Supabase session +
+// company_members membership before doing anything.
 //
-// Auth: user's Supabase session JWT in the Authorization header. We
-// verify the user is an active `company_members` row for the requested
-// companyId before doing anything. Service role is NOT used here — RLS
-// enforces membership lookup.
+// Key scheme:
+//   PBKDF2-HMAC-SHA256, 100k iters, 32-byte output
+//   - v3 (per-credential):  salt = <random 16 bytes, hex>, passed by caller
+//   - v2 (legacy):          salt = "propmanager_<companyId>_v2"
+//   - teller (legacy):      raw text-to-key, pre-C3. Only for
+//                           bank_connection.access_token_encrypted rows
+//                           that haven't been migrated yet.
+//
+// Encrypt responses always include the salt used, so callers can persist
+// it alongside the ciphertext. Decrypt accepts an optional salt — if
+// present, v3; if absent, falls back to legacyScheme (default "v2").
+//
+// Tag-appended GCM layout matches the old Web Crypto output so existing
+// data decrypts unchanged.
 const crypto = require("crypto");
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
 
 const MASTER_KEY = process.env.ENCRYPTION_KEY || "";
 
-function deriveKey(companyId) {
+function deriveKeyFromSalt(saltBytes) {
   if (!MASTER_KEY) throw new Error("ENCRYPTION_KEY not configured");
-  const salt = Buffer.from("propmanager_" + companyId + "_v2", "utf8");
-  return crypto.pbkdf2Sync(MASTER_KEY, salt, 100000, 32, "sha256");
+  return crypto.pbkdf2Sync(MASTER_KEY, saltBytes, 100000, 32, "sha256");
 }
 
-function encryptPayload(plaintext, companyId) {
+function deriveLegacyV2Key(companyId) {
+  return deriveKeyFromSalt(Buffer.from("propmanager_" + companyId + "_v2", "utf8"));
+}
+
+function deriveLegacyTellerKey(companyId) {
+  // Matches the old inline scheme in api/teller-save-enrollment.js pre-M15:
+  //   (companyId + "_propmanager_cred_key").slice(0,32).padEnd(32,"0")
+  const s = (companyId + "_propmanager_cred_key").slice(0, 32).padEnd(32, "0");
+  return Buffer.from(s, "utf8");
+}
+
+function randomSaltHex() {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+function encryptPayload(plaintext, key) {
   if (!plaintext) return { encrypted: "", iv: "" };
   const iv = crypto.randomBytes(12);
-  const key = deriveKey(companyId);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
   const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return { encrypted: Buffer.concat([ct, tag]).toString("base64"), iv: iv.toString("hex") };
 }
 
-function decryptPayload(b64, ivHex, companyId) {
+function decryptPayload(b64, ivHex, key) {
   if (!b64 || !ivHex) return "";
-  const key = deriveKey(companyId);
   const iv = Buffer.from(ivHex, "hex");
   const combined = Buffer.from(b64, "base64");
   const TAG_LEN = 16;
@@ -55,11 +76,9 @@ module.exports = async function handler(req, res) {
   if (!authHeader.startsWith("Bearer ")) return res.status(401).json({ error: "Missing bearer token" });
   const token = authHeader.slice(7);
 
-  const { action, companyId, plaintext, ciphertext, iv } = req.body || {};
+  const { action, companyId, plaintext, ciphertext, iv, salt, legacyScheme } = req.body || {};
   if (!action || !companyId) return res.status(400).json({ error: "Missing action or companyId" });
 
-  // Verify the caller is an active member of companyId using their own JWT
-  // (so RLS does the gatekeeping — service role is not used here).
   const userClient = createClient(
     process.env.REACT_APP_SUPABASE_URL,
     process.env.REACT_APP_SUPABASE_ANON_KEY,
@@ -85,11 +104,27 @@ module.exports = async function handler(req, res) {
   try {
     if (action === "encrypt") {
       if (typeof plaintext !== "string") return res.status(400).json({ error: "Missing plaintext" });
-      return res.status(200).json(encryptPayload(plaintext, companyId));
+      // Always write new ciphertext under v3 (per-credential salt). Honour a
+      // caller-provided salt if given (for idempotent re-encryption); else
+      // generate a fresh one.
+      const saltHex = (typeof salt === "string" && salt.length >= 16) ? salt : randomSaltHex();
+      const key = deriveKeyFromSalt(Buffer.from(saltHex, "hex"));
+      const out = encryptPayload(plaintext, key);
+      return res.status(200).json({ ...out, salt: saltHex });
     }
     if (action === "decrypt") {
       if (typeof ciphertext !== "string" || typeof iv !== "string") return res.status(400).json({ error: "Missing ciphertext or iv" });
-      return res.status(200).json({ plaintext: decryptPayload(ciphertext, iv, companyId) });
+      let key;
+      if (typeof salt === "string" && salt.length >= 16) {
+        // v3 — per-credential salt
+        key = deriveKeyFromSalt(Buffer.from(salt, "hex"));
+      } else if (legacyScheme === "teller") {
+        key = deriveLegacyTellerKey(companyId);
+      } else {
+        key = deriveLegacyV2Key(companyId);
+      }
+      const plain = decryptPayload(ciphertext, iv, key);
+      return res.status(200).json({ plaintext: plain });
     }
     return res.status(400).json({ error: "Unknown action" });
   } catch (e) {
