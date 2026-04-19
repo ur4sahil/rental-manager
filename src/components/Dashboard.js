@@ -24,6 +24,9 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
 
   useEffect(() => {
   async function fetchData() {
+  // Surface load failures as an error toast so the dashboard doesn't
+  // silently render empty. Each bucket's `error` is logged individually
+  // so the admin Error Log tells us which table went down.
   const [p, t, w, pay, u] = await Promise.all([
   supabase.from("properties").select("*").eq("company_id", companyId).is("archived_at", null),
   supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null),
@@ -31,8 +34,14 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   supabase.from("payments").select("*").eq("company_id", companyId).is("archived_at", null),
   supabase.from("utilities").select("*").eq("company_id", companyId).is("archived_at", null),
   ]);
+  if (p.error) pmError("PM-2002", { raw: p.error, context: "dashboard properties fetch", silent: true });
+  if (t.error) pmError("PM-3002", { raw: t.error, context: "dashboard tenants fetch", silent: true });
+  if (w.error) pmError("PM-7005", { raw: w.error, context: "dashboard work orders fetch", silent: true });
+  if (pay.error) pmError("PM-6001", { raw: pay.error, context: "dashboard payments fetch", silent: true });
+  if (u.error) pmError("PM-8006", { raw: u.error, context: "dashboard utilities fetch", silent: true });
   // Also fetch PM-managed properties from other companies
-  const { data: managedProps } = await supabase.from("properties").select("*").eq("pm_company_id", companyId).is("archived_at", null).limit(500);
+  const { data: managedProps, error: mpErr } = await supabase.from("properties").select("*").eq("pm_company_id", companyId).is("archived_at", null).limit(500);
+  if (mpErr) pmError("PM-2002", { raw: mpErr, context: "dashboard managed properties fetch", silent: true });
   const allProps = (p.data || []).map(x => ({ ...x, _ownership: "owned" }));
   (managedProps || []).forEach(mp => { if (!allProps.find(x => x.id === mp.id)) allProps.push({ ...mp, _ownership: "managed", _readOnly: true }); });
   setProperties(allProps);
@@ -42,15 +51,18 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   setUtilities(u.data || []);
   // Fetch upcoming HOA payments (due within 14 days)
   const fourteenDays = new Date(Date.now() + (companySettings.hoa_upcoming_window_days || 14) * 86400000).toISOString().slice(0, 10);
-  const { data: hoaData } = await supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("status", "unpaid").is("archived_at", null).lte("due_date", fourteenDays).order("due_date", { ascending: true });
+  const { data: hoaData, error: hoaErr } = await supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("status", "unpaid").is("archived_at", null).lte("due_date", fourteenDays).order("due_date", { ascending: true });
+  if (hoaErr) pmError("PM-8006", { raw: hoaErr, context: "dashboard hoa fetch", silent: true });
   setHoaDue(hoaData || []);
   // Fetch upcoming license expirations — includes already-expired so they stay visible until renewed
   const licenseWindow = new Date(Date.now() + (companySettings.license_upcoming_window_days || 60) * 86400000).toISOString().slice(0, 10);
-  const { data: licData } = await supabase.from("property_licenses").select("*").eq("company_id", companyId).is("archived_at", null).neq("status", "revoked").lte("expiry_date", licenseWindow).order("expiry_date", { ascending: true });
+  const { data: licData, error: licErr } = await supabase.from("property_licenses").select("*").eq("company_id", companyId).is("archived_at", null).neq("status", "revoked").lte("expiry_date", licenseWindow).order("expiry_date", { ascending: true });
+  if (licErr) pmError("PM-8006", { raw: licErr, context: "dashboard license fetch", silent: true });
   setLicensesDue(licData || []);
   // Fetch pending tax bills due within the next 30 days OR already overdue.
   const taxWindow = new Date(Date.now() + (companySettings.tax_bill_upcoming_window_days || 30) * 86400000).toISOString().slice(0, 10);
-  const { data: taxData } = await supabase.from("property_tax_bills").select("*").eq("company_id", companyId).eq("status", "pending").is("archived_at", null).lte("due_date", taxWindow).order("due_date", { ascending: true });
+  const { data: taxData, error: taxErr } = await supabase.from("property_tax_bills").select("*").eq("company_id", companyId).eq("status", "pending").is("archived_at", null).lte("due_date", taxWindow).order("due_date", { ascending: true });
+  if (taxErr) pmError("PM-8006", { raw: taxErr, context: "dashboard tax bills fetch", silent: true });
   setTaxBillsDue(taxData || []);
   // Count pending approvals (lightweight — full data loaded on Tasks page)
   try {

@@ -62,7 +62,7 @@ export async function generateBillsForProperty({
   let created = 0, updated = 0, skipped = 0;
   for (const inst of schedule) {
     const dueDate = localISODate(year, inst.month, inst.day);
-    const { data: existing } = await supabase
+    const { data: existing, error: selErr } = await supabase
       .from("property_tax_bills")
       .select("id, status, paid_date, expected_amount")
       .eq("company_id", companyId)
@@ -72,6 +72,11 @@ export async function generateBillsForProperty({
       .eq("auto_generated", true)
       .is("archived_at", null)
       .maybeSingle();
+    if (selErr) {
+      pmError("PM-8006", { raw: selErr, context: "read existing tax bill " + inst.label + " " + year, silent: true });
+      skipped++;
+      continue;
+    }
 
     if (existing) {
       // Backfill expected_amount for still-pending rows if we now have one.

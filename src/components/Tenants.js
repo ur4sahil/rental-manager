@@ -402,24 +402,33 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
 
   function exportLedgerPDF(tenant, ledgerData) {
-    const companyName = activeCompany?.name || "Property Management";
+    // All interpolated values go through escapeHtml — a tenant/property
+    // name with a stray quote used to break out of the <title> attribute
+    // or of tag boundaries when only `<` was replaced. The popup is
+    // sandboxed (noopener) but still shown to staff who print ledgers.
+    const companyName = escapeHtml(activeCompany?.name || "Property Management");
     const today = acctToday();
     const sorted = [...ledgerData].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-    const dateFrom = sorted.length > 0 ? sorted[0].date : today;
-    const dateTo = sorted.length > 0 ? sorted[sorted.length - 1].date : today;
+    const dateFrom = escapeHtml(sorted.length > 0 ? sorted[0].date : today);
+    const dateTo = escapeHtml(sorted.length > 0 ? sorted[sorted.length - 1].date : today);
     const rows = sorted.map(e => {
       const isCredit = e.type === "payment" || e.type === "credit";
-      return `<tr><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${e.date||""}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${(e.description||"").replace(/</g,"&lt;")}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-transform:capitalize">${e.type||""}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right">${isCredit?"":"$"+Math.abs(safeNum(e.amount)).toFixed(2)}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right">${isCredit?"$"+Math.abs(safeNum(e.amount)).toFixed(2):""}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">$${safeNum(e.balance).toFixed(2)}</td></tr>`;
+      const date = escapeHtml(e.date || "");
+      const desc = escapeHtml(e.description || "");
+      const type = escapeHtml(e.type || "");
+      return `<tr><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${date}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">${desc}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-transform:capitalize">${type}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right">${isCredit?"":"$"+Math.abs(safeNum(e.amount)).toFixed(2)}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right">${isCredit?"$"+Math.abs(safeNum(e.amount)).toFixed(2):""}</td><td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600">$${safeNum(e.balance).toFixed(2)}</td></tr>`;
     }).join("");
     const totalCharges = sorted.filter(e => e.type !== "payment" && e.type !== "credit").reduce((s, e) => s + Math.abs(safeNum(e.amount)), 0);
     const totalPayments = sorted.filter(e => e.type === "payment" || e.type === "credit").reduce((s, e) => s + Math.abs(safeNum(e.amount)), 0);
+    const safeTenantName = escapeHtml(tenant.name || "");
+    const safeProperty = escapeHtml(tenant.property || "");
     const html = `<div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:20px">
       <div style="text-align:center;margin-bottom:24px">
         <h1 style="margin:0;font-size:22px;color:#1e293b">${companyName}</h1>
         <h2 style="margin:4px 0 0;font-size:16px;color:#64748b;font-weight:normal">Tenant Ledger Statement</h2>
       </div>
       <div style="display:flex;justify-content:space-between;margin-bottom:16px;padding:12px 16px;background:#f8fafc;border-radius:8px">
-        <div><strong>Tenant:</strong> ${(tenant.name||"").replace(/</g,"&lt;")}<br><strong>Property:</strong> ${(tenant.property||"").replace(/</g,"&lt;")}</div>
+        <div><strong>Tenant:</strong> ${safeTenantName}<br><strong>Property:</strong> ${safeProperty}</div>
         <div style="text-align:right"><strong>Period:</strong> ${dateFrom} to ${dateTo}<br><strong>Current Balance:</strong> <span style="color:${safeNum(tenant.balance)>0?"#dc2626":"#16a34a"};font-weight:bold">$${safeNum(Math.abs(tenant.balance)).toFixed(2)}</span></div>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -427,10 +436,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
         <tbody>${rows}</tbody>
         <tfoot><tr style="background:#f1f5f9;font-weight:bold"><td colspan="3" style="padding:8px 10px;text-align:right">Totals</td><td style="padding:8px 10px;text-align:right;color:#dc2626">$${totalCharges.toFixed(2)}</td><td style="padding:8px 10px;text-align:right;color:#16a34a">$${totalPayments.toFixed(2)}</td><td style="padding:8px 10px;text-align:right">$${safeNum(Math.abs(tenant.balance)).toFixed(2)}</td></tr></tfoot>
       </table>
-      <div style="margin-top:24px;text-align:center;font-size:11px;color:#94a3b8">Generated on ${today} by ${companyName}</div>
+      <div style="margin-top:24px;text-align:center;font-size:11px;color:#94a3b8">Generated on ${escapeHtml(today)} by ${companyName}</div>
     </div>`;
     const w = window.open("", "_blank", "width=900,height=700,noopener,noreferrer");
-    w.document.write(`<!DOCTYPE html><html><head><title>Ledger - ${(tenant.name||"Tenant").replace(/</g,"&lt;")}</title><style>@media print{body{margin:0}}</style></head><body>${html}</body></html>`);
+    w.document.write(`<!DOCTYPE html><html><head><title>Ledger - ${safeTenantName || "Tenant"}</title><style>@media print{body{margin:0}}</style></head><body>${html}</body></html>`);
     w.document.close();
     w.onload = () => setTimeout(() => w.print(), 300);
   }

@@ -233,6 +233,24 @@ export async function autoOwnerDistribution(companyId, propertyAddress, paymentA
   const tenantSlug = (tenantName || "anon").toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 32);
   const refDate = paymentDate.replace(/-/g, "");
   const ref = `ODIST-${owner.id}-${tenantSlug}-${refDate}-${paymentCents}`;
+  // Insert the owner_distributions record FIRST. Previously the order was
+  // JE→dist, so a failed dist insert left an orphan JE that drifted the
+  // GL silently. Inserting dist first means the worst case is a dist row
+  // without its JE — detectable by missing `reference` match and trivially
+  // retried. Column mapping uses the real schema: amount=net-to-owner,
+  // reference=JE ref, notes carries gross/fee breakdown for statements.
+  const { data: distRow, error: distErr } = await supabase.from("owner_distributions").insert([{
+    company_id: companyId,
+    owner_id: owner.id,
+    amount: ownerNet,
+    date: paymentDate,
+    reference: ref,
+    notes: `Rent accrual from ${tenantName} at ${propertyAddress} — gross ${paymentRounded.toFixed(2)} · mgmt fee ${feePct}% (${mgmtFee.toFixed(2)}) · net ${ownerNet.toFixed(2)}`,
+  }]).select("id").maybeSingle();
+  if (distErr) {
+    pmError("PM-6004", { raw: distErr, context: "owner distribution insert", silent: true });
+    return;
+  }
   const jeId = await autoPostJournalEntry({
   companyId, date: paymentDate,
   description: `Owner distribution accrual — ${owner.name} — ${tenantName}`,
@@ -243,13 +261,10 @@ export async function autoOwnerDistribution(companyId, propertyAddress, paymentA
   { account_id: "2200", account_name: "Owner Distributions Payable", debit: 0, credit: ownerNet, class_id: classId, memo: `Net to ${owner.name}` },
   ]
   });
-  if (!jeId) { pmError("PM-6004", { raw: { message: "JE failed" }, context: "owner distribution — skipping record", silent: true }); return; }
-  const { error: distErr } = await supabase.from("owner_distributions").insert([{
-  company_id: companyId, owner_id: owner.id, property: propertyAddress,
-  period: month, type: "rent", gross_amount: paymentAmount,
-  management_fee: mgmtFee, net_amount: ownerNet, status: "pending",
-  }]);
-  if (distErr) pmError("PM-6004", { raw: distErr, context: "owner distribution insert", silent: true });
+  if (!jeId && distRow?.id) {
+    await supabase.from("owner_distributions").delete().eq("id", distRow.id).eq("company_id", companyId);
+    pmError("PM-6004", { raw: { message: "JE failed — dist row rolled back" }, context: "owner distribution", silent: true });
+  }
   } catch (e) { pmError("PM-6004", { raw: e, context: "auto owner distribution", silent: true }); }
 }
 
@@ -419,15 +434,37 @@ export async function autoPostRecurringEntries(companyId) {
   const { data: existingRecur } = await supabase.from("acct_journal_entries").select("id").eq("company_id", cid).eq("reference", ref).neq("status", "voided").limit(1);
   if (existingRecur && existingRecur.length > 0) { cursor.setMonth(cursor.getMonth() + freqMonths); continue; }
 
-  // Prorate last month if lease ends mid-month
+  // Prorate on both edges of the lease. Previously we only prorated on
+  // end_date, so a lease that started mid-month (e.g. Jan 15) got billed
+  // the full month's rent for January — an overcharge on the tenant's
+  // first bill.
   let postAmount = safeNum(entry.amount);
   let postDesc = entry.description || "Recurring entry";
   if (entry.tenant_name && entry.property) {
-    const { data: lease } = await supabase.from("leases").select("end_date").eq("company_id", cid).eq("property", entry.property).eq("status", "active").maybeSingle();
-    if (lease?.end_date && lease.end_date.slice(0, 7) === monthStr) {
+    const { data: lease } = await supabase.from("leases").select("start_date, end_date").eq("company_id", cid).eq("property", entry.property).eq("status", "active").maybeSingle();
+    const yr = parseInt(monthStr.split("-")[0], 10) || 2026;
+    const mo = parseInt(monthStr.split("-")[1], 10) || 1;
+    const daysInMonth = new Date(yr, mo, 0).getDate();
+    const startsMidMonth = lease?.start_date && lease.start_date.slice(0, 7) === monthStr;
+    const endsMidMonth   = lease?.end_date   && lease.end_date.slice(0, 7)   === monthStr;
+    if (startsMidMonth && endsMidMonth) {
+      // Lease starts and ends in the same month — bill only the overlap.
+      const startDay = parseInt(lease.start_date.split("-")[2], 10) || 1;
+      const endDay   = parseInt(lease.end_date.split("-")[2], 10)   || daysInMonth;
+      const days = Math.max(1, endDay - startDay + 1);
+      if (days < daysInMonth) {
+        postAmount = Math.round(safeNum(entry.amount) * days / daysInMonth);
+        postDesc = (entry.description || "Recurring entry") + ` (prorated ${days}/${daysInMonth} days — lease ${lease.start_date} → ${lease.end_date})`;
+      }
+    } else if (startsMidMonth) {
+      const startDay = parseInt(lease.start_date.split("-")[2], 10) || 1;
+      const days = Math.max(1, daysInMonth - startDay + 1);
+      if (days < daysInMonth) {
+        postAmount = Math.round(safeNum(entry.amount) * days / daysInMonth);
+        postDesc = (entry.description || "Recurring entry") + ` (prorated ${days}/${daysInMonth} days — lease starts ${lease.start_date})`;
+      }
+    } else if (endsMidMonth) {
       const endDay = parseInt(lease.end_date.split("-")[2], 10) || 0;
-      const yr = parseInt(monthStr.split("-")[0], 10) || 2026, mo = parseInt(monthStr.split("-")[1], 10) || 1;
-      const daysInMonth = new Date(yr, mo, 0).getDate();
       if (endDay > 0 && endDay < daysInMonth) {
         postAmount = Math.round(safeNum(entry.amount) * endDay / daysInMonth);
         postDesc = (entry.description || "Recurring entry") + ` (prorated ${endDay}/${daysInMonth} days — lease ends ${lease.end_date})`;
@@ -447,9 +484,22 @@ export async function autoPostRecurringEntries(companyId) {
   });
   if (jeId) {
   await supabase.from("recurring_journal_entries").update({ last_posted_date: postDate, next_post_date: null }).eq("id", entry.id).eq("company_id", cid);
-  // Update tenant balance if this is an AR entry (check account name pattern, not bare code — codes are resolved to UUIDs)
-  if (entry.tenant_id && (entry.debit_account_name || "").toLowerCase().includes("ar")) {
-  await supabase.rpc("update_tenant_balance", { p_tenant_id: entry.tenant_id, p_amount_change: postAmount }).catch(e => pmError("PM-6002", { raw: e, context: "recurring balance update", silent: true }));
+  // Update tenant balance when the debit hits an AR account. Resolving by
+  // account_id + type is reliable; the old check used a fuzzy
+  // `.includes("ar")` on `debit_account_name`, which silently skipped
+  // balance updates whenever the name didn't literally contain "ar" (e.g.
+  // the column was blank, or named "Accounts Receivable - Tenant X").
+  if (entry.tenant_id && entry.debit_account_id) {
+    const debitId = /^\d{4}$/.test(entry.debit_account_id)
+      ? await resolveAccountId(entry.debit_account_id, cid)
+      : entry.debit_account_id;
+    if (debitId) {
+      const { data: acct } = await supabase.from("acct_accounts").select("type, code").eq("company_id", cid).eq("id", debitId).maybeSingle();
+      const isAR = acct && (acct.code === "1100" || ((acct.type || "").toLowerCase() === "asset" && (acct.code || "").startsWith("11")));
+      if (isAR) {
+        await supabase.rpc("update_tenant_balance", { p_tenant_id: entry.tenant_id, p_amount_change: postAmount }).catch(e => pmError("PM-6002", { raw: e, context: "recurring balance update", silent: true }));
+      }
+    }
   }
   posted++;
   }

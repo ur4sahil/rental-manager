@@ -79,7 +79,24 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   return;
   }
   const tenant = tenants.find(t => t.name === payment.tenant);
-  const feeAmount = rule.fee_type === "flat" ? rule.fee_amount : Math.round((tenant?.rent || payment.amount) * rule.fee_amount / 100);
+  // Percent fees need a known rent base. payment.amount is whatever was paid
+  // (partial / overpayment / mis-keyed), not the lease rent — relying on it
+  // silently produces the wrong fee. Skip + log if rent isn't set.
+  let feeAmount;
+  if (rule.fee_type === "flat") {
+    feeAmount = safeNum(rule.fee_amount);
+  } else {
+    const rentBase = safeNum(tenant?.rent);
+    if (rentBase <= 0) {
+      pmError("PM-6003", { raw: { message: "Cannot compute percent late fee: tenant.rent is not set for " + payment.tenant }, context: "applyLateFee", silent: true });
+      return;
+    }
+    feeAmount = Math.round(rentBase * safeNum(rule.fee_amount) / 100);
+  }
+  if (!Number.isFinite(feeAmount) || feeAmount <= 0) {
+    pmError("PM-6003", { raw: { message: "Computed late fee is invalid: " + feeAmount }, context: "applyLateFee", silent: true });
+    return;
+  }
   const today = formatLocalDate(new Date());
   const classId = await getPropertyClassId(payment.property, companyId);
   // Unified: JE first → ledger → balance (all gated on JE success)

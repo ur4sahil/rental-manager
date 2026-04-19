@@ -46,13 +46,18 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
 
   async function fetchAll() {
     setLoading(true);
-    const [{ data: billRows }, { data: propRows }] = await Promise.all([
-      supabase.from("property_tax_bills").select("*").eq("company_id", companyId).is("archived_at", null).order("due_date", { ascending: true }),
-      supabase.from("properties").select("id, address, county, state").eq("company_id", companyId).is("archived_at", null),
-    ]);
-    setBills(billRows || []);
-    setProperties(propRows || []);
-    setLoading(false);
+    try {
+      const [billsRes, propsRes] = await Promise.all([
+        supabase.from("property_tax_bills").select("*").eq("company_id", companyId).is("archived_at", null).order("due_date", { ascending: true }),
+        supabase.from("properties").select("id, address, county, state").eq("company_id", companyId).is("archived_at", null),
+      ]);
+      if (billsRes.error) pmError("PM-8006", { raw: billsRes.error, context: "load tax bills" });
+      if (propsRes.error) pmError("PM-8006", { raw: propsRes.error, context: "load properties for tax bills", silent: true });
+      setBills(billsRes.data || []);
+      setProperties(propsRes.data || []);
+    } finally {
+      setLoading(false);
+    }
   }
 
   // Backfill / forward-roll for all properties — useful if someone just added
@@ -82,6 +87,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
 
   async function handleMarkPaid() {
     if (!markPaidBill?.bill) return;
+    if (!markPaidBill.paidDate) { showToast("Paid date is required", "error"); return; }
     if (!guardSubmit("markPaidBill", markPaidBill.bill.id)) return;
     try {
       const res = await markBillPaid({
