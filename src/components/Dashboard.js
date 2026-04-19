@@ -14,6 +14,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   const [utilities, setUtilities] = useState([]);
   const [hoaDue, setHoaDue] = useState([]);
   const [licensesDue, setLicensesDue] = useState([]);
+  const [taxBillsDue, setTaxBillsDue] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [acctRevenue, setAcctRevenue] = useState(0);
@@ -47,6 +48,10 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   const licenseWindow = new Date(Date.now() + (companySettings.license_upcoming_window_days || 60) * 86400000).toISOString().slice(0, 10);
   const { data: licData } = await supabase.from("property_licenses").select("*").eq("company_id", companyId).is("archived_at", null).neq("status", "revoked").lte("expiry_date", licenseWindow).order("expiry_date", { ascending: true });
   setLicensesDue(licData || []);
+  // Fetch pending tax bills due within the next 30 days OR already overdue.
+  const taxWindow = new Date(Date.now() + (companySettings.tax_bill_upcoming_window_days || 30) * 86400000).toISOString().slice(0, 10);
+  const { data: taxData } = await supabase.from("property_tax_bills").select("*").eq("company_id", companyId).eq("status", "pending").is("archived_at", null).lte("due_date", taxWindow).order("due_date", { ascending: true });
+  setTaxBillsDue(taxData || []);
   // Count pending approvals (lightweight — full data loaded on Tasks page)
   try {
   const [propReqs, docExceptions, memberReqs] = await Promise.all([
@@ -115,7 +120,9 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   + tenants.filter(t => t.balance > 0).length
   + workOrders.filter(w => w.priority === "emergency" && w.status !== "completed").length
   + tenants.filter(t => { const end = t.lease_end_date || t.move_out; if (!end) return false; const days = Math.ceil((parseLocalDate(end) - new Date()) / 86400000); return days > 0 && days <= 30; }).length
-  + hoaDue.length + pendingApprovalCount;
+  + hoaDue.length + pendingApprovalCount
+  // Unpaid tax bills due ≤14d out or overdue count as pending tasks.
+  + taxBillsDue.filter(tb => { const d = parseLocalDate(tb.due_date); d.setHours(0,0,0,0); const today = new Date(); today.setHours(0,0,0,0); return (d - today) / 86400000 <= 14; }).length;
   return taskCount > 0 ? (
   <div onClick={() => setPage("tasks")} className="bg-warn-50 rounded-3xl shadow-card border border-warn-200 p-4 mb-6 cursor-pointer hover:bg-warn-100 transition-colors flex items-center justify-between">
   <div className="flex items-center gap-3">
@@ -199,6 +206,36 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   );
   })}
   {licensesDue.length > 6 && <div className="text-xs text-neutral-400 text-center pt-2">+{licensesDue.length - 6} more</div>}
+  </div>
+  );
+  })()}
+  {taxBillsDue.length > 0 && (() => {
+  return (
+  <div className="bg-white rounded-3xl shadow-card border border-warn-200 p-4">
+  <h3 className="font-semibold text-warn-700 mb-3 flex items-center justify-between">
+  <span><span className="material-icons-outlined text-sm align-middle mr-1">receipt_long</span>Property Tax Bills Due</span>
+  <button onClick={() => setPage("tax_bills")} className="text-xs text-brand-600 hover:underline font-normal">Manage</button>
+  </h3>
+  {taxBillsDue.slice(0, 6).map(tb => {
+  const d = parseLocalDate(tb.due_date);
+  d.setHours(0, 0, 0, 0);
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const daysLeft = Math.ceil((d - now) / 86400000);
+  const overdue = daysLeft < 0;
+  return (
+  <div key={tb.id} onClick={() => setPage("tax_bills")} className="flex justify-between items-center py-2 border-b border-warn-50 last:border-0 cursor-pointer hover:bg-warn-50/40 -mx-2 px-2 rounded">
+  <div className="min-w-0">
+  <div className="text-sm font-medium text-neutral-800 truncate">{tb.installment_label} <span className="text-xs text-neutral-400 font-normal">· {tb.tax_year}</span></div>
+  <div className="text-xs text-neutral-400 truncate">{tb.property}</div>
+  </div>
+  <div className="text-right shrink-0 ml-2">
+  <div className="text-sm font-semibold">{tb.due_date}</div>
+  <div className={`text-xs font-bold ${overdue ? "text-danger-600" : daysLeft <= 7 ? "text-danger-500" : daysLeft <= 14 ? "text-warn-600" : "text-amber-600"}`}>{overdue ? `Overdue ${-daysLeft}d` : daysLeft === 0 ? "Due today" : `${daysLeft}d left`}</div>
+  </div>
+  </div>
+  );
+  })}
+  {taxBillsDue.length > 6 && <div className="text-xs text-neutral-400 text-center pt-2 cursor-pointer hover:text-neutral-600" onClick={() => setPage("tax_bills")}>+{taxBillsDue.length - 6} more — view all</div>}
   </div>
   );
   })()}
