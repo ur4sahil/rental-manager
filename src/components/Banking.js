@@ -81,6 +81,14 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   const [directionFilter, setDirectionFilter] = useState("all");
   const [txnPage, setTxnPage] = useState(0);
   const TXN_PAGE_SIZE = 50;
+  // Date range window applied at the DB query level. Default 90 days keeps the
+  // dataset small enough for client-side tab counts + search to be snappy.
+  // Toggle "all" is available for audit / history workflows — capped at
+  // TXN_FETCH_CAP and warned on truncation so users don't silently miss rows.
+  const [dateRangeMode, setDateRangeMode] = useState("90d");
+  const TXN_FETCH_CAP = 5000;
+  const [txnTruncated, setTxnTruncated] = useState(false);
+  const [totalTxnCount, setTotalTxnCount] = useState(0);
   const [selectedTxns, setSelectedTxns] = useState(new Set());
   const [expandedTxn, setExpandedTxn] = useState(null);
   const [showImportWizard, setShowImportWizard] = useState(false);
@@ -153,19 +161,68 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   const [matchCandidates, setMatchCandidates] = useState([]);
   const [matchLoading, setMatchLoading] = useState(false);
 
-  // Fetch on mount
-  useEffect(() => { fetchAll(); }, [companyId]);
+  // Fetch on mount + whenever date-range window changes (re-fetches txns)
+  useEffect(() => { fetchAll(); /* eslint-disable-next-line */ }, [companyId]);
+  useEffect(() => {
+    // Skip the initial render — fetchAll() already ran from the mount effect.
+    if (loading) return;
+    fetchTransactions();
+    /* eslint-disable-next-line */
+  }, [dateRangeMode]);
+
+  // Minimum bank_feed_transaction column set. The full row has 33 columns;
+  // only these are consumed by the UI (sort/filter/display/action). Dropped:
+  // bank_import_batch_id, provider_transaction_id, balance_after,
+  // fingerprint_hash, duplicate_group_key, excluded_at/by, accepted_at/by,
+  // created_at, updated_at. If you add a new txn widget that reads a field
+  // not listed here, add it.
+  const TXN_COLS = "id, bank_account_feed_id, source_type, posted_date, amount, direction, bank_description_raw, bank_description_clean, memo, check_number, payee_raw, payee_normalized, reference_number, status, suggestion_status, exclusion_reason, matched_target_type, matched_target_id, posting_decision_id, journal_entry_id, raw_payload_json";
+
+  function dateRangeCutoff() {
+    if (dateRangeMode === "all") return null;
+    const days = dateRangeMode === "30d" ? 30 : dateRangeMode === "90d" ? 90 : dateRangeMode === "6m" ? 183 : dateRangeMode === "1y" ? 365 : 90;
+    return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  }
+
+  async function fetchTransactions() {
+    const cutoff = dateRangeCutoff();
+    // `count: exact` gives us the true total so the UI can warn on truncation.
+    let q = supabase.from("bank_feed_transaction")
+      .select(TXN_COLS, { count: "exact" })
+      .eq("company_id", companyId)
+      .order("posted_date", { ascending: false })
+      .limit(TXN_FETCH_CAP);
+    if (cutoff) q = q.gte("posted_date", cutoff);
+    const { data, count, error } = await q;
+    if (error) {
+      pmError("PM-5001", { raw: error, context: "fetch bank transactions", silent: true });
+    }
+    setTransactions(data || []);
+    setTotalTxnCount(count || 0);
+    // If the underlying match count exceeds the fetch cap, warn — prior code
+    // silently capped at 500 and hid the rest.
+    setTxnTruncated((count || 0) > (data?.length || 0));
+  }
 
   async function fetchAll() {
     setLoading(true);
+    const cutoff = dateRangeCutoff();
+    let txnQ = supabase.from("bank_feed_transaction")
+      .select(TXN_COLS, { count: "exact" })
+      .eq("company_id", companyId)
+      .order("posted_date", { ascending: false })
+      .limit(TXN_FETCH_CAP);
+    if (cutoff) txnQ = txnQ.gte("posted_date", cutoff);
     const [feedsRes, txnRes, rulesRes, connRes] = await Promise.all([
       supabase.from("bank_account_feed").select("*").eq("company_id", companyId).eq("status", "active").order("created_at"),
-      supabase.from("bank_feed_transaction").select("*").eq("company_id", companyId).order("posted_date", { ascending: false }).limit(500),
+      txnQ,
       supabase.from("bank_transaction_rule").select("*").eq("company_id", companyId).order("priority"),
       supabase.from("bank_connection").select("*").eq("company_id", companyId).order("created_at"),
     ]);
     setFeeds(feedsRes.data || []);
     setTransactions(txnRes.data || []);
+    setTotalTxnCount(txnRes.count || 0);
+    setTxnTruncated((txnRes.count || 0) > (txnRes.data?.length || 0));
     const fetchedRules = rulesRes.data || [];
     // Auto-migrate V1 rules to V2 format on first load
     if (fetchedRules.some(r => r.condition_json && !r.condition_json.conditions)) {
@@ -1464,14 +1521,29 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
 
   {/* Filters (hidden on Rules tab) */}
   {activeTab !== "rules" && (
-  <div className="flex items-center gap-2">
+  <div className="flex items-center gap-2 flex-wrap">
     <Input placeholder="Search description, payee, amount..." value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setTxnPage(0); }} className="w-64 !py-1.5 text-sm" />
     <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setTxnPage(0); }} className="w-32 !py-1.5 text-xs" />
     <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setTxnPage(0); }} className="w-32 !py-1.5 text-xs" />
     <select value={directionFilter} onChange={e => { setDirectionFilter(e.target.value); setTxnPage(0); }} className="border border-brand-100 rounded-xl px-2 py-1.5 text-xs">
       <option value="all">All</option><option value="inflow">Money In</option><option value="outflow">Money Out</option>
     </select>
+    {/* Server-side date window — smaller datasets load faster. The
+        dateFrom/dateTo inputs to the left further narrow the visible set
+        client-side. */}
+    <select value={dateRangeMode} onChange={e => { setDateRangeMode(e.target.value); setTxnPage(0); }} className="border border-brand-100 rounded-xl px-2 py-1.5 text-xs" title="Fetch window">
+      <option value="30d">Last 30 days</option>
+      <option value="90d">Last 90 days</option>
+      <option value="6m">Last 6 months</option>
+      <option value="1y">Last 1 year</option>
+      <option value="all">All time</option>
+    </select>
   </div>
+  )}
+  {activeTab !== "rules" && txnTruncated && (
+    <div className="bg-warn-50 border border-warn-200 rounded-lg px-3 py-2 text-xs text-warn-700">
+      Showing the most recent {transactions.length.toLocaleString()} of {totalTxnCount.toLocaleString()} transactions in this window. Narrow the date range or filters to see older activity.
+    </div>
   )}
 
   {activeTab !== "rules" && (<>

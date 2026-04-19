@@ -27,20 +27,32 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   // Surface load failures as an error toast so the dashboard doesn't
   // silently render empty. Each bucket's `error` is logged individually
   // so the admin Error Log tells us which table went down.
+  //
+  // Column lists are the MINIMUM required by the stats + widgets below.
+  // If you add a new Dashboard stat that reads a field not listed here,
+  // you MUST add it to the select list — silent `undefined` reads will
+  // quietly break the stat. Previously this was `select("*")`; at scale
+  // that sends ~2-5 MB on first paint for a portfolio of a few dozen
+  // properties and thousands of payments.
+  const PROP_COLS = "id, address, status, pm_company_id";
+  const TENANT_COLS = "id, name, property, balance, doc_status, lease_end_date, move_out, is_voucher, reexam_date, voucher_number";
+  const WO_COLS = "id, status, priority, issue, property, cost";
+  const PAY_COLS = "type, status, date, amount";
+  const UTIL_COLS = "id, status, provider, property, responsibility, amount";
   const [p, t, w, pay, u] = await Promise.all([
-  supabase.from("properties").select("*").eq("company_id", companyId).is("archived_at", null),
-  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null),
-  supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null),
-  supabase.from("payments").select("*").eq("company_id", companyId).is("archived_at", null),
-  supabase.from("utilities").select("*").eq("company_id", companyId).is("archived_at", null),
+  supabase.from("properties").select(PROP_COLS).eq("company_id", companyId).is("archived_at", null),
+  supabase.from("tenants").select(TENANT_COLS).eq("company_id", companyId).is("archived_at", null),
+  supabase.from("work_orders").select(WO_COLS).eq("company_id", companyId).is("archived_at", null),
+  supabase.from("payments").select(PAY_COLS).eq("company_id", companyId).is("archived_at", null),
+  supabase.from("utilities").select(UTIL_COLS).eq("company_id", companyId).is("archived_at", null),
   ]);
   if (p.error) pmError("PM-2002", { raw: p.error, context: "dashboard properties fetch", silent: true });
   if (t.error) pmError("PM-3002", { raw: t.error, context: "dashboard tenants fetch", silent: true });
   if (w.error) pmError("PM-7005", { raw: w.error, context: "dashboard work orders fetch", silent: true });
   if (pay.error) pmError("PM-6001", { raw: pay.error, context: "dashboard payments fetch", silent: true });
   if (u.error) pmError("PM-8006", { raw: u.error, context: "dashboard utilities fetch", silent: true });
-  // Also fetch PM-managed properties from other companies
-  const { data: managedProps, error: mpErr } = await supabase.from("properties").select("*").eq("pm_company_id", companyId).is("archived_at", null).limit(500);
+  // PM-managed properties from other companies — same column shape as owned.
+  const { data: managedProps, error: mpErr } = await supabase.from("properties").select(PROP_COLS).eq("pm_company_id", companyId).is("archived_at", null).limit(500);
   if (mpErr) pmError("PM-2002", { raw: mpErr, context: "dashboard managed properties fetch", silent: true });
   const allProps = (p.data || []).map(x => ({ ...x, _ownership: "owned" }));
   (managedProps || []).forEach(mp => { if (!allProps.find(x => x.id === mp.id)) allProps.push({ ...mp, _ownership: "managed", _readOnly: true }); });
