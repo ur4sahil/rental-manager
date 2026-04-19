@@ -3,6 +3,7 @@
 // 90/60/30/7/0 day buckets before expiry (and 1d post-expiry as a safety net).
 // Uses last_reminder_day_bucket to avoid sending the same bucket twice.
 const { createClient } = require("@supabase/supabase-js");
+const { setCors } = require("./_cors");
 
 const CRON_SECRET = process.env.CRON_SECRET || "";
 
@@ -39,8 +40,7 @@ function chooseBucket(daysUntil) {
 }
 
 module.exports = async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "https://rental-manager-one.vercel.app");
-  res.setHeader("Access-Control-Allow-Headers", "authorization, x-client-info, apikey, content-type");
+  setCors(req, res);
   if (req.method === "OPTIONS") return res.status(200).end("ok");
   if (req.method !== "GET" && req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 

@@ -2,12 +2,12 @@
 // Read-only diagnostics for the daily sync cron.
 // Auth: JWT+company_id (per-company stats) OR CRON_SECRET (global stats)
 const { createClient } = require("@supabase/supabase-js");
+const { setCors } = require("./_cors");
 
 const CRON_SECRET = process.env.CRON_SECRET || "";
 
 module.exports = async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "https://rental-manager-one.vercel.app");
-  res.setHeader("Access-Control-Allow-Headers", "authorization, x-client-info, apikey, content-type");
+  setCors(req, res);
   if (req.method === "OPTIONS") return res.status(200).end("ok");
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
 

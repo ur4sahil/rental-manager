@@ -105,26 +105,33 @@ async function rollforwardNextYear(supabase, todayIso) {
       .limit(1);
     if (existing && existing.length > 0) { skipped++; continue; }
 
-    for (const inst of schedule) {
-      await supabase.from("property_tax_bills").insert([{
-        company_id: p.company_id,
-        property: p.address,
-        property_id: p.id || null,
-        tax_year: nextYear,
-        installment_label: inst.label,
-        due_date: isoDate(nextYear, inst.month, inst.day),
-        status: "pending",
-        auto_generated: true,
-      }]);
-      generated++;
+    // Batch all installments for this property in a single insert.
+    // Previously the cron made N serial inserts per property — fine at 10
+    // properties, pressure at 500. One call per property is plenty.
+    const rows = schedule.map(inst => ({
+      company_id: p.company_id,
+      property: p.address,
+      property_id: p.id || null,
+      tax_year: nextYear,
+      installment_label: inst.label,
+      due_date: isoDate(nextYear, inst.month, inst.day),
+      status: "pending",
+      auto_generated: true,
+    }));
+    const { error: insErr } = await supabase.from("property_tax_bills").insert(rows);
+    if (insErr) {
+      console.error("rollforward insert failed for", p.address, insErr.message);
+      continue;
     }
+    generated += rows.length;
   }
   return { generated, skipped, noSchedule };
 }
 
+const { setCors } = require("./_cors");
+
 module.exports = async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "https://rental-manager-one.vercel.app");
-  res.setHeader("Access-Control-Allow-Headers", "authorization, x-client-info, apikey, content-type");
+  setCors(req, res);
   if (req.method === "OPTIONS") return res.status(200).end("ok");
   if (req.method !== "GET" && req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -163,7 +170,24 @@ module.exports = async function handler(req, res) {
     let skippedOutOfWindow = 0;
     let skippedNoRecipients = 0;
     let errors = 0;
+    // Pre-fetch members for every company that has a bill in one query
+    // instead of N lookups in the loop. At 50 companies × 500 bills that's
+    // 50 queries vs 500.
+    const uniqueCompanyIds = [...new Set(bills.map(b => b.company_id))];
     const memberCache = new Map();
+    if (uniqueCompanyIds.length > 0) {
+      const { data: allMems } = await supabase.from("company_members")
+        .select("company_id, user_email, role")
+        .in("company_id", uniqueCompanyIds)
+        .eq("status", "active")
+        .in("role", ["admin", "owner", "pm", "office_assistant"]);
+      for (const m of (allMems || [])) {
+        if (!m.user_email) continue;
+        const list = memberCache.get(m.company_id) || [];
+        list.push(m.user_email);
+        memberCache.set(m.company_id, list);
+      }
+    }
 
     for (const b of bills) {
       const d = daysBetween(todayIso, b.due_date);
@@ -177,17 +201,7 @@ module.exports = async function handler(req, res) {
         if (bucket === -1 && b.last_reminder_day_bucket === -1) { skippedAlreadySent++; continue; }
       }
 
-      // Recipients (cached per company)
-      let recipients = memberCache.get(b.company_id);
-      if (!recipients) {
-        const { data: mems } = await supabase.from("company_members")
-          .select("user_email, role")
-          .eq("company_id", b.company_id)
-          .eq("status", "active")
-          .in("role", ["admin", "owner", "pm", "office_assistant"]);
-        recipients = (mems || []).map(m => m.user_email).filter(Boolean);
-        memberCache.set(b.company_id, recipients);
-      }
+      const recipients = memberCache.get(b.company_id) || [];
       if (recipients.length === 0) { skippedNoRecipients++; continue; }
 
       const subjectLine = bucket === -1

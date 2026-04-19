@@ -35,8 +35,35 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   // Validate file type and size
   if (!ALLOWED_DOC_TYPES.includes(file.type) && !ALLOWED_DOC_EXTENSIONS.test(file.name)) { showToast("File type not allowed. Accepted: PDF, images, Word, Excel, text files.", "error"); return; }
   if (file.size > 25 * 1024 * 1024) { showToast("File must be under 25MB.", "error"); return; }
-  // Magic bytes validation (prevents MIME spoofing)
-  try { const hdr = new Uint8Array(await file.slice(0, 8).arrayBuffer()); const hex = Array.from(hdr.slice(0, 4)).map(b => b.toString(16).padStart(2, "0")).join(""); const ok = ["25504446","89504e47","ffd8ffe0","ffd8ffe1","ffd8ffe2","47494638","504b0304","d0cf11e0"].some(m => hex.startsWith(m)) || file.type.startsWith("text/"); if (!ok) { showToast("File content doesn't match expected format.", "error"); return; } } catch (_e) { pmError("PM-7002", { raw: _e, context: "file magic bytes validation", silent: true }); }
+  // Magic-bytes validation — protects against MIME spoofing. For binary
+  // formats (PDF, PNG, JPEG, ZIP, etc.) we match known signatures. For
+  // text types, we previously bypassed validation entirely, which let any
+  // renamed .exe get uploaded as text/plain. Now we sniff the first 512
+  // bytes for NUL / non-printable content and reject if it's binary in
+  // disguise.
+  try {
+    const hdr = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+    const hex = Array.from(hdr.slice(0, 4)).map(b => b.toString(16).padStart(2, "0")).join("");
+    const BIN_MAGIC = ["25504446","89504e47","ffd8ffe0","ffd8ffe1","ffd8ffe2","47494638","504b0304","d0cf11e0"];
+    const isKnownBinary = BIN_MAGIC.some(m => hex.startsWith(m));
+    let isTextish = false;
+    if (!isKnownBinary && file.type.startsWith("text/")) {
+      const sniff = new Uint8Array(await file.slice(0, Math.min(512, file.size)).arrayBuffer());
+      let nonPrintable = 0;
+      for (let i = 0; i < sniff.length; i++) {
+        const b = sniff[i];
+        // Reject on NUL — the single cheapest binary indicator.
+        if (b === 0) { nonPrintable = sniff.length; break; }
+        // Allow tab/LF/CR + printable ASCII + high-ASCII (UTF-8 continuation).
+        if (!(b === 9 || b === 10 || b === 13 || (b >= 32 && b <= 126) || b >= 128)) nonPrintable++;
+      }
+      isTextish = sniff.length > 0 && (nonPrintable / sniff.length) < 0.05;
+    }
+    if (!isKnownBinary && !isTextish) {
+      showToast("File content doesn't match expected format.", "error");
+      return;
+    }
+  } catch (_e) { pmError("PM-7002", { raw: _e, context: "file magic bytes validation", silent: true }); }
   setUploading(true);
   const fileName = `${companyId}/${shortId()}_${sanitizeFileName(file.name)}`;
   const { error: uploadError } = await supabase.storage.from("documents").upload(fileName, file, {

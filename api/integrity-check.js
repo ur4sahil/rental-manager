@@ -106,9 +106,10 @@ async function checkTenantBalanceVsLedger(supabase, companyId) {
   return count;
 }
 
+const { setCors } = require("./_cors");
+
 module.exports = async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "https://rental-manager-one.vercel.app");
-  res.setHeader("Access-Control-Allow-Headers", "authorization, x-client-info, apikey, content-type");
+  setCors(req, res);
   if (req.method === "OPTIONS") return res.status(200).end("ok");
   if (req.method !== "GET" && req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 

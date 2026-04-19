@@ -1258,13 +1258,15 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (!guardSubmit("bulkStatus")) return;
   try {
   const newStatus = document.getElementById("bulk-status-val").value;
-  let count = 0;
-  for (const tid of selectedTenants) {
-  const { error } = await supabase.from("tenants").update({ lease_status: newStatus }).eq("company_id", companyId).eq("id", tid);
-  if (!error) count++;
-  }
-  addNotification("\u{1F464}", `Status changed to "${newStatus}" for ${count} tenant(s)`);
-  logAudit("update", "tenants", `Bulk status change to ${newStatus} for ${count} tenants`, "", userProfile?.email, userRole, companyId);
+  // Single update against .in(ids) instead of N serial updates.
+  const ids = [...selectedTenants];
+  const { error: bulkErr, count } = await supabase.from("tenants")
+    .update({ lease_status: newStatus }, { count: "exact" })
+    .eq("company_id", companyId)
+    .in("id", ids);
+  if (bulkErr) pmError("PM-3002", { raw: bulkErr, context: "bulk tenant status update" });
+  addNotification("\u{1F464}", `Status changed to "${newStatus}" for ${count || 0} tenant(s)`);
+  logAudit("update", "tenants", `Bulk status change to ${newStatus} for ${count || 0} tenants`, "", userProfile?.email, userRole, companyId);
   setBulkAction(null); setSelectedTenants(new Set()); fetchTenants();
   } finally { guardRelease("bulkStatus"); }
   }}>Update Status</Btn>
@@ -1281,12 +1283,20 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <button onClick={async () => {
   if (!guardSubmit("bulkArchive")) return;
   try {
+  // Filter client-side to only zero-balance tenants (can't archive
+  // someone with owed rent), then archive all at once.
+  const eligibleIds = [...selectedTenants].filter(tid => {
+    const t = tenants.find(x => x.id === tid);
+    return safeNum(t?.balance) <= 0;
+  });
   let count = 0;
-  for (const tid of selectedTenants) {
-  const t = tenants.find(x => x.id === tid);
-  if (safeNum(t?.balance) > 0) continue;
-  const { error } = await supabase.from("tenants").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email, lease_status: "inactive" }).eq("id", tid).eq("company_id", companyId);
-  if (!error) count++;
+  if (eligibleIds.length > 0) {
+    const { error: archErr, count: archCount } = await supabase.from("tenants")
+      .update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email, lease_status: "inactive" }, { count: "exact" })
+      .eq("company_id", companyId)
+      .in("id", eligibleIds);
+    if (archErr) pmError("PM-3003", { raw: archErr, context: "bulk tenant archive" });
+    count = archCount || 0;
   }
   addNotification("\u{1F4E6}", `${count} tenant(s) archived`);
   logAudit("archive", "tenants", `Bulk archived ${count} tenants`, "", userProfile?.email, userRole, companyId);

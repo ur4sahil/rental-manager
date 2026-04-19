@@ -4,6 +4,7 @@
 const https = require("https");
 const crypto = require("crypto");
 const { createClient } = require("@supabase/supabase-js");
+const { setCors } = require("./_cors");
 
 const TELLER_API = "https://api.teller.io";
 
@@ -51,9 +52,7 @@ function tellerFetch(url, accessToken) {
 }
 
 module.exports = async function handler(req, res) {
-  // CORS
-  res.setHeader("Access-Control-Allow-Origin", "https://rental-manager-one.vercel.app");
-  res.setHeader("Access-Control-Allow-Headers", "authorization, x-client-info, apikey, content-type");
+  setCors(req, res);
   if (req.method === "OPTIONS") return res.status(200).end("ok");
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
