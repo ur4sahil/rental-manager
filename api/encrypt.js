@@ -76,18 +76,63 @@ function decryptPayload(b64, ivHex, key) {
   return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
 }
 
+// Input bounds. Generous enough for any real credential but tight enough
+// that a garbage-payload flood can't slide through.
+const MAX_PLAINTEXT_LEN = 4096;   // 4 KB covers any password / token / secret
+const MAX_CIPHERTEXT_LEN = 8192;  // base64(4 KB + 16-byte tag) ≈ 5.5 KB; 8 KB leaves headroom
+const MAX_COMPANYID_LEN = 128;
+const IV_HEX_LEN = 24;            // 12 bytes × 2 hex chars
+const SALT_HEX_MIN = 16;
+const SALT_HEX_MAX = 64;
+const VALID_ACTIONS = new Set(["encrypt", "decrypt"]);
+const VALID_LEGACY_SCHEMES = new Set(["teller", "v2"]);
+const HEX_RE = /^[0-9a-fA-F]+$/;
+const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+
 module.exports = async function handler(req, res) {
   setCors(req, res);
   if (req.method === "OPTIONS") return res.status(200).end("ok");
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
+  // ─── Cheap local validation FIRST. Every check below runs without touching
+  // Supabase, so a garbage-payload flood never triggers an auth.getUser call
+  // or a DB round-trip. Budget DoS → 400 at the edge of the function.
   const authHeader = req.headers.authorization || "";
-  if (!authHeader.startsWith("Bearer ")) return res.status(401).json({ error: "Missing bearer token" });
+  if (!authHeader.startsWith("Bearer ") || authHeader.length < 20 || authHeader.length > 4096) {
+    return res.status(401).json({ error: "Missing bearer token" });
+  }
+
+  const body = req.body || {};
+  const { action, companyId, plaintext, ciphertext, iv, salt, legacyScheme } = body;
+
+  if (!VALID_ACTIONS.has(action)) return res.status(400).json({ error: "Invalid action" });
+  if (typeof companyId !== "string" || !companyId || companyId.length > MAX_COMPANYID_LEN) {
+    return res.status(400).json({ error: "Invalid companyId" });
+  }
+  if (action === "encrypt") {
+    if (typeof plaintext !== "string" || plaintext.length > MAX_PLAINTEXT_LEN) {
+      return res.status(400).json({ error: "Invalid plaintext" });
+    }
+  } else {
+    if (typeof ciphertext !== "string" || !ciphertext || ciphertext.length > MAX_CIPHERTEXT_LEN || !BASE64_RE.test(ciphertext)) {
+      return res.status(400).json({ error: "Invalid ciphertext" });
+    }
+    if (typeof iv !== "string" || iv.length !== IV_HEX_LEN || !HEX_RE.test(iv)) {
+      return res.status(400).json({ error: "Invalid iv" });
+    }
+  }
+  if (salt !== undefined && salt !== null) {
+    if (typeof salt !== "string" || salt.length < SALT_HEX_MIN || salt.length > SALT_HEX_MAX || !HEX_RE.test(salt)) {
+      return res.status(400).json({ error: "Invalid salt" });
+    }
+  }
+  if (legacyScheme !== undefined && legacyScheme !== null && !VALID_LEGACY_SCHEMES.has(legacyScheme)) {
+    return res.status(400).json({ error: "Invalid legacyScheme" });
+  }
+
+  // ─── Only AFTER the cheap rejects do we instantiate the Supabase client and
+  // hit auth.getUser.
   const token = authHeader.slice(7);
-
-  const { action, companyId, plaintext, ciphertext, iv, salt, legacyScheme } = req.body || {};
-  if (!action || !companyId) return res.status(400).json({ error: "Missing action or companyId" });
-
   const userClient = createClient(
     process.env.REACT_APP_SUPABASE_URL,
     process.env.REACT_APP_SUPABASE_ANON_KEY,
@@ -112,17 +157,15 @@ module.exports = async function handler(req, res) {
 
   try {
     if (action === "encrypt") {
-      if (typeof plaintext !== "string") return res.status(400).json({ error: "Missing plaintext" });
-      // Always write new ciphertext under v3 (per-credential salt). Honour a
+      // Write new ciphertext under v3 (per-credential salt). Honour a
       // caller-provided salt if given (for idempotent re-encryption); else
-      // generate a fresh one.
+      // generate a fresh one. Shape already validated above.
       const saltHex = (typeof salt === "string" && salt.length >= 16) ? salt : randomSaltHex();
       const key = deriveKeyFromSalt(Buffer.from(saltHex, "hex"));
       const out = encryptPayload(plaintext, key);
       return res.status(200).json({ ...out, salt: saltHex });
     }
     if (action === "decrypt") {
-      if (typeof ciphertext !== "string" || typeof iv !== "string") return res.status(400).json({ error: "Missing ciphertext or iv" });
       // Try candidate keys in order; use the first that authenticates. This
       // lets pre-migration rows keep rendering without the frontend needing
       // to know which legacy scheme was used.

@@ -70,16 +70,34 @@ module.exports = async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+    // ─── Cheap local validation FIRST — reject malformed payloads before
+    // hitting Supabase Auth. Prevents garbage floods from burning
+    // auth.getUser quota / Vercel invocation budget.
+    const authHeader = req.headers.authorization || "";
+    if (!authHeader.startsWith("Bearer ") || authHeader.length < 20 || authHeader.length > 4096) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
 
+    const body = req.body || {};
+    const { access_token, enrollment_id, institution, company_id } = body;
+    if (typeof access_token !== "string" || !access_token || access_token.length < 10 || access_token.length > 4096) {
+      return res.status(400).json({ error: "access_token invalid" });
+    }
+    if (typeof company_id !== "string" || !company_id || company_id.length > 128) {
+      return res.status(400).json({ error: "company_id invalid" });
+    }
+    if (enrollment_id !== undefined && enrollment_id !== null && (typeof enrollment_id !== "string" || enrollment_id.length > 256)) {
+      return res.status(400).json({ error: "enrollment_id invalid" });
+    }
+    if (institution !== undefined && institution !== null && typeof institution !== "object") {
+      return res.status(400).json({ error: "institution invalid" });
+    }
+
+    // ─── Only now do we touch Supabase.
     const supabase = createClient(process.env.REACT_APP_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-    const token = authHeader.replace("Bearer ", "");
+    const token = authHeader.slice(7);
     const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
     if (authErr || !user) return res.status(401).json({ error: "Invalid token" });
-
-    const { access_token, enrollment_id, institution, company_id } = req.body;
-    if (!access_token || !company_id) return res.status(400).json({ error: "access_token and company_id required" });
 
     // Verify user is admin of the company
     const { data: membership } = await supabase

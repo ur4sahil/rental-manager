@@ -56,6 +56,16 @@ export async function checkRPCHealth(companyId) {
 }
 
 // ============ DATA INTEGRITY GUARDS (PM-9xxx) ============
+// Hard caps on every scan. These are deliberately generous for real portfolios
+// but bound the cost of an insider / runaway call — an admin clicking "Run
+// Health Check" (or a compromised session firing it in a loop) can no longer
+// tie up the DB against unbounded rows. The RPC already caps to 50.
+const INTEGRITY_MAX_TENANTS = 10000;
+const INTEGRITY_MAX_LEASES  = 10000;
+const INTEGRITY_MAX_LEDGER_PER_TENANT = 20000;
+const INTEGRITY_MAX_RECURRING = 2000;
+const INTEGRITY_MAX_ACCOUNTS = 5000;
+
 export async function runDataIntegrityChecks(companyId, { deep = false } = {}) {
   const violations = [];
   try {
@@ -69,7 +79,7 @@ export async function runDataIntegrityChecks(companyId, { deep = false } = {}) {
 
     // PM-9002: Active tenants with no lease (deep only)
     if (deep) {
-      const { data: activeTenants } = await supabase.from("tenants").select("id, name, property").eq("company_id", companyId).is("archived_at", null).eq("lease_status", "active");
+      const { data: activeTenants } = await supabase.from("tenants").select("id, name, property").eq("company_id", companyId).is("archived_at", null).eq("lease_status", "active").limit(INTEGRITY_MAX_TENANTS);
       for (const t of (activeTenants || [])) {
         const { data: lease } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("tenant_name", t.name).eq("status", "active").limit(1).maybeSingle();
         if (!lease) {
@@ -80,9 +90,9 @@ export async function runDataIntegrityChecks(companyId, { deep = false } = {}) {
 
     // PM-9006: Tenant balance vs ledger mismatch (deep only)
     if (deep) {
-      const { data: tenants } = await supabase.from("tenants").select("id, name, balance").eq("company_id", companyId).is("archived_at", null);
+      const { data: tenants } = await supabase.from("tenants").select("id, name, balance").eq("company_id", companyId).is("archived_at", null).limit(INTEGRITY_MAX_TENANTS);
       for (const t of (tenants || [])) {
-        const { data: entries } = await supabase.from("ledger_entries").select("amount").eq("company_id", companyId).eq("tenant_id", t.id);
+        const { data: entries } = await supabase.from("ledger_entries").select("amount").eq("company_id", companyId).eq("tenant_id", t.id).limit(INTEGRITY_MAX_LEDGER_PER_TENANT);
         const ledgerTotal = (entries || []).reduce((s, e) => s + safeNum(e.amount), 0);
         if (Math.abs(safeNum(t.balance) - ledgerTotal) > 0.01) {
           violations.push({ code: "PM-9006", details: `Tenant "${t.name}" balance ($${t.balance}) doesn't match ledger ($${ledgerTotal.toFixed(2)})`, meta: { tenantId: t.id, storedBalance: t.balance, ledgerTotal } });
@@ -91,8 +101,8 @@ export async function runDataIntegrityChecks(companyId, { deep = false } = {}) {
     }
 
     // PM-9007: Recurring entries referencing inactive accounts
-    const { data: recurEntries } = await supabase.from("recurring_journal_entries").select("id, description, template_lines_json").eq("company_id", companyId).eq("status", "active");
-    const { data: activeAccounts } = await supabase.from("acct_accounts").select("id").eq("company_id", companyId).eq("is_active", true);
+    const { data: recurEntries } = await supabase.from("recurring_journal_entries").select("id, description, template_lines_json").eq("company_id", companyId).eq("status", "active").limit(INTEGRITY_MAX_RECURRING);
+    const { data: activeAccounts } = await supabase.from("acct_accounts").select("id").eq("company_id", companyId).eq("is_active", true).limit(INTEGRITY_MAX_ACCOUNTS);
     const activeAccountIds = new Set((activeAccounts || []).map(a => a.id));
     for (const re of (recurEntries || [])) {
       const lines = re.template_lines_json || [];
@@ -106,7 +116,7 @@ export async function runDataIntegrityChecks(companyId, { deep = false } = {}) {
 
     // PM-9008: Active leases referencing archived properties (deep only)
     if (deep) {
-      const { data: activeLeases } = await supabase.from("leases").select("id, tenant_name, property_address").eq("company_id", companyId).eq("status", "active");
+      const { data: activeLeases } = await supabase.from("leases").select("id, tenant_name, property_address").eq("company_id", companyId).eq("status", "active").limit(INTEGRITY_MAX_LEASES);
       for (const lease of (activeLeases || [])) {
         const { data: prop } = await supabase.from("properties").select("id").eq("company_id", companyId).eq("address", lease.property_address).is("archived_at", null).maybeSingle();
         if (!prop) {

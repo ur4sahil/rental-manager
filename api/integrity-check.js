@@ -56,10 +56,17 @@ async function checkUnbalancedJEs(supabase, companyId) {
   return (data || []).length;
 }
 
+// Hard caps so a degenerate company (or a runaway retry) can't wedge the DB.
+// Generous for real portfolios but bounded.
+const MAX_TENANTS = 10000;
+const MAX_LEDGER = 200000;
+const MAX_RECURRING = 2000;
+const MAX_ACCOUNTS = 5000;
+
 async function checkRecurringTemplates(supabase, companyId) {
   const [{ data: recurs }, { data: accts }] = await Promise.all([
-    supabase.from("recurring_journal_entries").select("id, description, template_lines_json").eq("company_id", companyId).eq("status", "active"),
-    supabase.from("acct_accounts").select("id").eq("company_id", companyId).eq("is_active", true),
+    supabase.from("recurring_journal_entries").select("id, description, template_lines_json").eq("company_id", companyId).eq("status", "active").limit(MAX_RECURRING),
+    supabase.from("acct_accounts").select("id").eq("company_id", companyId).eq("is_active", true).limit(MAX_ACCOUNTS),
   ]);
   const active = new Set((accts || []).map(a => a.id));
   let count = 0;
@@ -80,9 +87,10 @@ async function checkRecurringTemplates(supabase, companyId) {
 
 async function checkTenantBalanceVsLedger(supabase, companyId) {
   // Pulls tenants + ledger_entries in two reads per company rather than N+1.
+  // Both capped so a company with an extreme history can't stall the cron.
   const [{ data: tenants }, { data: ledger }] = await Promise.all([
-    supabase.from("tenants").select("id, name, balance").eq("company_id", companyId).is("archived_at", null),
-    supabase.from("ledger_entries").select("tenant_id, amount").eq("company_id", companyId),
+    supabase.from("tenants").select("id, name, balance").eq("company_id", companyId).is("archived_at", null).limit(MAX_TENANTS),
+    supabase.from("ledger_entries").select("tenant_id, amount").eq("company_id", companyId).limit(MAX_LEDGER),
   ]);
   // Coerce ids to string so integer vs bigint serialization quirks don't
   // create phantom mismatches across Supabase client versions.
