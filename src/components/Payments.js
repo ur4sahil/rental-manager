@@ -352,7 +352,7 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   <div className="text-xs text-brand-600 font-medium">Next due: {nextDue(s)}</div>
   <div className="flex gap-2">
   <Btn variant="secondary" size="xs" onClick={() => runNow(s)}>▶ Run Now</Btn>
-  <button onClick={() => toggleActive(s)} className={`text-xs border px-3 py-1 rounded-lg ${s.enabled ? "text-notice-500 border-notice-200 hover:bg-notice-50" : "text-positive-600 border-positive-200 hover:bg-positive-50"}`}>{s.enabled ? "⏸ Pause" : "▶ Resume"}</button>
+  <Btn variant={s.enabled ? "notice" : "positive"} size="xs" onClick={() => toggleActive(s)}>{s.enabled ? "⏸ Pause" : "▶ Resume"}</Btn>
   <Btn variant="danger" size="xs" onClick={() => deleteSchedule(s.id, s.tenant)}>🗑️</Btn>
   </div>
   </div>

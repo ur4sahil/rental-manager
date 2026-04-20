@@ -126,7 +126,7 @@ export function ConfirmModal({ config, onConfirm, onCancel }) {
   </div>
   <div className="px-6 py-4 border-t border-brand-50 flex justify-end gap-3">
   <Btn variant="slate" onClick={onCancel}>{config.cancelText || "Cancel"}</Btn>
-  <button onClick={onConfirm} className={"px-4 py-2 text-sm font-semibold text-white rounded-xl transition-colors " + (isDanger ? "bg-danger-600 hover:bg-danger-700" : "bg-brand-600 hover:bg-brand-700")}>{config.confirmText || (isDanger ? "Delete" : "Confirm")}</button>
+  <Btn variant={isDanger ? "danger-fill" : "primary"} onClick={onConfirm}>{config.confirmText || (isDanger ? "Delete" : "Confirm")}</Btn>
   </div>
   </div>
   </div>
@@ -272,7 +272,7 @@ export function RecurringEntryModal({ entry, companyId, showToast, onComplete })
   <Btn size="lg" className="flex-1" onClick={handleCreate} disabled={saving || !amount || Number(amount) <= 0}>
   {saving ? "Creating..." : "Create Recurring Entry"}
   </Btn>
-  <button onClick={onComplete} className="flex-1 bg-neutral-100 text-neutral-600 text-sm py-2.5 rounded-xl font-semibold hover:bg-neutral-200">Skip for Now</button>
+  <Btn variant="slate" size="lg" className="flex-1" onClick={onComplete}>Skip for Now</Btn>
   </div>
   </div>
   </div>

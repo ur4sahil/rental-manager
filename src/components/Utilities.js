@@ -358,7 +358,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div className="flex-1"><div className="font-semibold text-subtle-800 text-sm">{bill.provider_display || bill.provider}</div><div className="text-xs text-subtle-400">{bill.property} · Due {bill.due_date || "—"}</div></div>
   <div className="text-lg font-bold text-subtle-800">${safeNum(bill.amount).toLocaleString()}</div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (bill.status === "paid" ? "bg-positive-100 text-positive-700" : bill.status === "authorized" ? "bg-info-100 text-info-700" : "bg-warn-100 text-warn-700")}>{bill.status?.replace("_", " ")}</span>
-  {bill.status === "pending_review" && <button onClick={() => authorizeBillPayment(bill, "default_on_file")} className="text-xs bg-positive-50 text-positive-700 px-3 py-1.5 rounded-lg hover:bg-positive-100 border border-positive-200">Authorize Pay</button>}
+  {bill.status === "pending_review" && <Btn variant="positive" size="sm" onClick={() => authorizeBillPayment(bill, "default_on_file")}>Authorize Pay</Btn>}
   </div>
   ))}
   </div>

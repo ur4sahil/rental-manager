@@ -499,12 +499,12 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   </div>
   <div className="flex flex-wrap gap-2 pt-2 border-t border-brand-50/50">
   <Btn variant="secondary" size="xs" onClick={() => startEdit(l)}>Edit</Btn>
-  <button onClick={() => setShowESign(l)} className={"text-xs border px-3 py-1 rounded-lg " + (l.signature_status === "fully_signed" ? "text-positive-600 border-positive-200 bg-positive-50" : "text-highlight-600 border-highlight-200 hover:bg-highlight-50")}>{l.signature_status === "fully_signed" ? "✓ Signed" : "\u270d\ufe0f E-Sign"}</button>
+  <Btn variant={l.signature_status === "fully_signed" ? "positive" : "purple"} size="xs" onClick={() => setShowESign(l)}>{l.signature_status === "fully_signed" ? "✓ Signed" : "\u270d\ufe0f E-Sign"}</Btn>
   {l.status === "active" && <Btn variant="success-fill" size="xs" onClick={() => renewLease(l)}>Renew</Btn>}
   {l.status === "active" && <Btn variant="secondary" size="xs" onClick={() => { setShowRentIncrease(l); setRentIncreaseForm({ new_amount: String(l.rent_amount), effective_date: formatLocalDate(new Date()), reason: "" }); }}>📈 Rent Increase</Btn>}
   {l.status === "active" && <Btn variant="danger" size="xs" onClick={() => terminateLease(l)}>Terminate</Btn>}
-  <button onClick={() => setShowChecklist({ lease: l, type: "in" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_in_completed ? "text-positive-600 border-positive-200 bg-positive-50" : "text-neutral-400 border-brand-100 hover:bg-brand-50/30")}>Move-In {l.move_in_completed ? "✓" : ""}</button>
-  <button onClick={() => setShowChecklist({ lease: l, type: "out" })} className={"text-xs border px-3 py-1 rounded-lg " + (l.move_out_completed ? "text-positive-600 border-positive-200 bg-positive-50" : "text-neutral-400 border-brand-100 hover:bg-brand-50/30")}>Move-Out {l.move_out_completed ? "✓" : ""}</button>
+  <Btn variant={l.move_in_completed ? "positive" : "secondary"} size="xs" onClick={() => setShowChecklist({ lease: l, type: "in" })}>Move-In {l.move_in_completed ? "✓" : ""}</Btn>
+  <Btn variant={l.move_out_completed ? "positive" : "secondary"} size="xs" onClick={() => setShowChecklist({ lease: l, type: "out" })}>Move-Out {l.move_out_completed ? "✓" : ""}</Btn>
   {safeNum(l.security_deposit) > 0 && l.deposit_status === "held" && (l.status === "terminated" || l.status === "expired" || isExpired) && (
   <Btn variant="purple" size="xs" onClick={() => { setShowDepositModal(l); setDepositForm({ amount_returned: String(l.security_deposit), deductions: "", return_date: formatLocalDate(new Date()) }); }}>Return Deposit</Btn>
   )}

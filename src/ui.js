@@ -15,6 +15,13 @@ const BTN_VARIANTS = {
   "danger-fill": "bg-danger-600 text-white hover:bg-danger-700",
   success:   "text-success-600 border border-success-200 hover:bg-success-50 bg-white",
   "success-fill": "bg-success-600 text-white hover:bg-success-700",
+  // Positive has its own palette (softer green than success). Useful for
+  // confirmations and "approve/authorize" affordances where we already
+  // use positive- tokens elsewhere in the theme.
+  positive:  "text-positive-700 border border-positive-200 hover:bg-positive-100 bg-positive-50",
+  "positive-fill": "bg-positive-600 text-white hover:bg-positive-700",
+  // Notice = pause/warn-ish. Used for Pause-toggle affordances in Autopay.
+  notice:    "text-notice-500 border border-notice-200 hover:bg-notice-50 bg-white",
   ghost:     "text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100",
   purple:    "text-highlight-600 border border-highlight-200 hover:bg-highlight-50 bg-white",
   amber:     "text-warn-600 border border-warn-200 hover:bg-warn-50 bg-white",

@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { TextLink, Checkbox } from "../ui";
+import { TextLink, Checkbox, FilterPill, Btn } from "../ui";
 import { printTheme } from "../utils/theme";
 
 // Reusable signature capture: draw OR type mode + consent checkbox.
@@ -85,8 +85,8 @@ export default function SignaturePad({
       {signerLabel && <div className="text-sm font-semibold text-neutral-700 mb-2">Signing as: {signerLabel}{signerName ? " — " + signerName : ""}</div>}
 
       <div className="flex gap-2 mb-3">
-        <button type="button" onClick={() => { setSignMethod("draw"); setLocalError(""); }} className={"text-xs px-3 py-1.5 rounded-lg font-medium " + (signMethod === "draw" ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200")}>Draw Signature</button>
-        <button type="button" onClick={() => { setSignMethod("type"); setLocalError(""); }} className={"text-xs px-3 py-1.5 rounded-lg font-medium " + (signMethod === "type" ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200")}>Type Name</button>
+        <FilterPill active={signMethod === "draw"} onClick={() => { setSignMethod("draw"); setLocalError(""); }}>Draw Signature</FilterPill>
+        <FilterPill active={signMethod === "type"} onClick={() => { setSignMethod("type"); setLocalError(""); }}>Type Name</FilterPill>
       </div>
 
       {signMethod === "draw" ? (
@@ -128,14 +128,16 @@ export default function SignaturePad({
 
       {localError && <div className="mt-3 text-xs text-danger-600 bg-danger-50 border border-danger-200 rounded-lg px-3 py-2">{localError}</div>}
 
-      <button
+      <Btn
+        variant="primary"
+        size="lg"
         type="button"
         onClick={handleSubmit}
         disabled={submitting || !consentAgreed}
-        className={"w-full mt-3 py-2.5 rounded-xl text-white font-semibold text-sm transition-colors " + (submitting || !consentAgreed ? "bg-neutral-400 cursor-not-allowed" : "bg-brand-600 hover:bg-brand-700")}
+        className="w-full mt-3"
       >
         {submitting ? "Signing…" : !consentAgreed ? "Agree to the terms above to sign" : submitLabel}
-      </button>
+      </Btn>
     </div>
   );
 }
