@@ -683,7 +683,7 @@ function AppInner() {
   const Page = pageComponents[effectivePage] || Dashboard;
 
   return (
-  <div className="flex h-screen bg-[#fcf8ff] font-inter overflow-hidden">
+  <div className="flex h-screen bg-surface-muted font-inter overflow-hidden">
   {/* Sidebar */}
   <div className={`${sidebarOpen ? "flex" : "hidden"} md:flex flex-col w-56 bg-white/80 backdrop-blur-md border-r border-brand-50 z-30 fixed md:relative h-full`}>
   <div className="px-5 py-4 border-b border-brand-50">

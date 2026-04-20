@@ -241,11 +241,11 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
 // editor, the Send-for-Signature form, and the signature field placeholder.
 const ROLE_COLORS = [
   { dot: "bg-brand-500",   ring: "ring-brand-500",   chip: "bg-brand-50 text-brand-700 border-brand-200" },
-  { dot: "bg-amber-500",   ring: "ring-amber-500",   chip: "bg-amber-50 text-amber-700 border-amber-200" },
-  { dot: "bg-emerald-500", ring: "ring-emerald-500", chip: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  { dot: "bg-rose-500",    ring: "ring-rose-500",    chip: "bg-rose-50 text-rose-700 border-rose-200" },
-  { dot: "bg-teal-500",    ring: "ring-teal-500",    chip: "bg-teal-50 text-teal-700 border-teal-200" },
-  { dot: "bg-purple-500",  ring: "ring-purple-500",  chip: "bg-purple-50 text-purple-700 border-purple-200" },
+  { dot: "bg-warn-500",   ring: "ring-warn-500",   chip: "bg-warn-50 text-warn-700 border-warn-200" },
+  { dot: "bg-positive-500", ring: "ring-positive-500", chip: "bg-positive-50 text-positive-700 border-positive-200" },
+  { dot: "bg-danger-500",    ring: "ring-danger-500",    chip: "bg-danger-50 text-danger-700 border-danger-200" },
+  { dot: "bg-success-500",    ring: "ring-success-500",    chip: "bg-success-50 text-success-700 border-success-200" },
+  { dot: "bg-highlight-500",  ring: "ring-highlight-500",  chip: "bg-highlight-50 text-highlight-700 border-highlight-200" },
 ];
 function getRoleColor(roleId, rolesList) {
   const idx = (rolesList || []).findIndex(r => r.role === roleId);
@@ -1230,7 +1230,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   if (showTemplateEditor) {
   const sections = [...new Set(templateForm.fields.map(f => f.section).filter(Boolean))];
   return (
-  <div className="fixed inset-0 z-50 bg-[#fcf8ff] flex flex-col">
+  <div className="fixed inset-0 z-50 bg-surface-muted flex flex-col">
   {/* Top ribbon — breadcrumb + mode toggle + primary action */}
   <div className="h-14 border-b border-neutral-100 bg-white flex items-center px-5 gap-3 shrink-0">
   <IconBtn icon="arrow_back" onClick={() => { setShowTemplateEditor(false); setEditingTemplate(null); }} />
@@ -1688,7 +1688,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   };
 
   return (
-  <div className="fixed inset-0 z-50 bg-[#fcf8ff] flex flex-col">
+  <div className="fixed inset-0 z-50 bg-surface-muted flex flex-col">
   {/* Top ribbon — breadcrumb + mode hint + Preview CTA */}
   <div className="h-14 border-b border-neutral-100 bg-white flex items-center px-5 gap-3 shrink-0">
   <IconBtn icon="arrow_back" onClick={resetFlow} />
@@ -1774,7 +1774,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   if (step === "preview" && selectedTemplate) {
   const rendered = renderMergedBody(selectedTemplate.body, fieldValues, selectedTemplate.field_config);
   return (
-  <div className="fixed inset-0 z-50 bg-[#fcf8ff] flex flex-col">
+  <div className="fixed inset-0 z-50 bg-surface-muted flex flex-col">
   {/* Top ribbon — breadcrumb + inline export shortcuts */}
   <div className="h-14 border-b border-neutral-100 bg-white flex items-center px-5 gap-3 shrink-0">
   <IconBtn icon="arrow_back" onClick={() => setStep("fill")} />

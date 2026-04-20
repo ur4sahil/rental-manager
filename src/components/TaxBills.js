@@ -27,7 +27,7 @@ function statusChip(status, dueDate) {
   if (d < 0) return { cls: "bg-danger-100 text-danger-700 border-danger-200", label: `Overdue ${-d}d` };
   if (d === 0) return { cls: "bg-danger-50 text-danger-600 border-danger-200", label: "Due today" };
   if (d <= 7) return { cls: "bg-warn-50 text-warn-700 border-warn-200", label: `${d}d left` };
-  if (d <= 30) return { cls: "bg-amber-50 text-amber-700 border-amber-200", label: `${d}d left` };
+  if (d <= 30) return { cls: "bg-warn-50 text-warn-700 border-warn-200", label: `${d}d left` };
   return { cls: "bg-neutral-50 text-neutral-500 border-neutral-200", label: `${d}d left` };
 }
 

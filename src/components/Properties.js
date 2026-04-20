@@ -997,8 +997,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         return (
           <div>
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 bg-cyan-100 rounded-xl flex items-center justify-center">
-                <span className="material-icons-outlined text-cyan-600 text-2xl">person</span>
+              <div className="w-12 h-12 bg-info-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-info-600 text-2xl">person</span>
               </div>
               <div>
                 <h3 className="text-lg font-manrope font-bold text-neutral-800">Tenant & Lease</h3>
@@ -1531,8 +1531,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         return (
           <div>
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 bg-rose-100 rounded-xl flex items-center justify-center">
-                <span className="material-icons-outlined text-rose-600 text-2xl">shield</span>
+              <div className="w-12 h-12 bg-danger-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-danger-600 text-2xl">shield</span>
               </div>
               <div>
                 <h3 className="text-lg font-manrope font-bold text-neutral-800">Insurance</h3>
@@ -1604,8 +1604,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         return (
           <div>
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
-                <span className="material-icons-outlined text-amber-600 text-2xl">receipt_long</span>
+              <div className="w-12 h-12 bg-warn-100 rounded-xl flex items-center justify-center">
+                <span className="material-icons-outlined text-warn-600 text-2xl">receipt_long</span>
               </div>
               <div>
                 <h3 className="text-lg font-manrope font-bold text-neutral-800">Property Tax</h3>
@@ -1865,7 +1865,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   }
 
   return (
-    <div className="fixed inset-0 z-[70] bg-[#fcf8ff] flex flex-col">
+    <div className="fixed inset-0 z-[70] bg-surface-muted flex flex-col">
       {/* Header */}
       <div className="bg-white border-b border-neutral-200 px-6 py-4 flex items-center justify-between">
         <div>
@@ -3016,9 +3016,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const isUrgent = daysLeft >= 0 && daysLeft <= 30;
   const isSoon = daysLeft > 30 && daysLeft <= 90;
   const badgeColor = isExpired ? "bg-danger-100 text-danger-700 border-danger-200"
-    : isUrgent ? "bg-amber-100 text-amber-700 border-amber-200"
-    : isSoon ? "bg-yellow-50 text-yellow-700 border-yellow-200"
-    : "bg-emerald-50 text-emerald-700 border-emerald-200";
+    : isUrgent ? "bg-warn-100 text-warn-700 border-warn-200"
+    : isSoon ? "bg-caution-50 text-caution-700 border-caution-200"
+    : "bg-positive-50 text-positive-700 border-positive-200";
   const statusLabel = isExpired ? `Expired ${-daysLeft}d ago` : daysLeft === 0 ? "Expires today" : `${daysLeft}d left`;
   const typeLabel = LICENSE_TYPE_LABELS[lic.license_type] || lic.license_type_custom || lic.license_type;
   return (

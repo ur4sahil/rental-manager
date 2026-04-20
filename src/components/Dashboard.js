@@ -210,8 +210,8 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   const LIC_LABELS = { rental_license: "Rental License", rental_registration: "Rental Registration", lead_paint: "Lead Paint Cert", lead_risk_assessment: "Lead Risk Assessment", fire_inspection: "Fire Inspection", bbl: "Business License (BBL)", other: "License" };
   const propById = Object.fromEntries(properties.map(p => [p.id, p.address]));
   return (
-  <div className="bg-white rounded-3xl shadow-card border border-amber-200 p-4">
-  <h3 className="font-semibold text-amber-700 mb-3 flex items-center justify-between">
+  <div className="bg-white rounded-3xl shadow-card border border-warn-200 p-4">
+  <h3 className="font-semibold text-warn-700 mb-3 flex items-center justify-between">
   <span><span className="material-icons-outlined text-sm align-middle mr-1">verified</span>License Expirations</span>
   <button onClick={() => setPage("properties")} className="text-xs text-brand-600 hover:underline font-normal">View all</button>
   </h3>
@@ -220,14 +220,14 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   const expired = daysLeft < 0;
   const typeLabel = LIC_LABELS[lic.license_type] || lic.license_type_custom || "License";
   return (
-  <div key={lic.id} onClick={() => setPage("properties")} className="flex justify-between items-center py-2 border-b border-amber-50 last:border-0 cursor-pointer hover:bg-amber-50/40 -mx-2 px-2 rounded">
+  <div key={lic.id} onClick={() => setPage("properties")} className="flex justify-between items-center py-2 border-b border-warn-50 last:border-0 cursor-pointer hover:bg-warn-50/40 -mx-2 px-2 rounded">
   <div className="min-w-0">
   <div className="text-sm font-medium text-neutral-800 truncate">{typeLabel}{lic.jurisdiction ? <span className="text-xs text-neutral-400 font-normal"> · {lic.jurisdiction}</span> : null}</div>
   <div className="text-xs text-neutral-400 truncate">{propById[lic.property_id] || "Unknown property"}</div>
   </div>
   <div className="text-right shrink-0 ml-2">
   <div className="text-sm font-semibold">{lic.expiry_date}</div>
-  <div className={`text-xs font-bold ${expired ? "text-danger-600" : daysLeft <= 30 ? "text-danger-500" : daysLeft <= 60 ? "text-amber-600" : "text-emerald-600"}`}>{expired ? `Expired ${-daysLeft}d ago` : daysLeft === 0 ? "Expires today" : `${daysLeft}d left`}</div>
+  <div className={`text-xs font-bold ${expired ? "text-danger-600" : daysLeft <= 30 ? "text-danger-500" : daysLeft <= 60 ? "text-warn-600" : "text-positive-600"}`}>{expired ? `Expired ${-daysLeft}d ago` : daysLeft === 0 ? "Expires today" : `${daysLeft}d left`}</div>
   </div>
   </div>
   );
@@ -257,7 +257,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   </div>
   <div className="text-right shrink-0 ml-2">
   <div className="text-sm font-semibold">{tb.due_date}</div>
-  <div className={`text-xs font-bold ${overdue ? "text-danger-600" : daysLeft <= 7 ? "text-danger-500" : daysLeft <= 14 ? "text-warn-600" : "text-amber-600"}`}>{overdue ? `Overdue ${-daysLeft}d` : daysLeft === 0 ? "Due today" : `${daysLeft}d left`}</div>
+  <div className={`text-xs font-bold ${overdue ? "text-danger-600" : daysLeft <= 7 ? "text-danger-500" : daysLeft <= 14 ? "text-warn-600" : "text-warn-600"}`}>{overdue ? `Overdue ${-daysLeft}d` : daysLeft === 0 ? "Due today" : `${daysLeft}d left`}</div>
   </div>
   </div>
   );
