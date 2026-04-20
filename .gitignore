@@ -33,3 +33,4 @@ tests/playwright-report/
 tests/debug-*.png
 .claude/worktrees/
 .claude/settings.*
+.claude/scheduled_tasks.lock
