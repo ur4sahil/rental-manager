@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
-import { Input, Btn } from "../ui";
+import { Input, Btn, Select, Checkbox, FileInput } from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, sanitizeFileName, escapeHtml, escapeFilterValue, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, statusColors, recomputeTenantDocStatus } from "../utils/helpers";
 import { pmError, reportError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
@@ -141,10 +141,10 @@ export function PropertyDropdown({ value, onChange, className = "", required = f
   return (
   <div>
   {label && <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">{label} {required && "*"}</label>}
-  <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel ? sel.id : null); }} className={`border border-brand-100 rounded-xl px-3 py-1.5 text-sm w-full focus:border-brand-300 focus:outline-none transition-colors ${className}`} required={required}>
+  <Select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel ? sel.id : null); }} className={className} required={required}>
   <option value="">Select property...</option>
   {properties.map(p => <option key={p.id} value={p.address}>{p.address} ({p.type})</option>)}
-  </select>
+  </Select>
   </div>
   );
 }
@@ -155,10 +155,10 @@ export function TenantSelect({ value, onChange, className = "", companyId }) {
   supabase.from("tenants").select("id, name, property").eq("company_id", companyId).is("archived_at", null).order("name").then(({ data }) => setTenants(data || []));
   }, [companyId]);
   return (
-  <select value={value || ""} onChange={e => { const sel = tenants.find(t => t.name === e.target.value); onChange(e.target.value, sel); }} className={`border border-brand-100 rounded-xl px-3 py-1.5 text-sm w-full ${className}`}>
+  <Select value={value || ""} onChange={e => { const sel = tenants.find(t => t.name === e.target.value); onChange(e.target.value, sel); }} className={className}>
   <option value="">Select tenant...</option>
   {tenants.map(t => <option key={t.id} value={t.name}>{t.name}{t.property ? " — " + t.property : ""}</option>)}
-  </select>
+  </Select>
   );
 }
 
@@ -168,10 +168,10 @@ export function PropertySelect({ value, onChange, className = "", companyId }) {
   supabase.from("properties").select("id, address, type, tenant, tenant_2, tenant_3, tenant_4, rent, status").eq("company_id", companyId).is("archived_at", null).order("address").then(({ data }) => setProperties(data || []));
   }, [companyId]);
   return (
-  <select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel || null); }} className={`w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm ${className}`}>
+  <Select value={value || ""} onChange={e => { const sel = properties.find(p => p.address === e.target.value); onChange(e.target.value, sel || null); }} className={className}>
   <option value="">Select property...</option>
   {properties.map(p => <option key={p.id} value={p.address}>{p.address}</option>)}
-  </select>
+  </Select>
   );
 }
 
@@ -247,19 +247,19 @@ export function RecurringEntryModal({ entry, companyId, showToast, onComplete })
   </div>
   <div>
   <label className="text-xs font-medium text-neutral-500 block mb-1">Monthly Rent Amount ($)</label>
-  <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full border border-brand-100 rounded-xl px-3 py-2 text-sm" />
+  <Input type="number" value={amount} onChange={e => setAmount(e.target.value)} />
   </div>
   <div className="grid grid-cols-2 gap-3">
   <div>
   <label className="text-xs font-medium text-neutral-500 block mb-1">Frequency</label>
-  <select value={freq} onChange={e => setFreq(e.target.value)} className="w-full border border-brand-100 rounded-xl px-3 py-2 text-sm">
+  <Select value={freq} onChange={e => setFreq(e.target.value)}>
   <option value="monthly">Monthly</option>
   <option value="quarterly">Quarterly</option>
-  </select>
+  </Select>
   </div>
   <div>
   <label className="text-xs font-medium text-neutral-500 block mb-1">Day of Month</label>
-  <input type="number" min="1" max="28" value={dayOfMonth} onChange={e => setDayOfMonth(Math.min(28, Math.max(1, Number(e.target.value))))} title="Day of month (1-28, to ensure valid date in all months)" className="w-full border border-brand-100 rounded-xl px-3 py-2 text-sm" />
+  <Input type="number" min="1" max="28" value={dayOfMonth} onChange={e => setDayOfMonth(Math.min(28, Math.max(1, Number(e.target.value))))} title="Day of month (1-28, to ensure valid date in all months)" />
   </div>
   </div>
   <div className="bg-neutral-50 rounded-xl p-3 text-xs text-neutral-500">
@@ -323,9 +323,9 @@ export function DocUploadModal({ onClose, companyId, property, tenant, showToast
   </div>
   <div>
   <label className="text-xs font-medium text-neutral-400 block mb-1">Type</label>
-  <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm">
+  <Select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
   {["Lease","Notice","ID","Insurance","Inspection","Receipt","Other"].map(t => <option key={t} value={t}>{t}</option>)}
-  </select>
+  </Select>
   </div>
   <div>
   <label className="text-xs font-medium text-neutral-400 block mb-1">File *</label>
@@ -338,7 +338,7 @@ export function DocUploadModal({ onClose, companyId, property, tenant, showToast
   <span className="text-xs text-neutral-500 truncate max-w-[220px]" title={fileName}>{fileName || "No file selected"}</span>
   </div>
   </div>
-  {!isTenantUpload && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} className="accent-brand-600" />Visible to tenant</label>}
+  {!isTenantUpload && <Checkbox label="Visible to tenant" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} className="text-xs" />}
   <Btn className="w-full" onClick={handleUpload} disabled={uploading}>{uploading ? "Uploading..." : "Upload"}</Btn>
   </div>
   </Modal>

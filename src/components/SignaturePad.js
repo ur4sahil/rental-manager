@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { TextLink } from "../ui";
+import { TextLink, Checkbox } from "../ui";
 import { printTheme } from "../utils/theme";
 
 // Reusable signature capture: draw OR type mode + consent checkbox.
@@ -122,10 +122,9 @@ export default function SignaturePad({
         </div>
       )}
 
-      <label className="flex items-start gap-2 mt-4 bg-warn-50 rounded-lg p-3 cursor-pointer">
-        <input type="checkbox" checked={consentAgreed} onChange={e => setConsentAgreed(e.target.checked)} className="mt-0.5 accent-brand-600" />
-        <span className="text-xs text-neutral-600 leading-relaxed">{consentText}</span>
-      </label>
+      <div className="mt-4 bg-warn-50 rounded-lg p-3">
+        <Checkbox checked={consentAgreed} onChange={e => setConsentAgreed(e.target.checked)} label={<span className="text-xs text-neutral-600 leading-relaxed">{consentText}</span>} />
+      </div>
 
       {localError && <div className="mt-3 text-xs text-danger-600 bg-danger-50 border border-danger-200 rounded-lg px-3 py-2">{localError}</div>}
 
