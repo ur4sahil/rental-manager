@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, EmptyState, FileInput, Input, PageHeader, Select, TextLink} from "../ui";
+import { Btn, Checkbox, EmptyState, FileInput, FilterPill, Input, PageHeader, Select, TextLink} from "../ui";
 import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -96,8 +96,8 @@ function ArchivedItems({ tableName, label, fields, companyId, addNotification, o
   </div>
   <div className="text-xs text-warn-600 mt-1">{item.archived_at ? Math.max(0, 180 - Math.floor((Date.now() - new Date(item.archived_at)) / 86400000)) : "?"} days until auto-purge</div>
   </div>
-  <button onClick={() => restore(item)} className="text-xs bg-success-50 text-success-700 px-3 py-1.5 rounded-lg hover:bg-success-100 border border-success-200">♻️ Restore</button>
-  <button onClick={() => permanentDelete(item)} className="text-xs bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg hover:bg-danger-100 border border-danger-200">🗑️ Delete</button>
+  <Btn variant="success" size="sm" onClick={() => restore(item)}>♻️ Restore</Btn>
+  <Btn variant="danger" size="sm" onClick={() => permanentDelete(item)}>🗑️ Delete</Btn>
   </div>
   ))}
   </div>
@@ -544,11 +544,11 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId, showCo
   </div>
 
   <div className="flex gap-2 mb-4 flex-wrap">
-  <button onClick={() => setFilter("all")} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === "all" ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-500"}`}>All ({items.length})</button>
+  <FilterPill active={filter === "all"} onClick={() => setFilter("all")}>All ({items.length})</FilterPill>
   {tables.map(t => {
   const count = items.filter(i => i._table === t).length;
   const label = t.replace("_", " ").replace(/\b\w/g, c => c.toUpperCase());
-  return <button key={t} onClick={() => setFilter(t)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === t ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-500"}`}>{label} ({count})</button>;
+  return <FilterPill key={t} active={filter === t} onClick={() => setFilter(t)}><span className="capitalize">{label} ({count})</span></FilterPill>;
   })}
   </div>
 
@@ -571,8 +571,8 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId, showCo
   <div className="text-xs text-neutral-300 mt-0.5">Archived {new Date(item.archived_at).toLocaleDateString()} {item.archived_by ? "by " + item.archived_by : ""} · <span className={daysUntilPurge(item) < 30 ? "text-danger-400 font-semibold" : "text-neutral-400"}>{daysUntilPurge(item)} days until auto-purge</span></div>
   </div>
   <div className="flex gap-2 shrink-0">
-  <button onClick={() => restoreItem(item)} className="text-xs bg-success-50 text-success-700 px-3 py-1.5 rounded-lg hover:bg-success-100 font-medium">♻️ Restore</button>
-  <button onClick={() => permanentDelete(item)} className="text-xs bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg hover:bg-danger-100 font-medium">🗑️ Delete</button>
+  <Btn variant="success" size="sm" onClick={() => restoreItem(item)}>♻️ Restore</Btn>
+  <Btn variant="danger" size="sm" onClick={() => permanentDelete(item)}>🗑️ Delete</Btn>
   </div>
   </div>
   ))}

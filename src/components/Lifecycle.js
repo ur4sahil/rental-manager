@@ -752,7 +752,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
 
   {/* Generate Legal Notice */}
   <div className="px-6 py-3 border-b border-brand-50 flex gap-2">
-  <button onClick={() => generateEvictionNotice(selectedCase)} className="text-xs bg-warn-50 text-warn-700 border border-warn-200 px-4 py-2 rounded-lg hover:bg-warn-100 font-medium"><span className="material-icons-outlined text-sm align-middle mr-1">print</span>Generate Legal Notice</button>
+  <Btn variant="amber" size="sm" icon="print" onClick={() => generateEvictionNotice(selectedCase)}>Generate Legal Notice</Btn>
   </div>
 
   {/* Advance Stage */}

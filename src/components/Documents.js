@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FileInput, IconBtn, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
+import { Btn, Checkbox, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
 import { formatLocalDate, shortId, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, formatCurrency, getSignedUrl, sanitizeFileName, buildAddress, escapeHtml, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
@@ -164,14 +164,14 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   <Btn onClick={uploadDocument} disabled={uploading}>
   {uploading ? "Uploading..." : "Upload"}
   </Btn>
-  <button onClick={() => setShowForm(false)} className="bg-neutral-100 text-neutral-500 text-sm px-4 py-2 rounded-2xl hover:bg-neutral-100">Cancel</button>
+  <Btn variant="slate" onClick={() => setShowForm(false)}>Cancel</Btn>
   </div>
   </div>
   )}
 
   <div className="flex gap-2 mb-4 flex-wrap">
   {["all", "Lease", "Inspection", "Maintenance", "Financial", "Notice", "Other"].map(t => (
-  <button key={t} onClick={() => setFilter(t)} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${filter === t ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"}`}>{t}</button>
+  <FilterPill key={t} active={filter === t} onClick={() => setFilter(t)}>{t}</FilterPill>
   ))}
   </div>
 
@@ -1468,7 +1468,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     if (idx >= 0) next[idx] = { ...next[idx], required: e.target.checked };
     setTemplateForm(prev => ({ ...prev, signer_roles: next }));
   }} className="accent-brand-600 mr-1" />req</label>
-  <button type="button" onClick={() => setTemplateForm(prev => ({ ...prev, signer_roles: (prev.signer_roles || []).filter(x => x.role !== r.role) }))} className="col-span-1 text-danger-400 hover:text-danger-600 text-sm" title="Remove signer">✕</button>
+  <TextLink type="button" tone="danger" size="sm" underline={false} onClick={() => setTemplateForm(prev => ({ ...prev, signer_roles: (prev.signer_roles || []).filter(x => x.role !== r.role) }))} className="col-span-1" title="Remove signer">✕</TextLink>
   </div>
   );
   })}
@@ -2076,7 +2076,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <span className="font-semibold truncate">{s.signer_name || s.signer_email}</span>
   <span className="text-neutral-400 truncate">· {s.signer_role}</span>
   {s.signed_at && <span className="text-neutral-400 ml-auto shrink-0">{new Date(s.signed_at).toLocaleDateString()}</span>}
-  {!s.signed_at && s.status === "sent" && <button onClick={() => navigator.clipboard?.writeText(window.location.origin + "/sign/" + s.access_token).then(() => showToast("Signing link copied", "success"))} className="ml-auto shrink-0 text-brand-600 hover:underline">copy link</button>}
+  {!s.signed_at && s.status === "sent" && <TextLink tone="brand" size="xs" className="ml-auto shrink-0" onClick={() => navigator.clipboard?.writeText(window.location.origin + "/sign/" + s.access_token).then(() => showToast("Signing link copied", "success"))}>copy link</TextLink>}
   </div>
   );
   })}

@@ -389,8 +389,8 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full border border-brand-100 rounded-2xl pl-7 pr-3 py-2.5 text-lg font-mono" placeholder="0.00" min="0" max="999999.99" step="0.01" />
   </div>
   <div className="flex gap-2 mt-2">
-  <button onClick={() => setPaymentAmount(String(tenantData.rent || 0))} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1 rounded-2xl hover:bg-neutral-100">Full Rent (${safeNum(tenantData.rent)})</button>
-  {safeNum(tenantData.balance) > 0 && <button onClick={() => setPaymentAmount(String(tenantData.balance))} className="text-xs bg-danger-50 text-danger-600 px-3 py-1 rounded-lg hover:bg-danger-100">Full Balance (${safeNum(tenantData.balance)})</button>}
+  <Btn variant="slate" size="xs" onClick={() => setPaymentAmount(String(tenantData.rent || 0))}>Full Rent (${safeNum(tenantData.rent)})</Btn>
+  {safeNum(tenantData.balance) > 0 && <Btn variant="danger" size="xs" onClick={() => setPaymentAmount(String(tenantData.balance))}>Full Balance (${safeNum(tenantData.balance)})</Btn>}
   </div>
   </div>
   <div className="mb-4 p-3 bg-brand-50/30 rounded-lg">
@@ -400,9 +400,9 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   </div>
   <div className="text-xs text-neutral-400">Secure payment processing. Your card information is encrypted and never stored on our servers.</div>
   </div>
-  <button onClick={handleStripePayment} disabled={paymentProcessing} className={"w-full py-3 rounded-xl text-white font-semibold text-sm transition-all " + (paymentProcessing ? "bg-neutral-400 cursor-not-allowed" : "bg-brand-600 hover:bg-brand-700 active:scale-98")}>
+  <Btn variant="primary" size="lg" className="w-full" onClick={handleStripePayment} disabled={paymentProcessing}>
   {paymentProcessing ? "Processing..." : "Pay $" + (paymentAmount || "0")}
-  </button>
+  </Btn>
   <div className="text-xs text-neutral-400 text-center mt-3">A receipt will be available after payment is confirmed.</div>
   </div>
   </div>
