@@ -1,4 +1,5 @@
 import React, { useRef, useState } from "react";
+import { TextLink } from "../ui";
 import { printTheme } from "../utils/theme";
 
 // Reusable signature capture: draw OR type mode + consent checkbox.
@@ -107,7 +108,7 @@ export default function SignaturePad({
             />
             <div className="absolute bottom-1 left-3 text-xs text-neutral-300 pointer-events-none">Sign above this line</div>
           </div>
-          <button type="button" onClick={clearCanvas} className="text-xs text-neutral-500 hover:underline">Clear</button>
+          <TextLink tone="neutral" type="button" onClick={clearCanvas} >Clear</TextLink>
         </div>
       ) : (
         <div>

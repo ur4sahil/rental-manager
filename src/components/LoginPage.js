@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import HCaptcha from "@hcaptcha/react-hcaptcha";
 import { supabase } from "../supabase";
-import { Input, PageHeader, Btn } from "../ui";
+import { Btn, Input, PageHeader, TextLink } from "../ui";
 import { PM_ERRORS, pmError } from "../utils/errors";
 
 // hCaptcha site key. When unset the widget doesn't render and captcha isn't
@@ -237,7 +237,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   ) : (
   <>
   <button onClick={handleForgotPassword} disabled={loading} className="text-xs text-neutral-400 hover:text-brand-600 hover:underline">Forgot password?</button>
-  <button onClick={onBack} className="text-xs text-brand-600 hover:underline block mx-auto">Back to role selection</button>
+  <TextLink className="block mx-auto" onClick={onBack}>Back to role selection</TextLink>
   </>
   )}
   </div>

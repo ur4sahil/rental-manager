@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
-import { AccountPicker, Btn, Checkbox, Input, Select, Textarea } from "../ui";
+import { AccountPicker, Btn, Checkbox, Input, Select, TextLink, Textarea } from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, chartPalette } from "../utils/theme";
@@ -509,7 +509,7 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   <span>DR: <strong className="text-neutral-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.debit, 0))}</strong></span>
   <span>CR: <strong className="text-neutral-800 font-mono">{acctFmt(allLines.reduce((s, l) => s + l.credit, 0))}</strong></span>
   <span>Bal: <strong className={`font-mono ${running >= 0 ? "text-neutral-800" : "text-danger-600"}`}>{acctFmt(running, true)}</strong></span>
-  <button onClick={exportCSV} className="text-xs text-brand-600 hover:underline sm:hidden ml-auto">Export</button>
+  <TextLink className="sm:hidden ml-auto" onClick={exportCSV}>Export</TextLink>
   </div>
   {/* Mobile: Card view */}
   <div className="flex-1 overflow-auto sm:hidden">
