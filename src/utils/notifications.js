@@ -9,10 +9,13 @@ import { pmError } from "./errors";
 export async function queueNotification(type, recipientEmail, data, companyId) {
   if (!recipientEmail || !companyId) return;
   try {
-  // Check if this notification type is enabled and which channels are active
+  // Check if this notification type is enabled and which channels are active.
+  // NOTE: column is `event_type`, not `type` — the previous filter never
+  // matched, so the enabled/channels toggles in the Settings tab were no-ops.
+  // `recipients` is the real column (there is no `recipient_filter`).
   const { data: settings } = await supabase.from("notification_settings")
-  .select("enabled, channels, recipient_filter")
-  .eq("company_id", companyId).eq("type", type).maybeSingle();
+  .select("enabled, channels, recipients")
+  .eq("company_id", companyId).eq("event_type", type).maybeSingle();
 
   // If setting exists and is disabled, skip entirely
   if (settings && !settings.enabled) return;
