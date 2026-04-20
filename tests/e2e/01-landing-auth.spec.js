@@ -8,7 +8,7 @@ test.describe('Landing Page', () => {
   test('renders hero section with all elements', async ({ page }) => {
     await page.goto('/');
     // Logo / brand
-    await expect(page.locator('text=Estate Logic').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=PropManager').first()).toBeVisible({ timeout: 10000 });
     // Hero headline
     await expect(page.locator('text=Property Management').first()).toBeVisible();
     // Sign In button in header
@@ -94,11 +94,13 @@ test.describe('Authentication', () => {
 
   test('logout returns to landing page', async ({ page }) => {
     await login(page);
-    // Find and click logout — could be button text or material icon
-    const logoutBtn = page.locator('button:has-text("Logout"), span:has-text("logout")').first();
-    await logoutBtn.click();
+    // Logout lives inside the avatar dropdown — open it first.
+    const avatar = page.locator('header button:has(.rounded-full)').first();
+    await avatar.click();
+    await page.waitForTimeout(500);
+    await page.locator('button:has-text("Logout")').first().click();
     await page.waitForTimeout(3000);
-    await expect(page.locator('text=Estate Logic').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=PropManager').first()).toBeVisible({ timeout: 10000 });
   });
 
   test('PM signup form shows correct fields', async ({ page }) => {
