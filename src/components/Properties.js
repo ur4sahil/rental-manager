@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader, IconBtn } from "../ui";
+import { Btn, Checkbox, FileInput, IconBtn, Input, PageHeader, Select, Textarea } from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
@@ -1096,7 +1096,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
               {/* Voucher Tenant Toggle */}
               <div className="border-t border-neutral-200 pt-4 mt-2">
                 <label className="flex items-center gap-3 cursor-pointer">
-                  <input type="checkbox" checked={tenantForm.is_voucher || false} onChange={e => setTenantForm({ ...tenantForm, is_voucher: e.target.checked })} className="w-4 h-4 rounded border-neutral-300 text-brand-600 focus:ring-brand-500" />
+                  <Checkbox checked={tenantForm.is_voucher || false} onChange={e => setTenantForm({ ...tenantForm, is_voucher: e.target.checked })} className="w-4 h-4 rounded border-neutral-300 text-brand-600 focus:ring-brand-500" />
                   <div>
                     <span className="text-sm font-medium text-neutral-700">Housing Voucher Tenant</span>
                     <span className="text-xs text-neutral-400 block">Section 8, HCV, VASH, or other housing assistance program</span>
@@ -1319,7 +1319,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   </div>
                   <div className="bg-neutral-50 rounded-xl p-3 space-y-3">
                     <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" checked={loan.escrow_included} onChange={e => setLoan({ ...loan, escrow_included: e.target.checked })} className="accent-positive-600" />
+                      <Checkbox checked={loan.escrow_included} onChange={e => setLoan({ ...loan, escrow_included: e.target.checked })} className="accent-positive-600" />
                       <span className="font-medium text-neutral-700">Escrow included in payment</span>
                     </label>
                     {loan.escrow_included && (
@@ -1330,13 +1330,13 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                         </div>
                         <div className="flex flex-wrap gap-3">
                           <label className="flex items-center gap-1.5 text-xs text-neutral-600">
-                            <input type="checkbox" checked={loan.escrow_covers.taxes} onChange={e => setLoan({ ...loan, escrow_covers: { ...loan.escrow_covers, taxes: e.target.checked } })} className="accent-positive-600" />Taxes
+                            <Checkbox checked={loan.escrow_covers.taxes} onChange={e => setLoan({ ...loan, escrow_covers: { ...loan.escrow_covers, taxes: e.target.checked } })} className="accent-positive-600" />Taxes
                           </label>
                           <label className="flex items-center gap-1.5 text-xs text-neutral-600">
-                            <input type="checkbox" checked={loan.escrow_covers.insurance} onChange={e => setLoan({ ...loan, escrow_covers: { ...loan.escrow_covers, insurance: e.target.checked } })} className="accent-positive-600" />Insurance
+                            <Checkbox checked={loan.escrow_covers.insurance} onChange={e => setLoan({ ...loan, escrow_covers: { ...loan.escrow_covers, insurance: e.target.checked } })} className="accent-positive-600" />Insurance
                           </label>
                           <label className="flex items-center gap-1.5 text-xs text-neutral-600">
-                            <input type="checkbox" checked={loan.escrow_covers.pmi} onChange={e => setLoan({ ...loan, escrow_covers: { ...loan.escrow_covers, pmi: e.target.checked } })} className="accent-positive-600" />PMI
+                            <Checkbox checked={loan.escrow_covers.pmi} onChange={e => setLoan({ ...loan, escrow_covers: { ...loan.escrow_covers, pmi: e.target.checked } })} className="accent-positive-600" />PMI
                           </label>
                         </div>
                       </div>
@@ -1361,7 +1361,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                     <textarea value={loan.notes} onChange={e => setLoan({ ...loan, notes: e.target.value })} rows={2} placeholder="Optional notes..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                   </div>
                   <label className="flex items-center gap-2 text-sm pt-1">
-                    <input type="checkbox" checked={loan.setup_recurring} onChange={e => setLoan({ ...loan, setup_recurring: e.target.checked })} className="accent-positive-600" />
+                    <Checkbox checked={loan.setup_recurring} onChange={e => setLoan({ ...loan, setup_recurring: e.target.checked })} className="accent-positive-600" />
                     <span className="font-medium text-neutral-700">Set up recurring mortgage payment</span>
                   </label>
                   <div className="border-t border-neutral-100 pt-2 mt-2">
@@ -1450,7 +1450,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <span className="material-icons-outlined text-3xl text-neutral-300 mb-2">cloud_upload</span>
                 <p className="text-sm text-neutral-500">Click to upload files</p>
                 <p className="text-xs text-neutral-400 mt-1">PDF, images, Word, Excel, text — up to 25MB each</p>
-                <input ref={fileInputRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv" onChange={handleFileUpload} className="hidden" />
+                <FileInput ref={fileInputRef} multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv" onChange={handleFileUpload} className="hidden" />
               </div>
               {uploadedDocs.length > 0 && (
                 <div className="space-y-2">
@@ -1668,7 +1668,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                     <Input type="text" value={taxes.exemptions} onChange={e => setTaxes({ ...taxes, exemptions: e.target.value })} placeholder="e.g. Homestead, Senior, Disabled Veteran" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                   </div>
                   <label className="flex items-start gap-2 text-sm text-neutral-600">
-                    <input type="checkbox" checked={taxes.escrow_paid_by_lender} onChange={e => setTaxes({ ...taxes, escrow_paid_by_lender: e.target.checked })} className="accent-brand-600 mt-0.5" />
+                    <Checkbox checked={taxes.escrow_paid_by_lender} onChange={e => setTaxes({ ...taxes, escrow_paid_by_lender: e.target.checked })} className="accent-brand-600 mt-0.5" />
                     <span>Paid by lender through escrow<span className="text-xs text-neutral-400 ml-1">(skips auto-generated bill tracking — lender handles due dates)</span></span>
                   </label>
                   <div>
@@ -2740,7 +2740,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="absolute right-0 top-10 bg-white border border-brand-100 rounded-3xl shadow-lg p-3 z-50 w-48 max-w-[calc(100vw-2rem)]">
   {allCols.map(c => (
   <label key={c.id} className="flex items-center gap-2 py-1 text-xs text-neutral-700 cursor-pointer">
-  <input type="checkbox" checked={visibleCols.includes(c.id)} onChange={() => setVisibleCols(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id])} className="rounded" />
+  <Checkbox checked={visibleCols.includes(c.id)} onChange={() => setVisibleCols(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id])} className="rounded" />
   {c.label}
   </label>
   ))}

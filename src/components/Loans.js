@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Select, Btn, PageHeader } from "../ui";
+import { Btn, Checkbox, Input, PageHeader, Select } from "../ui";
 import { safeNum, formatLocalDate, formatCurrency } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -158,7 +158,7 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   </Select></div>
   <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Input placeholder="Optional notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
   <div className="col-span-2">
-  <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={form.escrow_included} onChange={e => setForm({ ...form, escrow_included: e.target.checked })} className="rounded" /><span className="text-sm text-neutral-600">Escrow Included</span></label>
+  <label className="flex items-center gap-2 cursor-pointer"><Checkbox checked={form.escrow_included} onChange={e => setForm({ ...form, escrow_included: e.target.checked })} className="rounded" /><span className="text-sm text-neutral-600">Escrow Included</span></label>
   </div>
   {form.escrow_included && (
   <>

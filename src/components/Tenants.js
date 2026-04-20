@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Select, Btn, PageHeader, IconBtn } from "../ui";
+import { Btn, Checkbox, IconBtn, Input, PageHeader, Select } from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
@@ -1336,7 +1336,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* Voucher Tenant Section */}
   <div className="mt-3 border border-neutral-200 rounded-xl p-3">
   <label className="flex items-center gap-2 cursor-pointer">
-  <input type="checkbox" checked={form.is_voucher || false} onChange={e => setForm({ ...form, is_voucher: e.target.checked })} className="rounded" />
+  <Checkbox checked={form.is_voucher || false} onChange={e => setForm({ ...form, is_voucher: e.target.checked })} className="rounded" />
   <span className="text-sm font-medium text-neutral-700">Voucher / Section 8 Tenant</span>
   </label>
   {form.is_voucher && (
@@ -1453,14 +1453,14 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <table className="w-full text-sm">
   <thead className="bg-brand-50/30 text-xs text-neutral-400 uppercase">
   <tr>
-  <th className="px-3 py-3 text-left w-8"><input type="checkbox" checked={ft.length > 0 && ft.every(t => selectedTenants.has(t.id))} onChange={e => { if (e.target.checked) setSelectedTenants(new Set(ft.map(t => t.id))); else setSelectedTenants(new Set()); }} className="rounded" /></th>
+  <th className="px-3 py-3 text-left w-8"><Checkbox checked={ft.length > 0 && ft.every(t => selectedTenants.has(t.id))} onChange={e => { if (e.target.checked) setSelectedTenants(new Set(ft.map(t => t.id))); else setSelectedTenants(new Set()); }} className="rounded" /></th>
   <th className="px-4 py-3 text-left">Name</th><th className="px-4 py-3 text-left">Property</th><th className="px-4 py-3 text-left">Email</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-right">Rent</th><th className="px-4 py-3 text-right">Balance</th><th className="px-4 py-3 text-right">Actions</th>
   </tr>
   </thead>
   <tbody>
   {ft.map(t => (
   <tr key={t.id} className={`border-t border-brand-50/50 hover:bg-brand-50/50 cursor-pointer ${selectedTenants.has(t.id) ? "bg-brand-50/60" : ""}`}>
-  <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><input type="checkbox" checked={selectedTenants.has(t.id)} onChange={e => { const next = new Set(selectedTenants); if (e.target.checked) next.add(t.id); else next.delete(t.id); setSelectedTenants(next); }} className="rounded" /></td>
+  <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><Checkbox checked={selectedTenants.has(t.id)} onChange={e => { const next = new Set(selectedTenants); if (e.target.checked) next.add(t.id); else next.delete(t.id); setSelectedTenants(next); }} className="rounded" /></td>
   <td className="px-4 py-2.5 font-medium text-brand-600" onClick={() => { setSelectedTenant(t); setActivePanel("detail"); openLedger(t); }}>{t.name}</td>
   <td className="px-4 py-2.5 text-neutral-500">{t.property}</td>
   <td className="px-4 py-2.5 text-neutral-400 text-xs">{t.email}</td>

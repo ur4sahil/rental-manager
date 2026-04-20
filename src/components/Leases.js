@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader } from "../ui";
+import { Btn, Checkbox, Input, PageHeader, Select, Textarea } from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, normalizeEmail, escapeHtml } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
@@ -462,7 +462,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   </div>
   <p className="text-xs text-warn-600 mt-2">Late fees auto-apply to tenant ledger after grace period. Admin can waive from ledger.</p>
   </div>
-  <div className="flex items-center gap-2 mb-4"><input type="checkbox" checked={form.auto_renew} onChange={e => setForm({...form, auto_renew: e.target.checked})} className="rounded" /><label className="text-sm text-neutral-500">Auto-renew at end of term</label></div>
+  <div className="flex items-center gap-2 mb-4"><Checkbox checked={form.auto_renew} onChange={e => setForm({...form, auto_renew: e.target.checked})} className="rounded" /><label className="text-sm text-neutral-500">Auto-renew at end of term</label></div>
   <div className="mb-3"><label className="text-xs text-neutral-400 mb-1 block">Lease Clauses</label><Textarea value={form.clauses} onChange={e => setForm({...form, clauses: e.target.value})} className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm" rows={3} placeholder="Standard clauses..." /></div>
   <div className="mb-4"><label className="text-xs text-neutral-400 mb-1 block">Special Terms</label><Textarea value={form.special_terms} onChange={e => setForm({...form, special_terms: e.target.value})} className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm" rows={2} placeholder="Pet deposit, parking, storage..." /></div>
   <div className="flex gap-2">

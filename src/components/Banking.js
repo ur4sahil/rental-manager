@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
-import { Input, Btn, AccountPicker, Select } from "../ui";
+import { AccountPicker, Btn, Checkbox, FileInput, Input, Radio, Select } from "../ui";
 import { safeNum, formatLocalDate, shortId } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -1575,7 +1575,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   <table className="w-full text-sm">
   <thead className="bg-neutral-50 border-b border-neutral-200">
     <tr>
-      {activeTab === "for_review" && <th className="px-3 py-2.5 w-8"><input type="checkbox" checked={selectedTxns.size === filtered.length && filtered.length > 0} onChange={e => { if (e.target.checked) setSelectedTxns(new Set(filtered.map(t => t.id))); else setSelectedTxns(new Set()); }} className="accent-brand-600" /></th>}
+      {activeTab === "for_review" && <th className="px-3 py-2.5 w-8"><Checkbox checked={selectedTxns.size === filtered.length && filtered.length > 0} onChange={e => { if (e.target.checked) setSelectedTxns(new Set(filtered.map(t => t.id))); else setSelectedTxns(new Set()); }} className="accent-brand-600" /></th>}
       <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">DATE</th>
       <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">DESCRIPTION</th>
       <th className="px-3 py-2.5 text-left text-xs font-semibold text-neutral-500">PAYEE</th>
@@ -1591,7 +1591,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     return (
     <React.Fragment key={txn.id}>
     <tr data-txn-id={txn.id} className={`border-b border-neutral-100 hover:bg-neutral-50 cursor-pointer ${isExpanded ? "bg-brand-50/50" : ""}`} onClick={() => setExpandedTxn(isExpanded ? null : txn.id)}>
-      {activeTab === "for_review" && <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><input type="checkbox" checked={selectedTxns.has(txn.id)} onChange={e => { const s = new Set(selectedTxns); e.target.checked ? s.add(txn.id) : s.delete(txn.id); setSelectedTxns(s); }} className="accent-brand-600" /></td>}
+      {activeTab === "for_review" && <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}><Checkbox checked={selectedTxns.has(txn.id)} onChange={e => { const s = new Set(selectedTxns); e.target.checked ? s.add(txn.id) : s.delete(txn.id); setSelectedTxns(s); }} className="accent-brand-600" /></td>}
       <td className="px-3 py-2.5 text-neutral-600 whitespace-nowrap">{txn.posted_date}</td>
       <td className="px-3 py-2.5 text-neutral-800 max-w-xs truncate">
         {txn.bank_description_clean || txn.bank_description_raw}
@@ -1821,7 +1821,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     {wizStep === 2 && (
     <div className="space-y-4">
       <div onClick={() => fileRef.current?.click()} onDragOver={e => { e.preventDefault(); e.stopPropagation(); }} onDragEnter={e => { e.preventDefault(); e.stopPropagation(); }} onDrop={e => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer?.files?.[0]; if (f && (f.name.endsWith(".csv") || f.name.endsWith(".tsv") || f.name.endsWith(".txt"))) setWizFile(f); else if (f) showToast("Please drop a CSV, TSV, or TXT file.", "error"); }} className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer ${wizFile ? "border-success-300 bg-success-50/50" : "border-neutral-200 hover:border-neutral-400"}`}>
-        <input ref={fileRef} type="file" accept=".csv,.txt,.tsv" className="hidden" onChange={e => { if (e.target.files[0]) setWizFile(e.target.files[0]); }} />
+        <FileInput ref={fileRef} accept=".csv,.txt,.tsv" className="hidden" onChange={e => { if (e.target.files[0]) setWizFile(e.target.files[0]); }} />
         {wizFile ? <><p className="text-2xl">📄</p><p className="font-semibold text-success-800">{wizFile.name}</p><p className="text-xs text-success-600">{(wizFile.size/1024).toFixed(1)} KB</p></> : <><p className="text-2xl">📤</p><p className="font-semibold text-neutral-700">Drop CSV here or click to browse</p></>}
       </div>
       <div className="bg-info-50 border border-info-100 rounded-xl p-3 text-xs text-info-700"><strong>Supported:</strong> Chase, Bank of America, Wells Fargo, Citibank, Capital One, US Bank, and generic CSV</div>
@@ -1839,7 +1839,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         <div key={f}><label className="text-xs font-medium text-neutral-500">{l}</label><Select value={wizMapping[f]} onChange={e=>setWizMapping(m=>({...m,[f]:e.target.value}))} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs mt-1"><option value="">— Not mapped —</option>{wizParsed.headers.map(h=><option key={h} value={h}>{h}</option>)}</Select></div>
         ))}
       </div>
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={wizInvertSign} onChange={e => setWizInvertSign(e.target.checked)} className="accent-brand-600" /> Invert sign (negative = inflow)</label>
+      <label className="flex items-center gap-2 text-sm"><Checkbox checked={wizInvertSign} onChange={e => setWizInvertSign(e.target.checked)} className="accent-brand-600" /> Invert sign (negative = inflow)</label>
       {!(wizMapping.date && wizMapping.description && (wizMapping.amount || wizMapping.debit || wizMapping.credit)) && <p className="text-xs text-warn-600 bg-warn-50 rounded-lg px-3 py-2">Date, Description, and at least one amount column required</p>}
       <div className="flex justify-between"><button onClick={() => setWizStep(2)} className="text-sm text-neutral-400">← Back</button><button onClick={wizBuildPreview} disabled={!(wizMapping.date && wizMapping.description && (wizMapping.amount || wizMapping.debit || wizMapping.credit))} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Preview →</button></div>
     </div>
@@ -1876,15 +1876,15 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     <div className="space-y-4">
       <div className="space-y-3">
         <label className="flex items-center gap-3 bg-white rounded-xl border border-neutral-200 px-4 py-3 cursor-pointer">
-          <input type="checkbox" checked={wizOptions.skipDuplicates} onChange={e => setWizOptions({...wizOptions, skipDuplicates: e.target.checked})} className="accent-brand-600" />
+          <Checkbox checked={wizOptions.skipDuplicates} onChange={e => setWizOptions({...wizOptions, skipDuplicates: e.target.checked})} className="accent-brand-600" />
           <div><span className="text-sm font-medium text-neutral-700">Skip duplicates automatically</span><p className="text-xs text-neutral-400">Transactions with matching fingerprints will be skipped</p></div>
         </label>
         <label className="flex items-center gap-3 bg-white rounded-xl border border-neutral-200 px-4 py-3 cursor-pointer">
-          <input type="checkbox" checked={wizOptions.autoApplyRules} onChange={e => setWizOptions({...wizOptions, autoApplyRules: e.target.checked})} className="accent-brand-600" />
+          <Checkbox checked={wizOptions.autoApplyRules} onChange={e => setWizOptions({...wizOptions, autoApplyRules: e.target.checked})} className="accent-brand-600" />
           <div><span className="text-sm font-medium text-neutral-700">Auto-apply categorization rules</span><p className="text-xs text-neutral-400">Rules will suggest categories for matching transactions</p></div>
         </label>
         <label className="flex items-center gap-3 bg-white rounded-xl border border-neutral-200 px-4 py-3 cursor-pointer">
-          <input type="checkbox" checked={wizOptions.markForReview} onChange={e => setWizOptions({...wizOptions, markForReview: e.target.checked})} className="accent-brand-600" />
+          <Checkbox checked={wizOptions.markForReview} onChange={e => setWizOptions({...wizOptions, markForReview: e.target.checked})} className="accent-brand-600" />
           <div><span className="text-sm font-medium text-neutral-700">Mark all as "For Review"</span><p className="text-xs text-neutral-400">Transactions require manual review before posting</p></div>
         </label>
       </div>
@@ -1990,8 +1990,8 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
 
       {/* Assign vs Exclude */}
       <div className="flex gap-4">
-        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="ruleType" checked={ruleForm.ruleType === "assign"} onChange={() => setRuleForm({...ruleForm, ruleType: "assign"})} className="accent-accent-600" /><span className="font-medium text-neutral-700">Assign</span></label>
-        <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="ruleType" checked={ruleForm.ruleType === "exclude"} onChange={() => setRuleForm({...ruleForm, ruleType: "exclude"})} className="accent-accent-600" /><span className="font-medium text-neutral-700">Exclude</span></label>
+        <label className="flex items-center gap-2 text-sm cursor-pointer"><Radio name="ruleType" checked={ruleForm.ruleType === "assign"} onChange={() => setRuleForm({...ruleForm, ruleType: "assign"})} className="accent-accent-600" /><span className="font-medium text-neutral-700">Assign</span></label>
+        <label className="flex items-center gap-2 text-sm cursor-pointer"><Radio name="ruleType" checked={ruleForm.ruleType === "exclude"} onChange={() => setRuleForm({...ruleForm, ruleType: "exclude"})} className="accent-accent-600" /><span className="font-medium text-neutral-700">Exclude</span></label>
       </div>
 
       {/* Assign Fields */}
@@ -2080,8 +2080,8 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       <div>
         <div className="flex items-center gap-2 mb-2"><div className="flex-1 border-t border-neutral-200" /><span className="text-xs font-semibold text-neutral-400 uppercase">How to apply</span><div className="flex-1 border-t border-neutral-200" /></div>
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="autoAccept" checked={!ruleForm.autoAccept} onChange={() => setRuleForm({...ruleForm, autoAccept: false})} className="accent-accent-600" /><span className="text-neutral-700">Auto-categorize, then I'll review manually</span></label>
-          <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="autoAccept" checked={ruleForm.autoAccept} onChange={() => setRuleForm({...ruleForm, autoAccept: true})} className="accent-accent-600" /><span className="text-neutral-700">Auto-add (skip review entirely)</span></label>
+          <label className="flex items-center gap-2 text-sm cursor-pointer"><Radio name="autoAccept" checked={!ruleForm.autoAccept} onChange={() => setRuleForm({...ruleForm, autoAccept: false})} className="accent-accent-600" /><span className="text-neutral-700">Auto-categorize, then I'll review manually</span></label>
+          <label className="flex items-center gap-2 text-sm cursor-pointer"><Radio name="autoAccept" checked={ruleForm.autoAccept} onChange={() => setRuleForm({...ruleForm, autoAccept: true})} className="accent-accent-600" /><span className="text-neutral-700">Auto-add (skip review entirely)</span></label>
         </div>
       </div>
 
@@ -2127,7 +2127,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
               return (
             <div key={acct.id} className={`rounded-xl p-3 border transition-all ${!isChecked ? "bg-neutral-50 border-neutral-100 opacity-60" : isMapped ? "bg-neutral-50 border-neutral-200" : "bg-warn-50/30 border-warn-300"}`}>
               <div className="flex items-center gap-3 mb-2">
-                <input type="checkbox" checked={isChecked} onChange={() => {
+                <Checkbox checked={isChecked} onChange={() => {
                   setPostConnectSelected(prev => { const next = new Set(prev); if (next.has(acct.id)) next.delete(acct.id); else next.add(acct.id); return next; });
                 }} className="accent-brand-600 w-4 h-4 shrink-0" />
                 <div className="flex-1 min-w-0">

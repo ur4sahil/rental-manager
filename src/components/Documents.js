@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
-import { Input, Select, Btn, PageHeader, IconBtn } from "../ui";
+import { Btn, Checkbox, FileInput, IconBtn, Input, PageHeader, Select } from "../ui";
 import { formatLocalDate, shortId, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, formatCurrency, getSignedUrl, sanitizeFileName, buildAddress, escapeHtml, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
@@ -155,7 +155,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   {["Lease", "Inspection", "Maintenance", "Financial", "Notice", "Other"].map(t => <option key={t}>{t}</option>)}
   </Select></div>
   <label className="flex items-center gap-2 text-sm text-neutral-500 border border-brand-100 rounded-xl px-3 py-1.5 cursor-pointer">
-  <input type="checkbox" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} />
+  <Checkbox checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} />
   Visible to Tenant
   </label>
   <Input type="file" ref={fileRef} className="col-span-2" />
@@ -1280,7 +1280,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <Input value={f.prefill_from || ""} onChange={e => updateField(i, "prefill_from", e.target.value)} placeholder="Prefill from" className="text-xs" />
   <Input value={f.default_value || ""} onChange={e => updateField(i, "default_value", e.target.value)} placeholder="Default value" className="text-xs" />
   <div className="flex items-center gap-2">
-  <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={f.required} onChange={e => updateField(i, "required", e.target.checked)} className="accent-brand-600" />Required</label>
+  <label className="flex items-center gap-1 text-xs"><Checkbox checked={f.required} onChange={e => updateField(i, "required", e.target.checked)} className="accent-brand-600" />Required</label>
   <button onClick={() => insertMergeField(f.name || f.label.toLowerCase().replace(/[^a-z0-9]+/g, "_"))} className="text-xs text-brand-600 hover:underline" title="Insert into body">{"{{}}"}</button>
   <button onClick={() => removeField(i)} className="text-xs text-danger-400 hover:text-danger-600 ml-auto">✕</button>
   </div>
@@ -1462,7 +1462,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     if (idx >= 0) next[idx] = { ...next[idx], label: e.target.value };
     setTemplateForm(prev => ({ ...prev, signer_roles: next }));
   }} placeholder="Display label (e.g. Tenant)" className={templateForm.signing_mode === "sequential" ? "col-span-5" : "col-span-5"} />
-  <label className="col-span-1 flex items-center justify-center text-[10px] text-neutral-500"><input type="checkbox" checked={r.required !== false} onChange={e => {
+  <label className="col-span-1 flex items-center justify-center text-[10px] text-neutral-500"><Checkbox checked={r.required !== false} onChange={e => {
     const next = [...(templateForm.signer_roles || [])];
     const idx = next.findIndex(x => x.role === r.role);
     if (idx >= 0) next[idx] = { ...next[idx], required: e.target.checked };
@@ -1497,7 +1497,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <p className="text-sm text-neutral-400 mb-4">Upload a flat PDF. Blank fields will be auto-detected.</p>
   <label className="inline-flex items-center gap-2 bg-brand-600 text-white text-sm px-5 py-2.5 rounded-2xl hover:bg-brand-700 cursor-pointer font-semibold">
   <span className="material-icons-outlined text-lg">upload_file</span>Choose PDF
-  <input type="file" accept=".pdf" className="hidden" onChange={e => handlePdfUpload(e.target.files[0])} />
+  <FileInput accept=".pdf" className="hidden" onChange={e => handlePdfUpload(e.target.files[0])} />
   </label>
   </div>
   ) : (
@@ -1536,7 +1536,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }} className="text-xs text-warn-600 hover:text-warn-800 ml-auto">Re-detect</button>
   <label className="text-xs text-neutral-500 hover:text-neutral-700 cursor-pointer">
   Replace PDF
-  <input type="file" accept=".pdf" className="hidden" onChange={e => handlePdfUpload(e.target.files[0])} />
+  <FileInput accept=".pdf" className="hidden" onChange={e => handlePdfUpload(e.target.files[0])} />
   </label>
   </div>
 
@@ -1662,7 +1662,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   </Select>
   );
   if (f.type === "checkbox") return (
-  <label className="flex items-center gap-2"><input type="checkbox" checked={!!val} onChange={e => updateVal(f.name, e.target.checked)} className="accent-brand-600" />{f.label}</label>
+  <label className="flex items-center gap-2"><Checkbox checked={!!val} onChange={e => updateVal(f.name, e.target.checked)} className="accent-brand-600" />{f.label}</label>
   );
   if (f.type === "signature" || f.type === "signature_placeholder") {
     const roleLabel = f.signer_role ? " (" + f.signer_role + ")" : "";
@@ -1876,8 +1876,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="bg-white rounded-xl border border-neutral-100 shadow-sm p-4">
   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">Send via Email</h3>
   <div className="space-y-2 mb-3">
-  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.self} onChange={e => setSendTo({...sendTo, self: e.target.checked})} className="accent-brand-600" />Email to myself ({userProfile?.email})</label>
-  {fieldValues.tenant_name && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.tenant} onChange={e => setSendTo({...sendTo, tenant: e.target.checked})} className="accent-brand-600" />Email to tenant ({fieldValues.tenant_name})</label>}
+  <label className="flex items-center gap-2 text-sm"><Checkbox checked={sendTo.self} onChange={e => setSendTo({...sendTo, self: e.target.checked})} className="accent-brand-600" />Email to myself ({userProfile?.email})</label>
+  {fieldValues.tenant_name && <label className="flex items-center gap-2 text-sm"><Checkbox checked={sendTo.tenant} onChange={e => setSendTo({...sendTo, tenant: e.target.checked})} className="accent-brand-600" />Email to tenant ({fieldValues.tenant_name})</label>}
   <div>
   <label className="text-xs font-medium text-neutral-400 block mb-1">Custom recipients (comma-separated)</label>
   <Input value={sendTo.custom} onChange={e => setSendTo({...sendTo, custom: e.target.value})} placeholder="email@example.com" />
@@ -2092,8 +2092,8 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {sendModal && (
   <Modal title={"Send: " + sendModal.name} onClose={() => setSendModal(null)}>
   <div className="space-y-3">
-  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.self} onChange={e => setSendTo({...sendTo, self: e.target.checked})} className="accent-brand-600" />Email to myself</label>
-  {sendModal.tenant_name && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendTo.tenant} onChange={e => setSendTo({...sendTo, tenant: e.target.checked})} className="accent-brand-600" />Email to tenant ({sendModal.tenant_name})</label>}
+  <label className="flex items-center gap-2 text-sm"><Checkbox checked={sendTo.self} onChange={e => setSendTo({...sendTo, self: e.target.checked})} className="accent-brand-600" />Email to myself</label>
+  {sendModal.tenant_name && <label className="flex items-center gap-2 text-sm"><Checkbox checked={sendTo.tenant} onChange={e => setSendTo({...sendTo, tenant: e.target.checked})} className="accent-brand-600" />Email to tenant ({sendModal.tenant_name})</label>}
   <div>
   <label className="text-xs font-medium text-neutral-400 block mb-1">Custom recipients</label>
   <Input value={sendTo.custom} onChange={e => setSendTo({...sendTo, custom: e.target.value})}  placeholder="email@example.com, other@example.com" />

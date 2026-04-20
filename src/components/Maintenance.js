@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader } from "../ui";
+import { Btn, Checkbox, Input, PageHeader, Select, Textarea } from "../ui";
 import { safeNum, formatLocalDate, shortId, formatCurrency, exportToCSV, sanitizeFileName, getSignedUrl, parseLocalDate, formatPhoneInput, normalizeEmail, parseNameParts, formatPersonName, priorityColors, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -359,7 +359,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div key={w.id} className={"bg-white rounded-3xl shadow-card border p-4 " + (selectedWOs.has(w.id) ? "border-brand-300 ring-1 ring-brand-200" : "border-brand-50")}>
   <div className="flex justify-between items-start">
   <div className="flex items-start gap-3">
-  <input type="checkbox" checked={selectedWOs.has(w.id)} onChange={e => { const s = new Set(selectedWOs); e.target.checked ? s.add(w.id) : s.delete(w.id); setSelectedWOs(s); }} className="mt-1.5 accent-brand-600" />
+  <Checkbox checked={selectedWOs.has(w.id)} onChange={e => { const s = new Set(selectedWOs); e.target.checked ? s.add(w.id) : s.delete(w.id); setSelectedWOs(s); }} className="mt-1.5 accent-brand-600" />
   <div>
   <div className="flex items-center gap-2">
   <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${priorityColors[w.priority]}`}>{w.priority}</span>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader } from "../ui";
+import { Btn, FileInput, Input, PageHeader, Select, Textarea } from "../ui";
 import { safeNum, formatLocalDate, shortId, formatCurrency, sanitizeFileName, exportToCSV, getSignedUrl } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -453,7 +453,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <Textarea placeholder="Additional details..." value={maintForm.notes} onChange={e => setMaintForm({...maintForm, notes: e.target.value})} className="mb-3" rows={3} />
   <div className="mb-3">
   <label className="text-xs text-neutral-400 mb-1 block">Attach Photo (optional)</label>
-  <input type="file" accept="image/*" onChange={e => { if (e.target.files[0]) setMaintPhotos(prev => [...prev, e.target.files[0]]); }} className="text-sm" />
+  <FileInput accept="image/*" onChange={e => { if (e.target.files[0]) setMaintPhotos(prev => [...prev, e.target.files[0]]); }} className="text-sm" />
   </div>
   <Btn onClick={submitMaintenanceRequest}>Submit Request</Btn>
   </div>

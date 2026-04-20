@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Select, Btn, PageHeader, EmptyState } from "../ui";
+import { Btn, Checkbox, EmptyState, FileInput, Input, PageHeader, Select } from "../ui";
 import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -347,7 +347,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   const isOn = customPages.includes(nav.id);
   return (
   <label key={nav.id} className="flex items-center gap-2 py-1 px-1 rounded hover:bg-brand-50 cursor-pointer text-xs text-neutral-600">
-  <input type="checkbox" checked={isOn} onChange={() => togglePage(nav.id)} className="accent-brand-600 w-3.5 h-3.5" />
+  <Checkbox checked={isOn} onChange={() => togglePage(nav.id)} className="accent-brand-600 w-3.5 h-3.5" />
   <span className="material-icons-outlined text-sm text-neutral-400">{nav.icon}</span>
   <span className={isOn ? "text-neutral-700 font-medium" : ""}>{nav.label}</span>
   </label>
@@ -849,10 +849,10 @@ function ErrorLogDashboard({ companyId, showToast }) {
   <option value="">All time</option>
   </Select>
   <label className="flex items-center gap-1 text-xs text-neutral-500 cursor-pointer">
-  <input type="checkbox" checked={filter.reported} onChange={e => setFilter(f => ({ ...f, reported: e.target.checked }))} className="rounded" /> User-reported only
+  <Checkbox checked={filter.reported} onChange={e => setFilter(f => ({ ...f, reported: e.target.checked }))} className="rounded" /> User-reported only
   </label>
   <label className="flex items-center gap-1 text-xs text-neutral-500 cursor-pointer">
-  <input type="checkbox" checked={filter.unresolved} onChange={e => setFilter(f => ({ ...f, unresolved: e.target.checked }))} className="rounded" /> Unresolved only
+  <Checkbox checked={filter.unresolved} onChange={e => setFilter(f => ({ ...f, unresolved: e.target.checked }))} className="rounded" /> Unresolved only
   </label>
   </div>
 
@@ -1270,7 +1270,7 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   )}
   <label className="absolute -bottom-1 -right-1 w-7 h-7 bg-brand-600 text-white rounded-full flex items-center justify-center cursor-pointer hover:bg-brand-700 transition-colors">
   <span className="material-icons-outlined text-sm">photo_camera</span>
-  <input type="file" accept="image/*" onChange={uploadAvatar} className="hidden" />
+  <FileInput accept="image/*" onChange={uploadAvatar} className="hidden" />
   </label>
   </div>
   <div>
