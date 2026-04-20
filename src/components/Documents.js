@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FileInput, IconBtn, Input, PageHeader, Select } from "../ui";
+import { Btn, Checkbox, FileInput, IconBtn, Input, PageHeader, Select, Textarea } from "../ui";
 import { formatLocalDate, shortId, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, formatCurrency, getSignedUrl, sanitizeFileName, buildAddress, escapeHtml, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
@@ -1654,7 +1654,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }
 
   const val = fieldValues[f.name] || "";
-  if (f.type === "textarea") return <textarea value={val} onChange={e => updateVal(f.name, e.target.value)} className={base} rows={3} />;
+  if (f.type === "textarea") return <Textarea value={val} onChange={e => updateVal(f.name, e.target.value)} className={base} rows={3} />;
   if (f.type === "select") return (
   <Select value={val} onChange={e => updateVal(f.name, e.target.value)}>
   <option value="">Select...</option>

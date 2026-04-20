@@ -987,7 +987,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
               </div>
               <div>
                 <label className="text-xs font-medium text-neutral-500 block mb-1">Notes</label>
-                <textarea value={propForm.notes} onChange={e => setPropForm({ ...propForm, notes: e.target.value })} rows={2} placeholder="Optional notes about this property..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                <Textarea value={propForm.notes} onChange={e => setPropForm({ ...propForm, notes: e.target.value })} rows={2} placeholder="Optional notes about this property..." />
               </div>
             </div>
           </div>
@@ -1244,7 +1244,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   {["Monthly", "Quarterly", "Annual"].map(f => <option key={f} value={f}>{f}</option>)}
                 </Select></div>
                 <div><label className="text-xs font-medium text-neutral-500 block mb-1">Notes</label>
-                <textarea value={h.notes||""} onChange={e => updateHoa(idx, "notes", e.target.value)} rows={2} placeholder="Optional..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" /></div>
+                <Textarea value={h.notes||""} onChange={e => updateHoa(idx, "notes", e.target.value)} rows={2} placeholder="Optional..." /></div>
                 <div className="border-t border-neutral-100 pt-2 mt-1">
                   <p className="text-xs text-neutral-400 mb-2">Portal Login (encrypted)</p>
                   <div className="grid grid-cols-3 gap-2">
@@ -1358,7 +1358,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   </div>
                   <div>
                     <label className="text-xs font-medium text-neutral-500 block mb-1">Notes</label>
-                    <textarea value={loan.notes} onChange={e => setLoan({ ...loan, notes: e.target.value })} rows={2} placeholder="Optional notes..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                    <Textarea value={loan.notes} onChange={e => setLoan({ ...loan, notes: e.target.value })} rows={2} placeholder="Optional notes..." />
                   </div>
                   <label className="flex items-center gap-2 text-sm pt-1">
                     <Checkbox checked={loan.setup_recurring} onChange={e => setLoan({ ...loan, setup_recurring: e.target.checked })} className="accent-positive-600" />
@@ -1584,7 +1584,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   </div>
                   <div>
                     <label className="text-xs font-medium text-neutral-500 block mb-1">Notes</label>
-                    <textarea value={insurance.notes} onChange={e => setInsurance({ ...insurance, notes: e.target.value })} rows={2} placeholder="Optional notes..." className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                    <Textarea value={insurance.notes} onChange={e => setInsurance({ ...insurance, notes: e.target.value })} rows={2} placeholder="Optional notes..." />
                   </div>
                   <div className="border-t border-neutral-100 pt-2 mt-1">
                     <p className="text-xs text-neutral-400 mb-2">Insurance Portal Login (encrypted)</p>
@@ -1673,7 +1673,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   </label>
                   <div>
                     <label className="text-xs font-medium text-neutral-500 block mb-1">Notes</label>
-                    <textarea value={taxes.notes} onChange={e => setTaxes({ ...taxes, notes: e.target.value })} rows={2} placeholder="Any additional notes…" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                    <Textarea value={taxes.notes} onChange={e => setTaxes({ ...taxes, notes: e.target.value })} rows={2} placeholder="Any additional notes…" />
                   </div>
                 </div>
               )}
