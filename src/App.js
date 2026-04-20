@@ -333,8 +333,13 @@ function AppInner() {
   async function needsPasswordSetup(user) {
     if (!user?.email) return false;
     try {
-      const { data: row } = await supabase.from("app_users").select("password_set_at").ilike("email", user.email).maybeSingle();
-      return !row?.password_set_at;
+      // Users who belong to multiple companies have one app_users row per
+      // company, so maybeSingle() returns { data: null } on a match like
+      // admin@propmanager.com — historically treated as "no row" and
+      // forced every multi-company admin through Set Password on login.
+      // We only care whether ANY row has password_set_at populated.
+      const { data: rows } = await supabase.from("app_users").select("password_set_at").ilike("email", user.email).not("password_set_at", "is", null).limit(1);
+      return !(rows && rows.length > 0);
     } catch (_) {
       // Transient fetch failure — err on the side of NOT interrupting the
       // user's normal flow. The next session will prompt if needed.
