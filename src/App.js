@@ -333,13 +333,22 @@ function AppInner() {
   async function needsPasswordSetup(user) {
     if (!user?.email) return false;
     try {
-      // Users who belong to multiple companies have one app_users row per
-      // company, so maybeSingle() returns { data: null } on a match like
-      // admin@propmanager.com — historically treated as "no row" and
-      // forced every multi-company admin through Set Password on login.
-      // We only care whether ANY row has password_set_at populated.
-      const { data: rows } = await supabase.from("app_users").select("password_set_at").ilike("email", user.email).not("password_set_at", "is", null).limit(1);
-      return !(rows && rows.length > 0);
+      // The prompt exists purely for magic-link invitees: they land with a
+      // session but no password of their own, and we want them to set one.
+      // That state = an `app_users` row exists (created by the invite flow)
+      // AND password_set_at is NULL.
+      //   - No rows at all → user was onboarded through a path that didn't
+      //     touch app_users (e.g., company creator, admin sign-up). They
+      //     signed in using whatever credentials they already had, so
+      //     there's nothing to set up.
+      //   - At least one row with password_set_at populated → done.
+      //   - All rows have password_set_at = null → prompt.
+      const { data: rows } = await supabase.from("app_users")
+        .select("password_set_at")
+        .ilike("email", user.email)
+        .limit(10);
+      if (!rows || rows.length === 0) return false;
+      return !rows.some(r => r.password_set_at);
     } catch (_) {
       // Transient fetch failure — err on the side of NOT interrupting the
       // user's normal flow. The next session will prompt if needed.
