@@ -3308,8 +3308,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {!isReadOnly(p) && isAdmin && p.status === "inactive" && <TextLink tone="positive" size="xs" onClick={() => reactivateProperty(p)}>Reactivate</TextLink>}
   {!isReadOnly(p) && isAdmin && <TextLink tone="danger" size="xs" onClick={() => deleteProperty(p.id, p.address)}>Delete</TextLink>}
   {!isReadOnly(p) && !isAdmin && <TextLink tone="danger" size="xs" onClick={() => requestDeleteProperty(p)}>Request Delete</TextLink>}
-  {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-highlight-600 hover:underline">Assign PM</button>}
-  {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-notice-600 hover:underline">Remove PM</button>}
+  {!p.pm_company_id && !isReadOnly(p) && isAdmin && <TextLink tone="highlight" size="xs" onClick={() => { setShowPmAssign(p); setPmCode(""); }}>Assign PM</TextLink>}
+  {p.pm_company_id && !isReadOnly(p) && isAdmin && <TextLink tone="notice" size="xs" onClick={() => removePM(p)}>Remove PM</TextLink>}
   <TextLink tone="neutral" size="xs" onClick={() => loadTimeline(p)} className="ml-auto">Timeline</TextLink>
   </div>
   </div>
@@ -3350,8 +3350,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {!isReadOnly(p) && <TextLink tone="brand" size="xs" onClick={() => { setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0, isEdit: true }); }} className="mr-2">Edit</TextLink>}
   {!isReadOnly(p) && isAdmin && <TextLink tone="danger" size="xs" onClick={() => deleteProperty(p.id, p.address)} className="mr-2">Delete</TextLink>}
   {!isReadOnly(p) && !isAdmin && <TextLink tone="danger" size="xs" onClick={() => requestDeleteProperty(p)} className="mr-2">Request Delete</TextLink>}
-  {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-highlight-600 hover:underline mr-2">PM</button>}
-  {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-notice-600 hover:underline mr-2">-PM</button>}
+  {!p.pm_company_id && !isReadOnly(p) && isAdmin && <TextLink tone="highlight" size="xs" className="mr-2" onClick={() => { setShowPmAssign(p); setPmCode(""); }}>PM</TextLink>}
+  {p.pm_company_id && !isReadOnly(p) && isAdmin && <TextLink tone="notice" size="xs" className="mr-2" onClick={() => removePM(p)}>-PM</TextLink>}
   <TextLink tone="neutral" size="xs" onClick={() => loadTimeline(p)}>TL</TextLink>
   </td>
   </tr>

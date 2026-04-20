@@ -1222,10 +1222,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="bg-brand-50 border border-brand-200 rounded-2xl px-4 py-3 mb-4 flex items-center justify-between">
   <span className="text-sm font-medium text-brand-800">{selectedTenants.size} tenant{selectedTenants.size > 1 ? "s" : ""} selected</span>
   <div className="flex gap-2">
-  <button onClick={() => setBulkAction("notice")} className="text-xs bg-notice-100 text-notice-700 px-3 py-1.5 rounded-lg hover:bg-notice-200 font-medium">Send Notice</button>
-  <button onClick={() => setBulkAction("charge")} className="text-xs bg-info-100 text-info-700 px-3 py-1.5 rounded-lg hover:bg-info-200 font-medium">Add Charge</button>
-  <button onClick={() => setBulkAction("status")} className="text-xs bg-highlight-100 text-highlight-700 px-3 py-1.5 rounded-lg hover:bg-highlight-200 font-medium">Change Status</button>
-  <button onClick={() => setBulkAction("archive")} className="text-xs bg-danger-100 text-danger-700 px-3 py-1.5 rounded-lg hover:bg-danger-200 font-medium">Delete</button>
+  <Btn variant="notice" size="sm" onClick={() => setBulkAction("notice")}>Send Notice</Btn>
+  <Btn variant="info" size="sm" onClick={() => setBulkAction("charge")}>Add Charge</Btn>
+  <Btn variant="purple" size="sm" onClick={() => setBulkAction("status")}>Change Status</Btn>
+  <Btn variant="danger" size="sm" onClick={() => setBulkAction("archive")}>Delete</Btn>
   <TextLink tone="neutral" size="xs" underline={false} onClick={() => setSelectedTenants(new Set())} className="px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect All</TextLink>
   </div>
   </div>
@@ -1455,9 +1455,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <TextLink tone="brand" size="xs" underline={false} onClick={() => openLedger(t)} className="border border-brand-200 px-2 py-1 rounded-lg hover:bg-brand-50">Ledger</TextLink>
   <TextLink tone="neutral" size="xs" underline={false} onClick={() => openMessages(t)} className="border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Msg</TextLink>
   <TextLink tone="neutral" size="xs" underline={false} onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Lease</TextLink>
-  <button onClick={() => startEdit(t)} className="text-xs text-info-600 hover:underline">Edit</button>
+  <TextLink tone="info" size="xs" onClick={() => startEdit(t)}>Edit</TextLink>
   <TextLink tone="danger" size="xs" onClick={() => deleteTenant(t.id, t.name)}>Delete</TextLink>
-  <button onClick={() => inviteTenant(t)} className="text-xs text-highlight-600 hover:underline">Invite</button>
+  <TextLink tone="highlight" size="xs" onClick={() => inviteTenant(t)}>Invite</TextLink>
   </div>
   );
   return <>
@@ -1540,7 +1540,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <span className={`text-xs font-semibold ${t.balance > 0 ? "text-danger-500" : "text-neutral-400"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</span>
   <Badge status={t.lease_status} />
   <TextLink tone="brand" size="xs" onClick={() => openLedger(t)}>Ledger</TextLink>
-  <button onClick={() => startEdit(t)} className="text-xs text-info-600 hover:underline">Edit</button>
+  <TextLink tone="info" size="xs" onClick={() => startEdit(t)}>Edit</TextLink>
   </div>
   ))}
   </div>

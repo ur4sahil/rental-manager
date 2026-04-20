@@ -22,6 +22,8 @@ const BTN_VARIANTS = {
   "positive-fill": "bg-positive-600 text-white hover:bg-positive-700",
   // Notice = pause/warn-ish. Used for Pause-toggle affordances in Autopay.
   notice:    "text-notice-500 border border-notice-200 hover:bg-notice-50 bg-white",
+  // Info (blue) — "Add Charge", informational/neutral-positive actions.
+  info:      "text-info-700 border border-info-200 hover:bg-info-100 bg-info-50",
   ghost:     "text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100",
   purple:    "text-highlight-600 border border-highlight-200 hover:bg-highlight-50 bg-white",
   amber:     "text-warn-600 border border-warn-200 hover:bg-warn-50 bg-white",
@@ -397,16 +399,22 @@ export function FileInput({ className = "", accept, ...props }) {
 // Underline-on-hover button that mirrors the common `text-xs text-COLOR-600
 // hover:underline` pattern used for inline row actions (Edit / Delete /
 // Report). Not a routed <a> — purely a click handler with link visuals.
-export function TextLink({ tone = "brand", size = "xs", className = "", children, ...props }) {
+export function TextLink({ tone = "brand", size = "xs", underline = true, className = "", children, ...props }) {
   const tones = {
-    brand:   "text-brand-600 hover:text-brand-700",
-    danger:  "text-danger-500 hover:text-danger-700",
-    neutral: "text-neutral-500 hover:text-neutral-700",
-    success: "text-success-600 hover:text-success-700",
+    brand:    "text-brand-600 hover:text-brand-700",
+    danger:   "text-danger-500 hover:text-danger-700",
+    neutral:  "text-neutral-500 hover:text-neutral-700",
+    success:  "text-success-600 hover:text-success-700",
+    positive: "text-positive-600 hover:text-positive-700",
+    warn:     "text-warn-600 hover:text-warn-700",
+    notice:   "text-notice-500 hover:text-notice-700",
+    info:     "text-info-600 hover:text-info-700",
+    highlight:"text-highlight-600 hover:text-highlight-700",
+    subtle:   "text-subtle-500 hover:text-subtle-700",
   };
-  const sizes = { xs: "text-xs", sm: "text-sm" };
+  const sizes = { xs: "text-xs", sm: "text-sm", md: "text-base", lg: "text-lg", xl: "text-xl" };
   return (
-    <button className={`${tones[tone] || tones.brand} ${sizes[size] || sizes.xs} hover:underline ${className}`} {...props}>
+    <button className={`${tones[tone] || tones.brand} ${sizes[size] || sizes.xs}${underline ? " hover:underline" : ""} ${className}`} {...props}>
       {children}
     </button>
   );
