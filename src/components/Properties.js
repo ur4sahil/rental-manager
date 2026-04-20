@@ -2605,10 +2605,10 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const hasManagedProps = properties.some(p => p._ownership === "managed");
   const pendingRequests = changeRequests.filter(r => r.status === "pending");
 
-  if (loading) return <Spinner />;
   // Memoize the filter — at 500+ properties the full-list iteration on every
   // keystroke was blocking the main thread. Recomputes only when inputs
-  // actually change.
+  // actually change. MUST sit before the `if (loading) return` early bail —
+  // React requires every hook to be called on every render or #310 fires.
   const filtered = useMemo(() => properties.filter(p => {
   if (filter !== "all" && p.status !== filter) return false;
   if (filterType !== "all" && p.type !== filterType) return false;
@@ -2623,6 +2623,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (q && !p.address?.toLowerCase().includes(q) && !p.type?.toLowerCase().includes(q) && !p.tenant?.toLowerCase()?.includes(q) && !p.owner_name?.toLowerCase()?.includes(q)) return false;
   return true;
   }), [properties, filter, filterType, filterOwnership, filterOwner, filterCity, debouncedSearch]);
+  if (loading) return <Spinner />;
 
   return (
   <div>

@@ -17,6 +17,13 @@
   --color-surface-muted: #fcf8ff;
   --color-surface-card: #ffffff;
 
+  /* Print / email HTML tokens — used by template strings that render in a
+     new window or email client where Tailwind classes don't apply. Codemods
+     and the printTheme export in utils/theme.js mirror these values. */
+  --color-signature-ink: #1e3a5f;
+  --color-print-ink:     #1a1a1a;
+  --color-print-muted:   #666666;
+
   /* Semantic colors */
   --color-heading: #1e293b;
   --color-body: #334155;
