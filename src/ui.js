@@ -345,10 +345,23 @@ export function AccountPicker({ value, onChange, accounts = [], accountTypes = [
 }
 
 // ---- FILTER PILL ----
-export function FilterPill({ active, onClick, children }) {
+// Accent palette follows the module's visual identity: brand (default),
+// positive (Accounting module's green theme), dark (neutral-800 active).
+export function FilterPill({ active, onClick, tone = "brand", children, className = "" }) {
+  const activeTones = {
+    brand:    "bg-brand-600 text-white",
+    positive: "bg-positive-600 text-white border-positive-600",
+    dark:     "bg-neutral-800 text-white border-neutral-800",
+  };
+  const inactiveTones = {
+    brand:    "bg-neutral-100 text-neutral-600 hover:bg-neutral-200",
+    positive: "bg-white text-neutral-500 border border-neutral-200 hover:border-positive-300",
+    dark:     "bg-white text-neutral-400 border border-brand-100",
+  };
+  const cls = active ? activeTones[tone] || activeTones.brand : inactiveTones[tone] || inactiveTones.brand;
   return (
     <button onClick={onClick}
-      className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${active ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"}`}>
+      className={`px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${cls} ${className}`}>
       {children}
     </button>
   );

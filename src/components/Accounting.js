@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
-import { AccountPicker, Btn, Checkbox, IconBtn, Input, Select, TextLink, Textarea } from "../ui";
+import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea } from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, chartPalette } from "../utils/theme";
@@ -505,7 +505,7 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   </div>
   {/* Filters */}
   <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 px-4 sm:px-6 py-2 sm:py-3 border-b border-brand-50 bg-neutral-50/50 overflow-x-auto">
-  {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border font-medium whitespace-nowrap ${period === p ? "bg-neutral-800 text-white border-neutral-800" : "bg-white text-neutral-400 border-brand-100"}`}>{p}</button>)}
+  {PERIODS.map(p => <FilterPill key={p} tone="dark" active={period === p} onClick={() => setPeriod(p)}>{p}</FilterPill>)}
   {period === "Custom" && <><Input type="date" value={customDates.start} onChange={e => setCustomDates(d => ({...d, start: e.target.value}))} className="text-xs w-auto" /><span className="text-xs text-neutral-400">to</span><Input type="date" value={customDates.end} onChange={e => setCustomDates(d => ({...d, end: e.target.value}))} className="text-xs w-auto" /></>}
   {properties.length > 1 && <Select filter value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)} className="text-xs py-1.5 rounded-xl"><option value="">All Properties</option>{properties.map(p => <option key={p} value={p}>{p.split(",")[0]}</option>)}</Select>}
   </div>
@@ -673,7 +673,7 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   </div>
   <div className="flex flex-wrap gap-2 mb-4">
   {["All", ...typeOrder.filter((t, i, a) => a.indexOf(t) === i)].map(t => (
-  <button key={t} onClick={() => setFilter(t)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${filter === t ? "bg-positive-600 text-white border-positive-600" : "bg-white text-neutral-500 border-neutral-200 hover:border-positive-300"}`}>{t}</button>
+  <FilterPill key={t} tone="positive" active={filter === t} onClick={() => setFilter(t)}>{t}</FilterPill>
   ))}
   </div>
   {typeOrder.filter((t, i, a) => a.indexOf(t) === i).map(type => {
@@ -899,7 +899,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   </div>
   <div className="flex gap-2 mb-4">
   {[{k:"all",l:`All (${counts.all})`},{k:"posted",l:`Posted (${counts.posted})`},{k:"draft",l:`Drafts (${counts.draft})`},{k:"voided",l:`Voided (${counts.voided})`}].map(f => (
-  <button key={f.k} onClick={() => setFilterStatus(f.k)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${filterStatus === f.k ? "bg-positive-600 text-white border-positive-600" : "bg-white text-neutral-500 border-neutral-200 hover:border-positive-300"}`}>{f.l}</button>
+  <FilterPill key={f.k} tone="positive" active={filterStatus === f.k} onClick={() => setFilterStatus(f.k)}>{f.l}</FilterPill>
   ))}
   <Select filter value={searchProperty} onChange={e => setSearchProperty(e.target.value)} className="text-xs py-1.5 rounded-xl ml-auto">
   <option value="">All Properties</option>
@@ -1020,7 +1020,7 @@ export function AcctClassTracking({ accounts, journalEntries, classes, onAdd, on
   <Btn variant="success-fill" size="sm" onClick={openAdd}>+ New Class</Btn>
   </div>
   <div className="flex flex-wrap gap-2 mb-4">
-  {PERIODS.map(p => <button key={p} onClick={() => setPeriod(p)} className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${period === p ? "bg-positive-600 text-white border-positive-600" : "bg-white text-neutral-500 border-neutral-200 hover:border-positive-300"}`}>{p}</button>)}
+  {PERIODS.map(p => <FilterPill key={p} tone="positive" active={period === p} onClick={() => setPeriod(p)}>{p}</FilterPill>)}
   </div>
   <div className="grid grid-cols-3 gap-3 mb-4">
   <div className="bg-success-50 border border-success-100 rounded-xl p-4"><p className="text-xs text-success-600 font-medium">Revenue</p><p className="text-xl font-bold text-success-800 font-mono mt-1">{acctFmt(totalRev)}</p></div>
@@ -2342,7 +2342,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {reportId === "gl" && glAccount && (<div>
       <div className="text-center mb-4"><p className="text-xs text-neutral-400 uppercase tracking-widest">General Ledger</p><h4 className="text-base font-bold text-neutral-900 mt-1">{glAccount.name}</h4><p className="text-sm text-neutral-400">#{glAccount.code} · {glAccount.type}</p><p className="text-sm text-neutral-400">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {glLines.length > 0 && <div className="flex justify-end mb-3"><div className="text-right"><p className="text-xs text-neutral-400">Ending Balance</p><p className="font-mono font-bold">{acctFmt(glLines[glLines.length-1].balance, true)}</p></div></div>}
-      <div className="flex justify-end mb-2 relative"><button onClick={() => setShowColPicker(!showColPicker)} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">view_column</span>Columns</button>{showColPicker && <div className="absolute right-0 top-8 bg-white border border-neutral-200 rounded-xl shadow-lg p-3 z-20 w-48">{[["date","Date"],["entry","Entry #"],["description","Description"],["memo","Memo"],["debit","Debit"],["credit","Credit"],["balance","Balance"]].map(([id,label]) => <label key={id} className="flex items-center gap-2 py-1 cursor-pointer text-sm text-neutral-700"><Checkbox checked={glColumns[id]} onChange={() => toggleGlCol(id)} className="accent-brand-600" />{label}</label>)}</div>}</div>
+      <div className="flex justify-end mb-2 relative"><Btn variant="slate" size="sm" icon="view_column" onClick={() => setShowColPicker(!showColPicker)}>Columns</Btn>{showColPicker && <div className="absolute right-0 top-8 bg-white border border-neutral-200 rounded-xl shadow-lg p-3 z-20 w-48">{[["date","Date"],["entry","Entry #"],["description","Description"],["memo","Memo"],["debit","Debit"],["credit","Credit"],["balance","Balance"]].map(([id,label]) => <label key={id} className="flex items-center gap-2 py-1 cursor-pointer text-sm text-neutral-700"><Checkbox checked={glColumns[id]} onChange={() => toggleGlCol(id)} className="accent-brand-600" />{label}</label>)}</div>}</div>
       <table className="w-full text-sm border border-neutral-200 rounded-xl overflow-hidden"><thead className="bg-neutral-50"><tr>{glColumns.date && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Date</th>}{glColumns.entry && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Entry #</th>}{glColumns.description && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Description</th>}{glColumns.memo && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Memo</th>}{glColumns.debit && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Debit</th>}{glColumns.credit && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Credit</th>}{glColumns.balance && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Balance</th>}</tr></thead>
       <tbody>{glLines.length === 0 ? <tr><td colSpan={7} className="px-4 py-8 text-center text-neutral-400">No transactions</td></tr> : glLines.map((l,i) => <tr key={l.jeId+"-"+i} className="border-t border-neutral-100 hover:bg-positive-50/40">{glColumns.date && <td className="px-4 py-2 text-xs text-neutral-400">{acctFmtDate(l.date)}</td>}{glColumns.entry && <td className="px-4 py-2 font-mono text-xs text-brand-600">{l.jeNumber||"—"}</td>}{glColumns.description && <td className="px-4 py-2 text-neutral-700">{l.description}</td>}{glColumns.memo && <td className="px-4 py-2 text-xs text-neutral-400">{l.memo||"—"}</td>}{glColumns.debit && <td className="px-4 py-2 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>}{glColumns.credit && <td className="px-4 py-2 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>}{glColumns.balance && <td className={`px-4 py-2 text-right font-mono font-semibold ${l.balance < 0 ? "text-danger-600" : ""}`}>{acctFmt(l.balance, true)}</td>}</tr>)}</tbody></table>
     </div>)}
