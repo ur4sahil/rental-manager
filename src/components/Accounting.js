@@ -667,7 +667,7 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   <p className="text-sm text-neutral-400">Manage your account structure</p>
   </div>
   <div className="flex gap-2">
-  <button onClick={() => setShowInactive(!showInactive)} className={`text-xs px-3 py-1.5 rounded-lg border ${showInactive ? "bg-brand-50 border-brand-200" : "border-brand-100 text-neutral-400"}`}>{showInactive ? "Hide Inactive" : "Show Inactive"}</button>
+  <Btn variant={showInactive ? "secondary" : "slate"} size="sm" onClick={() => setShowInactive(!showInactive)}>{showInactive ? "Hide Inactive" : "Show Inactive"}</Btn>
   <Btn variant="success-fill" size="sm" onClick={openAdd}>+ New Account</Btn>
   </div>
   </div>
