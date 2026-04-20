@@ -1653,7 +1653,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       <div><label className="text-xs text-neutral-500 block mb-1">Code</label><Input value={newBankAcctForm.code} onChange={e => setNewBankAcctForm({...newBankAcctForm, code: e.target.value})} placeholder="Auto" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
       <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><Input value={newBankAcctForm.name} onChange={e => setNewBankAcctForm({...newBankAcctForm, name: e.target.value})} placeholder="e.g. Office Supplies" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
       </div>
-      <div className="flex gap-2 mt-2"><button onClick={createInlineBankAcct} className="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg">Create</button><button onClick={() => setShowNewBankAcct(false)} className="text-xs text-neutral-500 px-3 py-1.5">Cancel</button></div>
+      <div className="flex gap-2 mt-2"><Btn size="sm" onClick={createInlineBankAcct}>Create</Btn><Btn size="sm" variant="ghost" onClick={() => setShowNewBankAcct(false)}>Cancel</Btn></div>
       </div>
       )}
 
@@ -2049,7 +2049,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         <div><label className="text-xs text-neutral-500 block mb-1">Code</label><Input value={newBankAcctForm.code} onChange={e => setNewBankAcctForm({...newBankAcctForm, code: e.target.value})} placeholder="Auto" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
         <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><Input value={newBankAcctForm.name} onChange={e => setNewBankAcctForm({...newBankAcctForm, name: e.target.value})} placeholder="e.g. Office Supplies" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
         </div>
-        <div className="flex gap-2 mt-2"><button onClick={createInlineBankAcct} className="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg">Create</button><button onClick={() => setShowNewBankAcct(false)} className="text-xs text-neutral-500 px-3 py-1.5">Cancel</button></div>
+        <div className="flex gap-2 mt-2"><Btn size="sm" onClick={createInlineBankAcct}>Create</Btn><Btn size="sm" variant="ghost" onClick={() => setShowNewBankAcct(false)}>Cancel</Btn></div>
         </div>
         )}
 
@@ -2160,7 +2160,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
                     <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><Input value={newBankAcctForm.name} onChange={e => setNewBankAcctForm(f => ({...f, name: e.target.value}))} placeholder="e.g. Business Checking" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
                   </div>
                   <div className="flex gap-2 mt-2">
-                    <button onClick={async () => {
+                    <Btn size="sm" onClick={async () => {
                       if (!newBankAcctForm.name.trim()) { showToast("Account name is required.", "error"); return; }
                       const code = newBankAcctForm.code.trim() || nextAccountCode(accounts, newBankAcctForm.type);
                       const { data: newAcct, error } = await supabase.from("acct_accounts").insert({ company_id: companyId, code, name: newBankAcctForm.name.trim(), type: newBankAcctForm.type, subtype: newBankAcctForm.type === "Asset" ? "Bank" : newBankAcctForm.type === "Liability" ? "Credit Card" : "", is_active: true, old_text_id: companyId + "-" + code }).select("id").single();
@@ -2169,8 +2169,8 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
                       await fetchAll();
                       setPostConnectMappings(prev => ({ ...prev, [acct.id]: newAcct.id }));
                       setPostConnectNewAcct(null);
-                    }} className="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg">Create</button>
-                    <button onClick={() => setPostConnectNewAcct(null)} className="text-xs text-neutral-500 px-3 py-1.5">Cancel</button>
+                    }}>Create</Btn>
+                    <Btn size="sm" variant="ghost" onClick={() => setPostConnectNewAcct(null)}>Cancel</Btn>
                   </div>
                 </div>
                 )}
