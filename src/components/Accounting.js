@@ -1567,8 +1567,8 @@ export function AcctReports({ accounts, journalEntries, classes, companyName, co
 .py-1{padding-top:4px;padding-bottom:4px}.py-1\\.5{padding-top:6px;padding-bottom:6px}.py-2{padding-top:8px;padding-bottom:8px}.py-3{padding-top:12px;padding-bottom:12px}
 .mt-1{margin-top:4px}.mt-2{margin-top:8px}.mt-3{margin-top:12px}.mt-4{margin-top:16px}.mb-1{margin-bottom:4px}.mb-2{margin-bottom:8px}.mb-4{margin-bottom:16px}.mb-6{margin-bottom:24px}
 .rounded{border-radius:4px}
-.text-neutral-400{color:${printTheme.inkSubtle}}.text-neutral-500{color:${printTheme.inkMuted}}.text-neutral-700{color:#334155}.text-neutral-800{color:${printTheme.inkStrong}}.text-neutral-900{color:#0f172a}
-.text-success-700{color:#15803d}.text-danger-600{color:${printTheme.danger}}
+.text-neutral-400{color:${printTheme.inkSubtle}}.text-neutral-500{color:${printTheme.inkMuted}}.text-neutral-700{color:${printTheme.inkStrong}}.text-neutral-800{color:${printTheme.inkStrong}}.text-neutral-900{color:${printTheme.ink}}
+.text-success-700{color:${printTheme.success}}.text-danger-600{color:${printTheme.danger}}
 table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1px solid ${printTheme.borderLight}}th{background:${printTheme.surfaceAlt};font-size:11px;text-transform:uppercase;color:${printTheme.inkMuted};font-weight:600}
 .whitespace-nowrap{white-space:nowrap}.min-w-48{min-width:12rem}
 .px-3{padding-left:12px;padding-right:12px}.px-4{padding-left:16px;padding-right:16px}.px-5{padding-left:20px;padding-right:20px}
