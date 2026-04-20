@@ -80,7 +80,9 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   ? supabase.from("payments").select("*").eq("company_id", companyId).eq("tenant_id", tid).is("archived_at", null).order("date", { ascending: false })
   : supabase.from("payments").select("*").eq("company_id", companyId).eq("tenant", tname).eq("property", tprop).is("archived_at", null).order("date", { ascending: false }),
   supabase.from("work_orders").select("*").eq("company_id", companyId).eq("tenant", tname).eq("property", tprop).is("archived_at", null).order("created", { ascending: false }),
-  supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tname).eq("property", tprop).order("created_at", { ascending: true }),
+  tid
+  ? supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant_id", tid).order("created_at", { ascending: true })
+  : supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tname).eq("property", tprop).order("created_at", { ascending: true }),
   ]);
   setLedger(l.data || []);
   setPayments(p.data || []);
@@ -186,10 +188,30 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   // ---- MESSAGING ----
   async function sendMessage() {
   if (!newMessage.trim() || !tenantData) return;
-  const { error: _err7538 } = await supabase.from("messages").insert([{ company_id: companyId, tenant: tenantData.name, property: tenantData.property, sender: tenantData.name, message: newMessage, read: false }]);
-  if (_err7538) pmError("PM-8006", { raw: _err7538, context: "messages write", silent: true });
+  // Persist tenant_id on the row so the initial load query (which filters
+  // by tenant_id) can read it back. Without this the message inserts with
+  // tenant_id=NULL, and on next refresh the useEffect's tenant_id-scoped
+  // fetch misses the row — the message appears to "vanish."
+  const { error: insErr } = await supabase.from("messages").insert([{
+    company_id: companyId,
+    tenant_id: tenantData.id,
+    tenant: tenantData.name,
+    property: tenantData.property,
+    sender: tenantData.name,
+    message: newMessage,
+    read: false,
+  }]);
+  if (insErr) {
+    pmError("PM-8006", { raw: insErr, context: "messages write" });
+    return; // keep the text in the box so user can retry
+  }
   setNewMessage("");
-  const { data } = await supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tenantData.name).order("created_at", { ascending: true });
+  // Re-fetch with the SAME predicate as the initial load so the view stays
+  // consistent across refreshes.
+  const { data } = await supabase.from("messages").select("*")
+    .eq("company_id", companyId)
+    .eq("tenant_id", tenantData.id)
+    .order("created_at", { ascending: true });
   setMessages(data || []);
   }
 
@@ -240,7 +262,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   </div>
   <div className="bg-white/10 backdrop-blur rounded-lg p-3 text-center">
   <div className="text-xs text-brand-200">Lease End</div>
-  <div className="text-sm font-bold mt-1">{tenantData.move_out || "—"}</div>
+  <div className="text-sm font-bold mt-1">{tenantData.lease_end_date || tenantData.move_out || "—"}</div>
   </div>
   </div>
   </div>
@@ -257,7 +279,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <div className="space-y-4">
   <div className="bg-white rounded-3xl border border-brand-50 p-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Lease Details</h3>
-  {[["Status", (tenantData.lease_status || "active")], ["Property", tenantData.property], ["Move-in", tenantData.move_in || "—"], ["Lease End", tenantData.move_out || "—"], ["Monthly Rent", "$" + safeNum(tenantData.rent).toLocaleString()], ["Email", tenantData.email || "—"], ["Phone", tenantData.phone || "—"]].map(([l, v]) => (
+  {[["Status", (tenantData.lease_status || "active")], ["Property", tenantData.property], ["Move-in", tenantData.lease_start || tenantData.move_in || "—"], ["Lease End", tenantData.lease_end_date || tenantData.move_out || "—"], ["Monthly Rent", "$" + safeNum(tenantData.rent).toLocaleString()], ["Email", tenantData.email || "—"], ["Phone", tenantData.phone || "—"]].map(([l, v]) => (
   <div key={l} className="flex justify-between py-2 border-b border-brand-50/50 text-sm last:border-0"><span className="text-neutral-400">{l}</span><span className="font-medium text-neutral-800 capitalize">{v}</span></div>
   ))}
   </div>
@@ -377,7 +399,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   {!autopayEnabled && (
   <div className="bg-brand-50/30 rounded-2xl p-4 text-center">
   <span className="material-icons-outlined text-neutral-300 text-3xl mb-2">autorenew</span>
-  <p className="text-sm text-neutral-400">Enable autopay to schedule your rent payment on the 1st of each month. Requires the autopay processing worker to be deployed.</p>
+  <p className="text-sm text-neutral-400">Enable autopay to schedule your rent payment on the 1st of each month via Stripe.</p>
   </div>
   )}
   </div>

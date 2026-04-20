@@ -186,8 +186,13 @@ function SetPasswordScreen({ currentUser, onComplete, showToast }) {
     if (pw !== pw2) { showToast("Passwords do not match.", "error"); return; }
     setSaving(true);
     const { error } = await supabase.auth.updateUser({ password: pw });
+    if (error) { setSaving(false); showToast("Error: " + error.message, "error"); return; }
+    // Persist that this user has set a password so the auth router doesn't
+    // re-prompt on next login. app_users is keyed by email (case-insensitive).
+    try {
+      await supabase.from("app_users").update({ password_set_at: new Date().toISOString() }).ilike("email", currentUser?.email || "");
+    } catch (_) { /* non-fatal — worst case the user gets prompted once more */ }
     setSaving(false);
-    if (error) { showToast("Error: " + error.message, "error"); return; }
     showToast("Password set! You can now log in with email and password.", "success");
     onComplete();
   }
@@ -298,28 +303,45 @@ function AppInner() {
   const [urlCompanyParam] = useState(() => new URLSearchParams(window.location.search).get("company"));
 
   useEffect(() => {
-  let initialCheckDone = false;
+  // Returns true when the user authenticated via a passwordless method
+  // (magic link / OTP) and hasn't set a real password yet. Any amr entry
+  // whose method is in the passwordless set qualifies, unless there's
+  // ALSO a "password" method on the record — meaning they already set one.
+  // We also check app_users.password_set_at as a persistence cache so
+  // returning magic-link users aren't prompted after they've set it.
+  function needsPasswordSetup(user) {
+    if (!user?.amr) return false;
+    const hasPassword = user.amr.some(a => a.method === "password");
+    if (hasPassword) return false;
+    const passwordlessMethods = ["otp", "magiclink", "sms_otp", "email_otp"];
+    return user.amr.some(a => passwordlessMethods.includes(a.method));
+  }
+  async function routeSignedIn(user) {
+    setCurrentUser(user);
+    if (needsPasswordSetup(user)) {
+      // Double-check against app_users: if this user already flipped
+      // password_set_at in a prior session, skip the prompt.
+      try {
+        const { data: row } = await supabase.from("app_users").select("password_set_at").ilike("email", user.email || "").maybeSingle();
+        if (!row?.password_set_at) { setScreen("set_password"); return; }
+      } catch (_) { setScreen("set_password"); return; }
+    }
+    setScreen("company_select");
+    autoSelectCompany(user);
+  }
   supabase.auth.getSession().then(({ data: { session } }) => {
-  initialCheckDone = true;
-  if (session) { setCurrentUser(session.user); setScreen("company_select"); autoSelectCompany(session.user); }
+  if (session) { routeSignedIn(session.user); }
   else { setScreen("landing"); }
   });
   const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_event, session) => {
   if (session) {
-  setCurrentUser(session.user);
-  // On initial load, getSession already handles it — skip duplicate
-  // On new login (initialCheckDone=true), always proceed
-  if (!initialCheckDone) return;
-  // Detect magic link (OTP) login — prompt password setup
-  const isOtp = session.user?.amr?.some(a => a.method === "otp");
-  if (isOtp && _event === "SIGNED_IN") {
-  setScreen("set_password");
-  return;
-  }
-  setActiveCompany(prev => {
-  if (!prev) { setScreen("company_select"); autoSelectCompany(session.user); }
-  return prev;
-  });
+    // Only route on fresh sign-in events; TOKEN_REFRESHED / USER_UPDATED
+    // shouldn't reset the screen the user is currently on.
+    if (_event === "SIGNED_IN" || _event === "INITIAL_SESSION") {
+      routeSignedIn(session.user);
+    } else {
+      setCurrentUser(session.user);
+    }
   } else {
   setCurrentUser(null);
   setUserRole(null);
@@ -736,7 +758,10 @@ function AppInner() {
   <div className="flex-1 flex flex-col min-w-0">
   <header className="bg-white/80 backdrop-blur-md border-b border-brand-50 px-4 py-3 flex items-center gap-3">
   <button className="md:hidden text-neutral-400 hover:text-neutral-600 transition-colors" onClick={() => setSidebarOpen(!sidebarOpen)}><span className="material-icons-outlined">menu</span></button>
-  <div className="flex-1 text-sm text-neutral-400 capitalize font-medium">{page.replace("_", " ")}</div>
+  {/* Use effectivePage so tenants/owners see "Tenant Portal" / "Owner Portal"
+      on the top bar instead of the raw page state (e.g. "company_select")
+      that the role-based router overrides. */}
+  <div className="flex-1 text-sm text-neutral-400 capitalize font-medium">{(effectivePage || page).replace(/_/g, " ")}</div>
   <div className="relative">
   <button onClick={() => setShowUserMenu(!showUserMenu)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-2xl hover:bg-brand-50 transition-colors ${showUserMenu ? "bg-brand-50" : ""}`}>
   <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${ROLES[userRole]?.color || "bg-brand-600"}`}>{userProfile?.name?.[0]?.toUpperCase() || "U"}</div>
@@ -744,8 +769,11 @@ function AppInner() {
   <span className="material-icons-outlined text-sm text-neutral-400">expand_more</span>
   </button>
   {showUserMenu && <>
-  <div className="fixed inset-0 z-30" onClick={() => setShowUserMenu(false)} />
-  <div className="absolute right-0 top-full mt-1 bg-white border border-neutral-200 rounded-xl shadow-lg py-1 w-48 z-40">
+  {/* Header dropdown must sit above page-level gradients + backdrop-blur
+      cards that establish their own stacking context (e.g. the tenant
+      portal's purple banner was partially eclipsing the menu at z-40). */}
+  <div className="fixed inset-0 z-[90]" onClick={() => setShowUserMenu(false)} />
+  <div className="absolute right-0 top-full mt-1 bg-white border border-neutral-200 rounded-xl shadow-lg py-1 w-48 z-[95]">
     <button onClick={() => { setShowUserMenu(false); setShowUserProfile(true); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">person</span>Profile</button>
     <button onClick={() => { setShowUserMenu(false); switchCompany(); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">swap_horiz</span>Switch Company</button>
     <button onClick={() => { setShowUserMenu(false); setPage("admin"); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">settings</span>Settings</button>
