@@ -516,8 +516,8 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   {Object.entries(checklist).map(([item, val]) => (
   <div key={item} className="flex items-center gap-3 bg-brand-50/30 rounded-lg px-3 py-2">
   <span className="text-sm text-neutral-700 flex-1">{item}</span>
-  <button onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: true } })} className={`text-xs px-2 py-1 rounded ${val.pass === true ? "bg-positive-500 text-white" : "bg-neutral-200 text-neutral-500"}`}>Pass</button>
-  <button onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: false } })} className={`text-xs px-2 py-1 rounded ${val.pass === false ? "bg-danger-500 text-white" : "bg-neutral-200 text-neutral-500"}`}>Fail</button>
+  <FilterPill tone="positive-fill" active={val.pass === true} onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: true } })}>Pass</FilterPill>
+  <FilterPill tone="danger-fill" active={val.pass === false} onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: false } })}>Fail</FilterPill>
   <Input placeholder="Note" value={val.notes} onChange={e => setChecklist({ ...checklist, [item]: { ...val, notes: e.target.value } })} className="border border-brand-100 rounded px-2 py-1 text-xs w-32" />
   </div>
   ))}

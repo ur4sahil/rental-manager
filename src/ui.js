@@ -352,11 +352,17 @@ export function FilterPill({ active, onClick, tone = "brand", children, classNam
     brand:    "bg-brand-600 text-white",
     positive: "bg-positive-600 text-white border-positive-600",
     dark:     "bg-neutral-800 text-white border-neutral-800",
+    notice:   "bg-notice-500 text-white",
+    "positive-fill": "bg-positive-500 text-white",
+    "danger-fill":   "bg-danger-500 text-white",
   };
   const inactiveTones = {
     brand:    "bg-neutral-100 text-neutral-600 hover:bg-neutral-200",
     positive: "bg-white text-neutral-500 border border-neutral-200 hover:border-positive-300",
     dark:     "bg-white text-neutral-400 border border-brand-100",
+    notice:   "bg-white text-notice-700 border border-notice-200",
+    "positive-fill": "bg-neutral-200 text-neutral-500 hover:bg-neutral-300",
+    "danger-fill":   "bg-neutral-200 text-neutral-500 hover:bg-neutral-300",
   };
   const cls = active ? activeTones[tone] || activeTones.brand : inactiveTones[tone] || inactiveTones.brand;
   return (

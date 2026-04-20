@@ -879,8 +879,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="bg-notice-50 rounded-3xl p-4 mb-3 border border-notice-100">
   <div className="text-sm font-semibold text-notice-700 mb-2">Select Notice Period</div>
   <div className="flex gap-2 mb-2">
-  <button onClick={() => setLeaseInput("30")} className={`flex-1 py-2 rounded-lg text-sm font-medium ${leaseInput === "30" ? "bg-notice-500 text-white" : "bg-white border border-notice-200 text-notice-700"}`}>30 Days</button>
-  <button onClick={() => setLeaseInput("60")} className={`flex-1 py-2 rounded-lg text-sm font-medium ${leaseInput === "60" ? "bg-notice-500 text-white" : "bg-white border border-notice-200 text-notice-700"}`}>60 Days</button>
+  <FilterPill tone="notice" active={leaseInput === "30"} onClick={() => setLeaseInput("30")} className="flex-1 py-2 text-sm">30 Days</FilterPill>
+  <FilterPill tone="notice" active={leaseInput === "60"} onClick={() => setLeaseInput("60")} className="flex-1 py-2 text-sm">60 Days</FilterPill>
   </div>
   <div className="flex gap-2">
   <Btn variant="warning-fill" size="sm" onClick={() => generateMoveOutNotice(leaseInput)}>Generate Notice</Btn>
@@ -1164,19 +1164,19 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="text-xs text-neutral-400">{r.property} · Requested by {r.requested_by} · {new Date(r.created_at).toLocaleDateString()}</div>
   </div>
   <div className="flex gap-2">
-  <button onClick={async () => {
+  <Btn variant="success" size="sm" onClick={async () => {
   await supabase.from("doc_exception_requests").update({ status: "approved", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() }).eq("id", r.id);
   await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", escapeFilterValue(r.tenant_name)).is("archived_at", null);
   showToast("Exception approved for " + r.tenant_name, "success");
   logAudit("approve", "tenants", "Document exception approved for " + r.tenant_name, "", userProfile?.email, userRole, companyId);
   fetchDocExceptions(); fetchTenants();
-  }} className="text-xs bg-success-50 text-success-700 px-3 py-1.5 rounded-lg hover:bg-success-100 font-medium">Approve</button>
-  <button onClick={async () => {
+  }}>Approve</Btn>
+  <Btn variant="danger" size="sm" onClick={async () => {
   await supabase.from("doc_exception_requests").update({ status: "rejected", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() }).eq("id", r.id);
   showToast("Exception rejected for " + r.tenant_name, "info");
   logAudit("reject", "tenants", "Document exception rejected for " + r.tenant_name, "", userProfile?.email, userRole, companyId);
   fetchDocExceptions();
-  }} className="text-xs bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg hover:bg-danger-100 font-medium">Reject</button>
+  }}>Reject</Btn>
   </div>
   </div>
   ))}
