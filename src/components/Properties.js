@@ -2300,16 +2300,17 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }
   // Step 1: Ask for deletion reason
   if (!await showConfirm({ message: `Delete property "${address}"?\n\nThis is for mistaken entries. ALL data will be removed from active views:\n• Tenants (balances cleared), leases terminated\n• Work orders, utilities, documents, inspections\n• Journal entries voided, ledger entries archived\n• Accounting class hidden from tracking\n\nAll data can be restored within 180 days.\nUse "Deactivate" instead if this property is real but going offline.`, variant: "danger", confirmText: "Delete" })) return;
-  // Prompt for reason (required for audit trail)
-  let deleteReason = "";
-  await new Promise(resolve => {
-  const reasonEl = document.createElement("div");
-  reasonEl.innerHTML = '<div style="position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:100;display:flex;align-items:center;justify-content:center;padding:1rem"><div style="background:white;border-radius:1rem;padding:1.5rem;max-width:400px;width:100%"><h3 style="font-weight:bold;margin-bottom:0.5rem">Reason for Deletion</h3><p style="font-size:0.8rem;color:#666;margin-bottom:0.75rem">This will be recorded in the audit trail.</p><textarea id="__deleteReason" rows="3" style="width:100%;border:1px solid #ddd;border-radius:0.5rem;padding:0.5rem;font-size:0.85rem" placeholder="e.g., Property entered by mistake, duplicate entry, test data..."></textarea><div style="display:flex;gap:0.5rem;margin-top:0.75rem"><button id="__deleteConfirm" style="flex:1;background:#4F46E5;color:white;padding:0.5rem;border-radius:0.5rem;font-size:0.85rem;border:none;cursor:pointer">Confirm Delete</button><button id="__deleteCancel" style="flex:1;background:#f1f1f1;padding:0.5rem;border-radius:0.5rem;font-size:0.85rem;border:none;cursor:pointer">Cancel</button></div></div></div>';
-  document.body.appendChild(reasonEl);
-  document.getElementById("__deleteConfirm").onclick = () => { deleteReason = document.getElementById("__deleteReason").value || "No reason provided"; reasonEl.remove(); resolve(); };
-  document.getElementById("__deleteCancel").onclick = () => { reasonEl.remove(); resolve(); };
-  });
-  if (!deleteReason) return; // User cancelled
+  // Prompt for reason (required for audit trail). Using native prompt()
+  // instead of a hand-rolled innerHTML dialog — that older code was a
+  // 20-line DOM blob with hardcoded hex, style strings, and button ids
+  // that survived three refactors with zero test coverage. Native dialogs
+  // are theme-neutral, block cleanly, and survive browser evolution.
+  const deleteReason = window.prompt(
+    "Reason for deletion (recorded in audit trail):\n\nExamples: mistaken entry, duplicate, test data.",
+    ""
+  );
+  if (deleteReason === null) return; // User hit Cancel
+  const reasonText = deleteReason.trim() || "No reason provided";
   // Step 2: Gather related data
   const { data: propertyTenants } = await supabase.from("tenants").select("id, name").eq("company_id", companyId).eq("property", address).is("archived_at", null);
   const tenantNames = (propertyTenants || []).map(t => t.name);
@@ -2400,7 +2401,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   // 10. Audit trail with reason
   logAudit("delete", "properties",
-  `DELETED property: ${address}\nReason: ${deleteReason}\nArchived: ${jeIds.length} journal entries voided, ${tenantNames.length} tenant(s) [${tenantNames.join(", ")}] archived (balance cleared), all related data archived. Restorable within 180 days.`,
+  `DELETED property: ${address}\nReason: ${reasonText}\nArchived: ${jeIds.length} journal entries voided, ${tenantNames.length} tenant(s) [${tenantNames.join(", ")}] archived (balance cleared), all related data archived. Restorable within 180 days.`,
   id, archiveBy, userRole, companyId);
   addNotification("🗑️", `Property deleted: ${address}`);
   showToast("Property and all related data deleted. Restorable within 180 days. Reason logged to audit trail.", "success");
