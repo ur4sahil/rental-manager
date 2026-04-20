@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "../supabase";
-import { Btn, Input, PageHeader, Textarea } from "../ui";
+import { Btn, Input, PageHeader, Textarea, TextLink} from "../ui";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -143,9 +143,9 @@ export function MessageComposer({ value, onChange, onSend, placeholder, disabled
         <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-lg bg-brand-50 text-brand-700 text-xs">
           <span className="material-icons-outlined text-sm">attach_file</span>
           <span className="flex-1 truncate">{attachment.name}</span>
-          <button onClick={() => onAttachmentChange(null)} className="text-brand-500 hover:text-brand-800" title="Remove">
+          <TextLink tone="brand" size="xs" underline={false} onClick={() => onAttachmentChange(null)}  title="Remove">
             <span className="material-icons-outlined text-sm">close</span>
-          </button>
+          </TextLink>
         </div>
       )}
       <div className="flex gap-2 items-end">

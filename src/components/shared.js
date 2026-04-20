@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
-import { Input, Btn, Select, Checkbox, FileInput, IconBtn} from "../ui";
+import { Input, Btn, Select, Checkbox, FileInput, IconBtn, TextLink} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, sanitizeFileName, escapeHtml, escapeFilterValue, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, statusColors, recomputeTenantDocStatus } from "../utils/helpers";
 import { pmError, reportError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
@@ -104,7 +104,7 @@ export function ToastContainer({ toasts, removeToast }) {
   </>) : (<>
     <span className="material-icons-outlined text-lg mt-0.5">{t.type === "error" ? "error" : t.type === "warning" ? "warning" : t.type === "success" ? "check_circle" : "info"}</span>
     <div className="flex-1 text-sm">{t.message}</div>
-    <button onClick={() => removeToast(t.id)} className="text-neutral-400 hover:text-neutral-600 ml-1"><span className="material-icons-outlined text-sm">close</span></button>
+    <TextLink tone="neutral" size="xs" underline={false} onClick={() => removeToast(t.id)} className="ml-1"><span className="material-icons-outlined text-sm">close</span></TextLink>
   </>)}
   </div>
   ))}

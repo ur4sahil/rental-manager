@@ -341,7 +341,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div><span className="text-subtle-400">Frequency</span><div className="font-semibold text-subtle-700 capitalize">{acct.check_frequency}</div></div>
   </div>
   <div className="flex gap-2 mt-3 pt-3 border-t border-subtle-50">
-  <button onClick={() => triggerManualCheck(acct)} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">🔄 Check Now</button>
+  <TextLink tone="brand" size="xs" underline={false} onClick={() => triggerManualCheck(acct)} className="border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">🔄 Check Now</TextLink>
   <TextLink tone="danger" size="xs" onClick={() => deleteAccount(acct)} className="ml-auto">Delete</TextLink>
   </div>
   </div>
@@ -462,8 +462,8 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <div><span className="text-neutral-400">Paid</span><div className="font-semibold text-neutral-700">{u.paid_at ? new Date(u.paid_at).toLocaleDateString() : "—"}</div></div>
   </div>
   <div className="mt-3 flex gap-2">
-  {u.status === "pending" && <button onClick={() => approvePay(u)} className="text-xs text-positive-600 border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">✓ Pay</button>}
-  <button onClick={() => openAuditLog(u)} className="text-xs text-neutral-500 border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Audit</button>
+  {u.status === "pending" && <TextLink tone="positive" size="xs" underline={false} onClick={() => approvePay(u)} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">✓ Pay</TextLink>}
+  <TextLink tone="neutral" size="xs" underline={false} onClick={() => openAuditLog(u)} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">Audit</TextLink>
   </div>
   </div>
   ))}
@@ -486,11 +486,11 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   <td className="px-4 py-2.5 text-neutral-500 capitalize">{u.responsibility}</td>
   <td className="px-4 py-2.5 text-xs">
   {u.website ? <a href={u.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{u.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
-  {u.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(s); } else { u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv_username || u.encryption_iv, companyId, u.encryption_salt); u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId, u.encryption_salt); s.add(u.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(u.id) ? "Hide" : "Show"} login</button>}
+  {u.username_encrypted && <TextLink tone="brand" size="xs" onClick={async () => { const s = new Set(showCreds); if (s.has(u.id)) { s.delete(u.id); setShowCreds(s); } else { u._decUser = await decryptCredential(u.username_encrypted, u.encryption_iv_username || u.encryption_iv, companyId, u.encryption_salt); u._decPass = await decryptCredential(u.password_encrypted, u.encryption_iv, companyId, u.encryption_salt); s.add(u.id); setShowCreds(new Set(s)); }}}>{showCreds.has(u.id) ? "Hide" : "Show"} login</TextLink>}
   {showCreds.has(u.id) && <div className="text-neutral-600 mt-0.5">{u._decUser || "—"} / {u._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
-  {u.status === "pending" && <button onClick={() => approvePay(u)} className="text-xs text-positive-600 hover:underline mr-2">Pay</button>}
+  {u.status === "pending" && <TextLink tone="positive" size="xs" onClick={() => approvePay(u)} className="mr-2">Pay</TextLink>}
   <TextLink tone="neutral" size="xs" onClick={() => openAuditLog(u)}>Audit</TextLink>
   </td>
   </tr>

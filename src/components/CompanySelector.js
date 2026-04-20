@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Select, Btn } from "../ui";
+import { Input, Select, Btn, TextLink} from "../ui";
 import { normalizeEmail, formatPhoneInput, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { logAudit } from "../utils/audit";
@@ -314,7 +314,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
   <div className="flex items-center gap-2 shrink-0 ml-3">
   <a href={window.location.origin + window.location.pathname + "?company=" + encodeURIComponent(c.id) + "#dashboard"} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.stopPropagation(); }} className="text-brand-600 text-xs font-medium hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>Open</a>
-  {!["tenant", "owner"].includes(c.memberRole) && <button onClick={(e) => { e.stopPropagation(); deleteCompany(c); }} disabled={deleting === c.id} className="text-xs text-danger-400 hover:text-danger-600 hover:bg-danger-50 px-2 py-1 rounded-lg transition-colors disabled:opacity-50">{deleting === c.id ? "Deleting..." : "Delete"}</button>}
+  {!["tenant", "owner"].includes(c.memberRole) && <TextLink tone="danger" size="xs" underline={false} onClick={(e) => { e.stopPropagation(); deleteCompany(c); }} disabled={deleting === c.id} className="hover:bg-danger-50 px-2 py-1 rounded-lg transition-colors disabled:opacity-50">{deleting === c.id ? "Deleting..." : "Delete"}</TextLink>}
   </div>
   </div>
   ))}

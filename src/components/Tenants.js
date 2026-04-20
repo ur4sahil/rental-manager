@@ -1027,7 +1027,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   <div className="flex items-center gap-2">
   <TextLink tone="brand" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</TextLink>
-  {userRole !== "tenant" && <button onClick={async () => {
+  {userRole !== "tenant" && <TextLink tone="danger" size="xs" underline={false} onClick={async () => {
   if (!await showConfirm({ message: `Delete document "${d.name}"?\n\nThis will remove the document from active views. It can be recovered within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from("documents").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", d.id).eq("company_id", companyId);
   if (error) { pmError("PM-7004", { raw: error, context: "delete document" }); return; }
@@ -1035,7 +1035,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   showToast("Document deleted: " + d.name, "success");
   logAudit("delete", "documents", "Deleted document: " + d.name + " (tenant: " + (selectedTenant?.name || "") + ")", d.id, userProfile?.email, userRole, companyId);
   fetchTenantDocs(selectedTenant);
-  }} className="text-xs text-danger-500 hover:text-danger-600 flex items-center gap-1" title="Delete document"><span className="material-icons-outlined text-sm">delete</span>Delete</button>}
+  }}  title="Delete document" className="flex items-center gap-1"><span className="material-icons-outlined text-sm">delete</span>Delete</TextLink>}
   </div>
   </div>
   ))}
@@ -1109,7 +1109,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {tenantTab === "archived" && (
   <div>
   {archivedTenants.length === 0 ? (
-  <div className="text-center py-12 bg-white rounded-xl border border-subtle-100"><div className="text-subtle-400">No archived tenants</div><button onClick={async () => { if (!guardSubmit("refreshArchived")) return; try { const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200); setArchivedTenants(data || []); } finally { guardRelease("refreshArchived"); } }} className="text-xs text-brand-600 mt-2 hover:underline">Refresh</button></div>
+  <div className="text-center py-12 bg-white rounded-xl border border-subtle-100"><div className="text-subtle-400">No archived tenants</div><TextLink tone="brand" size="xs" underline={false} onClick={async () => { if (!guardSubmit("refreshArchived")) return; try { const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200); setArchivedTenants(data || []); } finally { guardRelease("refreshArchived"); } }} className="mt-2 hover:underline">Refresh</TextLink></div>
   ) : archivedTenants.map(t => (
   <div key={t.id} className="bg-white rounded-xl border border-subtle-200 p-4 flex items-center gap-4 opacity-70 mb-2">
   <div className="flex-1">
@@ -1130,7 +1130,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="bg-warn-50 border border-warn-200 rounded-3xl p-4 mb-4">
   <div className="flex items-center justify-between mb-2">
   <div className="text-sm font-bold text-warn-800">{"\u{1F4CB}"} Required Documents for {showTenantDocPrompt}</div>
-  <button onClick={() => setShowTenantDocPrompt(null)} className="text-warn-400 hover:text-warn-600">✕</button>
+  <TextLink tone="warn" size="xs" underline={false} onClick={() => setShowTenantDocPrompt(null)}>✕</TextLink>
   </div>
   <p className="text-xs text-warn-600 mb-3">Before this tenant can move in, the following documents must be uploaded. These are required for lease compliance.</p>
   <div className="space-y-2">
@@ -1226,7 +1226,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <button onClick={() => setBulkAction("charge")} className="text-xs bg-info-100 text-info-700 px-3 py-1.5 rounded-lg hover:bg-info-200 font-medium">Add Charge</button>
   <button onClick={() => setBulkAction("status")} className="text-xs bg-highlight-100 text-highlight-700 px-3 py-1.5 rounded-lg hover:bg-highlight-200 font-medium">Change Status</button>
   <button onClick={() => setBulkAction("archive")} className="text-xs bg-danger-100 text-danger-700 px-3 py-1.5 rounded-lg hover:bg-danger-200 font-medium">Delete</button>
-  <button onClick={() => setSelectedTenants(new Set())} className="text-xs text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect All</button>
+  <TextLink tone="neutral" size="xs" underline={false} onClick={() => setSelectedTenants(new Set())} className="px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect All</TextLink>
   </div>
   </div>
   )}
@@ -1341,7 +1341,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="bg-danger-50 rounded-lg p-3 text-xs text-danger-700 space-y-1">
   {[...selectedTenants].map(tid => { const t = tenants.find(x => x.id === tid); return t ? <div key={tid}>{t.name} — {t.property}{safeNum(t.balance) > 0 ? ` (owes ${formatCurrency(t.balance)})` : ""}</div> : null; })}
   </div>
-  <button onClick={async () => {
+  <Btn variant="danger-fill" onClick={async () => {
   if (!guardSubmit("bulkArchive")) return;
   try {
   // Filter client-side to only zero-balance tenants (can't archive
@@ -1363,7 +1363,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   logAudit("archive", "tenants", `Bulk archived ${count} tenants`, "", userProfile?.email, userRole, companyId);
   setBulkAction(null); setSelectedTenants(new Set()); fetchTenants();
   } finally { guardRelease("bulkArchive"); }
-  }} className="w-full bg-danger-600 text-white text-sm py-2.5 rounded-lg hover:bg-danger-700 font-semibold">Confirm Delete</button>
+  }} className="w-full">Confirm Delete</Btn>
   </div>
   </Modal>
   )}
@@ -1452,11 +1452,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   });
   const TenantActions = ({t}) => (
   <div className="flex gap-1.5 flex-wrap">
-  <button onClick={() => openLedger(t)} className="text-xs text-brand-600 border border-brand-200 px-2 py-1 rounded-lg hover:bg-brand-50">Ledger</button>
-  <button onClick={() => openMessages(t)} className="text-xs text-neutral-500 border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Msg</button>
-  <button onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="text-xs text-neutral-500 border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Lease</button>
+  <TextLink tone="brand" size="xs" underline={false} onClick={() => openLedger(t)} className="border border-brand-200 px-2 py-1 rounded-lg hover:bg-brand-50">Ledger</TextLink>
+  <TextLink tone="neutral" size="xs" underline={false} onClick={() => openMessages(t)} className="border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Msg</TextLink>
+  <TextLink tone="neutral" size="xs" underline={false} onClick={() => { setSelectedTenant(t); setActivePanel("lease"); }} className="border border-brand-100 px-2 py-1 rounded-lg hover:bg-brand-50/30">Lease</TextLink>
   <button onClick={() => startEdit(t)} className="text-xs text-info-600 hover:underline">Edit</button>
-  <button onClick={() => deleteTenant(t.id, t.name)} className="text-xs text-danger-500 hover:underline">Delete</button>
+  <TextLink tone="danger" size="xs" onClick={() => deleteTenant(t.id, t.name)}>Delete</TextLink>
   <button onClick={() => inviteTenant(t)} className="text-xs text-highlight-600 hover:underline">Invite</button>
   </div>
   );
@@ -1485,8 +1485,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div><span className="text-neutral-400">Rent</span><div className="font-semibold text-neutral-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</div></div>
   </div>
   <div className="flex items-center justify-between mt-3 pt-2 border-t border-brand-50 gap-2">
-  <button onClick={e => { e.stopPropagation(); setSelectedTenant(t); setActivePanel("ledger"); openLedger(t); }} className="text-xs text-brand-600 hover:text-brand-800 font-medium shrink-0">View Ledger</button>
-  {safeNum(t.balance) > 0 && safeNum(t.late_fee_amount) > 0 && <button onClick={e => { e.stopPropagation(); applyLateFeeForTenant(t); }} className="text-xs text-danger-600 hover:text-danger-800 font-medium flex items-center gap-0.5 shrink-0"><span className="material-icons-outlined text-xs">gavel</span>Late Fee</button>}
+  <TextLink tone="brand" size="xs" underline={false} onClick={e => { e.stopPropagation(); setSelectedTenant(t); setActivePanel("ledger"); openLedger(t); }} className="font-medium shrink-0">View Ledger</TextLink>
+  {safeNum(t.balance) > 0 && safeNum(t.late_fee_amount) > 0 && <TextLink tone="danger" size="xs" underline={false} onClick={e => { e.stopPropagation(); applyLateFeeForTenant(t); }} className="font-medium flex items-center gap-0.5 shrink-0"><span className="material-icons-outlined text-xs">gavel</span>Late Fee</TextLink>}
   {portalStatus !== "active" && (
   <button
     onClick={e => { e.stopPropagation(); inviteTenant(t); }}
@@ -1539,7 +1539,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <span className="text-sm font-semibold text-neutral-700">{t.rent ? `${formatCurrency(t.rent)}/mo` : "\u2014"}</span>
   <span className={`text-xs font-semibold ${t.balance > 0 ? "text-danger-500" : "text-neutral-400"}`}>{t.balance > 0 ? `-${formatCurrency(t.balance)}` : "Current"}</span>
   <Badge status={t.lease_status} />
-  <button onClick={() => openLedger(t)} className="text-xs text-brand-600 hover:underline">Ledger</button>
+  <TextLink tone="brand" size="xs" onClick={() => openLedger(t)}>Ledger</TextLink>
   <button onClick={() => startEdit(t)} className="text-xs text-info-600 hover:underline">Edit</button>
   </div>
   ))}

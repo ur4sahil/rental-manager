@@ -48,7 +48,7 @@ export function LandingPage({ onGetStarted }) {
   </div>
 
   <div className="mt-10">
-  <button onClick={() => onGetStarted("login")} className="text-sm text-neutral-400 hover:text-brand-600 transition-colors">Already have an account? <span className="font-bold">Sign In</span></button>
+  <TextLink tone="neutral" size="sm" underline={false} onClick={() => onGetStarted("login")} className="transition-colors">Already have an account? <span className="font-bold">Sign In</span></TextLink>
   </div>
   </div>
 

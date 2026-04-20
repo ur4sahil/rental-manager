@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, Input, PageHeader, Select, Textarea } from "../ui";
+import { Btn, Checkbox, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
 import { safeNum, formatLocalDate, shortId, formatCurrency, exportToCSV, sanitizeFileName, getSignedUrl, parseLocalDate, formatPhoneInput, normalizeEmail, parseNameParts, formatPersonName, priorityColors, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -248,7 +248,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
   <div className="flex items-center justify-between px-6 py-4 border-b border-brand-50 sticky top-0 bg-white">
   <div><h3 className="font-bold text-neutral-800">📸 Photos — {viewingPhotos.issue}</h3><p className="text-xs text-neutral-400">{viewingPhotos.property}</p></div>
-  <button onClick={() => setViewingPhotos(null)} className="text-neutral-400 hover:text-neutral-500 text-xl">✕</button>
+  <TextLink tone="neutral" size="xl" underline={false} onClick={() => setViewingPhotos(null)}>✕</TextLink>
   </div>
   <div className="p-6">
   <div className="bg-brand-50/30 rounded-3xl p-4 mb-4">
@@ -350,7 +350,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <button onClick={() => bulkUpdateWOStatus("in_progress")} className="text-xs bg-highlight-100 text-highlight-700 px-3 py-1.5 rounded-lg hover:bg-highlight-200 font-medium">In Progress</button>
   <button onClick={() => bulkUpdateWOStatus("completed")} className="text-xs bg-success-100 text-success-700 px-3 py-1.5 rounded-lg hover:bg-success-200 font-medium">Complete</button>
   <button onClick={() => bulkUpdateWOStatus("open")} className="text-xs bg-neutral-100 text-neutral-600 px-3 py-1.5 rounded-lg hover:bg-neutral-200 font-medium">Reopen</button>
-  <button onClick={() => setSelectedWOs(new Set())} className="text-xs text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect</button>
+  <TextLink tone="neutral" size="xs" underline={false} onClick={() => setSelectedWOs(new Set())} className="px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect</TextLink>
   </div>
   </div>
   )}
@@ -378,9 +378,9 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   {w.notes && <div className="mt-2 text-xs text-neutral-400 italic">{w.notes}</div>}
   <div className="mt-3 flex gap-2 flex-wrap">
   {w.status === "open" && <button onClick={() => updateStatus(w, "in_progress")} className="text-xs text-highlight-600 border border-highlight-200 px-3 py-1 rounded-lg hover:bg-highlight-50">▶ In Progress</button>}
-  {w.status === "in_progress" && <button onClick={() => updateStatus(w, "completed")} className="text-xs text-positive-600 border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">✓ Complete</button>}
-  {w.status === "completed" && <button onClick={() => updateStatus(w, "open")} className="text-xs text-neutral-400 border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">↩ Reopen</button>}
-  {w.tenant && <button onClick={() => billTenantForWO(w)} className="text-xs text-danger-600 border border-danger-200 px-3 py-1 rounded-lg hover:bg-danger-50">💰 Bill Tenant</button>}
+  {w.status === "in_progress" && <TextLink tone="positive" size="xs" underline={false} onClick={() => updateStatus(w, "completed")} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">✓ Complete</TextLink>}
+  {w.status === "completed" && <TextLink tone="neutral" size="xs" underline={false} onClick={() => updateStatus(w, "open")} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">↩ Reopen</TextLink>}
+  {w.tenant && <TextLink tone="danger" size="xs" underline={false} onClick={() => billTenantForWO(w)} className="border border-danger-200 px-3 py-1 rounded-lg hover:bg-danger-50">💰 Bill Tenant</TextLink>}
   <button onClick={() => openPhotos(w)} className="text-xs text-highlight-600 border border-highlight-200 px-3 py-1 rounded-lg hover:bg-highlight-50">📸 Photos</button>
   <button onClick={() => startEdit(w)} className="text-xs text-info-600 border border-info-200 px-3 py-1 rounded-lg hover:bg-info-50">✏️ Edit</button>
   </div>

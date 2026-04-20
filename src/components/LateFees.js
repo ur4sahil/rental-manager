@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Select, Btn, PageHeader } from "../ui";
+import { Input, Select, Btn, PageHeader, TextLink} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, formatCurrency } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -156,7 +156,7 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   <div className="font-semibold text-brand-800 text-sm">{r.name}</div>
   <div className="text-xs text-brand-500">{r.grace_days} day grace · {r.fee_type === "flat" ? `${formatCurrency(r.fee_amount)} flat` : `${r.fee_amount}% of rent`}</div>
   </div>
-  <button onClick={async () => { if(!guardSubmit("delLateFee",r.id))return; try{ if(!await showConfirm({ message: "Delete this late fee rule?" }))return; await supabase.from("late_fee_rules").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", r.id).eq("company_id", companyId); fetchData(); }finally{guardRelease("delLateFee",r.id);} }} className="text-xs text-danger-400 hover:text-danger-600">Delete</button>
+  <TextLink tone="danger" size="xs" underline={false} onClick={async () => { if(!guardSubmit("delLateFee",r.id))return; try{ if(!await showConfirm({ message: "Delete this late fee rule?" }))return; await supabase.from("late_fee_rules").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", r.id).eq("company_id", companyId); fetchData(); }finally{guardRelease("delLateFee",r.id);} }}>Delete</TextLink>
   </div>
   ))}
   </div>

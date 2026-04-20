@@ -170,8 +170,8 @@ export function RecurringJournalEntries({ companyId, companySettings = {}, addNo
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (e.status === "active" ? "bg-positive-100 text-positive-700" : "bg-subtle-100 text-subtle-500")}>{e.status}</span>
   <div className="flex gap-1">
   <button onClick={() => toggleStatus(e)} className={"text-xs px-2 py-1 rounded-lg " + (e.status === "active" ? "text-warn-600 hover:bg-warn-50" : "text-positive-600 hover:bg-positive-50")}>{e.status === "active" ? "⏸ Pause" : "▶ Resume"}</button>
-  <button onClick={() => { setEditingEntry(e); setForm({ description: e.description, frequency: e.frequency, day_of_month: e.day_of_month, amount: e.amount, tenant_name: e.tenant_name || "", property: e.property || "", debit_account_id: e.debit_account_id || "1200", debit_account_name: e.debit_account_name || "Accounts Receivable", credit_account_id: e.credit_account_id || "4000", credit_account_name: e.credit_account_name || "Rental Income", late_fee_enabled: e.late_fee_enabled !== false, grace_period_days: e.grace_period_days || 5, late_fee_amount: e.late_fee_amount || 50 }); setShowForm(true); }} className="text-xs text-brand-600 px-2 py-1 rounded-lg hover:bg-brand-50">Edit</button>
-  <button onClick={() => deleteEntry(e)} className="text-xs text-danger-500 px-2 py-1 rounded-lg hover:bg-danger-50">Delete</button>
+  <TextLink tone="brand" size="xs" underline={false} onClick={() => { setEditingEntry(e); setForm({ description: e.description, frequency: e.frequency, day_of_month: e.day_of_month, amount: e.amount, tenant_name: e.tenant_name || "", property: e.property || "", debit_account_id: e.debit_account_id || "1200", debit_account_name: e.debit_account_name || "Accounts Receivable", credit_account_id: e.credit_account_id || "4000", credit_account_name: e.credit_account_name || "Rental Income", late_fee_enabled: e.late_fee_enabled !== false, grace_period_days: e.grace_period_days || 5, late_fee_amount: e.late_fee_amount || 50 }); setShowForm(true); }} className="px-2 py-1 rounded-lg hover:bg-brand-50">Edit</TextLink>
+  <TextLink tone="danger" size="xs" underline={false} onClick={() => deleteEntry(e)} className="px-2 py-1 rounded-lg hover:bg-danger-50">Delete</TextLink>
   </div>
   </div>
   {e.next_post_date && <div className="text-xs text-subtle-400 mt-2">Next post: {e.next_post_date}</div>}
@@ -695,9 +695,9 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   <td className="px-5 py-3 text-xs text-neutral-400">{a.subtype || ""}</td>
   <td className={`px-5 py-3 text-right font-mono text-sm ${a.computedBalance < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(a.computedBalance, true)}</td>
   <td className="px-5 py-3 text-center flex items-center gap-2 justify-center">
-  <button onClick={e => { e.stopPropagation(); openEdit(a); }} className="text-neutral-400 hover:text-brand-600 text-xs" title="Edit account"><span className="material-icons-outlined text-sm">edit</span></button>
-  <button onClick={e => { e.stopPropagation(); onToggle(a.id, a.is_active); }} className="text-neutral-400 hover:text-neutral-700 text-xs" title={a.is_active ? "Deactivate" : "Activate"}>{a.is_active ? "🟢" : "⚪"}</button>
-  {onDelete && a.computedBalance === 0 && <button onClick={e => { e.stopPropagation(); onDelete(a.id); }} className="text-neutral-300 hover:text-danger-600 text-xs" title="Delete account"><span className="material-icons-outlined text-sm">delete</span></button>}
+  <TextLink tone="neutral" size="xs" underline={false} onClick={e => { e.stopPropagation(); openEdit(a); }}  title="Edit account"><span className="material-icons-outlined text-sm">edit</span></TextLink>
+  <TextLink tone="neutral" size="xs" underline={false} onClick={e => { e.stopPropagation(); onToggle(a.id, a.is_active); }}  title={a.is_active ? "Deactivate" : "Activate"}>{a.is_active ? "🟢" : "⚪"}</TextLink>
+  {onDelete && a.computedBalance === 0 && <TextLink tone="neutral" size="xs" underline={false} onClick={e => { e.stopPropagation(); onDelete(a.id); }}  title="Delete account"><span className="material-icons-outlined text-sm">delete</span></TextLink>}
   </td>
   </tr>
   ))}
@@ -848,7 +848,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   <input type="hidden" value={form.property} />
   <div className="flex items-center justify-between mb-2">
   <p className="text-xs font-semibold text-neutral-500 uppercase">Journal Entry Lines</p>
-  <button onClick={addLine} className="text-xs text-neutral-600 hover:text-neutral-800">+ Add Line</button>
+  <TextLink tone="neutral" size="xs" underline={false} onClick={addLine}>+ Add Line</TextLink>
   </div>
   {showNewAcct !== null && (
   <div className="bg-brand-50 rounded-xl p-3 mb-3 border-2 border-brand-400 shadow-lg">
@@ -873,7 +873,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   <td className="px-2 py-1.5"><Input type="text" value={line.memo||""} onChange={e => setLine(i,"memo",e.target.value)} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs bg-white focus:border-brand-300 focus:outline-none" /></td>
   <td className="px-2 py-1.5"><Input type="text" inputMode="decimal" value={line.debit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], debit: v, ...(v ? { credit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono focus:border-brand-300 focus:outline-none" /></td>
   <td className="px-2 py-1.5"><Input type="text" inputMode="decimal" value={line.credit} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, ""); setForm(f => { const lines = [...f.lines]; lines[i] = { ...lines[i], credit: v, ...(v ? { debit: "" } : {}) }; return { ...f, lines }; }); }} placeholder="0.00" className="w-full border border-brand-100 rounded-2xl px-2 py-1.5 text-xs text-right bg-white font-mono focus:border-brand-300 focus:outline-none" /></td>
-  <td className="px-2 py-1.5"><button onClick={() => removeLine(i)} disabled={form.lines.length<=2} className="text-neutral-300 hover:text-danger-500 disabled:opacity-20">✕</button></td>
+  <td className="px-2 py-1.5"><TextLink tone="neutral" size="xs" underline={false} onClick={() => removeLine(i)} disabled={form.lines.length<=2} className="disabled:opacity-20">✕</TextLink></td>
   </tr>
   ))}
   </tbody>
@@ -908,7 +908,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-neutral-200 bg-white text-neutral-500" title="From date" />
   <span className="text-xs text-neutral-400">to</span>
   <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-neutral-200 bg-white text-neutral-500" title="To date" />
-  {(dateFrom || dateTo) && <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-danger-400 hover:text-danger-600">Clear</button>}
+  {(dateFrom || dateTo) && <TextLink tone="danger" size="xs" underline={false} onClick={() => { setDateFrom(""); setDateTo(""); }}>Clear</TextLink>}
   </div>
   <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
   <table className="w-full text-sm">
@@ -2167,7 +2167,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
               <span className="material-icons-outlined text-neutral-400 group-hover:text-positive-600 text-xl">{r.icon}</span>
               <div><p className="text-sm font-semibold text-neutral-800 group-hover:text-positive-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div>
             </div>
-            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className="text-neutral-300 hover:text-warn-400"><span className="material-icons-outlined text-lg">{favorites.includes(r.id) ? "star" : "star_outline"}</span></button>
+            <TextLink tone="neutral" size="xs" underline={false} onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }}><span className="material-icons-outlined text-lg">{favorites.includes(r.id) ? "star" : "star_outline"}</span></TextLink>
           </div>
         </div>
         ))}
@@ -2182,7 +2182,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           {favReports.map(r => (
           <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-positive-300 hover:shadow-md transition-all bg-white">
             <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-neutral-400 group-hover:text-positive-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-neutral-800 group-hover:text-positive-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div></div>
-            <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className="text-warn-400 hover:text-warn-500"><span className="material-icons-outlined text-lg">star</span></button></div>
+            <TextLink tone="warn" size="xs" underline={false} onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }}><span className="material-icons-outlined text-lg">star</span></TextLink></div>
           </div>))}
         </div>
       )}</div>
@@ -2200,7 +2200,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
                 <p className="text-xs text-neutral-400 mt-0.5">{c.reportTitle} · {c.period}</p>
                 <p className="text-xs text-neutral-300 mt-0.5">Saved {new Date(c.savedAt).toLocaleDateString()}</p>
               </div>
-              <button onClick={() => deleteCustomReport(c.id)} className="text-neutral-300 hover:text-danger-500"><span className="material-icons-outlined text-sm">close</span></button>
+              <TextLink tone="neutral" size="xs" underline={false} onClick={() => deleteCustomReport(c.id)}><span className="material-icons-outlined text-sm">close</span></TextLink>
             </div>
           </div>
           ))}
@@ -2258,7 +2258,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* Viewer Header */}
     <div className="flex items-center justify-between mb-4">
       <div className="flex items-center gap-3">
-        <button onClick={() => setActiveView("catalog")} className="text-sm text-neutral-400 hover:text-neutral-700 flex items-center gap-1"><span className="material-icons-outlined text-sm">arrow_back</span>Back to Reports</button>
+        <TextLink tone="neutral" size="sm" underline={false} onClick={() => setActiveView("catalog")} className="flex items-center gap-1"><span className="material-icons-outlined text-sm">arrow_back</span>Back to Reports</TextLink>
         <h3 className="text-lg font-semibold text-neutral-900">{currentReport?.title}</h3>
       </div>
       <div className="flex gap-2">
@@ -3220,7 +3220,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
     <div className="lg:col-span-2 bg-white rounded-xl border border-neutral-200">
       <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
         <h3 className="font-semibold text-neutral-800">Recent Journal Entries</h3>
-        <button onClick={() => setActiveTab("journal")} className="text-xs text-positive-600 hover:underline">View All</button>
+        <TextLink tone="positive" size="xs" onClick={() => setActiveTab("journal")}>View All</TextLink>
       </div>
       <div className="divide-y divide-neutral-100">
         {journalEntries.slice(0, 8).map(je => {
@@ -3254,7 +3254,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
           <span className="font-semibold text-warn-800 text-sm">Pending Actions</span>
         </div>
         <p className="text-sm text-warn-700">{pendingCount} draft journal {pendingCount === 1 ? "entry" : "entries"} awaiting review</p>
-        <button onClick={() => setActiveTab("journal")} className="text-xs text-warn-700 font-semibold hover:underline mt-2">Review Now →</button>
+        <TextLink tone="warn" size="xs" underline={false} onClick={() => setActiveTab("journal")} className="font-semibold hover:underline mt-2">Review Now →</TextLink>
       </div>
       )}
       <div className="bg-white rounded-xl border border-neutral-200">

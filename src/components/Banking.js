@@ -1486,7 +1486,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
               <td className="px-3 py-3 text-right">
                 <TextLink tone="brand" size="xs" onClick={() => startEditRule(r)} className="mr-2">Edit</TextLink>
                 <TextLink tone="neutral" size="xs" onClick={() => duplicateRule(r)} className="mr-2">Copy</TextLink>
-                <button onClick={() => deleteRule(r.id)} className="text-xs text-danger-400 hover:text-danger-600">Delete</button>
+                <TextLink tone="danger" size="xs" underline={false} onClick={() => deleteRule(r.id)}>Delete</TextLink>
               </td>
             </tr>
             );
@@ -1553,7 +1553,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     <span className="text-sm font-medium text-brand-800">{selectedTxns.size} selected</span>
     <div className="flex gap-2">
       <button onClick={() => bulkExclude("duplicate")} className="text-xs bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg hover:bg-danger-100">Exclude All</button>
-      <button onClick={() => setSelectedTxns(new Set())} className="text-xs text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect</button>
+      <TextLink tone="neutral" size="xs" underline={false} onClick={() => setSelectedTxns(new Set())} className="px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect</TextLink>
     </div>
   </div>
   )}
@@ -1603,7 +1603,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       {activeTab === "excluded" && <td className="px-3 py-2.5 text-xs text-danger-600">{txn.exclusion_reason || "—"}</td>}
       <td className={`px-3 py-2.5 text-right font-mono font-semibold ${txn.direction === "inflow" ? "text-success-700" : "text-danger-600"}`}>{txn.direction === "inflow" ? "+" : "-"}${safeNum(txn.amount).toFixed(2)}</td>
       <td className="px-3 py-2.5 text-right whitespace-nowrap">
-        {txn.status === "for_review" && <button onClick={e => { e.stopPropagation(); if (isExpanded) { setExpandedTxn(null); } else { setExpandedTxn(txn.id); const sug = txn.raw_payload_json?._suggestion; if (sug?.type === "split" && sug.lines?.length >= 2) { setActionMode("split"); const abs = Math.abs(txn.amount); setSplitLines(sug.lines.map(l => ({ accountId: l.account_id || "", accountName: l.account_name || "", classId: l.class_id || "", memo: sug.memo || "", amount: sug.splitBy === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0) }))); } else if (sug) { setActionMode("add"); setAddForm({ accountId: sug.accountId || "", accountName: sug.accountName || "", memo: sug.memo || "", classId: sug.classId || "" }); } else { setActionMode("add"); setAddForm({ accountId: "", accountName: "", memo: "", classId: "" }); } }}} className="text-xs text-brand-600 font-semibold hover:underline">{txn.suggestion_status === "suggested_rule" || txn.suggestion_status === "suggested_exclude" ? "Review" : "Add"}</button>}
+        {txn.status === "for_review" && <TextLink tone="brand" size="xs" underline={false} onClick={e => { e.stopPropagation(); if (isExpanded) { setExpandedTxn(null); } else { setExpandedTxn(txn.id); const sug = txn.raw_payload_json?._suggestion; if (sug?.type === "split" && sug.lines?.length >= 2) { setActionMode("split"); const abs = Math.abs(txn.amount); setSplitLines(sug.lines.map(l => ({ accountId: l.account_id || "", accountName: l.account_name || "", classId: l.class_id || "", memo: sug.memo || "", amount: sug.splitBy === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0) }))); } else if (sug) { setActionMode("add"); setAddForm({ accountId: sug.accountId || "", accountName: sug.accountName || "", memo: sug.memo || "", classId: sug.classId || "" }); } else { setActionMode("add"); setAddForm({ accountId: "", accountName: "", memo: "", classId: "" }); } }}} className="font-semibold hover:underline">{txn.suggestion_status === "suggested_rule" || txn.suggestion_status === "suggested_exclude" ? "Review" : "Add"}</TextLink>}
         {["categorized", "matched", "posted"].includes(txn.status) && <TextLink tone="neutral" size="xs" onClick={e => { e.stopPropagation(); undoTransaction(txn); }}>Undo</TextLink>}
         {txn.status === "excluded" && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-info-600 hover:underline">Restore</button>}
       </td>
@@ -1623,7 +1623,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       {/* Rule Suggestion Indicator */}
       {txn.raw_payload_json?._suggestion?.ruleName && (
         <div className="text-xs text-accent-600 mb-2 flex items-center gap-1"><span className="material-icons-outlined text-sm">auto_fix_high</span>Suggested by rule: <strong>{txn.raw_payload_json._suggestion.ruleName}</strong>
-        {txn.suggestion_status === "suggested_exclude" && <span className="ml-2 text-danger-500">— This rule suggests excluding this transaction ({txn.raw_payload_json._suggestion.reason || "auto-rule"}). <button onClick={() => excludeTransaction(txn, txn.raw_payload_json._suggestion.reason || "auto-rule")} className="text-danger-600 font-semibold hover:underline ml-1">Confirm Exclude</button></span>}
+        {txn.suggestion_status === "suggested_exclude" && <span className="ml-2 text-danger-500">— This rule suggests excluding this transaction ({txn.raw_payload_json._suggestion.reason || "auto-rule"}). <TextLink tone="danger" size="xs" underline={false} onClick={() => excludeTransaction(txn, txn.raw_payload_json._suggestion.reason || "auto-rule")} className="font-semibold hover:underline ml-1">Confirm Exclude</TextLink></span>}
         </div>
       )}
 
@@ -1708,7 +1708,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
             <Select value={line.classId} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], classId: e.target.value}; setSplitLines(l); }} className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
               <option value="">Class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
-            {splitLines.length > 2 && <button onClick={() => setSplitLines(prev => prev.filter((_, j) => j !== i))} className="text-danger-400 hover:text-danger-600 text-xs">✕</button>}
+            {splitLines.length > 2 && <TextLink tone="danger" size="xs" underline={false} onClick={() => setSplitLines(prev => prev.filter((_, j) => j !== i))}>✕</TextLink>}
           </div>
           ))}
         </div>
@@ -1775,7 +1775,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     </div>
     <div className="flex gap-2 mt-4">
       <Btn onClick={createFeed} disabled={creatingFeed}>{creatingFeed ? "Creating..." : "Create"}</Btn>
-      <button onClick={() => setShowNewAccount(false)} className="text-sm text-neutral-400 px-4 py-2">Cancel</button>
+      <TextLink tone="neutral" size="sm" underline={false} onClick={() => setShowNewAccount(false)} className="px-4 py-2">Cancel</TextLink>
     </div>
   </div>
   </div>
@@ -1788,7 +1788,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     <div className="p-6">
     <div className="flex items-center justify-between mb-4">
       <h3 className="font-semibold text-neutral-800">Import Bank Transactions</h3>
-      <button onClick={() => setShowImportWizard(false)} className="text-neutral-400 hover:text-neutral-700 text-xl">✕</button>
+      <TextLink tone="neutral" size="xl" underline={false} onClick={() => setShowImportWizard(false)}>✕</TextLink>
     </div>
 
     {/* Step Bar */}
@@ -1825,7 +1825,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         {wizFile ? <><p className="text-2xl">📄</p><p className="font-semibold text-success-800">{wizFile.name}</p><p className="text-xs text-success-600">{(wizFile.size/1024).toFixed(1)} KB</p></> : <><p className="text-2xl">📤</p><p className="font-semibold text-neutral-700">Drop CSV here or click to browse</p></>}
       </div>
       <div className="bg-info-50 border border-info-100 rounded-xl p-3 text-xs text-info-700"><strong>Supported:</strong> Chase, Bank of America, Wells Fargo, Citibank, Capital One, US Bank, and generic CSV</div>
-      <div className="flex justify-between"><button onClick={() => setWizStep(1)} className="text-sm text-neutral-400">← Back</button><button onClick={wizHandleUpload} disabled={!wizFile} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Parse & Continue →</button></div>
+      <div className="flex justify-between"><TextLink tone="neutral" size="sm" underline={false} onClick={() => setWizStep(1)}>← Back</TextLink><button onClick={wizHandleUpload} disabled={!wizFile} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Parse & Continue →</button></div>
     </div>
     )}
 
@@ -1841,7 +1841,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       </div>
       <label className="flex items-center gap-2 text-sm"><Checkbox checked={wizInvertSign} onChange={e => setWizInvertSign(e.target.checked)} className="accent-brand-600" /> Invert sign (negative = inflow)</label>
       {!(wizMapping.date && wizMapping.description && (wizMapping.amount || wizMapping.debit || wizMapping.credit)) && <p className="text-xs text-warn-600 bg-warn-50 rounded-lg px-3 py-2">Date, Description, and at least one amount column required</p>}
-      <div className="flex justify-between"><button onClick={() => setWizStep(2)} className="text-sm text-neutral-400">← Back</button><button onClick={wizBuildPreview} disabled={!(wizMapping.date && wizMapping.description && (wizMapping.amount || wizMapping.debit || wizMapping.credit))} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Preview →</button></div>
+      <div className="flex justify-between"><TextLink tone="neutral" size="sm" underline={false} onClick={() => setWizStep(2)}>← Back</TextLink><button onClick={wizBuildPreview} disabled={!(wizMapping.date && wizMapping.description && (wizMapping.amount || wizMapping.debit || wizMapping.credit))} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Preview →</button></div>
     </div>
     )}
 
@@ -1867,7 +1867,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         </table>
       </div>
       {wizPreview.length > 50 && <p className="text-xs text-neutral-400">Showing first 50 of {wizPreview.length} rows</p>}
-      <div className="flex justify-between"><button onClick={() => setWizStep(3)} className="text-sm text-neutral-400">← Back</button><button onClick={() => setWizStep(5)} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg">Continue →</button></div>
+      <div className="flex justify-between"><TextLink tone="neutral" size="sm" underline={false} onClick={() => setWizStep(3)}>← Back</TextLink><button onClick={() => setWizStep(5)} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg">Continue →</button></div>
     </div>
     )}
 
@@ -1892,7 +1892,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         <div className="flex justify-between text-sm"><span className="text-neutral-400">Valid rows</span><span className="font-bold text-neutral-800">{wizPreview.filter(r=>r.valid).length}</span></div>
         <div className="flex justify-between text-sm mt-1"><span className="text-neutral-400">Will skip (invalid)</span><span className="text-danger-500">{wizPreview.filter(r=>!r.valid).length}</span></div>
       </div>
-      <div className="flex justify-between"><button onClick={() => setWizStep(4)} className="text-sm text-neutral-400">← Back</button><Btn variant="success-fill" onClick={wizExecuteImport}>Import {wizPreview.filter(r=>r.valid).length} Transactions</Btn></div>
+      <div className="flex justify-between"><TextLink tone="neutral" size="sm" underline={false} onClick={() => setWizStep(4)}>← Back</TextLink><Btn variant="success-fill" onClick={wizExecuteImport}>Import {wizPreview.filter(r=>r.valid).length} Transactions</Btn></div>
     </div>
     )}
 
@@ -1923,7 +1923,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-white shadow-2xl z-50 overflow-y-auto">
     <div className="sticky top-0 bg-white border-b border-neutral-200 px-5 py-4 flex items-center justify-between z-10">
       <h3 className="text-lg font-bold text-neutral-800">{editingRule ? "Edit Rule" : "Create New Rule"}</h3>
-      <button onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }} className="text-neutral-400 hover:text-neutral-600 text-xl">✕</button>
+      <TextLink tone="neutral" size="xl" underline={false} onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }}>✕</TextLink>
     </div>
     <div className="px-5 py-4 space-y-5">
 
@@ -1976,7 +1976,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
               <span className="text-xs text-neutral-400">and</span>
               <Input type="number" value={cond.value2 || ""} onChange={e => updateCondition(idx, "value2", e.target.value)} placeholder="0.00" className="w-24 border border-accent-200 rounded-lg px-2 py-1.5 text-xs" />
             </>}
-            {ruleForm.conditions.length > 1 && <button onClick={() => removeCondition(idx)} className="text-danger-400 hover:text-danger-600 text-sm shrink-0">✕</button>}
+            {ruleForm.conditions.length > 1 && <TextLink tone="danger" size="sm" underline={false} onClick={() => removeCondition(idx)} className="shrink-0">✕</TextLink>}
           </div>
           );
         })}
@@ -2029,7 +2029,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
             <Select value={line.classId} onChange={e => updateLine(idx, "classId", e.target.value)} className="w-36 border border-accent-200 rounded-lg px-2 py-1.5 text-xs">
               <option value="">No class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
-            {ruleForm.lines.length > 1 && <button onClick={() => removeSplitLine(idx)} className="text-danger-400 hover:text-danger-600 text-sm shrink-0">✕</button>}
+            {ruleForm.lines.length > 1 && <TextLink tone="danger" size="sm" underline={false} onClick={() => removeSplitLine(idx)} className="shrink-0">✕</TextLink>}
           </div>
           ))}
           {ruleForm.split && ruleForm.lines.length < 5 && (
@@ -2094,7 +2094,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       {/* Actions */}
       <div className="flex gap-3 pt-2 border-t border-neutral-200">
         <button onClick={saveRule} className="bg-accent-600 text-white text-sm px-6 py-2.5 rounded-lg hover:bg-accent-700 font-semibold">{editingRule ? "Update Rule" : "Save Rule"}</button>
-        <button onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }} className="text-sm text-neutral-500 px-4 py-2.5 hover:text-neutral-700">Cancel</button>
+        <TextLink tone="neutral" size="sm" underline={false} onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }} className="px-4 py-2.5 hover:text-neutral-700">Cancel</TextLink>
       </div>
     </div>
   </div>

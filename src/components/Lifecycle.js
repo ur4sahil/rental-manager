@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader } from "../ui";
+import { Input, Textarea, Select, Btn, PageHeader, TextLink} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, sanitizeForPrint, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -283,7 +283,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <span className="text-sm text-neutral-700">{d.desc}</span>
   <div className="flex items-center gap-2">
   <span className="text-sm font-semibold text-danger-600">-${d.amount.toFixed(2)}</span>
-  <button onClick={() => setDeductions(deductions.filter((_, j) => j !== i))} className="text-neutral-300 hover:text-danger-500"><span className="material-icons-outlined text-sm">close</span></button>
+  <TextLink tone="neutral" size="xs" underline={false} onClick={() => setDeductions(deductions.filter((_, j) => j !== i))}><span className="material-icons-outlined text-sm">close</span></TextLink>
   </div>
   </div>
   ))}

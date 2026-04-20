@@ -337,9 +337,9 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   <div className="flex items-center justify-between mb-2">
   <div className="text-xs font-semibold text-neutral-700">Module access <span className="ml-1 text-neutral-400 font-normal">· {customPages.length} of {ALL_NAV_FLAT.length}</span></div>
   <div className="flex gap-2 text-xs">
-  <button onClick={() => setCustomPages(ALL_NAV_FLAT.map(n => n.id))} className="text-brand-600 hover:underline">Select all</button>
+  <TextLink tone="brand" size="xs" onClick={() => setCustomPages(ALL_NAV_FLAT.map(n => n.id))}>Select all</TextLink>
   <span className="text-neutral-300">|</span>
-  <button onClick={() => setCustomPages([])} className="text-neutral-400 hover:underline">Clear all</button>
+  <TextLink tone="neutral" size="xs" onClick={() => setCustomPages([])}>Clear all</TextLink>
   </div>
   </div>
   <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-0.5">
@@ -1015,9 +1015,9 @@ function AdminPage({ companyId, activeCompany, addNotification, userProfile, use
   <div className="text-xs font-medium text-neutral-500">Company Join Code</div>
   <div className="text-lg font-bold font-mono text-brand-700 tracking-wider">{activeCompany.company_code}</div>
   </div>
-  <button onClick={() => { navigator.clipboard.writeText(activeCompany.company_code); showToast("Code copied!", "success"); }} className="text-xs text-brand-600 hover:text-brand-800 font-medium flex items-center gap-1">
+  <TextLink tone="brand" size="xs" underline={false} onClick={() => { navigator.clipboard.writeText(activeCompany.company_code); showToast("Code copied!", "success"); }} className="font-medium flex items-center gap-1">
   <span className="material-icons-outlined text-sm">content_copy</span>Copy
-  </button>
+  </TextLink>
   </div>
   )}
   <div className="flex gap-1 mb-4 border-b border-brand-50">

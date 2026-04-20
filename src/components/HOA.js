@@ -168,11 +168,11 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   <td className="px-4 py-2.5"><Badge status={h.status} /></td>
   <td className="px-4 py-2.5 text-xs">
   {h.website ? <a href={h.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{h.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
-  {h.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(h.id)) { s.delete(h.id); setShowCreds(s); } else { h._decUser = await decryptCredential(h.username_encrypted, h.encryption_iv_username || h.encryption_iv, companyId, h.encryption_salt); h._decPass = await decryptCredential(h.password_encrypted, h.encryption_iv, companyId, h.encryption_salt); s.add(h.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(h.id) ? "Hide" : "Show"} login</button>}
+  {h.username_encrypted && <TextLink tone="brand" size="xs" onClick={async () => { const s = new Set(showCreds); if (s.has(h.id)) { s.delete(h.id); setShowCreds(s); } else { h._decUser = await decryptCredential(h.username_encrypted, h.encryption_iv_username || h.encryption_iv, companyId, h.encryption_salt); h._decPass = await decryptCredential(h.password_encrypted, h.encryption_iv, companyId, h.encryption_salt); s.add(h.id); setShowCreds(new Set(s)); }}}>{showCreds.has(h.id) ? "Hide" : "Show"} login</TextLink>}
   {showCreds.has(h.id) && <div className="text-neutral-600 mt-0.5">{h._decUser || "—"} / {h._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
-  {h.status === "pending" && <button onClick={() => payHOA(h)} className="text-xs text-positive-600 hover:underline mr-2">Pay</button>}
+  {h.status === "pending" && <TextLink tone="positive" size="xs" onClick={() => payHOA(h)} className="mr-2">Pay</TextLink>}
   <TextLink tone="brand" size="xs" onClick={() => { setEditingHoa(h); setForm({ property: h.property, hoa_name: h.hoa_name, amount: String(h.amount), due_date: h.due_date, frequency: h.frequency || "monthly", status: h.status, notes: h.notes || "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
   <TextLink tone="danger" size="xs" onClick={() => deleteHOA(h.id)}>Delete</TextLink>
   </td>

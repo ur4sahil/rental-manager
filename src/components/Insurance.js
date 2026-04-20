@@ -163,7 +163,7 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
   <td className="px-4 py-2.5 text-neutral-400">{p.expiration_date || "—"}</td>
   <td className="px-4 py-2.5 text-xs">
   {p.website ? <a href={p.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline block truncate max-w-28">{p.website.replace(/^https?:\/\//, "")}</a> : <span className="text-neutral-300">—</span>}
-  {p.username_encrypted && <button onClick={async () => { const s = new Set(showCreds); if (s.has(p.id)) { s.delete(p.id); setShowCreds(s); } else { p._decUser = await decryptCredential(p.username_encrypted, p.encryption_iv_username || p.encryption_iv, companyId, p.encryption_salt); p._decPass = await decryptCredential(p.password_encrypted, p.encryption_iv, companyId, p.encryption_salt); s.add(p.id); setShowCreds(new Set(s)); }}} className="text-brand-500 hover:underline">{showCreds.has(p.id) ? "Hide" : "Show"} login</button>}
+  {p.username_encrypted && <TextLink tone="brand" size="xs" onClick={async () => { const s = new Set(showCreds); if (s.has(p.id)) { s.delete(p.id); setShowCreds(s); } else { p._decUser = await decryptCredential(p.username_encrypted, p.encryption_iv_username || p.encryption_iv, companyId, p.encryption_salt); p._decPass = await decryptCredential(p.password_encrypted, p.encryption_iv, companyId, p.encryption_salt); s.add(p.id); setShowCreds(new Set(s)); }}}>{showCreds.has(p.id) ? "Hide" : "Show"} login</TextLink>}
   {showCreds.has(p.id) && <div className="text-neutral-600 mt-0.5">{p._decUser || "—"} / {p._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">

@@ -1035,11 +1035,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <div key={n} className="border-t border-neutral-200 pt-4 mt-4">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-semibold text-neutral-600">Tenant {n}</span>
-                    <button type="button" onClick={() => {
+                    <TextLink tone="danger" size="xs" underline={false} type="button" onClick={() => {
                       const updates = { tenantCount: tenantForm.tenantCount - 1 };
                       updates["tenant_" + n] = ""; updates["tenant_" + n + "_email"] = ""; updates["tenant_" + n + "_phone"] = "";
                       setTenantForm(f => ({ ...f, ...updates }));
-                    }} className="text-xs text-danger-400 hover:text-danger-600">Remove</button>
+                    }}>Remove</TextLink>
                   </div>
                   <div className="grid grid-cols-6 gap-3">
                     <div className="col-span-2">
@@ -1165,7 +1165,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-neutral-600">Utility #{idx + 1}</span>
                     {utilities.length > 1 && (
-                      <button onClick={() => removeUtilityRow(idx)} className="text-danger-400 hover:text-danger-600 text-xs">Remove</button>
+                      <TextLink tone="danger" size="xs" underline={false} onClick={() => removeUtilityRow(idx)}>Remove</TextLink>
                     )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -1460,7 +1460,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                       <span className="material-icons-outlined text-positive-500 text-base">check_circle</span>
                       <span className="text-positive-800 font-medium truncate">{doc.name}</span>
                       <span className="text-xs text-positive-600 bg-positive-100 px-2 py-0.5 rounded-full ml-auto">{doc.type}</span>
-                      <button onClick={async () => {
+                      <TextLink tone="danger" size="xs" underline={false} onClick={async () => {
                         // Escape the user-controlled doc.name so a crafted name
                         // (wildcards, commas) can't broaden the match. Wildcards
                         // in .ilike would otherwise archive multiple rows.
@@ -1471,9 +1471,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                           .ilike("name", escapeFilterValue(doc.name));
                         setUploadedDocs(prev => prev.filter((_, i) => i !== idx));
                         showToast("Document removed.", "success");
-                      }} className="text-danger-400 hover:text-danger-600 ml-1" title="Remove">
+                      }}  title="Remove" className="ml-1">
                         <span className="material-icons-outlined text-sm">close</span>
-                      </button>
+                      </TextLink>
                     </div>
                   ))}
                 </div>
@@ -1887,10 +1887,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       </div>
       {/* Footer */}
       <div className="bg-white border-t border-neutral-200 px-6 py-4 flex items-center justify-between">
-        <button onClick={handleBack} disabled={step === 1} className="text-sm text-neutral-500 hover:text-neutral-700 disabled:opacity-30">&#8592; Back</button>
+        <TextLink tone="neutral" size="sm" underline={false} onClick={handleBack} disabled={step === 1} className="disabled:opacity-30">&#8592; Back</TextLink>
         <div className="flex gap-3">
           {currentStepId !== "review" && currentStepId !== "property_details" && (
-            <button onClick={handleSkip} className="text-sm text-neutral-400 hover:text-neutral-600">Skip</button>
+            <TextLink tone="neutral" size="sm" underline={false} onClick={handleSkip}>Skip</TextLink>
           )}
           {step < totalSteps ? (
             <Btn variant="success-fill" onClick={handleNext} disabled={saving}>{saving ? "Saving..." : "Next →"}</Btn>
@@ -2971,7 +2971,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   <div className="flex items-center gap-2">
   <TextLink tone="brand" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</TextLink>
-  <button onClick={async () => {
+  <TextLink tone="danger" size="xs" underline={false} onClick={async () => {
   if (!guardSubmit("delPropDoc", d.id)) return;
   try {
   if (!await showConfirm({ message: `Delete document "${d.name}"?\n\nThis will remove the document from active views. It can be recovered within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
@@ -2982,7 +2982,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const { data: refreshed } = await supabase.from("documents").select("*").eq("company_id", companyId).eq("property", selectedProperty.address).is("archived_at", null).order("uploaded_at", { ascending: false }).limit(100);
   setPropertyDocs(refreshed || []);
   } finally { guardRelease("delPropDoc", d.id); }
-  }} className="text-xs text-danger-400 hover:text-danger-600 flex items-center gap-0.5"><span className="material-icons-outlined text-sm">delete</span></button>
+  }} className="flex items-center gap-0.5"><span className="material-icons-outlined text-sm">delete</span></TextLink>
   </div>
   </div>
   ))}
@@ -3049,8 +3049,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   } finally { guardRelease("licRenew", lic.id); }
   }}  title="Mark as pending renewal">Renew</TextLink>
   )}
-  <button onClick={() => setShowLicenseForm({ license: lic, propertyId: selectedProperty.id, propertyAddress: selectedProperty.address })} className="text-xs text-neutral-500 hover:text-neutral-700 flex items-center gap-0.5"><span className="material-icons-outlined text-sm">edit</span>Edit</button>
-  <button onClick={async () => {
+  <TextLink tone="neutral" size="xs" underline={false} onClick={() => setShowLicenseForm({ license: lic, propertyId: selectedProperty.id, propertyAddress: selectedProperty.address })} className="flex items-center gap-0.5"><span className="material-icons-outlined text-sm">edit</span>Edit</TextLink>
+  <TextLink tone="danger" size="xs" underline={false} onClick={async () => {
   if (!guardSubmit("licDel", lic.id)) return;
   try {
   if (!await showConfirm({ message: `Archive license "${typeLabel}"?\n\nIt can be restored within 180 days.`, variant: "danger", confirmText: "Archive" })) return;
@@ -3060,7 +3060,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   logAudit("delete", "property_licenses", `Archived license: ${typeLabel}`, lic.id, userProfile?.email, userRole, companyId);
   setPropertyLicenses(propertyLicenses.filter(l => l.id !== lic.id));
   } finally { guardRelease("licDel", lic.id); }
-  }} className="text-xs text-danger-500 hover:text-danger-600 flex items-center gap-0.5"><span className="material-icons-outlined text-sm">delete</span>Archive</button>
+  }} className="flex items-center gap-0.5"><span className="material-icons-outlined text-sm">delete</span>Archive</TextLink>
   </div>
   </div>
   );
@@ -3303,9 +3303,9 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {(() => { const ss = getSetupStatus(p); return (!ss.isComplete && ss.total > 0) ? <div onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0 }); }} className="mt-2 text-xs text-info-600 bg-info-50 rounded-lg px-2 py-1 flex items-center gap-1 cursor-pointer hover:bg-info-100 transition-colors"><span className="material-icons-outlined text-sm">pending</span>Setup Incomplete — {ss.missing.length} step{ss.missing.length !== 1 ? "s" : ""} remaining</div> : null; })()}
   <div className="flex gap-2 mt-3 pt-3 border-t border-brand-50/50 flex-wrap" onClick={e => e.stopPropagation()}>
   {!isReadOnly(p) && <TextLink tone="brand" size="xs" onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0, isEdit: true }); }}>Edit</TextLink>}
-  {!isReadOnly(p) && p.status === "vacant" && <button onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: false, tenant: "", rent: 0, isNew: false }); }} className="text-xs text-positive-600 hover:underline">Add Tenant</button>}
-  {!isReadOnly(p) && isAdmin && p.status !== "inactive" && <button onClick={() => deactivateProperty(p)} className="text-xs text-warn-600 hover:underline">Deactivate</button>}
-  {!isReadOnly(p) && isAdmin && p.status === "inactive" && <button onClick={() => reactivateProperty(p)} className="text-xs text-positive-600 hover:underline">Reactivate</button>}
+  {!isReadOnly(p) && p.status === "vacant" && <TextLink tone="positive" size="xs" onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: false, tenant: "", rent: 0, isNew: false }); }}>Add Tenant</TextLink>}
+  {!isReadOnly(p) && isAdmin && p.status !== "inactive" && <TextLink tone="warn" size="xs" onClick={() => deactivateProperty(p)}>Deactivate</TextLink>}
+  {!isReadOnly(p) && isAdmin && p.status === "inactive" && <TextLink tone="positive" size="xs" onClick={() => reactivateProperty(p)}>Reactivate</TextLink>}
   {!isReadOnly(p) && isAdmin && <TextLink tone="danger" size="xs" onClick={() => deleteProperty(p.id, p.address)}>Delete</TextLink>}
   {!isReadOnly(p) && !isAdmin && <TextLink tone="danger" size="xs" onClick={() => requestDeleteProperty(p)}>Request Delete</TextLink>}
   {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-highlight-600 hover:underline">Assign PM</button>}

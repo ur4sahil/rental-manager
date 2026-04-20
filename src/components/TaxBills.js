@@ -275,7 +275,7 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
                               <TextLink tone="neutral" size="xs" onClick={() => handleSkip(b)}>Skip</TextLink>
                             )}
                             <TextLink tone="brand" size="xs" onClick={() => setEditBill({ bill: b, due_date: b.due_date, expected_amount: b.expected_amount || "", installment_label: b.installment_label })}>Edit</TextLink>
-                            <button onClick={() => handleDelete(b)} className="text-xs text-danger-400 hover:text-danger-600" title="Delete">✕</button>
+                            <TextLink tone="danger" size="xs" underline={false} onClick={() => handleDelete(b)}  title="Delete">✕</TextLink>
                           </div>
                         </td>
                       </tr>

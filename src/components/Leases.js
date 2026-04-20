@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, Input, PageHeader, Select, Textarea } from "../ui";
+import { Btn, Checkbox, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, normalizeEmail, escapeHtml } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
@@ -762,8 +762,8 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, comp
                         <span className="text-xs font-bold px-2 py-0.5 rounded-full text-positive-700 bg-positive-100">🔒 Signed</span>
                       ) : (
                         <>
-                          <button onClick={() => copySignerLink(s)} className="text-xs text-brand-600 hover:underline px-1.5 py-0.5" title="Copy signing link">Copy link</button>
-                          <button onClick={() => resendSignerEmail(s)} className="text-xs text-neutral-500 hover:text-brand-700 hover:underline px-1.5 py-0.5" title="Resend signing email">Resend</button>
+                          <TextLink tone="brand" size="xs" onClick={() => copySignerLink(s)}  title="Copy signing link" className="px-1.5 py-0.5">Copy link</TextLink>
+                          <TextLink tone="neutral" size="xs" onClick={() => resendSignerEmail(s)}  title="Resend signing email" className="px-1.5 py-0.5">Resend</TextLink>
                         </>
                       )}
                     </div>

@@ -225,7 +225,7 @@ function SetPasswordScreen({ currentUser, onComplete, showToast }) {
     <div><label className="text-xs font-medium text-neutral-600 mb-1 block">Confirm Password</label><Input type="password" placeholder="Re-enter password" value={pw2} onChange={e => setPw2(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSet()} /></div>
     </div>
     <Btn variant="primary" className="w-full mt-5" onClick={handleSet} disabled={saving}>{saving ? "Setting..." : "Set Password & Continue"}</Btn>
-    <button onClick={onComplete} className="text-xs text-neutral-400 hover:text-neutral-600 mt-3 block mx-auto">Skip for now</button>
+    <TextLink tone="neutral" size="xs" underline={false} onClick={onComplete} className="mt-3 block mx-auto">Skip for now</TextLink>
     </div>
     </div>
   );
@@ -776,7 +776,7 @@ function AppInner() {
   <span className="w-5 h-5 rounded-lg bg-brand-100 flex items-center justify-center text-brand-700 text-xs font-bold shrink-0">{activeCompany.name[0]}</span>
   <span className="text-xs text-neutral-500 truncate font-medium">{activeCompany.name}</span>
   </div>
-  {userRole !== "tenant" && <button onClick={() => { setSidebarOpen(false); switchCompany(); }} className="text-neutral-400 hover:text-brand-600 shrink-0 ml-1" title="Switch Company"><span className="material-icons-outlined text-sm">swap_horiz</span></button>}
+  {userRole !== "tenant" && <TextLink tone="neutral" size="xs" underline={false} onClick={() => { setSidebarOpen(false); switchCompany(); }}  title="Switch Company" className="shrink-0 ml-1"><span className="material-icons-outlined text-sm">swap_horiz</span></TextLink>}
   </div>
   )}
   </div>
@@ -864,7 +864,7 @@ function AppInner() {
   <span className="font-manrope font-bold text-neutral-700 text-sm">Notifications</span>
   <div className="flex gap-2">
   <TextLink tone="brand" size="xs" onClick={() => { setPage("notifications"); setShowNotifications(false); }}>View All</TextLink>
-  <button onClick={() => { setNotifications([]); setShowNotifications(false); }} className="text-xs text-neutral-400 hover:text-danger-500">Clear</button>
+  <TextLink tone="neutral" size="xs" underline={false} onClick={() => { setNotifications([]); setShowNotifications(false); }}>Clear</TextLink>
   </div>
   </div>
   <div className="max-h-72 overflow-y-auto">

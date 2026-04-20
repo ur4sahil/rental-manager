@@ -201,14 +201,14 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   if (url) window.open(url, "_blank", "noopener,noreferrer");
   else showToast("Could not generate secure download link.", "error");
   }}>View</TextLink>
-  <button onClick={async () => {
+  <TextLink tone="positive" size="xs" onClick={async () => {
   const isFullUrl = d.url && d.url.startsWith("http");
   if (isFullUrl) { window.open(d.url, "_blank", "noopener,noreferrer"); return; }
   const path = d.file_name || d.url;
   if (!path) return;
   const url = await getSignedUrl("documents", path);
   if (url) window.open(url, "_blank", "noopener,noreferrer");
-  }} className="text-xs text-positive-600 hover:underline">Download</button>
+  }}>Download</TextLink>
   </>
   ) : d.file_name ? (
   <>
@@ -1282,7 +1282,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="flex items-center gap-2">
   <label className="flex items-center gap-1 text-xs"><Checkbox checked={f.required} onChange={e => updateField(i, "required", e.target.checked)} className="accent-brand-600" />Required</label>
   <TextLink tone="brand" size="xs" onClick={() => insertMergeField(f.name || f.label.toLowerCase().replace(/[^a-z0-9]+/g, "_"))}  title="Insert into body">{"{{}}"}</TextLink>
-  <button onClick={() => removeField(i)} className="text-xs text-danger-400 hover:text-danger-600 ml-auto">✕</button>
+  <TextLink tone="danger" size="xs" underline={false} onClick={() => removeField(i)} className="ml-auto">✕</TextLink>
   </div>
   </div>
   {f.type === "select" && (
@@ -1351,24 +1351,24 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="mb-4">
   <div className="flex items-center justify-between mb-2">
   <h4 className="text-xs font-semibold text-warn-700 uppercase tracking-wide flex items-center gap-1"><span className="material-icons-outlined text-sm">calculate</span>Calculated Fields</h4>
-  <button onClick={() => {
+  <TextLink tone="warn" size="xs" underline={false} onClick={() => {
   const name = prompt("Field name to make calculated (must match an existing field):");
   if (!name?.trim()) return;
   const formula = prompt("Formula (use field names, e.g. rent + late_fee):");
   if (!formula?.trim()) return;
   setTemplateForm(prev => ({ ...prev, field_config: { ...prev.field_config, calculated: { ...(prev.field_config?.calculated || {}), [name.trim()]: { formula: formula.trim() } } } }));
-  }} className="text-xs text-warn-600 hover:text-warn-800">+ Add</button>
+  }}>+ Add</TextLink>
   </div>
   {Object.entries(templateForm.field_config?.calculated || {}).map(([name, cfg]) => (
   <div key={name} className="flex items-center gap-2 text-xs bg-warn-50 border border-warn-100 rounded-lg px-3 py-2 mb-1">
   <span className="font-mono font-semibold text-warn-800">{name}</span>
   <span className="text-warn-500">=</span>
   <span className="font-mono text-warn-700 flex-1">{cfg.formula}</span>
-  <button onClick={() => {
+  <TextLink tone="danger" size="xs" underline={false} onClick={() => {
   const calc = { ...(templateForm.field_config?.calculated || {}) };
   delete calc[name];
   setTemplateForm(prev => ({ ...prev, field_config: { ...prev.field_config, calculated: calc } }));
-  }} className="text-danger-400 hover:text-danger-600">✕</button>
+  }}>✕</TextLink>
   </div>
   ))}
   {Object.keys(templateForm.field_config?.calculated || {}).length === 0 && <p className="text-xs text-neutral-400 italic">No calculated fields. Use formulas like <code className="bg-neutral-100 px-1 rounded">rent * days / 30</code></p>}
@@ -1393,11 +1393,11 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <span className="font-mono font-semibold text-accent-800">{name}</span>
   <span className="text-accent-500">visible when</span>
   <span className="font-mono text-accent-700">{cfg.visible_when?.field} = "{cfg.visible_when?.eq}"</span>
-  <button onClick={() => {
+  <TextLink tone="danger" size="xs" underline={false} onClick={() => {
   const cond = { ...(templateForm.field_config?.conditional || {}) };
   delete cond[name];
   setTemplateForm(prev => ({ ...prev, field_config: { ...prev.field_config, conditional: cond } }));
-  }} className="text-danger-400 hover:text-danger-600 ml-auto">✕</button>
+  }} className="ml-auto">✕</TextLink>
   </div>
   ))}
   {Object.keys(templateForm.field_config?.conditional || {}).length === 0 && <p className="text-xs text-neutral-400 italic">No conditions. Show/hide fields based on other field values.</p>}
@@ -1509,14 +1509,14 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <span className="text-xs text-neutral-500">{templateForm.pdf_field_placements.length} placements</span>
   <span className="text-xs text-neutral-300">|</span>
   {placingField ? (
-  <span className="text-xs text-success-600 font-semibold">Click on PDF to place: {placingField} <button onClick={() => setPlacingField(null)} className="text-danger-400 ml-1">✕ Cancel</button></span>
+  <span className="text-xs text-success-600 font-semibold">Click on PDF to place: {placingField} <TextLink tone="danger" size="xs" underline={false} onClick={() => setPlacingField(null)} className="ml-1">✕ Cancel</TextLink></span>
   ) : (
   <Select onChange={e => { if (e.target.value) setPlacingField(e.target.value); e.target.value = ""; }} className="text-xs">
   <option value="">+ Place field on PDF...</option>
   {templateForm.fields.map(f => <option key={f.name} value={f.name}>{f.label || f.name}</option>)}
   </Select>
   )}
-  <button onClick={async () => {
+  <TextLink tone="warn" size="xs" underline={false} onClick={async () => {
   if (!pdfDoc) return;
   const detected = await autoDetectFields(pdfDoc);
   const newFields = [];
@@ -1533,7 +1533,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   fields: [...prev.fields, ...newFields],
   }));
   showToast(detected.length + " fields detected", "info");
-  }} className="text-xs text-warn-600 hover:text-warn-800 ml-auto">Re-detect</button>
+  }} className="ml-auto">Re-detect</TextLink>
   <label className="text-xs text-neutral-500 hover:text-neutral-700 cursor-pointer">
   Replace PDF
   <FileInput accept=".pdf" className="hidden" onChange={e => handlePdfUpload(e.target.files[0])} />
@@ -1576,7 +1576,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }}>
   <div className="flex items-center justify-between px-1">
   <span className={`text-[9px] font-mono font-semibold truncate ${p.auto_detected ? "text-warn-800" : "text-brand-800"}`}>{p.field_name}</span>
-  <button onClick={e => { e.stopPropagation(); removePlacement(p._idx); }} className="text-danger-400 hover:text-danger-600 text-xs leading-none">✕</button>
+  <TextLink tone="danger" size="xs" underline={false} onClick={e => { e.stopPropagation(); removePlacement(p._idx); }} className="leading-none">✕</TextLink>
   </div>
   </div>
   ))}
@@ -2058,7 +2058,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   setSendModal(d);
   setSendTo({ self: false, tenant: false, custom: "" });
   }}>Email</Btn>}
-  <button onClick={() => deleteGeneratedDoc(d)} className="text-xs text-danger-400 hover:text-danger-600">✕</button>
+  <TextLink tone="danger" size="xs" underline={false} onClick={() => deleteGeneratedDoc(d)}>✕</TextLink>
   </div>
   </div>
   {hasEnvelope && sigs.length > 0 && (
