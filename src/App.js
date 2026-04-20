@@ -32,6 +32,7 @@ import { TenantPortal } from "./components/TenantPortal";
 import { MoveOutWizard, EvictionWorkflow } from "./components/Lifecycle";
 import { RoleManagement, AuditTrail, ArchivePage, ArchivedItems, ErrorLogDashboard, TasksAndApprovals, UserProfile, AdminPage } from "./components/Admin";
 import { EmailNotifications } from "./components/Notifications";
+import { Messages } from "./components/Messages";
 import { CompanySelector, PendingRequestsPanel, PendingPMAssignments } from "./components/CompanySelector";
 import { HOAPayments } from "./components/HOA";
 import { Loans } from "./components/Loans";
@@ -117,8 +118,8 @@ let _toastIdCounter = 0;
 
 // ============ ROLE DEFINITIONS ============
 const ROLES = {
-  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","insurance","tax_bills","accounting","owners","notifications","admin","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
-  office_assistant: { label: "Office Assistant", color: "bg-info-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting","notifications","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
+  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","insurance","tax_bills","accounting","owners","notifications","messages","admin","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
+  office_assistant: { label: "Office Assistant", color: "bg-info-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting","notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
   accountant: { label: "Accountant", color: "bg-positive-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-notice-500", pages: ["maintenance","vendors"] },
   tenant: { label: "Tenant", color: "bg-brand-50/300", pages: ["tenant_portal"] },
@@ -143,6 +144,7 @@ const ALL_NAV = [
   { id: "vendors", label: "Vendors", icon: "engineering" },
   { id: "tasks", label: "Tasks & Approvals", icon: "assignment" },
   { id: "owners", label: "Owners", icon: "person" },
+  { id: "messages", label: "Messages", icon: "forum" },
   { id: "notifications", label: "Notifications", icon: "notifications_active" },
 ];
 // Flat list of all nav IDs including children (for settings UI and allowedPages)
@@ -170,6 +172,7 @@ const pageComponents = {
   vendors: VendorManagement,
   owners: OwnerManagement,
   notifications: EmailNotifications,
+  messages: Messages,
   moveout: MoveOutWizard,
   evictions: EvictionWorkflow,
   doc_builder: DocumentBuilder,
@@ -256,6 +259,9 @@ function AppInner() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  // Unread inbound messages (sender_role='tenant', read_at IS NULL) for
+  // the sidebar badge on the Messages nav item. Polled every 30s.
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const [toasts, setToasts] = useState([]);
   const [confirmConfig, setConfirmConfig] = useState(null);
   const confirmResolveRef = useRef(null);
@@ -702,6 +708,28 @@ function AppInner() {
   }
   }, [screen, activeCompany]);
 
+  // Poll unread message count for the sidebar badge. Only staff care
+  // about this (tenants see messages directly in their portal tab), so
+  // gate on role to skip the work for tenants/owners.
+  useEffect(() => {
+  if (!activeCompany?.id) { setUnreadMessages(0); return; }
+  if (userRole === "tenant" || userRole === "owner") { setUnreadMessages(0); return; }
+  let cancelled = false;
+  async function poll() {
+    const { count } = await supabase.from("messages")
+      .select("id", { count: "exact", head: true })
+      .eq("company_id", activeCompany.id)
+      .is("read_at", null)
+      .eq("sender_role", "tenant");
+    if (!cancelled) setUnreadMessages(count || 0);
+  }
+  poll();
+  const id = setInterval(poll, 30000);
+  const onFocus = () => poll();
+  window.addEventListener("focus", onFocus);
+  return () => { cancelled = true; clearInterval(id); window.removeEventListener("focus", onFocus); };
+  }, [activeCompany?.id, userRole, page]);
+
   if (screen === "loading") return <><div className="flex items-center justify-center h-screen bg-brand-50/30"><Spinner /></div><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
   if (screen === "landing") return <><LandingPage onGetStarted={(mode) => { setLoginMode(mode); setScreen("login"); }} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
   if (screen === "login") return <><LoginPage onLogin={() => {}} onBack={() => setScreen("landing")} initialMode={loginMode} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
@@ -762,7 +790,10 @@ function AppInner() {
   <div className={`flex items-center rounded-2xl mb-0.5 transition-all ${isParentActive ? "bg-brand-50 text-brand-700 font-semibold" : "text-neutral-500 hover:bg-brand-50/50 hover:text-neutral-700"}`}>
   <button onClick={() => { setPage(n.id); setSidebarOpen(false); }}
   className="flex-1 flex items-center gap-3 px-3 py-2.5 text-sm text-left">
-  <span className="material-icons-outlined text-lg">{n.icon}</span><span>{n.label}</span>
+  <span className="material-icons-outlined text-lg">{n.icon}</span><span className="flex-1">{n.label}</span>
+  {n.id === "messages" && unreadMessages > 0 && (
+  <span className="bg-danger-500 text-white rounded-full text-[10px] font-bold px-1.5 py-0.5 min-w-[18px] text-center">{unreadMessages > 9 ? "9+" : unreadMessages}</span>
+  )}
   </button>
   {n.children && <button onClick={(e) => { e.stopPropagation(); setExpandedNav(s => { const next = new Set(s); if (next.has(n.id)) next.delete(n.id); else next.add(n.id); return next; }); }}
   className="px-2 py-2.5 text-neutral-400 hover:text-neutral-700">

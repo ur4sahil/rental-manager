@@ -939,6 +939,45 @@ async function testMessages() {
     assert(fetched && fetched.read === true, 'Messages: read status persisted');
     await supabase.from('messages').delete().eq('id', msg.id);
   }
+
+  // ---- Messaging UI overhaul (20260421 migration) ----
+  // New columns + read_at semantics + (company,tenant,created_at) index.
+  const tenantId = 999999001; // synthetic id — we only probe the insert path
+  const { data: upgraded, error: upErr } = await supabase.from('messages').insert({
+    company_id: cid,
+    tenant_id: tenantId,
+    tenant: 'TEST-MSG-Upgrade',
+    property: 'TEST-MSG-Upgrade-Prop',
+    sender: 'admin',
+    sender_email: 'admin@example.com',
+    sender_role: 'admin',
+    message: 'upgrade-path test',
+    attachment_url: null,
+    attachment_name: null,
+    read: false,
+    read_at: null,
+  }).select('id, sender_role, read_at, attachment_url, attachment_name').single();
+  assert(!upErr && upgraded, 'Messages v2: can insert with new columns');
+  if (upgraded) {
+    assert(upgraded.sender_role === 'admin', 'Messages v2: sender_role persisted');
+    assert(upgraded.read_at === null, 'Messages v2: read_at defaults to null');
+    // Mark read via read_at + legacy read bool (the UI keeps them in sync).
+    const { error: mrErr } = await supabase.from('messages')
+      .update({ read_at: new Date().toISOString(), read: true })
+      .eq('id', upgraded.id);
+    assert(!mrErr, 'Messages v2: can set read_at');
+    const { data: reread } = await supabase.from('messages').select('read_at,read').eq('id', upgraded.id).single();
+    assert(reread?.read_at && reread?.read === true, 'Messages v2: read_at + legacy bool both persisted');
+    // Query by (company_id, tenant_id) — new composite index path.
+    const { data: byTenant } = await supabase.from('messages')
+      .select('id, created_at')
+      .eq('company_id', cid)
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: true })
+      .limit(10);
+    assert(Array.isArray(byTenant) && byTenant.find(r => r.id === upgraded.id), 'Messages v2: queryable by (company,tenant_id)');
+    await supabase.from('messages').delete().eq('id', upgraded.id);
+  }
 }
 
 async function testNotificationTables() {

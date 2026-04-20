@@ -8,6 +8,8 @@ import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { safeLedgerInsert, atomicPostJEAndLedger, autoPostJournalEntry, getPropertyClassId, getOrCreateTenantAR, autoPostRentCharges } from "../utils/accounting";
 import { Badge, Spinner, Modal, PropertySelect, RecurringEntryModal, DocUploadModal } from "./shared";
+import { MessageThread, MessageComposer, uploadMessageAttachment } from "./Messages";
+import { queueNotification } from "../utils/notifications";
 import { LeaseManagement } from "./Leases";
 import { MoveOutWizard, EvictionWorkflow } from "./Lifecycle";
 
@@ -42,6 +44,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [ledger, setLedger] = useState([]);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
+  const [msgAttachment, setMsgAttachment] = useState(null);
+  const [sendingMsg, setSendingMsg] = useState(false);
   const [newCharge, setNewCharge] = useState({ description: "", amount: "", type: "charge" });
   const [form, setForm] = useState({ name: "", first_name: "", mi: "", last_name: "", email: "", phone: "", property: "", lease_status: "active", lease_start: "", lease_end: "", rent: "", late_fee_amount: "", late_fee_type: companySettings?.late_fee_type || "flat", is_voucher: false, voucher_number: "", reexam_date: "", case_manager_name: "", case_manager_email: "", case_manager_phone: "", voucher_portion: "", tenant_portion: "" });
   const [tenantView, setTenantView] = useState("card");
@@ -474,29 +478,76 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   async function openMessages(tenant) {
   setSelectedTenant(tenant);
   setActivePanel("messages");
-  const { data } = await supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tenant.name).order("created_at", { ascending: true }).limit(100);
+  // Prefer tenant_id — the legacy name-based query breaks when two
+  // tenants share a name at different properties. Fall back when the
+  // row is unindexed (shouldn't happen after the 20260420 migration).
+  const q = tenant.id
+    ? supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant_id", tenant.id)
+    : supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tenant.name);
+  const { data } = await q.order("created_at", { ascending: true }).limit(200);
   setMessages(data || []);
-  const { error: _err1494 } = await supabase.from("messages").update({ read: true }).eq("company_id", companyId).eq("tenant", tenant.name);
-  if (_err1494) pmError("PM-8006", { raw: _err1494, context: "messages write", silent: true });
+  // Mark any inbound (tenant-sent) messages read.
+  if (tenant.id) {
+    const { error: mrErr } = await supabase.from("messages")
+      .update({ read_at: new Date().toISOString(), read: true })
+      .eq("company_id", companyId)
+      .eq("tenant_id", tenant.id)
+      .is("read_at", null)
+      .eq("sender_role", "tenant");
+    if (mrErr) pmError("PM-8006", { raw: mrErr, context: "messages mark read", silent: true });
+  }
   }
 
   async function sendMessage() {
   if (!guardSubmit("sendMessage")) return;
+  setSendingMsg(true);
   try {
-  if (!newMessage.trim()) return;
-  if (!selectedTenant?.name) return;
-  const { error: _err_messages_1499 } = await supabase.from("messages").insert([{ company_id: companyId,
-  tenant: selectedTenant.name,
-  property: selectedTenant.property,
-  sender: "admin",
-  message: newMessage,
-  read: false,
-  }]);
+  if (!selectedTenant) return;
+  const body = newMessage.trim();
+  if (!body && !msgAttachment) return;
+  let attachmentPath = null;
+  let attachmentName = null;
+  if (msgAttachment) {
+    attachmentPath = await uploadMessageAttachment(msgAttachment, companyId);
+    if (!attachmentPath) { if (showToast) showToast("Attachment upload failed.", "error"); return; }
+    attachmentName = msgAttachment.name;
+  }
+  const { data: inserted, error: _err_messages_1499 } = await supabase.from("messages").insert([{
+    company_id: companyId,
+    tenant_id: selectedTenant.id,
+    tenant: selectedTenant.name,
+    property: selectedTenant.property,
+    sender: userProfile?.name || "admin",
+    sender_email: userProfile?.email || null,
+    sender_role: "admin",
+    message: body,
+    attachment_url: attachmentPath,
+    attachment_name: attachmentName,
+    read: false,
+    read_at: null,
+  }]).select("id").maybeSingle();
   if (_err_messages_1499) { pmError("PM-8006", { raw: _err_messages_1499, context: "send tenant message" }); return; }
   setNewMessage("");
-  const { data } = await supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", selectedTenant.name).order("created_at", { ascending: true });
+  setMsgAttachment(null);
+  // Ping the tenant via the notification pipeline. Cheap and best-effort.
+  if (selectedTenant.email) {
+    await queueNotification("message_received", selectedTenant.email, {
+      sender: userProfile?.name || "Property Manager",
+      preview: body ? body.slice(0, 120) : (attachmentName ? "[attachment: " + attachmentName + "]" : ""),
+      tenant: selectedTenant.name,
+      property: selectedTenant.property,
+    }, companyId);
+  }
+  logAudit("create", "messages", "Sent message to " + selectedTenant.name, inserted?.id, userProfile?.email, userRole, companyId);
+  const { data } = await supabase.from("messages").select("*")
+    .eq("company_id", companyId)
+    .eq("tenant_id", selectedTenant.id)
+    .order("created_at", { ascending: true });
   setMessages(data || []);
-  } finally { guardRelease("sendMessage"); }
+  } finally {
+    setSendingMsg(false);
+    guardRelease("sendMessage");
+  }
   }
 
   async function addLedgerEntry() {
@@ -774,23 +825,22 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {/* MESSAGES */}
   {activePanel === "messages" && (
   <div className="flex-1 flex flex-col overflow-hidden">
-  <div className="flex-1 overflow-y-auto p-4 space-y-3">
-  {messages.map(m => (
-  <div key={m.id} className={`flex ${m.sender === "admin" ? "justify-end" : "justify-start"}`}>
-  <div className={`max-w-xs rounded-2xl px-4 py-2.5 ${m.sender === "admin" ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-800"}`}>
-  <div className="text-sm">{m.message}</div>
-  <div className={`text-xs mt-1 ${m.sender === "admin" ? "text-brand-200" : "text-neutral-400"}`}>
-  {m.sender === "admin" ? "You" : selectedTenant.name} · {new Date(m.created_at).toLocaleDateString()}
-  </div>
-  </div>
-  </div>
-  ))}
-  {messages.length === 0 && <div className="text-center py-6 text-neutral-400 text-sm">No messages yet</div>}
-  </div>
-  <div className="p-4 border-t border-brand-50 flex gap-2">
-  <Input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} placeholder="Type a message..." className="flex-1" />
-  <Btn size="lg" onClick={sendMessage}>Send</Btn>
-  </div>
+  <MessageThread
+    messages={messages}
+    viewerRole={userRole || "admin"}
+    viewerName={userProfile?.name || "You"}
+    emptyLabel="No messages yet"
+  />
+  <MessageComposer
+    value={newMessage}
+    onChange={setNewMessage}
+    onSend={sendMessage}
+    sending={sendingMsg}
+    attachment={msgAttachment}
+    onAttachmentChange={setMsgAttachment}
+    showToast={showToast}
+    placeholder={"Message " + selectedTenant.name + "…"}
+  />
   </div>
   )}
 
@@ -997,19 +1047,25 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
 
   {/* Messages tab */}
   {activePanel === "messages" && (
-  <div>
+  <div className="flex flex-col" style={{ minHeight: "400px" }}>
   <h3 className="text-sm font-semibold text-neutral-700 mb-3">Messages</h3>
-  <div className="space-y-2 max-h-48 overflow-y-auto mb-3">
-  {messages.length === 0 ? <div className="text-center py-4 text-neutral-400 text-sm">No messages</div> : messages.map((m, i) => (
-  <div key={i} className={"rounded-2xl px-3 py-2 text-sm max-w-xs " + (m.sender === selectedTenant.name ? "bg-neutral-100 text-neutral-700 mr-auto" : "bg-brand-600 text-white ml-auto")}>
-  <div className="text-xs opacity-60 mb-0.5">{m.sender}</div>
-  {m.message}
-  </div>
-  ))}
-  </div>
-  <div className="flex gap-2">
-  <Input value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type a message..." className="flex-1" onKeyDown={e => e.key === "Enter" && sendMessage()} />
-  <Btn onClick={sendMessage}>Send</Btn>
+  <div className="flex-1 flex flex-col rounded-2xl border border-neutral-200 overflow-hidden" style={{ minHeight: "300px", maxHeight: "60vh" }}>
+  <MessageThread
+    messages={messages}
+    viewerRole={userRole || "admin"}
+    viewerName={userProfile?.name || "You"}
+    emptyLabel="No messages yet"
+  />
+  <MessageComposer
+    value={newMessage}
+    onChange={setNewMessage}
+    onSend={sendMessage}
+    sending={sendingMsg}
+    attachment={msgAttachment}
+    onAttachmentChange={setMsgAttachment}
+    showToast={showToast}
+    placeholder={"Message " + selectedTenant.name + "…"}
+  />
   </div>
   </div>
   )}

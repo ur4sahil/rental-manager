@@ -7,6 +7,7 @@ import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { Spinner, DocUploadModal, generatePaymentReceipt } from "./shared";
+import { MessageThread, MessageComposer, uploadMessageAttachment } from "./Messages";
 
 function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   const [tenantData, setTenantData] = useState(null);
@@ -16,6 +17,12 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   const [workOrders, setWorkOrders] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [newMessage, setNewMessage] = useState("");
+  const [msgAttachment, setMsgAttachment] = useState(null);
+  const [sendingMsg, setSendingMsg] = useState(false);
+  // One admin email for the company — destination for the tenant's
+  // message notifications. Cached at mount; admins occasionally change
+  // but a stale value for a single session is fine.
+  const [adminEmail, setAdminEmail] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
@@ -57,6 +64,25 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   setPayments(p.data || []);
   setWorkOrders(w.data || []);
   setDocuments(d.data || []);
+  // Resolve the destination admin for outbound message notifications.
+  // Pick the first active admin membership; a missing admin just means
+  // no email ping goes out — the thread still records the message.
+  if (companyId) {
+    const { data: adm } = await supabase.from("company_members")
+      .select("user_email")
+      .eq("company_id", companyId).eq("role", "admin").eq("status", "active")
+      .limit(1).maybeSingle();
+    if (adm?.user_email) setAdminEmail(adm.user_email);
+  }
+  // Mark any admin-sent messages as read now that the tenant is online.
+  if (tid) {
+    await supabase.from("messages")
+      .update({ read_at: new Date().toISOString(), read: true })
+      .eq("company_id", companyId)
+      .eq("tenant_id", tid)
+      .is("read_at", null)
+      .neq("sender_role", "tenant");
+  }
   // Check autopay status
   if (tenant.name) {
   const { data: ap } = await supabase.from("autopay_schedules").select("enabled").eq("company_id", companyId).eq("tenant", tenant.name).maybeSingle();
@@ -187,32 +213,58 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
 
   // ---- MESSAGING ----
   async function sendMessage() {
-  if (!newMessage.trim() || !tenantData) return;
-  // Persist tenant_id on the row so the initial load query (which filters
-  // by tenant_id) can read it back. Without this the message inserts with
-  // tenant_id=NULL, and on next refresh the useEffect's tenant_id-scoped
-  // fetch misses the row — the message appears to "vanish."
-  const { error: insErr } = await supabase.from("messages").insert([{
-    company_id: companyId,
-    tenant_id: tenantData.id,
-    tenant: tenantData.name,
-    property: tenantData.property,
-    sender: tenantData.name,
-    message: newMessage,
-    read: false,
-  }]);
-  if (insErr) {
-    pmError("PM-8006", { raw: insErr, context: "messages write" });
-    return; // keep the text in the box so user can retry
+  if (!tenantData) return;
+  const body = newMessage.trim();
+  if (!body && !msgAttachment) return;
+  if (!guardSubmit("tenantPortal:send")) return;
+  setSendingMsg(true);
+  try {
+    let attachmentPath = null;
+    let attachmentName = null;
+    if (msgAttachment) {
+      attachmentPath = await uploadMessageAttachment(msgAttachment, companyId);
+      if (!attachmentPath) { showToast("Attachment upload failed.", "error"); return; }
+      attachmentName = msgAttachment.name;
+    }
+    // sender_role='tenant' is the key — the admin page reads this to
+    // distinguish incoming vs outgoing bubbles, and the unread-badge
+    // count on the sidebar filters by it.
+    const { error: insErr } = await supabase.from("messages").insert([{
+      company_id: companyId,
+      tenant_id: tenantData.id,
+      tenant: tenantData.name,
+      property: tenantData.property,
+      sender: tenantData.name,
+      sender_email: currentUser?.email || null,
+      sender_role: "tenant",
+      message: body,
+      attachment_url: attachmentPath,
+      attachment_name: attachmentName,
+      read: false,
+      read_at: null,
+    }]);
+    if (insErr) { pmError("PM-8006", { raw: insErr, context: "messages write" }); return; }
+    setNewMessage("");
+    setMsgAttachment(null);
+    // Notify the landlord. Sent best-effort — no toast on failure so we
+    // don't surface infra noise to the tenant.
+    if (adminEmail) {
+      await queueNotification("message_received", adminEmail, {
+        sender: tenantData.name,
+        preview: body ? body.slice(0, 120) : (attachmentName ? "[attachment: " + attachmentName + "]" : ""),
+        tenant: tenantData.name,
+        property: tenantData.property,
+      }, companyId);
+    }
+    const { data } = await supabase.from("messages").select("*")
+      .eq("company_id", companyId)
+      .eq("tenant_id", tenantData.id)
+      .order("created_at", { ascending: true });
+    setMessages(data || []);
+  } finally {
+    setSendingMsg(false);
+    guardRelease("tenantPortal:send");
   }
-  setNewMessage("");
-  // Re-fetch with the SAME predicate as the initial load so the view stays
-  // consistent across refreshes.
-  const { data } = await supabase.from("messages").select("*")
-    .eq("company_id", companyId)
-    .eq("tenant_id", tenantData.id)
-    .order("created_at", { ascending: true });
-  setMessages(data || []);
   }
 
   const [autopayEnabled, setAutopayEnabled] = useState(false);
@@ -531,22 +583,23 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
 
   {/* ---- MESSAGES TAB ---- */}
   {activeTab === "messages" && (
-  <div className="bg-white rounded-3xl border border-brand-50">
-  <div className="p-4 space-y-3 max-h-96 overflow-y-auto">
-  {messages.map(m => (
-  <div key={m.id} className={"flex " + (m.sender !== tenantData.name ? "justify-start" : "justify-end")}>
-  <div className={"max-w-xs rounded-2xl px-4 py-2.5 " + (m.sender !== tenantData.name ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-800")}>
-  <div className="text-sm">{m.message}</div>
-  <div className={"text-xs mt-1 " + (m.sender !== tenantData.name ? "text-brand-200" : "text-neutral-400")}>{m.sender} · {new Date(m.created_at).toLocaleDateString()}</div>
-  </div>
-  </div>
-  ))}
-  {messages.length === 0 && <div className="text-center py-6 text-neutral-400 text-sm">No messages yet. Send a message to your property manager below.</div>}
-  </div>
-  <div className="p-3 border-t border-brand-50 flex gap-2">
-  <Input value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} placeholder="Message your property manager..." className="flex-1" />
-  <Btn onClick={sendMessage}>Send</Btn>
-  </div>
+  <div className="bg-white rounded-3xl border border-brand-50 overflow-hidden flex flex-col" style={{ minHeight: "500px", maxHeight: "calc(100vh - 320px)" }}>
+  <MessageThread
+    messages={messages}
+    viewerRole="tenant"
+    viewerName={tenantData.name || "You"}
+    emptyLabel="No messages yet. Send a message to your property manager below."
+  />
+  <MessageComposer
+    value={newMessage}
+    onChange={setNewMessage}
+    onSend={sendMessage}
+    sending={sendingMsg}
+    attachment={msgAttachment}
+    onAttachmentChange={setMsgAttachment}
+    showToast={showToast}
+    placeholder="Message your property manager…"
+  />
   </div>
   )}
   </div>

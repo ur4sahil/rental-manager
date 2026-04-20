@@ -160,6 +160,7 @@ async function goToPage(page, pageId) {
     dashboard: 'Dashboard', properties: 'Properties', tenants: 'Tenants',
     payments: 'Payments', accounting: 'Accounting', owners: 'Owners',
     doc_builder: 'Document Builder', notifications: 'Notifications',
+    messages: 'Messages',
   };
 
   // Nested sidebar items (under Properties expand)
