@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
-import { Input, Btn, Select, Checkbox, FileInput } from "../ui";
+import { Input, Btn, Select, Checkbox, FileInput, IconBtn} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, sanitizeFileName, escapeHtml, escapeFilterValue, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, statusColors, recomputeTenantDocStatus } from "../utils/helpers";
 import { pmError, reportError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
@@ -74,7 +74,7 @@ export function Modal({ title, onClose, children }) {
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 w-full max-w-lg max-h-[90vh] overflow-y-auto">
   <div className="flex items-center justify-between px-6 py-4 border-b border-brand-50 sticky top-0 bg-white rounded-t-3xl">
   <h3 className="font-manrope font-bold text-neutral-800 text-lg">{title}</h3>
-  <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-neutral-400 hover:bg-neutral-100 transition-colors"><span className="material-icons-outlined text-lg">close</span></button>
+  <IconBtn icon="close" onClick={onClose} />
   </div>
   <div className="p-6">{children}</div>
   </div>
