@@ -339,3 +339,86 @@ export function FilterPill({ active, onClick, children }) {
     </button>
   );
 }
+
+// ---- CHECKBOX ----
+// Pairs an <input type=checkbox> with an optional label. When `label` is
+// passed, the entire row is clickable (label wraps input). If the caller
+// needs bare-input semantics (e.g., inside a custom grid cell), pass
+// `label={null}` and render its own <label>.
+export function Checkbox({ label, className = "", ...props }) {
+  const input = (
+    <input type="checkbox" className="rounded border-brand-200 text-brand-600 focus:ring-brand-300" {...props} />
+  );
+  if (label == null) return input;
+  return (
+    <label className={`inline-flex items-center gap-2 text-sm text-neutral-700 ${className}`}>
+      {input}
+      <span>{label}</span>
+    </label>
+  );
+}
+
+// ---- RADIO ----
+export function Radio({ label, className = "", ...props }) {
+  const input = (
+    <input type="radio" className="border-brand-200 text-brand-600 focus:ring-brand-300" {...props} />
+  );
+  if (label == null) return input;
+  return (
+    <label className={`inline-flex items-center gap-2 text-sm text-neutral-700 ${className}`}>
+      {input}
+      <span>{label}</span>
+    </label>
+  );
+}
+
+// ---- FILE INPUT ----
+// Styles the native file picker button. For hidden-input + "Upload" button
+// patterns, pass a ref and className="hidden" like any other input.
+export function FileInput({ className = "", accept, ...props }) {
+  return (
+    <input
+      type="file"
+      accept={accept}
+      className={`text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-brand-700 hover:file:bg-brand-100 ${className}`}
+      {...props}
+    />
+  );
+}
+
+// ---- TEXT LINK ----
+// Underline-on-hover button that mirrors the common `text-xs text-COLOR-600
+// hover:underline` pattern used for inline row actions (Edit / Delete /
+// Report). Not a routed <a> — purely a click handler with link visuals.
+export function TextLink({ tone = "brand", size = "xs", className = "", children, ...props }) {
+  const tones = {
+    brand:   "text-brand-600 hover:text-brand-700",
+    danger:  "text-danger-500 hover:text-danger-700",
+    neutral: "text-neutral-500 hover:text-neutral-700",
+    success: "text-success-600 hover:text-success-700",
+  };
+  const sizes = { xs: "text-xs", sm: "text-sm" };
+  return (
+    <button className={`${tones[tone] || tones.brand} ${sizes[size] || sizes.xs} hover:underline ${className}`} {...props}>
+      {children}
+    </button>
+  );
+}
+
+// ---- CHIP ----
+// Small rounded pill for interactive, non-status labels — e.g. an "Edit"
+// or "Filter by X" affordance. Separate from <Badge> (which is for static
+// status indicators like "Paid" / "Overdue").
+export function Chip({ tone = "neutral", className = "", children, ...props }) {
+  const tones = {
+    neutral: "bg-neutral-100 text-neutral-600 hover:bg-neutral-200",
+    brand:   "bg-brand-50 text-brand-700 hover:bg-brand-100",
+    success: "bg-success-50 text-success-700 hover:bg-success-100",
+    danger:  "bg-danger-50 text-danger-700 hover:bg-danger-100",
+  };
+  return (
+    <button className={`text-xs px-2.5 py-0.5 rounded-full font-medium transition-colors ${tones[tone] || tones.neutral} ${className}`} {...props}>
+      {children}
+    </button>
+  );
+}
