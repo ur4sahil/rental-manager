@@ -1345,7 +1345,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     <div><h3 className="text-lg font-semibold text-neutral-900">Bank Transactions</h3><p className="text-sm text-neutral-400">Import, review, and categorize bank transactions</p></div>
     <div className="flex gap-2 flex-wrap">
       {connections.some(c => c.connection_status === "active") && <button onClick={syncTransactions} disabled={syncing} className="text-xs bg-success-100 text-success-700 px-3 py-1.5 rounded-lg font-semibold hover:bg-success-200 disabled:opacity-50">{syncing ? "Syncing..." : "Sync"}</button>}
-      <button onClick={connectBank} disabled={plaidConnecting} className="bg-info-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-info-700 disabled:opacity-50 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">link</span>{plaidConnecting ? "Connecting..." : "Connect Bank"}</button>
+      <Btn variant="primary" onClick={connectBank} disabled={plaidConnecting} className="disabled:opacity-50"><span className="material-icons-outlined text-sm">link</span>{plaidConnecting ? "Connecting..." : "Connect Bank"}</Btn>
       <button onClick={startImport} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-neutral-700 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">upload_file</span>Import CSV</button>
     </div>
   </div>
@@ -1367,7 +1367,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         return `${c.institution_name || "Bank"}: ${msg.replace(/\{.*\}/g, "").trim() || "Temporary error. Try again."}`;
       }).join(" · ")}
     </div>
-    <button onClick={() => syncTransactions()} className="shrink-0 text-xs bg-warn-600 text-white px-3 py-1.5 rounded-lg hover:bg-warn-700">Retry Sync</button>
+    <Btn variant="warning-fill" onClick={() => syncTransactions()} className="shrink-0">Retry Sync</Btn>
   </div>
   )}
 
@@ -1427,7 +1427,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     <div className="text-3xl mb-3">🏦</div>
     <h4 className="font-semibold text-neutral-800 mb-1">No bank accounts set up</h4>
     <p className="text-sm text-neutral-400 mb-4">Create a bank account to start importing transactions</p>
-    <button onClick={() => setShowNewAccount(true)} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-brand-700">+ Add Bank Account</button>
+    <Btn variant="primary" onClick={() => setShowNewAccount(true)}>+ Add Bank Account</Btn>
   </div>
   )}
 
@@ -1642,7 +1642,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           <Select value={addForm.classId} onChange={e => setAddForm({...addForm, classId: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
             <option value="">No class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Select></div>
-        <button onClick={() => acceptTransaction(txn, addForm.accountId, addForm.accountName, addForm.memo, addForm.classId, addForm.entityType, addForm.entityId, addForm.entityName)} disabled={!addForm.accountId} className="bg-success-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-success-700">Add & Post</button>
+        <Btn variant="success-fill" onClick={() => acceptTransaction(txn, addForm.accountId, addForm.accountName, addForm.memo, addForm.classId, addForm.entityType, addForm.entityId, addForm.entityName)} disabled={!addForm.accountId} className="disabled:opacity-40">Add & Post</Btn>
       </div>
       )}
       {showNewBankAcct && (
@@ -1671,7 +1671,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
               <div className="text-xs font-medium text-neutral-800 truncate">{c.number} — {c.description}</div>
               <div className="text-xs text-neutral-400">{c.date} · ${safeNum(c._jeTotal).toFixed(2)} · Score: {c._score}/100</div>
             </div>
-            <button onClick={() => confirmMatch(txn, c)} className="shrink-0 bg-brand-600 text-white text-xs px-3 py-1 rounded-lg ml-2 hover:bg-brand-700">Match</button>
+            <Btn variant="primary" onClick={() => confirmMatch(txn, c)} className="shrink-0 ml-2">Match</Btn>
           </div>
           ))}
         </div>
@@ -1688,7 +1688,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           </Select></div>
         <div><label className="text-xs font-medium text-neutral-500 block mb-1">Memo</label>
           <Input type="text" value={transferForm.memo} onChange={e => setTransferForm({...transferForm, memo: e.target.value})} placeholder="e.g. Transfer to savings" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
-        <button onClick={() => acceptTransfer(txn, transferForm.accountId, transferForm.accountName, transferForm.memo)} disabled={!transferForm.accountId} className="bg-info-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-info-700">Post Transfer</button>
+        <Btn variant="primary" onClick={() => acceptTransfer(txn, transferForm.accountId, transferForm.accountName, transferForm.memo)} disabled={!transferForm.accountId} className="disabled:opacity-40">Post Transfer</Btn>
       </div>
       )}
 

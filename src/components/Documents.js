@@ -140,7 +140,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   <PageHeader title="Document Management" />
   <div className="flex gap-2">
   <Btn variant="warning-fill" className="bg-warn-500 hover:bg-warn-600" onClick={repairUrls} title="Fix broken View links for existing documents">🔧 Repair URLs</Btn>
-  <button onClick={() => setShowForm(!showForm)} className="bg-brand-600 text-white text-sm px-4 py-2 rounded-2xl hover:bg-brand-700">+ Upload Document</button>
+  <Btn variant="primary" onClick={() => setShowForm(!showForm)}>+ Upload Document</Btn>
   </div>
   </div>
 

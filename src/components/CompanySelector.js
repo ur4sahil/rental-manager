@@ -363,13 +363,11 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
 
   {/* Actions */}
   <div className="grid grid-cols-2 gap-3 mb-6">
-  <button onClick={() => { if (!creating) { setShowCreate(true); setShowJoin(false); } }}
-  disabled={creating}
-  className="bg-brand-600 text-white rounded-3xl p-4 text-center hover:bg-brand-700 transition-colors disabled:opacity-50">
+  <Btn variant="primary" onClick={() => { if (!creating) { setShowCreate(true); setShowJoin(false); } }} disabled={creating} className="p-4 text-center disabled:opacity-50">
   <div className="text-2xl mb-1">{"\u{1F3E2}"}</div>
   <div className="text-sm font-semibold">Create Company</div>
   <div className="text-xs text-brand-200">Start a new LLC or org</div>
-  </button>
+  </Btn>
   <button onClick={() => { setShowJoin(true); setShowCreate(false); }}
   className="bg-white border-2 border-brand-200 text-brand-700 rounded-3xl p-4 text-center hover:border-brand-400 transition-colors">
   <div className="text-2xl mb-1">{"\u{1F517}"}</div>

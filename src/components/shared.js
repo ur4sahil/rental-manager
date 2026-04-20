@@ -36,7 +36,7 @@ export class ErrorBoundary extends React.Component {
   <p className="text-sm text-subtle-500 mb-2">We've logged this issue automatically.</p>
   <div className="inline-block bg-danger-50 text-danger-700 font-mono text-sm px-3 py-1 rounded mb-4">{this.state.errorCode}</div>
   <p className="text-xs text-subtle-400 mb-6">If this keeps happening, share this code with your admin.</p>
-  <button onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }} className="bg-brand-600 text-white px-6 py-2 rounded-lg hover:bg-brand-700">Reload App</button>
+  <Btn variant="primary" onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}>Reload App</Btn>
   </div>
   </div>
   );

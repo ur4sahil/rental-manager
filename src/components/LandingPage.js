@@ -10,7 +10,7 @@ export function LandingPage({ onGetStarted }) {
   </div>
   <span className="font-manrope font-extrabold text-xl tracking-tight text-brand-900">PropManager</span>
   </div>
-  <button onClick={() => onGetStarted("login")} className="bg-brand-600 text-white text-sm px-5 py-2.5 rounded-2xl hover:bg-brand-700 font-semibold transition-colors">Sign In</button>
+  <Btn variant="primary" onClick={() => onGetStarted("login")}>Sign In</Btn>
   </nav>
   <div className="bg-gradient-to-br from-brand-50/50 to-surface-muted px-8 py-16 text-center">
   <p className="text-brand-600 font-semibold text-sm uppercase tracking-widest mb-3">Property Management Platform</p>

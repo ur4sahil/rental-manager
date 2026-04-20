@@ -3266,19 +3266,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="text-xs text-warn-600">{(w.completed_steps || []).length} steps completed · {w.status === "in_progress" ? "In progress" : w.status}</div>
   </div>
   </div>
-  <button onClick={() => {
-  const prop = properties.find(p => p.address === w.property_address);
-  setShowPropertyWizard({
-  propertyId: prop?.id || w.property_id,
-  address: w.property_address,
-  isOccupied: prop?.status === "occupied",
-  tenant: prop?.tenant || "",
-  rent: Number(prop?.rent) || 0,
-  leaseStart: prop?.lease_start || "",
-  leaseEnd: prop?.lease_end || "",
-  securityDeposit: Number(prop?.security_deposit) || 0,
-  });
-  }} className="bg-warn-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-warn-700 font-semibold">Resume Setup</button>
+  <Btn variant="warning-fill" onClick={() => { const prop = properties.find(p => p.address === w.property_address); setShowPropertyWizard({ propertyId: prop?.id || w.property_id, address: w.property_address, isOccupied: prop?.status === "occupied", tenant: prop?.tenant || "", rent: Number(prop?.rent) || 0, leaseStart: prop?.lease_start || "", leaseEnd: prop?.lease_end || "", securityDeposit: Number(prop?.security_deposit) || 0, }); }}>Resume Setup</Btn>
   </div>
   ))}
   </div>

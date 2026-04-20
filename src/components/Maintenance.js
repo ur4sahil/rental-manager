@@ -266,7 +266,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div key={p.id} className="relative group rounded-3xl overflow-hidden border border-brand-50">
   <img src={p.url} alt={p.caption} className="w-full h-40 object-cover" />
   <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
-  <button onClick={() => deletePhoto(p.id)} className="opacity-0 group-hover:opacity-100 bg-danger-500 text-white text-xs px-3 py-1.5 rounded-lg">Delete</button>
+  <Btn variant="danger-fill" onClick={() => deletePhoto(p.id)} className="opacity-0 group-hover:opacity-100">Delete</Btn>
   </div>
   <div className="p-2 text-xs text-neutral-400 truncate">{p.caption}</div>
   </div>
