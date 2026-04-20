@@ -24,6 +24,11 @@ const BTN_VARIANTS = {
   notice:    "text-notice-500 border border-notice-200 hover:bg-notice-50 bg-white",
   // Info (blue) — "Add Charge", informational/neutral-positive actions.
   info:      "text-info-700 border border-info-200 hover:bg-info-100 bg-info-50",
+  // Accent (violet) — used for bank-rules engine affordances.
+  accent:    "text-accent-700 border border-accent-200 hover:bg-accent-100 bg-accent-50",
+  "accent-fill": "bg-accent-600 text-white hover:bg-accent-700",
+  // Dark (neutral-800) — used for CSV import wizard Next/Back/Continue chrome.
+  dark:      "bg-neutral-800 text-white hover:bg-neutral-700",
   ghost:     "text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100",
   purple:    "text-highlight-600 border border-highlight-200 hover:bg-highlight-50 bg-white",
   amber:     "text-warn-600 border border-warn-200 hover:bg-warn-50 bg-white",
@@ -410,6 +415,7 @@ export function TextLink({ tone = "brand", size = "xs", underline = true, classN
     notice:   "text-notice-500 hover:text-notice-700",
     info:     "text-info-600 hover:text-info-700",
     highlight:"text-highlight-600 hover:text-highlight-700",
+    accent:   "text-accent-600 hover:text-accent-800",
     subtle:   "text-subtle-500 hover:text-subtle-700",
   };
   const sizes = { xs: "text-xs", sm: "text-sm", md: "text-base", lg: "text-lg", xl: "text-xl" };

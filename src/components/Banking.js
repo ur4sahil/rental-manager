@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
-import { AccountPicker, Btn, Checkbox, FileInput, Input, Radio, Select, TextLink} from "../ui";
+import { AccountPicker, Btn, Checkbox, Chip, FileInput, Input, Radio, Select, TextLink} from "../ui";
 import { safeNum, formatLocalDate, shortId } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -1346,7 +1346,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     <div className="flex gap-2 flex-wrap">
       {connections.some(c => c.connection_status === "active") && <Btn variant="success" size="sm" onClick={syncTransactions} disabled={syncing}>{syncing ? "Syncing..." : "Sync"}</Btn>}
       <Btn variant="primary" onClick={connectBank} disabled={plaidConnecting} className="disabled:opacity-50"><span className="material-icons-outlined text-sm">link</span>{plaidConnecting ? "Connecting..." : "Connect Bank"}</Btn>
-      <button onClick={startImport} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-neutral-700 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">upload_file</span>Import CSV</button>
+      <Btn variant="dark" size="sm" icon="upload_file" onClick={startImport}>Import CSV</Btn>
     </div>
   </div>
 
@@ -1354,7 +1354,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   {connections.filter(c => c.connection_status === "needs_reauth").length > 0 && (
   <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 flex items-center justify-between">
     <div className="text-sm text-warn-800"><strong>Action needed:</strong> {connections.filter(c => c.connection_status === "needs_reauth").length} bank connection(s) need re-authentication.</div>
-    <button onClick={connectBank} className="text-xs bg-warn-200 text-warn-800 px-3 py-1.5 rounded-lg font-medium hover:bg-warn-300">Fix Now</button>
+    <Btn variant="warning-fill" size="sm" onClick={connectBank}>Fix Now</Btn>
   </div>
   )}
   {connections.filter(c => c.connection_status === "errored").length > 0 && (
@@ -1445,7 +1445,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   <div className="space-y-4">
     <div className="flex items-center justify-between">
       <p className="text-sm text-neutral-500">Rules run in priority order. First matching rule wins.</p>
-      <button onClick={() => { resetRuleForm(); setShowRuleDrawer(true); }} className="bg-accent-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-accent-700 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">add</span>New Rule</button>
+      <Btn variant="accent-fill" size="sm" icon="add" onClick={() => { resetRuleForm(); setShowRuleDrawer(true); }}>New Rule</Btn>
     </div>
     <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
       <table className="w-full text-sm">
@@ -1481,7 +1481,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
               </td>
               <td className="px-3 py-3 text-center text-xs text-neutral-400">{r.apply_count || 0}</td>
               <td className="px-3 py-3 text-center">
-                <button onClick={() => toggleRule(r)} className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.enabled ? "bg-success-100 text-success-700" : "bg-neutral-100 text-neutral-400"}`}>{r.enabled ? "On" : "Off"}</button>
+                <Chip tone={r.enabled ? "success" : "neutral"} onClick={() => toggleRule(r)}>{r.enabled ? "On" : "Off"}</Chip>
               </td>
               <td className="px-3 py-3 text-right">
                 <TextLink tone="brand" size="xs" onClick={() => startEditRule(r)} className="mr-2">Edit</TextLink>
@@ -1514,7 +1514,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       )}
     </div>
     {rules.length > 0 && counts.for_review > 0 && (
-      <button onClick={async () => { const ids = transactions.filter(t => t.status === "for_review").map(t => t.id); const n = await applyRulesToTransactions(ids); showToast(`Rules applied to ${n} transaction(s).`, "success"); }} className="text-sm text-accent-600 hover:underline">Re-apply all rules to {counts.for_review} "For Review" transactions</button>
+      <TextLink tone="accent" size="sm" onClick={async () => { const ids = transactions.filter(t => t.status === "for_review").map(t => t.id); const n = await applyRulesToTransactions(ids); showToast(`Rules applied to ${n} transaction(s).`, "success"); }}>Re-apply all rules to {counts.for_review} "For Review" transactions</TextLink>
     )}
   </div>
   )}
@@ -1605,7 +1605,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       <td className="px-3 py-2.5 text-right whitespace-nowrap">
         {txn.status === "for_review" && <TextLink tone="brand" size="xs" underline={false} onClick={e => { e.stopPropagation(); if (isExpanded) { setExpandedTxn(null); } else { setExpandedTxn(txn.id); const sug = txn.raw_payload_json?._suggestion; if (sug?.type === "split" && sug.lines?.length >= 2) { setActionMode("split"); const abs = Math.abs(txn.amount); setSplitLines(sug.lines.map(l => ({ accountId: l.account_id || "", accountName: l.account_name || "", classId: l.class_id || "", memo: sug.memo || "", amount: sug.splitBy === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0) }))); } else if (sug) { setActionMode("add"); setAddForm({ accountId: sug.accountId || "", accountName: sug.accountName || "", memo: sug.memo || "", classId: sug.classId || "" }); } else { setActionMode("add"); setAddForm({ accountId: "", accountName: "", memo: "", classId: "" }); } }}} className="font-semibold hover:underline">{txn.suggestion_status === "suggested_rule" || txn.suggestion_status === "suggested_exclude" ? "Review" : "Add"}</TextLink>}
         {["categorized", "matched", "posted"].includes(txn.status) && <TextLink tone="neutral" size="xs" onClick={e => { e.stopPropagation(); undoTransaction(txn); }}>Undo</TextLink>}
-        {txn.status === "excluded" && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-info-600 hover:underline">Restore</button>}
+        {txn.status === "excluded" && <TextLink tone="info" size="xs" onClick={e => { e.stopPropagation(); undoTransaction(txn); }}>Restore</TextLink>}
       </td>
     </tr>
     {/* Inline Action Panel */}
@@ -1731,9 +1731,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       </div>
       {/* Create Rule from Transaction */}
       <div className="mt-2 pt-2 border-t border-brand-100">
-        <button onClick={() => createRuleFromTransaction(txn)} className="text-xs text-accent-600 hover:text-accent-800 hover:underline flex items-center gap-1">
+        <TextLink tone="accent" size="xs" onClick={() => createRuleFromTransaction(txn)} className="flex items-center gap-1">
           <span className="material-icons-outlined text-sm">auto_fix_high</span>Create a rule from this transaction
-        </button>
+        </TextLink>
       </div>
     </td></tr>
     )}
@@ -1813,7 +1813,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         {feeds.map(f => <option key={f.id} value={f.id}>{f.account_name} ({f.account_type}){f.masked_number ? ` ••••${f.masked_number}` : ""}</option>)}
         <option value="__new__">+ Create New Account</option>
       </Select>
-      <div className="flex justify-end"><button onClick={() => { if (!wizFeedId) { showToast("Select an account.", "error"); return; } setWizStep(2); }} disabled={!wizFeedId} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Next →</button></div>
+      <div className="flex justify-end"><Btn variant="dark" size="sm" onClick={() => { if (!wizFeedId) { showToast("Select an account.", "error"); return; } setWizStep(2); }} disabled={!wizFeedId}>Next →</Btn></div>
     </div>
     )}
 
@@ -1825,7 +1825,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         {wizFile ? <><p className="text-2xl">📄</p><p className="font-semibold text-success-800">{wizFile.name}</p><p className="text-xs text-success-600">{(wizFile.size/1024).toFixed(1)} KB</p></> : <><p className="text-2xl">📤</p><p className="font-semibold text-neutral-700">Drop CSV here or click to browse</p></>}
       </div>
       <div className="bg-info-50 border border-info-100 rounded-xl p-3 text-xs text-info-700"><strong>Supported:</strong> Chase, Bank of America, Wells Fargo, Citibank, Capital One, US Bank, and generic CSV</div>
-      <div className="flex justify-between"><TextLink tone="neutral" size="sm" underline={false} onClick={() => setWizStep(1)}>← Back</TextLink><button onClick={wizHandleUpload} disabled={!wizFile} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Parse & Continue →</button></div>
+      <div className="flex justify-between"><TextLink tone="neutral" size="sm" underline={false} onClick={() => setWizStep(1)}>← Back</TextLink><Btn variant="dark" size="sm" onClick={wizHandleUpload} disabled={!wizFile}>Parse & Continue →</Btn></div>
     </div>
     )}
 
@@ -1841,7 +1841,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       </div>
       <label className="flex items-center gap-2 text-sm"><Checkbox checked={wizInvertSign} onChange={e => setWizInvertSign(e.target.checked)} className="accent-brand-600" /> Invert sign (negative = inflow)</label>
       {!(wizMapping.date && wizMapping.description && (wizMapping.amount || wizMapping.debit || wizMapping.credit)) && <p className="text-xs text-warn-600 bg-warn-50 rounded-lg px-3 py-2">Date, Description, and at least one amount column required</p>}
-      <div className="flex justify-between"><TextLink tone="neutral" size="sm" underline={false} onClick={() => setWizStep(2)}>← Back</TextLink><button onClick={wizBuildPreview} disabled={!(wizMapping.date && wizMapping.description && (wizMapping.amount || wizMapping.debit || wizMapping.credit))} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Preview →</button></div>
+      <div className="flex justify-between"><TextLink tone="neutral" size="sm" underline={false} onClick={() => setWizStep(2)}>← Back</TextLink><Btn variant="dark" size="sm" onClick={wizBuildPreview} disabled={!(wizMapping.date && wizMapping.description && (wizMapping.amount || wizMapping.debit || wizMapping.credit))}>Preview →</Btn></div>
     </div>
     )}
 
@@ -1867,7 +1867,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         </table>
       </div>
       {wizPreview.length > 50 && <p className="text-xs text-neutral-400">Showing first 50 of {wizPreview.length} rows</p>}
-      <div className="flex justify-between"><TextLink tone="neutral" size="sm" underline={false} onClick={() => setWizStep(3)}>← Back</TextLink><button onClick={() => setWizStep(5)} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg">Continue →</button></div>
+      <div className="flex justify-between"><TextLink tone="neutral" size="sm" underline={false} onClick={() => setWizStep(3)}>← Back</TextLink><Btn variant="dark" size="sm" onClick={() => setWizStep(5)}>Continue →</Btn></div>
     </div>
     )}
 
@@ -1907,7 +1907,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         {wizResult.skipped > 0 && <p>{wizResult.skipped} rows skipped (errors)</p>}
         {wizResult.ruleApplied > 0 && <p className="text-accent-600">{wizResult.ruleApplied} auto-categorized by rules</p>}
       </div>
-      <button onClick={() => { setShowImportWizard(false); setActiveTab("for_review"); }} className="bg-neutral-800 text-white text-sm px-6 py-2 rounded-lg">Review Transactions</button>
+      <Btn variant="dark" size="md" onClick={() => { setShowImportWizard(false); setActiveTab("for_review"); }}>Review Transactions</Btn>
     </div>
     )}
     </div>
@@ -1981,7 +1981,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           );
         })}
         {ruleForm.conditions.length < 5 && (
-          <button onClick={addCondition} className="text-xs text-accent-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">add</span>Add a condition</button>
+          <TextLink tone="accent" size="xs" onClick={addCondition} className="flex items-center gap-1"><span className="material-icons-outlined text-sm">add</span>Add a condition</TextLink>
         )}
       </div>
 
@@ -2007,7 +2007,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         <div>
           <div className="flex items-center justify-between mb-1">
             <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest">Category *</label>
-            {!ruleForm.split && <button onClick={addSplitLine} className="text-xs text-accent-600 hover:underline">+ Add a split</button>}
+            {!ruleForm.split && <TextLink tone="accent" size="xs" onClick={addSplitLine}>+ Add a split</TextLink>}
           </div>
           {ruleForm.split && ruleForm.lines.length >= 2 && (
             <div className="flex items-center gap-2 mb-2">
@@ -2033,7 +2033,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           </div>
           ))}
           {ruleForm.split && ruleForm.lines.length < 5 && (
-            <button onClick={addSplitLine} className="text-xs text-accent-600 hover:underline">+ Add line</button>
+            <TextLink tone="accent" size="xs" onClick={addSplitLine}>+ Add line</TextLink>
           )}
           {ruleForm.split && ruleForm.splitBy === "percentage" && (
             <div className={`text-xs mt-1 ${Math.abs(ruleForm.lines.reduce((s, l) => s + (Number(l.percentage) || 0), 0) - 100) < 0.01 ? "text-success-600" : "text-danger-500"}`}>
@@ -2093,7 +2093,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
 
       {/* Actions */}
       <div className="flex gap-3 pt-2 border-t border-neutral-200">
-        <button onClick={saveRule} className="bg-accent-600 text-white text-sm px-6 py-2.5 rounded-lg hover:bg-accent-700 font-semibold">{editingRule ? "Update Rule" : "Save Rule"}</button>
+        <Btn variant="accent-fill" size="md" onClick={saveRule}>{editingRule ? "Update Rule" : "Save Rule"}</Btn>
         <TextLink tone="neutral" size="sm" underline={false} onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }} className="px-4 py-2.5 hover:text-neutral-700">Cancel</TextLink>
       </div>
     </div>
