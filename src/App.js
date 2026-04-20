@@ -748,7 +748,7 @@ function AppInner() {
   <span className="w-5 h-5 rounded-lg bg-brand-100 flex items-center justify-center text-brand-700 text-xs font-bold shrink-0">{activeCompany.name[0]}</span>
   <span className="text-xs text-neutral-500 truncate font-medium">{activeCompany.name}</span>
   </div>
-  <button onClick={() => { setSidebarOpen(false); switchCompany(); }} className="text-neutral-400 hover:text-brand-600 shrink-0 ml-1" title="Switch Company"><span className="material-icons-outlined text-sm">swap_horiz</span></button>
+  {userRole !== "tenant" && <button onClick={() => { setSidebarOpen(false); switchCompany(); }} className="text-neutral-400 hover:text-brand-600 shrink-0 ml-1" title="Switch Company"><span className="material-icons-outlined text-sm">swap_horiz</span></button>}
   </div>
   )}
   </div>
@@ -802,8 +802,8 @@ function AppInner() {
   <div className="fixed inset-0 z-[90]" onClick={() => setShowUserMenu(false)} />
   <div className="absolute right-0 top-full mt-1 bg-white border border-neutral-200 rounded-xl shadow-lg py-1 w-48 z-[95]">
     <button onClick={() => { setShowUserMenu(false); setShowUserProfile(true); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">person</span>Profile</button>
-    <button onClick={() => { setShowUserMenu(false); switchCompany(); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">swap_horiz</span>Switch Company</button>
-    <button onClick={() => { setShowUserMenu(false); setPage("admin"); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">settings</span>Settings</button>
+    {userRole !== "tenant" && <button onClick={() => { setShowUserMenu(false); switchCompany(); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">swap_horiz</span>Switch Company</button>}
+    {userRole !== "tenant" && <button onClick={() => { setShowUserMenu(false); setPage("admin"); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-neutral-700 hover:bg-brand-50 text-left"><span className="material-icons-outlined text-base">settings</span>Settings</button>}
     <div className="border-t border-neutral-100 my-1" />
     <button onClick={() => { setShowUserMenu(false); handleLogout(); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-danger-500 hover:bg-danger-50 text-left"><span className="material-icons-outlined text-base">logout</span>Logout</button>
   </div>
