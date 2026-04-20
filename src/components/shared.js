@@ -3,6 +3,7 @@ import { supabase } from "../supabase";
 import { Input, Btn } from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, sanitizeFileName, escapeHtml, escapeFilterValue, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, statusColors, recomputeTenantDocStatus } from "../utils/helpers";
 import { pmError, reportError } from "../utils/errors";
+import { printTheme } from "../utils/theme";
 import { getOrCreateTenantAR, resolveAccountId } from "../utils/accounting";
 
 // Format all tenants on a property as "John Smith / Jane Doe"
@@ -355,23 +356,23 @@ export function generatePaymentReceipt(payment, companyName = "PropManager") {
 <style>
   @media print { @page { margin: 0.5in; } body { -webkit-print-color-adjust: exact; } }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1f2937; background: #fff; padding: 40px; }
-  .receipt { max-width: 600px; margin: 0 auto; border: 2px solid #e5e7eb; border-radius: 12px; overflow: hidden; }
-  .header { background: linear-gradient(135deg, #4338ca, #6366f1); color: white; padding: 30px; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: ${printTheme.inkStrong}; background: ${printTheme.surface}; padding: 40px; }
+  .receipt { max-width: 600px; margin: 0 auto; border: 2px solid ${printTheme.borderLight}; border-radius: 12px; overflow: hidden; }
+  .header { background: linear-gradient(135deg, ${printTheme.brandDark}, ${printTheme.brandLight}); color: white; padding: 30px; }
   .header h1 { font-size: 24px; margin-bottom: 4px; }
   .header .subtitle { font-size: 13px; opacity: 0.85; }
   .badge { display: inline-block; background: rgba(255,255,255,0.2); border-radius: 20px; padding: 4px 14px; font-size: 12px; font-weight: 600; margin-top: 10px; }
   .body { padding: 30px; }
-  .row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f3f4f6; }
+  .row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid ${printTheme.surfaceMuted}; }
   .row:last-child { border-bottom: none; }
-  .label { color: #6b7280; font-size: 13px; }
+  .label { color: ${printTheme.inkMuted}; font-size: 13px; }
   .value { font-weight: 600; font-size: 14px; text-align: right; }
-  .amount-row { background: #f0fdf4; border-radius: 8px; padding: 16px; margin: 16px 0; display: flex; justify-content: space-between; align-items: center; }
-  .amount-row .label { font-size: 15px; font-weight: 600; color: #1f2937; }
-  .amount-row .value { font-size: 22px; color: #059669; font-weight: 700; }
-  .footer { background: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb; }
-  .footer p { font-size: 11px; color: #9ca3af; }
-  .stamp { color: #059669; font-size: 18px; font-weight: 700; border: 3px solid #059669; border-radius: 8px; padding: 6px 20px; display: inline-block; transform: rotate(-3deg); margin-bottom: 10px; }
+  .amount-row { background: ${printTheme.successBg}; border-radius: 8px; padding: 16px; margin: 16px 0; display: flex; justify-content: space-between; align-items: center; }
+  .amount-row .label { font-size: 15px; font-weight: 600; color: ${printTheme.inkStrong}; }
+  .amount-row .value { font-size: 22px; color: ${printTheme.success}; font-weight: 700; }
+  .footer { background: ${printTheme.surfaceMuted}; padding: 20px 30px; text-align: center; border-top: 1px solid ${printTheme.borderLight}; }
+  .footer p { font-size: 11px; color: ${printTheme.inkSubtle}; }
+  .stamp { color: ${printTheme.success}; font-size: 18px; font-weight: 700; border: 3px solid ${printTheme.success}; border-radius: 8px; padding: 6px 20px; display: inline-block; transform: rotate(-3deg); margin-bottom: 10px; }
 </style></head>
 <body>
 <div class="receipt">
