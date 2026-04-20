@@ -550,6 +550,22 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
   }
 
+  async function deleteStaffMessage(m) {
+  if (!m?.id || !selectedTenant) return;
+  if (!window.confirm("Delete this message? The tenant will no longer see it.")) return;
+  const { error } = await supabase.from("messages").delete()
+    .eq("id", m.id)
+    .eq("company_id", companyId)
+    .eq("tenant_id", selectedTenant.id);
+  if (error) { pmError("PM-8006", { raw: error, context: "tenants drawer delete message" }); return; }
+  logAudit("delete", "messages", "Deleted message " + m.id, m.id, userProfile?.email, userRole, companyId);
+  const { data } = await supabase.from("messages").select("*")
+    .eq("company_id", companyId)
+    .eq("tenant_id", selectedTenant.id)
+    .order("created_at", { ascending: true });
+  setMessages(data || []);
+  }
+
   async function addLedgerEntry() {
   if (!guardSubmit("addLedgerEntry")) return;
   try {
@@ -829,6 +845,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     messages={messages}
     viewerRole={userRole || "admin"}
     viewerName={userProfile?.name || "You"}
+    tenantName={selectedTenant?.name}
+    onDelete={deleteStaffMessage}
     emptyLabel="No messages yet"
   />
   <MessageComposer
@@ -1054,6 +1072,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     messages={messages}
     viewerRole={userRole || "admin"}
     viewerName={userProfile?.name || "You"}
+    tenantName={selectedTenant?.name}
+    onDelete={deleteStaffMessage}
     emptyLabel="No messages yet"
   />
   <MessageComposer

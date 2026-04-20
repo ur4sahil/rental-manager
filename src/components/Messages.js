@@ -22,7 +22,7 @@ const MSG_ATTACHMENT_MAX = 10 * 1024 * 1024; // 10MB
 // Used by the admin Messages page AND by the tenant-portal/tenants-drawer
 // "messages" tabs so the chat styling stays in one place.
 // ============================================================
-export function MessageThread({ messages, viewerRole, viewerName, emptyLabel }) {
+export function MessageThread({ messages, viewerRole, viewerName, emptyLabel, onDelete, tenantName }) {
   const scrollRef = useRef(null);
   // Autoscroll to bottom on new message — checked by length so we don't
   // fight the user when they scroll up to read history (a small UX win
@@ -75,14 +75,37 @@ export function MessageThread({ messages, viewerRole, viewerName, emptyLabel }) 
         // when sender_role is missing keeps old rows readable.
         const role = m.sender_role || (m.sender === "admin" ? "admin" : "tenant");
         const outgoing = viewerIsStaff ? role !== "tenant" : role === "tenant";
+        // Prefer the human-readable name over raw email. For an outgoing
+        // bubble we show the viewer's own name; for incoming we prefer
+        // `sender` (captured at insert time), then tenant name if this
+        // is the tenant row, then finally the email as a last resort.
         const displayName = outgoing
           ? (viewerName || "You")
-          : (m.sender_email || m.sender || (role === "tenant" ? "Tenant" : "Property Manager"));
+          : (m.sender || tenantName || (role === "tenant" ? "Tenant" : "Property Manager"));
+        const avatarInitial = (displayName[0] || "?").toUpperCase();
+        const avatarCls = outgoing
+          ? "bg-brand-700 text-white"
+          : "bg-brand-100 text-brand-700";
         const created = new Date(m.created_at);
         const timeLabel = created.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
         const receipt = outgoing ? (m.read_at ? "✓✓ read " + new Date(m.read_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "✓ sent") : null;
+        const canDelete = outgoing && typeof onDelete === "function";
         return (
-          <div key={b.key} className={"flex " + (outgoing ? "justify-end" : "justify-start")}>
+          <div key={b.key} className={"group flex items-end gap-2 " + (outgoing ? "justify-end" : "justify-start")}>
+            {!outgoing && (
+              <div className={"w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 " + avatarCls}>{avatarInitial}</div>
+            )}
+            {canDelete && (
+              <button
+                type="button"
+                onClick={() => onDelete(m)}
+                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full text-neutral-400 hover:text-danger-600 hover:bg-danger-50"
+                title="Delete message"
+                aria-label="Delete message"
+              >
+                <span className="material-icons-outlined text-sm">delete</span>
+              </button>
+            )}
             <div className={"max-w-sm rounded-2xl px-4 py-2 shadow-sm " + (outgoing ? "bg-brand-600 text-white" : "bg-white border border-neutral-200 text-neutral-800")}>
               {m.message && <div className="text-sm whitespace-pre-wrap break-words">{m.message}</div>}
               {m.attachment_url && <AttachmentChip url={m.attachment_url} name={m.attachment_name} outgoing={outgoing} />}
@@ -91,6 +114,9 @@ export function MessageThread({ messages, viewerRole, viewerName, emptyLabel }) 
                 {receipt && <><span>·</span><span>{receipt}</span></>}
               </div>
             </div>
+            {outgoing && (
+              <div className={"w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 " + avatarCls}>{avatarInitial}</div>
+            )}
           </div>
         );
       })())}
@@ -379,6 +405,19 @@ function Messages({ companyId, userProfile, userRole, showToast }) {
     }
   }
 
+  // Soft-delete an outgoing message. Same scope rule as the send path —
+  // only the viewer's own bubbles expose the delete affordance, so this
+  // never touches the other party's rows.
+  async function handleDelete(m) {
+    if (!m?.id) return;
+    if (!window.confirm("Delete this message? The tenant will no longer see it.")) return;
+    const { error } = await supabase.from("messages").delete().eq("id", m.id).eq("company_id", companyId);
+    if (error) { pmError("PM-8006", { raw: error, context: "Messages delete" }); return; }
+    logAudit("delete", "messages", "Deleted message " + m.id, m.id, userProfile?.email, userRole, companyId);
+    if (selectedId) fetchThread(selectedId);
+    fetchRollup();
+  }
+
   // Build the conversation list: reduce allMsgs to {lastMsg, unread} per
   // tenant, then sort by lastMsg.created_at DESC with tenants who've
   // never messaged falling to the bottom alphabetically.
@@ -408,7 +447,7 @@ function Messages({ companyId, userProfile, userRole, showToast }) {
 
   return (
     <div>
-      <PageHeader title="Messages" subtitle="Chat with your tenants. Polls every 15 seconds." />
+      <PageHeader title="Messages" subtitle="Chat with your tenants." />
       <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-hidden flex" style={{ height: "calc(100vh - 220px)", minHeight: "500px" }}>
         {/* LEFT PANE — conversation list */}
         <div className="w-80 border-r border-neutral-200 flex flex-col">
@@ -456,6 +495,8 @@ function Messages({ companyId, userProfile, userRole, showToast }) {
                 messages={threadMsgs}
                 viewerRole={userRole}
                 viewerName={viewerName}
+                tenantName={selectedTenant.name}
+                onDelete={handleDelete}
                 emptyLabel={"No messages yet. Say hi to " + selectedTenant.name + "."}
               />
               <MessageComposer

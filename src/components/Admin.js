@@ -36,6 +36,7 @@ const ALL_NAV = [
   { id: "doc_builder", label: "Document Builder", icon: "description" },
   { id: "vendors", label: "Vendors", icon: "engineering" },
   { id: "owners", label: "Owners", icon: "person" },
+  { id: "messages", label: "Messages", icon: "forum" },
   { id: "notifications", label: "Notifications", icon: "notifications_active" },
 ];
 // Flat list of all nav IDs including children (for settings UI and allowedPages)

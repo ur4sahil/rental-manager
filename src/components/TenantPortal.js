@@ -267,6 +267,23 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   }
   }
 
+  async function deleteOwnMessage(m) {
+  if (!m?.id || !tenantData) return;
+  if (!window.confirm("Delete this message? Your property manager will no longer see it.")) return;
+  // Scope delete to this tenant's own row — safety net on top of the UI-
+  // side rule that only outgoing bubbles expose the trash affordance.
+  const { error } = await supabase.from("messages").delete()
+    .eq("id", m.id)
+    .eq("company_id", companyId)
+    .eq("tenant_id", tenantData.id);
+  if (error) { pmError("PM-8006", { raw: error, context: "tenant portal delete message" }); return; }
+  const { data } = await supabase.from("messages").select("*")
+    .eq("company_id", companyId)
+    .eq("tenant_id", tenantData.id)
+    .order("created_at", { ascending: true });
+  setMessages(data || []);
+  }
+
   const [autopayEnabled, setAutopayEnabled] = useState(false);
   const [autopayLoading, setAutopayLoading] = useState(false);
 
@@ -588,6 +605,8 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
     messages={messages}
     viewerRole="tenant"
     viewerName={tenantData.name || "You"}
+    tenantName={tenantData.name}
+    onDelete={deleteOwnMessage}
     emptyLabel="No messages yet. Send a message to your property manager below."
   />
   <MessageComposer
