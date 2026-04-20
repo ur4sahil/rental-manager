@@ -231,15 +231,17 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   </div>
   <div className="flex items-center gap-3 text-xs mb-2">
   <span className="text-neutral-400">Recipients:</span>
-  <span className="font-medium text-neutral-500">{s.recipients}</span>
-  <Select value={s.recipient_filter || "all"} onChange={async (e) => {
-  await supabase.from("notification_settings").update({ recipient_filter: e.target.value }).eq("id", s.id).eq("company_id", companyId);
+  <Select value={s.recipients || "all"} onChange={async (e) => {
+  // Column is `recipients` (the previous `recipient_filter` rename
+  // was silently failing — column doesn't exist). Option values
+  // match existing DB vocabulary: "admin" | "tenant" | "tenant,admin".
+  await supabase.from("notification_settings").update({ recipients: e.target.value }).eq("id", s.id).eq("company_id", companyId);
   fetchData();
   }} className="text-xs border border-subtle-200 rounded px-1.5 py-0.5 mr-2">
   <option value="all">All</option>
-  <option value="tenant_only">Tenant Only</option>
-  <option value="admin_only">Admin Only</option>
-  <option value="both">Admin + Tenant</option>
+  <option value="tenant">Tenant Only</option>
+  <option value="admin">Admin Only</option>
+  <option value="tenant,admin">Admin + Tenant</option>
   </Select>
   <div className="flex gap-1 mr-3">
   {channels.map(ch => (
