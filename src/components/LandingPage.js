@@ -1,4 +1,5 @@
 import React from "react";
+import { Btn, TextLink } from "../ui";
 
 export function LandingPage({ onGetStarted }) {
   return (
