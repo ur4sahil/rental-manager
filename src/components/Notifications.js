@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, PageHeader } from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, formatCurrency, normalizeEmail, escapeFilterValue } from "../utils/helpers";
@@ -17,7 +17,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   const [showTest, setShowTest] = useState(null);
   const [queueStats, setQueueStats] = useState({ pending: 0, sent: 0, failed: 0 });
 
-  async function fetchQueueStatus() {
+  const fetchQueueStatus = useCallback(async () => {
   try {
   const { data: items } = await supabase.from("notification_queue").select("status").eq("company_id", companyId).limit(500);
   if (items) {
@@ -28,7 +28,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   });
   }
   } catch (e) { pmError("PM-8006", { raw: e, context: "fetch notification queue status", silent: true }); }
-  }
+  }, [companyId]);
 
   const channels = ["in_app", "email", "push"];
   const channelLabels = { in_app: "In-App", email: "Email", push: "Push" };
@@ -45,9 +45,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   message_received: { label: "New Message", icon: "\ud83d\udcac", desc: "Sent when a tenant or landlord sends a chat message" },
   };
 
-  useEffect(() => { fetchData(); }, [companyId]);
-
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
   setLoading(true);
   const [s, l, t, le] = await Promise.all([
   supabase.from("notification_settings").select("*").eq("company_id", companyId).order("event_type"),
@@ -60,7 +58,9 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   setTenants(t.data || []);
   setLeases(le.data || []);
   setLoading(false);
-  }
+  }, [companyId]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   async function toggleSetting(setting) {
   const { error: _err6051 } = await supabase.from("notification_settings").update({ enabled: !setting.enabled }).eq("company_id", companyId).eq("id", setting.id);
@@ -167,7 +167,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   fetchData();
   }
 
-  useEffect(() => { fetchQueueStatus(); }, [companyId]);
+  useEffect(() => { fetchQueueStatus(); }, [fetchQueueStatus]);
 
   if (loading) return <Spinner />;
 
