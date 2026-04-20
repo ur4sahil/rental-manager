@@ -53,19 +53,29 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   setLoading(false);
   };
 
-  const [resetSent, setResetSent] = useState(false);
+  // Reset banner stores the exact email we sent to — NOT the live `email`
+  // field. Previously the banner interpolated `{email}` which meant users
+  // saw the message mutate letter-by-letter if they kept typing after
+  // requesting the reset. Capture once, display a stable value.
+  const [resetSentEmail, setResetSentEmail] = useState("");
 
   const handleForgotPassword = async () => {
-  if (!email) { setError("Enter your email address first."); return; }
   if (!requireCaptcha()) return;
+  // Explicitly confirm the email address before sending. Using the same
+  // input the user has been typing into is error-prone — they may have
+  // only entered a partial address, or be on a shared device.
+  const suggested = email || "";
+  const target = (window.prompt("Enter the email address for password reset:", suggested) || "").trim();
+  if (!target) return;
+  if (!/^\S+@\S+\.\S+$/.test(target)) { setError("Please enter a valid email address."); return; }
   setLoading(true);
   setError("");
-  setResetSent(false);
+  setResetSentEmail("");
   const opts = { redirectTo: window.location.origin };
   if (captchaToken) opts.captchaToken = captchaToken;
-  const { error } = await supabase.auth.resetPasswordForEmail(email, opts);
+  const { error } = await supabase.auth.resetPasswordForEmail(target, opts);
   if (error) { setError(error.message); resetCaptcha(); }
-  else { setResetSent(true); resetCaptcha(); }
+  else { setResetSentEmail(target); resetCaptcha(); }
   setLoading(false);
   };
 
@@ -184,7 +194,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   </>
   )}
   {error && <div className="bg-danger-50 text-danger-600 text-xs rounded-lg px-3 py-2 mb-4">{error}</div>}
-  {resetSent && <div className="bg-positive-50 text-positive-700 text-xs rounded-lg px-3 py-2 mb-4">Password reset link sent to {email}. Check your inbox.</div>}
+  {resetSentEmail && <div className="bg-positive-50 text-positive-700 text-xs rounded-lg px-3 py-2 mb-4">Password reset link sent to {resetSentEmail}. Check your inbox.</div>}
 
   {isSignup && (
   <div className="mb-4">
@@ -233,7 +243,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
 
   <div className="text-center mt-4 space-y-2">
   {isSignup ? (
-  <button onClick={() => { setMode("login"); setError(""); setResetSent(false); resetCaptcha(); }} className="text-xs text-brand-600 hover:underline">Already have an account? Sign in</button>
+  <button onClick={() => { setMode("login"); setError(""); setResetSentEmail(""); resetCaptcha(); }} className="text-xs text-brand-600 hover:underline">Already have an account? Sign in</button>
   ) : (
   <>
   <button onClick={handleForgotPassword} disabled={loading} className="text-xs text-neutral-400 hover:text-brand-600 hover:underline">Forgot password?</button>
