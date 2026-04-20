@@ -187,11 +187,26 @@ function SetPasswordScreen({ currentUser, onComplete, showToast }) {
     setSaving(true);
     const { error } = await supabase.auth.updateUser({ password: pw });
     if (error) { setSaving(false); showToast("Error: " + error.message, "error"); return; }
-    // Persist that this user has set a password so the auth router doesn't
-    // re-prompt on next login. app_users is keyed by email (case-insensitive).
+    // Persist password_set_at so the auth router doesn't re-prompt on next
+    // login. Upsert because tenants invited via magic link have a
+    // company_members row but NO app_users row yet — UPDATE alone wouldn't
+    // touch anything. We grab company_id from their first membership to
+    // satisfy the (email, company_id) unique index.
     try {
-      await supabase.from("app_users").update({ password_set_at: new Date().toISOString() }).ilike("email", currentUser?.email || "");
-    } catch (_) { /* non-fatal — worst case the user gets prompted once more */ }
+      const email = currentUser?.email || "";
+      const { data: mem } = await supabase.from("company_members")
+        .select("company_id, role, user_name")
+        .ilike("user_email", email)
+        .limit(1)
+        .maybeSingle();
+      await supabase.from("app_users").upsert({
+        email,
+        company_id: mem?.company_id || null,
+        role: mem?.role || "tenant",
+        name: mem?.user_name || email.split("@")[0],
+        password_set_at: new Date().toISOString(),
+      }, { onConflict: "email,company_id" });
+    } catch (_) { /* non-fatal — worst case the user is prompted once more */ }
     setSaving(false);
     showToast("Password set! You can now log in with email and password.", "success");
     onComplete();
@@ -303,29 +318,27 @@ function AppInner() {
   const [urlCompanyParam] = useState(() => new URLSearchParams(window.location.search).get("company"));
 
   useEffect(() => {
-  // Returns true when the user authenticated via a passwordless method
-  // (magic link / OTP) and hasn't set a real password yet. Any amr entry
-  // whose method is in the passwordless set qualifies, unless there's
-  // ALSO a "password" method on the record — meaning they already set one.
-  // We also check app_users.password_set_at as a persistence cache so
-  // returning magic-link users aren't prompted after they've set it.
-  function needsPasswordSetup(user) {
-    if (!user?.amr) return false;
-    const hasPassword = user.amr.some(a => a.method === "password");
-    if (hasPassword) return false;
-    const passwordlessMethods = ["otp", "magiclink", "sms_otp", "email_otp"];
-    return user.amr.some(a => passwordlessMethods.includes(a.method));
+  // The Supabase user object does NOT carry amr (authentication methods
+  // reference) — that's JWT-payload only. Relying on user.amr returned
+  // false for every magic-link user, so nobody ever saw the
+  // set-password prompt. We now rely on app_users.password_set_at as the
+  // single source of truth: set on first successful password setup, and
+  // backfilled for legacy users so they're not re-prompted.
+  async function needsPasswordSetup(user) {
+    if (!user?.email) return false;
+    try {
+      const { data: row } = await supabase.from("app_users").select("password_set_at").ilike("email", user.email).maybeSingle();
+      return !row?.password_set_at;
+    } catch (_) {
+      // Transient fetch failure — err on the side of NOT interrupting the
+      // user's normal flow. The next session will prompt if needed.
+      return false;
+    }
   }
   async function routeSignedIn(user) {
     setCurrentUser(user);
-    if (needsPasswordSetup(user)) {
-      // Double-check against app_users: if this user already flipped
-      // password_set_at in a prior session, skip the prompt.
-      try {
-        const { data: row } = await supabase.from("app_users").select("password_set_at").ilike("email", user.email || "").maybeSingle();
-        if (!row?.password_set_at) { setScreen("set_password"); return; }
-      } catch (_) { setScreen("set_password"); return; }
-    }
+    const mustPrompt = await needsPasswordSetup(user);
+    if (mustPrompt) { setScreen("set_password"); return; }
     setScreen("company_select");
     autoSelectCompany(user);
   }
@@ -397,14 +410,14 @@ function AppInner() {
   }
   if (match) {
   const { data: company } = await supabase.from("companies").select("*").eq("id", urlCompanyId).maybeSingle();
-  if (company) { window.history.replaceState({}, "", window.location.pathname); handleSelectCompany(company, match.role); return; }
+  if (company) { window.history.replaceState({}, "", window.location.pathname); handleSelectCompany(company, match.role, user); return; }
   }
   }
   // Only tenants auto-select their company (skip selector)
   const tenantMembership = memberships.find(m => m.role === "tenant");
   if (tenantMembership) {
   const { data: company } = await supabase.from("companies").select("*").eq("id", tenantMembership.company_id).maybeSingle();
-  if (company) { handleSelectCompany(company, tenantMembership.role); return; }
+  if (company) { handleSelectCompany(company, tenantMembership.role, user); return; }
   }
   // Always show company selector for non-tenant roles
   setScreen("company_select");
@@ -435,7 +448,11 @@ function AppInner() {
   delete _acctIdCache[cid];
   }
 
-  function handleSelectCompany(company, role) {
+  function handleSelectCompany(company, role, explicitUser = null) {
+  // `explicitUser` lets callers invoked right after setCurrentUser pass the
+  // fresh auth user directly — avoids the race where component state
+  // hasn't propagated by the time we compute the initial userProfile.
+  const userForProfile = explicitUser || currentUser;
   // Clear previous company's cached data (including global caches)
   setNotifications([]);
   setUnreadCount(0);
@@ -470,8 +487,8 @@ function AppInner() {
   setCompanyRole(role);
   setUserRole(role);
   setRoleLoaded(true);
-  setUserProfile({ name: currentUser?.email?.split("@")[0] || "User", email: currentUser?.email, role: role });
-  fetchUserRoleForCompany(currentUser, company.id); // async — role updates via setState after fetch
+  setUserProfile({ name: userForProfile?.email?.split("@")[0] || "User", email: userForProfile?.email, role: role });
+  fetchUserRoleForCompany(userForProfile, company.id); // async — role + real name update via setState after fetch
   setScreen("app");
   const hashPage = window.location.hash.replace("#", "");
   if (hashPage && hashPage !== "app") setPageRaw(hashPage);
@@ -490,7 +507,17 @@ function AppInner() {
   if (data) {
   setUserRole(data.role);
   setCompanyRole(data.role);
-  setUserProfile({ name: data.user_name || user.email.split("@")[0], email: user.email, role: data.role });
+  let displayName = data.user_name;
+  // For tenants, prefer the name on the tenants table over company_members
+  // — invites occasionally save user_name as the email prefix when the
+  // inviter didn't type a display name.
+  if (!displayName && data.role === "tenant") {
+    try {
+      const { data: trow } = await supabase.from("tenants").select("name").eq("company_id", companyId).ilike("email", user.email).maybeSingle();
+      if (trow?.name) displayName = trow.name;
+    } catch (_) { /* fall through to email prefix */ }
+  }
+  setUserProfile({ name: displayName || user.email.split("@")[0], email: user.email, role: data.role });
   if (data.custom_pages) {
   try { const parsed = JSON.parse(data.custom_pages); if (Array.isArray(parsed)) setCustomAllowedPages(parsed); } catch { setCustomAllowedPages(null); }
   } else {
@@ -756,7 +783,7 @@ function AppInner() {
 
   {/* Main Content */}
   <div className="flex-1 flex flex-col min-w-0">
-  <header className="bg-white/80 backdrop-blur-md border-b border-brand-50 px-4 py-3 flex items-center gap-3">
+  <header className="bg-white/80 backdrop-blur-md border-b border-brand-50 px-4 py-3 flex items-center gap-3 relative z-40">
   <button className="md:hidden text-neutral-400 hover:text-neutral-600 transition-colors" onClick={() => setSidebarOpen(!sidebarOpen)}><span className="material-icons-outlined">menu</span></button>
   {/* Use effectivePage so tenants/owners see "Tenant Portal" / "Owner Portal"
       on the top bar instead of the raw page state (e.g. "company_select")
