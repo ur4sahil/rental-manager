@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import HCaptcha from "@hcaptcha/react-hcaptcha";
 import { supabase } from "../supabase";
-import { Input, PageHeader } from "../ui";
+import { Input, PageHeader, Btn } from "../ui";
 import { PM_ERRORS, pmError } from "../utils/errors";
 
 // hCaptcha site key. When unset the widget doesn't render and captcha isn't
@@ -153,7 +153,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   <div className="text-4xl mb-3">{"\u2705"}</div>
   <PageHeader title="Account Created!" />
   <p className="text-sm text-neutral-400 mb-4">Check your email for a confirmation link. Once confirmed, you can sign in.</p>
-  <button onClick={() => { setSignupSuccess(false); setMode("login"); setError(""); }} className="bg-brand-600 text-white py-2.5 px-6 rounded-lg font-semibold text-sm hover:bg-brand-700">Back to Sign In</button>
+  <Btn size="lg" onClick={() => { setSignupSuccess(false); setMode("login"); setError(""); }}>Back to Sign In</Btn>
   </div>
   </div>
   </div>
@@ -221,9 +221,15 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   </div>
   )}
 
-  <button onClick={isSignup ? () => handleSignup(mode.replace("signup_", "")) : handleLogin} disabled={loading} className={`w-full text-white py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50 ${isSignup ? (mode === "signup_pm" ? "bg-brand-600 hover:bg-brand-700" : mode === "signup_owner" ? "bg-success-600 hover:bg-success-700" : "bg-warn-600 hover:bg-warn-700") : "bg-brand-600 hover:bg-brand-700"}`}>
+  <Btn
+    size="lg"
+    variant={isSignup ? (mode === "signup_owner" ? "success-fill" : mode === "signup_tenant" ? "warning-fill" : "primary") : "primary"}
+    onClick={isSignup ? () => handleSignup(mode.replace("signup_", "")) : handleLogin}
+    disabled={loading}
+    className="w-full"
+  >
   {loading ? "Please wait..." : isSignup ? "Create Account" : "Sign In"}
-  </button>
+  </Btn>
 
   <div className="text-center mt-4 space-y-2">
   {isSignup ? (
