@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { supabase } from "../supabase";
 import { Btn, Input, PageHeader, Textarea, TextLink} from "../ui";
 import { pmError } from "../utils/errors";
@@ -7,6 +7,10 @@ import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { shortId, sanitizeFileName, getSignedUrl } from "../utils/helpers";
 import { Spinner } from "./shared";
+
+// Emoji picker is ~180 kB gzipped — lazy-load so it only downloads when a
+// user first opens the picker. Initial bundle stays unchanged.
+const EmojiPicker = React.lazy(() => import("emoji-picker-react"));
 
 // Narrower than the documents uploader — chat attachments are casual
 // context (screenshots, lease scans, utility bills). No executables.
@@ -119,6 +123,22 @@ function AttachmentChip({ url, name, outgoing }) {
 // ============================================================
 export function MessageComposer({ value, onChange, onSend, placeholder, disabled, sending, attachment, onAttachmentChange, showToast }) {
   const fileRef = useRef(null);
+  const [showEmoji, setShowEmoji] = useState(false);
+  // Close the picker on outside-click or Escape.
+  const pickerWrapRef = useRef(null);
+  useEffect(() => {
+    if (!showEmoji) return;
+    function onDoc(e) {
+      if (pickerWrapRef.current && !pickerWrapRef.current.contains(e.target)) setShowEmoji(false);
+    }
+    function onKey(e) { if (e.key === "Escape") setShowEmoji(false); }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [showEmoji]);
   function handleKey(e) {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!sending) onSend(); }
   }
@@ -136,9 +156,18 @@ export function MessageComposer({ value, onChange, onSend, placeholder, disabled
     onAttachmentChange(f);
     e.target.value = "";
   }
+  // Emoji insertion. Appends to the current value — we don't have a
+  // forwarded ref on the Textarea primitive, so cursor-position insert
+  // would need a ui.js change. Appending is the common UX anyway (users
+  // typically pick an emoji after finishing the thought).
+  function insertEmoji(emojiData) {
+    const ch = emojiData?.emoji || "";
+    if (!ch) return;
+    onChange((value || "") + ch);
+  }
   const canSend = !disabled && !sending && (value.trim() || attachment);
   return (
-    <div className="border-t border-neutral-200 bg-white p-3">
+    <div className="border-t border-neutral-200 bg-white p-3 relative">
       {attachment && (
         <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-lg bg-brand-50 text-brand-700 text-xs">
           <span className="material-icons-outlined text-sm">attach_file</span>
@@ -146,6 +175,13 @@ export function MessageComposer({ value, onChange, onSend, placeholder, disabled
           <TextLink tone="brand" size="xs" underline={false} onClick={() => onAttachmentChange(null)}  title="Remove">
             <span className="material-icons-outlined text-sm">close</span>
           </TextLink>
+        </div>
+      )}
+      {showEmoji && (
+        <div ref={pickerWrapRef} className="absolute bottom-full left-0 mb-2 z-50 shadow-xl rounded-2xl overflow-hidden">
+          <Suspense fallback={<div className="bg-white border border-neutral-200 rounded-2xl px-4 py-6 text-sm text-neutral-500">Loading emoji picker…</div>}>
+            <EmojiPicker onEmojiClick={insertEmoji} width={320} height={400} searchPlaceHolder="Search emojis…" previewConfig={{ showPreview: false }} skinTonesDisabled lazyLoadEmojis />
+          </Suspense>
         </div>
       )}
       <div className="flex gap-2 items-end">
@@ -157,6 +193,16 @@ export function MessageComposer({ value, onChange, onSend, placeholder, disabled
           title="Attach file"
         >
           <span className="material-icons-outlined">attach_file</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowEmoji(s => !s)}
+          disabled={disabled || sending}
+          className={"p-2 rounded-xl transition-colors disabled:opacity-50 " + (showEmoji ? "bg-brand-50 text-brand-600" : "text-neutral-400 hover:text-brand-600 hover:bg-brand-50")}
+          title="Insert emoji"
+          aria-label="Insert emoji"
+        >
+          <span className="material-icons-outlined">mood</span>
         </button>
         <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.heic,.doc,.docx,.xls,.xlsx,.txt,.csv" className="hidden" onChange={handlePickFile} />
         <Textarea
