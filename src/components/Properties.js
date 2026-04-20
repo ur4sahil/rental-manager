@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FileInput, IconBtn, Input, PageHeader, Select, Textarea } from "../ui";
+import { Btn, Checkbox, FileInput, IconBtn, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
@@ -1068,10 +1068,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 </div>
               ))}
               {tenantForm.tenantCount < 5 && (
-                <button type="button" onClick={() => setTenantForm(f => ({ ...f, tenantCount: f.tenantCount + 1 }))} className="text-sm text-brand-600 hover:underline flex items-center gap-1 mt-2">
+                <TextLink tone="brand" size="sm" type="button" onClick={() => setTenantForm(f => ({ ...f, tenantCount: f.tenantCount + 1 }))} className="flex items-center gap-1 mt-2">
                   <span className="material-icons-outlined text-sm">person_add</span>
                   + Add Tenant {tenantForm.tenantCount + 1}
-                </button>
+                </TextLink>
               )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1228,7 +1228,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             <div key={idx} className="bg-white rounded-xl border border-neutral-200 p-4 mb-3">
               <div className="flex justify-between items-center mb-3">
                 <span className="text-sm font-semibold text-neutral-700">HOA #{idx + 1}</span>
-                <button onClick={() => removeHoa(idx)} className="text-xs text-danger-500 hover:underline">Remove</button>
+                <TextLink tone="danger" size="xs" onClick={() => removeHoa(idx)}>Remove</TextLink>
               </div>
               <div className="space-y-3">
                 <div><label className="text-xs font-medium text-neutral-500 block mb-1">HOA Name *</label>
@@ -2858,7 +2858,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   {/* Utilities */}
   <div className="bg-neutral-50 rounded-xl p-4">
-  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center justify-between"><div className="flex items-center gap-1"><span className="material-icons-outlined text-sm">bolt</span>Utilities</div>{!isReadOnly(selectedProperty) && <button onClick={() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "", rent: Number(selectedProperty.rent) || 0, isEdit: true }); setSelectedProperty(null); }} className="text-xs text-brand-600 hover:underline">Edit</button>}</div>
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center justify-between"><div className="flex items-center gap-1"><span className="material-icons-outlined text-sm">bolt</span>Utilities</div>{!isReadOnly(selectedProperty) && <TextLink tone="brand" size="xs" onClick={() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "", rent: Number(selectedProperty.rent) || 0, isEdit: true }); setSelectedProperty(null); }}>Edit</TextLink>}</div>
   {propertyUtilities.length === 0 ? <p className="text-xs text-neutral-400">No utilities configured</p> : (
   <div className="space-y-2">
   {propertyUtilities.map((u, i) => (
@@ -2876,7 +2876,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   {/* HOA */}
   <div className="bg-neutral-50 rounded-xl p-4">
-  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center justify-between"><div className="flex items-center gap-1"><span className="material-icons-outlined text-sm">holiday_village</span>HOA</div>{!isReadOnly(selectedProperty) && <button onClick={() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "", rent: Number(selectedProperty.rent) || 0, isEdit: true }); setSelectedProperty(null); }} className="text-xs text-brand-600 hover:underline">Edit</button>}</div>
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center justify-between"><div className="flex items-center gap-1"><span className="material-icons-outlined text-sm">holiday_village</span>HOA</div>{!isReadOnly(selectedProperty) && <TextLink tone="brand" size="xs" onClick={() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "", rent: Number(selectedProperty.rent) || 0, isEdit: true }); setSelectedProperty(null); }}>Edit</TextLink>}</div>
   {propertyHoas.length === 0 ? <p className="text-xs text-neutral-400">No HOA</p> : (
   <div className="space-y-2">
   {propertyHoas.map((h, i) => (
@@ -2892,7 +2892,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {/* Loans — admin/owner only */}
   {(userRole === "admin" || userRole === "owner") && (
   <div className="bg-neutral-50 rounded-xl p-4">
-  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center justify-between"><div className="flex items-center gap-1"><span className="material-icons-outlined text-sm">account_balance</span>Loan / Mortgage</div>{!isReadOnly(selectedProperty) && <button onClick={() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "", rent: Number(selectedProperty.rent) || 0, isEdit: true }); setSelectedProperty(null); }} className="text-xs text-brand-600 hover:underline">Edit</button>}</div>
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center justify-between"><div className="flex items-center gap-1"><span className="material-icons-outlined text-sm">account_balance</span>Loan / Mortgage</div>{!isReadOnly(selectedProperty) && <TextLink tone="brand" size="xs" onClick={() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "", rent: Number(selectedProperty.rent) || 0, isEdit: true }); setSelectedProperty(null); }}>Edit</TextLink>}</div>
   {propertyLoans.length === 0 ? <p className="text-xs text-neutral-400">No loan configured</p> : (
   <div className="space-y-2">
   {propertyLoans.map((l, i) => (
@@ -2915,7 +2915,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   {/* Insurance */}
   <div className="bg-neutral-50 rounded-xl p-4">
-  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center justify-between"><div className="flex items-center gap-1"><span className="material-icons-outlined text-sm">verified_user</span>Insurance</div>{!isReadOnly(selectedProperty) && <button onClick={() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "", rent: Number(selectedProperty.rent) || 0, isEdit: true }); setSelectedProperty(null); }} className="text-xs text-brand-600 hover:underline">Edit</button>}</div>
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-3 flex items-center justify-between"><div className="flex items-center gap-1"><span className="material-icons-outlined text-sm">verified_user</span>Insurance</div>{!isReadOnly(selectedProperty) && <TextLink tone="brand" size="xs" onClick={() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccupied: selectedProperty.status === "occupied", tenant: selectedProperty.tenant || "", rent: Number(selectedProperty.rent) || 0, isEdit: true }); setSelectedProperty(null); }}>Edit</TextLink>}</div>
   {propertyInsurance.length === 0 ? <p className="text-xs text-neutral-400">No insurance configured</p> : (
   <div className="space-y-2">
   {propertyInsurance.map((ins, i) => (
@@ -2970,7 +2970,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   </div>
   <div className="flex items-center gap-2">
-  <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-brand-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</button>
+  <TextLink tone="brand" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</TextLink>
   <button onClick={async () => {
   if (!guardSubmit("delPropDoc", d.id)) return;
   try {
@@ -3038,7 +3038,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   <div className="flex items-center gap-2 shrink-0">
   {lic.status !== "pending_renewal" && !isExpired && (
-  <button onClick={async () => {
+  <TextLink tone="brand" size="xs" onClick={async () => {
   if (!guardSubmit("licRenew", lic.id)) return;
   try {
   const { error } = await supabase.from("property_licenses").update({ status: "pending_renewal" }).eq("id", lic.id).eq("company_id", companyId);
@@ -3047,7 +3047,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   logAudit("update", "property_licenses", `Marked license pending renewal: ${typeLabel}`, lic.id, userProfile?.email, userRole, companyId);
   setPropertyLicenses(propertyLicenses.map(l => l.id === lic.id ? { ...l, status: "pending_renewal" } : l));
   } finally { guardRelease("licRenew", lic.id); }
-  }} className="text-xs text-brand-600 hover:underline" title="Mark as pending renewal">Renew</button>
+  }}  title="Mark as pending renewal">Renew</TextLink>
   )}
   <button onClick={() => setShowLicenseForm({ license: lic, propertyId: selectedProperty.id, propertyAddress: selectedProperty.address })} className="text-xs text-neutral-500 hover:text-neutral-700 flex items-center gap-0.5"><span className="material-icons-outlined text-sm">edit</span>Edit</button>
   <button onClick={async () => {
@@ -3146,7 +3146,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {/* Historical Tenant Detail View */}
   {propertyDetailTab === "history" && historicalTenantDetail && (
   <div className="px-6 py-4 flex-1">
-  <button onClick={() => setHistoricalTenantDetail(null)} className="text-xs text-brand-600 hover:underline mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">arrow_back</span>Back to Previous Tenants</button>
+  <TextLink tone="brand" size="xs" onClick={() => setHistoricalTenantDetail(null)} className="mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">arrow_back</span>Back to Previous Tenants</TextLink>
   <div className="flex items-center gap-3 mb-4">
   <div className="w-12 h-12 rounded-full bg-neutral-200 flex items-center justify-center text-neutral-500 font-bold text-lg">{historicalTenantDetail.tenant.name?.[0]}</div>
   <div>
@@ -3224,7 +3224,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="text-xs text-neutral-400">{d.type} · {d.uploaded_at?.slice(0, 10)}</div>
   </div>
   </div>
-  <button onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="text-xs text-brand-600 hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</button>
+  <TextLink tone="brand" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</TextLink>
   </div>
   ))}
   </div>
@@ -3314,15 +3314,15 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {p.status === "inactive" && <div className="mt-2 text-xs text-warn-600 bg-warn-50 rounded-lg px-2 py-1">⏸ Inactive — accounting history preserved</div>}
   {(() => { const ss = getSetupStatus(p); return (!ss.isComplete && ss.total > 0) ? <div onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0 }); }} className="mt-2 text-xs text-info-600 bg-info-50 rounded-lg px-2 py-1 flex items-center gap-1 cursor-pointer hover:bg-info-100 transition-colors"><span className="material-icons-outlined text-sm">pending</span>Setup Incomplete — {ss.missing.length} step{ss.missing.length !== 1 ? "s" : ""} remaining</div> : null; })()}
   <div className="flex gap-2 mt-3 pt-3 border-t border-brand-50/50 flex-wrap" onClick={e => e.stopPropagation()}>
-  {!isReadOnly(p) && <button onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0, isEdit: true }); }} className="text-xs text-brand-600 hover:underline">Edit</button>}
+  {!isReadOnly(p) && <TextLink tone="brand" size="xs" onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0, isEdit: true }); }}>Edit</TextLink>}
   {!isReadOnly(p) && p.status === "vacant" && <button onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: false, tenant: "", rent: 0, isNew: false }); }} className="text-xs text-positive-600 hover:underline">Add Tenant</button>}
   {!isReadOnly(p) && isAdmin && p.status !== "inactive" && <button onClick={() => deactivateProperty(p)} className="text-xs text-warn-600 hover:underline">Deactivate</button>}
   {!isReadOnly(p) && isAdmin && p.status === "inactive" && <button onClick={() => reactivateProperty(p)} className="text-xs text-positive-600 hover:underline">Reactivate</button>}
-  {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-danger-500 hover:underline">Delete</button>}
-  {!isReadOnly(p) && !isAdmin && <button onClick={() => requestDeleteProperty(p)} className="text-xs text-danger-400 hover:underline">Request Delete</button>}
+  {!isReadOnly(p) && isAdmin && <TextLink tone="danger" size="xs" onClick={() => deleteProperty(p.id, p.address)}>Delete</TextLink>}
+  {!isReadOnly(p) && !isAdmin && <TextLink tone="danger" size="xs" onClick={() => requestDeleteProperty(p)}>Request Delete</TextLink>}
   {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-highlight-600 hover:underline">Assign PM</button>}
   {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-notice-600 hover:underline">Remove PM</button>}
-  <button onClick={() => loadTimeline(p)} className="text-xs text-neutral-400 hover:underline ml-auto">Timeline</button>
+  <TextLink tone="neutral" size="xs" onClick={() => loadTimeline(p)} className="ml-auto">Timeline</TextLink>
   </div>
   </div>
   ))}
@@ -3359,12 +3359,12 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <td className="px-4 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
   {p.pm_company_name && <span className="text-xs bg-highlight-100 text-highlight-600 px-1.5 py-0.5 rounded mr-2">PM</span>}
   {isReadOnly(p) && <span className="text-xs text-highlight-500 mr-2">🔒 view only</span>}
-  {!isReadOnly(p) && <button onClick={() => { setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0, isEdit: true }); }} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>}
-  {!isReadOnly(p) && isAdmin && <button onClick={() => deleteProperty(p.id, p.address)} className="text-xs text-danger-500 hover:underline mr-2">Delete</button>}
-  {!isReadOnly(p) && !isAdmin && <button onClick={() => requestDeleteProperty(p)} className="text-xs text-danger-400 hover:underline mr-2">Request Delete</button>}
+  {!isReadOnly(p) && <TextLink tone="brand" size="xs" onClick={() => { setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0, isEdit: true }); }} className="mr-2">Edit</TextLink>}
+  {!isReadOnly(p) && isAdmin && <TextLink tone="danger" size="xs" onClick={() => deleteProperty(p.id, p.address)} className="mr-2">Delete</TextLink>}
+  {!isReadOnly(p) && !isAdmin && <TextLink tone="danger" size="xs" onClick={() => requestDeleteProperty(p)} className="mr-2">Request Delete</TextLink>}
   {!p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => { setShowPmAssign(p); setPmCode(""); }} className="text-xs text-highlight-600 hover:underline mr-2">PM</button>}
   {p.pm_company_id && !isReadOnly(p) && isAdmin && <button onClick={() => removePM(p)} className="text-xs text-notice-600 hover:underline mr-2">-PM</button>}
-  <button onClick={() => loadTimeline(p)} className="text-xs text-neutral-400 hover:underline">TL</button>
+  <TextLink tone="neutral" size="xs" onClick={() => loadTimeline(p)}>TL</TextLink>
   </td>
   </tr>
   ))}
@@ -3387,7 +3387,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <span className="text-sm font-semibold text-neutral-700">${safeNum(p.rent).toLocaleString()}</span>
   <span className="text-xs text-neutral-400 w-28 truncate">{p.tenant || "—"}</span>
   <Badge status={p.status} label={p.status} />
-  {!isReadOnly(p) && <button onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0, isEdit: true }); }} className="text-xs text-brand-600 hover:underline">Edit</button>}
+  {!isReadOnly(p) && <TextLink tone="brand" size="xs" onClick={(e) => { e.stopPropagation(); setShowPropertyWizard({ propertyId: p.id, address: p.address, isOccupied: p.status === "occupied", tenant: p.tenant || "", rent: Number(p.rent) || 0, leaseStart: p.lease_start || "", leaseEnd: p.lease_end || "", securityDeposit: Number(p.security_deposit) || 0, isEdit: true }); }}>Edit</TextLink>}
   {isReadOnly(p) && <span className="text-xs text-highlight-400">🔒</span>}
   </div>
   ))}

@@ -3,7 +3,7 @@
 // page lives under Properties in the sidebar nav.
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabase";
-import { Input, Btn, PageHeader, FilterPill, EmptyState, Select } from "../ui";
+import { Input, Btn, PageHeader, FilterPill, EmptyState, Select, TextLink} from "../ui";
 import { formatLocalDate, formatCurrency, parseLocalDate } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -266,15 +266,15 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
                         <td className="px-4 py-2.5 text-right">
                           <div className="flex items-center gap-2 justify-end">
                             {b.status === "pending" && (
-                              <button onClick={() => setMarkPaidBill({ bill: b, paidDate: formatLocalDate(new Date()), paidAmount: b.expected_amount || "", paidNotes: "" })} className="text-xs text-success-700 hover:underline font-semibold">Mark paid</button>
+                              <TextLink tone="success" size="xs" onClick={() => setMarkPaidBill({ bill: b, paidDate: formatLocalDate(new Date()), paidAmount: b.expected_amount || "", paidNotes: "" })} className="font-semibold">Mark paid</TextLink>
                             )}
                             {b.status === "paid" && (
-                              <button onClick={() => handleUnpay(b)} className="text-xs text-neutral-500 hover:underline">Undo</button>
+                              <TextLink tone="neutral" size="xs" onClick={() => handleUnpay(b)}>Undo</TextLink>
                             )}
                             {b.status === "pending" && (
-                              <button onClick={() => handleSkip(b)} className="text-xs text-neutral-500 hover:underline">Skip</button>
+                              <TextLink tone="neutral" size="xs" onClick={() => handleSkip(b)}>Skip</TextLink>
                             )}
-                            <button onClick={() => setEditBill({ bill: b, due_date: b.due_date, expected_amount: b.expected_amount || "", installment_label: b.installment_label })} className="text-xs text-brand-600 hover:underline">Edit</button>
+                            <TextLink tone="brand" size="xs" onClick={() => setEditBill({ bill: b, due_date: b.due_date, expected_amount: b.expected_amount || "", installment_label: b.installment_label })}>Edit</TextLink>
                             <button onClick={() => handleDelete(b)} className="text-xs text-danger-400 hover:text-danger-600" title="Delete">✕</button>
                           </div>
                         </td>

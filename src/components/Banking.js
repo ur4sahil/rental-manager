@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
-import { AccountPicker, Btn, Checkbox, FileInput, Input, Radio, Select } from "../ui";
+import { AccountPicker, Btn, Checkbox, FileInput, Input, Radio, Select, TextLink} from "../ui";
 import { safeNum, formatLocalDate, shortId } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -1484,8 +1484,8 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
                 <button onClick={() => toggleRule(r)} className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.enabled ? "bg-success-100 text-success-700" : "bg-neutral-100 text-neutral-400"}`}>{r.enabled ? "On" : "Off"}</button>
               </td>
               <td className="px-3 py-3 text-right">
-                <button onClick={() => startEditRule(r)} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>
-                <button onClick={() => duplicateRule(r)} className="text-xs text-neutral-400 hover:underline mr-2">Copy</button>
+                <TextLink tone="brand" size="xs" onClick={() => startEditRule(r)} className="mr-2">Edit</TextLink>
+                <TextLink tone="neutral" size="xs" onClick={() => duplicateRule(r)} className="mr-2">Copy</TextLink>
                 <button onClick={() => deleteRule(r.id)} className="text-xs text-danger-400 hover:text-danger-600">Delete</button>
               </td>
             </tr>
@@ -1604,7 +1604,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       <td className={`px-3 py-2.5 text-right font-mono font-semibold ${txn.direction === "inflow" ? "text-success-700" : "text-danger-600"}`}>{txn.direction === "inflow" ? "+" : "-"}${safeNum(txn.amount).toFixed(2)}</td>
       <td className="px-3 py-2.5 text-right whitespace-nowrap">
         {txn.status === "for_review" && <button onClick={e => { e.stopPropagation(); if (isExpanded) { setExpandedTxn(null); } else { setExpandedTxn(txn.id); const sug = txn.raw_payload_json?._suggestion; if (sug?.type === "split" && sug.lines?.length >= 2) { setActionMode("split"); const abs = Math.abs(txn.amount); setSplitLines(sug.lines.map(l => ({ accountId: l.account_id || "", accountName: l.account_name || "", classId: l.class_id || "", memo: sug.memo || "", amount: sug.splitBy === "percentage" ? ((l.percentage / 100) * abs).toFixed(2) : String(l.amount || 0) }))); } else if (sug) { setActionMode("add"); setAddForm({ accountId: sug.accountId || "", accountName: sug.accountName || "", memo: sug.memo || "", classId: sug.classId || "" }); } else { setActionMode("add"); setAddForm({ accountId: "", accountName: "", memo: "", classId: "" }); } }}} className="text-xs text-brand-600 font-semibold hover:underline">{txn.suggestion_status === "suggested_rule" || txn.suggestion_status === "suggested_exclude" ? "Review" : "Add"}</button>}
-        {["categorized", "matched", "posted"].includes(txn.status) && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-neutral-400 hover:underline">Undo</button>}
+        {["categorized", "matched", "posted"].includes(txn.status) && <TextLink tone="neutral" size="xs" onClick={e => { e.stopPropagation(); undoTransaction(txn); }}>Undo</TextLink>}
         {txn.status === "excluded" && <button onClick={e => { e.stopPropagation(); undoTransaction(txn); }} className="text-xs text-info-600 hover:underline">Restore</button>}
       </td>
     </tr>
@@ -1697,7 +1697,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-medium text-neutral-500">Split into lines (total must equal ${Math.abs(txn.amount).toFixed(2)})</span>
-          <button onClick={() => setSplitLines(prev => [...prev, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }])} className="text-xs text-brand-600 hover:underline">+ Add Line</button>
+          <TextLink tone="brand" size="xs" onClick={() => setSplitLines(prev => [...prev, { accountId: "", accountName: "", amount: "", memo: "", classId: "" }])}>+ Add Line</TextLink>
         </div>
         <div className="space-y-2">
           {splitLines.map((line, i) => (

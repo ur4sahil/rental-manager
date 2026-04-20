@@ -929,8 +929,8 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   <div className="flex gap-1 justify-center" onClick={e => e.stopPropagation()}>
   {je.status === "draft" && <button onClick={() => onPost(je.id)} className="bg-success-50 text-success-700 px-3 py-1.5 rounded-lg border border-success-200 hover:bg-success-100 text-xs">Post</button>}
   {je.status === "posted" && <button onClick={() => onVoid(je.id)} className="bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg border border-danger-200 hover:bg-danger-100 text-xs">Void</button>}
-  {je.status !== "voided" && <button onClick={() => openEdit(je)} className="text-xs text-brand-600 hover:underline">Edit</button>}
-  <button onClick={() => openDuplicate(je)} className="text-xs text-neutral-400 hover:text-neutral-700 hover:underline">Duplicate</button>
+  {je.status !== "voided" && <TextLink tone="brand" size="xs" onClick={() => openEdit(je)}>Edit</TextLink>}
+  <TextLink tone="neutral" size="xs" onClick={() => openDuplicate(je)}>Duplicate</TextLink>
   </div>
   </td>
   </tr>
@@ -1038,7 +1038,7 @@ export function AcctClassTracking({ accounts, journalEntries, classes, onAdd, on
   <td className="px-5 py-3 text-right font-mono text-sm text-success-700">{c.revenue > 0 ? acctFmt(c.revenue) : "—"}</td>
   <td className="px-5 py-3 text-right font-mono text-sm text-danger-600">{c.expenses > 0 ? acctFmt(c.expenses) : "—"}</td>
   <td className={`px-5 py-3 text-right font-mono text-sm font-bold ${c.netIncome >= 0 ? "text-info-700" : "text-danger-700"}`}>{acctFmt(c.netIncome, true)}</td>
-  <td className="px-5 py-3 flex gap-1"><button onClick={() => openEdit(c)} className="text-xs text-brand-600 hover:underline">Edit</button><button onClick={() => onToggle(c.id, c.is_active)} className="text-xs">{c.is_active ? "🟢" : "⚪"}</button></td>
+  <td className="px-5 py-3 flex gap-1"><TextLink tone="brand" size="xs" onClick={() => openEdit(c)}>Edit</TextLink><button onClick={() => onToggle(c.id, c.is_active)} className="text-xs">{c.is_active ? "🟢" : "⚪"}</button></td>
   </tr>
   ))}
   </tbody>

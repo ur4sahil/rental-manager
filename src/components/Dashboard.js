@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { PageHeader } from "../ui";
+import { PageHeader, TextLink} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, formatCurrency, priorityColors } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { Badge, StatCard, Spinner } from "./shared";
@@ -213,7 +213,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   <div className="bg-white rounded-3xl shadow-card border border-warn-200 p-4">
   <h3 className="font-semibold text-warn-700 mb-3 flex items-center justify-between">
   <span><span className="material-icons-outlined text-sm align-middle mr-1">verified</span>License Expirations</span>
-  <button onClick={() => setPage("properties")} className="text-xs text-brand-600 hover:underline font-normal">View all</button>
+  <TextLink tone="brand" size="xs" onClick={() => setPage("properties")} className="font-normal">View all</TextLink>
   </h3>
   {licensesDue.slice(0, 6).map(lic => {
   const daysLeft = Math.ceil((new Date(lic.expiry_date + "T00:00:00").getTime() - Date.now()) / 86400000);
@@ -241,7 +241,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   <div className="bg-white rounded-3xl shadow-card border border-warn-200 p-4">
   <h3 className="font-semibold text-warn-700 mb-3 flex items-center justify-between">
   <span><span className="material-icons-outlined text-sm align-middle mr-1">receipt_long</span>Property Tax Bills Due</span>
-  <button onClick={() => setPage("tax_bills")} className="text-xs text-brand-600 hover:underline font-normal">Manage</button>
+  <TextLink tone="brand" size="xs" onClick={() => setPage("tax_bills")} className="font-normal">Manage</TextLink>
   </h3>
   {taxBillsDue.slice(0, 6).map(tb => {
   const d = parseLocalDate(tb.due_date);

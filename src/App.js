@@ -3,7 +3,7 @@ import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import * as Sentry from "@sentry/react";
 import { supabase } from "./supabase";
-import { Input, Textarea, Select, Btn, Card, PageHeader, FormField, TabBar, FilterPill, SectionTitle, EmptyState, IconBtn, BulkBar, AccountPicker } from "./ui";
+import { Input, Textarea, Select, Btn, Card, PageHeader, FormField, TabBar, FilterPill, SectionTitle, EmptyState, IconBtn, BulkBar, AccountPicker, TextLink} from "./ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, pickColor, generateId, formatPersonName, buildNameFields, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, sanitizeFileName, exportToCSV, buildAddress, escapeHtml, escapeFilterValue, sanitizeForPrint, US_STATES, STATE_NAMES, statusColors, priorityColors } from "./utils/helpers";
 import { PM_ERRORS, pmError, reportError, logErrorToSupabase, detectInfrastructureCode, setShowToastGlobal, setActiveErrorContext } from "./utils/errors";
 import { guardSubmit, guardRelease, guarded, requireCompanyId } from "./utils/guards";
@@ -863,7 +863,7 @@ function AppInner() {
   <div className="px-4 py-3 border-b border-brand-50 flex justify-between items-center">
   <span className="font-manrope font-bold text-neutral-700 text-sm">Notifications</span>
   <div className="flex gap-2">
-  <button onClick={() => { setPage("notifications"); setShowNotifications(false); }} className="text-xs text-brand-600 hover:underline">View All</button>
+  <TextLink tone="brand" size="xs" onClick={() => { setPage("notifications"); setShowNotifications(false); }}>View All</TextLink>
   <button onClick={() => { setNotifications([]); setShowNotifications(false); }} className="text-xs text-neutral-400 hover:text-danger-500">Clear</button>
   </div>
   </div>

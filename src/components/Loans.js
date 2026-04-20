@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, Input, PageHeader, Select } from "../ui";
+import { Btn, Checkbox, Input, PageHeader, Select, TextLink} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -202,8 +202,8 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
   {l.status === "active" && <button onClick={() => recordPayment(l)} className="text-xs text-positive-600 hover:underline mr-2">Record Payment</button>}
-  <button onClick={() => { setEditingLoan(l); setForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), escrow_covers: l.escrow_covers || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", property: l.property || "", notes: l.notes || "", status: l.status || "active" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>
-  <button onClick={() => deleteLoan(l.id)} className="text-xs text-danger-500 hover:underline">Delete</button>
+  <TextLink tone="brand" size="xs" onClick={() => { setEditingLoan(l); setForm({ lender_name: l.lender_name, loan_type: l.loan_type || "Conventional", original_amount: String(l.original_amount || ""), current_balance: String(l.current_balance || ""), interest_rate: String(l.interest_rate || ""), monthly_payment: String(l.monthly_payment || ""), escrow_included: l.escrow_included || false, escrow_amount: String(l.escrow_amount || ""), escrow_covers: l.escrow_covers || "", loan_start_date: l.loan_start_date || "", maturity_date: l.maturity_date || "", account_number: l.account_number || "", property: l.property || "", notes: l.notes || "", status: l.status || "active" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
+  <TextLink tone="danger" size="xs" onClick={() => deleteLoan(l.id)}>Delete</TextLink>
   </td>
   </tr>
   ))}

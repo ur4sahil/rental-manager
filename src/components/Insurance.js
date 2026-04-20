@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Select, Btn, PageHeader } from "../ui";
+import { Input, Select, Btn, PageHeader, TextLink} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, formatCurrency } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -167,8 +167,8 @@ function InsuranceTracker({ companySettings = {}, addNotification, userProfile, 
   {showCreds.has(p.id) && <div className="text-neutral-600 mt-0.5">{p._decUser || "—"} / {p._decPass || "—"}</div>}
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
-  <button onClick={() => { setEditingPolicy(p); setForm({ property: p.property || "", provider: p.provider || "", policy_number: p.policy_number || "", premium_amount: String(p.premium_amount || ""), premium_frequency: p.premium_frequency || "Annual", coverage_amount: String(p.coverage_amount || ""), expiration_date: p.expiration_date || "", notes: p.notes || "", website: p.website || "", username: "", password: "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>
-  <button onClick={() => deletePolicy(p.id)} className="text-xs text-danger-500 hover:underline">Delete</button>
+  <TextLink tone="brand" size="xs" onClick={() => { setEditingPolicy(p); setForm({ property: p.property || "", provider: p.provider || "", policy_number: p.policy_number || "", premium_amount: String(p.premium_amount || ""), premium_frequency: p.premium_frequency || "Annual", coverage_amount: String(p.coverage_amount || ""), expiration_date: p.expiration_date || "", notes: p.notes || "", website: p.website || "", username: "", password: "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
+  <TextLink tone="danger" size="xs" onClick={() => deletePolicy(p.id)}>Delete</TextLink>
   </td>
   </tr>
   ))}

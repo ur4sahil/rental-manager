@@ -243,10 +243,10 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
 
   <div className="text-center mt-4 space-y-2">
   {isSignup ? (
-  <button onClick={() => { setMode("login"); setError(""); setResetSentEmail(""); resetCaptcha(); }} className="text-xs text-brand-600 hover:underline">Already have an account? Sign in</button>
+  <TextLink tone="brand" size="xs" onClick={() => { setMode("login"); setError(""); setResetSentEmail(""); resetCaptcha(); }}>Already have an account? Sign in</TextLink>
   ) : (
   <>
-  <button onClick={handleForgotPassword} disabled={loading} className="text-xs text-neutral-400 hover:text-brand-600 hover:underline">Forgot password?</button>
+  <TextLink tone="neutral" size="xs" onClick={handleForgotPassword} disabled={loading}>Forgot password?</TextLink>
   <TextLink className="block mx-auto" onClick={onBack}>Back to role selection</TextLink>
   </>
   )}

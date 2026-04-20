@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FileInput, IconBtn, Input, PageHeader, Select, Textarea } from "../ui";
+import { Btn, Checkbox, FileInput, IconBtn, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
 import { formatLocalDate, shortId, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, formatCurrency, getSignedUrl, sanitizeFileName, buildAddress, escapeHtml, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
@@ -192,7 +192,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   <div className="flex gap-2">
   {d.url ? (
   <>
-  <button onClick={async () => {
+  <TextLink tone="brand" size="xs" onClick={async () => {
   const isFullUrl = d.url && d.url.startsWith("http");
   if (isFullUrl) { window.open(d.url, "_blank", "noopener,noreferrer"); return; }
   const path = d.file_name || d.url;
@@ -200,7 +200,7 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   const url = await getSignedUrl("documents", path);
   if (url) window.open(url, "_blank", "noopener,noreferrer");
   else showToast("Could not generate secure download link.", "error");
-  }} className="text-xs text-brand-600 hover:underline">View</button>
+  }}>View</TextLink>
   <button onClick={async () => {
   const isFullUrl = d.url && d.url.startsWith("http");
   if (isFullUrl) { window.open(d.url, "_blank", "noopener,noreferrer"); return; }
@@ -212,16 +212,16 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   </>
   ) : d.file_name ? (
   <>
-  <button onClick={async () => {
+  <TextLink tone="brand" size="xs" onClick={async () => {
   const url = await getSignedUrl("documents", d.file_name);
   if (url) window.open(url, "_blank", "noopener,noreferrer");
   else showToast("Could not generate secure link for this file.", "error");
-  }} className="text-xs text-brand-600 hover:underline">View</button>
+  }}>View</TextLink>
   </>
   ) : (
   <span className="text-xs text-neutral-400">No file</span>
   )}
-  <button onClick={() => deleteDoc(d.id, d.name, d.file_name)} className="text-xs text-danger-400 hover:underline">Delete</button>
+  <TextLink tone="danger" size="xs" onClick={() => deleteDoc(d.id, d.name, d.file_name)}>Delete</TextLink>
   </div>
   </td>
   </tr>
@@ -1281,7 +1281,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <Input value={f.default_value || ""} onChange={e => updateField(i, "default_value", e.target.value)} placeholder="Default value" className="text-xs" />
   <div className="flex items-center gap-2">
   <label className="flex items-center gap-1 text-xs"><Checkbox checked={f.required} onChange={e => updateField(i, "required", e.target.checked)} className="accent-brand-600" />Required</label>
-  <button onClick={() => insertMergeField(f.name || f.label.toLowerCase().replace(/[^a-z0-9]+/g, "_"))} className="text-xs text-brand-600 hover:underline" title="Insert into body">{"{{}}"}</button>
+  <TextLink tone="brand" size="xs" onClick={() => insertMergeField(f.name || f.label.toLowerCase().replace(/[^a-z0-9]+/g, "_"))}  title="Insert into body">{"{{}}"}</TextLink>
   <button onClick={() => removeField(i)} className="text-xs text-danger-400 hover:text-danger-600 ml-auto">✕</button>
   </div>
   </div>
@@ -1434,7 +1434,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="space-y-2">
   <div className="flex items-center justify-between mb-1">
   <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Signer Roles</span>
-  <button type="button" onClick={() => setTemplateForm(prev => ({ ...prev, signer_roles: [...(prev.signer_roles || []), { role: "signer_" + ((prev.signer_roles || []).length + 1), label: "Signer " + ((prev.signer_roles || []).length + 1), order: (prev.signer_roles || []).length + 1, required: true }] }))} className="text-xs text-brand-600 hover:underline">+ Add signer</button>
+  <TextLink tone="brand" size="xs" type="button" onClick={() => setTemplateForm(prev => ({ ...prev, signer_roles: [...(prev.signer_roles || []), { role: "signer_" + ((prev.signer_roles || []).length + 1), label: "Signer " + ((prev.signer_roles || []).length + 1), order: (prev.signer_roles || []).length + 1, required: true }] }))}>+ Add signer</TextLink>
   </div>
   {(templateForm.signer_roles || []).length === 0 && <p className="text-xs text-neutral-400 italic">No signers yet. Add at least one role, then use it in a signature field above.</p>}
   {(templateForm.signer_roles || []).sort((a,b) => (a.order||0) - (b.order||0)).map((r, i) => {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader } from "../ui";
+import { Input, Textarea, Select, Btn, PageHeader, TextLink} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency, exportToCSV } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -342,7 +342,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </div>
   <div className="flex gap-2 mt-3 pt-3 border-t border-subtle-50">
   <button onClick={() => triggerManualCheck(acct)} className="text-xs text-brand-600 border border-brand-200 px-3 py-1 rounded-lg hover:bg-brand-50">🔄 Check Now</button>
-  <button onClick={() => deleteAccount(acct)} className="text-xs text-danger-500 hover:underline ml-auto">Delete</button>
+  <TextLink tone="danger" size="xs" onClick={() => deleteAccount(acct)} className="ml-auto">Delete</TextLink>
   </div>
   </div>
   ))}
@@ -491,7 +491,7 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
   {u.status === "pending" && <button onClick={() => approvePay(u)} className="text-xs text-positive-600 hover:underline mr-2">Pay</button>}
-  <button onClick={() => openAuditLog(u)} className="text-xs text-neutral-400 hover:underline">Audit</button>
+  <TextLink tone="neutral" size="xs" onClick={() => openAuditLog(u)}>Audit</TextLink>
   </td>
   </tr>
   ))}

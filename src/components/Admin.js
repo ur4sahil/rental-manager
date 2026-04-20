@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, EmptyState, FileInput, Input, PageHeader, Select } from "../ui";
+import { Btn, Checkbox, EmptyState, FileInput, Input, PageHeader, Select, TextLink} from "../ui";
 import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -938,7 +938,7 @@ function CompanySettingsPanel({ companyId, showToast, userProfile, companySettin
   <p className="text-xs text-neutral-400">Configure defaults for this company. Changes apply to new entries only.</p>
   </div>
   <div className="flex items-center gap-2">
-  <button onClick={resetDefaults} className="text-xs text-neutral-400 hover:text-neutral-600 hover:underline">Reset to Defaults</button>
+  <TextLink tone="neutral" size="xs" onClick={resetDefaults}>Reset to Defaults</TextLink>
   <Btn onClick={handleSave} disabled={saving || !dirty}>{saving ? "Saving..." : "Save Settings"}</Btn>
   </div>
   </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Input, Select, Btn, PageHeader } from "../ui";
+import { Input, Select, Btn, PageHeader, TextLink} from "../ui";
 import { safeNum, formatLocalDate, formatCurrency } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -173,8 +173,8 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
   </td>
   <td className="px-4 py-2.5 text-right whitespace-nowrap">
   {h.status === "pending" && <button onClick={() => payHOA(h)} className="text-xs text-positive-600 hover:underline mr-2">Pay</button>}
-  <button onClick={() => { setEditingHoa(h); setForm({ property: h.property, hoa_name: h.hoa_name, amount: String(h.amount), due_date: h.due_date, frequency: h.frequency || "monthly", status: h.status, notes: h.notes || "" }); setShowForm(true); }} className="text-xs text-brand-600 hover:underline mr-2">Edit</button>
-  <button onClick={() => deleteHOA(h.id)} className="text-xs text-danger-500 hover:underline">Delete</button>
+  <TextLink tone="brand" size="xs" onClick={() => { setEditingHoa(h); setForm({ property: h.property, hoa_name: h.hoa_name, amount: String(h.amount), due_date: h.due_date, frequency: h.frequency || "monthly", status: h.status, notes: h.notes || "" }); setShowForm(true); }} className="mr-2">Edit</TextLink>
+  <TextLink tone="danger" size="xs" onClick={() => deleteHOA(h.id)}>Delete</TextLink>
   </td>
   </tr>
   ))}
