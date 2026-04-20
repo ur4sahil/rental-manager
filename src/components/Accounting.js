@@ -13,7 +13,12 @@ import { Spinner, PropertySelect } from "./shared";
 import { BankTransactions } from "./Banking";
 
 // ============ RECURRING JOURNAL ENTRIES ============
-export function RecurringJournalEntries({ companyId, addNotification, userProfile }) {
+// companySettings carries late-fee defaults (grace days + amount) used as
+// initial form values. Default to {} so the component renders even when
+// the parent hasn't wired the prop — the .X || fallback pattern below
+// tolerates missing keys. Without this, the page threw ReferenceError
+// and fired the PM-8009 ErrorBoundary.
+export function RecurringJournalEntries({ companyId, companySettings = {}, addNotification, userProfile }) {
   const [entries, setEntries] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -3277,7 +3282,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   </div>
   )}
 
-  {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} addNotification={addNotification} userProfile={userProfile} />}
+  {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} companySettings={companySettings} addNotification={addNotification} userProfile={userProfile} />}
   {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} onCloseJEDetail={() => { if (pendingLedgerReturn) { setLedgerView(pendingLedgerReturn); setPendingLedgerReturn(null); setViewJEId(null); } }} />}
   {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} />}
