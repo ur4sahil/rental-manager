@@ -5,6 +5,7 @@ import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, AccountPicker } from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
+import { printTheme, chartPalette } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { safeLedgerInsert, checkPeriodLock, autoPostRecurringEntries, getPropertyClassId, resolveAccountId, getOrCreateTenantAR } from "../utils/accounting";
@@ -1554,7 +1555,7 @@ export function AcctReports({ accounts, journalEntries, classes, companyName, co
     const clone = content.cloneNode(true);
     clone.querySelectorAll(".material-icons-outlined, .material-icons").forEach(el => el.remove());
     Array.from(clone.childNodes).forEach(n => { if (n.nodeType === 3 && /^\s*[\)\}\(\{]*\s*$/.test(n.textContent)) n.remove(); });
-    const baseCss = `body{font-family:Arial,sans-serif;margin:30px 40px;color:#1e293b;font-size:13px}
+    const baseCss = `body{font-family:Arial,sans-serif;margin:30px 40px;color:${printTheme.inkStrong};font-size:13px}
 *{box-sizing:border-box}
 .flex{display:flex}.items-center{align-items:center}.justify-between{justify-content:space-between}.justify-center{justify-content:center}.gap-1{gap:4px}.gap-2{gap:8px}.gap-3{gap:12px}
 .text-center{text-align:center}.text-right{text-align:right}.text-left{text-align:left}
@@ -1562,13 +1563,13 @@ export function AcctReports({ accounts, journalEntries, classes, companyName, co
 .font-mono{font-family:ui-monospace,SFMono-Regular,monospace}.font-bold{font-weight:700}.font-black{font-weight:900}.font-semibold{font-weight:600}.font-medium{font-weight:500}
 .tabular-nums{font-variant-numeric:tabular-nums}
 .uppercase{text-transform:uppercase}.tracking-widest{letter-spacing:0.1em}.tracking-wider{letter-spacing:0.05em}
-.border-t{border-top:1px solid #e5e7eb}.border-b{border-bottom:1px solid #e5e7eb}.border-t-2{border-top:2px solid #1e293b}.border-b-2{border-bottom:2px solid #1e293b}
+.border-t{border-top:1px solid ${printTheme.borderLight}}.border-b{border-bottom:1px solid ${printTheme.borderLight}}.border-t-2{border-top:2px solid ${printTheme.inkStrong}}.border-b-2{border-bottom:2px solid ${printTheme.inkStrong}}
 .py-1{padding-top:4px;padding-bottom:4px}.py-1\\.5{padding-top:6px;padding-bottom:6px}.py-2{padding-top:8px;padding-bottom:8px}.py-3{padding-top:12px;padding-bottom:12px}
 .mt-1{margin-top:4px}.mt-2{margin-top:8px}.mt-3{margin-top:12px}.mt-4{margin-top:16px}.mb-1{margin-bottom:4px}.mb-2{margin-bottom:8px}.mb-4{margin-bottom:16px}.mb-6{margin-bottom:24px}
 .rounded{border-radius:4px}
-.text-neutral-400{color:#94a3b8}.text-neutral-500{color:#64748b}.text-neutral-700{color:#334155}.text-neutral-800{color:#1e293b}.text-neutral-900{color:#0f172a}
-.text-success-700{color:#15803d}.text-danger-600{color:#dc2626}
-table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1px solid #e5e7eb}th{background:#f8fafc;font-size:11px;text-transform:uppercase;color:#64748b;font-weight:600}
+.text-neutral-400{color:${printTheme.inkSubtle}}.text-neutral-500{color:${printTheme.inkMuted}}.text-neutral-700{color:#334155}.text-neutral-800{color:${printTheme.inkStrong}}.text-neutral-900{color:#0f172a}
+.text-success-700{color:#15803d}.text-danger-600{color:${printTheme.danger}}
+table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1px solid ${printTheme.borderLight}}th{background:${printTheme.surfaceAlt};font-size:11px;text-transform:uppercase;color:${printTheme.inkMuted};font-weight:600}
 .whitespace-nowrap{white-space:nowrap}.min-w-48{min-width:12rem}
 .px-3{padding-left:12px;padding-right:12px}.px-4{padding-left:16px;padding-right:16px}.px-5{padding-left:20px;padding-right:20px}
 .hidden,[class*="cursor-pointer"]{cursor:default}
@@ -1596,7 +1597,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           const tds = Array.from(row.children);
           const colSpanTd = tds.length === 1 && tds[0].getAttribute("colspan");
           if (colSpanTd) {
-            tbl += `<tr><td colspan="${colIndices.length}" style="padding:8px 12px;font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;background:#f8fafc">${tds[0].textContent}</td></tr>`;
+            tbl += `<tr><td colspan="${colIndices.length}" style="padding:8px 12px;font-size:11px;font-weight:600;color:${printTheme.inkMuted};text-transform:uppercase;letter-spacing:0.05em;background:${printTheme.surfaceAlt}">${tds[0].textContent}</td></tr>`;
           } else {
             tbl += "<tr>";
             colIndices.forEach(ci => {
@@ -1604,7 +1605,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
               if (td) {
                 const style = ci === 0 ? td.style.cssText : "text-align:right;font-family:ui-monospace,monospace;font-size:11px;";
                 const fw = td.classList.contains("font-bold") || td.classList.contains("font-black") ? "font-weight:700;" : "";
-                const color = td.classList.contains("text-danger-600") ? "color:#dc2626;" : "";
+                const color = td.classList.contains("text-danger-600") ? `color:${printTheme.danger};` : "";
                 tbl += `<td style="${style}${fw}${color}">${td.textContent}</td>`;
               }
             });
@@ -1612,7 +1613,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
           }
         });
         tbl += "</tbody></table>";
-        pages += `<div style="page-break-after:always">${headerHtml}<p style="text-align:center;font-size:11px;color:#94a3b8;margin-bottom:16px">${pageLabel}</p>${tbl}</div>`;
+        pages += `<div style="page-break-after:always">${headerHtml}<p style="text-align:center;font-size:11px;color:${printTheme.inkSubtle};margin-bottom:16px">${pageLabel}</p>${tbl}</div>`;
       }
       const iframe = document.createElement("iframe");
       iframe.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;border:0;visibility:hidden;";
@@ -2808,7 +2809,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   const { data: allProps } = await supabase.from("properties").select("id, address, type, rent").eq("company_id", companyId);
   if (allProps && allProps.length > 0) {
   const existingNames = new Set(classes.map(c => c.name));
-  const colors = ["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4","#F97316","#EC4899"];
+  const colors = chartPalette;
   const missing = allProps.filter(p => !existingNames.has(p.address));
   if (missing.length > 0) {
   const newClasses = missing.map(p => ({

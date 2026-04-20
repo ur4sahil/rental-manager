@@ -4,6 +4,7 @@ import { supabase } from "../supabase";
 import { Input, Select, Btn, PageHeader, IconBtn } from "../ui";
 import { formatLocalDate, shortId, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, formatCurrency, getSignedUrl, sanitizeFileName, buildAddress, escapeHtml, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
+import { printTheme } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { Spinner, Modal, PropertyDropdown, PropertySelect } from "./shared";
@@ -699,9 +700,9 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // Address block: format multi-line
   if (val && typeof val === "object" && val.line1 !== undefined) {
   const formatted = formatAddressBlock(val);
-  return formatted ? escapeHtml(formatted).replace(/\n/g, "<br/>") : '<span style="color:#ef4444;background:#fef2f2;padding:0 4px;border-radius:4px;">' + match + '</span>';
+  return formatted ? escapeHtml(formatted).replace(/\n/g, "<br/>") : '<span style="color:' + printTheme.danger + ';background:' + printTheme.dangerBg + ';padding:0 4px;border-radius:4px;">' + match + '</span>';
   }
-  return val !== undefined && val !== "" ? escapeHtml(String(val)) : '<span style="color:#ef4444;background:#fef2f2;padding:0 4px;border-radius:4px;">' + match + '</span>';
+  return val !== undefined && val !== "" ? escapeHtml(String(val)) : '<span style="color:' + printTheme.danger + ';background:' + printTheme.dangerBg + ';padding:0 4px;border-radius:4px;">' + match + '</span>';
   }));
   }
 
@@ -808,7 +809,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   // HTML template: use html2pdf.js
   const html2pdf = (await import("html2pdf.js")).default;
   const container = document.createElement("div");
-  container.innerHTML = '<div style="font-family:Georgia,serif;font-size:13px;line-height:1.6;color:#1a1a1a;padding:40px;max-width:700px;margin:0 auto;">' + DOMPurify.sanitize(doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues), { ADD_TAGS: ["table","thead","tbody","tr","td","th","br","hr","ul","ol","li","p","h1","h2","h3","h4","h5","h6","strong","em","u","s","sub","sup","blockquote","pre","code","img","span","div","a"], ADD_ATTR: ["style","class","href","src","alt","width","height","colspan","rowspan","align","valign"] }) + '</div>';
+  container.innerHTML = '<div style="font-family:Georgia,serif;font-size:13px;line-height:1.6;color:' + printTheme.ink + ';padding:40px;max-width:700px;margin:0 auto;">' + DOMPurify.sanitize(doc?.rendered_body || renderMergedBody(selectedTemplate.body, fieldValues), { ADD_TAGS: ["table","thead","tbody","tr","td","th","br","hr","ul","ol","li","p","h1","h2","h3","h4","h5","h6","strong","em","u","s","sub","sup","blockquote","pre","code","img","span","div","a"], ADD_ATTR: ["style","class","href","src","alt","width","height","colspan","rowspan","align","valign"] }) + '</div>';
   document.body.appendChild(container);
   const filename = (doc?.name || selectedTemplate?.name || "document").replace(/[^a-zA-Z0-9_-]/g, "_") + ".pdf";
   await html2pdf().set({ margin: [0.5, 0.6, 0.5, 0.6], filename, image: { type: "jpeg", quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: "in", format: "letter" } }).from(container).save();
@@ -826,54 +827,54 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     let sigVisual = "";
     if (s.signature_data) {
       if (s.signature_data.startsWith("data:image")) {
-        sigVisual = '<img src="' + escapeForHtml(s.signature_data) + '" style="max-height:52px;max-width:220px;border-bottom:1px solid #333;display:block;" alt="signature" />';
+        sigVisual = '<img src="' + escapeForHtml(s.signature_data) + '" style="max-height:52px;max-width:220px;border-bottom:1px solid ' + printTheme.inkStrong + ';display:block;" alt="signature" />';
       } else if (s.signature_data.startsWith("typed:")) {
         const nm = s.signature_data.slice(6).split("|")[0];
-        sigVisual = '<div style="font-family:\'Brush Script MT\',cursive;font-size:28px;color:#1e3a5f;border-bottom:1px solid #333;padding-bottom:4px;">' + escapeForHtml(nm) + '</div>';
+        sigVisual = '<div style="font-family:\'Brush Script MT\',cursive;font-size:28px;color:' + printTheme.signatureInk + ';border-bottom:1px solid ' + printTheme.inkStrong + ';padding-bottom:4px;">' + escapeForHtml(nm) + '</div>';
       }
     } else {
-      sigVisual = '<div style="color:#999;font-style:italic;border-bottom:1px solid #ccc;padding-bottom:4px;">(awaiting signature)</div>';
+      sigVisual = '<div style="color:' + printTheme.inkSubtle + ';font-style:italic;border-bottom:1px solid ' + printTheme.borderMed + ';padding-bottom:4px;">(awaiting signature)</div>';
     }
     return ''
       + '<div style="margin-bottom:28px;">'
-      + '<div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">' + escapeForHtml(s.signer_role || "signer") + '</div>'
+      + '<div style="font-size:11px;color:' + printTheme.inkMuted + ';text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">' + escapeForHtml(s.signer_role || "signer") + '</div>'
       + sigVisual
-      + '<div style="font-size:12px;color:#333;margin-top:4px;"><strong>' + escapeForHtml(s.signer_name || "") + '</strong>'
-      + (s.signer_email ? ' <span style="color:#666;">&middot; ' + escapeForHtml(s.signer_email) + '</span>' : '')
+      + '<div style="font-size:12px;color:' + printTheme.inkStrong + ';margin-top:4px;"><strong>' + escapeForHtml(s.signer_name || "") + '</strong>'
+      + (s.signer_email ? ' <span style="color:' + printTheme.inkMuted + ';">&middot; ' + escapeForHtml(s.signer_email) + '</span>' : '')
       + '</div>'
-      + (dateStr ? '<div style="font-size:11px;color:#666;">Signed ' + escapeForHtml(dateStr) + '</div>' : '')
+      + (dateStr ? '<div style="font-size:11px;color:' + printTheme.inkMuted + ';">Signed ' + escapeForHtml(dateStr) + '</div>' : '')
       + '</div>';
   }).join("");
-  return '<div style="margin-top:40px;padding-top:20px;border-top:2px solid #1e3a5f;"><h3 style="font-family:Georgia,serif;color:#1e3a5f;margin-bottom:16px;">Signed By</h3>' + rows + '</div>';
+  return '<div style="margin-top:40px;padding-top:20px;border-top:2px solid ' + printTheme.signatureInk + ';"><h3 style="font-family:Georgia,serif;color:' + printTheme.signatureInk + ';margin-bottom:16px;">Signed By</h3>' + rows + '</div>';
   }
 
   function renderCertificateHtml(doc, sigs, companyName) {
   const signedCount = (sigs || []).filter(s => s.status === "signed").length;
   const total = (sigs || []).length;
   const rows = (sigs || []).map((s, idx) => ''
-    + '<tr style="border-bottom:1px solid #e5e7eb;">'
-    + '<td style="padding:10px 8px;font-size:11px;color:#333;vertical-align:top;">' + (idx + 1) + '</td>'
-    + '<td style="padding:10px 8px;font-size:11px;color:#333;vertical-align:top;">'
+    + '<tr style="border-bottom:1px solid ' + printTheme.borderLight + ';">'
+    + '<td style="padding:10px 8px;font-size:11px;color:' + printTheme.inkStrong + ';vertical-align:top;">' + (idx + 1) + '</td>'
+    + '<td style="padding:10px 8px;font-size:11px;color:' + printTheme.inkStrong + ';vertical-align:top;">'
     + '<div style="font-weight:600;">' + escapeForHtml(s.signer_name || "(no name)") + '</div>'
-    + '<div style="color:#666;">' + escapeForHtml(s.signer_email || "") + '</div>'
-    + '<div style="color:#999;text-transform:uppercase;letter-spacing:0.04em;font-size:9px;margin-top:2px;">' + escapeForHtml(s.signer_role || "") + '</div>'
+    + '<div style="color:' + printTheme.inkMuted + ';">' + escapeForHtml(s.signer_email || "") + '</div>'
+    + '<div style="color:' + printTheme.inkSubtle + ';text-transform:uppercase;letter-spacing:0.04em;font-size:9px;margin-top:2px;">' + escapeForHtml(s.signer_role || "") + '</div>'
     + '</td>'
-    + '<td style="padding:10px 8px;font-size:11px;color:#333;vertical-align:top;">' + (s.signed_at ? escapeForHtml(new Date(s.signed_at).toLocaleString()) : '<span style="color:#c00;">Not signed</span>') + '</td>'
-    + '<td style="padding:10px 8px;font-size:10px;color:#666;vertical-align:top;">' + escapeForHtml(s.signer_ip || "—") + '</td>'
-    + '<td style="padding:10px 8px;font-size:10px;color:#666;vertical-align:top;font-family:monospace;word-break:break-all;">' + (s.integrity_hash ? escapeForHtml(s.integrity_hash.slice(0, 24)) + "…" : "—") + '</td>'
+    + '<td style="padding:10px 8px;font-size:11px;color:' + printTheme.inkStrong + ';vertical-align:top;">' + (s.signed_at ? escapeForHtml(new Date(s.signed_at).toLocaleString()) : '<span style="color:' + printTheme.danger + ';">Not signed</span>') + '</td>'
+    + '<td style="padding:10px 8px;font-size:10px;color:' + printTheme.inkMuted + ';vertical-align:top;">' + escapeForHtml(s.signer_ip || "—") + '</td>'
+    + '<td style="padding:10px 8px;font-size:10px;color:' + printTheme.inkMuted + ';vertical-align:top;font-family:monospace;word-break:break-all;">' + (s.integrity_hash ? escapeForHtml(s.integrity_hash.slice(0, 24)) + "…" : "—") + '</td>'
     + '</tr>'
   ).join("");
   const uaList = (sigs || []).filter(s => s.user_agent).map(s => ''
-    + '<div style="font-size:9px;color:#888;margin-bottom:2px;"><strong>' + escapeForHtml(s.signer_email) + ':</strong> ' + escapeForHtml(s.user_agent) + '</div>'
+    + '<div style="font-size:9px;color:' + printTheme.inkSubtle + ';margin-bottom:2px;"><strong>' + escapeForHtml(s.signer_email) + ':</strong> ' + escapeForHtml(s.user_agent) + '</div>'
   ).join("");
   return ''
-    + '<div style="font-family:Georgia,serif;color:#111;padding:40px;max-width:720px;margin:0 auto;">'
-    + '<div style="text-align:center;padding-bottom:24px;border-bottom:3px solid #6366f1;margin-bottom:24px;">'
-    + '<div style="font-size:11px;color:#6366f1;text-transform:uppercase;letter-spacing:0.2em;margin-bottom:6px;">Certificate of Completion</div>'
-    + '<div style="font-size:22px;font-weight:700;color:#1e3a5f;">' + escapeForHtml(doc.name) + '</div>'
-    + (companyName ? '<div style="font-size:13px;color:#666;margin-top:6px;">Issued by ' + escapeForHtml(companyName) + '</div>' : '')
+    + '<div style="font-family:Georgia,serif;color:' + printTheme.ink + ';padding:40px;max-width:720px;margin:0 auto;">'
+    + '<div style="text-align:center;padding-bottom:24px;border-bottom:3px solid ' + printTheme.brandLight + ';margin-bottom:24px;">'
+    + '<div style="font-size:11px;color:' + printTheme.brandLight + ';text-transform:uppercase;letter-spacing:0.2em;margin-bottom:6px;">Certificate of Completion</div>'
+    + '<div style="font-size:22px;font-weight:700;color:' + printTheme.signatureInk + ';">' + escapeForHtml(doc.name) + '</div>'
+    + (companyName ? '<div style="font-size:13px;color:' + printTheme.inkMuted + ';margin-top:6px;">Issued by ' + escapeForHtml(companyName) + '</div>' : '')
     + '</div>'
-    + '<div style="font-size:13px;color:#333;margin-bottom:24px;line-height:1.7;">'
+    + '<div style="font-size:13px;color:' + printTheme.inkStrong + ';margin-bottom:24px;line-height:1.7;">'
     + '<p>This certifies that the document above was signed electronically on behalf of all parties listed below.</p>'
     + '<ul style="padding-left:20px;">'
     + '<li><strong>Document ID:</strong> ' + escapeForHtml(doc.id) + '</li>'
@@ -884,17 +885,17 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
     + '</ul>'
     + '</div>'
     + '<table style="width:100%;border-collapse:collapse;margin-bottom:24px;">'
-    + '<thead><tr style="background:#f3f4f6;text-align:left;">'
-    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:#666;letter-spacing:0.05em;">#</th>'
-    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:#666;letter-spacing:0.05em;">Signer</th>'
-    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:#666;letter-spacing:0.05em;">Signed at</th>'
-    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:#666;letter-spacing:0.05em;">IP</th>'
-    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:#666;letter-spacing:0.05em;">Integrity hash</th>'
+    + '<thead><tr style="background:' + printTheme.surfaceMuted + ';text-align:left;">'
+    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:' + printTheme.inkMuted + ';letter-spacing:0.05em;">#</th>'
+    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:' + printTheme.inkMuted + ';letter-spacing:0.05em;">Signer</th>'
+    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:' + printTheme.inkMuted + ';letter-spacing:0.05em;">Signed at</th>'
+    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:' + printTheme.inkMuted + ';letter-spacing:0.05em;">IP</th>'
+    + '<th style="padding:8px;font-size:10px;text-transform:uppercase;color:' + printTheme.inkMuted + ';letter-spacing:0.05em;">Integrity hash</th>'
     + '</tr></thead>'
     + '<tbody>' + rows + '</tbody>'
     + '</table>'
-    + (uaList ? '<div style="margin-top:16px;padding:12px;background:#f9fafb;border-radius:6px;"><div style="font-size:10px;font-weight:600;color:#666;margin-bottom:6px;">BROWSER INFORMATION</div>' + uaList + '</div>' : '')
-    + '<div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:10px;color:#999;text-align:center;">'
+    + (uaList ? '<div style="margin-top:16px;padding:12px;background:' + printTheme.surfaceMuted + ';border-radius:6px;"><div style="font-size:10px;font-weight:600;color:' + printTheme.inkMuted + ';margin-bottom:6px;">BROWSER INFORMATION</div>' + uaList + '</div>' : '')
+    + '<div style="margin-top:32px;padding-top:16px;border-top:1px solid ' + printTheme.borderLight + ';font-size:10px;color:' + printTheme.inkSubtle + ';text-align:center;">'
     + 'Each integrity hash is a SHA-256 digest over the document body, signer email, signature payload, and timestamp at the moment of signing. Any alteration to the signed document or signature will cause the hash to no longer match. Certificate generated ' + escapeForHtml(new Date().toLocaleString()) + '.'
     + '</div>'
     + '</div>';
@@ -933,7 +934,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const bodyHtml = DOMPurify.sanitize(doc?.rendered_body || "", { ADD_TAGS: ["table","thead","tbody","tr","td","th","br","hr","ul","ol","li","p","h1","h2","h3","h4","h5","h6","strong","em","u","s","sub","sup","blockquote","pre","code","img","span","div","a"], ADD_ATTR: ["style","class","href","src","alt","width","height","colspan","rowspan","align","valign"] });
   const container = document.createElement("div");
   container.innerHTML = ''
-    + '<div style="font-family:Georgia,serif;font-size:13px;line-height:1.6;color:#1a1a1a;padding:40px;max-width:720px;margin:0 auto;">' + bodyHtml + signedBlock + '</div>'
+    + '<div style="font-family:Georgia,serif;font-size:13px;line-height:1.6;color:' + printTheme.ink + ';padding:40px;max-width:720px;margin:0 auto;">' + bodyHtml + signedBlock + '</div>'
     + '<div style="page-break-before:always;"></div>'
     + certBlock;
   document.body.appendChild(container);
@@ -1054,7 +1055,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   for (const email of recipients) {
   try {
   const { error } = await supabase.functions.invoke("send-email", {
-  body: { to: email, subject: docName, html: '<div style="font-family:Georgia,serif;font-size:14px;line-height:1.6;color:#1a1a1a;max-width:700px;margin:0 auto;">' + rendered + '</div>' },
+  body: { to: email, subject: docName, html: '<div style="font-family:Georgia,serif;font-size:14px;line-height:1.6;color:' + printTheme.ink + ';max-width:700px;margin:0 auto;">' + rendered + '</div>' },
   });
   if (error) pmError("PM-1007", { raw: error, context: "email document to " + email });
   } catch (e) { showToast("Email error: " + e.message, "error"); }
@@ -1133,12 +1134,12 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
       const signUrl = origin + "/sign/" + row.access_token;
       const roleLabel = signers.find(s => s.email === row.signer_email)?.label || row.signer_email;
       const subject = "Signature requested: " + doc.name;
-      const html = '<div style="font-family:Georgia,serif;font-size:14px;line-height:1.6;color:#1a1a1a;max-width:640px;margin:0 auto;">'
+      const html = '<div style="font-family:Georgia,serif;font-size:14px;line-height:1.6;color:' + printTheme.ink + ';max-width:640px;margin:0 auto;">'
         + '<p>Hello' + (signers.find(s => s.email === row.signer_email)?.name ? " " + signers.find(s => s.email === row.signer_email).name : "") + ',</p>'
         + '<p>You are requested to review and sign <strong>' + doc.name + '</strong> as <em>' + roleLabel + '</em>.</p>'
-        + '<p><a href="' + signUrl + '" style="display:inline-block;background:#6366f1;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Review &amp; Sign</a></p>'
-        + '<p style="font-size:12px;color:#666;">Or paste this link into your browser: <br/>' + signUrl + '</p>'
-        + '<p style="font-size:11px;color:#999;margin-top:24px;">This link expires in 30 days. If you did not expect this message, you can ignore it.</p>'
+        + '<p><a href="' + signUrl + '" style="display:inline-block;background:' + printTheme.brandLight + ';color:' + printTheme.surface + ';padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Review &amp; Sign</a></p>'
+        + '<p style="font-size:12px;color:' + printTheme.inkMuted + ';">Or paste this link into your browser: <br/>' + signUrl + '</p>'
+        + '<p style="font-size:11px;color:' + printTheme.inkSubtle + ';margin-top:24px;">This link expires in 30 days. If you did not expect this message, you can ignore it.</p>'
         + '</div>';
       try {
         const { error: emailErr } = await supabase.functions.invoke("send-email", { body: { to: row.signer_email, subject, html } });
@@ -1574,7 +1575,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   document.addEventListener("mouseup", onUp);
   }}>
   <div className="flex items-center justify-between px-1">
-  <span className="text-[9px] font-mono font-semibold truncate" style={{ color: p.auto_detected ? "#92400e" : "#3730a3" }}>{p.field_name}</span>
+  <span className={`text-[9px] font-mono font-semibold truncate ${p.auto_detected ? "text-warn-800" : "text-brand-800"}`}>{p.field_name}</span>
   <button onClick={e => { e.stopPropagation(); removePlacement(p._idx); }} className="text-danger-400 hover:text-danger-600 text-xs leading-none">✕</button>
   </div>
   </div>
@@ -1748,7 +1749,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const val = fieldValues[p.field_name];
   const displayVal = val && typeof val === "object" ? formatAddressBlock(val) : (val || "");
   return displayVal ? (
-  <div key={i} className="absolute px-1 overflow-hidden" style={{ left: p.x + "%", top: p.y + "%", width: p.width + "%", height: p.height + "%", fontSize: (p.font_size || 12) + "px", fontFamily: "Helvetica, Arial, sans-serif", color: "#1a1a1a", lineHeight: "1.2", whiteSpace: "nowrap" }}>{String(displayVal)}</div>
+  <div key={i} className="absolute px-1 overflow-hidden" style={{ left: p.x + "%", top: p.y + "%", width: p.width + "%", height: p.height + "%", fontSize: (p.font_size || 12) + "px", fontFamily: "Helvetica, Arial, sans-serif", color: printTheme.ink, lineHeight: "1.2", whiteSpace: "nowrap" }}>{String(displayVal)}</div>
   ) : null;
   })}
   </div>
@@ -1815,7 +1816,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const val = fieldValues[p.field_name];
   const displayVal = val && typeof val === "object" ? formatAddressBlock(val) : (val || "");
   return displayVal ? (
-  <div key={i} className="absolute px-1 overflow-hidden" style={{ left: p.x + "%", top: p.y + "%", width: p.width + "%", height: p.height + "%", fontSize: (p.font_size || 12) + "px", fontFamily: "Helvetica, Arial, sans-serif", color: "#1a1a1a", lineHeight: "1.2", whiteSpace: "nowrap" }}>{String(displayVal)}</div>
+  <div key={i} className="absolute px-1 overflow-hidden" style={{ left: p.x + "%", top: p.y + "%", width: p.width + "%", height: p.height + "%", fontSize: (p.font_size || 12) + "px", fontFamily: "Helvetica, Arial, sans-serif", color: printTheme.ink, lineHeight: "1.2", whiteSpace: "nowrap" }}>{String(displayVal)}</div>
   ) : null;
   })}
   </div>
@@ -1825,7 +1826,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   {pdfPages.length === 0 && <div className="text-center py-12 text-neutral-400">Loading PDF preview...</div>}
   </div>
   ) : (
-  <div ref={previewRef} className="bg-white rounded-xl shadow-sm border border-neutral-100 p-10 w-full max-w-[8.5in]" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7", color: "#1a1a1a" }}>
+  <div ref={previewRef} className="bg-white rounded-xl shadow-sm border border-neutral-100 p-10 w-full max-w-[8.5in]" style={{ fontFamily: "Georgia, serif", fontSize: "14px", lineHeight: "1.7", color: printTheme.ink }}>
   <div dangerouslySetInnerHTML={{ __html: rendered }} />
   </div>
   )}

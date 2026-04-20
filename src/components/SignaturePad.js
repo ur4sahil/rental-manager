@@ -1,4 +1,5 @@
 import React, { useRef, useState } from "react";
+import { printTheme } from "../utils/theme";
 
 // Reusable signature capture: draw OR type mode + consent checkbox.
 // onSubmit receives: { signatureData, signingMethod, consentText }
@@ -42,7 +43,7 @@ export default function SignaturePad({
     const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
-    ctx.strokeStyle = "#1e3a5f";
+    ctx.strokeStyle = printTheme.signatureInk;
     ctx.lineTo(x, y);
     ctx.stroke();
   }

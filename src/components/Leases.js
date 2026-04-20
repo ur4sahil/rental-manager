@@ -3,6 +3,7 @@ import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, PageHeader } from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, normalizeEmail, escapeHtml } from "../utils/helpers";
 import { pmError } from "../utils/errors";
+import { printTheme } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
@@ -602,7 +603,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, comp
   function buildLeaseHtml() {
     const l = lease;
     return ''
-      + '<h1 style="text-align:center;color:#1e3a5f;">Residential Lease Agreement</h1>'
+      + '<h1 style="text-align:center;color:' + printTheme.signatureInk + ';">Residential Lease Agreement</h1>'
       + '<table style="width:100%;margin:20px 0;border-collapse:collapse;">'
       + '<tr><td style="padding:6px 10px;font-weight:600;width:30%;">Property</td><td style="padding:6px 10px;">' + escapeHtml(l.property || "") + '</td></tr>'
       + '<tr><td style="padding:6px 10px;font-weight:600;">Tenant</td><td style="padding:6px 10px;">' + escapeHtml(l.tenant_name || "") + '</td></tr>'
@@ -610,9 +611,9 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, comp
       + '<tr><td style="padding:6px 10px;font-weight:600;">Monthly Rent</td><td style="padding:6px 10px;">$' + safeNum(l.rent_amount).toLocaleString() + '</td></tr>'
       + '<tr><td style="padding:6px 10px;font-weight:600;">Security Deposit</td><td style="padding:6px 10px;">$' + safeNum(l.security_deposit).toLocaleString() + '</td></tr>'
       + '</table>'
-      + (l.clauses ? '<h3 style="color:#1e3a5f;margin-top:24px;">Lease Terms</h3><div style="white-space:pre-wrap;line-height:1.7;">' + escapeHtml(l.clauses) + '</div>' : '')
-      + (l.special_terms ? '<h3 style="color:#1e3a5f;margin-top:24px;">Special Terms</h3><div style="white-space:pre-wrap;line-height:1.7;">' + escapeHtml(l.special_terms) + '</div>' : '')
-      + '<hr style="margin-top:32px;"/><p style="font-size:11px;color:#666;">By signing below each party confirms they have read and agree to the terms set out above.</p>';
+      + (l.clauses ? '<h3 style="color:' + printTheme.signatureInk + ';margin-top:24px;">Lease Terms</h3><div style="white-space:pre-wrap;line-height:1.7;">' + escapeHtml(l.clauses) + '</div>' : '')
+      + (l.special_terms ? '<h3 style="color:' + printTheme.signatureInk + ';margin-top:24px;">Special Terms</h3><div style="white-space:pre-wrap;line-height:1.7;">' + escapeHtml(l.special_terms) + '</div>' : '')
+      + '<hr style="margin-top:32px;"/><p style="font-size:11px;color:' + printTheme.inkMuted + ';">By signing below each party confirms they have read and agree to the terms set out above.</p>';
   }
 
   async function sendForSignature() {
@@ -652,12 +653,12 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, comp
         if (row.status !== "sent") continue;
         const url = origin + "/sign/" + row.access_token;
         const matching = signers.find(s => s.email === row.signer_email);
-        const html = '<div style="font-family:Georgia,serif;font-size:14px;line-height:1.6;color:#1a1a1a;max-width:640px;margin:0 auto;">'
+        const html = '<div style="font-family:Georgia,serif;font-size:14px;line-height:1.6;color:' + printTheme.ink + ';max-width:640px;margin:0 auto;">'
           + '<p>Hello' + (matching?.name ? " " + matching.name : "") + ',</p>'
           + '<p>You are requested to review and sign the <strong>' + docName + '</strong> as <em>' + (matching?.label || "signer") + '</em>.</p>'
-          + '<p><a href="' + url + '" style="display:inline-block;background:#6366f1;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Review &amp; Sign</a></p>'
-          + '<p style="font-size:12px;color:#666;">Or paste this link into your browser:<br/>' + url + '</p>'
-          + '<p style="font-size:11px;color:#999;margin-top:24px;">This link expires in 30 days. If you did not expect this message, you can ignore it.</p>'
+          + '<p><a href="' + url + '" style="display:inline-block;background:' + printTheme.brandLight + ';color:' + printTheme.surface + ';padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Review &amp; Sign</a></p>'
+          + '<p style="font-size:12px;color:' + printTheme.inkMuted + ';">Or paste this link into your browser:<br/>' + url + '</p>'
+          + '<p style="font-size:11px;color:' + printTheme.inkSubtle + ';margin-top:24px;">This link expires in 30 days. If you did not expect this message, you can ignore it.</p>'
           + '</div>';
         try {
           const { error: emailErr } = await supabase.functions.invoke("send-email", { body: { to: row.signer_email, subject: "Signature requested: " + docName, html } });
@@ -686,7 +687,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, comp
     const docName = doc?.name || "Lease";
     const html = '<div style="font-family:Georgia,serif;font-size:14px;line-height:1.6;"><p>Hello ' + escapeHtml(sig.signer_name || "") + ',</p>'
       + '<p>Reminder — you still need to sign <strong>' + escapeHtml(docName) + '</strong>.</p>'
-      + '<p><a href="' + url + '" style="display:inline-block;background:#6366f1;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Review &amp; Sign</a></p></div>';
+      + '<p><a href="' + url + '" style="display:inline-block;background:' + printTheme.brandLight + ';color:' + printTheme.surface + ';padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Review &amp; Sign</a></p></div>';
     try {
       await supabase.functions.invoke("send-email", { body: { to: sig.signer_email, subject: "Reminder: " + docName, html } });
       showToast("Reminder sent to " + sig.signer_email, "success");
