@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
-import { Input, Btn, AccountPicker } from "../ui";
+import { Input, Btn, AccountPicker, Select } from "../ui";
 import { safeNum, formatLocalDate, shortId } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -1525,19 +1525,19 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     <Input placeholder="Search description, payee, amount..." value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setTxnPage(0); }} className="w-64 !py-1.5 text-sm" />
     <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setTxnPage(0); }} className="w-32 !py-1.5 text-xs" />
     <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setTxnPage(0); }} className="w-32 !py-1.5 text-xs" />
-    <select value={directionFilter} onChange={e => { setDirectionFilter(e.target.value); setTxnPage(0); }} className="border border-brand-100 rounded-xl px-2 py-1.5 text-xs">
+    <Select value={directionFilter} onChange={e => { setDirectionFilter(e.target.value); setTxnPage(0); }} className="border border-brand-100 rounded-xl px-2 py-1.5 text-xs">
       <option value="all">All</option><option value="inflow">Money In</option><option value="outflow">Money Out</option>
-    </select>
+    </Select>
     {/* Server-side date window — smaller datasets load faster. The
         dateFrom/dateTo inputs to the left further narrow the visible set
         client-side. */}
-    <select value={dateRangeMode} onChange={e => { setDateRangeMode(e.target.value); setTxnPage(0); }} className="border border-brand-100 rounded-xl px-2 py-1.5 text-xs" title="Fetch window">
+    <Select value={dateRangeMode} onChange={e => { setDateRangeMode(e.target.value); setTxnPage(0); }} className="border border-brand-100 rounded-xl px-2 py-1.5 text-xs" title="Fetch window">
       <option value="30d">Last 30 days</option>
       <option value="90d">Last 90 days</option>
       <option value="6m">Last 6 months</option>
       <option value="1y">Last 1 year</option>
       <option value="all">All time</option>
-    </select>
+    </Select>
   </div>
   )}
   {activeTab !== "rules" && txnTruncated && (
@@ -1633,15 +1633,15 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         <div><label className="text-xs font-medium text-neutral-500 block mb-1">Category *</label>
           <AccountPicker value={addForm.accountId} onChange={v => { if (v === "__new__") { setShowNewBankAcct(true); return; } const a = accounts.find(a => a.id === v); setAddForm({...addForm, accountId: v, accountName: a?.name || ""}); }} accounts={accounts} accountTypes={ACCOUNT_TYPES} showNewOption placeholder="Search accounts..." /></div>
         <div><label className="text-xs font-medium text-neutral-500 block mb-1">Tenant/Vendor</label>
-          <select value={addForm.entityId ? `${addForm.entityType}:${addForm.entityId}` : ""} onChange={e => { if (!e.target.value) { setAddForm(f => ({...f, entityType: "", entityId: "", entityName: ""})); return; } const [type, id] = e.target.value.split(":"); const name = type === "customer" ? tenants.find(t => t.id === id)?.name : vendors.find(v => v.id === id)?.name; setAddForm(f => ({...f, entityType: type, entityId: id, entityName: name || ""})); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+          <Select value={addForm.entityId ? `${addForm.entityType}:${addForm.entityId}` : ""} onChange={e => { if (!e.target.value) { setAddForm(f => ({...f, entityType: "", entityId: "", entityName: ""})); return; } const [type, id] = e.target.value.split(":"); const name = type === "customer" ? tenants.find(t => t.id === id)?.name : vendors.find(v => v.id === id)?.name; setAddForm(f => ({...f, entityType: type, entityId: id, entityName: name || ""})); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
             <option value="">None</option><optgroup label="Tenants">{tenants.map(t => <option key={t.id} value={`customer:${t.id}`}>{t.name}</option>)}</optgroup><optgroup label="Vendors">{vendors.map(v => <option key={v.id} value={`vendor:${v.id}`}>{v.name}</option>)}</optgroup>
-          </select></div>
+          </Select></div>
         <div><label className="text-xs font-medium text-neutral-500 block mb-1">Memo</label>
-          <input type="text" value={addForm.memo} onChange={e => setAddForm({...addForm, memo: e.target.value})} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+          <Input type="text" value={addForm.memo} onChange={e => setAddForm({...addForm, memo: e.target.value})} placeholder="Optional..." className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
         <div><label className="text-xs font-medium text-neutral-500 block mb-1">Class</label>
-          <select value={addForm.classId} onChange={e => setAddForm({...addForm, classId: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+          <Select value={addForm.classId} onChange={e => setAddForm({...addForm, classId: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
             <option value="">No class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select></div>
+          </Select></div>
         <button onClick={() => acceptTransaction(txn, addForm.accountId, addForm.accountName, addForm.memo, addForm.classId, addForm.entityType, addForm.entityId, addForm.entityName)} disabled={!addForm.accountId} className="bg-success-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-success-700">Add & Post</button>
       </div>
       )}
@@ -1649,9 +1649,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       <div className="bg-brand-50 rounded-xl p-3 mt-2 border border-brand-200">
       <div className="text-xs font-semibold text-brand-700 mb-2">Create New Account</div>
       <div className="grid grid-cols-3 gap-2">
-      <div><label className="text-xs text-neutral-500 block mb-1">Type *</label><select value={newBankAcctForm.type} onChange={e => setNewBankAcctForm({...newBankAcctForm, type: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">{ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-      <div><label className="text-xs text-neutral-500 block mb-1">Code</label><input value={newBankAcctForm.code} onChange={e => setNewBankAcctForm({...newBankAcctForm, code: e.target.value})} placeholder="Auto" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
-      <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><input value={newBankAcctForm.name} onChange={e => setNewBankAcctForm({...newBankAcctForm, name: e.target.value})} placeholder="e.g. Office Supplies" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+      <div><label className="text-xs text-neutral-500 block mb-1">Type *</label><Select value={newBankAcctForm.type} onChange={e => setNewBankAcctForm({...newBankAcctForm, type: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">{ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</Select></div>
+      <div><label className="text-xs text-neutral-500 block mb-1">Code</label><Input value={newBankAcctForm.code} onChange={e => setNewBankAcctForm({...newBankAcctForm, code: e.target.value})} placeholder="Auto" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+      <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><Input value={newBankAcctForm.name} onChange={e => setNewBankAcctForm({...newBankAcctForm, name: e.target.value})} placeholder="e.g. Office Supplies" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
       </div>
       <div className="flex gap-2 mt-2"><button onClick={createInlineBankAcct} className="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg">Create</button><button onClick={() => setShowNewBankAcct(false)} className="text-xs text-neutral-500 px-3 py-1.5">Cancel</button></div>
       </div>
@@ -1683,11 +1683,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       {actionMode === "transfer" && (
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
         <div><label className="text-xs font-medium text-neutral-500 block mb-1">Transfer to Account *</label>
-          <select value={transferForm.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); setTransferForm({...transferForm, accountId: e.target.value, accountName: a?.name || ""}); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+          <Select value={transferForm.accountId} onChange={e => { const a = accounts.find(a => a.id === e.target.value); setTransferForm({...transferForm, accountId: e.target.value, accountName: a?.name || ""}); }} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
             <option value="">Select account...</option>{accounts.filter(a => a.is_active && (a.type === "Asset" || a.type === "Liability")).map(a => <option key={a.id} value={a.id}>{a.code || "•"} {a.name}</option>)}
-          </select></div>
+          </Select></div>
         <div><label className="text-xs font-medium text-neutral-500 block mb-1">Memo</label>
-          <input type="text" value={transferForm.memo} onChange={e => setTransferForm({...transferForm, memo: e.target.value})} placeholder="e.g. Transfer to savings" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+          <Input type="text" value={transferForm.memo} onChange={e => setTransferForm({...transferForm, memo: e.target.value})} placeholder="e.g. Transfer to savings" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
         <button onClick={() => acceptTransfer(txn, transferForm.accountId, transferForm.accountName, transferForm.memo)} disabled={!transferForm.accountId} className="bg-info-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-info-700">Post Transfer</button>
       </div>
       )}
@@ -1703,11 +1703,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           {splitLines.map((line, i) => (
           <div key={i} className="grid grid-cols-5 gap-2 items-end">
             <AccountPicker value={line.accountId} onChange={v => { const a = accounts.find(a => a.id === v); const l = [...splitLines]; l[i] = {...l[i], accountId: v, accountName: a?.name || ""}; setSplitLines(l); }} accounts={accounts} accountTypes={ACCOUNT_TYPES} placeholder="Account..." />
-            <input type="text" inputMode="decimal" value={line.amount} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], amount: e.target.value.replace(/[^0-9.]/g, "")}; setSplitLines(l); }} placeholder="0.00" className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs text-right font-mono" />
-            <input type="text" value={line.memo} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], memo: e.target.value}; setSplitLines(l); }} placeholder="Memo..." className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs" />
-            <select value={line.classId} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], classId: e.target.value}; setSplitLines(l); }} className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
+            <Input type="text" inputMode="decimal" value={line.amount} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], amount: e.target.value.replace(/[^0-9.]/g, "")}; setSplitLines(l); }} placeholder="0.00" className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs text-right font-mono" />
+            <Input type="text" value={line.memo} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], memo: e.target.value}; setSplitLines(l); }} placeholder="Memo..." className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs" />
+            <Select value={line.classId} onChange={e => { const l = [...splitLines]; l[i] = {...l[i], classId: e.target.value}; setSplitLines(l); }} className="border border-brand-100 rounded-lg px-2 py-1.5 text-xs">
               <option value="">Class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            </Select>
             {splitLines.length > 2 && <button onClick={() => setSplitLines(prev => prev.filter((_, j) => j !== i))} className="text-danger-400 hover:text-danger-600 text-xs">✕</button>}
           </div>
           ))}
@@ -1766,9 +1766,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     <div className="space-y-3">
       <div><label className="text-xs font-medium text-neutral-500 block mb-1">Account Name *</label><Input value={newAccountForm.name} onChange={e => setNewAccountForm({...newAccountForm, name: e.target.value})} placeholder="e.g. Chase Checking" /></div>
       <div><label className="text-xs font-medium text-neutral-500 block mb-1">Account Type</label>
-        <select value={newAccountForm.type} onChange={e => setNewAccountForm({...newAccountForm, type: e.target.value})} className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm">
+        <Select value={newAccountForm.type} onChange={e => setNewAccountForm({...newAccountForm, type: e.target.value})} className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm">
           <option value="checking">Checking</option><option value="savings">Savings</option><option value="credit_card">Credit Card</option><option value="loan">Loan</option><option value="other">Other</option>
-        </select>
+        </Select>
       </div>
       <div><label className="text-xs font-medium text-neutral-500 block mb-1">Last 4 Digits</label><Input maxLength={4} value={newAccountForm.masked_number} onChange={e => setNewAccountForm({...newAccountForm, masked_number: e.target.value})} placeholder="1234" /></div>
       <div><label className="text-xs font-medium text-neutral-500 block mb-1">Institution</label><Input value={newAccountForm.institution_name} onChange={e => setNewAccountForm({...newAccountForm, institution_name: e.target.value})} placeholder="e.g. Chase, Bank of America" /></div>
@@ -1808,11 +1808,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     {wizStep === 1 && (
     <div className="space-y-4">
       <label className="text-sm font-medium text-neutral-700 block">Import into which account?</label>
-      <select value={wizFeedId} onChange={e => { if (e.target.value === "__new__") { setShowNewAccount(true); } else setWizFeedId(e.target.value); }} className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm">
+      <Select value={wizFeedId} onChange={e => { if (e.target.value === "__new__") { setShowNewAccount(true); } else setWizFeedId(e.target.value); }} className="w-full border border-brand-100 rounded-xl px-3 py-1.5 text-sm">
         <option value="">Select bank account...</option>
         {feeds.map(f => <option key={f.id} value={f.id}>{f.account_name} ({f.account_type}){f.masked_number ? ` ••••${f.masked_number}` : ""}</option>)}
         <option value="__new__">+ Create New Account</option>
-      </select>
+      </Select>
       <div className="flex justify-end"><button onClick={() => { if (!wizFeedId) { showToast("Select an account.", "error"); return; } setWizStep(2); }} disabled={!wizFeedId} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">Next →</button></div>
     </div>
     )}
@@ -1836,7 +1836,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       <div className="bg-neutral-50 rounded-xl p-3"><p className="text-xs text-neutral-400 mb-2">Headers found:</p><div className="flex flex-wrap gap-1.5">{wizParsed.headers.map(h => <span key={h} className="text-xs bg-white border border-neutral-200 text-neutral-700 px-2 py-0.5 rounded-lg font-mono">{h}</span>)}</div></div>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {[{f:"date",l:"Date *"},{f:"description",l:"Description *"},{f:"amount",l:"Amount"},{f:"debit",l:"Debit"},{f:"credit",l:"Credit"},{f:"memo",l:"Memo"},{f:"payee",l:"Payee"},{f:"check_number",l:"Check #"},{f:"reference",l:"Reference"}].map(({f,l})=>(
-        <div key={f}><label className="text-xs font-medium text-neutral-500">{l}</label><select value={wizMapping[f]} onChange={e=>setWizMapping(m=>({...m,[f]:e.target.value}))} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs mt-1"><option value="">— Not mapped —</option>{wizParsed.headers.map(h=><option key={h} value={h}>{h}</option>)}</select></div>
+        <div key={f}><label className="text-xs font-medium text-neutral-500">{l}</label><Select value={wizMapping[f]} onChange={e=>setWizMapping(m=>({...m,[f]:e.target.value}))} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs mt-1"><option value="">— Not mapped —</option>{wizParsed.headers.map(h=><option key={h} value={h}>{h}</option>)}</Select></div>
         ))}
       </div>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={wizInvertSign} onChange={e => setWizInvertSign(e.target.checked)} className="accent-brand-600" /> Invert sign (negative = inflow)</label>
@@ -1930,22 +1930,22 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       {/* Rule Name */}
       <div>
         <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Rule Name *</label>
-        <input type="text" value={ruleForm.name} onChange={e => setRuleForm({...ruleForm, name: e.target.value})} placeholder="e.g. Home Depot Supplies" className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm focus:border-accent-400 focus:outline-none" />
+        <Input type="text" value={ruleForm.name} onChange={e => setRuleForm({...ruleForm, name: e.target.value})} placeholder="e.g. Home Depot Supplies" className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm focus:border-accent-400 focus:outline-none" />
       </div>
 
       {/* Direction + Bank Account Scope */}
       <div className="flex gap-3">
         <div className="flex-1">
           <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Apply to</label>
-          <select value={ruleForm.condDirection} onChange={e => setRuleForm({...ruleForm, condDirection: e.target.value})} className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm">
+          <Select value={ruleForm.condDirection} onChange={e => setRuleForm({...ruleForm, condDirection: e.target.value})} className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm">
             <option value="all">All transactions</option><option value="outflow">Money out</option><option value="inflow">Money in</option>
-          </select>
+          </Select>
         </div>
         <div className="flex-1">
           <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Bank Account</label>
-          <select value={ruleForm.bankAccountFeedId} onChange={e => setRuleForm({...ruleForm, bankAccountFeedId: e.target.value})} className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm">
+          <Select value={ruleForm.bankAccountFeedId} onChange={e => setRuleForm({...ruleForm, bankAccountFeedId: e.target.value})} className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm">
             <option value="">All bank accounts</option>{feeds.map(f => <option key={f.id} value={f.id}>{f.account_name}</option>)}
-          </select>
+          </Select>
         </div>
       </div>
 
@@ -1953,9 +1953,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       <div>
         <div className="flex items-center gap-2 mb-2">
           <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest">When transaction meets</label>
-          <select value={ruleForm.condLogic} onChange={e => setRuleForm({...ruleForm, condLogic: e.target.value})} className="border border-accent-200 rounded-lg px-2 py-1 text-xs font-semibold text-accent-700">
+          <Select value={ruleForm.condLogic} onChange={e => setRuleForm({...ruleForm, condLogic: e.target.value})} className="border border-accent-200 rounded-lg px-2 py-1 text-xs font-semibold text-accent-700">
             <option value="all">ALL</option><option value="any">ANY</option>
-          </select>
+          </Select>
           <span className="text-xs text-neutral-400">conditions:</span>
         </div>
         {ruleForm.conditions.map((cond, idx) => {
@@ -1965,16 +1965,16 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           const ops = isAmount ? amtOps : textOps;
           return (
           <div key={idx} className="flex items-center gap-2 mb-2">
-            <select value={cond.field} onChange={e => { updateCondition(idx, "field", e.target.value); updateCondition(idx, "operator", e.target.value === "amount" ? "greater_than" : "contains"); }} className="border border-accent-200 rounded-lg px-2 py-1.5 text-xs min-w-[120px]">
+            <Select value={cond.field} onChange={e => { updateCondition(idx, "field", e.target.value); updateCondition(idx, "operator", e.target.value === "amount" ? "greater_than" : "contains"); }} className="border border-accent-200 rounded-lg px-2 py-1.5 text-xs min-w-[120px]">
               <option value="description">Description</option><option value="bank_text">Bank text</option><option value="amount">Amount</option>
-            </select>
-            <select value={cond.operator} onChange={e => updateCondition(idx, "operator", e.target.value)} className="border border-accent-200 rounded-lg px-2 py-1.5 text-xs min-w-[130px]">
+            </Select>
+            <Select value={cond.operator} onChange={e => updateCondition(idx, "operator", e.target.value)} className="border border-accent-200 rounded-lg px-2 py-1.5 text-xs min-w-[130px]">
               {ops.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-            <input type={isAmount ? "number" : "text"} value={cond.value} onChange={e => updateCondition(idx, "value", e.target.value)} placeholder={isAmount ? "0.00" : "Enter text..."} className="flex-1 border border-accent-200 rounded-lg px-2 py-1.5 text-xs" />
+            </Select>
+            <Input type={isAmount ? "number" : "text"} value={cond.value} onChange={e => updateCondition(idx, "value", e.target.value)} placeholder={isAmount ? "0.00" : "Enter text..."} className="flex-1 border border-accent-200 rounded-lg px-2 py-1.5 text-xs" />
             {cond.operator === "between" && <>
               <span className="text-xs text-neutral-400">and</span>
-              <input type="number" value={cond.value2 || ""} onChange={e => updateCondition(idx, "value2", e.target.value)} placeholder="0.00" className="w-24 border border-accent-200 rounded-lg px-2 py-1.5 text-xs" />
+              <Input type="number" value={cond.value2 || ""} onChange={e => updateCondition(idx, "value2", e.target.value)} placeholder="0.00" className="w-24 border border-accent-200 rounded-lg px-2 py-1.5 text-xs" />
             </>}
             {ruleForm.conditions.length > 1 && <button onClick={() => removeCondition(idx)} className="text-danger-400 hover:text-danger-600 text-sm shrink-0">✕</button>}
           </div>
@@ -1998,9 +1998,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       {ruleForm.ruleType === "assign" && (<>
         <div>
           <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Transaction Type</label>
-          <select value={ruleForm.transactionType} onChange={e => setRuleForm({...ruleForm, transactionType: e.target.value})} className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm">
+          <Select value={ruleForm.transactionType} onChange={e => setRuleForm({...ruleForm, transactionType: e.target.value})} className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm">
             <option value="expense">Expense</option><option value="deposit">Deposit</option><option value="transfer">Transfer</option><option value="check">Check</option>
-          </select>
+          </Select>
         </div>
 
         {/* Category Lines (split support) */}
@@ -2012,23 +2012,23 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           {ruleForm.split && ruleForm.lines.length >= 2 && (
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs text-neutral-400">Split by:</span>
-              <select value={ruleForm.splitBy || "percentage"} onChange={e => setRuleForm({...ruleForm, splitBy: e.target.value})} className="border border-accent-200 rounded-lg px-2 py-1 text-xs">
+              <Select value={ruleForm.splitBy || "percentage"} onChange={e => setRuleForm({...ruleForm, splitBy: e.target.value})} className="border border-accent-200 rounded-lg px-2 py-1 text-xs">
                 <option value="percentage">Percentage</option><option value="amount">Amount</option>
-              </select>
+              </Select>
             </div>
           )}
           {ruleForm.lines.map((line, idx) => (
           <div key={idx} className="flex items-center gap-2 mb-2">
             <AccountPicker value={line.accountId} onChange={v => { if (v === "__new__") { setShowNewBankAcct(true); return; } const a = accounts.find(a => a.id === v); updateLine(idx, "accountId", v); updateLine(idx, "accountName", a?.name || ""); }} accounts={accounts} accountTypes={ACCOUNT_TYPES} showNewOption placeholder="Search accounts..." className="flex-1" />
             {ruleForm.split && ruleForm.splitBy === "percentage" && (
-              <input type="number" value={line.percentage ?? ""} onChange={e => updateLine(idx, "percentage", e.target.value)} placeholder="%" className="w-20 border border-accent-200 rounded-lg px-2 py-1.5 text-xs text-right" />
+              <Input type="number" value={line.percentage ?? ""} onChange={e => updateLine(idx, "percentage", e.target.value)} placeholder="%" className="w-20 border border-accent-200 rounded-lg px-2 py-1.5 text-xs text-right" />
             )}
             {ruleForm.split && ruleForm.splitBy === "amount" && (
-              <input type="number" value={line.amount ?? ""} onChange={e => updateLine(idx, "amount", e.target.value)} placeholder="$" className="w-24 border border-accent-200 rounded-lg px-2 py-1.5 text-xs text-right" />
+              <Input type="number" value={line.amount ?? ""} onChange={e => updateLine(idx, "amount", e.target.value)} placeholder="$" className="w-24 border border-accent-200 rounded-lg px-2 py-1.5 text-xs text-right" />
             )}
-            <select value={line.classId} onChange={e => updateLine(idx, "classId", e.target.value)} className="w-36 border border-accent-200 rounded-lg px-2 py-1.5 text-xs">
+            <Select value={line.classId} onChange={e => updateLine(idx, "classId", e.target.value)} className="w-36 border border-accent-200 rounded-lg px-2 py-1.5 text-xs">
               <option value="">No class</option>{classes.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            </Select>
             {ruleForm.lines.length > 1 && <button onClick={() => removeSplitLine(idx)} className="text-danger-400 hover:text-danger-600 text-sm shrink-0">✕</button>}
           </div>
           ))}
@@ -2045,9 +2045,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         <div className="bg-brand-50 rounded-xl p-3 mt-2 border border-brand-200">
         <div className="text-xs font-semibold text-brand-700 mb-2">Create New Account</div>
         <div className="grid grid-cols-3 gap-2">
-        <div><label className="text-xs text-neutral-500 block mb-1">Type *</label><select value={newBankAcctForm.type} onChange={e => setNewBankAcctForm({...newBankAcctForm, type: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">{ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-        <div><label className="text-xs text-neutral-500 block mb-1">Code</label><input value={newBankAcctForm.code} onChange={e => setNewBankAcctForm({...newBankAcctForm, code: e.target.value})} placeholder="Auto" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
-        <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><input value={newBankAcctForm.name} onChange={e => setNewBankAcctForm({...newBankAcctForm, name: e.target.value})} placeholder="e.g. Office Supplies" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+        <div><label className="text-xs text-neutral-500 block mb-1">Type *</label><Select value={newBankAcctForm.type} onChange={e => setNewBankAcctForm({...newBankAcctForm, type: e.target.value})} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">{ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</Select></div>
+        <div><label className="text-xs text-neutral-500 block mb-1">Code</label><Input value={newBankAcctForm.code} onChange={e => setNewBankAcctForm({...newBankAcctForm, code: e.target.value})} placeholder="Auto" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+        <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><Input value={newBankAcctForm.name} onChange={e => setNewBankAcctForm({...newBankAcctForm, name: e.target.value})} placeholder="e.g. Office Supplies" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
         </div>
         <div className="flex gap-2 mt-2"><button onClick={createInlineBankAcct} className="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg">Create</button><button onClick={() => setShowNewBankAcct(false)} className="text-xs text-neutral-500 px-3 py-1.5">Cancel</button></div>
         </div>
@@ -2057,11 +2057,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Payee</label>
-            <input type="text" value={ruleForm.actionPayee} onChange={e => setRuleForm({...ruleForm, actionPayee: e.target.value})} placeholder="Optional" className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm" />
+            <Input type="text" value={ruleForm.actionPayee} onChange={e => setRuleForm({...ruleForm, actionPayee: e.target.value})} placeholder="Optional" className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm" />
           </div>
           <div>
             <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Memo</label>
-            <input type="text" value={ruleForm.actionMemo} onChange={e => setRuleForm({...ruleForm, actionMemo: e.target.value})} placeholder="Optional" className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm" />
+            <Input type="text" value={ruleForm.actionMemo} onChange={e => setRuleForm({...ruleForm, actionMemo: e.target.value})} placeholder="Optional" className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm" />
           </div>
         </div>
       </>)}
@@ -2070,9 +2070,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       {ruleForm.ruleType === "exclude" && (
         <div>
           <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Exclude Reason</label>
-          <select value={ruleForm.excludeReason} onChange={e => setRuleForm({...ruleForm, excludeReason: e.target.value})} className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm">
+          <Select value={ruleForm.excludeReason} onChange={e => setRuleForm({...ruleForm, excludeReason: e.target.value})} className="w-full border border-accent-200 rounded-lg px-3 py-2 text-sm">
             <option value="personal">Personal</option><option value="duplicate">Duplicate</option><option value="noise">Noise</option><option value="other">Other</option>
-          </select>
+          </Select>
         </div>
       )}
 
@@ -2088,7 +2088,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       {/* Priority */}
       <div>
         <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Priority (lower = runs first)</label>
-        <input type="number" value={ruleForm.priority} onChange={e => setRuleForm({...ruleForm, priority: e.target.value})} min="1" max="999" className="w-24 border border-accent-200 rounded-lg px-3 py-2 text-sm" />
+        <Input type="number" value={ruleForm.priority} onChange={e => setRuleForm({...ruleForm, priority: e.target.value})} min="1" max="999" className="w-24 border border-accent-200 rounded-lg px-3 py-2 text-sm" />
       </div>
 
       {/* Actions */}
@@ -2155,9 +2155,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
                 <div className="bg-brand-50 rounded-xl p-3 mt-2 border border-brand-200">
                   <div className="text-xs font-semibold text-brand-700 mb-2">Create New Account</div>
                   <div className="grid grid-cols-3 gap-2">
-                    <div><label className="text-xs text-neutral-500 block mb-1">Type *</label><select value={newBankAcctForm.type} onChange={e => setNewBankAcctForm(f => ({...f, type: e.target.value}))} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">{ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                    <div><label className="text-xs text-neutral-500 block mb-1">Code</label><input value={newBankAcctForm.code} onChange={e => setNewBankAcctForm(f => ({...f, code: e.target.value}))} placeholder="Auto" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
-                    <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><input value={newBankAcctForm.name} onChange={e => setNewBankAcctForm(f => ({...f, name: e.target.value}))} placeholder="e.g. Business Checking" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+                    <div><label className="text-xs text-neutral-500 block mb-1">Type *</label><Select value={newBankAcctForm.type} onChange={e => setNewBankAcctForm(f => ({...f, type: e.target.value}))} className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs">{ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</Select></div>
+                    <div><label className="text-xs text-neutral-500 block mb-1">Code</label><Input value={newBankAcctForm.code} onChange={e => setNewBankAcctForm(f => ({...f, code: e.target.value}))} placeholder="Auto" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
+                    <div><label className="text-xs text-neutral-500 block mb-1">Name *</label><Input value={newBankAcctForm.name} onChange={e => setNewBankAcctForm(f => ({...f, name: e.target.value}))} placeholder="e.g. Business Checking" className="w-full border border-brand-100 rounded-lg px-2 py-1.5 text-xs" /></div>
                   </div>
                   <div className="flex gap-2 mt-2">
                     <button onClick={async () => {

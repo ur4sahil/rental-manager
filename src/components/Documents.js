@@ -150,9 +150,9 @@ function Documents({ addNotification, userProfile, userRole, companyId, showToas
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Document Name *</label><Input placeholder="Lease Agreement 2026" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property</label><PropertySelect value={form.property} onChange={(addr, prop) => setForm({ ...form, property: addr, tenant: prop?.tenant || form.tenant })} companyId={companyId} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant</label><Input placeholder="Optional — link to a tenant" value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Document Type</label><select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-brand-100 rounded-xl px-3 py-1.5 text-sm w-full">
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Document Type</label><Select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="border border-brand-100 rounded-xl px-3 py-1.5 text-sm w-full">
   {["Lease", "Inspection", "Maintenance", "Financial", "Notice", "Other"].map(t => <option key={t}>{t}</option>)}
-  </select></div>
+  </Select></div>
   <label className="flex items-center gap-2 text-sm text-neutral-500 border border-brand-100 rounded-xl px-3 py-1.5 cursor-pointer">
   <input type="checkbox" checked={form.tenant_visible} onChange={e => setForm({ ...form, tenant_visible: e.target.checked })} />
   Visible to Tenant
@@ -1641,12 +1641,12 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const setAddr = (key, v) => updateVal(f.name, { ...addr, [key]: v });
   return (
   <div className="space-y-2">
-  <input type="text" value={addr.line1 || ""} onChange={e => setAddr("line1", e.target.value)} className={base} placeholder="Street address" maxLength={200} />
-  <input type="text" value={addr.line2 || ""} onChange={e => setAddr("line2", e.target.value)} className={base} placeholder="Apt, suite, unit (optional)" maxLength={100} />
+  <Input type="text" value={addr.line1 || ""} onChange={e => setAddr("line1", e.target.value)} className={base} placeholder="Street address" maxLength={200} />
+  <Input type="text" value={addr.line2 || ""} onChange={e => setAddr("line2", e.target.value)} className={base} placeholder="Apt, suite, unit (optional)" maxLength={100} />
   <div className="grid grid-cols-3 gap-2">
-  <input type="text" value={addr.city || ""} onChange={e => setAddr("city", e.target.value)} className={base} placeholder="City" maxLength={50} />
-  <input type="text" value={addr.state || ""} onChange={e => setAddr("state", e.target.value.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase())} className={base} placeholder="State" maxLength={2} />
-  <input type="text" value={addr.zip || ""} onChange={e => setAddr("zip", e.target.value.replace(/\D/g, "").slice(0, 5))} className={base} placeholder="ZIP" maxLength={5} />
+  <Input type="text" value={addr.city || ""} onChange={e => setAddr("city", e.target.value)} className={base} placeholder="City" maxLength={50} />
+  <Input type="text" value={addr.state || ""} onChange={e => setAddr("state", e.target.value.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase())} className={base} placeholder="State" maxLength={2} />
+  <Input type="text" value={addr.zip || ""} onChange={e => setAddr("zip", e.target.value.replace(/\D/g, "").slice(0, 5))} className={base} placeholder="ZIP" maxLength={5} />
   </div>
   </div>
   );
@@ -1669,7 +1669,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   }
   const inputType = f.type === "date" ? "date" : f.type === "number" ? "number" : f.type === "currency" ? "text" : "text";
   const extraProps = inputType === "date" ? { min: "2000-01-01", max: "2099-12-31" } : inputType === "number" ? { step: "any" } : { maxLength: 200 };
-  return <input type={inputType} value={val} onChange={e => updateVal(f.name, e.target.value)} className={base} placeholder={f.type === "currency" ? "$0.00" : ""} {...extraProps} />;
+  return <Input type={inputType} value={val} onChange={e => updateVal(f.name, e.target.value)} className={base} placeholder={f.type === "currency" ? "$0.00" : ""} {...extraProps} />;
   };
 
   const renderFieldRow = (f) => {

@@ -253,7 +253,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   {s.days_before > 0 && (
   <div className="flex items-center gap-1">
   <span className="text-neutral-400">Days before:</span>
-  <input type="number" value={s.days_before} onChange={e => updateDaysBefore(s, e.target.value)} className="w-12 border border-brand-100 rounded px-1 py-0.5 text-xs text-center" min="0" />
+  <Input type="number" value={s.days_before} onChange={e => updateDaysBefore(s, e.target.value)} className="w-12 border border-brand-100 rounded px-1 py-0.5 text-xs text-center" min="0" />
   </div>
   )}
   </div>

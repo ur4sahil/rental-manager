@@ -312,7 +312,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   <label className="text-xs text-neutral-400 mb-1 block">Payment Amount</label>
   <div className="relative">
   <span className="absolute left-3 top-2.5 text-neutral-400">$</span>
-  <input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full border border-brand-100 rounded-2xl pl-7 pr-3 py-2.5 text-lg font-mono" placeholder="0.00" min="0" max="999999.99" step="0.01" />
+  <Input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full border border-brand-100 rounded-2xl pl-7 pr-3 py-2.5 text-lg font-mono" placeholder="0.00" min="0" max="999999.99" step="0.01" />
   </div>
   <div className="flex gap-2 mt-2">
   <button onClick={() => setPaymentAmount(String(tenantData.rent || 0))} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1 rounded-2xl hover:bg-neutral-100">Full Rent (${safeNum(tenantData.rent)})</button>

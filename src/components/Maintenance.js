@@ -307,7 +307,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Property *</label><PropertySelect value={form.property} onChange={(v, prop) => {
   setForm({ ...form, property: v, tenant: prop?.tenant || "" });
   }} companyId={companyId} /></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant</label><input placeholder={form.property && !form.tenant ? "Vacant — no tenant" : "Tenant name"} value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className={"border rounded-lg px-3 py-2 text-sm w-full " + (!form.tenant && form.property ? "border-subtle-100 bg-brand-50/30 text-neutral-400" : "border-brand-100")} readOnly={!!(form.property && !form.tenant)} /></div>
+  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Tenant</label><Input placeholder={form.property && !form.tenant ? "Vacant — no tenant" : "Tenant name"} value={form.tenant} onChange={e => setForm({ ...form, tenant: e.target.value })} className={"border rounded-lg px-3 py-2 text-sm w-full " + (!form.tenant && form.property ? "border-subtle-100 bg-brand-50/30 text-neutral-400" : "border-brand-100")} readOnly={!!(form.property && !form.tenant)} /></div>
   <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Issue *</label><Input placeholder="Describe the maintenance issue" value={form.issue} onChange={e => setForm({ ...form, issue: e.target.value })} /></div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Priority</label><Select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })}>
   {["normal", "emergency", "low"].map(p => <option key={p}>{p}</option>)}
@@ -518,7 +518,7 @@ function Inspections({ addNotification, userProfile, userRole, companyId, showTo
   <span className="text-sm text-neutral-700 flex-1">{item}</span>
   <button onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: true } })} className={`text-xs px-2 py-1 rounded ${val.pass === true ? "bg-positive-500 text-white" : "bg-neutral-200 text-neutral-500"}`}>Pass</button>
   <button onClick={() => setChecklist({ ...checklist, [item]: { ...val, pass: false } })} className={`text-xs px-2 py-1 rounded ${val.pass === false ? "bg-danger-500 text-white" : "bg-neutral-200 text-neutral-500"}`}>Fail</button>
-  <input placeholder="Note" value={val.notes} onChange={e => setChecklist({ ...checklist, [item]: { ...val, notes: e.target.value } })} className="border border-brand-100 rounded px-2 py-1 text-xs w-32" />
+  <Input placeholder="Note" value={val.notes} onChange={e => setChecklist({ ...checklist, [item]: { ...val, notes: e.target.value } })} className="border border-brand-100 rounded px-2 py-1 text-xs w-32" />
   </div>
   ))}
   </div>

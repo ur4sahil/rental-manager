@@ -3,7 +3,7 @@
 // page lives under Properties in the sidebar nav.
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabase";
-import { Input, Btn, PageHeader, FilterPill, EmptyState } from "../ui";
+import { Input, Btn, PageHeader, FilterPill, EmptyState, Select } from "../ui";
 import { formatLocalDate, formatCurrency, parseLocalDate } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -217,10 +217,10 @@ export function TaxBills({ companyId, userProfile, userRole, showToast, showConf
         <FilterPill active={filter === "all"}       onClick={() => setFilter("all")}>All</FilterPill>
         <div className="w-px h-6 bg-neutral-200 mx-1" />
         <Input size="sm" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search property / installment" className="w-56" />
-        <select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)} className="border border-neutral-200 rounded-xl px-2.5 py-1 text-xs">
+        <Select value={propertyFilter} onChange={e => setPropertyFilter(e.target.value)} className="border border-neutral-200 rounded-xl px-2.5 py-1 text-xs">
           <option value="all">All properties</option>
           {properties.map(p => <option key={p.id} value={p.address}>{p.address}</option>)}
-        </select>
+        </Select>
       </div>
 
       {filtered.length === 0 && <EmptyState icon="receipt_long" title="No bills here" subtitle={filter === "open" ? "Tax bills auto-generate when you save a property with a county set." : "Try a different filter."} />}
