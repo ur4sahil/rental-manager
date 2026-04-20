@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
-import { AccountPicker, Btn, Checkbox, Input, Select, TextLink, Textarea } from "../ui";
+import { AccountPicker, Btn, Checkbox, IconBtn, Input, Select, TextLink, Textarea } from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, chartPalette } from "../utils/theme";
@@ -169,7 +169,7 @@ export function RecurringJournalEntries({ companyId, companySettings = {}, addNo
   <div className="text-lg font-bold text-subtle-800">${safeNum(e.amount).toLocaleString()}</div>
   <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (e.status === "active" ? "bg-positive-100 text-positive-700" : "bg-subtle-100 text-subtle-500")}>{e.status}</span>
   <div className="flex gap-1">
-  <button onClick={() => toggleStatus(e)} className={"text-xs px-2 py-1 rounded-lg " + (e.status === "active" ? "text-warn-600 hover:bg-warn-50" : "text-positive-600 hover:bg-positive-50")}>{e.status === "active" ? "⏸ Pause" : "▶ Resume"}</button>
+  <Btn variant={e.status === "active" ? "notice" : "positive"} size="xs" onClick={() => toggleStatus(e)}>{e.status === "active" ? "⏸ Pause" : "▶ Resume"}</Btn>
   <TextLink tone="brand" size="xs" underline={false} onClick={() => { setEditingEntry(e); setForm({ description: e.description, frequency: e.frequency, day_of_month: e.day_of_month, amount: e.amount, tenant_name: e.tenant_name || "", property: e.property || "", debit_account_id: e.debit_account_id || "1200", debit_account_name: e.debit_account_name || "Accounts Receivable", credit_account_id: e.credit_account_id || "4000", credit_account_name: e.credit_account_name || "Rental Income", late_fee_enabled: e.late_fee_enabled !== false, grace_period_days: e.grace_period_days || 5, late_fee_amount: e.late_fee_amount || 50 }); setShowForm(true); }} className="px-2 py-1 rounded-lg hover:bg-brand-50">Edit</TextLink>
   <TextLink tone="danger" size="xs" underline={false} onClick={() => deleteEntry(e)} className="px-2 py-1 rounded-lg hover:bg-danger-50">Delete</TextLink>
   </div>
@@ -499,8 +499,8 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   {acctCodes && <p className="text-xs text-neutral-400">Account {acctCodes} · {allLines.length} entries</p>}
   </div>
   <div className="flex items-center gap-2 shrink-0 ml-2">
-  <button onClick={exportCSV} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-xl hover:bg-neutral-200 hidden sm:block">Export CSV</button>
-  <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-neutral-400 hover:bg-neutral-100"><span className="material-icons-outlined text-lg">close</span></button>
+  <Btn variant="slate" size="sm" className="hidden sm:block" onClick={exportCSV}>Export CSV</Btn>
+  <IconBtn icon="close" onClick={onClose} />
   </div>
   </div>
   {/* Filters */}
@@ -586,7 +586,7 @@ export function AcctModal({ isOpen, onClose, title, children, size = "md" }) {
   <div className={`bg-white rounded-xl shadow-sm border border-neutral-200 w-full ${sizes[size]} flex flex-col`} style={{ maxHeight:"90vh" }}>
   <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 shrink-0">
   <h2 className="text-lg font-manrope font-bold text-neutral-900">{title}</h2>
-  <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl text-neutral-400 hover:bg-brand-50/50 transition-colors"><span className="material-icons-outlined text-lg">close</span></button>
+  <IconBtn icon="close" onClick={onClose} />
   </div>
   <div className="overflow-y-auto flex-1 px-6 py-4">{children}</div>
   </div>
@@ -927,8 +927,8 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   <td className="px-5 py-3 text-right font-mono text-sm font-semibold">{acctFmt(total)}</td>
   <td className="px-5 py-3 text-center">
   <div className="flex gap-1 justify-center" onClick={e => e.stopPropagation()}>
-  {je.status === "draft" && <button onClick={() => onPost(je.id)} className="bg-success-50 text-success-700 px-3 py-1.5 rounded-lg border border-success-200 hover:bg-success-100 text-xs">Post</button>}
-  {je.status === "posted" && <button onClick={() => onVoid(je.id)} className="bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg border border-danger-200 hover:bg-danger-100 text-xs">Void</button>}
+  {je.status === "draft" && <Btn onClick={() => onPost(je.id)} variant="success" size="sm">Post</Btn>}
+  {je.status === "posted" && <Btn variant="danger" size="sm" onClick={() => onVoid(je.id)}>Void</Btn>}
   {je.status !== "voided" && <TextLink tone="brand" size="xs" onClick={() => openEdit(je)}>Edit</TextLink>}
   <TextLink tone="neutral" size="xs" onClick={() => openDuplicate(je)}>Duplicate</TextLink>
   </div>
@@ -974,10 +974,10 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   </tbody>
   </table>
   <div className="flex gap-2">
-  {modal.je.status === "draft" && <button onClick={() => { onPost(modal.je.id); setModal(null); }} className="bg-success-50 text-success-700 px-3 py-1.5 rounded-lg border border-success-200 hover:bg-success-100 text-xs">Post</button>}
-  {modal.je.status === "posted" && <button onClick={() => { onVoid(modal.je.id); setModal(null); }} className="bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg border border-danger-200 hover:bg-danger-100 text-xs">Void</button>}
-  {modal.je.status !== "voided" && <button onClick={() => openEdit(modal.je)} className="bg-neutral-200 text-neutral-700 text-xs px-3 py-1.5 rounded-lg">Edit</button>}
-  <button onClick={() => { openDuplicate(modal.je); }} className="bg-neutral-100 text-neutral-500 text-xs px-3 py-1.5 rounded-lg hover:bg-neutral-200">Duplicate</button>
+  {modal.je.status === "draft" && <Btn variant="success" size="sm" onClick={() => { onPost(modal.je.id); setModal(null); }}>Post</Btn>}
+  {modal.je.status === "posted" && <Btn variant="danger" size="sm" onClick={() => { onVoid(modal.je.id); setModal(null); }}>Void</Btn>}
+  {modal.je.status !== "voided" && <Btn variant="slate" size="sm" onClick={() => openEdit(modal.je)}>Edit</Btn>}
+  <Btn variant="slate" size="sm" onClick={() => { openDuplicate(modal.je); }}>Duplicate</Btn>
   </div>
   </div>
   </AcctModal>
@@ -2263,9 +2263,9 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       </div>
       <div className="flex gap-2">
         <button onClick={() => toggleFavorite(reportId)} className={favorites.includes(reportId) ? "text-warn-400" : "text-neutral-300 hover:text-warn-400"}><span className="material-icons-outlined text-lg">{favorites.includes(reportId) ? "star" : "star_outline"}</span></button>
-        <button onClick={exportExcel} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">download</span>Export</button>
-        <button onClick={exportPDF} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">picture_as_pdf</span>PDF</button>
-        <button onClick={printReport} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 flex items-center gap-1"><span className="material-icons-outlined text-sm">print</span>Print</button>
+        <Btn variant="slate" size="sm" icon="download" onClick={exportExcel}>Export</Btn>
+        <Btn variant="slate" size="sm" icon="picture_as_pdf" onClick={exportPDF}>PDF</Btn>
+        <Btn variant="slate" size="sm" icon="print" onClick={printReport}>Print</Btn>
       </div>
     </div>
 
@@ -2663,7 +2663,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* Audit Log */}
     {reportId === "audit_log" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Audit Log</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
-      <button onClick={async () => { const d = await getAuditLog(start, end); setAuditData(d); }} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 mb-3">Refresh</button>
+      <Btn variant="slate" size="sm" className="mb-3" onClick={async () => { const d = await getAuditLog(start, end); setAuditData(d); }}>Refresh</Btn>
       {auditData.length === 0 ? <p className="text-center py-8 text-neutral-400">No audit entries in this period</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Time</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">User</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Module</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Action</th><th className="px-3 py-2 text-left text-xs font-semibold text-neutral-500">Details</th></tr></thead>
       <tbody>{auditData.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-3 py-2 text-xs text-neutral-400 whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</td><td className="px-3 py-2 text-xs text-neutral-600">{r.user_email}</td><td className="px-3 py-2 text-xs"><span className="bg-neutral-100 text-neutral-600 px-1.5 py-0.5 rounded">{r.module}</span></td><td className="px-3 py-2 text-xs"><span className={`px-1.5 py-0.5 rounded ${r.action==="create"?"bg-success-100 text-success-700":r.action==="delete"?"bg-danger-100 text-danger-600":r.action==="update"?"bg-info-100 text-info-700":"bg-neutral-100 text-neutral-600"}`}>{r.action}</span></td><td className="px-3 py-2 text-xs text-neutral-500 max-w-64 truncate">{r.details}</td></tr>)}</tbody></table>)}
     </div>)}
@@ -2671,7 +2671,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {/* Reconciliation Summary */}
     {reportId === "recon_summary" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Reconciliation Summary</p></div>
-      <button onClick={async () => { const d = await getReconSummary(); setReconData(d); }} className="text-xs bg-neutral-100 text-neutral-500 px-3 py-1.5 rounded-lg hover:bg-neutral-200 mb-3">Refresh</button>
+      <Btn variant="slate" size="sm" className="mb-3" onClick={async () => { const d = await getReconSummary(); setReconData(d); }}>Refresh</Btn>
       {reconData.length === 0 ? <p className="text-center py-8 text-neutral-400">No reconciliations found</p> : (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Period</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Bank Balance</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Book Balance</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Difference</th><th className="px-4 py-2 text-center text-xs font-semibold text-neutral-500">Status</th></tr></thead>
       <tbody>{reconData.map((r,i) => <tr key={i} className="border-t border-neutral-100"><td className="px-4 py-2 text-neutral-700">{r.period}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(safeNum(r.bank_ending_balance))}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(safeNum(r.book_balance))}</td><td className={`px-4 py-2 text-right font-mono ${Math.abs(safeNum(r.difference)) < 0.01 ? "text-success-600" : "text-danger-600"}`}>{acctFmt(safeNum(r.difference))}</td><td className="px-4 py-2 text-center"><span className={`text-xs px-2 py-0.5 rounded-full ${r.status==="reconciled"?"bg-success-100 text-success-700":"bg-warn-100 text-warn-700"}`}>{r.status}</span></td></tr>)}</tbody></table>)}
     </div>)}
@@ -2680,7 +2680,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {reportId === "budget_vs_actual" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Budget vs. Actuals</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       <div className="flex gap-2 mb-4">
-        <button onClick={() => setShowBudgetEditor(!showBudgetEditor)} className="text-xs bg-brand-100 text-brand-700 px-3 py-1.5 rounded-lg hover:bg-brand-200 font-semibold">{showBudgetEditor ? "Hide Budget Editor" : "Edit Budgets"}</button>
+        <Btn variant="secondary" size="sm" onClick={() => setShowBudgetEditor(!showBudgetEditor)}>{showBudgetEditor ? "Hide Budget Editor" : "Edit Budgets"}</Btn>
         <div><label className="text-xs text-neutral-500 mr-1">Budget Month:</label><Input type="month" value={budgetMonth} onChange={e => { setBudgetMonth(e.target.value); fetchBudgets(e.target.value); }} className="border border-neutral-200 rounded-lg px-2 py-1 text-sm" /></div>
       </div>
       {showBudgetEditor && (<div className="bg-brand-50 rounded-xl p-4 mb-4 max-h-64 overflow-y-auto">
