@@ -1344,7 +1344,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   <div className="flex items-center justify-between">
     <div><h3 className="text-lg font-semibold text-neutral-900">Bank Transactions</h3><p className="text-sm text-neutral-400">Import, review, and categorize bank transactions</p></div>
     <div className="flex gap-2 flex-wrap">
-      {connections.some(c => c.connection_status === "active") && <button onClick={syncTransactions} disabled={syncing} className="text-xs bg-success-100 text-success-700 px-3 py-1.5 rounded-lg font-semibold hover:bg-success-200 disabled:opacity-50">{syncing ? "Syncing..." : "Sync"}</button>}
+      {connections.some(c => c.connection_status === "active") && <Btn variant="success" size="sm" onClick={syncTransactions} disabled={syncing}>{syncing ? "Syncing..." : "Sync"}</Btn>}
       <Btn variant="primary" onClick={connectBank} disabled={plaidConnecting} className="disabled:opacity-50"><span className="material-icons-outlined text-sm">link</span>{plaidConnecting ? "Connecting..." : "Connect Bank"}</Btn>
       <button onClick={startImport} className="bg-neutral-800 text-white text-sm px-4 py-2 rounded-lg hover:bg-neutral-700 flex items-center gap-1.5"><span className="material-icons-outlined text-sm">upload_file</span>Import CSV</button>
     </div>
@@ -1552,7 +1552,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-3 flex items-center justify-between">
     <span className="text-sm font-medium text-brand-800">{selectedTxns.size} selected</span>
     <div className="flex gap-2">
-      <button onClick={() => bulkExclude("duplicate")} className="text-xs bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg hover:bg-danger-100">Exclude All</button>
+      <Btn variant="danger" size="sm" onClick={() => bulkExclude("duplicate")}>Exclude All</Btn>
       <TextLink tone="neutral" size="xs" underline={false} onClick={() => setSelectedTxns(new Set())} className="px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect</TextLink>
     </div>
   </div>
@@ -1563,9 +1563,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     <div className="text-xs text-neutral-500">{filtered.length} of {transactions.length} transactions{filtered.length !== transactions.length ? " (filtered)" : ""}</div>
     {txnTotalPages > 1 && (
     <div className="flex items-center gap-2">
-      <button onClick={() => setTxnPage(Math.max(0, safeTxnPage - 1))} disabled={safeTxnPage === 0} className="text-xs px-2 py-1 rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed">← Prev</button>
+      <Btn variant="secondary" size="sm" onClick={() => setTxnPage(Math.max(0, safeTxnPage - 1))} disabled={safeTxnPage === 0}>← Prev</Btn>
       <span className="text-xs text-neutral-500">Page {safeTxnPage + 1} of {txnTotalPages}</span>
-      <button onClick={() => setTxnPage(Math.min(txnTotalPages - 1, safeTxnPage + 1))} disabled={safeTxnPage >= txnTotalPages - 1} className="text-xs px-2 py-1 rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed">Next →</button>
+      <Btn variant="secondary" size="sm" onClick={() => setTxnPage(Math.min(txnTotalPages - 1, safeTxnPage + 1))} disabled={safeTxnPage >= txnTotalPages - 1}>Next →</Btn>
     </div>
     )}
   </div>
@@ -1716,7 +1716,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           <span className={`text-xs font-mono ${Math.abs(splitLines.reduce((s,l) => s + safeNum(l.amount), 0) - Math.abs(txn.amount)) < 0.01 ? "text-success-600" : "text-danger-500"}`}>
             Total: ${splitLines.reduce((s,l) => s + safeNum(l.amount), 0).toFixed(2)} / ${Math.abs(txn.amount).toFixed(2)}
           </span>
-          <button onClick={() => acceptSplit(txn, splitLines)} disabled={splitLines.filter(l => l.accountId && safeNum(l.amount) > 0).length < 2} className="bg-highlight-600 text-white text-xs px-4 py-1.5 rounded-lg disabled:opacity-40 hover:bg-highlight-700">Post Split</button>
+          <Btn variant="purple" size="sm" onClick={() => acceptSplit(txn, splitLines)} disabled={splitLines.filter(l => l.accountId && safeNum(l.amount) > 0).length < 2}>Post Split</Btn>
         </div>
       </div>
       )}
@@ -1749,9 +1749,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   <div className="flex items-center justify-between">
     <div className="text-xs text-neutral-400">Showing {safeTxnPage * TXN_PAGE_SIZE + 1}–{Math.min((safeTxnPage + 1) * TXN_PAGE_SIZE, filtered.length)} of {filtered.length}</div>
     <div className="flex items-center gap-2">
-      <button onClick={() => setTxnPage(Math.max(0, safeTxnPage - 1))} disabled={safeTxnPage === 0} className="text-xs px-2 py-1 rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed">← Prev</button>
+      <Btn variant="secondary" size="sm" onClick={() => setTxnPage(Math.max(0, safeTxnPage - 1))} disabled={safeTxnPage === 0}>← Prev</Btn>
       <span className="text-xs text-neutral-500">Page {safeTxnPage + 1} of {txnTotalPages}</span>
-      <button onClick={() => setTxnPage(Math.min(txnTotalPages - 1, safeTxnPage + 1))} disabled={safeTxnPage >= txnTotalPages - 1} className="text-xs px-2 py-1 rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed">Next →</button>
+      <Btn variant="secondary" size="sm" onClick={() => setTxnPage(Math.min(txnTotalPages - 1, safeTxnPage + 1))} disabled={safeTxnPage >= txnTotalPages - 1}>Next →</Btn>
     </div>
   </div>
   )}

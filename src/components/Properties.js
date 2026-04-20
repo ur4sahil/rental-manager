@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, FileInput, IconBtn, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
+import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
@@ -1700,7 +1700,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <span className="text-sm font-semibold text-neutral-700">Property Details</span>
                   <div className="flex items-center gap-2">
                     {completedSteps.has("property_details") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
-                    <button onClick={() => setStep(steps.indexOf("property_details") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
+                    <Chip onClick={() => setStep(steps.indexOf("property_details") + 1)}>Edit</Chip>
                   </div>
                 </div>
                 {completedSteps.has("property_details") ? (
@@ -1719,7 +1719,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                     <span className="text-sm font-semibold text-neutral-700">Tenant & Lease</span>
                     <div className="flex items-center gap-2">
                       {completedSteps.has("tenant_lease") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
-                      <button onClick={() => setStep(steps.indexOf("tenant_lease") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
+                      <Chip onClick={() => setStep(steps.indexOf("tenant_lease") + 1)}>Edit</Chip>
                     </div>
                   </div>
                   {completedSteps.has("tenant_lease") ? (
@@ -1738,7 +1738,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <span className="text-sm font-semibold text-neutral-700">Utilities</span>
                   <div className="flex items-center gap-2">
                     {completedSteps.has("utilities") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
-                    <button onClick={() => setStep(steps.indexOf("utilities") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
+                    <Chip onClick={() => setStep(steps.indexOf("utilities") + 1)}>Edit</Chip>
                   </div>
                 </div>
                 {completedSteps.has("utilities") && utilities.filter(u => u.provider.trim()).length > 0 ? (
@@ -1756,7 +1756,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <span className="text-sm font-semibold text-neutral-700">HOA</span>
                   <div className="flex items-center gap-2">
                     {completedSteps.has("hoa") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
-                    <button onClick={() => setStep(steps.indexOf("hoa") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
+                    <Chip onClick={() => setStep(steps.indexOf("hoa") + 1)}>Edit</Chip>
                   </div>
                 </div>
                 {completedSteps.has("hoa") && hoas.length > 0 && hoas[0].enabled ? (
@@ -1771,7 +1771,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                     <span className="text-sm font-semibold text-neutral-700">Loan / Mortgage</span>
                     <div className="flex items-center gap-2">
                       {completedSteps.has("loan") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
-                      <button onClick={() => setStep(steps.indexOf("loan") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
+                      <Chip onClick={() => setStep(steps.indexOf("loan") + 1)}>Edit</Chip>
                     </div>
                   </div>
                   {completedSteps.has("loan") && loan.enabled ? (
@@ -1790,7 +1790,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <span className="text-sm font-semibold text-neutral-700">Documents</span>
                   <div className="flex items-center gap-2">
                     {uploadedDocs.length > 0 ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">{uploadedDocs.length} uploaded</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
-                    <button onClick={() => setStep(steps.indexOf("documents") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
+                    <Chip onClick={() => setStep(steps.indexOf("documents") + 1)}>Edit</Chip>
                   </div>
                 </div>
                 {uploadedDocs.length > 0 && (
@@ -1806,7 +1806,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <span className="text-sm font-semibold text-neutral-700">Insurance</span>
                   <div className="flex items-center gap-2">
                     {completedSteps.has("insurance") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
-                    <button onClick={() => setStep(steps.indexOf("insurance") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
+                    <Chip onClick={() => setStep(steps.indexOf("insurance") + 1)}>Edit</Chip>
                   </div>
                 </div>
                 {completedSteps.has("insurance") && insurance.enabled ? (
@@ -1824,7 +1824,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <span className="text-sm font-semibold text-neutral-700">Property Tax</span>
                   <div className="flex items-center gap-2">
                     {completedSteps.has("property_tax") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
-                    <button onClick={() => setStep(steps.indexOf("property_tax") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
+                    <Chip onClick={() => setStep(steps.indexOf("property_tax") + 1)}>Edit</Chip>
                   </div>
                 </div>
                 {completedSteps.has("property_tax") && taxes.enabled ? (
@@ -1844,7 +1844,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                     <span className="text-sm font-semibold text-neutral-700">Recurring Rent</span>
                     <div className="flex items-center gap-2">
                       {completedSteps.has("recurring_rent") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
-                      <button onClick={() => setStep(steps.indexOf("recurring_rent") + 1)} className="text-xs bg-neutral-100 text-neutral-600 px-2.5 py-0.5 rounded-full font-medium hover:bg-neutral-200 transition-colors">Edit</button>
+                      <Chip onClick={() => setStep(steps.indexOf("recurring_rent") + 1)}>Edit</Chip>
                     </div>
                   </div>
                   {completedSteps.has("recurring_rent") ? (
@@ -2633,8 +2633,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="flex items-center gap-3">
   <Btn variant="secondary" onClick={exportProperties}><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</Btn>
   <div className="flex gap-1">
-  <button onClick={() => setShowArchived(false)} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (!showArchived ? "bg-brand-600 text-white" : "bg-subtle-100 text-subtle-600 hover:bg-subtle-200")}>Active ({properties.length})</button>
-  <button onClick={() => { setShowArchived(true); fetchArchivedProperties(); }} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (showArchived ? "bg-brand-600 text-white" : "bg-subtle-100 text-subtle-600 hover:bg-subtle-200")}>Archived ({archivedProperties.length})</button>
+  <FilterPill active={!showArchived} onClick={() => setShowArchived(false)}>Active ({properties.length})</FilterPill>
+  <FilterPill active={showArchived} onClick={() => { setShowArchived(true); fetchArchivedProperties(); }}>Archived ({archivedProperties.length})</FilterPill>
   </div>
   </div>
   </div>
@@ -2652,8 +2652,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="text-xs text-subtle-400">Archived {p.archived_at ? new Date(p.archived_at).toLocaleDateString() : ""} by {p.archived_by || "unknown"}</div>
   <div className="text-xs text-warn-600 mt-1">{p.archived_at ? Math.max(0, 180 - Math.floor((Date.now() - new Date(p.archived_at)) / 86400000)) : "?"} days until auto-purge</div>
   </div>
-  <button onClick={() => restoreProperty(p)} className="text-xs bg-success-50 text-success-700 px-3 py-1.5 rounded-lg hover:bg-success-100 border border-success-200">Restore</button>
-  <button onClick={() => permanentDeleteProperty(p)} className="text-xs bg-danger-50 text-danger-600 px-3 py-1.5 rounded-lg hover:bg-danger-100 border border-danger-200">Delete Forever</button>
+  <Btn variant="success" size="sm" onClick={() => restoreProperty(p)}>Restore</Btn>
+  <Btn variant="danger" size="sm" onClick={() => permanentDeleteProperty(p)}>Delete Forever</Btn>
   </div>
   ))}
   </div>
@@ -2664,7 +2664,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   {isAdmin && pendingRequests.length > 0 && (
   <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-4 flex items-center justify-between">
   <span className="text-sm text-warn-800">📋 <strong>{pendingRequests.length}</strong> property change {pendingRequests.length === 1 ? "request" : "requests"} awaiting review</span>
-  <button onClick={() => setShowRequests(!showRequests)} className="text-xs bg-warn-200 text-warn-800 px-3 py-1.5 rounded-lg font-medium hover:bg-warn-300">{showRequests ? "Hide" : "Review"}</button>
+  <Btn variant="amber" size="sm" onClick={() => setShowRequests(!showRequests)}>{showRequests ? "Hide" : "Review"}</Btn>
   </div>
   )}
   {!isAdmin && changeRequests.filter(r => r.status === "pending").length > 0 && (
@@ -2956,7 +2956,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="text-center py-8">
   <span className="material-icons-outlined text-4xl text-neutral-300 mb-2">folder_open</span>
   <div className="text-sm text-neutral-400">No documents uploaded yet</div>
-  <button onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })} className="mt-3 text-xs text-brand-600 hover:underline">Upload your first document</button>
+  <TextLink tone="brand" size="xs" className="mt-3" onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })}>Upload your first document</TextLink>
   </div>
   ) : (
   <div className="space-y-2">

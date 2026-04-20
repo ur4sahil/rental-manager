@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
+import { Btn, Checkbox, FilterPill, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
 import { safeNum, formatLocalDate, shortId, formatCurrency, exportToCSV, sanitizeFileName, getSignedUrl, parseLocalDate, formatPhoneInput, normalizeEmail, parseNameParts, formatPersonName, priorityColors, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -284,7 +284,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   </div>
   <div className="flex gap-1 overflow-x-auto pb-1">
   {[["workorders", "Work Orders"], ["inspections", "Inspections"], ["vendors", "Vendors"], ["archived", "Archived"]].map(([id, label]) => (
-  <button key={id} onClick={() => setMaintTab(id)} className={"px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap " + (maintTab === id ? "bg-brand-600 text-white" : "bg-subtle-100 text-subtle-600 hover:bg-subtle-200")}>{label}</button>
+  <FilterPill key={id} active={maintTab === id} onClick={() => setMaintTab(id)}>{label}</FilterPill>
   ))}
   </div>
   </div>
@@ -328,7 +328,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
 
   <div className="flex flex-wrap gap-2 mb-4">
   {["all", "open", "in_progress", "completed", "emergency"].map(s => (
-  <button key={s} onClick={() => setFilter(s)} className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${filter === s ? "bg-brand-600 text-white" : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"}`}>{s.replace("_", " ")}</button>
+  <FilterPill key={s} active={filter === s} onClick={() => setFilter(s)}><span className="capitalize">{s.replace("_", " ")}</span></FilterPill>
   ))}
   <div className="flex-1" />
   <Input placeholder="Search issue, property, tenant..." value={woSearch} onChange={e => setWoSearch(e.target.value)} className="w-64" />
@@ -347,9 +347,9 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div className="bg-brand-50 border border-brand-200 rounded-2xl px-4 py-3 mb-3 flex items-center justify-between">
   <span className="text-sm font-medium text-brand-800">{selectedWOs.size} work order{selectedWOs.size > 1 ? "s" : ""} selected</span>
   <div className="flex gap-2">
-  <button onClick={() => bulkUpdateWOStatus("in_progress")} className="text-xs bg-highlight-100 text-highlight-700 px-3 py-1.5 rounded-lg hover:bg-highlight-200 font-medium">In Progress</button>
-  <button onClick={() => bulkUpdateWOStatus("completed")} className="text-xs bg-success-100 text-success-700 px-3 py-1.5 rounded-lg hover:bg-success-200 font-medium">Complete</button>
-  <button onClick={() => bulkUpdateWOStatus("open")} className="text-xs bg-neutral-100 text-neutral-600 px-3 py-1.5 rounded-lg hover:bg-neutral-200 font-medium">Reopen</button>
+  <Btn variant="purple" size="sm" onClick={() => bulkUpdateWOStatus("in_progress")}>In Progress</Btn>
+  <Btn variant="success" size="sm" onClick={() => bulkUpdateWOStatus("completed")}>Complete</Btn>
+  <Btn variant="slate" size="sm" onClick={() => bulkUpdateWOStatus("open")}>Reopen</Btn>
   <TextLink tone="neutral" size="xs" underline={false} onClick={() => setSelectedWOs(new Set())} className="px-3 py-1.5 rounded-lg hover:bg-neutral-100">Deselect</TextLink>
   </div>
   </div>
@@ -377,12 +377,12 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   </div>
   {w.notes && <div className="mt-2 text-xs text-neutral-400 italic">{w.notes}</div>}
   <div className="mt-3 flex gap-2 flex-wrap">
-  {w.status === "open" && <button onClick={() => updateStatus(w, "in_progress")} className="text-xs text-highlight-600 border border-highlight-200 px-3 py-1 rounded-lg hover:bg-highlight-50">▶ In Progress</button>}
+  {w.status === "open" && <Btn variant="purple" size="xs" onClick={() => updateStatus(w, "in_progress")}>▶ In Progress</Btn>}
   {w.status === "in_progress" && <TextLink tone="positive" size="xs" underline={false} onClick={() => updateStatus(w, "completed")} className="border border-positive-200 px-3 py-1 rounded-lg hover:bg-positive-50">✓ Complete</TextLink>}
   {w.status === "completed" && <TextLink tone="neutral" size="xs" underline={false} onClick={() => updateStatus(w, "open")} className="border border-brand-100 px-3 py-1 rounded-lg hover:bg-brand-50/30">↩ Reopen</TextLink>}
   {w.tenant && <TextLink tone="danger" size="xs" underline={false} onClick={() => billTenantForWO(w)} className="border border-danger-200 px-3 py-1 rounded-lg hover:bg-danger-50">💰 Bill Tenant</TextLink>}
-  <button onClick={() => openPhotos(w)} className="text-xs text-highlight-600 border border-highlight-200 px-3 py-1 rounded-lg hover:bg-highlight-50">📸 Photos</button>
-  <button onClick={() => startEdit(w)} className="text-xs text-info-600 border border-info-200 px-3 py-1 rounded-lg hover:bg-info-50">✏️ Edit</button>
+  <Btn variant="purple" size="xs" onClick={() => openPhotos(w)}>📸 Photos</Btn>
+  <Btn variant="secondary" size="xs" onClick={() => startEdit(w)}>✏️ Edit</Btn>
   </div>
   </div>
   ))}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { Btn, Checkbox, IconBtn, Input, PageHeader, Select, TextLink} from "../ui";
+import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink} from "../ui";
 import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
@@ -777,13 +777,13 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   {activePanel === "ledger" && (
   <div className="flex-1 overflow-y-auto p-4">
   <div className={`rounded-3xl p-4 mb-4 text-center relative ${safeNum(selectedTenant?.balance) > 0 ? "bg-danger-50" : safeNum(selectedTenant?.balance) < 0 ? "bg-positive-50" : "bg-brand-50/30"}`}>
-  <button onClick={() => exportLedgerPDF(selectedTenant, ledger)} className="absolute top-3 right-3 text-xs text-danger-600 border border-danger-200 bg-white px-3 py-1.5 rounded-lg hover:bg-danger-50 flex items-center gap-1" title="Export ledger as PDF for sharing"><span className="material-icons-outlined text-sm">picture_as_pdf</span>Export PDF</button>
+  <Btn variant="danger" size="sm" className="absolute top-3 right-3" onClick={() => exportLedgerPDF(selectedTenant, ledger)} title="Export ledger as PDF for sharing" icon="picture_as_pdf">Export PDF</Btn>
   <div className="text-xs text-neutral-400 mb-1">Current Balance</div>
   <div className={`text-3xl font-bold ${safeNum(selectedTenant?.balance) > 0 ? "text-danger-500" : safeNum(selectedTenant?.balance) < 0 ? "text-positive-600" : "text-neutral-700"}`}>
   {safeNum(selectedTenant?.balance) > 0 ? `-${formatCurrency(selectedTenant.balance)}` : safeNum(selectedTenant?.balance) < 0 ? `Credit ${formatCurrency(Math.abs(selectedTenant.balance))}` : "$0 Current"}
   </div>
   {safeNum(selectedTenant?.balance) > 0 && safeNum(selectedTenant?.late_fee_amount) > 0 && (
-  <button onClick={() => applyLateFeeForTenant(selectedTenant)} className="mt-2 w-full text-xs bg-danger-50 text-danger-700 border border-danger-200 rounded-lg px-3 py-2 hover:bg-danger-100 font-semibold flex items-center justify-center gap-1"><span className="material-icons-outlined text-sm">gavel</span>Apply Late Fee ({selectedTenant.late_fee_type === "percent" ? selectedTenant.late_fee_amount + "%" : formatCurrency(selectedTenant.late_fee_amount)})</button>
+  <Btn variant="danger" size="sm" className="mt-2 w-full" onClick={() => applyLateFeeForTenant(selectedTenant)} icon="gavel">Apply Late Fee ({selectedTenant.late_fee_type === "percent" ? selectedTenant.late_fee_amount + "%" : formatCurrency(selectedTenant.late_fee_amount)})</Btn>
   )}
   </div>
   <div className="bg-brand-50/30 rounded-xl p-3 mb-4">
@@ -1100,7 +1100,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <h2 className="text-xl md:text-2xl font-bold text-subtle-800">Tenants</h2>
   <div className="flex gap-1 overflow-x-auto pb-1">
   {[["tenants", "Tenants"], ["leases", "Leases"], ["moveout", "Move-Out"], ["evictions", "Evictions"], ["archived", "Archived"]].map(([id, label]) => (
-  <button key={id} onClick={() => { setTenantTab(id); setTenantSearch(""); if (id === "archived") { supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200).then(({ data }) => setArchivedTenants(data || [])); } }} className={"px-3 py-1.5 text-xs font-medium rounded-lg " + (tenantTab === id ? "bg-brand-600 text-white" : "bg-subtle-100 text-subtle-600 hover:bg-subtle-200")}>{label}</button>
+  <FilterPill key={id} active={tenantTab === id} onClick={() => { setTenantTab(id); setTenantSearch(""); if (id === "archived") { supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200).then(({ data }) => setArchivedTenants(data || [])); } }}>{label}</FilterPill>
   ))}
   </div>
   </div>
@@ -1116,7 +1116,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="font-semibold text-subtle-700 text-sm">{t.name}</div>
   <div className="text-xs text-subtle-400">{t.property} · Archived {t.archived_at ? new Date(t.archived_at).toLocaleDateString() : ""}</div>
   </div>
-  <button onClick={async () => { if (!guardSubmit("restoreTenant", t.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", t.id).eq("company_id", companyId); addNotification("\u267B\uFE0F", "Restored: " + t.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); fetchTenants(); } finally { guardRelease("restoreTenant", t.id); } }} className="text-xs bg-success-50 text-success-700 px-3 py-1.5 rounded-lg hover:bg-success-100 border border-success-200">♻️ Restore</button>
+  <Btn variant="success" size="sm" onClick={async () => { if (!guardSubmit("restoreTenant", t.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", t.id).eq("company_id", companyId); addNotification("\u267B\uFE0F", "Restored: " + t.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); fetchTenants(); } finally { guardRelease("restoreTenant", t.id); } }}>♻️ Restore</Btn>
   </div>
   ))}
   </div>
