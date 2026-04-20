@@ -1378,7 +1378,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   <div className="mb-4">
   <div className="flex items-center justify-between mb-2">
   <h4 className="text-xs font-semibold text-accent-700 uppercase tracking-wide flex items-center gap-1"><span className="material-icons-outlined text-sm">visibility</span>Conditional Visibility</h4>
-  <button onClick={() => {
+  <TextLink tone="accent" size="xs" underline={false} onClick={() => {
   const name = prompt("Field to show/hide conditionally:");
   if (!name?.trim()) return;
   const depField = prompt("Show when which field...");
@@ -1386,7 +1386,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const eqVal = prompt("...equals what value?");
   if (eqVal === null) return;
   setTemplateForm(prev => ({ ...prev, field_config: { ...prev.field_config, conditional: { ...(prev.field_config?.conditional || {}), [name.trim()]: { visible_when: { field: depField.trim(), eq: eqVal } } } } }));
-  }} className="text-xs text-accent-600 hover:text-accent-800">+ Add</button>
+  }}>+ Add</TextLink>
   </div>
   {Object.entries(templateForm.field_config?.conditional || {}).map(([name, cfg]) => (
   <div key={name} className="flex items-center gap-2 text-xs bg-accent-50 border border-accent-100 rounded-lg px-3 py-2 mb-1">

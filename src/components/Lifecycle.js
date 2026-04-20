@@ -782,10 +782,10 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   <div className="flex gap-2 flex-wrap">
   {selectedCase.status === "active" && (
   <>
-  <button onClick={() => closeCase(selectedCase, "tenant_cured")} className="text-xs bg-positive-100 text-positive-700 px-3 py-2 rounded-lg hover:bg-positive-200 font-medium">Tenant Cured</button>
-  <button onClick={() => closeCase(selectedCase, "settled")} className="text-xs bg-info-100 text-info-700 px-3 py-2 rounded-lg hover:bg-info-200 font-medium">Settled / Agreement</button>
-  <button onClick={() => closeCase(selectedCase, "dismissed")} className="text-xs bg-neutral-100 text-neutral-700 px-3 py-2 rounded-lg hover:bg-neutral-200 font-medium">Dismissed</button>
-  <button onClick={() => closeCase(selectedCase, "completed")} className="text-xs bg-danger-100 text-danger-700 px-3 py-2 rounded-lg hover:bg-danger-200 font-medium">Eviction Complete</button>
+  <Btn variant="positive" size="sm" onClick={() => closeCase(selectedCase, "tenant_cured")}>Tenant Cured</Btn>
+  <Btn variant="info" size="sm" onClick={() => closeCase(selectedCase, "settled")}>Settled / Agreement</Btn>
+  <Btn variant="slate" size="sm" onClick={() => closeCase(selectedCase, "dismissed")}>Dismissed</Btn>
+  <Btn variant="danger" size="sm" onClick={() => closeCase(selectedCase, "completed")}>Eviction Complete</Btn>
   </>
   )}
   </div>

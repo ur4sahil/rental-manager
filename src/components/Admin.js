@@ -676,7 +676,7 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
 
   <div className="flex gap-2 mb-5">
   {[["all", "All (" + (approvals.length + tasks.length) + ")"], ["approvals", "Approvals (" + approvals.length + ")"], ["tasks", "Tasks (" + tasks.length + ")"]].map(([id, label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium rounded-xl " + (activeTab === id ? "bg-brand-600 text-white" : "bg-subtle-100 text-subtle-600 hover:bg-subtle-200")}>{label}</button>
+  <FilterPill key={id} active={activeTab === id} onClick={() => setActiveTab(id)}>{label}</FilterPill>
   ))}
   </div>
 

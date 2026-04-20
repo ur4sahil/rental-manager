@@ -2198,8 +2198,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           <div className="flex gap-2 mt-2">
             {[30, 60, 90, 180, 365].map(days => {
               const d = new Date(); d.setDate(d.getDate() - days);
-              return <button key={days} onClick={() => setPostConnectRange({ from: formatLocalDate(d), to: formatLocalDate(new Date()) })}
-                className="text-xs px-2 py-1 rounded-lg bg-neutral-100 text-neutral-600 hover:bg-neutral-200">{days}d</button>;
+              return <Btn key={days} variant="slate" size="xs" onClick={() => setPostConnectRange({ from: formatLocalDate(d), to: formatLocalDate(new Date()) })}>{days}d</Btn>;
             })}
           </div>
         </div>
