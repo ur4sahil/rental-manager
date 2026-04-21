@@ -174,27 +174,36 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   }
   }
   if (editingTenant) {
-  // Cascade name change to all related tables
+  // Cascade name change to all related tables — scoped by property so that
+  // two tenants sharing a name at different properties don't rewrite each
+  // other's records. Previous code updated by name only, which violated
+  // the CLAUDE.md "scope by tenant name AND property" rule.
   if (editingTenant.name !== form.name) {
-  // Atomic cascade rename via server-side RPC
-  // Atomic cascade rename — server-side RPC required
+  const oldProperty = editingTenant.property || "";
+  const oldName = editingTenant.name;
   const { error: tenantRenameErr } = await supabase.rpc("rename_tenant_cascade", {
-  p_company_id: companyId, p_old_name: editingTenant.name, p_new_name: form.name
+  p_company_id: companyId, p_old_name: oldName, p_new_name: form.name, p_property: oldProperty
   });
   if (tenantRenameErr) {
-  // #13: Client-side fallback — cascade rename to tables the RPC may not cover
+  // Client-side fallback — same property scoping as the RPC so the
+  // loose legacy behavior doesn't come back via the fallback.
   pmError("PM-3002", { raw: tenantRenameErr, context: "tenant rename RPC, running client-side fallback", silent: true });
-  const oldName = editingTenant.name;
   const tRenameResults = await Promise.allSettled([
-  supabase.from("payments").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName),
-  supabase.from("leases").update({ tenant_name: form.name }).eq("company_id", companyId).eq("tenant_name", oldName),
-  supabase.from("work_orders").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName),
-  supabase.from("documents").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName),
-  supabase.from("autopay_schedules").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName),
-  supabase.from("ledger_entries").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName),
-  supabase.from("messages").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName),
-  supabase.from("eviction_cases").update({ tenant_name: form.name }).eq("company_id", companyId).eq("tenant_name", oldName),
-  supabase.from("properties").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName),
+  supabase.from("payments").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName).eq("property", oldProperty),
+  editingTenant.id
+    ? supabase.from("leases").update({ tenant_name: form.name }).eq("company_id", companyId).eq("tenant_id", editingTenant.id)
+    : supabase.from("leases").update({ tenant_name: form.name }).eq("company_id", companyId).eq("tenant_name", oldName).eq("property", oldProperty),
+  supabase.from("work_orders").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName).eq("property", oldProperty),
+  supabase.from("documents").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName).eq("property", oldProperty),
+  supabase.from("autopay_schedules").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName).eq("property", oldProperty),
+  editingTenant.id
+    ? supabase.from("ledger_entries").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant_id", editingTenant.id)
+    : supabase.from("ledger_entries").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName).eq("property", oldProperty),
+  editingTenant.id
+    ? supabase.from("messages").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant_id", editingTenant.id)
+    : supabase.from("messages").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName).eq("property", oldProperty),
+  supabase.from("eviction_cases").update({ tenant_name: form.name }).eq("company_id", companyId).eq("tenant_name", oldName).eq("property", oldProperty),
+  supabase.from("properties").update({ tenant: form.name }).eq("company_id", companyId).eq("tenant", oldName).eq("address", oldProperty),
   ]);
   const tRenameFails = tRenameResults.filter(r => r.status === "rejected");
   if (tRenameFails.length > 0) showToast("Warning: " + tRenameFails.length + " table(s) failed during tenant rename.", "warning");
