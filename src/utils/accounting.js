@@ -225,7 +225,10 @@ export async function autoOwnerDistribution(companyId, propertyAddress, paymentA
   const month = paymentDate.slice(0, 7);
   const hasAccrual = await checkAccrualExists(companyId, month, tenantName);
   if (!hasAccrual) return; // No accrual to reclassify — distribution handled when payment was direct revenue
-  const feePct = safeNum(owner.management_fee_pct || 10);
+  // Null/missing management_fee_pct means self-managed — 0% fee, 100%
+  // passthrough to owner. Previous code silently substituted 10%, which
+  // charged opt-out owners a fee they never agreed to.
+  const feePct = safeNum(owner.management_fee_pct);
   // Integer cents avoids fp precision loss, and the DR must match the sum
   // of CR cents exactly — not the caller's (possibly un-rounded) paymentAmount.
   // Without this, DR/CR could drift by fractional cents on float inputs and
@@ -260,15 +263,18 @@ export async function autoOwnerDistribution(companyId, propertyAddress, paymentA
     pmError("PM-6004", { raw: distErr, context: "owner distribution insert", silent: true });
     return;
   }
+  // Drop the mgmt fee line when fee=0 (self-managed owner). An explicit
+  // zero-credit line trips no guard but adds cosmetic noise on the JE.
+  const jeLines = [
+  { account_id: "4000", account_name: "Rental Income", debit: paymentRounded, credit: 0, class_id: classId, memo: `Reclassify to owner dist — ${tenantName}` },
+  ];
+  if (mgmtFee > 0) jeLines.push({ account_id: "4200", account_name: "Management Fee Income", debit: 0, credit: mgmtFee, class_id: classId, memo: `Mgmt fee ${feePct}% — ${owner.name}` });
+  jeLines.push({ account_id: "2200", account_name: "Owner Distributions Payable", debit: 0, credit: ownerNet, class_id: classId, memo: `Net to ${owner.name}` });
   const jeId = await autoPostJournalEntry({
   companyId, date: paymentDate,
   description: `Owner distribution accrual — ${owner.name} — ${tenantName}`,
   reference: ref, property: propertyAddress,
-  lines: [
-  { account_id: "4000", account_name: "Rental Income", debit: paymentRounded, credit: 0, class_id: classId, memo: `Reclassify to owner dist — ${tenantName}` },
-  { account_id: "4200", account_name: "Management Fee Income", debit: 0, credit: mgmtFee, class_id: classId, memo: `Mgmt fee ${feePct}% — ${owner.name}` },
-  { account_id: "2200", account_name: "Owner Distributions Payable", debit: 0, credit: ownerNet, class_id: classId, memo: `Net to ${owner.name}` },
-  ]
+  lines: jeLines,
   });
   if (!jeId && distRow?.id) {
     await supabase.from("owner_distributions").delete().eq("id", distRow.id).eq("company_id", companyId);
