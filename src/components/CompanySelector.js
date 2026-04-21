@@ -270,6 +270,25 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   if (!deleteModal) return;
   const company = deleteModal.company;
   if (deleteTyped !== company.name) { showToast("Company name doesn't match — type it exactly to confirm.", "error"); return; }
+  // Re-check emptiness at confirm time. The modal's counts were
+  // captured when the user opened the flow; another user could have
+  // created a tenant between then and now, turning a "hard delete
+  // empty company" into "hard delete company with a tenant the
+  // opener didn't see". Re-verify before firing.
+  if (deleteModal.mode === "hard") {
+    const [props2, tenants2, payments2] = await Promise.all([
+      supabase.from("properties").select("id", { count: "exact", head: true }).eq("company_id", company.id),
+      supabase.from("tenants").select("id", { count: "exact", head: true }).eq("company_id", company.id),
+      supabase.from("payments").select("id", { count: "exact", head: true }).eq("company_id", company.id),
+    ]);
+    const nowCount = (props2.count || 0) + (tenants2.count || 0) + (payments2.count || 0);
+    if (nowCount > 0) {
+      showToast("Data was added to this company since you opened Delete. Re-open the dialog to see the updated counts — you'll now be in Archive mode.", "warning");
+      setDeleteModal(null);
+      setDeleteTyped("");
+      return;
+    }
+  }
   setDeleting(company.id);
   try {
   if (deleteModal.mode === "hard") {

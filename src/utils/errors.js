@@ -100,7 +100,28 @@ export function setActiveErrorContext(companyId, email, role) {
   _currentUserRole = role;
 }
 
-export function detectInfrastructureCode(rawMessage, fallbackCode) {
+// Classify by Postgres SQLSTATE code first (stable across versions),
+// falling back to message-string matching for browser-side errors
+// (fetch / network) where SQLSTATE isn't available. String-only
+// classification used to silently misroute to the fallback every time
+// Supabase or Postgres changed their error text between releases.
+//
+// Accepts either a raw message string or the full error object — the
+// latter lets us peek at err.code (SQLSTATE) without plumbing a new
+// parameter through every caller.
+const SQLSTATE_MAP = {
+  "42P01": "PM-8002", // undefined_table (relation does not exist)
+  "42883": "PM-8003", // undefined_function
+  "42501": "PM-8005", // insufficient_privilege
+  "23505": "PM-9005", // unique_violation
+  "57014": "PM-8004", // query_canceled (often from statement_timeout)
+};
+export function detectInfrastructureCode(errOrMessage, fallbackCode) {
+  const codeByState = errOrMessage && typeof errOrMessage === "object" && errOrMessage.code
+    ? SQLSTATE_MAP[errOrMessage.code]
+    : null;
+  if (codeByState) return codeByState;
+  const rawMessage = typeof errOrMessage === "string" ? errOrMessage : (errOrMessage?.message || "");
   if (!rawMessage) return fallbackCode;
   const msg = rawMessage.toLowerCase();
   if (msg.includes("fetch") && msg.includes("failed") || msg.includes("networkerror") || msg.includes("failed to fetch")) return "PM-8001";
@@ -153,14 +174,19 @@ export function pmError(code, { raw = null, context = "", silent = false, meta =
   const entry = PM_ERRORS[code] || PM_ERRORS["PM-8006"];
   const rawMessage = raw?.message || raw?.error?.message || String(raw || "");
   const rawStack = raw?.stack || raw?.error?.stack || null;
-  const resolvedCode = detectInfrastructureCode(rawMessage, code);
+  // Pass the raw error object when available so detectInfrastructureCode
+  // can read the Postgres SQLSTATE; it falls back to rawMessage when we
+  // only have a string.
+  const resolvedCode = detectInfrastructureCode(raw || rawMessage, code);
   const resolved = PM_ERRORS[resolvedCode] || entry;
   const fingerprint = resolvedCode + "|" + context + "|" + rawMessage.slice(0, 120);
   if (!shouldEmit(fingerprint)) {
-    // Still bubble a toast so the user sees feedback, but skip console/log/sentry.
-    if (!silent && typeof _showToastGlobal === "function") {
-      _showToastGlobal(null, null, { isError: true, code: resolvedCode, message: resolved.message, action: resolved.action, severity: resolved.severity });
-    }
+    // Dedup fired — we've already logged + toasted this fingerprint in
+    // the last 60s. Mute the toast too. Previous behavior left the
+    // Sentry/log side silenced but still fired a new toast for every
+    // occurrence, which flooded the user during render-loop bugs (the
+    // whole point of the dedup was to stop that flood, and the toast
+    // channel was leaking through it).
     return null;
   }
   const enrichedMeta = rawStack ? { ...meta, stack: String(rawStack).slice(0, 2000) } : meta;
