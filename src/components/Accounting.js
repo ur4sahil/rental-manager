@@ -2728,8 +2728,33 @@ export function csvDetectFormat(headers) {
 }
 
 export function csvParseAmount(rawAmt,rawDebit,rawCredit) {
-  const clean=(s)=>{if(!s)return 0;s=String(s).trim().replace(/[$,\s]/g,"");const neg=s.startsWith("(")||s.startsWith("-");s=s.replace(/[()]/g,"").replace(/^-/,"");const v=parseFloat(s)||0;return neg?-v:v;};
-  if(rawDebit!==undefined||rawCredit!==undefined){const d=clean(rawDebit),c=clean(rawCredit);if(c>0)return c;if(d>0)return -d;return 0;}
+  // Single negative marker instead of OR'ing "-" and "(". Previously
+  // "-(100)" set neg=true from the leading "-" and then stripping both
+  // the "-" and the "()" produced a positive magnitude that got
+  // negated again — i.e. "-(100)" ended up as -100 when the two
+  // negation markers should cancel. Parenthesized negatives (accounting
+  // convention) are now recognized only when they're the ONLY marker.
+  const clean = (s) => {
+    if (!s) return 0;
+    s = String(s).trim().replace(/[$,\s]/g, "");
+    let neg = false;
+    // Parenthesized negatives: "(100)" → -100. Takes precedence.
+    if (/^\(.*\)$/.test(s)) {
+      neg = true;
+      s = s.slice(1, -1);
+    } else if (s.startsWith("-")) {
+      neg = true;
+      s = s.slice(1);
+    }
+    const v = parseFloat(s) || 0;
+    return neg ? -v : v;
+  };
+  if (rawDebit !== undefined || rawCredit !== undefined) {
+    const d = clean(rawDebit), c = clean(rawCredit);
+    if (c > 0) return c;
+    if (d > 0) return -d;
+    return 0;
+  }
   return clean(rawAmt);
 }
 

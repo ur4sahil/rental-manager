@@ -91,7 +91,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   setLoading(false);
   }
   fetchData();
-  }, [currentUser]);
+  }, [currentUser, companyId]);
 
   async function refreshData() {
   if (!tenantData) return;

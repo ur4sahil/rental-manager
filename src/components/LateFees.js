@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Select, Btn, PageHeader, TextLink} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, formatCurrency } from "../utils/helpers";
+import { safeNum, formatLocalDate, formatCurrency } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -21,32 +21,45 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
 
   async function fetchData() {
   try {
-  const [r, p, t, lRes] = await Promise.all([
+  // Overdue derived from each tenant's AR balance, not from a
+  // payments.status='unpaid' column. No flow in the app ever writes
+  // status='unpaid' — every insert uses 'paid' — so the prior query
+  // always returned an empty list and this page silently had nothing
+  // to act on. AR balance > 0 after the grace period past the lease's
+  // due day is the real "overdue rent" signal.
+  const [r, t, lRes] = await Promise.all([
   supabase.from("late_fee_rules").select("*").eq("company_id", companyId).is("archived_at", null),
-  supabase.from("payments").select("*").eq("company_id", companyId).eq("status", "unpaid").is("archived_at", null),
-  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null),
-  supabase.from("leases").select("tenant_name, payment_due_day, status").eq("company_id", companyId).eq("status", "active"),
+  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null).eq("lease_status", "active"),
+  supabase.from("leases").select("tenant_id, tenant_name, payment_due_day, status, property").eq("company_id", companyId).eq("status", "active"),
   ]);
   const leases = lRes.data || [];
   setRules(r.data || []);
   setTenants(t.data || []);
   const today = new Date();
-  // Calculate overdue based on when rent was DUE (from lease due day), not payment record date
-  const overdue = (p.data || []).filter(pay => {
-  // Find the tenant's lease to get payment_due_day
-  const tenant = (t.data || []).find(tn => tn.name === pay.tenant);
-  const lease = tenant ? leases.find(l => l.tenant_name === pay.tenant && l.status === "active") : null;
-  const dueDay = lease?.payment_due_day || 1;
-  // Compute the due date for the month of this payment
-  const payDate = parseLocalDate(pay.date);
-  const dueDate = new Date(payDate.getFullYear(), payDate.getMonth(), Math.min(dueDay, new Date(payDate.getFullYear(), payDate.getMonth() + 1, 0).getDate()));
-  const daysFromDue = Math.floor((today - dueDate) / 86400000);
-  pay._dueDate = dueDate;
-  pay._daysFromDue = daysFromDue;
-  return daysFromDue > 0;
-  }).map(pay => ({ ...pay, daysLate: pay._daysFromDue }));
+  today.setHours(0, 0, 0, 0);
+  const overdue = (t.data || [])
+    .filter(tn => safeNum(tn.balance) > 0)
+    .map(tn => {
+      const lease = leases.find(l => (l.tenant_id && tn.id && String(l.tenant_id) === String(tn.id)) || (l.tenant_name === tn.name && l.property === tn.property));
+      const dueDay = lease?.payment_due_day || 1;
+      const thisMonthDays = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+      const dueDate = new Date(today.getFullYear(), today.getMonth(), Math.min(dueDay, thisMonthDays));
+      const daysFromDue = Math.floor((today - dueDate) / 86400000);
+      return {
+        id: tn.id,
+        tenant: tn.name,
+        tenant_id: tn.id,
+        property: tn.property,
+        amount: safeNum(tn.balance),
+        date: formatLocalDate(dueDate),
+        _dueDate: dueDate,
+        daysLate: daysFromDue,
+      };
+    })
+    .filter(row => row.daysLate > 0);
   setFlagged(overdue);
-  } catch {
+  } catch (_e) {
+  pmError("PM-6003", { raw: _e, context: "fetch late-fee overdue list", silent: true });
   setRules([]);
   setTenants([]);
   setFlagged([]);
