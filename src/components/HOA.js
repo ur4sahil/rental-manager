@@ -39,13 +39,15 @@ function HOAPayments({ addNotification, userProfile, userRole, companyId, showTo
     // gets its OWN IV — both preserved now (encryption_iv_username for
     // username, encryption_iv for password). Prior schema only held one
     // slot so username was unreadable after save.
-    const resU = await encryptCredential(form.username || "", companyId);
-    const resP = await encryptCredential(form.password || "", companyId, resU.salt);
-    payload.username_encrypted = resU.encrypted;
-    payload.password_encrypted = resP.encrypted;
-    payload.encryption_iv_username = resU.iv || null;
-    payload.encryption_iv = resP.iv || resU.iv;
-    payload.encryption_salt = resU.salt || resP.salt;
+    try {
+      const resU = await encryptCredential(form.username || "", companyId);
+      const resP = await encryptCredential(form.password || "", companyId, resU.salt);
+      payload.username_encrypted = resU.encrypted;
+      payload.password_encrypted = resP.encrypted;
+      payload.encryption_iv_username = resU.iv || null;
+      payload.encryption_iv = resP.iv || resU.iv;
+      payload.encryption_salt = resU.salt || resP.salt;
+    } catch (e) { showToast("Could not encrypt credentials — please try again: " + (e.message || e), "error"); return; }
   }
   if (editingHoa) {
   const { error: hoaErr } = await supabase.from("hoa_payments").update({ property: payload.property, hoa_name: payload.hoa_name, amount: payload.amount, due_date: payload.due_date, frequency: payload.frequency, status: payload.status, notes: payload.notes, website: payload.website, username_encrypted: payload.username_encrypted || editingHoa.username_encrypted || "", password_encrypted: payload.password_encrypted || editingHoa.password_encrypted || "", encryption_iv: payload.encryption_iv || editingHoa.encryption_iv || "", encryption_iv_username: payload.encryption_iv_username || editingHoa.encryption_iv_username || null, encryption_salt: payload.encryption_salt || editingHoa.encryption_salt || null }).eq("id", editingHoa.id).eq("company_id", companyId);

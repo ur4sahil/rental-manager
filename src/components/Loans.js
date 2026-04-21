@@ -35,13 +35,15 @@ function Loans({ addNotification, userProfile, userRole, companyId, showToast, s
   delete payload.username; delete payload.password;
   payload.website = form.website || "";
   if (form.username || form.password) {
-    const resU = await encryptCredential(form.username || "", companyId);
-    const resP = await encryptCredential(form.password || "", companyId, resU.salt);
-    payload.username_encrypted = resU.encrypted;
-    payload.password_encrypted = resP.encrypted;
-    payload.encryption_iv_username = resU.iv || null;
-    payload.encryption_iv = resP.iv || resU.iv;
-    payload.encryption_salt = resU.salt || resP.salt;
+    try {
+      const resU = await encryptCredential(form.username || "", companyId);
+      const resP = await encryptCredential(form.password || "", companyId, resU.salt);
+      payload.username_encrypted = resU.encrypted;
+      payload.password_encrypted = resP.encrypted;
+      payload.encryption_iv_username = resU.iv || null;
+      payload.encryption_iv = resP.iv || resU.iv;
+      payload.encryption_salt = resU.salt || resP.salt;
+    } catch (e) { showToast("Could not encrypt credentials — please try again: " + (e.message || e), "error"); return; }
   }
   if (editingLoan) {
   const { error: loanErr } = await supabase.from("property_loans").update({ lender_name: payload.lender_name, loan_type: payload.loan_type, original_amount: payload.original_amount, current_balance: payload.current_balance, interest_rate: payload.interest_rate, monthly_payment: payload.monthly_payment, escrow_included: payload.escrow_included, escrow_amount: payload.escrow_amount, escrow_covers: payload.escrow_covers, loan_start_date: payload.loan_start_date || null, maturity_date: payload.maturity_date || null, account_number: payload.account_number, property: payload.property, notes: payload.notes, status: payload.status, website: payload.website, username_encrypted: payload.username_encrypted || editingLoan.username_encrypted || "", password_encrypted: payload.password_encrypted || editingLoan.password_encrypted || "", encryption_iv: payload.encryption_iv || editingLoan.encryption_iv || "", encryption_iv_username: payload.encryption_iv_username || editingLoan.encryption_iv_username || null, encryption_salt: payload.encryption_salt || editingLoan.encryption_salt || null }).eq("id", editingLoan.id).eq("company_id", companyId);

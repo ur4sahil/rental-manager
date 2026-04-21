@@ -188,13 +188,15 @@ function Utilities({ addNotification, userProfile, userRole, companyId, showToas
   delete row.username; delete row.password; // don't store plaintext
   row.website = form.website || "";
   if (form.username || form.password) {
-    const resU = await encryptCredential(form.username || "", companyId);
-    const resP = await encryptCredential(form.password || "", companyId, resU.salt);
-    row.username_encrypted = resU.encrypted;
-    row.password_encrypted = resP.encrypted;
-    row.encryption_iv_username = resU.iv || null;
-    row.encryption_iv = resP.iv || resU.iv;
-    row.encryption_salt = resU.salt || resP.salt;
+    try {
+      const resU = await encryptCredential(form.username || "", companyId);
+      const resP = await encryptCredential(form.password || "", companyId, resU.salt);
+      row.username_encrypted = resU.encrypted;
+      row.password_encrypted = resP.encrypted;
+      row.encryption_iv_username = resU.iv || null;
+      row.encryption_iv = resP.iv || resU.iv;
+      row.encryption_salt = resU.salt || resP.salt;
+    } catch (e) { showToast("Could not encrypt credentials — please try again: " + (e.message || e), "error"); return; }
   }
   const { error } = await supabase.from("utilities").insert([row]);
   if (error) { pmError("PM-4005", { raw: error, context: "adding utility bill" }); return; }
