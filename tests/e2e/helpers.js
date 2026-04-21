@@ -31,22 +31,29 @@ async function login(page) {
   await page.locator('text=/YOUR COMPANIES|Your Companies|PropManager/i').first().waitFor({ state: 'visible', timeout: 15000 });
   await page.waitForTimeout(1000);
 
-  // Step 5: Click into Sandbox LLC. Clickable area is a <div onClick> that
-  // wraps the avatar + name. Clicking the visible name text reliably hits
-  // that handler (event bubbles up).
-  const sandboxName = page.locator('.font-semibold:has-text("Sandbox")').first();
-  if (await sandboxName.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await sandboxName.click();
-  } else {
-    // Fall back to any first-company clickable div
-    const firstCompany = page.locator('div.cursor-pointer:has(.font-semibold)').first();
-    if (await firstCompany.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await firstCompany.click();
+  // Step 5: Click into Sandbox LLC. The clickable area is the outer
+  // cursor-pointer <div onClick>, which wraps the avatar + name. Click
+  // THAT div directly (not the inner name span) — clicks on nested
+  // spans have been flaky when React rerenders mid-click. Retry up to
+  // three times if the navigation to the app doesn't happen.
+  const dashboardBtn = page.locator('button:has-text("Dashboard")').first();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const target = page.locator('div.cursor-pointer:has-text("Sandbox")').first();
+    const fallback = page.locator('.font-semibold:has-text("Sandbox")').first();
+    if (await target.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await target.click();
+    } else if (await fallback.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await fallback.click();
+    } else {
+      // Last resort: first cursor-pointer row
+      const firstCompany = page.locator('div.cursor-pointer:has(.font-semibold)').first();
+      if (await firstCompany.isVisible({ timeout: 1500 }).catch(() => false)) await firstCompany.click();
     }
+    if (await dashboardBtn.isVisible({ timeout: 15000 }).catch(() => false)) return;
   }
-
-  // Step 6: Wait for app to load (sidebar "Dashboard" button appears)
-  await page.locator('button:has-text("Dashboard")').first().waitFor({ state: 'visible', timeout: 25000 });
+  // Final wait with a longer budget — if this throws the test fails
+  // loudly rather than passing a wrong page snapshot.
+  await dashboardBtn.waitFor({ state: 'visible', timeout: 10000 });
 }
 
 /**

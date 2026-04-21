@@ -76,13 +76,15 @@ test.describe('Payments Module', () => {
 
   test('payment table shows status badges (paid/partial)', async ({ page }) => {
     await page.waitForTimeout(2500);
-    const pageText = (await page.locator('body').textContent()) || '';
-    // Current seed has only status='paid' rows; accept any of the
-    // documented statuses so the test doesn't depend on a specific
-    // partial/unpaid seed existing. Also accepts the "posted" label
-    // that the Payments tab surfaces for journal-entry-sourced rows.
-    const hasStatus = /\b(paid|partial|unpaid|posted)\b/i.test(pageText);
-    expect(hasStatus).toBeTruthy();
+    // The Payments tab derives rows from journal entries and renders
+    // "posted" as the status label. Check multiple terms via visible
+    // locators rather than scraping textContent (which has proven
+    // flaky on React-transition-heavy pages).
+    const hasPosted = await page.locator('text=/\\bposted\\b/i').first().isVisible({ timeout: 3000 }).catch(() => false);
+    const hasPaid = await page.locator('text=/\\bpaid\\b/i').first().isVisible({ timeout: 1500 }).catch(() => false);
+    const hasPartial = await page.locator('text=/\\bpartial\\b/i').first().isVisible({ timeout: 1500 }).catch(() => false);
+    const hasUnpaid = await page.locator('text=/\\bunpaid\\b/i').first().isVisible({ timeout: 1500 }).catch(() => false);
+    expect(hasPosted || hasPaid || hasPartial || hasUnpaid).toBeTruthy();
   });
 
   test('CSV export button exists', async ({ page }) => {
