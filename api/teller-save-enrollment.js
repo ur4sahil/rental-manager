@@ -162,10 +162,14 @@ module.exports = async function handler(req, res) {
       connectionId = connection.id;
     }
 
-    // Fetch accounts from Teller API (with mTLS)
+    // Fetch accounts from Teller API (with mTLS). Never forward the
+    // raw Teller body to the browser — it can include upstream error
+    // codes, rate-limit diagnostics, and (rarely) routing/account
+    // detail in unhappy paths. Log server-side, return a generic.
     const accountsRes = await tellerFetch(`${TELLER_API}/accounts`, access_token);
     if (!accountsRes.ok) {
-      return res.status(400).json({ error: "Teller API error: " + accountsRes.body });
+      console.error("[teller-save-enrollment] Teller /accounts failed", { status: accountsRes.status, body: (accountsRes.body || "").slice(0, 2000) });
+      return res.status(502).json({ error: "Bank connection failed — please try again" });
     }
     const tellerAccounts = JSON.parse(accountsRes.body);
 

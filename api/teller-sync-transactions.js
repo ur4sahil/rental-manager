@@ -164,7 +164,12 @@ module.exports = async function handler(req, res) {
             throw new Error("AUTH_FAILED");
           }
 
-          if (!txnRes.ok) throw new Error(`Teller API error (${txnRes.status}): ${txnRes.body}`);
+          if (!txnRes.ok) {
+            // Log the raw body server-side; rethrow a generic so it
+            // never reaches the browser via the response body.
+            console.error("[teller-sync] Teller /transactions failed", { status: txnRes.status, body: (txnRes.body || "").slice(0, 2000) });
+            throw new Error(`Teller API error (${txnRes.status})`);
+          }
 
           let tellerTxns = JSON.parse(txnRes.body);
 
