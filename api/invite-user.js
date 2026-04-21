@@ -97,23 +97,43 @@ module.exports = async function handler(req, res) {
   );
 
   let userCreated = false;
+  let fallbackActionLink = null;
   try {
     const { data: invRes, error: invErr } = await admin.auth.admin.inviteUserByEmail(email, {
       data: { name: userName || email.split("@")[0], role },
     });
     if (invErr) {
-      // Existing user → fall back to a magic-link generation. The project's
-      // email template for type=magiclink delivers it; no captcha path.
+      // Existing user — inviteUserByEmail refuses. Fall back to a
+      // password-recovery email; Supabase's Recovery template is the
+      // most widely enabled delivery path out of the box. Previous
+      // code used generateLink(type=magiclink) which only RETURNS the
+      // link — it does NOT send an email unless a custom SMTP and
+      // matching template are wired, so every admin invite to an
+      // already-registered user showed a success toast and the user
+      // received nothing.
       const msg = (invErr.message || "").toLowerCase();
       const isAlreadyRegistered = msg.includes("already") || msg.includes("registered") || (invErr.status === 422);
       if (!isAlreadyRegistered) {
         return res.status(502).json({ error: "Invite email failed: " + invErr.message });
       }
-      const { error: linkErr } = await admin.auth.admin.generateLink({
-        type: "magiclink",
-        email,
-      });
-      if (linkErr) return res.status(502).json({ error: "Magic link send failed: " + linkErr.message });
+      // resetPasswordForEmail from the admin client sends an email via
+      // the Supabase Recovery template without requiring captcha,
+      // because we're using the service role, not a public endpoint.
+      const siteUrl = process.env.SITE_URL || process.env.REACT_APP_SITE_URL || "";
+      const redirectTo = siteUrl ? { redirectTo: siteUrl } : undefined;
+      const { error: recErr } = await admin.auth.resetPasswordForEmail(email, redirectTo);
+      if (recErr) {
+        // If the recovery path also failed (e.g. template disabled),
+        // generate a magic link so the caller can at least surface it
+        // to the admin to deliver manually. No silent success.
+        const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
+          type: "magiclink",
+          email,
+        });
+        if (linkErr) return res.status(502).json({ error: "Could not send or generate a login link: " + (recErr.message || linkErr.message) });
+        fallbackActionLink = linkData?.properties?.action_link || linkData?.action_link || null;
+        if (!fallbackActionLink) return res.status(502).json({ error: "Login link generation returned no URL — check Supabase auth configuration" });
+      }
     } else if (invRes?.user) {
       userCreated = true;
     }
@@ -136,5 +156,13 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: "Membership record failed: " + memErr.message });
   }
 
-  return res.status(200).json({ ok: true, created_user: userCreated });
+  return res.status(200).json({
+    ok: true,
+    created_user: userCreated,
+    // Present only when both the invite AND the recovery email paths
+    // failed and we had to fall back to a raw magic link. The client
+    // should surface this to the admin so they can deliver it out-of-
+    // band (Slack, SMS, etc.) — the alternative is a silent dead end.
+    fallback_action_link: fallbackActionLink || undefined,
+  });
 };

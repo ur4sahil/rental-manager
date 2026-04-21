@@ -273,9 +273,18 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   showToast(errMsg, "error");
   return;
   }
+  let respJson = {};
+  try { respJson = await resp.json(); } catch (_) {}
   addNotification("✉️", `Invite sent to ${user.name} (${roleName})`);
   logAudit("create", "team", "Invited " + user.name + " as " + roleName + ": " + user.email, user.id || "", "", "admin", companyId);
+  if (respJson.fallback_action_link) {
+  // Email delivery failed upstream — surface the raw link so the admin
+  // can deliver it out-of-band rather than leaving the invite dead.
+  try { await navigator.clipboard.writeText(respJson.fallback_action_link); } catch (_) {}
+  showToast(`Email delivery failed for ${user.email}. A login link was generated and copied to your clipboard — send it to them directly.`, "warning");
+  } else {
   showToast(`Invite sent to ${user.email}!\n\nThey will receive a magic link to log in.\n\nIf they don't see it, they can use 'Forgot Password' on the login page to set their password.`, "success");
+  }
   } catch (e) {
   showToast("Error sending invite: " + e.message, "error");
   }

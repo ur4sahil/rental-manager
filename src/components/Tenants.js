@@ -389,12 +389,18 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   showToast(errMsg, "error");
   return;
   }
+  let inviteJson = {};
+  try { inviteJson = await inviteResp.json(); } catch (_) {}
   addNotification("✉️", "Invite code generated for " + tenant.email);
   logAudit("create", "tenants", "Invited tenant to portal: " + tenant.email, tenant.id, userProfile?.email, userRole, companyId);
   fetchPortalMembers();
-  // Show masked code — full code sent via email only
   const maskedCode = code.slice(0, 2) + "****" + code.slice(-2);
+  if (inviteJson.fallback_action_link) {
+  try { await navigator.clipboard.writeText(inviteJson.fallback_action_link); } catch (_) {}
+  showToast("Email delivery failed for " + tenant.email + ". A login link was generated and copied to your clipboard — send it to them along with invite code " + code + ".", "warning");
+  } else {
   showToast("Tenant invite created!\n\nA magic link and invite code have been sent to " + tenant.email + ".\n\nCode hint: " + maskedCode + " (full code in their email)\n\n" + tenant.name + " can sign up by selecting 'I'm a Tenant' and entering the code from their email.", "success");
+  }
   } catch (e) {
   showToast("Error inviting tenant: " + e.message, "error");
   }
