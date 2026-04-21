@@ -205,6 +205,25 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   if (file.size > 10 * 1024 * 1024) { showToast("Photo must be under 10MB.", "error"); setUploadingPhoto(false); return; }
   const ALLOWED_PHOTO_TYPES = ["image/jpeg","image/png","image/gif","image/webp","image/heic","image/heif"];
   if (!ALLOWED_PHOTO_TYPES.includes(file.type) && !/\.(jpg|jpeg|png|gif|webp|heic|heif)$/i.test(file.name)) { showToast("Only image files are allowed (JPG, PNG, GIF, WebP, HEIC).", "error"); return; }
+  // Magic-byte validation — MIME + extension alone are both forgeable.
+  // CLAUDE.md commits to magic-byte checks for every upload path; the
+  // doc-upload modal already runs this. Otherwise a renamed PDF with
+  // image/jpeg MIME would land happily in maintenance-photos.
+  try {
+    const hdr = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+    const hex = Array.from(hdr.slice(0, 4)).map(b => b.toString(16).padStart(2, "0")).join("");
+    // JPEG (ffd8ff..), PNG (89504e47), GIF (47494638), WebP (52494646 + WEBP), HEIC/HEIF container (00000018/00000020 ftyp*heic/heif)
+    const isJpeg = hex.startsWith("ffd8ff");
+    const isPng = hex.startsWith("89504e47");
+    const isGif = hex.startsWith("47494638");
+    const isWebp = hex.startsWith("52494646") && String.fromCharCode(...hdr.slice(8, 12)) === "WEBP";
+    const heifBrand = String.fromCharCode(...hdr.slice(4, 12)); // bytes 4..11 include the 'ftyp' + brand
+    const isHeif = heifBrand.startsWith("ftyp") && /heic|heix|heif|mif1|msf1/.test(heifBrand);
+    if (!(isJpeg || isPng || isGif || isWebp || isHeif)) {
+      showToast("File content doesn't match an allowed image format.", "error");
+      return;
+    }
+  } catch (_e) { pmError("PM-7002", { raw: _e, context: "WO photo magic bytes validation", silent: true }); showToast("Could not validate photo.", "error"); return; }
   setUploadingPhoto(true);
   const fileName = `wo_${viewingPhotos.id}_${shortId()}_${sanitizeFileName(file.name)}`;
   const { error: uploadError } = await supabase.storage.from("maintenance-photos").upload(fileName, file);
