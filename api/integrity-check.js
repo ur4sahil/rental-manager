@@ -88,21 +88,32 @@ async function checkRecurringTemplates(supabase, companyId) {
 async function checkTenantBalanceVsLedger(supabase, companyId) {
   // Pulls tenants + ledger_entries in two reads per company rather than N+1.
   // Both capped so a company with an extreme history can't stall the cron.
+  // Also selects `tenant` (name) so we can account for legacy rows that
+  // lack tenant_id — otherwise every tenant with name-keyed history
+  // reports as unbalanced and drowns the real PM-9006 signal.
   const [{ data: tenants }, { data: ledger }] = await Promise.all([
     supabase.from("tenants").select("id, name, balance").eq("company_id", companyId).is("archived_at", null).limit(MAX_TENANTS),
-    supabase.from("ledger_entries").select("tenant_id, amount").eq("company_id", companyId).limit(MAX_LEDGER),
+    supabase.from("ledger_entries").select("tenant_id, tenant, amount").eq("company_id", companyId).limit(MAX_LEDGER),
   ]);
   // Coerce ids to string so integer vs bigint serialization quirks don't
   // create phantom mismatches across Supabase client versions.
-  const totals = new Map();
+  const byId = new Map();
+  const byNameOnly = new Map();
   for (const e of (ledger || [])) {
-    if (!e.tenant_id) continue;
-    const key = String(e.tenant_id);
-    totals.set(key, (totals.get(key) || 0) + Number(e.amount || 0));
+    const amt = Number(e.amount || 0);
+    if (e.tenant_id) {
+      const key = String(e.tenant_id);
+      byId.set(key, (byId.get(key) || 0) + amt);
+    } else if (e.tenant) {
+      const key = (e.tenant || "").toLowerCase();
+      byNameOnly.set(key, (byNameOnly.get(key) || 0) + amt);
+    }
   }
   let count = 0;
   for (const t of (tenants || [])) {
-    const ledgerTotal = totals.get(String(t.id)) || 0;
+    const idTotal = byId.get(String(t.id)) || 0;
+    const nameTotal = byNameOnly.get((t.name || "").toLowerCase()) || 0;
+    const ledgerTotal = idTotal + nameTotal;
     const stored = Number(t.balance || 0);
     if (Math.abs(stored - ledgerTotal) > 0.01) {
       await logViolation(supabase, companyId, "PM-9006",

@@ -88,14 +88,26 @@ export async function runDataIntegrityChecks(companyId, { deep = false } = {}) {
       }
     }
 
-    // PM-9006: Tenant balance vs ledger mismatch (deep only)
+    // PM-9006: Tenant balance vs ledger mismatch (deep only).
+    // Historical rows exist with tenant (name) populated but tenant_id
+    // still null — those would be excluded by an id-only scan, which
+    // then reported false positives for every tenant whose balance
+    // still tracks name-keyed history. Union id-scoped and name-scoped
+    // rows (without double-counting rows that have both) so the check
+    // compares like-for-like.
     if (deep) {
       const { data: tenants } = await supabase.from("tenants").select("id, name, balance").eq("company_id", companyId).is("archived_at", null).limit(INTEGRITY_MAX_TENANTS);
       for (const t of (tenants || [])) {
-        const { data: entries } = await supabase.from("ledger_entries").select("amount").eq("company_id", companyId).eq("tenant_id", t.id).limit(INTEGRITY_MAX_LEDGER_PER_TENANT);
-        const ledgerTotal = (entries || []).reduce((s, e) => s + safeNum(e.amount), 0);
+        const [{ data: byId }, { data: byNameOnly }] = await Promise.all([
+          supabase.from("ledger_entries").select("id, amount").eq("company_id", companyId).eq("tenant_id", t.id).limit(INTEGRITY_MAX_LEDGER_PER_TENANT),
+          supabase.from("ledger_entries").select("id, amount").eq("company_id", companyId).eq("tenant", t.name).is("tenant_id", null).limit(INTEGRITY_MAX_LEDGER_PER_TENANT),
+        ]);
+        const seen = new Set((byId || []).map(e => e.id));
+        const idTotal = (byId || []).reduce((s, e) => s + safeNum(e.amount), 0);
+        const nameOnlyTotal = (byNameOnly || []).filter(e => !seen.has(e.id)).reduce((s, e) => s + safeNum(e.amount), 0);
+        const ledgerTotal = idTotal + nameOnlyTotal;
         if (Math.abs(safeNum(t.balance) - ledgerTotal) > 0.01) {
-          violations.push({ code: "PM-9006", details: `Tenant "${t.name}" balance ($${t.balance}) doesn't match ledger ($${ledgerTotal.toFixed(2)})`, meta: { tenantId: t.id, storedBalance: t.balance, ledgerTotal } });
+          violations.push({ code: "PM-9006", details: `Tenant "${t.name}" balance ($${t.balance}) doesn't match ledger ($${ledgerTotal.toFixed(2)})`, meta: { tenantId: t.id, storedBalance: t.balance, ledgerTotal, idTotal, nameOnlyTotal } });
         }
       }
     }
