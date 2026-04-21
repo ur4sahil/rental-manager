@@ -106,7 +106,11 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   const { data: signupData, error: signupErr } = await supabase.auth.signUp(signUpArgs);
   if (signupErr) { pmError("PM-1009", { raw: signupErr, context: "user signup" }); setError(PM_ERRORS["PM-1009"].message); resetCaptcha(); setLoading(false); return; }
 
-  // NOW redeem the invite (auth account exists, safe to consume)
+  // NOW redeem the invite (auth account exists, safe to consume).
+  // If redemption loses a race, the auth user is an orphan — no
+  // membership, no way to self-recover. Ask the server to delete it so
+  // the tenant can try again with a fresh invite without hitting an
+  // "email already registered" wall.
   if (userType === "tenant" && inviteCode) {
   const { data: redeemResult, error: redeemErr } = await supabase.rpc("redeem_invite_code", {
   p_code: inviteCode.trim().toUpperCase(),
@@ -114,7 +118,19 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   p_name: name.trim(),
   });
   if (redeemErr || !redeemResult?.success) {
-  setError("Account created but invite code failed: " + (redeemErr?.message || "already used") + ". Contact your property manager for a new invite.");
+  try {
+  const { data: { session } } = await supabase.auth.getSession();
+  const orphanToken = session?.access_token;
+  if (orphanToken) {
+  await fetch("/api/cleanup-orphan-signup", {
+  method: "POST",
+  headers: { "Content-Type": "application/json", "Authorization": "Bearer " + orphanToken },
+  body: JSON.stringify({ inviteCode: inviteCode.trim().toUpperCase() }),
+  });
+  }
+  await supabase.auth.signOut();
+  } catch (_) { /* best-effort cleanup — don't mask the original error */ }
+  setError("Invite code couldn't be redeemed: " + (redeemErr?.message || "already used") + ". Contact your property manager for a new invite.");
   setLoading(false);
   return;
   }
