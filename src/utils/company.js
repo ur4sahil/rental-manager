@@ -64,9 +64,30 @@ export async function companyUpsert(table, rows, companyId, onConflict) {
   return supabase.from(table).upsert(withCompany, onConflict ? { onConflict } : undefined);
 }
 
-// RPC Health Check — validates critical database dependencies on app load
+// RPC Health Check — validates critical database dependencies on app load.
+//
+// Previously fired one no-op call per RPC on every page load. Each call
+// hit Postgres with {} args, generated a permission/auth error, and
+// appeared in DB logs — noisy at best, potentially side-effectful for
+// RPCs that do partial work before arg validation. Now:
+//   - Cached in localStorage for 24h, keyed by companyId. Most page
+//     loads skip the probe entirely.
+//   - Only fires once per process lifetime regardless of cache.
+const _rpcHealthChecked = new Set();
+const RPC_HEALTH_TTL_MS = 24 * 60 * 60 * 1000;
+
 export async function checkRPCHealth(companyId) {
   try {
+  if (_rpcHealthChecked.has(companyId || "_none")) return [];
+  _rpcHealthChecked.add(companyId || "_none");
+  const cacheKey = "rpcHealth_" + (companyId || "_none");
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) {
+      const { checkedAt, missing } = JSON.parse(raw);
+      if (Date.now() - checkedAt < RPC_HEALTH_TTL_MS) return missing || [];
+    }
+  } catch (_) { /* localStorage may be unavailable in some sandboxes */ }
   const requiredRPCs = [
   "create_company_atomic",
   "archive_property",
@@ -90,6 +111,7 @@ export async function checkRPCHealth(companyId) {
   if (missing.length > 0) {
   pmError("PM-8003", { raw: { message: "Missing RPCs: " + missing.join(", ") }, context: "RPC health check", silent: true });
   }
+  try { localStorage.setItem(cacheKey, JSON.stringify({ checkedAt: Date.now(), missing })); } catch (_) {}
   return missing;
   } catch (e) {
   pmError("PM-8006", { raw: e, context: "RPC health check", silent: true });

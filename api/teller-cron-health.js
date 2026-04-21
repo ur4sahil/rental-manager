@@ -85,25 +85,53 @@ module.exports = async function handler(req, res) {
     const recentRun = hoursSinceRun !== null && hoursSinceRun < 25;
     const healthy = !hasAnyConns || (recentRun && successes > 0 && stuck === 0);
 
-    return res.status(200).json({
+    const baseResponse = {
       healthy,
       window_hours: 24,
       last_run_at: lastRun,
       hours_since_last_run: hoursSinceRun,
       sync_events: { total: evts.length, success: successes, failed: failures, in_flight: stuck },
       total_transactions_added: totalAdded,
-      connections: connList.map((c) => ({
-        id: c.id,
-        company_id: c.company_id,
-        status: c.connection_status,
-        last_successful_sync_at: c.last_successful_sync_at,
-        last_error: c.last_error_message,
-      })),
-      recent_failures: evts.filter((e) => e.status === "failed").slice(0, 10).map((e) => ({
-        bank_connection_id: e.bank_connection_id,
-        started_at: e.started_at,
-        error: e.error_json?.message || null,
-      })),
+    };
+
+    // CRON_SECRET path returns aggregate-only. Previously this included
+    // a full per-company list (company_id + last_error_message + sync
+    // state) — a leaked cron secret would hand an attacker a ready-made
+    // pre-attack inventory. The JWT path is already scoped to a single
+    // company by the membership check above, so the full per-connection
+    // detail is fine to return there.
+    if (companyFilter) {
+      return res.status(200).json({
+        ...baseResponse,
+        connections: connList.map((c) => ({
+          id: c.id,
+          company_id: c.company_id,
+          status: c.connection_status,
+          last_successful_sync_at: c.last_successful_sync_at,
+          last_error: c.last_error_message,
+        })),
+        recent_failures: evts.filter((e) => e.status === "failed").slice(0, 10).map((e) => ({
+          bank_connection_id: e.bank_connection_id,
+          started_at: e.started_at,
+          error: e.error_json?.message || null,
+        })),
+      });
+    }
+
+    // Cron secret — aggregate only. Report the status distribution across
+    // connections (active/errored/needs_reauth counts) so the cron op
+    // still knows the overall fleet shape without leaking identifiers.
+    const statusCounts = connList.reduce((acc, c) => {
+      acc[c.connection_status] = (acc[c.connection_status] || 0) + 1;
+      return acc;
+    }, {});
+    return res.status(200).json({
+      ...baseResponse,
+      connections_summary: {
+        total: connList.length,
+        by_status: statusCounts,
+      },
+      recent_failure_count: evts.filter((e) => e.status === "failed").length,
     });
   } catch (e) {
     console.error("teller-cron-health error:", e.message);
