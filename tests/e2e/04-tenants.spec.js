@@ -75,9 +75,12 @@ test.describe('Tenants Module', () => {
     await expect(cancelBtn).toBeVisible({ timeout: 3000 });
     await cancelBtn.click();
     await page.waitForTimeout(400);
-    // The name input should no longer be in the modal (modal closed).
-    const modalVisible = await page.locator('[class*="z-\\[90\\]"], [role="dialog"]').first().isVisible({ timeout: 1000 }).catch(() => false);
-    expect(modalVisible).toBeFalsy();
+    // The tenant form is an inline panel (not a z-[90] overlay), so
+    // check the form's heading disappears. Scope to h3 to avoid the
+    // drawer's "Edit Tenant" action button still being in the DOM.
+    const formHeading = page.locator('h3:has-text("Edit Tenant")').first();
+    const stillOpen = await formHeading.isVisible({ timeout: 1000 }).catch(() => false);
+    expect(stillOpen).toBeFalsy();
   });
 
   // Email-format validation test retired: the saveTenant flow validates
