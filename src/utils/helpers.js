@@ -274,6 +274,19 @@ export const WIZARD_STEP_ICONS = {
   recurring_rent: "event_repeat",
 };
 
+// ============ APPROVAL ROUTING ============
+// Admin/owner see every approval queue row. Manager sees only the rows
+// whose approver_email was snapshotted to them when the requester
+// submitted (their assigned staff). Everyone else sees nothing. Team
+// join requests are handled separately (admin-only) and don't flow
+// through this helper.
+export function canReviewRequest({ userRole, userEmail, approverEmail }) {
+  if (userRole === "admin" || userRole === "owner") return true;
+  if (userRole !== "manager") return false;
+  if (!approverEmail || !userEmail) return false;
+  return approverEmail.toLowerCase() === userEmail.toLowerCase();
+}
+
 // Counties / independent cities the portfolio operates in. Mirrors the
 // FlipRadar active-counties registry (shared/counties.js) for the DMV,
 // plus Richmond City, Baltimore City, and York County PA that are

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, FilterPill, IconBtn, Input, PageHeader, Select, TextLink} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, formatPersonName, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, exportToCSV, escapeHtml, escapeFilterValue, emailFilterValue, REQUIRED_TENANT_DOCS, recomputeTenantDocStatus, canReviewRequest } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
@@ -18,6 +18,8 @@ const acctToday = () => formatLocalDate(new Date());
 // ============ TENANTS ============
 function Tenants({ addNotification, userProfile, userRole, companyId, setPage, initialTab, showToast, showConfirm, activeCompany, companySettings = {} }) {
   const isAdmin = userRole === "admin";
+  const isManager = userRole === "manager";
+  const canReviewAny = isAdmin || userRole === "owner" || isManager;
   const [pendingRecurringEntry, setPendingRecurringEntry] = useState(null);
   function exportTenants() {
   const exportData = tenants.filter(t => !t.archived_at);
@@ -238,7 +240,10 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (!isAdmin) {
   if (!await showConfirm({ message: `Request to delete tenant "${name}"?\n\nAn admin will review and approve this request.` })) return;
   const { data: { user } } = await supabase.auth.getUser();
-  await supabase.from("property_change_requests").insert([{ company_id: companyId, request_type: "delete_tenant", requested_by: user?.email || "unknown", address: name, notes: "Delete tenant: " + name }]);
+  const { data: me } = await supabase.from("app_users")
+    .select("manager_email").eq("company_id", companyId)
+    .ilike("email", emailFilterValue(user?.email || "")).maybeSingle();
+  await supabase.from("property_change_requests").insert([{ company_id: companyId, request_type: "delete_tenant", requested_by: user?.email || "unknown", address: name, notes: "Delete tenant: " + name, approver_email: me?.manager_email || null }]);
   showToast("Delete request submitted for admin approval.", "success");
   logAudit("request", "tenants", "Requested delete: " + name, id, user?.email, userRole, companyId);
   return;
@@ -1207,21 +1212,21 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   <div className="flex gap-2 mt-3">
   <Btn variant="warning-fill" size="sm" onClick={() => { setShowDocUpload({ property: selectedTenant?.property || "", tenant: selectedTenant?.name || showTenantDocPrompt || "" }); setShowTenantDocPrompt(null); }} >Upload Documents Now</Btn>
-  {isAdmin ? (
+  {(isAdmin || userRole === "owner") ? (
   <Btn variant="ghost" size="sm" onClick={async () => { if (!guardSubmit("approveException")) return; try { await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", escapeFilterValue(showTenantDocPrompt)).is("archived_at", null); showToast("Document exception approved for " + showTenantDocPrompt, "success"); setShowTenantDocPrompt(null); fetchTenants(); } finally { guardRelease("approveException"); } }} >Admin: Approve Exception</Btn>
   ) : (
-  <Btn variant="ghost" size="sm" onClick={async () => { if (!guardSubmit("reqException")) return; try { if (!await showConfirm({ message: "Skipping requires admin approval. An approval request will be sent. Continue?" })) return; await supabase.from("doc_exception_requests").insert([{ company_id: companyId, tenant_name: showTenantDocPrompt, property: selectedTenant?.property || "", requested_by: userProfile?.email || "" }]); addNotification("\u{1F4CB}", "Document exception request sent for " + showTenantDocPrompt); logAudit("request", "tenants", "Document exception requested for " + showTenantDocPrompt, "", userProfile?.email, userRole, companyId); setShowTenantDocPrompt(null); fetchDocExceptions(); } finally { guardRelease("reqException"); } }} >Request Exception</Btn>
+  <Btn variant="ghost" size="sm" onClick={async () => { if (!guardSubmit("reqException")) return; try { if (!await showConfirm({ message: "Skipping requires admin approval. An approval request will be sent. Continue?" })) return; const { data: me } = await supabase.from("app_users").select("manager_email").eq("company_id", companyId).ilike("email", emailFilterValue(userProfile?.email || "")).maybeSingle(); await supabase.from("doc_exception_requests").insert([{ company_id: companyId, tenant_name: showTenantDocPrompt, property: selectedTenant?.property || "", requested_by: userProfile?.email || "", approver_email: me?.manager_email || null }]); addNotification("\u{1F4CB}", "Document exception request sent for " + showTenantDocPrompt); logAudit("request", "tenants", "Document exception requested for " + showTenantDocPrompt, "", userProfile?.email, userRole, companyId); setShowTenantDocPrompt(null); fetchDocExceptions(); } finally { guardRelease("reqException"); } }} >Request Exception</Btn>
   )}
   </div>
   </div>
   )}
 
-  {/* Document Exception Requests — Admin Panel */}
-  {isAdmin && docExceptions.filter(r => r.status === "pending").length > 0 && (
+  {/* Document Exception Requests — Admin/Manager Panel */}
+  {canReviewAny && docExceptions.filter(r => r.status === "pending" && canReviewRequest({ userRole, userEmail: userProfile?.email, approverEmail: r.approver_email })).length > 0 && (
   <div className="bg-warn-50 border border-warn-200 rounded-3xl p-4 mb-4">
-  <div className="text-sm font-bold text-warn-800 mb-2">{"\u{1F4CB}"} Pending Document Exception Requests ({docExceptions.filter(r => r.status === "pending").length})</div>
+  <div className="text-sm font-bold text-warn-800 mb-2">{"\u{1F4CB}"} Pending Document Exception Requests ({docExceptions.filter(r => r.status === "pending" && canReviewRequest({ userRole, userEmail: userProfile?.email, approverEmail: r.approver_email })).length})</div>
   <div className="space-y-2">
-  {docExceptions.filter(r => r.status === "pending").map(r => (
+  {docExceptions.filter(r => r.status === "pending" && canReviewRequest({ userRole, userEmail: userProfile?.email, approverEmail: r.approver_email })).map(r => (
   <div key={r.id} className="bg-white rounded-xl border border-warn-100 px-4 py-3 flex items-center justify-between">
   <div>
   <div className="text-sm font-semibold text-neutral-800">{r.tenant_name}</div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, EmptyState, FileInput, FilterPill, Input, PageHeader, Select, TextLink} from "../ui";
-import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate, emailFilterValue, getWizardApplicableSteps, WIZARD_STEP_LABELS } from "../utils/helpers";
+import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate, emailFilterValue, getWizardApplicableSteps, WIZARD_STEP_LABELS, canReviewRequest } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -114,12 +114,16 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null); // user being edited
-  const [form, setForm] = useState({ email: "", role: "office_assistant", name: "", first_name: "", mi: "", last_name: "" });
+  const [form, setForm] = useState({ email: "", role: "office_assistant", name: "", first_name: "", mi: "", last_name: "", manager_email: "" });
   // customPages: which modules are toggled ON when adding/editing a user
   const [customPages, setCustomPages] = useState([]);
 
   // All modules that can be assigned (admin and tenant are fixed, not customizable)
-  const CUSTOMIZABLE_ROLES = ["office_assistant", "accountant", "maintenance"];
+  const CUSTOMIZABLE_ROLES = ["office_assistant", "accountant", "maintenance", "manager"];
+
+  // Candidate reviewers for the "Manager" dropdown. Includes admins and
+  // any existing manager — they're the only roles that can approve.
+  const managerCandidates = users.filter(u => u.role === "admin" || u.role === "manager");
 
   useEffect(() => { fetchUsers(); }, [companyId]);
 
@@ -147,7 +151,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
 
   function startAdd() {
   setEditingUser(null);
-  setForm({ email: "", role: "office_assistant", name: "", first_name: "", mi: "", last_name: "" });
+  setForm({ email: "", role: "office_assistant", name: "", first_name: "", mi: "", last_name: "", manager_email: "" });
   setCustomPages([...ROLES["office_assistant"].pages]);
   setShowForm(true);
   }
@@ -155,7 +159,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   function startEdit(u) {
   setEditingUser(u);
   const parsed = parseNameParts(u.name);
-  setForm({ email: u.email, role: u.role, name: u.name, first_name: u.first_name || parsed.first_name, mi: u.middle_initial || parsed.middle_initial, last_name: u.last_name || parsed.last_name });
+  setForm({ email: u.email, role: u.role, name: u.name, first_name: u.first_name || parsed.first_name, mi: u.middle_initial || parsed.middle_initial, last_name: u.last_name || parsed.last_name, manager_email: u.manager_email || "" });
   // Load their custom pages if saved, otherwise use role defaults
   const savedPages = u.custom_pages ? JSON.parse(u.custom_pages) : ROLES[u.role]?.pages || [];
   setCustomPages([...savedPages]);
@@ -170,6 +174,9 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   if (!form.email.trim() || !form.email.includes("@")) { showToast("Please enter a valid email address.", "error"); return; }
   if (customPages.length === 0) { showToast("Please select at least one module.", "error"); return; }
 
+  // Admin/tenant never get a manager — admin sits at the top of the
+  // approval chain, and tenants don't submit staff requests.
+  const managerEmail = (form.role === "admin" || form.role === "tenant") ? null : (form.manager_email || null);
   const payload = {
   email: form.email,
   role: form.role,
@@ -177,6 +184,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   first_name: form.first_name,
   middle_initial: form.mi,
   last_name: form.last_name,
+  manager_email: managerEmail,
   custom_pages: JSON.stringify(customPages),
   company_id: companyId,
   };
@@ -196,22 +204,27 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   p_custom_pages: JSON.stringify(customPages),
   });
   if (rpcErr) throw new Error(rpcErr.message);
+  // RPC signature doesn't accept manager_email — tack it on after.
+  await supabase.from("app_users").update({ manager_email: managerEmail })
+    .eq("company_id", companyId).eq("id", editingUser.id);
+  await supabase.from("company_members").update({ manager_email: managerEmail })
+    .eq("company_id", companyId).ilike("user_email", emailFilterValue(payload.email));
   } catch (rpcE) {
   pmError("PM-1009", { raw: rpcE, context: "update user email via RPC" });
   return;
   }
   } else {
-  // No email change — just update role/name/pages
-  const { error } = await supabase.from("app_users").update({ email: normalizeEmail(payload.email), role: payload.role, name: payload.name, custom_pages: payload.custom_pages, company_id: payload.company_id }).eq("company_id", companyId).eq("id", editingUser.id);
+  // No email change — just update role/name/pages + manager
+  const { error } = await supabase.from("app_users").update({ email: normalizeEmail(payload.email), role: payload.role, name: payload.name, manager_email: managerEmail, custom_pages: payload.custom_pages, company_id: payload.company_id }).eq("company_id", companyId).eq("id", editingUser.id);
   if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
-  await supabase.from("company_members").upsert([{ company_id: companyId, user_email: (form.email || "").toLowerCase(), user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
+  await supabase.from("company_members").upsert([{ company_id: companyId, user_email: (form.email || "").toLowerCase(), user_name: form.name, role: form.role, status: "active", manager_email: managerEmail, custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
   }
   addNotification("👥", `${form.name}'s access updated`);
   } else {
   const { error, data: newUser } = await supabase.from("app_users").insert([{ ...payload, email: normalizeEmail(payload.email) }]).select();
   if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
   // Also add to company_members
-  await supabase.from("company_members").upsert([{ company_id: companyId, user_email: (form.email || "").toLowerCase(), user_name: form.name, role: form.role, status: "active", custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
+  await supabase.from("company_members").upsert([{ company_id: companyId, user_email: (form.email || "").toLowerCase(), user_name: form.name, role: form.role, status: "active", manager_email: managerEmail, custom_pages: JSON.stringify(customPages) }], { onConflict: "company_id,user_email" });
   addNotification("👥", `${form.name} added as ${ROLES[form.role]?.label}`);
   // Offer to send invite
   if (newUser?.[0] && await showConfirm({ message: `${form.name} has been added!\n\nWould you like to send them a login invite now?` })) {
@@ -339,6 +352,18 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   <option key={key} value={key}>{r.label}</option>
   ))}
   </Select></div>
+  {/* Approval manager — which admin/manager reviews this user's
+      property-change and document-exception requests. Hidden for
+      admin (no reviewer above them) and tenant (doesn't submit). */}
+  {form.role !== "admin" && form.role !== "tenant" && (
+  <div className="col-span-6"><label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-1 block">Approval Manager <span className="text-neutral-400 normal-case">(who reviews their edit/exception requests)</span></label>
+  <Select size="sm" value={form.manager_email} onChange={e => setForm({ ...form, manager_email: e.target.value })}>
+  <option value="">— No manager (admin reviews) —</option>
+  {managerCandidates.filter(m => m.email && m.email !== form.email).map(m => (
+  <option key={m.id} value={m.email}>{m.name || m.email} ({ROLES[m.role]?.label || m.role})</option>
+  ))}
+  </Select></div>
+  )}
   </div>
 
   {/* Module picker — only shown for customizable roles */}
@@ -621,10 +646,21 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   supabase.from("property_setup_wizard").select("*").eq("company_id", companyId).in("status", ["in_progress", "completed"]),
   supabase.from("properties").select("id, address, status").eq("company_id", companyId).is("archived_at", null),
   ]);
-  // Approvals
-  (propReqs.data || []).forEach(r => allApprovals.push({ id: "prop-" + r.id, type: "property", icon: "🏠", title: (r.request_type === "add" ? "New Property" : "Edit Property") + ": " + r.address, subtitle: "Requested by " + r.requested_by + " · " + new Date(r.requested_at).toLocaleDateString(), data: r, link: "properties" }));
-  (docExceptions.data || []).forEach(r => allApprovals.push({ id: "doc-" + r.id, type: "document", icon: "📄", title: "Document Exception: " + r.tenant_name, subtitle: (r.reason || "No reason provided") + " · " + new Date(r.created_at).toLocaleDateString(), data: r, link: "tenants" }));
-  (memberReqs.data || []).forEach(r => allApprovals.push({ id: "member-" + r.id, type: "member", icon: "👤", title: "Join Request: " + r.user_email, subtitle: "Role: " + (r.role || "pending") + " · " + new Date(r.created_at).toLocaleDateString(), data: r, link: "roles" }));
+  // Approvals — route by approver_email (snapshotted at insert time).
+  // Managers see only rows routed to them; admins/owners see everything.
+  // Team join requests (member type) are admin-only regardless.
+  const email = userProfile?.email || "";
+  (propReqs.data || []).forEach(r => {
+    if (!canReviewRequest({ userRole, userEmail: email, approverEmail: r.approver_email })) return;
+    allApprovals.push({ id: "prop-" + r.id, type: "property", icon: "🏠", title: (r.request_type === "add" ? "New Property" : "Edit Property") + ": " + r.address, subtitle: "Requested by " + r.requested_by + " · " + new Date(r.requested_at).toLocaleDateString(), data: r, link: "properties" });
+  });
+  (docExceptions.data || []).forEach(r => {
+    if (!canReviewRequest({ userRole, userEmail: email, approverEmail: r.approver_email })) return;
+    allApprovals.push({ id: "doc-" + r.id, type: "document", icon: "📄", title: "Document Exception: " + r.tenant_name, subtitle: (r.reason || "No reason provided") + " · " + new Date(r.created_at).toLocaleDateString(), data: r, link: "tenants" });
+  });
+  if (userRole === "admin" || userRole === "owner") {
+    (memberReqs.data || []).forEach(r => allApprovals.push({ id: "member-" + r.id, type: "member", icon: "👤", title: "Join Request: " + r.user_email, subtitle: "Role: " + (r.role || "pending") + " · " + new Date(r.created_at).toLocaleDateString(), data: r, link: "roles" }));
+  }
   // Tasks
   const t = tenants.data || [];
   const wo = workOrders.data || [];
@@ -686,8 +722,8 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   // entry. Re-reads the row before writing so a concurrent admin
   // approving a different step doesn't get clobbered.
   async function approveWizardSkip(task) {
-  if (userRole !== "admin" && userRole !== "owner") {
-    showToast("Only admins and owners can approve wizard skips.", "error");
+  if (userRole !== "admin" && userRole !== "owner" && userRole !== "manager") {
+    showToast("Only admins, owners, and managers can approve wizard skips.", "error");
     return;
   }
   if (!await showConfirm({
@@ -805,7 +841,7 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   // click-the-whole-row-to-navigate pattern. Rendered with
   // button-shaped actions so the click targets are unambiguous.
   if (t._kind === "wizard_skip") {
-  const canApprove = userRole === "admin" || userRole === "owner";
+  const canApprove = userRole === "admin" || userRole === "owner" || userRole === "manager";
   return (
   <div key={i} className="bg-white rounded-xl border border-brand-50 p-4 flex items-center gap-3 hover:border-brand-200 hover:shadow-sm transition-all">
   <span className="text-xl">{t.icon}</span>

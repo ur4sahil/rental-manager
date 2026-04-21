@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps, canReviewRequest } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
@@ -1976,6 +1976,8 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const [reviewNotes, setReviewNotes] = useState({});
 
   const isAdmin = userRole === "admin";
+  const isManager = userRole === "manager";
+  const canReviewAny = isAdmin || userRole === "owner" || isManager;
   const [pendingRecurringEntry, setPendingRecurringEntry] = useState(null); // { tenantName, tenantId, property, rent, leaseStart, leaseEnd }
 
   useEffect(() => { fetchProperties(); fetchChangeRequests(); fetchArchivedProperties(); }, [companyId]);
@@ -2306,12 +2308,19 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   async function requestDeleteProperty(property) {
   if (!guardSubmit("requestDeleteProperty")) return;
   try {
-  if (!await showConfirm({ message: `Request to delete "${property.address}"?\n\nAn admin will review and approve this request.` })) return;
+  if (!await showConfirm({ message: `Request to delete "${property.address}"?\n\nYour manager (or an admin) will review and approve this request.` })) return;
   const { data: { user } } = await supabase.auth.getUser();
+  // Snapshot the requester's manager_email so the approval queue can
+  // route this request without re-resolving on every read. null means
+  // admin reviews (no assigned manager).
+  const { data: me } = await supabase.from("app_users")
+    .select("manager_email").eq("company_id", companyId)
+    .ilike("email", emailFilterValue(user?.email || "")).maybeSingle();
   const { error } = await supabase.from("property_change_requests").insert([{
     company_id: companyId, request_type: "delete", property_id: property.id,
     requested_by: user?.email || "unknown", address: property.address,
     type: property.type, property_status: property.status, notes: "Delete requested",
+    approver_email: me?.manager_email || null,
   }]);
   if (error) throw new Error("Failed to submit request: " + error.message);
   showToast("Delete request submitted for admin approval.", "success");
@@ -2323,10 +2332,10 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   async function deleteProperty(id, address) {
   if (!guardSubmit("deleteProperty")) return;
   try {
-  if (!isAdmin) { showToast("Only admins can delete properties.", "error"); return; }
-  // Server-side role verification — don't rely solely on client-side isAdmin
+  if (!(isAdmin || isManager)) { showToast("Only admins or managers can delete properties.", "error"); return; }
+  // Server-side role verification — don't rely solely on client-side role
   const { data: roleCheck } = await supabase.from("company_members").select("role").eq("company_id", companyId).ilike("user_email", emailFilterValue(userProfile?.email || "")).eq("status", "active").maybeSingle();
-  if (roleCheck && roleCheck.role !== "admin") { showToast("Server verification failed: admin role required.", "error"); return; }
+  if (roleCheck && !["admin", "manager"].includes(roleCheck.role)) { showToast("Server verification failed: admin or manager role required.", "error"); return; }
   const targetProp = properties.find(p => String(p.id) === String(id));
   if (targetProp && targetProp.company_id !== companyId) {
   showToast("This property belongs to another company and cannot be archived here.", "error");
@@ -2447,10 +2456,14 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   } finally { guardRelease("deleteProperty"); }
   }
 
-  // Admin: approve change request
+  // Admin/manager: approve change request
   async function approveRequest(req) {
   if (!guardSubmit("approveRequest")) return;
   try {
+  if (!canReviewRequest({ userRole, userEmail: userProfile?.email, approverEmail: req.approver_email })) {
+  showToast("You are not authorized to approve this request.", "error");
+  return;
+  }
   if (req.request_type === "add") {
   const { error: apErr } = await supabase.from("properties").insert([{ company_id: companyId, address: req.address, type: req.type, status: req.property_status, rent: req.rent, tenant: req.tenant, lease_end: req.lease_end, notes: req.notes }]);
   if (apErr) { showToast("Error adding property: " + apErr.message, "error"); return; }
@@ -2488,10 +2501,14 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   } finally { guardRelease("approveRequest"); }
   }
 
-  // Admin: reject change request
+  // Admin/manager: reject change request
   async function rejectRequest(req) {
   if (!guardSubmit("rejectRequest")) return;
   try {
+  if (!canReviewRequest({ userRole, userEmail: userProfile?.email, approverEmail: req.approver_email })) {
+  showToast("You are not authorized to reject this request.", "error");
+  return;
+  }
   const { data: { user } } = await supabase.auth.getUser();
   const { error: rejStatusErr } = await supabase.from("property_change_requests").update({ status: "rejected", reviewed_by: user?.email || "admin", reviewed_at: new Date().toISOString(), review_note: reviewNotes[req.id] || "" }).eq("company_id", companyId).eq("id", req.id);
   if (rejStatusErr) showToast("Warning: Could not mark request as rejected: " + rejStatusErr.message, "error");
@@ -2669,6 +2686,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   }).filter(Boolean))].sort();
   const hasManagedProps = properties.some(p => p._ownership === "managed");
   const pendingRequests = changeRequests.filter(r => r.status === "pending");
+  const reviewableRequests = pendingRequests.filter(r => canReviewRequest({ userRole, userEmail: userProfile?.email, approverEmail: r.approver_email }));
 
   // Memoize the filter — at 500+ properties the full-list iteration on every
   // keystroke was blocking the main thread. Recomputes only when inputs
@@ -2725,22 +2743,22 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   ) : (<>
 
-  {isAdmin && pendingRequests.length > 0 && (
+  {canReviewAny && reviewableRequests.length > 0 && (
   <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-4 flex items-center justify-between">
-  <span className="text-sm text-warn-800">📋 <strong>{pendingRequests.length}</strong> property change {pendingRequests.length === 1 ? "request" : "requests"} awaiting review</span>
+  <span className="text-sm text-warn-800">📋 <strong>{reviewableRequests.length}</strong> property change {reviewableRequests.length === 1 ? "request" : "requests"} awaiting review</span>
   <Btn variant="amber" size="sm" onClick={() => setShowRequests(!showRequests)}>{showRequests ? "Hide" : "Review"}</Btn>
   </div>
   )}
-  {!isAdmin && changeRequests.filter(r => r.status === "pending").length > 0 && (
+  {!canReviewAny && changeRequests.filter(r => r.status === "pending").length > 0 && (
   <div className="bg-info-50 border border-info-200 rounded-xl p-3 mb-4">
   <span className="text-sm text-info-800">📋 You have <strong>{changeRequests.filter(r => r.status === "pending").length}</strong> pending request(s)</span>
   </div>
   )}
 
-  {isAdmin && showRequests && pendingRequests.length > 0 && (
+  {canReviewAny && showRequests && reviewableRequests.length > 0 && (
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4 mb-4 space-y-3">
   <h3 className="font-semibold text-neutral-800">Pending Approval</h3>
-  {pendingRequests.map(req => (
+  {reviewableRequests.map(req => (
   <div key={req.id} className="border border-warn-100 rounded-3xl p-4 bg-warn-50/30">
   <div className="flex items-start justify-between gap-3">
   <div>
