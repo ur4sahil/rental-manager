@@ -94,9 +94,9 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   if (arAction === "waive" && outstandingBalance > 0) {
   const woResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Bad debt write-off — ${tName}`, reference: `WOFF-${shortId()}`, property: selectedLease.property,
   lines: [
-  { account_id: "5300", account_name: "Bad Debt Expense", debit: outstandingBalance, credit: 0, class_id: classId, memo: `Write-off at move-out — ${tName}` },
+  { account_id: "5500", account_name: "Bad Debt Expense", debit: outstandingBalance, credit: 0, class_id: classId, memo: `Write-off at move-out — ${tName}` },
   { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: outstandingBalance, class_id: classId, memo: `AR write-off — ${tName}` },
-  ], ledgerEntry: { tenant: tName, property: selectedLease.property, date: moveOutDate, description: "Bad debt write-off", amount: -outstandingBalance, type: "adjustment", balance: 0 },
+  ], ledgerEntry: { tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: "Bad debt write-off", amount: -outstandingBalance, type: "adjustment", balance: 0 },
   balanceUpdate: { tenantId: selectedTenant.id, amount: -outstandingBalance } });
   }
 
@@ -541,7 +541,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
   description: `Eviction cost — ${evCase.tenant_name} — ${nextStage.replace(/_/g, " ")}`,
   reference: `EVICT-${shortId()}`, property: evCase.property,
   lines: [
-  { account_id: "5300", account_name: "Legal & Eviction Costs", debit: safeNum(stageCost), credit: 0, class_id: classId, memo: `${nextStage}: ${stageNote || "Eviction expense"}` },
+  { account_id: "5610", account_name: "Legal & Eviction Costs", debit: safeNum(stageCost), credit: 0, class_id: classId, memo: `${nextStage}: ${stageNote || "Eviction expense"}` },
   { account_id: "1000", account_name: "Checking Account", debit: 0, credit: safeNum(stageCost), class_id: classId, memo: `Eviction: ${evCase.tenant_name}` },
   ], requireJE: false });
   if (!evResult.jeId) showToast("Warning: Eviction cost GL entry failed — please post manually in Accounting.", "error");

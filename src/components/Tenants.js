@@ -318,7 +318,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const classId = tenantProperty ? await getPropertyClassId(tenantProperty, companyId) : null;
   await autoPostJournalEntry({ companyId, date: formatLocalDate(new Date()), description: "AR write-off — tenant deleted — " + name, reference: "WOFF-" + shortId(), property: tenantProperty || "",
   lines: [
-  { account_id: "5300", account_name: "Bad Debt Expense", debit: tenantBal, credit: 0, class_id: classId, memo: "Write-off at deletion — " + name },
+  { account_id: "5500", account_name: "Bad Debt Expense", debit: tenantBal, credit: 0, class_id: classId, memo: "Write-off at deletion — " + name },
   { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: tenantBal, class_id: classId, memo: "AR write-off — " + name },
   ]
   });
