@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, EmptyState, FileInput, FilterPill, Input, PageHeader, Select, TextLink} from "../ui";
-import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate } from "../utils/helpers";
+import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate, emailFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -1239,14 +1239,14 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   if (deleteText !== "DELETE") return;
   setDeleting(true);
   // Remove all company memberships
-  const { data: memberships } = await supabase.from("company_members").select("company_id").ilike("user_email", currentUser?.email);
+  const { data: memberships } = await supabase.from("company_members").select("company_id").ilike("user_email", emailFilterValue(currentUser?.email));
   if (memberships) {
   for (const m of memberships) {
-  await supabase.from("company_members").update({ status: "removed" }).eq("company_id", m.company_id).ilike("user_email", currentUser?.email);
+  await supabase.from("company_members").update({ status: "removed" }).eq("company_id", m.company_id).ilike("user_email", emailFilterValue(currentUser?.email));
   }
   }
   // Sign out (actual auth account deletion requires admin API — flag for manual cleanup)
-  await supabase.from("app_users").update({ status: "deleted", deleted_at: new Date().toISOString() }).ilike("email", currentUser?.email);
+  await supabase.from("app_users").update({ status: "deleted", deleted_at: new Date().toISOString() }).ilike("email", emailFilterValue(currentUser?.email));
   showToast("Account deactivated. You will be signed out.", "info");
   setTimeout(async () => { await supabase.auth.signOut(); }, 1500);
   }

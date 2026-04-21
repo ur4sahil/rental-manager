@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Textarea, Select, Btn, PageHeader } from "../ui";
-import { safeNum, formatLocalDate, shortId, formatCurrency, parseLocalDate, normalizeEmail, exportToCSV, escapeHtml, sanitizeForPrint, formatPersonName, parseNameParts, formatPhoneInput, buildNameFields, escapeFilterValue } from "../utils/helpers";
+import { safeNum, formatLocalDate, shortId, formatCurrency, parseLocalDate, normalizeEmail, exportToCSV, escapeHtml, sanitizeForPrint, formatPersonName, parseNameParts, formatPhoneInput, buildNameFields, escapeFilterValue, emailFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -517,7 +517,7 @@ function OwnerPortal({ currentUser, companyId, showToast, showConfirm }) {
 
   async function loadOwnerData() {
   if (!currentUser?.email) { setError("Not logged in"); setLoading(false); return; }
-  const { data: owner } = await supabase.from("owners").select("*").eq("company_id", companyId).ilike("email", currentUser.email).maybeSingle();
+  const { data: owner } = await supabase.from("owners").select("*").eq("company_id", companyId).ilike("email", emailFilterValue(currentUser.email)).maybeSingle();
   if (!owner) { setError("No owner account found for " + currentUser.email); setLoading(false); return; }
   setOwnerData(owner);
 

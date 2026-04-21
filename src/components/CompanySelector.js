@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Input, Select, Btn, TextLink} from "../ui";
-import { normalizeEmail, formatPhoneInput, escapeFilterValue } from "../utils/helpers";
+import { normalizeEmail, formatPhoneInput, escapeFilterValue, emailFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { logAudit } from "../utils/audit";
 import { Spinner } from "./shared";
@@ -31,7 +31,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   const email = currentUser?.email;
   if (!email) { setLoading(false); return; }
   // Get all companies this user is an active member of
-  const { data: memberships } = await supabase.from("company_members").select("company_id, role, status").ilike("user_email", email);
+  const { data: memberships } = await supabase.from("company_members").select("company_id, role, status").ilike("user_email", emailFilterValue(email));
   const active = (memberships || []).filter(m => m.status === "active");
   const pending = (memberships || []).filter(m => m.status === "pending");
   const invited = (memberships || []).filter(m => m.status === "invited");
@@ -72,7 +72,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   const { data: invRow } = await supabase.from("company_members")
     .select("id, created_at")
     .eq("company_id", company.id)
-    .ilike("user_email", email)
+    .ilike("user_email", emailFilterValue(email))
     .eq("status", "invited")
     .maybeSingle();
   if (!invRow) { showToast("Invite not found or already accepted.", "error"); return; }
@@ -201,7 +201,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
 
   async function requestJoin(company) {
   // Check if already a member
-  const { data: existing } = await supabase.from("company_members").select("status").eq("company_id", company.id).ilike("user_email", currentUser?.email || "").maybeSingle();
+  const { data: existing } = await supabase.from("company_members").select("status").eq("company_id", company.id).ilike("user_email", emailFilterValue(currentUser?.email || "")).maybeSingle();
   if (existing) {
   if (existing.status === "active") { showToast("You're already a member of " + company.name, "error"); return; }
   if (existing.status === "pending") { showToast("Your request to join " + company.name + " is pending admin approval.", "error"); return; }

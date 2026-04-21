@@ -1,6 +1,6 @@
 import { supabase } from "../supabase";
 import { pmError } from "./errors";
-import { safeNum } from "./helpers";
+import { safeNum, emailFilterValue } from "./helpers";
 import { COMPANY_DEFAULTS } from "../config";
 
 // ============ COMPANY-SCOPED SUPABASE HELPERS ============
@@ -31,7 +31,7 @@ async function ensureMembership(companyId) {
     || (Date.now() - _membershipCache.fetchedAt > MEMBERSHIP_TTL_MS);
   if (stale) {
     const { data: mems, error: memErr } = await supabase.from("company_members")
-      .select("company_id, status").ilike("user_email", email);
+      .select("company_id, status").ilike("user_email", emailFilterValue(email));
     if (memErr) {
       // Don't block writes on a flaky membership fetch — fall through
       // to RLS as the only gate and log the miss.

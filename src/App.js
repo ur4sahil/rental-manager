@@ -4,7 +4,7 @@ import ExcelJS from "exceljs";
 import * as Sentry from "@sentry/react";
 import { supabase } from "./supabase";
 import { Input, Textarea, Select, Btn, Card, PageHeader, FormField, TabBar, FilterPill, SectionTitle, EmptyState, IconBtn, BulkBar, AccountPicker, TextLink} from "./ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, pickColor, generateId, formatPersonName, buildNameFields, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, sanitizeFileName, exportToCSV, buildAddress, escapeHtml, escapeFilterValue, sanitizeForPrint, US_STATES, STATE_NAMES, statusColors, priorityColors } from "./utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, pickColor, generateId, formatPersonName, buildNameFields, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, sanitizeFileName, exportToCSV, buildAddress, escapeHtml, escapeFilterValue, sanitizeForPrint, US_STATES, STATE_NAMES, statusColors, priorityColors, emailFilterValue } from "./utils/helpers";
 import { PM_ERRORS, pmError, reportError, logErrorToSupabase, detectInfrastructureCode, setShowToastGlobal, setActiveErrorContext } from "./utils/errors";
 import { guardSubmit, guardRelease, guarded, requireCompanyId } from "./utils/guards";
 import { encryptCredential, decryptCredential } from "./utils/encryption";
@@ -199,7 +199,7 @@ function SetPasswordScreen({ currentUser, onComplete, showToast }) {
       const email = currentUser?.email || "";
       const { data: mem } = await supabase.from("company_members")
         .select("company_id, role, user_name")
-        .ilike("user_email", email)
+        .ilike("user_email", emailFilterValue(email))
         .limit(1)
         .maybeSingle();
       await supabase.from("app_users").upsert({
@@ -345,7 +345,7 @@ function AppInner() {
       //   - All rows have password_set_at = null → prompt.
       const { data: rows } = await supabase.from("app_users")
         .select("password_set_at")
-        .ilike("email", user.email)
+        .ilike("email", emailFilterValue(user.email))
         .limit(10);
       if (!rows || rows.length === 0) return false;
       return !rows.some(r => r.password_set_at);
@@ -415,7 +415,7 @@ function AppInner() {
   if (uidResult && uidResult.length > 0) { memberships = uidResult; }
   }
   if (!memberships) {
-  const { data: emailResult } = await supabase.from("company_members").select("company_id, role, status").ilike("user_email", user.email).eq("status", "active");
+  const { data: emailResult } = await supabase.from("company_members").select("company_id, role, status").ilike("user_email", emailFilterValue(user.email)).eq("status", "active");
   memberships = emailResult;
   }
   if (!memberships || memberships.length === 0) { setScreen("company_select"); return; }
@@ -425,7 +425,7 @@ function AppInner() {
   let match = memberships.find(m => m.company_id === urlCompanyId);
   // If not found in cached memberships, try a direct query (handles newly created companies)
   if (!match) {
-  const { data: directMem } = await supabase.from("company_members").select("company_id, role, status").eq("company_id", urlCompanyId).ilike("user_email", user.email).eq("status", "active").maybeSingle();
+  const { data: directMem } = await supabase.from("company_members").select("company_id, role, status").eq("company_id", urlCompanyId).ilike("user_email", emailFilterValue(user.email)).eq("status", "active").maybeSingle();
   if (directMem) match = directMem;
   }
   if (match) {
@@ -518,7 +518,7 @@ function AppInner() {
   async function fetchUserRoleForCompany(user, companyId) {
   if (!user?.email || !companyId) return;
   try {
-  const { data } = await supabase.from("company_members").select("*").eq("company_id", companyId).ilike("user_email", user.email).eq("status", "active").maybeSingle();
+  const { data } = await supabase.from("company_members").select("*").eq("company_id", companyId).ilike("user_email", emailFilterValue(user.email)).eq("status", "active").maybeSingle();
   // Backfill auth_user_id for UID-based lookups
   if (data && !data.auth_user_id && user.id) {
   const { error: uidErr } = await supabase.from("company_members").update({ auth_user_id: user.id }).eq("id", data.id);
@@ -533,7 +533,7 @@ function AppInner() {
   // inviter didn't type a display name.
   if (!displayName && data.role === "tenant") {
     try {
-      const { data: trow } = await supabase.from("tenants").select("name").eq("company_id", companyId).ilike("email", user.email).maybeSingle();
+      const { data: trow } = await supabase.from("tenants").select("name").eq("company_id", companyId).ilike("email", emailFilterValue(user.email)).maybeSingle();
       if (trow?.name) displayName = trow.name;
     } catch (_) { /* fall through to email prefix */ }
   }

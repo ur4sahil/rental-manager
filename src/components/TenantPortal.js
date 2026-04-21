@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, FileInput, Input, PageHeader, Select, Textarea } from "../ui";
-import { safeNum, formatLocalDate, shortId, formatCurrency, sanitizeFileName, exportToCSV, getSignedUrl } from "../utils/helpers";
+import { safeNum, formatLocalDate, shortId, formatCurrency, sanitizeFileName, exportToCSV, getSignedUrl, emailFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -38,7 +38,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   async function fetchData() {
   const email = currentUser?.email;
   if (!email || !email.includes("@")) { setLoading(false); return; }
-  const { data: tenant } = await supabase.from("tenants").select("*").eq("company_id", companyId).ilike("email", email).maybeSingle();
+  const { data: tenant } = await supabase.from("tenants").select("*").eq("company_id", companyId).ilike("email", emailFilterValue(email)).maybeSingle();
   if (!tenant) { setLoading(false); return; }
   setTenantData(tenant);
   setPaymentAmount(String(tenant.rent || ""));
@@ -115,7 +115,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   setWorkOrders(w.data || []);
   setMessages(m.data || []);
   // Refresh tenant balance
-  const { data: t } = await supabase.from("tenants").select("*").eq("company_id", companyId).ilike("email", currentUser?.email || "").maybeSingle();
+  const { data: t } = await supabase.from("tenants").select("*").eq("company_id", companyId).ilike("email", emailFilterValue(currentUser?.email || "")).maybeSingle();
   if (t) setTenantData(t);
   }
 
@@ -163,7 +163,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   setPaymentAmount("");
   addNotification("💳", "Payment of $" + amt.toFixed(2) + " submitted for approval");
   queueNotification("payment_received", currentUser?.email, { tenant: tenantData.name, amount: amt, date: today, status: "pending_approval" }, companyId);
-  const { data: refreshed } = await supabase.from("tenants").select("*").eq("company_id", companyId).ilike("email", currentUser?.email || "").maybeSingle();
+  const { data: refreshed } = await supabase.from("tenants").select("*").eq("company_id", companyId).ilike("email", emailFilterValue(currentUser?.email || "")).maybeSingle();
   if (refreshed) setTenantData(refreshed);
   } catch (e) {
   showToast("Payment failed: " + e.message, "error");

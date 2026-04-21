@@ -203,6 +203,14 @@ export function escapeFilterValue(val) {
   if (!val) return "";
   return String(val).replace(/[%_,.*()\\]/g, c => "\\" + c);
 }
+
+// Case-insensitive email equality. `_` in a raw .ilike pattern is a SQL
+// LIKE wildcard, so emails like "john_doe@x.com" used to match
+// "johnxdoe@x.com" too — a real collision when two users differ only by
+// an underscore. Escape the value so every character is literal.
+export function emailFilterValue(email) {
+  return escapeFilterValue((email || "").trim().toLowerCase());
+}
 // Sanitize HTML for safe insertion into document.write() contexts
 export function sanitizeForPrint(str) {
   if (!str) return "";

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
@@ -2312,7 +2312,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   try {
   if (!isAdmin) { showToast("Only admins can delete properties.", "error"); return; }
   // Server-side role verification — don't rely solely on client-side isAdmin
-  const { data: roleCheck } = await supabase.from("company_members").select("role").eq("company_id", companyId).ilike("user_email", userProfile?.email || "").eq("status", "active").maybeSingle();
+  const { data: roleCheck } = await supabase.from("company_members").select("role").eq("company_id", companyId).ilike("user_email", emailFilterValue(userProfile?.email || "")).eq("status", "active").maybeSingle();
   if (roleCheck && roleCheck.role !== "admin") { showToast("Server verification failed: admin role required.", "error"); return; }
   const targetProp = properties.find(p => String(p.id) === String(id));
   if (targetProp && targetProp.company_id !== companyId) {

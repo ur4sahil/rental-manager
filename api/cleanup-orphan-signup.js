@@ -29,6 +29,17 @@
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
 
+// Case-insensitive email equality in a Postgres LIKE pattern — escape
+// the _ and % chars so "john_doe@x.com" doesn't wildcard-match
+// "johnxdoe@x.com". Kept inline because api/ routes don't share the
+// src/utils/helpers bundle.
+function emailFilterValue(email) {
+  const s = (email || "").trim().toLowerCase();
+  return s.replace(/[%_,.*()\\]/g, c => "\\" + c);
+}
+
+
+
 module.exports = async function handler(req, res) {
   setCors(req, res);
   if (req.method === "OPTIONS") return res.status(200).end("ok");
@@ -70,7 +81,7 @@ module.exports = async function handler(req, res) {
   const { data: memberships, error: memErr } = await admin
     .from("company_members")
     .select("status")
-    .ilike("user_email", userEmail);
+    .ilike("user_email", emailFilterValue(userEmail));
   if (memErr) {
     return res.status(500).json({ error: "Membership lookup failed" });
   }

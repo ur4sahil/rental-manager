@@ -3,7 +3,7 @@ import DOMPurify from "dompurify";
 import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
 import { AccountPicker, Btn, Checkbox, FilterPill, IconBtn, Input, Select, TextLink, Textarea } from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, pickColor, formatCurrency, escapeFilterValue, emailFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme, chartPalette } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -1124,7 +1124,7 @@ export function AcctReports({ accounts, journalEntries, classes, companyName, co
       // Fire-and-forget sync — inspect { error } because the Supabase
       // client does not reject on business errors; .catch() alone would
       // swallow RLS denials and constraint failures silently.
-      supabase.from("app_users").update({ preferences: { report_favorites: next } }).eq("company_id", companyId).ilike("email", userProfile.email).then(({ error }) => { if (error) pmError("PM-4016", { raw: error, context: "syncing report favorites to DB", silent: true }); }, (e) => { pmError("PM-4016", { raw: e, context: "syncing report favorites to DB (network)", silent: true }); });
+      supabase.from("app_users").update({ preferences: { report_favorites: next } }).eq("company_id", companyId).ilike("email", emailFilterValue(userProfile.email)).then(({ error }) => { if (error) pmError("PM-4016", { raw: error, context: "syncing report favorites to DB", silent: true }); }, (e) => { pmError("PM-4016", { raw: e, context: "syncing report favorites to DB (network)", silent: true }); });
     }
   }
 
