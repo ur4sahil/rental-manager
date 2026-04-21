@@ -197,11 +197,16 @@ export function escapeHtml(str) {
   if (!str) return "";
   return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
 }
-// Sanitize user input for Supabase PostgREST filter strings (.or, .ilike, .like)
-// Escapes characters that have special meaning in PostgREST filter syntax
+// Sanitize user input for Supabase PostgREST filter strings (.or, .ilike, .like).
+// The only characters SQL LIKE treats as wildcards are %, _ and \ (the
+// default escape). Commas + parens are ONLY meaningful on the .or()
+// separator boundary, not inside a value, and stars are a PostgREST URL
+// alias for % — so escaping them had no benefit but produced broken
+// matches for legitimate values like "Smith (executor)". Narrowed to
+// the three chars that actually matter.
 export function escapeFilterValue(val) {
   if (!val) return "";
-  return String(val).replace(/[%_,.*()\\]/g, c => "\\" + c);
+  return String(val).replace(/[%_\\]/g, c => "\\" + c);
 }
 
 // Case-insensitive email equality. `_` in a raw .ilike pattern is a SQL
