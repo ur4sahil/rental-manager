@@ -30,6 +30,15 @@ function deriveKeyFromSalt(saltBytes) {
   return crypto.pbkdf2Sync(MASTER_KEY, saltBytes, 100000, 32, "sha256");
 }
 
+// PBKDF2 at 100k iterations is ~100ms per derivation. A page that
+// decrypts N credential rows under the same legacy scheme used to
+// burn N × (1 or 2) derivations; cache the winning key per
+// (companyId, scheme) for the lifetime of the serverless instance.
+const _legacyKeyCache = new Map();
+function legacyKeyCacheKey(companyId, scheme) { return companyId + "|" + scheme; }
+function getCachedLegacyKey(companyId, scheme) { return _legacyKeyCache.get(legacyKeyCacheKey(companyId, scheme)) || null; }
+function setCachedLegacyKey(companyId, scheme, key) { _legacyKeyCache.set(legacyKeyCacheKey(companyId, scheme), key); }
+
 function deriveLegacyV2Key(companyId) {
   return deriveKeyFromSalt(Buffer.from("propmanager_" + companyId + "_v2", "utf8"));
 }
@@ -177,21 +186,35 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ...out, salt: saltHex });
     }
     if (action === "decrypt") {
-      // Try candidate keys in order; use the first that authenticates. This
-      // lets pre-migration rows keep rendering without the frontend needing
-      // to know which legacy scheme was used.
+      // Try candidate keys in order; use the first that authenticates.
+      // This lets pre-migration rows keep rendering without the
+      // frontend needing to know which legacy scheme was used. Caches
+      // the winning legacy key per (companyId, scheme) so subsequent
+      // decrypts in the same serverless process skip re-deriving.
       let candidates;
       if (typeof salt === "string" && salt.length >= 16) {
-        candidates = [deriveKeyFromSalt(Buffer.from(salt, "hex"))];
-      } else if (legacyScheme === "teller") {
-        candidates = [deriveLegacyTellerKey(companyId)];
+        candidates = [{ key: deriveKeyFromSalt(Buffer.from(salt, "hex")), scheme: null }];
       } else {
-        candidates = [deriveLegacyV2Key(companyId), deriveLegacyV2FallbackKey(companyId)];
+        const scheme = legacyScheme === "teller" ? "teller" : "v2";
+        const cached = getCachedLegacyKey(companyId, scheme);
+        if (cached) {
+          candidates = [{ key: cached, scheme }];
+        } else if (scheme === "teller") {
+          candidates = [{ key: deriveLegacyTellerKey(companyId), scheme }];
+        } else {
+          candidates = [
+            { key: deriveLegacyV2Key(companyId), scheme },
+            { key: deriveLegacyV2FallbackKey(companyId), scheme: scheme + "-fallback" },
+          ];
+        }
       }
       let plain = null, lastErr = null;
-      for (const key of candidates) {
-        try { plain = decryptPayload(ciphertext, iv, key); break; }
-        catch (e) { lastErr = e; }
+      for (const cand of candidates) {
+        try {
+          plain = decryptPayload(ciphertext, iv, cand.key);
+          if (cand.scheme) setCachedLegacyKey(companyId, cand.scheme.replace(/-fallback$/, ""), cand.key);
+          break;
+        } catch (e) { lastErr = e; }
       }
       if (plain === null) throw lastErr || new Error("decryption failed");
       return res.status(200).json({ plaintext: plain });

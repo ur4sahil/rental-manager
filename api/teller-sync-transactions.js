@@ -189,12 +189,24 @@ module.exports = async function handler(req, res) {
           if (body.from_date) tellerTxns = tellerTxns.filter((t) => t.date >= body.from_date);
           if (body.to_date) tellerTxns = tellerTxns.filter((t) => t.date <= body.to_date);
 
-          // Get existing fingerprints for dedup
-          const { data: existingFps } = await supabase
+          // Dedup: scope the fingerprint fetch by the date window of the
+          // txns we're about to compare against. Previously this pulled
+          // every fingerprint for the feed regardless of age — fine at
+          // 500 txns per feed, painful at 10k+ where years of history
+          // stack up. Teller typically returns ~90 days; limit the
+          // lookup to the span of dates we actually see in this batch
+          // plus a small buffer.
+          const batchDates = tellerTxns.map(t => t.date).filter(Boolean).sort();
+          const minDate = batchDates[0] || "";
+          const maxDate = batchDates[batchDates.length - 1] || "";
+          let fpQuery = supabase
             .from("bank_feed_transaction")
             .select("fingerprint_hash")
             .eq("bank_account_feed_id", feed.id)
             .eq("company_id", conn.company_id);
+          if (minDate) fpQuery = fpQuery.gte("posted_date", minDate);
+          if (maxDate) fpQuery = fpQuery.lte("posted_date", maxDate);
+          const { data: existingFps } = await fpQuery;
           const existingSet = new Set((existingFps || []).map((f) => f.fingerprint_hash));
 
           const inserts = [];
