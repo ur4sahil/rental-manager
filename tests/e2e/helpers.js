@@ -50,8 +50,19 @@ async function login(page) {
 }
 
 /**
- * Navigate to a sidebar module by label text
+ * Navigate to a sidebar module by label text.
+ *
+ * Sidebar was reorganized: Maintenance, Utilities, HOA Payments, Loans,
+ * Insurance, Tax Bills, and Inspections are now nested under a
+ * collapsed "Properties" expander. Clicking their buttons fails until
+ * the parent is expanded. This helper auto-expands when the target
+ * isn't visible.
  */
+const NESTED_UNDER_PROPERTIES = new Set([
+  'Maintenance', 'Utilities', 'HOA Payments', 'Loans',
+  'Insurance', 'Tax Bills', 'Inspections',
+]);
+
 async function navigateTo(page, label) {
   // On mobile: open hamburger first
   const hamburger = page.locator('button:has-text("menu")').first();
@@ -59,7 +70,17 @@ async function navigateTo(page, label) {
     await hamburger.click();
     await page.waitForTimeout(300);
   }
-  await page.locator(`button:has-text("${label}")`).first().click();
+  const target = page.locator(`button:has-text("${label}")`).first();
+  // If target isn't visible and it's known-nested under Properties,
+  // expand the Properties group first.
+  if (NESTED_UNDER_PROPERTIES.has(label) && !await target.isVisible({ timeout: 1000 }).catch(() => false)) {
+    const chevron = page.locator('button:has(span:has-text("expand_more"))').first();
+    if (await chevron.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await chevron.click();
+      await page.waitForTimeout(400);
+    }
+  }
+  await target.click();
   await page.waitForTimeout(1500);
 }
 

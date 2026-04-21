@@ -33,51 +33,15 @@ test.describe('Tenants Module', () => {
     await search.fill('');
   });
 
-  test('add tenant button opens form', async ({ page }) => {
-    const addBtn = page.locator('button:has-text("Add"), button:has-text("add")').first();
-    await expect(addBtn).toBeVisible({ timeout: 5000 });
-    await addBtn.click();
-    await page.waitForTimeout(500);
-    const nameInput = page.locator('input[placeholder*="name" i], input[placeholder*="Name"]').first();
-    await expect(nameInput).toBeVisible({ timeout: 3000 });
-  });
-
-  test('tenant form has email, phone, property fields', async ({ page }) => {
-    const addBtn = page.locator('button:has-text("Add"), button:has-text("add")').first();
-    await addBtn.click();
-    await page.waitForTimeout(500);
-    await expect(page.locator('input[type="email"], input[placeholder*="email" i]').first()).toBeVisible({ timeout: 3000 });
-    await expect(page.locator('input[placeholder*="phone" i], input[type="tel"]').first()).toBeVisible({ timeout: 3000 });
-  });
-
-  test('tenant form validates email format', async ({ page }) => {
-    const addBtn = page.locator('button:has-text("Add"), button:has-text("add")').first();
-    await addBtn.click();
-    await page.waitForTimeout(500);
-    // Fill name but invalid email
-    const nameInput = page.locator('input[placeholder*="name" i], input[placeholder*="Name"]').first();
-    if (await nameInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await nameInput.fill('Test Tenant');
-      const emailInput = page.locator('input[type="email"], input[placeholder*="email" i]').first();
-      await emailInput.fill('not-an-email');
-      const saveBtn = page.locator('button:has-text("Save"), button:has-text("Add"), button:has-text("Create")').last();
-      await saveBtn.click();
-      await page.waitForTimeout(500);
-      // Should stay on form (validation failed)
-      await expect(nameInput).toBeVisible();
-    }
-  });
-
-  test('tenant form cancel closes modal', async ({ page }) => {
-    const addBtn = page.locator('button:has-text("Add"), button:has-text("add")').first();
-    await addBtn.click();
-    await page.waitForTimeout(500);
-    const cancelBtn = page.locator('button:has-text("Cancel")').first();
-    if (await cancelBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await cancelBtn.click();
-      await page.waitForTimeout(300);
-    }
-  });
+  // Tenant creation moved into the Property Setup Wizard (see
+  // src/components/Properties.js comment line 1262: "Tenants are added
+  // through the Property Setup Wizard"). The Tenants page no longer
+  // has a standalone "Add Tenant" button. Wizard coverage lives in
+  // 19-property-wizard.spec.js.
+  test.skip('add tenant button opens form', () => {});
+  test.skip('tenant form has email, phone, property fields', () => {});
+  test.skip('tenant form validates email format', () => {});
+  test.skip('tenant form cancel closes modal', () => {});
 
   test('tenant cards show lease status badges', async ({ page }) => {
     await page.waitForTimeout(2000);

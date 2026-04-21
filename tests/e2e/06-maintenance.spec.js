@@ -11,9 +11,12 @@ test.describe('Maintenance Module', () => {
   });
 
   test('shows seeded work orders', async ({ page }) => {
-    const hasWO = await page.locator('text=faucet').isVisible({ timeout: 5000 }).catch(() => false)
-      || await page.locator('text=AC').isVisible({ timeout: 5000 }).catch(() => false)
-      || await page.locator('text=Paint').isVisible({ timeout: 5000 }).catch(() => false);
+    // .first() to sidestep strict-mode violations — multiple WO rows
+    // match each keyword, and .isVisible() without .first() throws
+    // "strict mode violation" which the .catch() swallowed as false.
+    const hasWO = await page.locator('text=faucet').first().isVisible({ timeout: 5000 }).catch(() => false)
+      || await page.locator('text=AC').first().isVisible({ timeout: 5000 }).catch(() => false)
+      || await page.locator('text=Paint').first().isVisible({ timeout: 5000 }).catch(() => false);
     expect(hasWO).toBeTruthy();
   });
 
@@ -37,10 +40,10 @@ test.describe('Maintenance Module', () => {
 
   test('priority badges show correct colors', async ({ page }) => {
     await page.waitForTimeout(1500);
-    // Emergency should be red, normal blue, low gray
-    const emergencyBadge = page.locator('[class*="red"]').first();
-    const normalBadge = page.locator('[class*="blue"]').first();
-    // At least one priority badge should be visible
+    // Palette moved off literal "red"/"blue" Tailwind names to the
+    // brand-token classes (bg-danger-*, bg-info-*, bg-neutral-*).
+    const emergencyBadge = page.locator('[class*="danger"]').first();
+    const normalBadge = page.locator('[class*="info"]').first();
     const hasBadge = await emergencyBadge.isVisible().catch(() => false)
       || await normalBadge.isVisible().catch(() => false);
     expect(hasBadge).toBeTruthy();
@@ -55,10 +58,12 @@ test.describe('Maintenance Module', () => {
   });
 
   test('work order shows assigned vendor', async ({ page }) => {
-    await page.waitForTimeout(1500);
-    const hasVendor = await page.locator('text=Mike Plumber').isVisible().catch(() => false)
-      || await page.locator('text=CoolAir').isVisible().catch(() => false)
-      || await page.locator('text=QuickPaint').isVisible().catch(() => false);
+    // isVisible() with no timeout checks synchronously and can return
+    // false even when the text will render a moment later. Use explicit
+    // timeouts so Playwright waits for the DOM update.
+    const hasVendor = await page.locator('text=Mike Plumber').first().isVisible({ timeout: 5000 }).catch(() => false)
+      || await page.locator('text=CoolAir').first().isVisible({ timeout: 2000 }).catch(() => false)
+      || await page.locator('text=QuickPaint').first().isVisible({ timeout: 2000 }).catch(() => false);
     expect(hasVendor).toBeTruthy();
   });
 
