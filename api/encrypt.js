@@ -155,6 +155,17 @@ module.exports = async function handler(req, res) {
     .maybeSingle();
   if (!membership) return res.status(403).json({ error: "Not a member of this company" });
 
+  // Credential actions are restricted to admin/owner/pm. Without this
+  // check a company member with role=tenant could POST to /api/encrypt
+  // with action=decrypt and recover any credential stored for the
+  // company — utility passwords, HOA logins, Teller access tokens. The
+  // UI never shows credentials to tenants, but the API enforced no
+  // role gate, so the guard has to live here.
+  const CRED_ROLES = new Set(["admin", "owner", "pm"]);
+  if (!CRED_ROLES.has(membership.role)) {
+    return res.status(403).json({ error: "Insufficient role for credential operations" });
+  }
+
   try {
     if (action === "encrypt") {
       // Write new ciphertext under v3 (per-credential salt). Honour a
