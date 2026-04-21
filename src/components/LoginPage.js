@@ -172,7 +172,10 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   return (
   <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex flex-col">
   <nav className="flex items-center justify-between px-8 py-4">
-  <button onClick={onBack} className="text-xl font-bold text-brand-700">{"\u{1F3E1}"} PropManager</button>
+  <button onClick={onBack} className="flex items-center gap-2 text-xl font-bold text-brand-700">
+    <span className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shadow-lg shadow-brand-200"><span className="material-icons-outlined text-white text-sm">domain</span></span>
+    <span>PropManager</span>
+  </button>
   </nav>
   <div className="flex-1 flex items-center justify-center px-4">
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 w-full max-w-sm text-center">
@@ -192,7 +195,10 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   return (
   <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex flex-col">
   <nav className="flex items-center justify-between px-8 py-4">
-  <button onClick={onBack} className="text-xl font-bold text-brand-700">{"\u{1F3E1}"} PropManager</button>
+  <button onClick={onBack} className="flex items-center gap-2 text-xl font-bold text-brand-700">
+    <span className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shadow-lg shadow-brand-200"><span className="material-icons-outlined text-white text-sm">domain</span></span>
+    <span>PropManager</span>
+  </button>
   </nav>
   <div className="flex-1 flex items-center justify-center px-4">
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 w-full max-w-sm">

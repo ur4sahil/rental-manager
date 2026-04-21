@@ -317,7 +317,10 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
   <div className="w-full max-w-2xl">
   <div className="text-center mb-8">
-  <div className="text-3xl font-bold text-brand-700 mb-1">{"\u{1F3E1}"} PropManager</div>
+  <div className="flex items-center justify-center gap-3 text-3xl font-bold text-brand-700 mb-1">
+    <span className="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center shadow-lg shadow-brand-200"><span className="material-icons-outlined text-white">domain</span></span>
+    <span>PropManager</span>
+  </div>
   <div className="text-sm text-neutral-400">Welcome, {currentUser?.email}</div>
   </div>
 
