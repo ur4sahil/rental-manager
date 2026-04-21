@@ -8,7 +8,7 @@ import { pmError } from "../utils/errors";
 import { printTheme, chartPalette } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
-import { safeLedgerInsert, checkPeriodLock, autoPostRecurringEntries, getPropertyClassId, resolveAccountId, getOrCreateTenantAR } from "../utils/accounting";
+import { safeLedgerInsert, checkPeriodLock, autoPostRecurringEntries, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, _acctIdCache } from "../utils/accounting";
 import { Spinner, PropertySelect } from "./shared";
 import { BankTransactions } from "./Banking";
 
@@ -2944,6 +2944,11 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   is_active: acct.is_active, description: acct.description || ""
   }).eq("company_id", companyId).eq("id", id);
   if (error) { pmError("PM-4006", { raw: error, context: "update account" }); return; }
+  // Drop the resolveAccountId cache for this company so name-keyed
+  // lookups don't keep returning the pre-rename UUID association.
+  // (Cross-company pollution was never possible, but within one
+  // company a rename didn't propagate until hard reload.)
+  if (_acctIdCache[companyId]) delete _acctIdCache[companyId];
   fetchAll();
   }
   async function toggleAccount(id, currentActive) {
