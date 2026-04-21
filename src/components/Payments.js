@@ -208,11 +208,15 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   const amt = safeNum(s.amount);
   // Look up tenant FIRST — we need tenant_id for the deterministic JE
   // reference so the unique index on (company_id, reference) catches
-  // double-posts. Scoping by (tenant_id, property) avoids the same-name
-  // collision bug that sent autopay to the wrong tenant before.
+  // double-posts. Scoping by (name, property) avoids the same-name
+  // collision bug that sent autopay to the wrong tenant before. Uses
+  // ilike for case-insensitive matching — the schedule row stored
+  // whatever casing the user typed, which may have drifted from the
+  // tenant row if the tenant was later renamed ("alice johnson" vs
+  // "Alice Johnson" otherwise silently produces tenantRow=null).
   const { data: tenantRow } = await supabase.from("tenants")
     .select("id, balance, email")
-    .eq("name", s.tenant)
+    .ilike("name", escapeFilterValue(s.tenant || ""))
     .eq("company_id", companyId)
     .eq("property", s.property)
     .maybeSingle();
@@ -264,16 +268,25 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
 
   function nextDue(s) {
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = s.start_date ? parseLocalDate(s.start_date) : today;
+  let next;
+  if (s.frequency === "weekly" || s.frequency === "biweekly") {
+  // Step from start_date in 7 or 14-day hops until we land on/past today.
+  const stepDays = s.frequency === "weekly" ? 7 : 14;
+  next = new Date(start.getTime());
+  while (next < today) next.setDate(next.getDate() + stepDays);
+  } else {
   const rawDay = parseInt(s.day_of_month) || 1;
-  // Clamp day to valid range for current month
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
   const day = Math.min(rawDay, daysInMonth);
-  const next = new Date(today.getFullYear(), today.getMonth(), day);
-  if (next <= today) {
+  next = new Date(today.getFullYear(), today.getMonth(), day);
+  if (next < today) {
   next.setMonth(next.getMonth() + 1);
   // Re-clamp for next month (e.g., 31 in Feb → 28)
   const nextDaysInMonth = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
   if (next.getDate() > nextDaysInMonth) next.setDate(nextDaysInMonth);
+  }
   }
   if (s.end_date && next > parseLocalDate(s.end_date)) return "Expired";
   return next.toLocaleDateString();
@@ -303,12 +316,14 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Payment Method</label><Select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })}>
   {["ACH", "card", "cash", "check"].map(m => <option key={m}>{m}</option>)}
   </Select></div>
+  {form.frequency === "monthly" && (
   <div>
   <label className="text-xs text-neutral-400 mb-1 block">Day of Month</label>
   <Select value={form.day_of_month} onChange={e => setForm({ ...form, day_of_month: e.target.value })} >
-  {Array.from({ length: 28 }, (_, i) => i + 1).map(d => <option key={d} value={String(d)}>{d}{d === 1 ? "st" : d === 2 ? "nd" : d === 3 ? "rd" : "th"}</option>)}
+  {Array.from({ length: 31 }, (_, i) => i + 1).map(d => <option key={d} value={String(d)}>{d}{d === 1 ? "st" : d === 2 ? "nd" : d === 3 ? "rd" : "th"}{d > 28 ? " (short-month clamp)" : ""}</option>)}
   </Select>
   </div>
+  )}
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Frequency</label><Select value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })}>
   <option value="monthly">Monthly</option>
   <option value="weekly">Weekly</option>
