@@ -900,7 +900,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       showToast(uploaded + " document" + (uploaded > 1 ? "s" : "") + " uploaded", "success");
       setDocUploadType("Lease");
       setDocDescription("");
-      if (tenantForm.tenant) await recomputeTenantDocStatus(companyId, tenantForm.tenant);
+      if (tenantForm.tenant) await recomputeTenantDocStatus(companyId, { tenantName: tenantForm.tenant, property: savedAddress });
     }
     setSaving(false);
     if (fileInputRef.current) fileInputRef.current.value = "";

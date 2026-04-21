@@ -1088,7 +1088,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   if (!await showConfirm({ message: `Delete document "${d.name}"?\n\nThis will remove the document from active views. It can be recovered within 180 days.`, variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from("documents").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email }).eq("id", d.id).eq("company_id", companyId);
   if (error) { pmError("PM-7004", { raw: error, context: "delete document" }); return; }
-  if (selectedTenant?.name) await recomputeTenantDocStatus(companyId, selectedTenant.name);
+  if (selectedTenant?.name) await recomputeTenantDocStatus(companyId, { tenantId: selectedTenant.id, tenantName: selectedTenant.name, property: selectedTenant.property });
   showToast("Document deleted: " + d.name, "success");
   logAudit("delete", "documents", "Deleted document: " + d.name + " (tenant: " + (selectedTenant?.name || "") + ")", d.id, userProfile?.email, userRole, companyId);
   fetchTenantDocs(selectedTenant);

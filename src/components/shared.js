@@ -305,7 +305,7 @@ export function DocUploadModal({ onClose, companyId, property, tenant, showToast
   tenant_visible: form.tenant_visible, uploaded_at: new Date().toISOString(),
   }]);
   if (insertErr) { pmError("PM-7003", { raw: insertErr, context: "document record insert after upload" }); setUploading(false); return; }
-  if (tenant) await recomputeTenantDocStatus(companyId, tenant);
+  if (tenant) await recomputeTenantDocStatus(companyId, { tenantName: tenant, property });
   showToast("Document uploaded", "success");
   setUploading(false);
   if (onUploaded) onUploaded();

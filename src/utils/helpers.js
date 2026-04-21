@@ -107,20 +107,29 @@ export function formatPhoneInput(value) {
 // Canonical list of required docs per tenant. The match keywords are tested as
 // case-insensitive substrings against both document.name and document.type.
 // A doc counts as satisfying a requirement if ANY of its keywords matches.
+// REQUIRED_TENANT_DOCS: each entry matches by explicit doc.type first
+// (authoritative — set by the upload widget's type dropdown), then falls
+// back to word-boundary name regex. Previous loose substring matching
+// flipped tenants to "complete" on false positives: video.pdf satisfied
+// "Government-Issued ID" because "video" contains "id", and
+// life_insurance_beneficiaries.pdf satisfied "Renters Insurance".
 export const REQUIRED_TENANT_DOCS = [
-  { label: "Signed Lease Agreement", match: ["lease"] },
-  { label: "Government-Issued ID", match: ["id", "government"] },
-  { label: "Renters Insurance", match: ["insurance"] },
-  { label: "Proof of Utility Transfer", match: ["utility"] },
+  { label: "Signed Lease Agreement", types: ["Lease"], nameRe: /\blease\b/i },
+  { label: "Government-Issued ID", types: ["ID"], nameRe: /\b(id|license|passport|government[-_\s]?issued)\b/i },
+  { label: "Renters Insurance", types: ["Insurance"], nameRe: /\b(renters?[-_\s]?insurance|rental[-_\s]?insurance)\b/i },
+  { label: "Proof of Utility Transfer", types: ["Receipt", "Other"], nameRe: /\b(utility|utilities)\b/i },
 ];
 
 // True if the given list of documents covers every REQUIRED_TENANT_DOCS entry.
 export function hasAllRequiredTenantDocs(docs) {
-  return REQUIRED_TENANT_DOCS.every(({ match }) =>
+  return REQUIRED_TENANT_DOCS.every(({ types, nameRe }) =>
     (docs || []).some(d => {
-      const n = (d?.name || "").toLowerCase();
-      const t = (d?.type || "").toLowerCase();
-      return match.some(m => n.includes(m) || t.includes(m));
+      const t = (d?.type || "").trim();
+      if (types.includes(t) && nameRe.test(d?.name || "")) return true;
+      // Fallback when the uploader didn't pick a matching type: accept
+      // if the filename itself is unambiguous. "insurance.pdf" alone
+      // still counts; "life_insurance.pdf" does not.
+      return nameRe.test(d?.name || "");
     })
   );
 }
@@ -128,22 +137,27 @@ export function hasAllRequiredTenantDocs(docs) {
 // Recompute and persist tenants.doc_status based on the tenant's current documents.
 // - Preserves "exception_approved" (admin-approved override)
 // - Otherwise sets "complete" when all required docs are present, else "pending_docs"
-export async function recomputeTenantDocStatus(companyId, tenantName) {
-  if (!companyId || !tenantName) return;
-  const { data: rows } = await supabase
-    .from("tenants")
-    .select("id, doc_status")
-    .eq("company_id", companyId)
-    .ilike("name", tenantName)
-    .is("archived_at", null);
+//
+// Accepts either (companyId, tenantName) for legacy callers OR
+// (companyId, { tenantId, tenantName, property }) for the preferred
+// id-scoped path. documents.tenant_id doesn't exist in this schema, so
+// the docs scan still has to filter by name — but we also scope by
+// property when provided so two tenants sharing a name at different
+// addresses don't cross-count uploads.
+export async function recomputeTenantDocStatus(companyId, tenantOrOpts) {
+  if (!companyId || !tenantOrOpts) return;
+  const opts = typeof tenantOrOpts === "string" ? { tenantName: tenantOrOpts } : (tenantOrOpts || {});
+  const { tenantId, tenantName, property } = opts;
+  if (!tenantId && !tenantName) return;
+  let tRowsQ = supabase.from("tenants").select("id, doc_status").eq("company_id", companyId).is("archived_at", null);
+  tRowsQ = tenantId ? tRowsQ.eq("id", tenantId) : tRowsQ.ilike("name", tenantName);
+  const { data: rows } = await tRowsQ;
   const targets = (rows || []).filter(r => r.doc_status !== "exception_approved");
   if (targets.length === 0) return;
-  const { data: docs } = await supabase
-    .from("documents")
-    .select("name, type")
-    .eq("company_id", companyId)
-    .ilike("tenant", tenantName)
-    .is("archived_at", null);
+  let docsQ = supabase.from("documents").select("name, type").eq("company_id", companyId).is("archived_at", null);
+  if (tenantName) docsQ = docsQ.eq("tenant", tenantName);
+  if (property) docsQ = docsQ.eq("property", property);
+  const { data: docs } = await docsQ;
   const nextStatus = hasAllRequiredTenantDocs(docs) ? "complete" : "pending_docs";
   await supabase
     .from("tenants")
