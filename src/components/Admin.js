@@ -1238,16 +1238,35 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   async function deleteAccount() {
   if (deleteText !== "DELETE") return;
   setDeleting(true);
-  // Remove all company memberships
+  // Phase 1: soft-delete memberships + flip app_users.status. These
+  // are the user-visible effects and can be undone by an admin via DB.
   const { data: memberships } = await supabase.from("company_members").select("company_id").ilike("user_email", emailFilterValue(currentUser?.email));
   if (memberships) {
   for (const m of memberships) {
   await supabase.from("company_members").update({ status: "removed" }).eq("company_id", m.company_id).ilike("user_email", emailFilterValue(currentUser?.email));
   }
   }
-  // Sign out (actual auth account deletion requires admin API — flag for manual cleanup)
   await supabase.from("app_users").update({ status: "deleted", deleted_at: new Date().toISOString() }).ilike("email", emailFilterValue(currentUser?.email));
-  showToast("Account deactivated. You will be signed out.", "info");
+
+  // Phase 2: delete the Supabase auth row via server route. Until now
+  // the auth row stayed alive — the user could still sign in, and any
+  // UI path that didn't re-check app_users.status granted access.
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const tok = session?.access_token;
+    if (tok) {
+      const resp = await fetch("/api/self-delete-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tok },
+      });
+      if (!resp.ok) {
+        const j = await resp.json().catch(() => ({}));
+        showToast("Account data cleared, but auth delete failed: " + (j.error || resp.status) + ". Contact support to finish.", "warning");
+      }
+    }
+  } catch (_) { /* best effort; soft-delete already done */ }
+
+  showToast("Account deleted. You will be signed out.", "info");
   setTimeout(async () => { await supabase.auth.signOut(); }, 1500);
   }
 
