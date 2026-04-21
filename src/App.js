@@ -169,6 +169,12 @@ const pageComponents = {
   tax_bills: TaxBills,
   admin: AdminPage,
   leases: LeaseManagement,
+  // LateFees is the per-tenant late-fee application page. Rule DEFAULTS
+  // live on the Admin Settings tab, but the per-tenant apply flow needs
+  // its own route (it was silently dropped from the map during an
+  // earlier refactor — the component itself is still live). Hash
+  // route #latefees now renders it again.
+  latefees: LateFees,
   vendors: VendorManagement,
   owners: OwnerManagement,
   notifications: EmailNotifications,
