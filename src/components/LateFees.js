@@ -91,7 +91,9 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
       pmError("PM-6003", { raw: { message: "Cannot compute percent late fee: tenant.rent is not set for " + payment.tenant }, context: "applyLateFee", silent: true });
       return;
     }
-    feeAmount = Math.round(rentBase * safeNum(rule.fee_amount) / 100);
+    // Preserve cents. Math.round on the raw product would throw away
+    // sub-dollar precision — $1250 × 5.1% = $63.75 silently became $64.
+    feeAmount = Math.round(rentBase * safeNum(rule.fee_amount)) / 100;
   }
   if (!Number.isFinite(feeAmount) || feeAmount <= 0) {
     pmError("PM-6003", { raw: { message: "Computed late fee is invalid: " + feeAmount }, context: "applyLateFee", silent: true });

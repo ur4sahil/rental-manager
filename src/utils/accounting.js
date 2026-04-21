@@ -496,20 +496,20 @@ export async function autoPostRecurringEntries(companyId) {
       const endDay   = parseInt(lease.end_date.split("-")[2], 10)   || daysInMonth;
       const days = Math.max(1, endDay - startDay + 1);
       if (days < daysInMonth) {
-        postAmount = Math.round(safeNum(entry.amount) * days / daysInMonth);
+        postAmount = Math.round(safeNum(entry.amount) * days / daysInMonth * 100) / 100;
         postDesc = (entry.description || "Recurring entry") + ` (prorated ${days}/${daysInMonth} days — lease ${lease.start_date} → ${lease.end_date})`;
       }
     } else if (startsMidMonth) {
       const startDay = parseInt(lease.start_date.split("-")[2], 10) || 1;
       const days = Math.max(1, daysInMonth - startDay + 1);
       if (days < daysInMonth) {
-        postAmount = Math.round(safeNum(entry.amount) * days / daysInMonth);
+        postAmount = Math.round(safeNum(entry.amount) * days / daysInMonth * 100) / 100;
         postDesc = (entry.description || "Recurring entry") + ` (prorated ${days}/${daysInMonth} days — lease starts ${lease.start_date})`;
       }
     } else if (endsMidMonth) {
       const endDay = parseInt(lease.end_date.split("-")[2], 10) || 0;
       if (endDay > 0 && endDay < daysInMonth) {
-        postAmount = Math.round(safeNum(entry.amount) * endDay / daysInMonth);
+        postAmount = Math.round(safeNum(entry.amount) * endDay / daysInMonth * 100) / 100;
         postDesc = (entry.description || "Recurring entry") + ` (prorated ${endDay}/${daysInMonth} days — lease ends ${lease.end_date})`;
       }
     }
