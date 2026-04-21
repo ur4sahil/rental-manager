@@ -323,7 +323,7 @@ export async function getPropertyClassId(propertyAddress, companyId) {
 // Maps bare account codes ("1000") to UUID primary keys in acct_accounts.
 // Uses the `code` column. Falls back to name matching. Auto-creates missing accounts.
 export const _acctIdCache = {};
-export const _acctCodeToName = { "1000": "Checking Account", "1100": "Accounts Receivable", "2100": "Security Deposits Held", "2200": "Owner Distributions Payable", "4000": "Rental Income", "4010": "Late Fee Income", "4100": "Other Income", "4200": "Management Fee Income", "5300": "Repairs & Maintenance", "5400": "Utilities Expense", "5500": "Bad Debt Expense", "5600": "Mortgage/Loan Payment", "5610": "Legal & Eviction Costs", "5710": "Property Taxes" };
+export const _acctCodeToName = { "1000": "Checking Account", "1100": "Accounts Receivable", "2100": "Security Deposits Held", "2110": "Accounts Payable", "2200": "Owner Distributions Payable", "4000": "Rental Income", "4010": "Late Fee Income", "4100": "Other Income", "4200": "Management Fee Income", "5300": "Repairs & Maintenance", "5400": "Utilities Expense", "5500": "Bad Debt Expense", "5600": "Mortgage/Loan Payment", "5610": "Legal & Eviction Costs", "5710": "Property Taxes" };
 export async function resolveAccountId(bareCode, companyId) {
   if (!companyId) return null;
   const cid = companyId;

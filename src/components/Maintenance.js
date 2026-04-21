@@ -149,6 +149,11 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   if (existingWoJE && existingWoJE.length > 0) { addNotification("⚠️", "Accounting entry already exists for this work order"); fetchWorkOrders(); return; }
   const classId = await getPropertyClassId(wo.property, companyId);
   const amt = safeNum(wo.cost);
+  // WO completion posts as a bill received, not as cash-out. Default CR
+  // to 2110 Accounts Payable — the PM can mark it paid later via bank
+  // reconciliation. Previous default of 1000 Checking overstated
+  // cash-out and ignored any non-cash payment (credit card, owner
+  // reimbursement, vendor on account).
   const _jeOk = await autoPostJournalEntry({
   companyId,
   date: formatLocalDate(new Date()),
@@ -157,7 +162,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   property: wo.property,
   lines: [
   { account_id: "5300", account_name: "Repairs & Maintenance", debit: amt, credit: 0, class_id: classId, memo: `${wo.issue} — ${wo.assigned || "unassigned"}` },
-  { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid for: ${wo.issue}` },
+  { account_id: "2110", account_name: "Accounts Payable", debit: 0, credit: amt, class_id: classId, memo: `AP owed for: ${wo.issue}${wo.assigned ? " (" + wo.assigned + ")" : ""}` },
   ]
   });
   if (!_jeOk) { pmError("PM-4001", { raw: new Error("JE post failed"), context: "posting work order accounting entry" }); }
