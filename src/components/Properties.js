@@ -765,11 +765,24 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         const { data: tFallback } = await supabase.from("tenants").select("id").eq("company_id", companyId).eq("property", addr).is("archived_at", null).eq("lease_status", "active").maybeSingle();
         if (tFallback) tenantId = tFallback.id;
       }
-      // Check if accounting entries already exist (prevents double-posting on re-edit)
-      const { data: existingJEs } = await supabase.from("acct_journal_entries").select("id, description").eq("company_id", companyId).eq("property", addr).neq("status", "voided").limit(10);
-      const tNameLower = tName.toLowerCase();
-      const hasRentJE = (existingJEs || []).some(je => je.description?.toLowerCase().includes(tNameLower) && (je.description?.toLowerCase().includes("rent")));
-      const hasDepJE = (existingJEs || []).some(je => je.description?.toLowerCase().includes(tNameLower) && je.description?.toLowerCase().includes("deposit"));
+      // Deterministic references for the wizard's posted JEs — lets us
+      // dedup by exact-match on `reference` instead of fuzzy-matching
+      // tenant name + keyword inside `description`. The old check
+      // treated any JE whose description contained both the tenant's
+      // name and the word "rent" as "already posted" — a custom JE
+      // like "Renter complaint resolved — Alice" would make the
+      // wizard skip Alice's actual first-month rent. Conversely a
+      // real rent JE for "Alice Smith" would be seen as already
+      // posted when adding "Alice Johnson" at the same address
+      // whose name happens to share the substring "Alice".
+      const leaseStartKey = (tenantForm.lease_start || "").replace(/-/g, "") || "START";
+      const depRef = "DEP-T" + tenantId + "-" + leaseStartKey;
+      const rentRef = "RENT1-T" + tenantId + "-" + leaseStartKey;
+      const prorentRef = "PRORENT-T" + tenantId + "-" + leaseStartKey;
+      const { data: existingJEs } = await supabase.from("acct_journal_entries").select("id, reference").eq("company_id", companyId).in("reference", [depRef, rentRef, prorentRef]).neq("status", "voided");
+      const postedRefs = new Set((existingJEs || []).map(j => j.reference));
+      const hasDepJE = postedRefs.has(depRef);
+      const hasRentJE = postedRefs.has(rentRef) || postedRefs.has(prorentRef);
       if (tenantId) {
       // Create AR sub-account
       await getOrCreateTenantAR(companyId, tName, tenantId);
@@ -778,7 +791,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
       if (dep > 0 && !hasDepJE) {
       const classId = await getPropertyClassId(addr, companyId);
       const tenantArId = await getOrCreateTenantAR(companyId, tName, tenantId);
-      const depOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start, description: "Security deposit received — " + tName + " — " + addr, reference: "DEP-" + shortId(), property: addr,
+      const depOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start, description: "Security deposit received — " + tName + " — " + addr, reference: depRef, property: addr,
       lines: [
       { account_id: tenantArId, account_name: "AR - " + tName, debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + tName },
       { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: tName + " — " + addr },
@@ -802,7 +815,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             const proratedAmount = Math.round(monthlyRent * remainingDays / daysInMonth * 100) / 100;
             const proOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start,
               description: `Prorated rent (${remainingDays}/${daysInMonth} days) — ${tName} — ${addr.split(",")[0]}`,
-              reference: "PRORENT-" + shortId(), property: addr,
+              reference: prorentRef, property: addr,
               lines: [
                 { account_id: tenantArId2, account_name: "AR - " + tName, debit: proratedAmount, credit: 0, class_id: classId2, memo: "Prorated first month rent" },
                 { account_id: revenueId2, account_name: "Rental Income", debit: 0, credit: proratedAmount, class_id: classId2, memo: `${remainingDays}/${daysInMonth} days @ $${monthlyRent}/mo` },
@@ -821,7 +834,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
           } else {
             const fullOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start,
               description: `First month rent — ${tName} — ${addr.split(",")[0]}`,
-              reference: "RENT1-" + shortId(), property: addr,
+              reference: rentRef, property: addr,
               lines: [
                 { account_id: tenantArId2, account_name: "AR - " + tName, debit: monthlyRent, credit: 0, class_id: classId2, memo: "First month rent" },
                 { account_id: revenueId2, account_name: "Rental Income", debit: 0, credit: monthlyRent, class_id: classId2, memo: "Full month rent" },
