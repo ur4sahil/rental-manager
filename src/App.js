@@ -490,7 +490,13 @@ function AppInner() {
   setActiveCompany(company);
   try { localStorage.setItem("lastCompanyId", company.id); } catch (_e) { pmError("PM-8006", { raw: _e, context: "save lastCompanyId to localStorage", silent: true }); }
   checkRPCHealth(company.id).then(m => setMissingRPCs(m)).catch(() => {});
-  loadCompanySettings(company.id).then(s => setCompanySettings(s)).catch(() => {});
+  loadCompanySettings(company.id).then(s => {
+    setCompanySettings(s);
+    // Transient DB failure → we're rendering defaults that don't match
+    // the stored config. Warn the user so they don't unknowingly save
+    // default values over their real settings.
+    if (s?._loadError) showToast("Couldn't load your company settings (" + s._loadError + "). Don't save the Settings tab until this refreshes.", "warning");
+  }).catch(() => {});
   loadInboxNotifications(company.id);
   registerPushNotifications();
   // Auto-run daily notification check (rent reminders, lease expiry)

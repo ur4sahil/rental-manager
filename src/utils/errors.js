@@ -208,21 +208,37 @@ export async function reportError(code) {
       // for looking up admin recipients from the company.
       if (_activeCompanyId) {
         try {
-          await supabase.from("notification_queue").insert([{
-            company_id: _activeCompanyId,
-            type: "error_reported",
-            recipient_email: (_currentUserEmail || "anonymous").toLowerCase(),
-            data: {
-              error_code: code,
-              error_log_id: data.id,
-              message: data.message,
-              context: data.context || null,
-              meta: data.meta || {},
-              reported_by: _currentUserEmail || "anonymous",
-              reported_role: _currentUserRole || "unknown",
-            },
-            status: "pending",
-          }]);
+          // Notify every active admin for this company — previous version
+          // wrote the reporter's own email as the recipient, so the queue
+          // consumer would have emailed the user their own report. Fall
+          // back to the reporter only when no admins resolve (fresh
+          // company with no admin provisioned yet).
+          const { data: admins } = await supabase
+            .from("company_members")
+            .select("user_email")
+            .eq("company_id", _activeCompanyId)
+            .eq("status", "active")
+            .in("role", ["admin", "owner"]);
+          const recipients = (admins || []).map(a => (a.user_email || "").toLowerCase()).filter(Boolean);
+          const targets = recipients.length > 0 ? recipients : [(_currentUserEmail || "anonymous").toLowerCase()];
+          const payload = {
+            error_code: code,
+            error_log_id: data.id,
+            message: data.message,
+            context: data.context || null,
+            meta: data.meta || {},
+            reported_by: _currentUserEmail || "anonymous",
+            reported_role: _currentUserRole || "unknown",
+          };
+          await supabase.from("notification_queue").insert(
+            targets.map(email => ({
+              company_id: _activeCompanyId,
+              type: "error_reported",
+              recipient_email: email,
+              data: payload,
+              status: "pending",
+            }))
+          );
         } catch (_) { /* queue insert failure shouldn't block the UX */ }
       }
     }

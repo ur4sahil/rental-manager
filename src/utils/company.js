@@ -1,6 +1,6 @@
 import { supabase } from "../supabase";
 import { pmError } from "./errors";
-import { safeNum, emailFilterValue } from "./helpers";
+import { safeNum, emailFilterValue, escapeFilterValue } from "./helpers";
 import { COMPANY_DEFAULTS } from "../config";
 
 // ============ COMPANY-SCOPED SUPABASE HELPERS ============
@@ -119,12 +119,18 @@ export async function runDataIntegrityChecks(companyId, { deep = false } = {}) {
       }
     }
 
-    // PM-9002: Active tenants with no lease (deep only)
+    // PM-9002: Active tenants with no lease (deep only). Prefer tenant_id
+    // matching (authoritative); fall back to case-insensitive name match
+    // only for legacy lease rows without tenant_id. Previous eq("tenant_name")
+    // was case-sensitive and reported false positives for any lease whose
+    // tenant_name casing drifted from the tenant row.
     if (deep) {
       const { data: activeTenants } = await supabase.from("tenants").select("id, name, property").eq("company_id", companyId).is("archived_at", null).eq("lease_status", "active").limit(INTEGRITY_MAX_TENANTS);
       for (const t of (activeTenants || [])) {
-        const { data: lease } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("tenant_name", t.name).eq("status", "active").limit(1).maybeSingle();
-        if (!lease) {
+        let q = supabase.from("leases").select("id").eq("company_id", companyId).eq("status", "active");
+        q = t.id ? q.or(`tenant_id.eq.${t.id},tenant_name.ilike.${escapeFilterValue(t.name)}`) : q.ilike("tenant_name", escapeFilterValue(t.name));
+        const { data: leaseRows } = await q.limit(1);
+        if (!leaseRows || leaseRows.length === 0) {
           violations.push({ code: "PM-9002", details: `Tenant "${t.name}" at ${t.property} has no active lease`, meta: { tenantId: t.id, tenantName: t.name } });
         }
       }
@@ -191,21 +197,29 @@ export async function runDataIntegrityChecks(companyId, { deep = false } = {}) {
 
 // ============ COMPANY SETTINGS ============
 // Loads company settings, merging DB values over COMPANY_DEFAULTS.
-// Returns a plain object with all setting keys guaranteed.
+// Returns { settings, loadError? }. Previously returned a bare object of
+// defaults on fetch failure, which meant a transient DB error looked
+// identical to "no row exists" — the Settings UI would render the
+// defaults and, if the user saved, overwrite real stored values with
+// them. Now surfaces the failure so callers can avoid the write path.
 export async function loadCompanySettings(companyId) {
-  if (!companyId) return { ...COMPANY_DEFAULTS };
+  if (!companyId) return { ...COMPANY_DEFAULTS, _loadError: null };
   try {
-    const { data } = await supabase.from("company_settings").select("*").eq("company_id", companyId).maybeSingle();
-    if (!data) return { ...COMPANY_DEFAULTS };
-    // Merge: DB values override defaults, skip nulls/undefined
+    const { data, error } = await supabase.from("company_settings").select("*").eq("company_id", companyId).maybeSingle();
+    if (error) {
+      pmError("PM-8006", { raw: error, context: "load company settings — fetch failed, returning defaults with _loadError flag", silent: true });
+      return { ...COMPANY_DEFAULTS, _loadError: error.message || "Settings fetch failed" };
+    }
+    if (!data) return { ...COMPANY_DEFAULTS, _loadError: null };
     const merged = { ...COMPANY_DEFAULTS };
     for (const key of Object.keys(COMPANY_DEFAULTS)) {
       if (data[key] != null) merged[key] = data[key];
     }
+    merged._loadError = null;
     return merged;
   } catch (e) {
     pmError("PM-8006", { raw: e, context: "load company settings", silent: true });
-    return { ...COMPANY_DEFAULTS };
+    return { ...COMPANY_DEFAULTS, _loadError: e.message || "Settings fetch crashed" };
   }
 }
 

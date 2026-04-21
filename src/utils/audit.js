@@ -18,11 +18,25 @@ export const AUDIT_MODULES = new Set([
 export async function logAudit(action, module, details = "", recordId = "", userEmail = "", userRoleVal = "unknown", companyId) {
   try {
   // Validate action and module to prevent injection of arbitrary audit entries.
-  // A rejection means the caller passed a value not in the whitelist — that's a
-  // code bug, not a data-integrity event, so we report it as PM-8007 (validation)
-  // rather than PM-9001 (unbalanced JE) which paged us at fatal severity.
-  if (!AUDIT_ACTIONS.has(action)) { pmError("PM-8007", { raw: { message: "invalid audit action: " + action }, context: "logAudit validation", silent: true }); return; }
-  if (!AUDIT_MODULES.has(module)) { pmError("PM-8007", { raw: { message: "invalid audit module: " + module }, context: "logAudit validation", silent: true }); return; }
+  // Previous behavior dropped the row entirely on unknown action/module —
+  // so any new module added to the app without updating this file silently
+  // never produced audit entries. A dropped row is a worse audit outcome
+  // than a row with "(unknown action: X)" stamped in the details, so we
+  // now fall back to safe placeholders and still write the row.
+  let safeAction = action;
+  let actionUnknown = false;
+  if (!AUDIT_ACTIONS.has(action)) {
+    pmError("PM-8007", { raw: { message: "invalid audit action: " + action }, context: "logAudit validation — preserving as 'update' with unknown marker", silent: true });
+    safeAction = "update";
+    actionUnknown = true;
+  }
+  let safeModule = module;
+  let moduleUnknown = false;
+  if (!AUDIT_MODULES.has(module)) {
+    pmError("PM-8007", { raw: { message: "invalid audit module: " + module }, context: "logAudit validation — preserving with unknown marker", silent: true });
+    safeModule = "settings"; // catch-all that exists in the whitelist
+    moduleUnknown = true;
+  }
   if (!userEmail) {
   const { data: { user } } = await supabase.auth.getUser();
   userEmail = user?.email || "unknown";
@@ -31,7 +45,13 @@ export async function logAudit(action, module, details = "", recordId = "", user
   // Sanitize audit details: truncate, strip HTML, redact sensitive patterns
   let safeDetails = String(details || "").replace(/<[^>]*>/g, "").slice(0, 500);
   safeDetails = safeDetails.replace(/password[:\s=]*\S+/gi, "password:[REDACTED]").replace(/(token|secret|key|access_token)[:\s=]*\S+/gi, "$1:[REDACTED]");
-  const { error: _err130 } = await supabase.from("audit_trail").insert([{ company_id: companyId, action, module, details: safeDetails, record_id: recordId ? String(recordId) : "", user_email: normalizeEmail(userEmail), user_role: userRoleVal }]);
+  // Prepend an unknown-marker so the audit trail stays self-describing
+  // when a new action/module shows up without a whitelist update.
+  const marker = [];
+  if (actionUnknown) marker.push("action_unknown=" + String(action).slice(0, 32));
+  if (moduleUnknown) marker.push("module_unknown=" + String(module).slice(0, 32));
+  if (marker.length) safeDetails = "[" + marker.join(" ") + "] " + safeDetails;
+  const { error: _err130 } = await supabase.from("audit_trail").insert([{ company_id: companyId, action: safeAction, module: safeModule, details: safeDetails, record_id: recordId ? String(recordId) : "", user_email: normalizeEmail(userEmail), user_role: userRoleVal }]);
   if (_err130) pmError("PM-8006", { raw: _err130, context: "audit log insert", silent: true });
   } catch (e) { pmError("PM-8006", { raw: e, context: "audit log", silent: true }); }
 }
