@@ -154,9 +154,16 @@ export async function autoPostJournalEntry({ date, description, reference, prope
   resolvedLines[i].account_id = await resolveAccountId(resolvedLines[i].account_id, cid);
   }
   }
-  // Step 1: Insert journal entry header (collision-safe sequential number)
+  // Step 1: Insert journal entry header (collision-safe sequential number).
+  // Two unique indexes can trip 23505 here:
+  //   - acct_journal_entries.number (per-company running number)
+  //   - idx_je_company_reference_unique (company_id, reference)
+  // Retrying an insert only helps the first — incrementing `attempt`
+  // rolls the number forward. A reference collision means the dedup
+  // guard did its job: caller asked to post the same deterministic
+  // reference twice, which is a no-op, not an error worth retrying.
   let jeRow = null, jeErr = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 5; attempt++) {
   const { data: lastJE } = await supabase.from("acct_journal_entries").select("number").eq("company_id", cid).order("created_at", { ascending: false }).limit(1).maybeSingle();
   const lastNum = lastJE?.number ? parseInt(lastJE.number.replace(/\D/g, "")) || 0 : 0;
   const jeNumber = "JE-" + String(lastNum + 1 + attempt).padStart(4, "0");
@@ -164,7 +171,20 @@ export async function autoPostJournalEntry({ date, description, reference, prope
   company_id: cid, number: jeNumber, date, description, reference: reference || "", property: property || "", status
   }]).select("id").maybeSingle());
   if (!jeErr && jeRow) break; // success
-  if (jeErr && !jeErr.message?.includes("unique")) break; // non-duplicate error, don't retry
+  // Classify the unique-violation by constraint name / detail rather
+  // than retrying blindly. Supabase returns the Postgres error with
+  // .code='23505' and .details mentioning the column; .message also
+  // leaks the constraint name on most setups.
+  const msg = (jeErr?.message || "") + " " + (jeErr?.details || "");
+  const isNumberCollision = /\b(number)\b|acct_journal_entries_number/i.test(msg);
+  const isReferenceCollision = /\b(reference)\b|idx_je_company_reference_unique/i.test(msg);
+  if (isReferenceCollision) {
+    // Dedup fired — the caller's deterministic ref already exists. Not
+    // retryable. Treat as the idempotent no-op it represents.
+    pmError("PM-4002", { raw: jeErr, context: "JE reference already posted (dedup) — reference=" + (reference || "(none)"), silent: true, meta: { reference, dedup: true } });
+    return null;
+  }
+  if (!isNumberCollision) break; // some other failure — don't loop
   }
   if (jeErr || !jeRow) { pmError("PM-4002", { raw: jeErr, context: "journal entry insert" }); return null; }
   // Step 2: Insert journal entry lines (with company_id for RLS)
