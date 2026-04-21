@@ -209,29 +209,43 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   if (!distForm.amount || isNaN(Number(distForm.amount)) || Number(distForm.amount) <= 0) { showToast("Enter a valid amount.", "error"); return; }
   const amt = Number(distForm.amount);
   const classId = await getPropertyClassId(properties.find(p => String(p.owner_id) === String(owner.id))?.address || "", companyId);
-  const distResult = await atomicPostJEAndLedger({ companyId,
-  date: formatLocalDate(new Date()),
-  description: `Owner distribution — ${owner.name}`,
-  reference: `DIST-${shortId()}`,
-  property: "",
-  lines: [
-  { account_id: "2200", account_name: "Owner Distributions Payable", debit: amt, credit: 0, class_id: classId, memo: `Distribution to ${owner.name}` },
-  { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid to ${owner.name} via ${distForm.method}` },
-  ], requireJE: false });
-  if (!distResult.jeId) showToast("Warning: Distribution GL entry failed — please post manually in Accounting.", "error");
-
-  const { error: distErr } = await supabase.from("owner_distributions").insert([{
+  // Insert owner_distributions FIRST, then post the JE. Previous order
+  // was JE → dist with a soft warning on JE failure, but the code kept
+  // going and wrote the dist row anyway — the next statement run saw a
+  // paid distribution with no matching GL entry and couldn't reconcile.
+  // Now: on JE post failure we delete the dist row, matching the
+  // dist-first-then-JE-with-rollback pattern already used by
+  // autoOwnerDistribution in utils/accounting.js.
+  const distRef = distForm.reference || "DIST-" + shortId();
+  const { data: distRow, error: distErr } = await supabase.from("owner_distributions").insert([{
   company_id: companyId,
   owner_id: owner.id,
   owner_name: owner.name,
   amount: amt,
   method: distForm.method,
-  reference: distForm.reference || "DIST-" + shortId(),
+  reference: distRef,
   date: formatLocalDate(new Date()),
   notes: distForm.notes,
   status: "paid",
-  }]);
+  }]).select("id").maybeSingle();
   if (distErr) { pmError("PM-8006", { raw: distErr, context: "save owner distribution" }); return; }
+
+  const distResult = await atomicPostJEAndLedger({ companyId,
+  date: formatLocalDate(new Date()),
+  description: `Owner distribution — ${owner.name}`,
+  reference: distRef,
+  property: "",
+  lines: [
+  { account_id: "2200", account_name: "Owner Distributions Payable", debit: amt, credit: 0, class_id: classId, memo: `Distribution to ${owner.name}` },
+  { account_id: "1000", account_name: "Checking Account", debit: 0, credit: amt, class_id: classId, memo: `Paid to ${owner.name} via ${distForm.method}` },
+  ], requireJE: false });
+  if (!distResult.jeId) {
+  // Roll back the dist row so owner_statements + GL stay consistent.
+  if (distRow?.id) await supabase.from("owner_distributions").delete().eq("id", distRow.id).eq("company_id", companyId);
+  pmError("PM-6004", { raw: { message: "JE failed — dist row rolled back" }, context: "payOwner manual distribution" });
+  showToast("Distribution GL entry failed — the distribution was not recorded. Please retry.", "error");
+  return;
+  }
 
   addNotification("💰", `$${amt.toLocaleString()} distributed to ${owner.name}`);
   logAudit("create", "owner_distributions", `Distribution: $${amt} to ${owner.name} via ${distForm.method}`, "", userProfile?.email, userRole, companyId);
