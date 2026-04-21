@@ -4,45 +4,44 @@ import { pmError } from "./errors";
 import { logAudit } from "./audit";
 import { queueNotification } from "./notifications";
 
-// Safely insert a ledger entry — auto-calculates running balance if not provided
+// Safely insert a ledger entry. The running balance is computed
+// server-side inside the same DB transaction as the insert via
+// insert_ledger_entry_with_balance — this replaces the previous
+// client-side read-then-insert pattern that (a) raced under concurrent
+// writes and (b) silently set balance=0 on every fallback row because
+// the lookup query filtered on ledger_entries.archived_at (a column
+// that doesn't exist in this schema — the query always errored and the
+// catch block swallowed it). An explicit non-zero balance passed by
+// the caller is honored as before; otherwise the RPC computes it.
 export async function safeLedgerInsert(entry) {
-  // Auto-calculate running balance unless caller provides a non-zero value
-  if (!entry.balance || entry.balance === 0) {
-    try {
-      // Running balance lookup requires tenant_id — two tenants sharing a
-      // name across properties used to fall through an ILIKE-on-tenant
-      // branch that mixed their balances. If the caller doesn't provide
-      // tenant_id (non-tenant ledger rows like utility expenses, or legacy
-      // call sites) skip the balance calc and leave balance=0.
-      if (entry.tenant_id) {
-        let query = supabase.from("ledger_entries").select("balance").eq("company_id", entry.company_id).eq("tenant_id", entry.tenant_id).is("archived_at", null);
-        if (entry.property) query = query.eq("property", entry.property);
-        const { data: prev } = await query.order("date", { ascending: false }).order("created_at", { ascending: false }).limit(1).maybeSingle();
-        const prevBal = safeNum(prev?.balance);
-        const amt = safeNum(entry.amount);
-        // Charges increase balance (tenant owes more), payments decrease it
-        const increasesBalance = ["charge", "late_fee", "expense", "deposit_deduction"].includes(entry.type);
-        const decreasesBalance = ["payment", "credit", "deposit_return", "void"].includes(entry.type);
-        if (increasesBalance) entry.balance = prevBal + amt;
-        else if (decreasesBalance) entry.balance = prevBal - amt;
-        else entry.balance = prevBal + amt; // deposit, adjustment — use amount as-is
-      } else if (entry.tenant) {
-        // Tenant name present but no id — don't ilike-match (that's the
-        // cross-tenant leak). Flag it so we can find legacy callers and
-        // plumb tenant_id through.
-        pmError("PM-6005", { raw: { message: "safeLedgerInsert called with tenant name but no tenant_id — balance not computed" }, context: "ledger balance — missing tenant_id", silent: true, meta: { tenant: entry.tenant, type: entry.type } });
-        entry.balance = 0;
-      } else {
-        entry.balance = 0; // non-tenant ledger row (e.g. utility expense)
+  const useRpc = !(entry.balance && entry.balance !== 0);
+  if (useRpc) {
+    const { data, error } = await supabase.rpc("insert_ledger_entry_with_balance", {
+      p_company_id: entry.company_id,
+      p_tenant: entry.tenant || null,
+      p_tenant_id: entry.tenant_id || null,
+      p_property: entry.property || null,
+      p_date: entry.date || null,
+      p_description: entry.description || null,
+      p_amount: safeNum(entry.amount),
+      p_type: entry.type || null,
+    });
+    if (error) {
+      // If the RPC isn't deployed yet, fall through to the direct insert
+      // with balance=0 so we don't drop the audit row. Otherwise surface.
+      const notDeployed = error.message?.includes("insert_ledger_entry_with_balance") && error.message?.includes("Could not find the function");
+      if (!notDeployed) {
+        pmError("PM-6005", { raw: error, context: "ledger entry insert via RPC", silent: true, meta: { type: entry.type, tenant_id: entry.tenant_id } });
+        return false;
       }
-    } catch (e) {
-      pmError("PM-6005", { raw: e, context: "ledger balance calculation", silent: true });
-      entry.balance = 0;
+      pmError("PM-6005", { raw: error, context: "ledger RPC missing — direct insert with balance=0", silent: true });
+    } else {
+      return !!data;
     }
   }
-  const { error } = await supabase.from("ledger_entries").insert([entry]); // entry.company_id set by caller
+  const { error } = await supabase.from("ledger_entries").insert([{ ...entry, balance: safeNum(entry.balance) }]);
   if (error) {
-  pmError("PM-6005", { raw: error, context: "ledger entry insert", silent: true, meta: { type: entry.type, tenant_id: entry.tenant_id } });
+    pmError("PM-6005", { raw: error, context: "ledger entry insert", silent: true, meta: { type: entry.type, tenant_id: entry.tenant_id } });
   }
   return !error;
 }
