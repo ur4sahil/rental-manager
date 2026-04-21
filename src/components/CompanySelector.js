@@ -227,49 +227,77 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   }
 
   const [deleting, setDeleting] = useState(null); // company id being deleted
+  const [openMenu, setOpenMenu] = useState(null); // company id whose kebab menu is open
+  // Typed-name confirmation modal. Holds the company + derived flags so
+  // the modal can show Teller warning + record count before the admin
+  // types the name. Previous flow was a single yes/no dialog, which made
+  // a misclick on a subtle red "Delete" link catastrophic.
+  const [deleteModal, setDeleteModal] = useState(null);
+  const [deleteTyped, setDeleteTyped] = useState("");
 
-  async function deleteCompany(company) {
+  // Close kebab menu on outside click.
+  useEffect(() => {
+  if (!openMenu) return;
+  const close = () => setOpenMenu(null);
+  window.addEventListener("click", close);
+  return () => window.removeEventListener("click", close);
+  }, [openMenu]);
+
+  async function openDeleteFlow(company) {
   if (deleting) return;
-  // Check if company has data
-  const [props, tenants, payments] = await Promise.all([
+  setOpenMenu(null);
+  // Gather pre-flight info — record count + Teller connection — so the
+  // modal can show an honest impact summary instead of "no data found"
+  // when in fact the company has bank tokens on file.
+  const [props, tenants, payments, bankConn] = await Promise.all([
   supabase.from("properties").select("id", { count: "exact", head: true }).eq("company_id", company.id),
   supabase.from("tenants").select("id", { count: "exact", head: true }).eq("company_id", company.id),
   supabase.from("payments").select("id", { count: "exact", head: true }).eq("company_id", company.id),
+  supabase.from("bank_connection").select("id", { count: "exact", head: true }).eq("company_id", company.id),
   ]);
   const totalRecords = (props.count || 0) + (tenants.count || 0) + (payments.count || 0);
   const isEmpty = totalRecords === 0;
+  setDeleteTyped("");
+  setDeleteModal({
+  company,
+  counts: { properties: props.count || 0, tenants: tenants.count || 0, payments: payments.count || 0 },
+  hasTeller: (bankConn.count || 0) > 0,
+  mode: isEmpty ? "hard" : "archive",
+  });
+  }
 
-  if (isEmpty) {
-  // Empty company — hard delete with warning
-  if (!await showConfirm({ message: '\u26A0\uFE0F PERMANENTLY DELETE "' + company.name + '"?\n\nThis company has no data and will be deleted immediately. This cannot be undone.', variant: "danger", confirmText: "Delete Permanently" })) return;
+  async function confirmDelete() {
+  if (!deleteModal) return;
+  const company = deleteModal.company;
+  if (deleteTyped !== company.name) { showToast("Company name doesn't match — type it exactly to confirm.", "error"); return; }
   setDeleting(company.id);
   try {
-  // Delete all related records in parallel, then company
-  const results = await Promise.allSettled([
-  supabase.from("company_members").delete().eq("company_id", company.id),
-  supabase.from("app_users").delete().eq("company_id", company.id),
-  supabase.from("acct_accounts").delete().eq("company_id", company.id),
-  supabase.from("acct_classes").delete().eq("company_id", company.id),
-  supabase.from("notification_settings").delete().eq("company_id", company.id),
-  ]);
-  const failures = results.filter(r => r.status === "rejected");
-  if (failures.length > 0) { showToast("Warning: " + failures.length + " related table(s) failed to clean up.", "warning"); }
-  const { error: delErr } = await supabase.from("companies").delete().eq("id", company.id);
-  if (delErr) { showToast("Error deleting company: " + delErr.message, "error"); setDeleting(null); return; }
-  logAudit("delete", "companies", "Permanently deleted company: " + company.name, company.id, currentUser?.email, "admin", company.id);
-  showToast('"' + company.name + '" permanently deleted.', "success");
-  } catch (e) { showToast("Error deleting company: " + e.message, "error"); }
+  if (deleteModal.mode === "hard") {
+  // Server-side atomic teardown via RPC. The old client-side
+  // Promise.allSettled over five tables left audit/journal/bank
+  // rows orphaned (including encrypted Teller tokens).
+  const { data, error } = await supabase.rpc("hard_delete_company", { p_company_id: company.id });
+  if (error) {
+  pmError("PM-8006", { raw: error, context: "hard_delete_company RPC" });
+  showToast("Error deleting company: " + error.message, "error");
+  return;
+  }
+  logAudit("delete", "companies", "Permanently deleted company: " + company.name + " (" + (data?.total_rows_deleted || 0) + " rows)", company.id, currentUser?.email, "admin", company.id);
+  showToast('"' + company.name + '" permanently deleted (' + (data?.total_rows_deleted || 0) + ' rows).', "success");
   } else {
-  // Company with data — archive for 180 days
-  if (!await showConfirm({ message: '\u26A0\uFE0F ARCHIVE "' + company.name + '"?\n\nThis company has ' + totalRecords + ' records (' + (props.count || 0) + ' properties, ' + (tenants.count || 0) + ' tenants, ' + (payments.count || 0) + ' payments).\n\nIt will be moved to the master archive and automatically purged after 180 days. During this period, contact support to restore it.\n\nThis action cannot be easily undone.', variant: "danger", confirmText: "Archive Company" })) return;
-  setDeleting(company.id);
-  await supabase.from("companies").update({ archived_at: new Date().toISOString(), archived_by: currentUser?.email }).eq("id", company.id);
-  // Deactivate all memberships
+  const { error: archErr } = await supabase.from("companies").update({ archived_at: new Date().toISOString(), archived_by: currentUser?.email }).eq("id", company.id);
+  if (archErr) { showToast("Error archiving company: " + archErr.message, "error"); return; }
   await supabase.from("company_members").update({ status: "removed" }).eq("company_id", company.id);
+  logAudit("archive", "companies", "Archived company: " + company.name, company.id, currentUser?.email, "admin", company.id);
   showToast('"' + company.name + '" archived. Will be purged after 180 days.', "success");
   }
+  } catch (e) { showToast("Error: " + e.message, "error"); }
+  finally {
   setDeleting(null);
+  setDeleteModal(null);
+  setDeleteTyped("");
   fetchCompanies();
+  }
   }
 
   if (loading) return <div className="flex items-center justify-center h-screen bg-brand-50/30"><Spinner /></div>;
@@ -314,7 +342,20 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   </div>
   <div className="flex items-center gap-2 shrink-0 ml-3">
   <a href={window.location.origin + window.location.pathname + "?company=" + encodeURIComponent(c.id) + "#dashboard"} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.stopPropagation(); }} className="text-brand-600 text-xs font-medium hover:underline flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>Open</a>
-  {!["tenant", "owner"].includes(c.memberRole) && <TextLink tone="danger" size="xs" underline={false} onClick={(e) => { e.stopPropagation(); deleteCompany(c); }} disabled={deleting === c.id} className="hover:bg-danger-50 px-2 py-1 rounded-lg transition-colors disabled:opacity-50">{deleting === c.id ? "Deleting..." : "Delete"}</TextLink>}
+  {c.memberRole === "admin" && (
+  <div className="relative">
+  <button onClick={(e) => { e.stopPropagation(); setOpenMenu(openMenu === c.id ? null : c.id); }} disabled={deleting === c.id} className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 disabled:opacity-50" aria-label="More actions">
+  <span className="material-icons-outlined text-lg">more_vert</span>
+  </button>
+  {openMenu === c.id && (
+  <div onClick={(e) => e.stopPropagation()} className="absolute right-0 top-full mt-1 bg-white border border-brand-100 rounded-xl shadow-lg min-w-[160px] z-10 py-1">
+  <button onClick={() => openDeleteFlow(c)} className="w-full text-left px-4 py-2 text-sm text-danger-600 hover:bg-danger-50 flex items-center gap-2">
+  <span className="material-icons-outlined text-base">delete</span>Delete company
+  </button>
+  </div>
+  )}
+  </div>
+  )}
   </div>
   </div>
   ))}
@@ -442,6 +483,48 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   )}
 
   </div>
+
+  {/* Delete-confirmation modal — typed name required */}
+  {deleteModal && (() => {
+  const isHard = deleteModal.mode === "hard";
+  const nameMatches = deleteTyped === deleteModal.company.name;
+  const disabled = !nameMatches || deleting === deleteModal.company.id;
+  return (
+  <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4">
+  <div className="bg-white rounded-3xl shadow-card border border-danger-200 w-full max-w-md">
+  <div className="px-6 py-4 border-b border-danger-100 bg-danger-50/60 rounded-t-3xl">
+  <h3 className="font-manrope font-bold text-danger-700 text-lg flex items-center gap-2">
+  <span className="material-icons-outlined text-xl">{isHard ? "delete_forever" : "archive"}</span>
+  {isHard ? "Permanently delete" : "Archive"} "{deleteModal.company.name}"?
+  </h3>
+  </div>
+  <div className="px-6 py-5 space-y-3 text-sm text-neutral-700">
+  {isHard ? (
+  <p>This company has no properties, tenants, or payments. Every related row (journal entries, ledger, bank connections, audit, documents, work orders, etc.) will be <strong>permanently deleted</strong>. This cannot be undone.</p>
+  ) : (
+  <p>This company has {deleteModal.counts.properties} properties, {deleteModal.counts.tenants} tenants, and {deleteModal.counts.payments} payments. It will be archived for 180 days and then automatically purged. Contact support during that window to restore it.</p>
+  )}
+  {deleteModal.hasTeller && (
+  <div className="bg-warn-50 border border-warn-200 rounded-xl px-3 py-2 text-warn-800 text-xs">
+  <span className="material-icons-outlined text-sm align-middle mr-1">warning</span>
+  This company has a connected Teller bank account. The stored credentials will be {isHard ? "deleted" : "retained with the archive"}.
+  </div>
+  )}
+  <div>
+  <label className="text-xs font-medium text-neutral-500 uppercase tracking-widest block mb-1">Type <span className="font-mono text-danger-600 normal-case">{deleteModal.company.name}</span> to confirm</label>
+  <Input value={deleteTyped} onChange={e => setDeleteTyped(e.target.value)} placeholder={deleteModal.company.name} autoFocus />
+  </div>
+  </div>
+  <div className="px-6 py-4 border-t border-brand-50 flex justify-end gap-3">
+  <Btn variant="slate" onClick={() => { setDeleteModal(null); setDeleteTyped(""); }}>Cancel</Btn>
+  <Btn variant="danger-fill" onClick={confirmDelete} disabled={disabled}>
+  {deleting === deleteModal.company.id ? (isHard ? "Deleting…" : "Archiving…") : (isHard ? "Delete forever" : "Archive company")}
+  </Btn>
+  </div>
+  </div>
+  </div>
+  );
+  })()}
   </div>
   );
 }
