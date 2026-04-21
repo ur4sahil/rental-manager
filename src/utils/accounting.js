@@ -9,16 +9,14 @@ export async function safeLedgerInsert(entry) {
   // Auto-calculate running balance unless caller provides a non-zero value
   if (!entry.balance || entry.balance === 0) {
     try {
-      // Find latest ledger entry for this tenant to get previous balance.
-      // When we know the property, scope the lookup to it — a tenant who
-      // rents two units should not see Property A's balance leak into
-      // Property B's running total.
-      let query = supabase.from("ledger_entries").select("balance").eq("company_id", entry.company_id).is("archived_at", null);
-      if (entry.tenant_id) query = query.eq("tenant_id", entry.tenant_id);
-      else if (entry.tenant) query = query.ilike("tenant", escapeFilterValue(entry.tenant));
-      else { entry.balance = 0; } // No tenant context — can't compute balance
-      if (entry.property) query = query.eq("property", entry.property);
-      if (entry.tenant_id || entry.tenant) {
+      // Running balance lookup requires tenant_id — two tenants sharing a
+      // name across properties used to fall through an ILIKE-on-tenant
+      // branch that mixed their balances. If the caller doesn't provide
+      // tenant_id (non-tenant ledger rows like utility expenses, or legacy
+      // call sites) skip the balance calc and leave balance=0.
+      if (entry.tenant_id) {
+        let query = supabase.from("ledger_entries").select("balance").eq("company_id", entry.company_id).eq("tenant_id", entry.tenant_id).is("archived_at", null);
+        if (entry.property) query = query.eq("property", entry.property);
         const { data: prev } = await query.order("date", { ascending: false }).order("created_at", { ascending: false }).limit(1).maybeSingle();
         const prevBal = safeNum(prev?.balance);
         const amt = safeNum(entry.amount);
@@ -28,6 +26,14 @@ export async function safeLedgerInsert(entry) {
         if (increasesBalance) entry.balance = prevBal + amt;
         else if (decreasesBalance) entry.balance = prevBal - amt;
         else entry.balance = prevBal + amt; // deposit, adjustment — use amount as-is
+      } else if (entry.tenant) {
+        // Tenant name present but no id — don't ilike-match (that's the
+        // cross-tenant leak). Flag it so we can find legacy callers and
+        // plumb tenant_id through.
+        pmError("PM-6005", { raw: { message: "safeLedgerInsert called with tenant name but no tenant_id — balance not computed" }, context: "ledger balance — missing tenant_id", silent: true, meta: { tenant: entry.tenant, type: entry.type } });
+        entry.balance = 0;
+      } else {
+        entry.balance = 0; // non-tenant ledger row (e.g. utility expense)
       }
     } catch (e) {
       pmError("PM-6005", { raw: e, context: "ledger balance calculation", silent: true });

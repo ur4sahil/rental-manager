@@ -128,7 +128,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   // Create ledger entry for deposit collection
   if (tenant?.id) {
   await safeLedgerInsert({ company_id: companyId,
-  tenant: form.tenant_name, property: form.property, date: form.start_date,
+  tenant: form.tenant_name, tenant_id: tenant.id, property: form.property, date: form.start_date,
   description: "Security deposit collected", amount: dep, type: "deposit", balance: 0,
   });
   if (!_jeOk) { showToast("Accounting entry failed. The operation was recorded but the journal entry could not be posted. Please check the accounting module.", "error"); }
@@ -231,7 +231,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   if (_err4670) { showToast("Error updating properties: " + _err4670.message, "error"); return; }
   // Create termination ledger entry
   await safeLedgerInsert({ company_id: companyId,
-  tenant: lease.tenant_name, property: lease.property, date: formatLocalDate(new Date()),
+  tenant: lease.tenant_name, tenant_id: lease.tenant_id || null, property: lease.property, date: formatLocalDate(new Date()),
   description: "Lease terminated", amount: 0, type: "adjustment", balance: 0,
   });
   }
@@ -297,7 +297,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   if (returned > 0 && lease.tenant_id) {
   runningBalance -= returned;
   await safeLedgerInsert({ company_id: companyId,
-  tenant: lease.tenant_name, property: lease.property, date: depositForm.return_date,
+  tenant: lease.tenant_name, tenant_id: lease.tenant_id, property: lease.property, date: depositForm.return_date,
   description: "Security deposit returned", amount: -returned, type: "deposit_return", balance: runningBalance,
   });
   const { error: depBalErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: lease.tenant_id, p_amount_change: -returned });
@@ -306,7 +306,7 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   if (deducted > 0 && lease.tenant_id) {
   runningBalance += deducted;
   await safeLedgerInsert({ company_id: companyId,
-  tenant: lease.tenant_name, property: lease.property, date: depositForm.return_date,
+  tenant: lease.tenant_name, tenant_id: lease.tenant_id, property: lease.property, date: depositForm.return_date,
   description: "Deposit deduction: " + depositForm.deductions, amount: deducted, type: "deposit_deduction", balance: runningBalance,
   });
   }

@@ -3061,7 +3061,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   if (balErr) showToast("Balance update failed: " + balErr.message + ". Please verify the tenant balance.", "error");
   } catch (e) { pmError("PM-6002", { raw: e, context: "void balance RPC", silent: true }); }
   await safeLedgerInsert({ company_id: companyId,
-  tenant: tenantName.trim(), property: je.property || "",
+  tenant: tenantName.trim(), tenant_id: tenantRow.id, property: je.property || "",
   date: formatLocalDate(new Date()),
   description: "Voided: " + (je.description || "").slice(0, 60),
   amount: -arImpact, type: "void", balance: 0,
