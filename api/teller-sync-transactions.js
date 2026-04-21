@@ -197,6 +197,30 @@ module.exports = async function handler(req, res) {
 
             if (existingSet.has(fp)) continue;
 
+            // Persist a minimal whitelist of fields rather than the full
+            // Teller payload. The upstream txn object can include ACH
+            // processor details, counterparty routing fragments, and
+            // merchant enrichment PII that we don't need to serve the
+            // UI. Keeping only the fields the reconciler actually reads
+            // reduces the blast radius if RLS on bank_feed_transaction
+            // ever slipped.
+            const sanitizedPayload = {
+              id: txn.id,
+              date: txn.date,
+              amount: txn.amount,
+              description: txn.description,
+              type: txn.type,
+              status: txn.status,
+              running_balance: txn.running_balance,
+              details: txn.details ? {
+                category: txn.details.category,
+                processing_status: txn.details.processing_status,
+                counterparty: txn.details.counterparty ? {
+                  name: txn.details.counterparty.name,
+                  type: txn.details.counterparty.type,
+                } : undefined,
+              } : undefined,
+            };
             inserts.push({
               company_id: conn.company_id,
               bank_account_feed_id: feed.id,
@@ -214,7 +238,7 @@ module.exports = async function handler(req, res) {
               balance_after: txn.running_balance ? parseFloat(txn.running_balance) : null,
               fingerprint_hash: fp,
               status: "for_review",
-              raw_payload_json: txn,
+              raw_payload_json: sanitizedPayload,
             });
           }
 
