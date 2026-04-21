@@ -264,7 +264,7 @@ export async function uploadMessageAttachment(file, companyId) {
 // Left pane: tenant conversation list with unread counts.
 // Right pane: selected conversation thread + composer.
 // ============================================================
-function Messages({ companyId, userProfile, userRole, showToast }) {
+function Messages({ companyId, userProfile, userRole, showToast, showConfirm }) {
   const [tenants, setTenants] = useState([]);
   const [allMsgs, setAllMsgs] = useState([]);  // last 500 per-company rollup
   const [threadMsgs, setThreadMsgs] = useState([]);
@@ -410,7 +410,7 @@ function Messages({ companyId, userProfile, userRole, showToast }) {
   // never touches the other party's rows.
   async function handleDelete(m) {
     if (!m?.id) return;
-    if (!window.confirm("Delete this message? The tenant will no longer see it.")) return;
+    if (!await showConfirm({ message: "Delete this message? The tenant will no longer see it.", variant: "danger", confirmText: "Delete" })) return;
     const { error } = await supabase.from("messages").delete().eq("id", m.id).eq("company_id", companyId);
     if (error) { pmError("PM-8006", { raw: error, context: "Messages delete" }); return; }
     logAudit("delete", "messages", "Deleted message " + m.id, m.id, userProfile?.email, userRole, companyId);

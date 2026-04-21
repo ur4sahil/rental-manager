@@ -272,7 +272,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
 
   async function deleteOwnMessage(m) {
   if (!m?.id || !tenantData) return;
-  if (!window.confirm("Delete this message? Your property manager will no longer see it.")) return;
+  if (!await showConfirm({ message: "Delete this message? Your property manager will no longer see it.", variant: "danger", confirmText: "Delete" })) return;
   // Scope delete to this tenant's own row — safety net on top of the UI-
   // side rule that only outgoing bubbles expose the trash affordance.
   const { error } = await supabase.from("messages").delete()

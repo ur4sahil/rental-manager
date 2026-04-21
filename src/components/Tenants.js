@@ -597,7 +597,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
 
   async function deleteStaffMessage(m) {
   if (!m?.id || !selectedTenant) return;
-  if (!window.confirm("Delete this message? The tenant will no longer see it.")) return;
+  if (!await showConfirm({ message: "Delete this message? The tenant will no longer see it.", variant: "danger", confirmText: "Delete" })) return;
   const { error } = await supabase.from("messages").delete()
     .eq("id", m.id)
     .eq("company_id", companyId)
