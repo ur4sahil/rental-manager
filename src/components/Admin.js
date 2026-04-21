@@ -277,13 +277,13 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   try { respJson = await resp.json(); } catch (_) {}
   addNotification("✉️", `Invite sent to ${user.name} (${roleName})`);
   logAudit("create", "team", "Invited " + user.name + " as " + roleName + ": " + user.email, user.id || "", "", "admin", companyId);
-  if (respJson.fallback_action_link) {
-  // Email delivery failed upstream — surface the raw link so the admin
-  // can deliver it out-of-band rather than leaving the invite dead.
-  try { await navigator.clipboard.writeText(respJson.fallback_action_link); } catch (_) {}
-  showToast(`Email delivery failed for ${user.email}. A login link was generated and copied to your clipboard — send it to them directly.`, "warning");
+  if (respJson.already_registered) {
+  // User already has a Housify account. No auth email fires — the
+  // membership row is now on their Company Selector as a pending
+  // invite; they accept it on next login.
+  showToast(`${user.email} already has an account. They'll see your invite as "Pending Invites" on their Company Selector the next time they sign in.`, "success");
   } else {
-  showToast(`Invite sent to ${user.email}!\n\nThey will receive a magic link to log in.\n\nIf they don't see it, they can use 'Forgot Password' on the login page to set their password.`, "success");
+  showToast(`Invite sent to ${user.email}!\n\nThey will receive an invite email to set up their account.`, "success");
   }
   } catch (e) {
   showToast("Error sending invite: " + e.message, "error");
