@@ -6,7 +6,7 @@ const { login, navigateTo, goToPage } = require('./helpers');
 // ═══════════════════════════════════════════════════
 test('Landing page renders correctly', async ({ page }) => {
   await page.goto('/', { timeout: 30000 });
-  await expect(page.locator('text=PropManager').first()).toBeVisible();
+  await expect(page.locator('text=Housify').first()).toBeVisible();
   // Could be "Sign In" or "Login" depending on deploy
   const hasAuth = await page.locator('text=Sign In').first().isVisible().catch(() => false)
     || await page.locator('text=Login').first().isVisible().catch(() => false);
@@ -23,7 +23,7 @@ test('Login and Logout work', async ({ page }) => {
   await page.click('button:has-text("Logout")');
   await page.waitForTimeout(1000);
   // Should be back on landing
-  await expect(page.locator('text=PropManager').first()).toBeVisible();
+  await expect(page.locator('text=Housify').first()).toBeVisible();
 });
 
 // ═══════════════════════════════════════════════════

@@ -1,4 +1,4 @@
-# PropManager Deploy
+# Housify Deploy
 
 Full verification pipeline before deploying to production. Aborts on any failure.
 

@@ -234,7 +234,7 @@ export const STATE_NAMES = {AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",
 // Counties / independent cities the portfolio operates in. Mirrors the
 // FlipRadar active-counties registry (shared/counties.js) for the DMV,
 // plus Richmond City, Baltimore City, and York County PA that are
-// specific to PropManager's portfolio.
+// specific to Housify's portfolio.
 //
 // Totals: 1 DC + 11 MD + 14 VA + 1 PA = 27 jurisdictions.
 //

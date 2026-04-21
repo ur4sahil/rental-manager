@@ -8,7 +8,7 @@ test.describe('Landing Page', () => {
   test('renders hero section with all elements', async ({ page }) => {
     await page.goto('/');
     // Logo / brand
-    await expect(page.locator('text=PropManager').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=Housify').first()).toBeVisible({ timeout: 10000 });
     // Hero headline
     await expect(page.locator('text=Property Management').first()).toBeVisible();
     // Sign In button in header
@@ -100,7 +100,7 @@ test.describe('Authentication', () => {
     await page.waitForTimeout(500);
     await page.locator('button:has-text("Logout")').first().click();
     await page.waitForTimeout(3000);
-    await expect(page.locator('text=PropManager').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=Housify').first()).toBeVisible({ timeout: 10000 });
   });
 
   test('PM signup form shows correct fields', async ({ page }) => {

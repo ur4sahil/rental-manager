@@ -1,7 +1,7 @@
 {
   "name": "propmanager-tests",
   "version": "2.0.0",
-  "description": "Comprehensive test suite for PropManager",
+  "description": "Comprehensive test suite for Housify",
   "main": "index.js",
   "scripts": {
     "test": "npm run test:infra && npm run test:schema && npm run test:data && npm run test:errors && npm run test:bank && npm run test:e2e",

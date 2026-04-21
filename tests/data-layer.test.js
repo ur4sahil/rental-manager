@@ -1610,7 +1610,7 @@ async function testAuditLogRedaction() {
 }
 
 async function run() {
-  console.log('🧪 PropManager Data Layer Tests');
+  console.log('🧪 Housify Data Layer Tests');
   console.log('================================');
   await testProperties();
   await testTenants();

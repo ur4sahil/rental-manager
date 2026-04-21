@@ -345,7 +345,7 @@ export function DocUploadModal({ onClose, companyId, property, tenant, showToast
   );
 }
 
-export function generatePaymentReceipt(payment, companyName = "PropManager") {
+export function generatePaymentReceipt(payment, companyName = "Housify") {
   const receiptDate = parseLocalDate(payment.date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   const receiptNum = "REC-" + String(payment.id || shortId()).slice(-8).toUpperCase();
 

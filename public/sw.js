@@ -4,14 +4,14 @@
 self.addEventListener('push', function(event) {
   const data = event.data ? event.data.json() : {};
   const options = {
-    body: data.message || 'New notification from PropManager',
+    body: data.message || 'New notification from Housify',
     icon: '/logo192.png',
     badge: '/logo192.png',
     data: { url: data.url || '/' },
     actions: data.actions || [],
   };
   event.waitUntil(
-    self.registration.showNotification(data.title || 'PropManager', options)
+    self.registration.showNotification(data.title || 'Housify', options)
   );
 });
 

@@ -28,7 +28,7 @@ async function login(page) {
 
   // Step 4: Wait for company selector to appear
   // The company selector shows "YOUR COMPANIES" heading and company rows
-  await page.locator('text=/YOUR COMPANIES|Your Companies|PropManager/i').first().waitFor({ state: 'visible', timeout: 15000 });
+  await page.locator('text=/YOUR COMPANIES|Your Companies|Housify/i').first().waitFor({ state: 'visible', timeout: 15000 });
   await page.waitForTimeout(1000);
 
   // Step 5: Open Sandbox LLC. Each row has TWO click targets: the

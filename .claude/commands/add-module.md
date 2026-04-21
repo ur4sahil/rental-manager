@@ -1,6 +1,6 @@
 # Add Module
 
-Scaffold a new PropManager page module with all required wiring.
+Scaffold a new Housify page module with all required wiring.
 
 ## Arguments
 `/add-module <ModuleName> [--nav-parent <parent_id>] [--role <roles>]`

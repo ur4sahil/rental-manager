@@ -1,6 +1,6 @@
 # Security Audit
 
-Run a comprehensive security scan of the PropManager codebase. Analyze all files in `src/` for vulnerabilities.
+Run a comprehensive security scan of the Housify codebase. Analyze all files in `src/` for vulnerabilities.
 
 ## Checks to perform
 

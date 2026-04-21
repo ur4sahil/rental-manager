@@ -9,7 +9,7 @@ export function LandingPage({ onGetStarted }) {
   <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shadow-lg shadow-brand-200">
   <span className="material-icons-outlined text-white text-sm">domain</span>
   </div>
-  <span className="font-manrope font-extrabold text-xl tracking-tight text-brand-900">PropManager</span>
+  <span className="font-manrope font-extrabold text-xl tracking-tight text-brand-900">Housify</span>
   </div>
   <Btn variant="primary" onClick={() => onGetStarted("login")}>Sign In</Btn>
   </nav>
@@ -75,7 +75,7 @@ export function LandingPage({ onGetStarted }) {
   </div>
   </div>
   <footer className="border-t border-brand-50 px-8 py-6 text-center text-xs text-neutral-400">
-  © 2026 PropManager by Sigma Housing LLC. All rights reserved.
+  © 2026 Housify by Sigma Housing LLC. All rights reserved.
   </footer>
   </div>
   );

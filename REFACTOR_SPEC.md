@@ -1,4 +1,4 @@
-# PropManager Code Split — Claude Code Specification
+# Housify Code Split — Claude Code Specification
 
 ## MISSION
 

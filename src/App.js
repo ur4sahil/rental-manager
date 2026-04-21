@@ -795,7 +795,7 @@ function AppInner() {
   <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shadow-lg shadow-brand-200">
   <span className="material-icons-outlined text-white text-sm">domain</span>
   </div>
-  <span className="font-manrope font-extrabold text-lg tracking-tight text-brand-900">PropManager</span>
+  <span className="font-manrope font-extrabold text-lg tracking-tight text-brand-900">Housify</span>
   </div>
   {activeCompany && (
   <div className="flex items-center justify-between mt-2">
