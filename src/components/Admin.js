@@ -10,9 +10,16 @@ import { COMPANY_DEFAULTS } from "../config";
 import { Spinner } from "./shared";
 
 // ============ ROLE DEFINITIONS ============
+// Mirror of ROLES in App.js. The two must stay in sync — App.js is
+// the source of truth for page access, Admin.js uses this to render
+// the role legend, the role dropdown, and the "customizable modules"
+// UI. The older in-file copy diverged over time (missing manager,
+// tax_bills, messages, latefees); keeping one canonical shape here
+// prevents that from silently happening again.
 const ROLES = {
-  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","insurance","accounting","owners","notifications","admin","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions"] },
-  office_assistant: { label: "Office Assistant", color: "bg-info-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","accounting","notifications","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
+  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","insurance","tax_bills","accounting","owners","notifications","messages","admin","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions","latefees"] },
+  manager: { label: "Manager", color: "bg-brand-400", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting","notifications","messages","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
+  office_assistant: { label: "Office Assistant", color: "bg-info-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting","notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
   accountant: { label: "Accountant", color: "bg-positive-600", pages: ["dashboard","accounting","payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-notice-500", pages: ["maintenance","vendors"] },
   tenant: { label: "Tenant", color: "bg-brand-50/300", pages: ["tenant_portal"] },
