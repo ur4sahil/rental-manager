@@ -244,14 +244,24 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   <option value="tenant,admin">Admin + Tenant</option>
   </Select>
   <div className="flex gap-1 mr-3">
-  {channels.map(ch => (
+  {channels.map(ch => {
+  // Supabase returns JSONB columns as already-parsed JS objects; older
+  // rows wrote them as serialized strings. Accept either so a mixed
+  // set doesn't crash the whole Notifications page.
+  const parseChannels = (x) => {
+    if (!x) return { in_app: true, email: true, push: false };
+    if (typeof x === 'object') return x;
+    try { return JSON.parse(x); } catch { return { in_app: true, email: true, push: false }; }
+  };
+  const currentChannels = parseChannels(s.channels);
+  return (
   <button key={ch} onClick={async () => {
-  const currentChannels = s.channels ? JSON.parse(s.channels) : { in_app: true, email: true, push: false };
-  currentChannels[ch] = !currentChannels[ch];
-  await supabase.from("notification_settings").update({ channels: JSON.stringify(currentChannels) }).eq("id", s.id).eq("company_id", companyId);
+  const next = { ...currentChannels, [ch]: !currentChannels[ch] };
+  await supabase.from("notification_settings").update({ channels: next }).eq("id", s.id).eq("company_id", companyId);
   fetchData();
-  }} className={"text-xs px-2 py-0.5 rounded " + ((s.channels ? JSON.parse(s.channels) : { in_app: true, email: true, push: false })[ch] ? "bg-brand-100 text-brand-700" : "bg-subtle-100 text-subtle-400")}>{channelLabels[ch]}</button>
-  ))}
+  }} className={"text-xs px-2 py-0.5 rounded " + (currentChannels[ch] ? "bg-brand-100 text-brand-700" : "bg-subtle-100 text-subtle-400")}>{channelLabels[ch]}</button>
+  );
+  })}
   </div>
   {s.days_before > 0 && (
   <div className="flex items-center gap-1">

@@ -71,8 +71,12 @@ test.describe('Accounting Module', () => {
     // The modal heading "New Account" is a more reliable signal than
     // placeholder matching — the Name input's placeholder is an
     // example value ("e.g. Operating Checking"), not the literal word
-    // "name".
-    await expect(page.locator('h3:has-text("New Account"), h2:has-text("New Account"), text=Account Name').first()).toBeVisible({ timeout: 3000 });
+    // "name". Split the locator: Playwright rejects mixing CSS
+    // `h2:has-text(...)` with engine-specific `text=...` inside one
+    // comma-separated selector string.
+    const headingVisible = await page.locator('h2:has-text("New Account"), h3:has-text("New Account")').first().isVisible({ timeout: 3000 }).catch(() => false);
+    const labelVisible = await page.getByText('Account Name').first().isVisible({ timeout: 3000 }).catch(() => false);
+    expect(headingVisible || labelVisible).toBeTruthy();
   });
 
   test('COA accounts show balances', async ({ page }) => {
