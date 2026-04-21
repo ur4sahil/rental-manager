@@ -10,7 +10,7 @@ import { guardSubmit, guardRelease, guarded, requireCompanyId } from "./utils/gu
 import { encryptCredential, decryptCredential } from "./utils/encryption";
 import { AUDIT_ACTIONS, AUDIT_MODULES, logAudit } from "./utils/audit";
 import { queueNotification } from "./utils/notifications";
-import { companyQuery, companyInsert, companyUpsert, checkRPCHealth, runDataIntegrityChecks, loadCompanySettings } from "./utils/company";
+import { companyQuery, companyInsert, companyUpsert, checkRPCHealth, runDataIntegrityChecks, loadCompanySettings, clearMembershipCache } from "./utils/company";
 import { COMPANY_DEFAULTS } from "./config";
 import { safeLedgerInsert, atomicPostJEAndLedger, postAccountingTransaction, checkPeriodLock, autoPostJournalEntry, checkAccrualExists, autoOwnerDistribution, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _acctCodeToName, _tenantArCache, _zipCache, lookupZip } from "./utils/accounting";
 import { ErrorBoundary, Badge, StatCard, Spinner, Modal, ToastContainer, ConfirmModal, PropertyDropdown, TenantSelect, PropertySelect, RecurringEntryModal, DocUploadModal, formatAllTenants, generatePaymentReceipt } from "./components/shared";
@@ -686,6 +686,7 @@ function AppInner() {
 
   async function handleLogout() {
   await supabase.auth.signOut();
+  clearMembershipCache();
   try { localStorage.removeItem("lastCompanyId"); } catch (_e) { pmError("PM-8006", { raw: _e, context: "remove lastCompanyId from localStorage", silent: true }); }
   _toastIdCounter = 0;
   setScreen("landing");

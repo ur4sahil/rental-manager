@@ -9,14 +9,56 @@ export function companyQuery(table, companyId) {
   if (!companyId) throw new Error("companyQuery: companyId is required");
   return supabase.from(table).select("*").eq("company_id", companyId);
 }
-export function companyInsert(table, rows, companyId) {
+
+// In-memory cache of the current session's active memberships, keyed by
+// user email. Populated lazily on the first guarded write so read-path
+// calls aren't penalized. Cleared on sign-out via clearMembershipCache().
+// This is defense-in-depth layered on top of RLS: if a table's RLS
+// policy ever slips (e.g. a USING (true) grant added to a newly-created
+// table during a migration), this guard still stops a writer from
+// inserting into a company they aren't a member of.
+let _membershipCache = null; // { email, active: Set<companyId>, fetchedAt }
+const MEMBERSHIP_TTL_MS = 5 * 60 * 1000;
+
+export function clearMembershipCache() { _membershipCache = null; }
+
+async function ensureMembership(companyId) {
+  const { data: { user } } = await supabase.auth.getUser();
+  const email = (user?.email || "").toLowerCase();
+  if (!email) throw new Error("companyWrite: no authenticated user");
+  const stale = !_membershipCache
+    || _membershipCache.email !== email
+    || (Date.now() - _membershipCache.fetchedAt > MEMBERSHIP_TTL_MS);
+  if (stale) {
+    const { data: mems, error: memErr } = await supabase.from("company_members")
+      .select("company_id, status").ilike("user_email", email);
+    if (memErr) {
+      // Don't block writes on a flaky membership fetch — fall through
+      // to RLS as the only gate and log the miss.
+      pmError("PM-1006", { raw: memErr, context: "membership cache fetch — falling back to RLS", silent: true });
+      return;
+    }
+    _membershipCache = {
+      email,
+      active: new Set((mems || []).filter(m => m.status === "active").map(m => m.company_id)),
+      fetchedAt: Date.now(),
+    };
+  }
+  if (!_membershipCache.active.has(companyId)) {
+    throw new Error(`companyWrite: caller ${email} is not an active member of company ${companyId}`);
+  }
+}
+
+export async function companyInsert(table, rows, companyId) {
   if (!companyId) throw new Error("companyInsert: companyId is required");
+  await ensureMembership(companyId);
   const cid = companyId;
   const withCompany = (Array.isArray(rows) ? rows : [rows]).map(r => ({ ...r, company_id: cid }));
   return supabase.from(table).insert(withCompany);
 }
-export function companyUpsert(table, rows, companyId, onConflict) {
+export async function companyUpsert(table, rows, companyId, onConflict) {
   if (!companyId) throw new Error("companyUpsert: companyId is required");
+  await ensureMembership(companyId);
   const cid = companyId;
   const withCompany = (Array.isArray(rows) ? rows : [rows]).map(r => ({ ...r, company_id: cid }));
   return supabase.from(table).upsert(withCompany, onConflict ? { onConflict } : undefined);
