@@ -189,7 +189,7 @@ function SetPasswordScreen({ currentUser, onComplete, showToast }) {
     if (pw !== pw2) { showToast("Passwords do not match.", "error"); return; }
     setSaving(true);
     const { error } = await supabase.auth.updateUser({ password: pw });
-    if (error) { setSaving(false); showToast("Error: " + error.message, "error"); return; }
+    if (error) { setSaving(false); pmError("PM-1009", { raw: error, context: "updateUser password set" }); return; }
     // Persist password_set_at so the auth router doesn't re-prompt on next
     // login. Upsert because tenants invited via magic link have a
     // company_members row but NO app_users row yet — UPDATE alone wouldn't
