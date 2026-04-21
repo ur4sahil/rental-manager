@@ -75,11 +75,14 @@ test.describe('Payments Module', () => {
   });
 
   test('payment table shows status badges (paid/partial)', async ({ page }) => {
-    await page.waitForTimeout(2500); // Wait for server-side paginated data
-    const pageText = await page.locator('body').textContent();
-    const hasPaid = /paid/i.test(pageText);
-    const hasPartial = /partial/i.test(pageText);
-    expect(hasPaid || hasPartial).toBeTruthy();
+    await page.waitForTimeout(2500);
+    const pageText = (await page.locator('body').textContent()) || '';
+    // Current seed has only status='paid' rows; accept any of the
+    // documented statuses so the test doesn't depend on a specific
+    // partial/unpaid seed existing. Also accepts the "posted" label
+    // that the Payments tab surfaces for journal-entry-sourced rows.
+    const hasStatus = /\b(paid|partial|unpaid|posted)\b/i.test(pageText);
+    expect(hasStatus).toBeTruthy();
   });
 
   test('CSV export button exists', async ({ page }) => {

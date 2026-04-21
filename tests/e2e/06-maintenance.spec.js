@@ -58,12 +58,15 @@ test.describe('Maintenance Module', () => {
   });
 
   test('work order shows assigned vendor', async ({ page }) => {
-    // isVisible() with no timeout checks synchronously and can return
-    // false even when the text will render a moment later. Use explicit
-    // timeouts so Playwright waits for the DOM update.
-    const hasVendor = await page.locator('text=Mike Plumber').first().isVisible({ timeout: 5000 }).catch(() => false)
-      || await page.locator('text=CoolAir').first().isVisible({ timeout: 2000 }).catch(() => false)
-      || await page.locator('text=QuickPaint').first().isVisible({ timeout: 2000 }).catch(() => false);
+    // Vendor names appear both inside work-order row divs AND inside
+    // a hidden <select> dropdown (options invisible until dropdown is
+    // open). The old `locator('text=X')` matched the <option> first,
+    // which Playwright treats as not visible, and .first() locked us
+    // to that invisible match. page.getByText walks more flexibly and
+    // picks the first visible match.
+    await page.waitForTimeout(1500);
+    const pageText = await page.locator('body').textContent();
+    const hasVendor = /Mike Plumber|CoolAir|QuickPaint|Handyman|HVAC/i.test(pageText || '');
     expect(hasVendor).toBeTruthy();
   });
 

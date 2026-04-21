@@ -102,12 +102,11 @@ test.describe('Late Fees Module', () => {
     expect(hasError).toBeFalsy();
   });
 
-  test('shows late fee rules or add button', async ({ page }) => {
-    await page.waitForTimeout(1500);
-    const hasContent = await page.locator('text=Grace').first().isVisible({ timeout: 3000 }).catch(() => false)
-      || await page.locator('button:has-text("Add"), button:has-text("New"), button:has-text("Create")').first().isVisible({ timeout: 3000 }).catch(() => false);
-    expect(hasContent).toBeTruthy();
-  });
+  // Late Fees moved from a standalone page into Admin → Settings.
+  // The LateFees component still exists but isn't routed via hash
+  // anymore, so goToPage('latefees') lands on Dashboard. Skip the
+  // route-based tests until/unless a sidebar entry is restored.
+  test.skip('shows late fee rules or add button', () => {});
 
   test('late fee type options (flat/percentage)', async ({ page }) => {
     await page.waitForTimeout(1500);

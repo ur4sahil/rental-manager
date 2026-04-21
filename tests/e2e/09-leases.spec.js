@@ -72,11 +72,18 @@ test.describe('Leases Module', () => {
     const btn = page.locator('button:has-text("Create"), button:has-text("New"), button:has-text("Add")').first();
     await btn.click();
     await page.waitForTimeout(500);
-    const typeSelect = page.locator('select').filter({ hasText: /fixed|month/i }).first();
-    if (await typeSelect.isVisible({ timeout: 2000 }).catch(() => false)) {
-      const options = await typeSelect.locator('option').allTextContents();
-      expect(options.some(o => o.toLowerCase().includes('fixed'))).toBeTruthy();
+    // Filter-on-hasText picks the first <select> whose descendant text
+    // matches the regex, which may not be the lease-type select. Walk
+    // every select on the form and look for the one that actually has
+    // a "Fixed Term" option.
+    const selects = page.locator('select');
+    const count = await selects.count();
+    let foundFixed = false;
+    for (let i = 0; i < count; i++) {
+      const opts = await selects.nth(i).locator('option').allTextContents();
+      if (opts.some(o => o.toLowerCase().includes('fixed'))) { foundFixed = true; break; }
     }
+    expect(foundFixed).toBeTruthy();
   });
 
   test('template manager button exists', async ({ page }) => {

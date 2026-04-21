@@ -207,23 +207,25 @@ async function goToPage(page, pageId) {
     return true;
   }
 
-  // Admin page: click the avatar/role button in header
+  // Admin page: route via hash (same mechanism the sidebar uses).
+  // Previous approach tried to click a button[title="Admin Settings"]
+  // that doesn't exist — the real entry is the avatar dropdown in the
+  // header ("A Admin expand_more" → Settings menu item → setPage("admin")).
   if (pageId === 'admin' || pageId === 'audittrail' || pageId === 'roles') {
-    const adminBtn = page.locator('button[title="Admin Settings"]').first();
-    if (await adminBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await adminBtn.click();
-      await page.waitForTimeout(1500);
-      // If requesting a specific tab within admin
-      if (pageId === 'roles') {
-        const teamTab = page.locator('button:has-text("Team & Roles")').first();
-        if (await teamTab.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await teamTab.click();
-          await page.waitForTimeout(1000);
-        }
+    await page.evaluate(() => {
+      window.history.pushState({ page: 'admin', screen: 'app' }, '', '#admin');
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+      window.dispatchEvent(new PopStateEvent('popstate', { state: { page: 'admin', screen: 'app' } }));
+    });
+    await page.waitForTimeout(1500);
+    if (pageId === 'roles') {
+      const teamTab = page.locator('button:has-text("Team & Roles")').first();
+      if (await teamTab.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await teamTab.click();
+        await page.waitForTimeout(1000);
       }
-      return true;
     }
-    return false;
+    return true;
   }
 
   // Hidden pages (leases, documents, vendors, inspections, autopay,
