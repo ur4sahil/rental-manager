@@ -20,7 +20,9 @@ export function shortId() {
   const arr = new Uint8Array(6);
   if (typeof crypto !== "undefined" && crypto.getRandomValues) crypto.getRandomValues(arr);
   else for (let i = 0; i < 6; i++) arr[i] = Math.floor(Math.random() * 256);
-  return Array.from(arr, b => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
+  // 6 bytes → 12 hex chars. Previous .slice(0, 12) was a no-op since
+  // we already produce exactly that length.
+  return Array.from(arr, b => b.toString(16).padStart(2, "0")).join("");
 }
 
 // Generate secure random ID (better than Date.now + Math.random)
@@ -195,7 +197,10 @@ export function buildAddress(p) {
 
 export function escapeHtml(str) {
   if (!str) return "";
-  return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
+  // Backticks are benign in most HTML output contexts but can matter if
+  // the escaped value flows back into a server-side template literal
+  // interpolation. Cheap to include.
+  return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;").replace(/`/g,"&#096;");
 }
 // Sanitize user input for Supabase PostgREST filter strings (.or, .ilike, .like).
 // The only characters SQL LIKE treats as wildcards are %, _ and \ (the
