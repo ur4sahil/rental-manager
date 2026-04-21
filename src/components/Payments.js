@@ -35,13 +35,30 @@ function Payments({ addNotification, userProfile, userRole, companyId, showToast
     // Extract tenant from description: "Payment received — TenantName — Property"
     const descParts = (je.description || "").split("—").map(s => s.trim());
     const tenant = descParts.length >= 2 ? descParts[1] : "";
-    // Extract method from description or reference
+    // Derive the payment method from structured signals rather than loose
+    // substring hits against description. The old chain matched "ach"
+    // first, so "ACH checking acct payment" → ACH and "Check from
+    // ACH-favored customer" also → ACH even though the second is a
+    // paper check. Preference order now:
+    //   1. reference prefix (STRIPE- → Stripe)
+    //   2. lines[].memo "via <method>" pattern (set by Autopay runNow)
+    //   3. word-boundary match on description ordered specific → general
+    //   4. PAY- reference fallback → Manual
     let method = "Journal Entry";
+    const descLower = (je.description || "").toLowerCase();
+    const lineMemos = (je.lines || []).map(l => (l.memo || "").toLowerCase()).join(" | ");
+    const viaMatch = lineMemos.match(/\bvia\s+(ach|stripe|check|cash|card|wire|zelle|venmo)\b/);
     if (je.reference?.startsWith("STRIPE-")) method = "Stripe";
-    else if ((je.description || "").toLowerCase().includes("ach")) method = "ACH";
-    else if ((je.description || "").toLowerCase().includes("check")) method = "Check";
-    else if ((je.description || "").toLowerCase().includes("cash")) method = "Cash";
-    else if (je.reference?.startsWith("PAY-")) method = "Manual";
+    else if (viaMatch) method = viaMatch[1].toUpperCase() === "ACH" ? "ACH" : (viaMatch[1][0].toUpperCase() + viaMatch[1].slice(1));
+    else if (/\bstripe\b/.test(descLower)) method = "Stripe";
+    else if (/\bach\b/.test(descLower)) method = "ACH";
+    else if (/\bwire\b/.test(descLower)) method = "Wire";
+    else if (/\bzelle\b/.test(descLower)) method = "Zelle";
+    else if (/\bvenmo\b/.test(descLower)) method = "Venmo";
+    else if (/\bcheck\b/.test(descLower)) method = "Check";
+    else if (/\bcash\b/.test(descLower)) method = "Cash";
+    else if (/\bcard\b/.test(descLower)) method = "Card";
+    else if (je.reference?.startsWith("PAY-") || je.reference?.startsWith("APAY-")) method = "Manual";
     // Determine type
     let type = "payment";
     if ((je.description || "").toLowerCase().includes("deposit")) type = "deposit";
@@ -232,14 +249,18 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   const classId = await getPropertyClassId(s.property, companyId);
   const month = today.slice(0, 7);
   const hasAccrual = await checkAccrualExists(companyId, month, s.tenant);
+  // "via <method>" marker is parsed by fetchPayments to surface the
+  // right payment method on the payments page without relying on
+  // fuzzy description matches.
+  const viaTag = " · via " + s.method;
   const jeLines = hasAccrual
   ? [
-  { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay " + s.method + " from " + s.tenant },
-  { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement — " + s.tenant },
+  { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay from " + s.tenant + viaTag },
+  { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement — " + s.tenant + viaTag },
   ]
   : [
-  { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay " + s.method + " from " + s.tenant },
-  { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: s.tenant + " — " + s.property },
+  { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay from " + s.tenant + viaTag },
+  { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: s.tenant + " — " + s.property + viaTag },
   ];
   const jeDesc = hasAccrual ? "Autopay received — " + s.tenant + " — " + s.property + " (settling AR)" : "Autopay — " + s.tenant + " — " + s.property;
   // Deterministic reference — the unique index on (company_id, reference)
