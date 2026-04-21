@@ -226,44 +226,22 @@ async function goToPage(page, pageId) {
     return false;
   }
 
-  // Hidden pages (leases, documents, vendors, inspections, autopay, moveout, evictions, latefees)
-  // These exist as React pages but have no sidebar link — inject via React setState
-  const navigated = await page.evaluate((targetPage) => {
-    const root = document.getElementById('root');
-    const internalKey = Object.keys(root).find(k => k.startsWith('__reactContainer') || k.startsWith('__reactFiber'));
-    if (!internalKey) return false;
-    let fiber = root[internalKey];
-    let depth = 0;
-    while (fiber && depth < 50) {
-      if (fiber.memoizedState) {
-        let hook = fiber.memoizedState;
-        let hookIdx = 0;
-        while (hook && hookIdx < 30) {
-          if (hook.memoizedState === 'dashboard' || hook.memoizedState === 'properties'
-            || hook.memoizedState === 'tenants' || hook.memoizedState === 'payments') {
-            if (hook.queue && typeof hook.queue.dispatch === 'function') {
-              hook.queue.dispatch(targetPage);
-              return true;
-            }
-          }
-          hook = hook.next;
-          hookIdx++;
-        }
-      }
-      // Walk the tree: child first, then sibling, then parent's sibling
-      if (fiber.child) { fiber = fiber.child; }
-      else if (fiber.sibling) { fiber = fiber.sibling; }
-      else {
-        // Go up until we find a sibling
-        while (fiber.return && !fiber.return.sibling) { fiber = fiber.return; depth++; }
-        fiber = fiber.return ? fiber.return.sibling : null;
-      }
-      depth++;
-    }
-    return false;
-  }, pageId);
-
-  if (navigated) {
+  // Hidden pages (leases, documents, vendors, inspections, autopay,
+  // moveout, evictions, latefees) — no sidebar link, but App.js routes
+  // via window.location.hash. Navigate by setting the hash + firing a
+  // hashchange event so React's route subscriber picks it up. Much more
+  // reliable than the previous React-fiber-walk approach which depended
+  // on specific internal hook ordering.
+  const routableHiddenPages = new Set([
+    'leases', 'documents', 'vendors', 'inspections', 'autopay',
+    'moveout', 'evictions', 'latefees', 'tax_bills', 'tasks',
+  ]);
+  if (routableHiddenPages.has(pageId)) {
+    await page.evaluate((hash) => {
+      window.history.pushState({ page: hash, screen: 'app' }, '', '#' + hash);
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+      window.dispatchEvent(new PopStateEvent('popstate', { state: { page: hash, screen: 'app' } }));
+    }, pageId);
     await page.waitForTimeout(2000);
     return true;
   }

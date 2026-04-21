@@ -41,8 +41,9 @@ test.describe('Vendors Module', () => {
     await expect(btn).toBeVisible({ timeout: 5000 });
     await btn.click();
     await page.waitForTimeout(500);
-    const nameInput = page.locator('input[placeholder*="name" i]').first();
-    await expect(nameInput).toBeVisible({ timeout: 3000 });
+    // Vendor form uses First/Last/MI placeholders rather than a generic "name".
+    const firstInput = page.locator('input[placeholder*="First" i], input[placeholder*="Last" i], input[placeholder*="Company" i]').first();
+    await expect(firstInput).toBeVisible({ timeout: 3000 });
   });
 
   test('vendor form has specialty dropdown with all specialties', async ({ page }) => {
