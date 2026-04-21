@@ -555,13 +555,18 @@ export async function autoPostRecurringEntries(companyId) {
   } catch (e) { pmError("PM-4008", { raw: e, context: "auto recurring entries", silent: true }); return { posted: 0 }; }
 }
 
-// ZIP → City/State lookup (Zippopotam.us — free, no API key)
+// ZIP → City/State lookup (Zippopotam.us — free, no API key).
+// Wraps fetch with a 5s AbortController so a Zippopotam outage can't
+// hang the property-setup wizard indefinitely (the lookup blocks the
+// form advance until it resolves).
 export const _zipCache = {};
 export async function lookupZip(zip) {
   if (!/^\d{5}$/.test(zip)) return null;
   if (_zipCache[zip]) return _zipCache[zip];
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), 5000) : null;
   try {
-  const r = await fetch("https://api.zippopotam.us/us/" + zip);
+  const r = await fetch("https://api.zippopotam.us/us/" + zip, ctrl ? { signal: ctrl.signal } : undefined);
   if (!r.ok) return null;
   const data = await r.json();
   const place = data.places?.[0];
@@ -570,4 +575,5 @@ export async function lookupZip(zip) {
   _zipCache[zip] = result;
   return result;
   } catch (_e) { pmError("PM-8006", { raw: _e, context: "ZIP code lookup", silent: true }); return null; }
+  finally { if (timer) clearTimeout(timer); }
 }

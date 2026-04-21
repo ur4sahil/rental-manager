@@ -46,11 +46,15 @@ function isAllowedOrigin(origin) {
 
 function setCors(req, res) {
   const origin = req.headers.origin || "";
-  // Echo the origin back when allowed (required for credentialled fetches).
-  // Otherwise fall back to prod so the preflight still answers with a
-  // parsable header — the browser will block the actual request at the
-  // origin check anyway.
-  res.setHeader("Access-Control-Allow-Origin", isAllowedOrigin(origin) ? origin : PROD_ORIGIN);
+  // Only set Allow-Origin when the origin is actually allowed. Previous
+  // code echoed back PROD_ORIGIN on disallowed requests, which wasted
+  // header bytes on every preflight and made it visually confusing in
+  // dev tools (looks like prod was whitelisted). Browsers will block
+  // disallowed cross-origin requests at the missing-header check
+  // anyway — the server just says nothing.
+  if (isAllowedOrigin(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
   res.setHeader("Access-Control-Allow-Headers", "authorization, x-client-info, apikey, content-type");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Vary", "Origin");
