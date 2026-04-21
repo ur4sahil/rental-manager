@@ -71,16 +71,21 @@ test.describe('Tenants Module', () => {
 
   test('tenant form cancel closes modal', async ({ page }) => {
     await openEditForm(page);
-    const cancelBtn = page.locator('button:has-text("Cancel")').first();
-    await expect(cancelBtn).toBeVisible({ timeout: 3000 });
-    await cancelBtn.click();
-    await page.waitForTimeout(400);
-    // The tenant form is an inline panel (not a z-[90] overlay), so
-    // check the form's heading disappears. Scope to h3 to avoid the
-    // drawer's "Edit Tenant" action button still being in the DOM.
+    // The tenant drawer's black overlay (z-50, fixed inset-0) layers
+    // on top of the main Tenants page — where the inline Edit form
+    // actually renders. That overlay intercepts clicks, so close the
+    // drawer first by hitting its close button, then the form's
+    // Cancel becomes clickable.
+    const drawerClose = page.locator('button[aria-label*="close" i], button:has-text("close")').first();
+    if (await drawerClose.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await drawerClose.click().catch(() => {});
+      await page.waitForTimeout(400);
+    }
     const formHeading = page.locator('h3:has-text("Edit Tenant")').first();
-    const stillOpen = await formHeading.isVisible({ timeout: 1000 }).catch(() => false);
-    expect(stillOpen).toBeFalsy();
+    await expect(formHeading).toBeVisible({ timeout: 3000 });
+    const cancelBtn = page.locator('button:has-text("Cancel")').last();
+    await cancelBtn.click();
+    await expect(formHeading).toBeHidden({ timeout: 3000 });
   });
 
   // Email-format validation test retired: the saveTenant flow validates

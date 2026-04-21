@@ -31,28 +31,27 @@ async function login(page) {
   await page.locator('text=/YOUR COMPANIES|Your Companies|PropManager/i').first().waitFor({ state: 'visible', timeout: 15000 });
   await page.waitForTimeout(1000);
 
-  // Step 5: Click into Sandbox LLC. The clickable area is the outer
-  // cursor-pointer <div onClick>, which wraps the avatar + name. Click
-  // THAT div directly (not the inner name span) — clicks on nested
-  // spans have been flaky when React rerenders mid-click. Retry up to
-  // three times if the navigation to the app doesn't happen.
+  // Step 5: Open Sandbox LLC. Each row has TWO click targets: the
+  // cursor-pointer div with onClick → onSelectCompany (in-tab nav),
+  // and a separate <a target="_blank"> "Open" link. Click the
+  // company-name text — it sits inside the cursor-pointer container
+  // so the click bubbles to the div's onClick handler. force:true
+  // bypasses overlay/ancestor-hit-test failures that occasionally
+  // misfire when the page is still settling after the login redirect.
   const dashboardBtn = page.locator('button:has-text("Dashboard")').first();
   for (let attempt = 0; attempt < 3; attempt++) {
-    const target = page.locator('div.cursor-pointer:has-text("Sandbox")').first();
-    const fallback = page.locator('.font-semibold:has-text("Sandbox")').first();
-    if (await target.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await target.click();
-    } else if (await fallback.isVisible({ timeout: 1500 }).catch(() => false)) {
-      await fallback.click();
+    const nameEl = page.locator('.font-semibold.truncate:has-text("Sandbox")').first();
+    const nameGeneric = page.locator('.font-semibold:has-text("Sandbox LLC")').first();
+    if (await nameEl.isVisible({ timeout: 2500 }).catch(() => false)) {
+      await nameEl.click({ force: true }).catch(() => {});
+    } else if (await nameGeneric.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await nameGeneric.click({ force: true }).catch(() => {});
     } else {
-      // Last resort: first cursor-pointer row
-      const firstCompany = page.locator('div.cursor-pointer:has(.font-semibold)').first();
-      if (await firstCompany.isVisible({ timeout: 1500 }).catch(() => false)) await firstCompany.click();
+      const firstRow = page.locator('div.cursor-pointer:has(.font-semibold)').first();
+      if (await firstRow.isVisible({ timeout: 1500 }).catch(() => false)) await firstRow.click({ force: true }).catch(() => {});
     }
     if (await dashboardBtn.isVisible({ timeout: 15000 }).catch(() => false)) return;
   }
-  // Final wait with a longer budget — if this throws the test fails
-  // loudly rather than passing a wrong page snapshot.
   await dashboardBtn.waitFor({ state: 'visible', timeout: 10000 });
 }
 
