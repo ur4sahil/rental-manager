@@ -445,7 +445,15 @@ export async function autoPostRecurringEntries(companyId) {
   let postAmount = safeNum(entry.amount);
   let postDesc = entry.description || "Recurring entry";
   if (entry.tenant_name && entry.property) {
-    const { data: lease } = await supabase.from("leases").select("start_date, end_date").eq("company_id", cid).eq("property", entry.property).eq("status", "active").maybeSingle();
+    // Scope by tenant_id (then tenant_name) in addition to property —
+    // .maybeSingle() throws on multi-unit properties with more than one
+    // active lease, and even when a single lease is returned it could
+    // belong to a different tenant whose dates would then misprorate
+    // the one we're actually billing.
+    let leaseQ = supabase.from("leases").select("start_date, end_date").eq("company_id", cid).eq("property", entry.property).eq("status", "active");
+    leaseQ = entry.tenant_id ? leaseQ.eq("tenant_id", entry.tenant_id) : leaseQ.eq("tenant_name", entry.tenant_name);
+    const { data: leaseRows } = await leaseQ.order("start_date", { ascending: false }).limit(1);
+    const lease = leaseRows?.[0] || null;
     const yr = parseInt(monthStr.split("-")[0], 10) || 2026;
     const mo = parseInt(monthStr.split("-")[1], 10) || 1;
     const daysInMonth = new Date(yr, mo, 0).getDate();
