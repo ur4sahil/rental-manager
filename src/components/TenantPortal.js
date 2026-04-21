@@ -83,10 +83,13 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
       .is("read_at", null)
       .neq("sender_role", "tenant");
   }
-  // Check autopay status
+  // Check autopay status. A tenant can legitimately have more than one
+  // autopay row (different properties, different methods). maybeSingle
+  // would throw if it happened; read the set and flag enabled=true if
+  // any row is enabled.
   if (tenant.name) {
-  const { data: ap } = await supabase.from("autopay_schedules").select("enabled").eq("company_id", companyId).eq("tenant", tenant.name).maybeSingle();
-  if (ap?.enabled) setAutopayEnabled(true);
+  const { data: ap } = await supabase.from("autopay_schedules").select("enabled").eq("company_id", companyId).eq("tenant", tenant.name).is("archived_at", null);
+  if ((ap || []).some(r => r.enabled)) setAutopayEnabled(true);
   }
   setLoading(false);
   }

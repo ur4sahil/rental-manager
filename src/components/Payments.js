@@ -171,7 +171,8 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   ]);
   setSchedules(s.data || []);
   setTenants(t.data || []);
-  } catch {
+  } catch (e) {
+  pmError("PM-6001", { raw: e, context: "autopay fetchData", silent: true });
   setSchedules([]);
   setTenants([]);
   }
