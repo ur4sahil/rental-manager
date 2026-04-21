@@ -67,6 +67,24 @@ function isoDate(y, m, d) {
   return y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
 }
 
+// Walk a schedule in order, advancing the calendar year every time a
+// later installment's month is EARLIER than the previous one. Handles
+// fiscal-year jurisdictions whose halves span two calendar years (e.g.
+// Fredericksburg: Dec 5 then Jun 5 → Jun 5 belongs to next year).
+// Keeps this file independent of utils/taxes.js so the cron still runs
+// without a shared import.
+function resolveDueDates(schedule, startingYear) {
+  const out = [];
+  let y = startingYear;
+  let prevMonth = 0;
+  for (const inst of schedule) {
+    if (prevMonth && inst.month < prevMonth) y++;
+    out.push({ ...inst, dueDate: isoDate(y, inst.month, inst.day) });
+    prevMonth = inst.month;
+  }
+  return out;
+}
+
 async function rollforwardNextYear(supabase, todayIso) {
   // For each property with a county + state, check if next year's bills
   // exist. If not AND we're within 60 days of next year's first
@@ -87,34 +105,40 @@ async function rollforwardNextYear(supabase, todayIso) {
     const schedule = COUNTY_TAX_SCHEDULES[key];
     if (!schedule || schedule.length === 0) { noSchedule++; continue; }
 
-    // Earliest next-year installment due date
-    const earliestDue = schedule
-      .map(inst => new Date(isoDate(nextYear, inst.month, inst.day) + "T00:00:00Z"))
+    // Resolve real due dates with fiscal-year bumping so Fredericksburg
+    // et al. don't emit their "2nd half" ahead of their "1st half".
+    const resolved = resolveDueDates(schedule, nextYear);
+    const earliestDue = resolved
+      .map(inst => new Date(inst.dueDate + "T00:00:00Z"))
       .sort((a, b) => a - b)[0];
     const daysToEarliest = Math.round((earliestDue - today) / 86_400_000);
     if (daysToEarliest > 60) { skipped++; continue; }
 
-    // Check if any next-year bill exists
+    // Dedup by the actual due dates we're about to write, not by
+    // tax_year alone. A fiscal schedule can legitimately reuse a
+    // calendar year across two cycles; tax_year is advisory.
+    const candidateDates = resolved.map(r => r.dueDate);
     const { data: existing } = await supabase
       .from("property_tax_bills")
-      .select("id")
+      .select("id, due_date")
       .eq("company_id", p.company_id)
       .eq("property", p.address)
-      .eq("tax_year", nextYear)
-      .is("archived_at", null)
-      .limit(1);
-    if (existing && existing.length > 0) { skipped++; continue; }
+      .in("due_date", candidateDates)
+      .is("archived_at", null);
+    const existingDates = new Set((existing || []).map(b => b.due_date));
+    const toInsert = resolved.filter(r => !existingDates.has(r.dueDate));
+    if (toInsert.length === 0) { skipped++; continue; }
 
     // Batch all installments for this property in a single insert.
     // Previously the cron made N serial inserts per property — fine at 10
     // properties, pressure at 500. One call per property is plenty.
-    const rows = schedule.map(inst => ({
+    const rows = toInsert.map(inst => ({
       company_id: p.company_id,
       property: p.address,
       property_id: p.id || null,
       tax_year: nextYear,
       installment_label: inst.label,
-      due_date: isoDate(nextYear, inst.month, inst.day),
+      due_date: inst.dueDate,
       status: "pending",
       auto_generated: true,
     }));

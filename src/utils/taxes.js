@@ -20,6 +20,31 @@ function localISODate(y, m, d) {
 }
 
 /**
+ * Walk a schedule in order and emit per-installment due dates. When a
+ * later installment's month is EARLIER than the previous installment's
+ * month, that entry belongs to the next calendar year — fiscal-year
+ * jurisdictions list their halves as (Dec, Jun), and the Jun half is
+ * of the FOLLOWING calendar year. Previously the generator slapped the
+ * same calendar year on every entry, so for Fredericksburg with
+ * year=2026 we emitted 2026-12-05 (1st half) and 2026-06-05 (2nd half)
+ * — the 2nd half was wrongly BEFORE the 1st. Owners paying by the
+ * dates then saw duplicate or missing installments.
+ *
+ * Returns [{ label, dueDate, month, day }] in the original order.
+ */
+export function resolveDueDates(schedule, startingYear) {
+  const out = [];
+  let y = startingYear;
+  let prevMonth = 0;
+  for (const inst of schedule) {
+    if (prevMonth && inst.month < prevMonth) y++;
+    out.push({ ...inst, dueDate: localISODate(y, inst.month, inst.day) });
+    prevMonth = inst.month;
+  }
+  return out;
+}
+
+/**
  * Generate (or refresh) the per-installment tax bills for a single property
  * in a specific tax year, based on its county/state schedule.
  *
@@ -60,15 +85,19 @@ export async function generateBillsForProperty({
   const perInstallment = annual != null ? annual / schedule.length : null;
 
   let created = 0, updated = 0, skipped = 0;
-  for (const inst of schedule) {
-    const dueDate = localISODate(year, inst.month, inst.day);
+  // Bills are identified by their absolute due date, not by tax_year +
+  // label. The tax_year label stays on the row for display, but the
+  // dedup key is (company_id, property, due_date) so re-running the
+  // generator after a year-rollforward fix doesn't create duplicates.
+  const resolved = resolveDueDates(schedule, year);
+  for (const inst of resolved) {
+    const dueDate = inst.dueDate;
     const { data: existing, error: selErr } = await supabase
       .from("property_tax_bills")
       .select("id, status, paid_date, expected_amount")
       .eq("company_id", companyId)
       .eq("property", propertyAddress)
-      .eq("tax_year", year)
-      .eq("installment_label", inst.label)
+      .eq("due_date", dueDate)
       .eq("auto_generated", true)
       .is("archived_at", null)
       .maybeSingle();
