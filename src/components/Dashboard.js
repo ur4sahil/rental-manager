@@ -133,7 +133,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   <StatCard onClick={() => setPage("properties")} label="Occupancy" value={`${occupied}/${properties.length}`} sub={`${properties.length ? Math.round(occupied / properties.length * 100) : 0}% occupied`} color="text-positive-600" />
   <StatCard onClick={() => setPage("accounting")} label="Revenue (Acctg)" value={`${formatCurrency(acctRevenue)}`} sub="from journal entries" color="text-info-600" />
   <StatCard onClick={() => setPage("accounting")} label="Expenses (Acctg)" value={`${formatCurrency(acctExpenses)}`} sub="from journal entries" color="text-danger-500" />
-  <StatCard onClick={() => setPage("accounting")} label="Net Income" value={`$${(acctRevenue - acctExpenses).toLocaleString()}`} sub="revenue - expenses" color={acctRevenue - acctExpenses >= 0 ? "text-success-600" : "text-danger-600"} />
+  <StatCard onClick={() => setPage("accounting")} label="Net Income" value={formatCurrency(acctRevenue - acctExpenses)} sub="revenue - expenses" color={acctRevenue - acctExpenses >= 0 ? "text-success-600" : "text-danger-600"} />
   </div>
   <div className="grid grid-cols-2 gap-3 mb-6 md:grid-cols-4">
   <StatCard onClick={() => setPage("payments")} label="Rent Collected" value={`${formatCurrency(totalRent)}`} sub="payments table" color="text-brand-600" />
@@ -167,16 +167,35 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Lease Expirations</h3>
-  {tenants.filter(t => (t.lease_end_date || t.move_out) && parseLocalDate(t.lease_end_date || t.move_out) >= new Date() && Math.ceil((parseLocalDate(t.lease_end_date || t.move_out) - new Date()) / 86400000) <= 90).map(t => (
-  <div key={t.id} className="flex justify-between items-center py-2 border-b border-brand-50/50 last:border-0">
-  <div>
-  <div className="text-sm font-medium text-neutral-800">{t.name}</div>
-  <div className="text-xs text-neutral-400">{t.property}</div>
-  </div>
-  <div className="text-sm text-notice-500 font-semibold">{t.move_out}</div>
-  </div>
-  ))}
-  {tenants.filter(t => t.move_out).length === 0 && <div className="text-sm text-neutral-400 text-center py-4">No upcoming expirations</div>}
+  {(() => {
+    // Compute the filtered list once so the empty-state check matches
+    // what's actually rendered. Previously the display filtered by
+    // (has end date AND in next 90 days) but the empty-state check
+    // fired only when NO tenant had a move_out at all — properties
+    // where every lease was >90 days out still showed a blank panel
+    // with no explanation.
+    const nowMs = Date.now();
+    const expiring = tenants.filter(t => {
+      const endStr = t.lease_end_date || t.move_out;
+      if (!endStr) return false;
+      const end = parseLocalDate(endStr);
+      if (!(end instanceof Date) || isNaN(end)) return false;
+      const daysUntil = Math.ceil((end - nowMs) / 86400000);
+      return daysUntil >= 0 && daysUntil <= 90;
+    });
+    if (expiring.length === 0) {
+      return <div className="text-sm text-neutral-400 text-center py-4">No upcoming lease expirations in the next 90 days</div>;
+    }
+    return expiring.map(t => (
+      <div key={t.id} className="flex justify-between items-center py-2 border-b border-brand-50/50 last:border-0">
+        <div>
+          <div className="text-sm font-medium text-neutral-800">{t.name}</div>
+          <div className="text-xs text-neutral-400">{t.property}</div>
+        </div>
+        <div className="text-sm text-notice-500 font-semibold">{t.lease_end_date || t.move_out}</div>
+      </div>
+    ));
+  })()}
   </div>
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Recent Maintenance</h3>
