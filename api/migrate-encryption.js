@@ -20,6 +20,7 @@
 const crypto = require("crypto");
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
+const { isCronSecretBearer, cronSecretMatches } = require("./_auth");
 
 const CRON_SECRET = process.env.CRON_SECRET || "";
 const MASTER_KEY = process.env.ENCRYPTION_KEY || "";
@@ -211,7 +212,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
   const authHeader = req.headers.authorization || "";
-  const isCronAuth = CRON_SECRET && CRON_SECRET.length >= 8 && authHeader === `Bearer ${CRON_SECRET}`;
+  const isCronAuth = CRON_SECRET && CRON_SECRET.length >= 8 && isCronSecretBearer(authHeader, CRON_SECRET);
   if (!isCronAuth) return res.status(401).json({ error: "Unauthorized" });
   if (!MASTER_KEY) return res.status(500).json({ error: "ENCRYPTION_KEY not configured" });
 

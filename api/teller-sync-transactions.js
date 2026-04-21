@@ -4,6 +4,7 @@ const https = require("https");
 const crypto = require("crypto");
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
+const { isCronSecretBearer, cronSecretMatches } = require("./_auth");
 
 // Case-insensitive email equality in a Postgres LIKE pattern — escape
 // the _ and % chars so "john_doe@x.com" doesn't wildcard-match
@@ -104,8 +105,8 @@ module.exports = async function handler(req, res) {
     let companyFilter = null;
     const authHeader = req.headers.authorization;
     const isCronAuth = CRON_SECRET && CRON_SECRET.length >= 8 && (
-      body.cron_secret === CRON_SECRET ||
-      (req.method === "GET" && authHeader === `Bearer ${CRON_SECRET}`)
+      cronSecretMatches(body.cron_secret, CRON_SECRET) ||
+      (req.method === "GET" && isCronSecretBearer(authHeader, CRON_SECRET))
     );
 
     if (isCronAuth) {

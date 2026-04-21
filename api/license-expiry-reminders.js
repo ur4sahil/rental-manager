@@ -4,6 +4,7 @@
 // Uses last_reminder_day_bucket to avoid sending the same bucket twice.
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
+const { isCronSecretBearer, cronSecretMatches } = require("./_auth");
 
 const CRON_SECRET = process.env.CRON_SECRET || "";
 
@@ -47,7 +48,7 @@ module.exports = async function handler(req, res) {
   const authHeader = req.headers.authorization || "";
   const bodySecret = (req.body && typeof req.body === "object" && req.body.cron_secret) || "";
   const isCronAuth = CRON_SECRET && CRON_SECRET.length >= 8 && (
-    authHeader === `Bearer ${CRON_SECRET}` || bodySecret === CRON_SECRET
+    isCronSecretBearer(authHeader, CRON_SECRET) || cronSecretMatches(bodySecret, CRON_SECRET)
   );
   if (!isCronAuth) return res.status(401).json({ error: "Unauthorized" });
 

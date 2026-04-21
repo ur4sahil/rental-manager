@@ -3,6 +3,7 @@
 // Auth: JWT+company_id (per-company stats) OR CRON_SECRET (global stats)
 const { createClient } = require("@supabase/supabase-js");
 const { setCors } = require("./_cors");
+const { isCronSecretBearer, cronSecretMatches } = require("./_auth");
 
 // Case-insensitive email equality in a Postgres LIKE pattern — escape
 // the _ and % chars so "john_doe@x.com" doesn't wildcard-match
@@ -26,7 +27,7 @@ module.exports = async function handler(req, res) {
     const supabase = createClient(process.env.REACT_APP_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
     const authHeader = req.headers.authorization || "";
-    const isCronAuth = CRON_SECRET && CRON_SECRET.length >= 8 && authHeader === `Bearer ${CRON_SECRET}`;
+    const isCronAuth = CRON_SECRET && CRON_SECRET.length >= 8 && isCronSecretBearer(authHeader, CRON_SECRET);
     let companyFilter = null;
 
     if (isCronAuth) {
