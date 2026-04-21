@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, EmptyState, FileInput, FilterPill, Input, PageHeader, Select, TextLink} from "../ui";
-import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate, emailFilterValue } from "../utils/helpers";
+import { safeNum, formatCurrency, escapeFilterValue, normalizeEmail, formatPersonName, parseNameParts, formatPhoneInput, parseLocalDate, emailFilterValue, getWizardApplicableSteps, WIZARD_STEP_LABELS } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -607,7 +607,7 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   const allApprovals = [];
   const allTasks = [];
   try {
-  const [propReqs, docExceptions, memberReqs, tenants, workOrders, leases, hoaDue] = await Promise.all([
+  const [propReqs, docExceptions, memberReqs, tenants, workOrders, leases, hoaDue, wizards, props] = await Promise.all([
   supabase.from("property_change_requests").select("*").eq("company_id", companyId).eq("status", "pending").order("requested_at", { ascending: false }),
   supabase.from("doc_exception_requests").select("*").eq("company_id", companyId).eq("status", "pending").order("created_at", { ascending: false }),
   supabase.from("company_members").select("*").eq("company_id", companyId).eq("status", "pending").order("created_at", { ascending: false }),
@@ -615,6 +615,11 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null),
   supabase.from("leases").select("*").eq("company_id", companyId).eq("status", "active"),
   supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("status", "unpaid").is("archived_at", null),
+  // Wizard-skip tasks: every in-progress wizard row + every completed
+  // one (a completed wizard can still have approved skips we need to
+  // differentiate from truly-filled steps on the Review page).
+  supabase.from("property_setup_wizard").select("*").eq("company_id", companyId).in("status", ["in_progress", "completed"]),
+  supabase.from("properties").select("id, address, status").eq("company_id", companyId).is("archived_at", null),
   ]);
   // Approvals
   (propReqs.data || []).forEach(r => allApprovals.push({ id: "prop-" + r.id, type: "property", icon: "🏠", title: (r.request_type === "add" ? "New Property" : "Edit Property") + ": " + r.address, subtitle: "Requested by " + r.requested_by + " · " + new Date(r.requested_at).toLocaleDateString(), data: r, link: "properties" }));
@@ -629,10 +634,85 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   wo.filter(x => x.priority === "emergency" && x.status !== "completed").forEach(x => allTasks.push({ icon: "🚨", title: (x.property || "Property") + " — " + x.issue, subtitle: "Emergency · " + x.status, link: "maintenance", priority: "high" }));
   t.filter(x => { const end = x.lease_end_date || x.move_out; if (!end) return false; const days = Math.ceil((parseLocalDate(end) - new Date()) / 86400000); return days > 0 && days <= 30; }).forEach(x => allTasks.push({ icon: "📅", title: x.name + " — lease expires " + (x.lease_end_date || x.move_out), subtitle: x.property, link: "tenants", priority: "high" }));
   hoa.forEach(x => { const daysLeft = Math.ceil((new Date(x.due_date).getTime() - Date.now()) / 86400000); allTasks.push({ icon: "🏘️", title: (x.hoa_name || x.property || "HOA") + " — " + formatCurrency(x.amount) + " due " + x.due_date, subtitle: x.property, link: "hoa", priority: daysLeft <= 3 ? "high" : "medium" }); });
+  // Wizard-skip tasks: one row per applicable step not yet filled
+  // and not yet admin-approved. Insurance / Loan / Property Tax are
+  // graded "high" since they're compliance/financial; the rest are
+  // "medium".
+  const HIGH = new Set(["insurance", "loan", "property_tax"]);
+  const propsByAddr = new Map((props.data || []).map(p => [p.address, p]));
+  for (const w of (wizards.data || [])) {
+    // Completed wizards don't generate NEW pending tasks — only
+    // in-progress ones do. (Completed-with-approved-skips are fine;
+    // approved-skips are also filtered out below.)
+    if (w.status !== "in_progress") continue;
+    const prop = propsByAddr.get(w.property_address);
+    if (!prop) continue;
+    const applicable = getWizardApplicableSteps({ propertyStatus: prop.status, userRole });
+    const completed = new Set(w.completed_steps || []);
+    const approved = new Set(w.skipped_approved_steps || []);
+    // property_details is required to create the row, so if the row
+    // exists it's always completed. Filtering it here keeps the
+    // behavior honest if that invariant ever slips.
+    for (const step of applicable) {
+      if (step === "property_details") continue;
+      if (completed.has(step) || approved.has(step)) continue;
+      const shortAddr = (prop.address || "").split(",")[0];
+      const label = WIZARD_STEP_LABELS[step] || step;
+      allTasks.push({
+        icon: "📋",
+        title: "Setup: " + label + " — " + shortAddr,
+        subtitle: prop.address,
+        link: "properties",
+        priority: HIGH.has(step) ? "high" : "medium",
+        _kind: "wizard_skip",
+        wizardId: w.id,
+        wizardStep: step,
+        wizardStepLabel: label,
+        propertyId: prop.id,
+        address: prop.address,
+        // Snapshot so the approve handler can merge without re-fetch.
+        approvedSnapshot: Array.from(approved),
+      });
+    }
+  }
   } catch (e) { pmError("PM-8006", { raw: e, context: "tasks fetch", silent: true }); }
   setApprovals(allApprovals);
   setTasks(allTasks);
   setLoading(false);
+  }
+
+  // Admin override for a wizard Skip. Merges the step onto the
+  // wizard row's skipped_approved_steps array and records an audit
+  // entry. Re-reads the row before writing so a concurrent admin
+  // approving a different step doesn't get clobbered.
+  async function approveWizardSkip(task) {
+  if (userRole !== "admin" && userRole !== "owner") {
+    showToast("Only admins and owners can approve wizard skips.", "error");
+    return;
+  }
+  if (!await showConfirm({
+    message: `Mark "${task.wizardStepLabel}" complete for ${task.address}?\n\nThe section will be treated as approved-without-data. You can still fill it in later via the setup wizard.`,
+    variant: "primary",
+    confirmText: "Mark Complete",
+  })) return;
+  try {
+    const { data: current } = await supabase.from("property_setup_wizard")
+      .select("skipped_approved_steps").eq("id", task.wizardId).eq("company_id", companyId).maybeSingle();
+    const currentSkips = new Set((current?.skipped_approved_steps) || task.approvedSnapshot || []);
+    currentSkips.add(task.wizardStep);
+    const { error } = await supabase.from("property_setup_wizard")
+      .update({ skipped_approved_steps: Array.from(currentSkips) })
+      .eq("id", task.wizardId).eq("company_id", companyId);
+    if (error) { pmError("PM-2007", { raw: error, context: "wizard skip approval" }); return; }
+    logAudit("approve", "properties",
+      "Admin-approved wizard skip: " + task.wizardStepLabel + " for " + task.address,
+      task.wizardId, userProfile?.email, userRole, companyId);
+    if (addNotification) addNotification("✅", task.wizardStepLabel + " marked complete for " + task.address.split(",")[0]);
+    showToast(task.wizardStepLabel + " marked complete.", "success");
+    fetchAll();
+  } catch (e) {
+    pmError("PM-2007", { raw: e, context: "approveWizardSkip" });
+  }
   }
 
   async function handleApproval(item, action) {
@@ -719,7 +799,27 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   <div className="mb-6">
   {activeTab === "all" && <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-wide mb-3">Pending Tasks</h3>}
   <div className="space-y-2">
-  {tasks.map((t, i) => (
+  {tasks.map((t, i) => {
+  // Wizard-skip rows need two explicit actions (Open Setup +
+  // admin-only Mark Complete) rather than the generic
+  // click-the-whole-row-to-navigate pattern. Rendered with
+  // button-shaped actions so the click targets are unambiguous.
+  if (t._kind === "wizard_skip") {
+  const canApprove = userRole === "admin" || userRole === "owner";
+  return (
+  <div key={i} className="bg-white rounded-xl border border-brand-50 p-4 flex items-center gap-3 hover:border-brand-200 hover:shadow-sm transition-all">
+  <span className="text-xl">{t.icon}</span>
+  <div className="flex-1 min-w-0">
+  <div className="text-sm font-semibold text-neutral-800 truncate">{t.title}</div>
+  <div className="text-xs text-neutral-400 truncate">{t.subtitle}</div>
+  </div>
+  <span className={"text-xs px-2 py-0.5 rounded-full font-bold " + (t.priority === "high" ? "bg-danger-100 text-danger-600" : "bg-warn-100 text-warn-700")}>{t.priority}</span>
+  <Btn variant="primary" size="xs" onClick={() => setPage("properties", { openWizardFor: { propertyId: t.propertyId, address: t.address } })}>Open Setup</Btn>
+  {canApprove && <Btn variant="success-fill" size="xs" onClick={() => approveWizardSkip(t)}>Mark Complete</Btn>}
+  </div>
+  );
+  }
+  return (
   <div key={i} onClick={() => setPage(t.link)} className="bg-white rounded-xl border border-brand-50 p-4 flex items-center gap-3 cursor-pointer hover:border-brand-200 hover:shadow-sm transition-all">
   <span className="text-xl">{t.icon}</span>
   <div className="flex-1 min-w-0">
@@ -729,7 +829,8 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   <span className={"text-xs px-2 py-0.5 rounded-full font-bold " + (t.priority === "high" ? "bg-danger-100 text-danger-600" : "bg-warn-100 text-warn-700")}>{t.priority}</span>
   <span className="material-icons-outlined text-neutral-300 text-sm">arrow_forward</span>
   </div>
-  ))}
+  );
+  })}
   </div>
   </div>
   )}

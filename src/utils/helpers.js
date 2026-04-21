@@ -231,6 +231,49 @@ export const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA"
 
 export const STATE_NAMES = {AL:"Alabama",AK:"Alaska",AZ:"Arizona",AR:"Arkansas",CA:"California",CO:"Colorado",CT:"Connecticut",DE:"Delaware",DC:"District of Columbia",FL:"Florida",GA:"Georgia",HI:"Hawaii",ID:"Idaho",IL:"Illinois",IN:"Indiana",IA:"Iowa",KS:"Kansas",KY:"Kentucky",LA:"Louisiana",ME:"Maine",MD:"Maryland",MA:"Massachusetts",MI:"Michigan",MN:"Minnesota",MS:"Mississippi",MO:"Missouri",MT:"Montana",NE:"Nebraska",NV:"Nevada",NH:"New Hampshire",NJ:"New Jersey",NM:"New Mexico",NY:"New York",NC:"North Carolina",ND:"North Dakota",OH:"Ohio",OK:"Oklahoma",OR:"Oregon",PA:"Pennsylvania",RI:"Rhode Island",SC:"South Carolina",SD:"South Dakota",TN:"Tennessee",TX:"Texas",UT:"Utah",VT:"Vermont",VA:"Virginia",WA:"Washington",WV:"West Virginia",WI:"Wisconsin",WY:"Wyoming"};
 
+// ============ PROPERTY SETUP WIZARD — shared step list ============
+// Single source of truth for "which wizard steps apply to this property
+// given its status + the caller's role". The wizard itself, the
+// Properties Review page, and Tasks & Approvals all derive from this
+// so a Skip in one place shows up as a pending task in another.
+//
+// `review` is intentionally excluded — it's a summary screen, never a
+// skippable task. Callers that need it (e.g. the wizard's own step
+// array) append it locally.
+export function getWizardApplicableSteps({ propertyStatus, userRole } = {}) {
+  const s = ["property_details"];
+  if (propertyStatus === "occupied") s.push("tenant_lease");
+  s.push("utilities", "hoa");
+  if (userRole === "admin" || userRole === "owner") s.push("loan");
+  s.push("documents", "insurance", "property_tax");
+  if (propertyStatus === "occupied") s.push("recurring_rent");
+  return s;
+}
+
+export const WIZARD_STEP_LABELS = {
+  property_details: "Property Details",
+  tenant_lease: "Tenant & Lease",
+  utilities: "Utilities",
+  hoa: "HOA",
+  loan: "Loan / Mortgage",
+  documents: "Documents",
+  insurance: "Insurance",
+  property_tax: "Property Tax",
+  recurring_rent: "Recurring Rent",
+};
+
+export const WIZARD_STEP_ICONS = {
+  property_details: "home",
+  tenant_lease: "people",
+  utilities: "bolt",
+  hoa: "holiday_village",
+  loan: "account_balance_wallet",
+  documents: "description",
+  insurance: "verified_user",
+  property_tax: "receipt_long",
+  recurring_rent: "event_repeat",
+};
+
 // Counties / independent cities the portfolio operates in. Mirrors the
 // FlipRadar active-counties registry (shared/counties.js) for the DMV,
 // plus Richmond City, Baltimore City, and York County PA that are

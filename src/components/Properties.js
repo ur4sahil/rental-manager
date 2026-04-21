@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, Chip, FileInput, FilterPill, IconBtn, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, pickColor, formatPersonName, parseNameParts, formatCurrency, formatPhoneInput, sanitizeFileName, exportToCSV, normalizeEmail, getSignedUrl, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, US_STATES, COUNTIES_BY_STATE, escapeFilterValue, recomputeTenantDocStatus, emailFilterValue, getWizardApplicableSteps } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
@@ -143,6 +143,10 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   const [saving, setSaving] = useState(false);
   const [wizardId, setWizardId] = useState("");
   const [completedSteps, setCompletedSteps] = useState(new Set());
+  // Steps the admin marked "complete without data" via Tasks &
+  // Approvals. Read-only inside the wizard — surfaces on the Review
+  // page as "Skipped (Approved)" so the user sees there's a sign-off.
+  const [approvedSkips, setApprovedSkips] = useState(new Set());
 
   // Property details (Step 1)
   const [propForm, setPropForm] = useState(() => {
@@ -206,16 +210,13 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   const fileInputRef = useRef();
 
   // Build steps array dynamically based on status
-  const steps = (() => {
-    const s = ["property_details"];
-    if (propForm.status === "occupied") s.push("tenant_lease");
-    s.push("utilities", "hoa");
-    if (userRole === "admin" || userRole === "owner") s.push("loan");
-    s.push("documents", "insurance", "property_tax");
-    if (propForm.status === "occupied") s.push("recurring_rent");
-    s.push("review");
-    return s;
-  })();
+  // Derive the step list from the shared helper so the wizard + the
+  // Review page + Tasks & Approvals stay in lock-step on what counts
+  // as an applicable step. `review` is wizard-only and appended here.
+  const steps = [
+    ...getWizardApplicableSteps({ propertyStatus: propForm.status, userRole }),
+    "review",
+  ];
   const totalSteps = steps.length;
   const currentStepId = steps[step - 1];
 
@@ -247,6 +248,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
           const savedCompleted = new Set(existing.completed_steps || []);
           setStep(savedStep);
           setCompletedSteps(savedCompleted);
+          setApprovedSkips(new Set(existing.skipped_approved_steps || []));
           if (existing.wizard_data) {
             try {
             const wd = typeof existing.wizard_data === "string" ? JSON.parse(existing.wizard_data) : existing.wizard_data;
@@ -274,6 +276,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             setWizardId(completed.id);
             setStep(completed.current_step || 1); // Preserve last step instead of restarting
             setCompletedSteps(new Set(completed.completed_steps || []));
+            setApprovedSkips(new Set(completed.skipped_approved_steps || []));
             if (completed.wizard_data) {
               try {
               const wd = typeof completed.wizard_data === "string" ? JSON.parse(completed.wizard_data) : completed.wizard_data;
@@ -1703,6 +1706,15 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
         );
 
       case "review":
+        // Three-state badge: "Saved" (data filled), "Skipped (Approved)"
+        // (admin signed off on empty), or "Skipped" (still pending in
+        // Tasks & Approvals).
+        {
+        const stepBadge = (stepId) => {
+          if (completedSteps.has(stepId)) return <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span>;
+          if (approvedSkips.has(stepId)) return <span className="text-xs bg-info-100 text-info-700 px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5"><span className="material-icons-outlined text-[10px] leading-none">verified</span>Skipped (Approved)</span>;
+          return <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>;
+        };
         return (
           <div>
             <div className="flex items-center gap-3 mb-6">
@@ -1720,7 +1732,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold text-neutral-700">Property Details</span>
                   <div className="flex items-center gap-2">
-                    {completedSteps.has("property_details") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    {stepBadge("property_details")}
                     <Chip onClick={() => setStep(steps.indexOf("property_details") + 1)}>Edit</Chip>
                   </div>
                 </div>
@@ -1739,7 +1751,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-semibold text-neutral-700">Tenant & Lease</span>
                     <div className="flex items-center gap-2">
-                      {completedSteps.has("tenant_lease") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                      {stepBadge("tenant_lease")}
                       <Chip onClick={() => setStep(steps.indexOf("tenant_lease") + 1)}>Edit</Chip>
                     </div>
                   </div>
@@ -1758,7 +1770,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold text-neutral-700">Utilities</span>
                   <div className="flex items-center gap-2">
-                    {completedSteps.has("utilities") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    {stepBadge("utilities")}
                     <Chip onClick={() => setStep(steps.indexOf("utilities") + 1)}>Edit</Chip>
                   </div>
                 </div>
@@ -1776,7 +1788,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold text-neutral-700">HOA</span>
                   <div className="flex items-center gap-2">
-                    {completedSteps.has("hoa") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    {stepBadge("hoa")}
                     <Chip onClick={() => setStep(steps.indexOf("hoa") + 1)}>Edit</Chip>
                   </div>
                 </div>
@@ -1791,7 +1803,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-semibold text-neutral-700">Loan / Mortgage</span>
                     <div className="flex items-center gap-2">
-                      {completedSteps.has("loan") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                      {stepBadge("loan")}
                       <Chip onClick={() => setStep(steps.indexOf("loan") + 1)}>Edit</Chip>
                     </div>
                   </div>
@@ -1826,7 +1838,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold text-neutral-700">Insurance</span>
                   <div className="flex items-center gap-2">
-                    {completedSteps.has("insurance") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    {stepBadge("insurance")}
                     <Chip onClick={() => setStep(steps.indexOf("insurance") + 1)}>Edit</Chip>
                   </div>
                 </div>
@@ -1844,7 +1856,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold text-neutral-700">Property Tax</span>
                   <div className="flex items-center gap-2">
-                    {completedSteps.has("property_tax") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                    {stepBadge("property_tax")}
                     <Chip onClick={() => setStep(steps.indexOf("property_tax") + 1)}>Edit</Chip>
                   </div>
                 </div>
@@ -1864,7 +1876,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-semibold text-neutral-700">Recurring Rent</span>
                     <div className="flex items-center gap-2">
-                      {completedSteps.has("recurring_rent") ? <span className="text-xs bg-positive-100 text-positive-700 px-2 py-0.5 rounded-full font-medium">Saved</span> : <span className="text-xs bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Skipped</span>}
+                      {stepBadge("recurring_rent")}
                       <Chip onClick={() => setStep(steps.indexOf("recurring_rent") + 1)}>Edit</Chip>
                     </div>
                   </div>
@@ -1879,6 +1891,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             </div>
           </div>
         );
+        }
 
       default:
         return null;
@@ -1925,7 +1938,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
 }
 
 // ============ PROPERTIES (Admin-Controlled with Approval Workflow) ============
-function Properties({ addNotification, userRole, userProfile, companyId, setPage, showToast, showConfirm }) {
+function Properties({ addNotification, userRole, userProfile, companyId, setPage, showToast, showConfirm, initialAction }) {
   function exportProperties() {
   const exportData = properties.filter(p => !p.archived_at);
   exportToCSV(exportData, [
@@ -2598,18 +2611,48 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   });
   }, [companyId, showPropertyWizard]);
 
-  // Calculate setup completeness for a property
+  // Honor initialAction.openWizardFor from Tasks & Approvals "Open
+  // Setup" shortcut. Uses a ref guard so StrictMode's double-mount
+  // doesn't re-fire the wizard after the user closes it.
+  const handledInitialAction = useRef(false);
+  useEffect(() => {
+    if (handledInitialAction.current) return;
+    const target = initialAction?.openWizardFor;
+    if (!target?.propertyId && !target?.address) return;
+    if (properties.length === 0) return; // wait for properties to load
+    const prop = properties.find(p =>
+      (target.propertyId && String(p.id) === String(target.propertyId)) ||
+      (target.address && p.address === target.address)
+    );
+    if (!prop) return;
+    handledInitialAction.current = true;
+    setShowPropertyWizard({
+      propertyId: prop.id,
+      address: prop.address,
+      isOccupied: prop.status === "occupied",
+      tenant: prop.tenant || "",
+      rent: Number(prop.rent) || 0,
+      leaseStart: prop.lease_start || "",
+      leaseEnd: prop.lease_end || "",
+      securityDeposit: Number(prop.security_deposit) || 0,
+      isEdit: true,
+    });
+  }, [initialAction, properties]);
+
+  // Calculate setup completeness for a property. Treats an admin-
+  // approved skip (skipped_approved_steps) the same as a completed
+  // step for dashboard-completeness purposes — the admin has
+  // explicitly signed off on "this step is complete without data".
   function getSetupStatus(property) {
     const wizard = allWizards.find(w => w.property_address === property.address);
     if (!wizard) return { wizard: null, completedSteps: [], missing: [], total: 0, completed: 0, isInProgress: false, isComplete: true };
-    // If wizard was explicitly completed or dismissed, it's done
     if (wizard.status === "completed" || wizard.status === "dismissed") return { wizard, completedSteps: wizard.completed_steps || [], missing: [], total: 0, completed: 0, isInProgress: false, isComplete: true };
     const completedSteps = wizard.completed_steps || [];
-    const isOccupied = property.status === "occupied";
-    const optionalSteps = ["utilities", "hoa", "documents", "insurance"];
-    if (isOccupied) optionalSteps.push("tenant_lease", "recurring_rent");
-    if (userRole === "admin" || userRole === "owner") optionalSteps.push("loan");
-    const missing = optionalSteps.filter(s => !completedSteps.includes(s));
+    const approvedSkips = wizard.skipped_approved_steps || [];
+    // property_details is required to create the row, never "optional"
+    const optionalSteps = getWizardApplicableSteps({ propertyStatus: property.status, userRole })
+      .filter(s => s !== "property_details");
+    const missing = optionalSteps.filter(s => !completedSteps.includes(s) && !approvedSkips.includes(s));
     return { wizard, completedSteps, missing, total: optionalSteps.length, completed: optionalSteps.length - missing.length, isInProgress: true, isComplete: missing.length === 0 };
   }
 

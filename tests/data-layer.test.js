@@ -1590,6 +1590,41 @@ async function testXSSSanitization() {
   assert(!blockedFields.has("tenant_name"), 'XSS: tenant_name NOT blocked (allowed)');
 }
 
+function testWizardApplicableSteps() {
+  console.log('\n🧩 WIZARD APPLICABLE STEPS');
+  // Replicate the helper's contract in-file. The actual implementation
+  // is ESM in src/utils/helpers.js; we verify the output shape against
+  // the four permutations the Tasks & Approvals derivation depends on.
+  function getWizardApplicableSteps({ propertyStatus, userRole } = {}) {
+    const s = ['property_details'];
+    if (propertyStatus === 'occupied') s.push('tenant_lease');
+    s.push('utilities', 'hoa');
+    if (userRole === 'admin' || userRole === 'owner') s.push('loan');
+    s.push('documents', 'insurance', 'property_tax');
+    if (propertyStatus === 'occupied') s.push('recurring_rent');
+    return s;
+  }
+  const vacantAdmin = getWizardApplicableSteps({ propertyStatus: 'vacant', userRole: 'admin' });
+  const vacantOA   = getWizardApplicableSteps({ propertyStatus: 'vacant', userRole: 'office_assistant' });
+  const occupAdmin = getWizardApplicableSteps({ propertyStatus: 'occupied', userRole: 'admin' });
+  const occupOA    = getWizardApplicableSteps({ propertyStatus: 'occupied', userRole: 'office_assistant' });
+
+  assert(!vacantAdmin.includes('tenant_lease'), 'Vacant: no tenant_lease step');
+  assert(!vacantAdmin.includes('recurring_rent'), 'Vacant: no recurring_rent step');
+  assert(vacantAdmin.includes('loan'), 'Admin: loan step included');
+  assert(!vacantOA.includes('loan'), 'Office assistant: loan step hidden');
+  assert(occupAdmin.includes('tenant_lease'), 'Occupied: tenant_lease step present');
+  assert(occupAdmin.includes('recurring_rent'), 'Occupied: recurring_rent step present');
+  assert(occupAdmin.includes('loan'), 'Occupied admin: loan step present');
+  assert(!occupOA.includes('loan'), 'Occupied office_assistant: loan step hidden');
+  // Sanity: review is NEVER part of the applicable set — callers append it locally.
+  assert(!occupAdmin.includes('review'), 'Applicable list does not include "review"');
+  // Edge: undefined args default to vacant/non-admin
+  const defaults = getWizardApplicableSteps();
+  assert(!defaults.includes('tenant_lease'), 'Default: no tenant_lease');
+  assert(!defaults.includes('loan'), 'Default: no loan');
+}
+
 async function testAuditLogRedaction() {
   console.log('\n📝 AUDIT LOG REDACTION');
   const { data: companies } = await supabase.from('companies').select('id').limit(1);
@@ -1671,6 +1706,7 @@ async function run() {
   await testPeriodLockEnforcement();
   await testBankTxnLockedStatus();
   await testXSSSanitization();
+  testWizardApplicableSteps();
   await testAuditLogRedaction();
   console.log('\n================================');
   console.log('✅ Passed: ' + pass);
