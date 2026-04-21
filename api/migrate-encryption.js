@@ -167,22 +167,28 @@ async function migrateTable(supabase, tbl) {
       }
       if (!anyAuthenticated) throw new Error("No field authenticated under any candidate key");
 
-      // Fresh per-row salt. Re-encrypt each field under v3; each field gets a
-      // fresh IV. We persist only one IV column (pre-existing schema shape),
-      // using the last-encrypted field's IV. Any caller still using the
-      // legacy one-IV-for-all-fields convention reads the password cleanly;
-      // the username-with-wrong-IV behaviour is a pre-existing latent issue
-      // that is outside the M15 scope.
+      // Fresh per-row salt. Re-encrypt each field under v3; each field gets
+      // a fresh IV. Persist per-field IVs — encryption_iv for the "main"
+      // field (password/access_token), encryption_iv_username for the
+      // companion username. Before this change we wrote only the last
+      // field's IV and discarded the other, which silently broke the
+      // previously-encrypted-first field on every multi-field row.
       const salt = crypto.randomBytes(16);
       const update = { encryption_salt: salt.toString("hex") };
-      let lastIv = null;
+      const perFieldIv = {};
       for (const f of tbl.fields) {
         if (!plains[f]) { update[f] = ""; continue; }
         const r = encryptV3(plains[f], salt);
         update[f] = r.encrypted;
-        lastIv = r.iv;
+        perFieldIv[f] = r.iv;
       }
-      if (lastIv) update.encryption_iv = lastIv;
+      // Map field → IV column. Username-suffixed fields land in
+      // encryption_iv_username; everything else (password, access_token,
+      // and single-field rows) lands in encryption_iv.
+      for (const [f, iv] of Object.entries(perFieldIv)) {
+        if (/username/i.test(f)) update.encryption_iv_username = iv;
+        else update.encryption_iv = iv;
+      }
 
       const { error: upErr } = await supabase.from(tbl.name).update(update).eq("id", row.id);
       if (upErr) {
