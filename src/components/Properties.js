@@ -811,7 +811,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             if (proOk) {
               await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: addr, date: tenantForm.lease_start, description: `Prorated rent (${remainingDays}/${daysInMonth} days)`, amount: proratedAmount, type: "charge", balance: 0 });
               try { await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: proratedAmount }); } catch (_e) { pmError("PM-6002", { raw: _e, context: "prorated rent balance update", silent: true }); }
-              await supabase.from("recurring_journal_entries").update({ last_posted_date: tenantForm.lease_start }).eq("company_id", companyId).eq("property", addr).eq("status", "active").is("archived_at", null);
+              // Reset only THIS tenant's recurring schedule. Blanket-by-
+              // property used to reset siblings' last_posted_date, which
+              // made the next cron pass skip a month of rent for tenants
+              // already billed.
+              await supabase.from("recurring_journal_entries").update({ last_posted_date: tenantForm.lease_start }).eq("company_id", companyId).eq("tenant_id", tenantId).eq("status", "active").is("archived_at", null);
             }
           } else {
             const fullOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start,
@@ -825,7 +829,9 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
             if (fullOk) {
               await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: addr, date: tenantForm.lease_start, description: "First month rent", amount: monthlyRent, type: "charge", balance: 0 });
               try { await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: monthlyRent }); } catch (_e) { pmError("PM-6002", { raw: _e, context: "first month rent balance update", silent: true }); }
-              await supabase.from("recurring_journal_entries").update({ last_posted_date: tenantForm.lease_start }).eq("company_id", companyId).eq("property", addr).eq("status", "active").is("archived_at", null);
+              // Scope recurring reset to this tenant only — same reason
+              // as the prorated branch above.
+              await supabase.from("recurring_journal_entries").update({ last_posted_date: tenantForm.lease_start }).eq("company_id", companyId).eq("tenant_id", tenantId).eq("status", "active").is("archived_at", null);
             }
           }
         }
