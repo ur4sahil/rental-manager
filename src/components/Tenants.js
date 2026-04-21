@@ -264,13 +264,42 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   lease_status: "inactive"
   }).eq("id", id).eq("company_id", companyId);
   if (archiveErr) { pmError("PM-3003", { raw: archiveErr, context: "archive tenant" }); return; }
-  // Update property to vacant when tenant archived
+  // Update property when tenant archived. At a multi-unit address we must
+  // NOT blanket-clear every tenant slot — that used to wipe siblings A, C,
+  // D, E when B was archived. Only mark the property vacant (and clear
+  // lease/rent fields) when this was the sole remaining tenant. Otherwise
+  // clear just the slot this tenant occupied.
   if (tenantProperty) {
+  const { data: otherTenants } = await supabase.from("tenants").select("id").eq("company_id", companyId).eq("property", tenantProperty).neq("id", id).is("archived_at", null);
+  const hasOthers = (otherTenants || []).length > 0;
+  if (!hasOthers) {
   const { error: propErr } = await supabase.from("properties").update({ status: "vacant", tenant: "", tenant_2: "", tenant_2_email: "", tenant_2_phone: "", tenant_3: "", tenant_3_email: "", tenant_3_phone: "", tenant_4: "", tenant_4_email: "", tenant_4_phone: "", tenant_5: "", tenant_5_email: "", tenant_5_phone: "", lease_end: null, lease_start: "", rent: null, security_deposit: null }).eq("company_id", companyId).eq("address", tenantProperty);
   if (propErr) pmError("PM-2002", { raw: propErr, context: "update property to vacant", silent: true });
+  } else {
+  // Find which slot this tenant occupies and clear only that one.
+  const { data: propRow } = await supabase.from("properties").select("tenant, tenant_2, tenant_3, tenant_4, tenant_5").eq("company_id", companyId).eq("address", tenantProperty).maybeSingle();
+  if (propRow) {
+  const slotUpdate = {};
+  if (propRow.tenant === name) slotUpdate.tenant = "";
+  else if (propRow.tenant_2 === name) Object.assign(slotUpdate, { tenant_2: "", tenant_2_email: "", tenant_2_phone: "" });
+  else if (propRow.tenant_3 === name) Object.assign(slotUpdate, { tenant_3: "", tenant_3_email: "", tenant_3_phone: "" });
+  else if (propRow.tenant_4 === name) Object.assign(slotUpdate, { tenant_4: "", tenant_4_email: "", tenant_4_phone: "" });
+  else if (propRow.tenant_5 === name) Object.assign(slotUpdate, { tenant_5: "", tenant_5_email: "", tenant_5_phone: "" });
+  if (Object.keys(slotUpdate).length > 0) {
+  const { error: propErr } = await supabase.from("properties").update(slotUpdate).eq("company_id", companyId).eq("address", tenantProperty);
+  if (propErr) pmError("PM-2002", { raw: propErr, context: "clear tenant slot on archive", silent: true });
   }
-  // Terminate active leases for this tenant (match by name or property)
-  const { error: leaseErr } = await supabase.from("leases").update({ status: "terminated", archived_at: new Date().toISOString() }).eq("company_id", companyId).eq("status", "active").or(`tenant_name.ilike.%${escapeFilterValue(name)}%,property.eq.${escapeFilterValue(tenantProperty)}`);
+  }
+  }
+  }
+  // Terminate active leases for THIS tenant only. Scoping by tenant_id is
+  // authoritative; fall back to (tenant_name AND property) when the lease
+  // row predates tenant_id backfill. Previous .or() scoped by name OR
+  // property, which terminated every other active lease at a multi-unit
+  // address when one tenant was archived.
+  let leaseTermQ = supabase.from("leases").update({ status: "terminated", archived_at: new Date().toISOString() }).eq("company_id", companyId).eq("status", "active");
+  leaseTermQ = id ? leaseTermQ.or(`tenant_id.eq.${id},and(tenant_name.eq.${escapeFilterValue(name)},property.eq.${escapeFilterValue(tenantProperty || "")})`) : leaseTermQ.eq("tenant_name", name).eq("property", tenantProperty || "");
+  const { error: leaseErr } = await leaseTermQ;
   if (leaseErr) pmError("PM-3004", { raw: leaseErr, context: "terminate leases on archive", silent: true });
   // Archive autopay schedules for this tenant
   await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", companyId).eq("tenant", name).eq("property", tenantProperty);
