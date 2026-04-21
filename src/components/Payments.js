@@ -232,11 +232,17 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   // tenant row if the tenant was later renamed ("alice johnson" vs
   // "Alice Johnson" otherwise silently produces tenantRow=null).
   const { data: tenantRow } = await supabase.from("tenants")
-    .select("id, balance, email")
+    .select("id, name, balance, email")
     .ilike("name", escapeFilterValue(s.tenant || ""))
     .eq("company_id", companyId)
     .eq("property", s.property)
     .maybeSingle();
+  // Prefer the tenant row's current name over the schedule's stored
+  // name — the schedule row isn't kept in sync when a tenant is
+  // renamed, so payments + JE memos used to freeze the old name
+  // forever. Falls back to the schedule value when no tenant row
+  // matched (shouldn't happen after the runNow lookup, but safe).
+  const tenantDisplayName = tenantRow?.name || s.tenant;
   // Duplicate guard — by tenant_id + date + method when possible, else fall back to name.
   let dupQ = supabase.from("payments").select("id").eq("company_id", companyId).eq("date", today).eq("method", s.method).limit(1);
   dupQ = tenantRow?.id ? dupQ.eq("tenant_id", tenantRow.id) : dupQ.eq("tenant", s.tenant).eq("property", s.property);
@@ -244,25 +250,25 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   if (todayPay?.length > 0) {
     if (!await showConfirm({ message: "A payment from " + s.tenant + " was already recorded today. Run again?" })) return;
   }
-  const { error } = await supabase.from("payments").insert([{ company_id: companyId, tenant: s.tenant, tenant_id: tenantRow?.id || null, property: s.property, amount: s.amount, type: "rent", method: s.method, status: "paid", date: today }]);
+  const { error } = await supabase.from("payments").insert([{ company_id: companyId, tenant: tenantDisplayName, tenant_id: tenantRow?.id || null, property: s.property, amount: s.amount, type: "rent", method: s.method, status: "paid", date: today }]);
   if (error) { pmError("PM-8006", { raw: error, context: "save reconciliation" }); return; }
   const classId = await getPropertyClassId(s.property, companyId);
   const month = today.slice(0, 7);
-  const hasAccrual = await checkAccrualExists(companyId, month, s.tenant);
+  const hasAccrual = await checkAccrualExists(companyId, month, tenantDisplayName);
   // "via <method>" marker is parsed by fetchPayments to surface the
   // right payment method on the payments page without relying on
   // fuzzy description matches.
   const viaTag = " · via " + s.method;
   const jeLines = hasAccrual
   ? [
-  { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay from " + s.tenant + viaTag },
-  { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement — " + s.tenant + viaTag },
+  { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay from " + tenantDisplayName + viaTag },
+  { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: amt, class_id: classId, memo: "AR settlement — " + tenantDisplayName + viaTag },
   ]
   : [
-  { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay from " + s.tenant + viaTag },
-  { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: s.tenant + " — " + s.property + viaTag },
+  { account_id: "1000", account_name: "Checking Account", debit: amt, credit: 0, class_id: classId, memo: "Autopay from " + tenantDisplayName + viaTag },
+  { account_id: "4000", account_name: "Rental Income", debit: 0, credit: amt, class_id: classId, memo: tenantDisplayName + " — " + s.property + viaTag },
   ];
-  const jeDesc = hasAccrual ? "Autopay received — " + s.tenant + " — " + s.property + " (settling AR)" : "Autopay — " + s.tenant + " — " + s.property;
+  const jeDesc = hasAccrual ? "Autopay received — " + tenantDisplayName + " — " + s.property + " (settling AR)" : "Autopay — " + tenantDisplayName + " — " + s.property;
   // Deterministic reference — the unique index on (company_id, reference)
   // is only useful if refs are predictable. APAY-<tenantId>-<yyyymmdd>
   // collides on double-post, which is exactly what we want.
@@ -271,16 +277,16 @@ function Autopay({ addNotification, userProfile, userRole, companyId, showToast,
   const result = await atomicPostJEAndLedger({ companyId,
   date: today, description: jeDesc, reference: jeRef, property: s.property,
   lines: jeLines,
-  ledgerEntry: { tenant: s.tenant, property: s.property, date: today, description: "Autopay payment (" + s.method + ")", amount: -amt, type: "payment", balance: 0 },
+  ledgerEntry: { tenant: tenantDisplayName, tenant_id: tenantRow?.id || null, property: s.property, date: today, description: "Autopay payment (" + s.method + ")", amount: -amt, type: "payment", balance: 0 },
   balanceUpdate: tenantRow ? { tenantId: tenantRow.id, amount: -amt } : null,
   });
   if (!result.jeId) { fetchData(); return; } // toast already shown
-  logAudit("create", "payments", "Autopay: $" + s.amount + " from " + s.tenant + " at " + s.property, "", userProfile?.email, userRole, companyId);
-  addNotification("\ud83d\udcb3", "Autopay $" + s.amount + " processed for " + s.tenant);
+  logAudit("create", "payments", "Autopay: $" + s.amount + " from " + tenantDisplayName + " at " + s.property, "", userProfile?.email, userRole, companyId);
+  addNotification("\ud83d\udcb3", "Autopay $" + s.amount + " processed for " + tenantDisplayName);
   if (tenantRow?.email) {
-  queueNotification("payment_received", tenantRow.email, { tenant: s.tenant, amount: amt, date: today, property: s.property, method: s.method }, companyId);
+  queueNotification("payment_received", tenantRow.email, { tenant: tenantDisplayName, amount: amt, date: today, property: s.property, method: s.method }, companyId);
   }
-  await autoOwnerDistribution(companyId, s.property, amt, today, s.tenant);
+  await autoOwnerDistribution(companyId, s.property, amt, today, tenantDisplayName);
   fetchData();
   } finally {
   guardRelease("runNow", s.id);
