@@ -323,7 +323,8 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ]
   });
   // Zero out tenant balance
-  await supabase.rpc("update_tenant_balance", { p_tenant_id: id, p_amount_change: -tenantBal }).catch(e => pmError("PM-6002", { raw: e, context: "balance zero-out on archive", silent: true }));
+  { const { error: _balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: id, p_amount_change: -tenantBal });
+    if (_balErr) pmError("PM-6002", { raw: _balErr, context: "balance zero-out on archive", silent: true }); }
   }
   // Deactivate tenant AR sub-accounts
   await supabase.from("acct_accounts").update({ is_active: false }).eq("company_id", companyId).eq("tenant_id", id);

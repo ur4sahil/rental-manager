@@ -1121,7 +1121,10 @@ export function AcctReports({ accounts, journalEntries, classes, companyName, co
     try { localStorage.setItem(`report_favorites_${companyId}`, JSON.stringify(next)); } catch (e) { pmError("PM-4015", { raw: e, context: "saving report favorites to localStorage", silent: true }); }
     // Also try to save to DB for cross-device sync
     if (userProfile?.email) {
-      supabase.from("app_users").update({ preferences: { report_favorites: next } }).eq("company_id", companyId).ilike("email", userProfile.email).then(() => {}).catch((e) => { pmError("PM-4016", { raw: e, context: "syncing report favorites to DB", silent: true }); });
+      // Fire-and-forget sync — inspect { error } because the Supabase
+      // client does not reject on business errors; .catch() alone would
+      // swallow RLS denials and constraint failures silently.
+      supabase.from("app_users").update({ preferences: { report_favorites: next } }).eq("company_id", companyId).ilike("email", userProfile.email).then(({ error }) => { if (error) pmError("PM-4016", { raw: error, context: "syncing report favorites to DB", silent: true }); }, (e) => { pmError("PM-4016", { raw: e, context: "syncing report favorites to DB (network)", silent: true }); });
     }
   }
 

@@ -509,7 +509,8 @@ export async function autoPostRecurringEntries(companyId) {
       const { data: acct } = await supabase.from("acct_accounts").select("type, code").eq("company_id", cid).eq("id", debitId).maybeSingle();
       const isAR = acct && (acct.code === "1100" || ((acct.type || "").toLowerCase() === "asset" && (acct.code || "").startsWith("11")));
       if (isAR) {
-        await supabase.rpc("update_tenant_balance", { p_tenant_id: entry.tenant_id, p_amount_change: postAmount }).catch(e => pmError("PM-6002", { raw: e, context: "recurring balance update", silent: true }));
+        const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: entry.tenant_id, p_amount_change: postAmount });
+        if (balErr) pmError("PM-6002", { raw: balErr, context: "recurring balance update", silent: true });
       }
     }
   }

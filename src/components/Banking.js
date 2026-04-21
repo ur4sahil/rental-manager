@@ -1149,7 +1149,8 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   }
 
   async function incrementRuleStats(ruleId) {
-    try { await supabase.rpc("increment_rule_stats", { rule_id: ruleId }); } catch (_e) { pmError("PM-5008", { raw: _e, context: "increment bank rule stats", silent: true }); }
+    const { error: _statsErr } = await supabase.rpc("increment_rule_stats", { rule_id: ruleId });
+    if (_statsErr) pmError("PM-5008", { raw: _statsErr, context: "increment bank rule stats", silent: true });
   }
 
   // Migrate V1 rules to V2 JSON format (runs once per company)

@@ -127,7 +127,10 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   ]
   });
   await safeLedgerInsert({ company_id: cid, tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: `Rent proration credit (${moveOutDay}/${daysInMoveOutMonth} days)`, amount: -creditBack, type: "adjustment", balance: 0 });
-  if (selectedTenant.id) await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: -creditBack }).catch(e => pmError("PM-6002", { raw: e, context: "balance update on move-out credit", silent: true }));
+  if (selectedTenant.id) {
+  const { error: _balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: -creditBack });
+  if (_balErr) pmError("PM-6002", { raw: _balErr, context: "balance update on move-out credit", silent: true });
+  }
   }
   }
   }
