@@ -13,7 +13,7 @@ test.describe('Document Builder', () => {
   // ── Module Load ──
   test('loads without crashing', async ({ page }) => {
     await expect(page.locator('text=Document Builder').first()).toBeVisible({ timeout: 10000 });
-    const hasError = await page.locator('text=Something went wrong').isVisible().catch(() => false);
+    const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasError).toBeFalsy();
   });
 
@@ -61,8 +61,8 @@ test.describe('Document Builder', () => {
   test('templates have Edit and Use buttons', async ({ page }) => {
     await page.locator('button:has-text("Templates")').first().click();
     await page.waitForTimeout(2000);
-    const hasEdit = await page.locator('button:has-text("Edit")').first().isVisible().catch(() => false);
-    const hasUse = await page.locator('button:has-text("Use")').first().isVisible().catch(() => false);
+    const hasEdit = await page.locator('button:has-text("Edit")').first().isVisible({ timeout: 3000 }).catch(() => false);
+    const hasUse = await page.locator('button:has-text("Use")').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasEdit || hasUse).toBeTruthy();
   });
 
@@ -86,7 +86,7 @@ test.describe('Document Builder', () => {
     await page.waitForTimeout(1500);
     // Should show either documents or empty state
     const hasContent = await page.locator('[class*="rounded-2xl"]').count();
-    const hasEmpty = await page.locator('text=No documents').isVisible().catch(() => false);
+    const hasEmpty = await page.locator('text=No documents').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasContent > 0 || hasEmpty).toBeTruthy();
   });
 
@@ -101,7 +101,7 @@ test.describe('Document Builder', () => {
     const templates = ['Notice to Pay', 'Notice to Vacate', 'Lease Renewal', 'General Letter'];
     let found = 0;
     for (const t of templates) {
-      const vis = await page.locator(`text=${t}`).first().isVisible().catch(() => false);
+      const vis = await page.locator(`text=${t}`).first().isVisible({ timeout: 3000 }).catch(() => false);
       if (vis) found++;
     }
     expect(found).toBeGreaterThanOrEqual(2); // At least 2 starter templates visible

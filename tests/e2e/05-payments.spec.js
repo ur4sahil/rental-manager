@@ -14,9 +14,9 @@ test.describe('Payments Module', () => {
     await page.waitForTimeout(2000); // Wait for server-side paginated data to load
     await expect(page.locator('table').first()).toBeVisible({ timeout: 5000 });
     // Should have seeded payments (names visible in table)
-    const hasData = await page.locator('text=/Alice/i').first().isVisible().catch(() => false)
-      || await page.locator('text=/Bob/i').first().isVisible().catch(() => false)
-      || await page.locator('text=/payments/i').first().isVisible().catch(() => false);
+    const hasData = await page.locator('text=/Alice/i').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=/Bob/i').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=/payments/i').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasData).toBeTruthy();
   });
 

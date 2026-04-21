@@ -80,8 +80,8 @@ test.describe('Authentication', () => {
     await submitBtn.click();
     // Should show an error message (inline error text or toast notification)
     await page.waitForTimeout(2000);
-    const errorVisible = await page.locator('text=Invalid').isVisible().catch(() => false)
-      || await page.locator('[class*="red"]').first().isVisible().catch(() => false)
+    const errorVisible = await page.locator('text=Invalid').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('[class*="red"], [class*="danger"]').first().isVisible({ timeout: 3000 }).catch(() => false)
       || await waitForToast(page, { type: 'error', timeout: 2000 });
     expect(errorVisible).toBeTruthy();
   });

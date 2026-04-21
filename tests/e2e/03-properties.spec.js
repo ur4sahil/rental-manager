@@ -60,7 +60,7 @@ test.describe('Properties Module', () => {
       await toggles.nth(1).click();
       await page.waitForTimeout(800);
       // Should see a table or list layout
-      const hasTable = await page.locator('table, thead, th').first().isVisible().catch(() => false);
+      const hasTable = await page.locator('table, thead, th').first().isVisible({ timeout: 3000 }).catch(() => false);
       // Switch to compact view
       if (count >= 3) {
         await toggles.nth(2).click();
@@ -117,7 +117,7 @@ test.describe('Properties Module', () => {
       await cancelBtn.click();
       await page.waitForTimeout(500);
       // Modal should close
-      const formGone = !(await page.locator('input[placeholder*="address" i]').isVisible().catch(() => false));
+      const formGone = !(await page.locator('input[placeholder*="address" i]').isVisible({ timeout: 3000 }).catch(() => false));
       expect(formGone).toBeTruthy();
     }
   });

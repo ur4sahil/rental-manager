@@ -25,7 +25,7 @@ test.describe('Sidebar Navigation', () => {
     console.log('Found sidebar modules:', modules);
     for (const mod of modules) {
       await navigateTo(page, mod);
-      const hasError = await page.locator('text=Something went wrong').isVisible().catch(() => false);
+      const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);
       expect(hasError, `Module "${mod}" should not crash`).toBeFalsy();
       // Check no horizontal overflow on each
       await assertNoHorizontalOverflow(page);
@@ -47,7 +47,7 @@ test.describe('Sidebar Navigation', () => {
   test('header shows user avatar and role', async ({ page }) => {
     await page.waitForTimeout(1500);
     // User avatar moved to header (top-right)
-    const hasAvatar = await page.locator('header [class*="rounded-full"]').first().isVisible().catch(() => false);
+    const hasAvatar = await page.locator('header [class*="rounded-full"]').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasAvatar).toBeTruthy();
   });
 

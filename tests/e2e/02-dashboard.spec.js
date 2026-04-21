@@ -40,8 +40,8 @@ test.describe('Dashboard', () => {
       await occupancyCard.click();
       await page.waitForTimeout(1500);
       // Should be on properties page
-      const onProperties = await page.locator('text=Properties').first().isVisible().catch(() => false)
-        || await page.locator('button:has-text("Add")').first().isVisible().catch(() => false);
+      const onProperties = await page.locator('text=Properties').first().isVisible({ timeout: 3000 }).catch(() => false)
+        || await page.locator('button:has-text("Add")').first().isVisible({ timeout: 3000 }).catch(() => false);
       expect(onProperties).toBeTruthy();
     }
   });
@@ -65,7 +65,7 @@ test.describe('Dashboard', () => {
     const noi = page.locator('text=Net Operating Income').first();
     if (await noi.isVisible({ timeout: 3000 }).catch(() => false)) {
       // Should have monetary values
-      const hasAmount = await page.locator('text=$').first().isVisible().catch(() => false);
+      const hasAmount = await page.locator('text=$').first().isVisible({ timeout: 3000 }).catch(() => false);
       expect(hasAmount).toBeTruthy();
     }
   });

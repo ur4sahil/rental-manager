@@ -12,7 +12,7 @@ test.describe('Notifications Module', () => {
 
   test('notifications page loads', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const hasError = await page.locator('text=Something went wrong').isVisible().catch(() => false);
+    const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasError).toBeFalsy();
   });
 
@@ -31,7 +31,7 @@ test.describe('Notifications Module', () => {
 
   test('notification settings show toggle switches', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const toggles = page.locator('[class*="green"], [class*="slate"]');
+    const toggles = page.locator('[class*="green"], [class*="positive"], [class*="slate"]');
     const count = await toggles.count();
   });
 
@@ -49,8 +49,8 @@ test.describe('Notifications Module', () => {
       await rrTab.click();
       await page.waitForTimeout(1000);
       // Should show tenant names, rents, balances
-      const hasData = await page.locator('text=Alice').isVisible().catch(() => false)
-        || await page.locator('text=Bob').isVisible().catch(() => false);
+      const hasData = await page.locator('text=Alice').first().isVisible({ timeout: 3000 }).catch(() => false)
+        || await page.locator('text=Bob').first().isVisible({ timeout: 3000 }).catch(() => false);
     }
   });
 
@@ -59,8 +59,8 @@ test.describe('Notifications Module', () => {
     if (await rrTab.isVisible({ timeout: 2000 }).catch(() => false)) {
       await rrTab.click();
       await page.waitForTimeout(1000);
-      const hasTotals = await page.locator('text=Total').isVisible().catch(() => false)
-        || await page.locator('text=$').first().isVisible().catch(() => false);
+      const hasTotals = await page.locator('text=Total').first().isVisible({ timeout: 3000 }).catch(() => false)
+        || await page.locator('text=$').first().isVisible({ timeout: 3000 }).catch(() => false);
     }
   });
 
@@ -87,8 +87,8 @@ test.describe('Audit Trail (Admin Page)', () => {
 
   test('audit trail loads with data', async ({ page }) => {
     await page.waitForTimeout(2000);
-    const hasData = await page.locator('text=create').first().isVisible().catch(() => false)
-      || await page.locator('text=admin').first().isVisible().catch(() => false);
+    const hasData = await page.locator('text=create').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=admin').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasData).toBeTruthy();
   });
 
@@ -135,8 +135,8 @@ test.describe('Audit Trail (Admin Page)', () => {
 
   test('stat cards show total actions, active users', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const hasStats = await page.locator('text=Total').first().isVisible().catch(() => false)
-      || await page.locator('text=Actions').first().isVisible().catch(() => false);
+    const hasStats = await page.locator('text=Total').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=Actions').first().isVisible({ timeout: 3000 }).catch(() => false);
   });
 
   test('no horizontal overflow on audit trail', async ({ page }) => {
@@ -153,8 +153,8 @@ test.describe('Team & Roles (Admin Page)', () => {
 
   test('team page loads', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const hasContent = await page.locator('text=Team').first().isVisible().catch(() => false)
-      || await page.locator('text=Role').first().isVisible().catch(() => false);
+    const hasContent = await page.locator('text=Team').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=Role').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasContent).toBeTruthy();
   });
 
@@ -192,13 +192,13 @@ test.describe('Team & Roles (Admin Page)', () => {
 
   test('existing users shown with role badges', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const hasUser = await page.locator('text=admin').first().isVisible().catch(() => false);
+    const hasUser = await page.locator('text=admin').first().isVisible({ timeout: 3000 }).catch(() => false);
   });
 
   test('user cards have edit, invite, remove buttons', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const hasEdit = await page.locator('button:has-text("Edit"), button:has-text("✏")').first().isVisible().catch(() => false);
-    const hasInvite = await page.locator('button:has-text("Invite"), button:has-text("✉")').first().isVisible().catch(() => false);
+    const hasEdit = await page.locator('button:has-text("Edit"), button:has-text("✏")').first().isVisible({ timeout: 3000 }).catch(() => false);
+    const hasInvite = await page.locator('button:has-text("Invite"), button:has-text("✉")').first().isVisible({ timeout: 3000 }).catch(() => false);
   });
 
   test('no horizontal overflow on team', async ({ page }) => {

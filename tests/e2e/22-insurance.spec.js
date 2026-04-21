@@ -5,7 +5,7 @@ test.describe('Insurance Tracker', () => {
   test.beforeEach(async ({ page }) => { await login(page); await navigateTo(page, 'Insurance'); });
 
   test('insurance page loads without crash', async ({ page }) => {
-    const hasError = await page.locator('text=Something went wrong').isVisible().catch(() => false);
+    const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasError).toBeFalsy();
   });
 

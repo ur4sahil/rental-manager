@@ -20,8 +20,8 @@ test.describe('Vendors Module', () => {
 
   test('stat cards show active vendors, pending invoices, total paid', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const hasStats = await page.locator('text=Active').first().isVisible().catch(() => false)
-      || await page.locator('text=Pending').first().isVisible().catch(() => false);
+    const hasStats = await page.locator('text=Active').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=Pending').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasStats).toBeTruthy();
   });
 
@@ -69,8 +69,8 @@ test.describe('Vendors Module', () => {
 
   test('vendor cards show star ratings', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const hasStar = await page.locator('text=/★|⭐/').first().isVisible().catch(() => false)
-      || await page.locator('[class*="yellow"], [class*="amber"]').first().isVisible().catch(() => false);
+    const hasStar = await page.locator('text=/★|⭐/').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('[class*="yellow"], [class*="warn"], [class*="amber"]').first().isVisible({ timeout: 3000 }).catch(() => false);
   });
 
   test('vendor search filters by name', async ({ page }) => {
@@ -78,7 +78,7 @@ test.describe('Vendors Module', () => {
     if (await search.isVisible({ timeout: 3000 }).catch(() => false)) {
       await search.fill('Mike');
       await page.waitForTimeout(800);
-      const mike = await page.locator('text=Mike Plumber').isVisible().catch(() => false);
+      const mike = await page.locator('text=Mike Plumber').first().isVisible({ timeout: 3000 }).catch(() => false);
       expect(mike).toBeTruthy();
     }
   });
@@ -155,8 +155,8 @@ test.describe('Owners Module', () => {
 
   test('owner cards show properties managed and YTD distributions', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const hasDetail = await page.locator('text=Properties').first().isVisible().catch(() => false)
-      || await page.locator('text=$').first().isVisible().catch(() => false);
+    const hasDetail = await page.locator('text=Properties').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=$').first().isVisible({ timeout: 3000 }).catch(() => false);
   });
 
   test('no horizontal overflow on owners', async ({ page }) => {

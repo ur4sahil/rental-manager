@@ -94,9 +94,9 @@ test.describe('Inspections Module', () => {
       await typeSelect.selectOption({ label: 'Move-In' });
       await page.waitForTimeout(500);
       // Should show checklist items like "Front door", "Walls", etc.
-      const hasItem = await page.locator('text=door').isVisible().catch(() => false)
-        || await page.locator('text=Walls').isVisible().catch(() => false)
-        || await page.locator('text=HVAC').isVisible().catch(() => false);
+      const hasItem = await page.locator('text=door').first().isVisible({ timeout: 3000 }).catch(() => false)
+        || await page.locator('text=Walls').first().isVisible({ timeout: 3000 }).catch(() => false)
+        || await page.locator('text=HVAC').first().isVisible({ timeout: 3000 }).catch(() => false);
     }
   });
 
@@ -110,16 +110,16 @@ test.describe('Inspections Module', () => {
       await page.waitForTimeout(500);
       const passBtn = page.locator('button:has-text("Pass"), button:has-text("✓")').first();
       const failBtn = page.locator('button:has-text("Fail"), button:has-text("✗")').first();
-      const hasPassFail = await passBtn.isVisible().catch(() => false)
-        || await failBtn.isVisible().catch(() => false);
+      const hasPassFail = await passBtn.isVisible({ timeout: 3000 }).catch(() => false)
+        || await failBtn.isVisible({ timeout: 3000 }).catch(() => false);
     }
   });
 
   test('shows seeded inspection data', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const hasInsp = await page.locator('text=Oak').isVisible().catch(() => false)
-      || await page.locator('text=Move-In').isVisible().catch(() => false)
-      || await page.locator('text=completed').isVisible().catch(() => false);
+    const hasInsp = await page.locator('text=Oak').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=Move-In').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=completed').first().isVisible({ timeout: 3000 }).catch(() => false);
   });
 
   test('no horizontal overflow on inspections', async ({ page }) => {

@@ -14,7 +14,7 @@ test.describe('Accounting on Mobile', () => {
   });
 
   test('accounting loads on mobile without crash', async ({ page }) => {
-    const hasError = await page.locator('text=Something went wrong').isVisible().catch(() => false);
+    const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasError).toBeFalsy();
   });
 
@@ -22,7 +22,7 @@ test.describe('Accounting on Mobile', () => {
     const tabBar = page.locator('button:has-text("Dashboard")').first();
     const hasTabs = await tabBar.isVisible({ timeout: 5000 }).catch(() => false);
     // Either mobile tabs or content should be visible
-    const hasContent = await page.locator('text=Revenue').first().isVisible().catch(() => false);
+    const hasContent = await page.locator('text=Revenue').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasTabs || hasContent).toBeTruthy();
   });
 
@@ -53,8 +53,8 @@ test.describe('Payments Module Tabs', () => {
       await recordBtn.click();
       await page.waitForTimeout(2000);
       // Should be on accounting with JE modal or journal tab
-      const hasJE = await page.locator('text=Journal Entries').first().isVisible().catch(() => false)
-        || await page.locator('text=New Journal Entry').first().isVisible().catch(() => false);
+      const hasJE = await page.locator('text=Journal Entries').first().isVisible({ timeout: 3000 }).catch(() => false)
+        || await page.locator('text=New Journal Entry').first().isVisible({ timeout: 3000 }).catch(() => false);
       expect(hasJE).toBeTruthy();
     }
   });

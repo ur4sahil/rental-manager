@@ -28,7 +28,7 @@ test.describe('Tenants Module', () => {
     await search.fill('Alice');
     await page.waitForTimeout(1500);
     // Alice should still be visible after search
-    const alice = await page.locator('text=/Alice/i').first().isVisible().catch(() => false);
+    const alice = await page.locator('text=/Alice/i').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(alice).toBeTruthy();
     await search.fill('');
   });
@@ -46,8 +46,8 @@ test.describe('Tenants Module', () => {
   test('tenant cards show lease status badges', async ({ page }) => {
     await page.waitForTimeout(2000);
     // Status may be "Active", "active", "ACTIVE" or in a badge
-    const hasBadge = await page.locator('text=/active|Active|ACTIVE/').first().isVisible().catch(() => false)
-      || await page.locator('[class*="green"], [class*="emerald"]').first().isVisible().catch(() => false);
+    const hasBadge = await page.locator('text=/active|Active|ACTIVE/').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('[class*="green"], [class*="emerald"], [class*="positive"]').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasBadge).toBeTruthy();
   });
 

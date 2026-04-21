@@ -16,7 +16,7 @@ test.describe('Messages Module', () => {
   });
 
   test('messages page loads without error', async ({ page }) => {
-    const hasError = await page.locator('text=Something went wrong').isVisible().catch(() => false);
+    const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasError).toBeFalsy();
     await expect(page.locator('text=Messages').first()).toBeVisible();
   });

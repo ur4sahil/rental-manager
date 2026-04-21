@@ -38,7 +38,7 @@ test.describe('Visual & Responsive Tests', () => {
       expect(hasOverlay).toBeTruthy();
       // The modal should be clickable, not behind anything
       const modalContent = page.locator('[class*="bg-white"][class*="rounded"]').first();
-      const isVisible = await modalContent.isVisible().catch(() => false);
+      const isVisible = await modalContent.isVisible({ timeout: 3000 }).catch(() => false);
       expect(isVisible).toBeTruthy();
     }
   });

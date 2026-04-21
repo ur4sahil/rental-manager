@@ -16,7 +16,7 @@ test.describe('Period Lock', () => {
     if (await reconTab.isVisible({ timeout: 3000 }).catch(() => false)) {
       await reconTab.click();
       await page.waitForTimeout(1500);
-      const hasContent = await page.locator('text=Reconcile').first().isVisible().catch(() => false);
+      const hasContent = await page.locator('text=Reconcile').first().isVisible({ timeout: 3000 }).catch(() => false);
       expect(hasContent).toBeTruthy();
     }
   });
@@ -41,8 +41,8 @@ test.describe('Period Lock', () => {
       if (await lockTab.isVisible({ timeout: 3000 }).catch(() => false)) {
         await lockTab.click();
         await page.waitForTimeout(1000);
-        const hasDateInput = await page.locator('input[type="date"]').first().isVisible().catch(() => false);
-        const hasLockBtn = await page.locator('button:has-text("Lock Period")').first().isVisible().catch(() => false);
+        const hasDateInput = await page.locator('input[type="date"]').first().isVisible({ timeout: 3000 }).catch(() => false);
+        const hasLockBtn = await page.locator('button:has-text("Lock Period")').first().isVisible({ timeout: 3000 }).catch(() => false);
         expect(hasDateInput || hasLockBtn).toBeTruthy();
       }
     }

@@ -17,9 +17,9 @@ test.describe('Credential Fields on Module Pages', () => {
     if (await addBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await addBtn.click();
       await page.waitForTimeout(500);
-      const hasWebsite = await page.locator('label:has-text("Website")').first().isVisible().catch(() => false);
-      const hasUsername = await page.locator('label:has-text("Username")').first().isVisible().catch(() => false);
-      const hasPassword = await page.locator('label:has-text("Password")').first().isVisible().catch(() => false);
+      const hasWebsite = await page.locator('label:has-text("Website")').first().isVisible({ timeout: 3000 }).catch(() => false);
+      const hasUsername = await page.locator('label:has-text("Username")').first().isVisible({ timeout: 3000 }).catch(() => false);
+      const hasPassword = await page.locator('label:has-text("Password")').first().isVisible({ timeout: 3000 }).catch(() => false);
       expect(hasWebsite).toBeTruthy();
       expect(hasUsername).toBeTruthy();
       expect(hasPassword).toBeTruthy();
@@ -35,9 +35,9 @@ test.describe('Credential Fields on Module Pages', () => {
       await page.waitForTimeout(500);
       // Enable HOA toggle if present
       const toggle = page.locator('[class*="rounded-full"][class*="bg-"]').first();
-      if (await toggle.isVisible().catch(() => false)) await toggle.click();
+      if (await toggle.isVisible({ timeout: 3000 }).catch(() => false)) await toggle.click();
       await page.waitForTimeout(500);
-      const hasWebsite = await page.locator('label:has-text("Website")').first().isVisible().catch(() => false);
+      const hasWebsite = await page.locator('label:has-text("Website")').first().isVisible({ timeout: 3000 }).catch(() => false);
       expect(hasWebsite).toBeTruthy();
     }
   });
@@ -49,7 +49,7 @@ test.describe('Credential Fields on Module Pages', () => {
     if (await addBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await addBtn.click();
       await page.waitForTimeout(500);
-      const hasWebsite = await page.locator('label:has-text("Website")').first().isVisible().catch(() => false);
+      const hasWebsite = await page.locator('label:has-text("Website")').first().isVisible({ timeout: 3000 }).catch(() => false);
       expect(hasWebsite).toBeTruthy();
     }
   });
@@ -61,7 +61,7 @@ test.describe('Credential Fields on Module Pages', () => {
     if (await addBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await addBtn.click();
       await page.waitForTimeout(500);
-      const hasWebsite = await page.locator('label:has-text("Website")').first().isVisible().catch(() => false);
+      const hasWebsite = await page.locator('label:has-text("Website")').first().isVisible({ timeout: 3000 }).catch(() => false);
       expect(hasWebsite).toBeTruthy();
     }
   });

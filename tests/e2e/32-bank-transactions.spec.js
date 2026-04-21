@@ -16,7 +16,7 @@ test.describe('Bank Transactions Page', () => {
     if (await bankTab.isVisible({ timeout: 3000 }).catch(() => false)) {
       await bankTab.click();
       await page.waitForTimeout(2000);
-      const hasContent = await page.locator('text=Bank Transactions').first().isVisible().catch(() => false);
+      const hasContent = await page.locator('text=Bank Transactions').first().isVisible({ timeout: 3000 }).catch(() => false);
       expect(hasContent).toBeTruthy();
     }
   });
@@ -64,8 +64,8 @@ test.describe('Bank Transactions Page', () => {
         await importBtn.click();
         await page.waitForTimeout(1000);
         // Wizard should show step indicators
-        const hasSteps = await page.locator('text=Account').first().isVisible().catch(() => false);
-        const hasUpload = await page.locator('text=Upload').first().isVisible().catch(() => false);
+        const hasSteps = await page.locator('text=Account').first().isVisible({ timeout: 3000 }).catch(() => false);
+        const hasUpload = await page.locator('text=Upload').first().isVisible({ timeout: 3000 }).catch(() => false);
         expect(hasSteps || hasUpload).toBeTruthy();
       }
     }
@@ -81,7 +81,7 @@ test.describe('Bank Transactions Page', () => {
       if (await addBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
         await addBtn.click();
         await page.waitForTimeout(500);
-        const hasModal = await page.locator('text=Add Bank Account').first().isVisible().catch(() => false);
+        const hasModal = await page.locator('text=Add Bank Account').first().isVisible({ timeout: 3000 }).catch(() => false);
         expect(hasModal).toBeTruthy();
       }
     }
@@ -109,9 +109,9 @@ test.describe('Bank Transactions Page', () => {
       if (await rulesBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
         await rulesBtn.click();
         await page.waitForTimeout(500);
-        const hasRuleForm = await page.locator('text=New Rule').first().isVisible().catch(() => false)
-          || await page.locator('text=Rule Name').first().isVisible().catch(() => false)
-          || await page.locator('text=Auto-Categorization').first().isVisible().catch(() => false);
+        const hasRuleForm = await page.locator('text=New Rule').first().isVisible({ timeout: 3000 }).catch(() => false)
+          || await page.locator('text=Rule Name').first().isVisible({ timeout: 3000 }).catch(() => false)
+          || await page.locator('text=Auto-Categorization').first().isVisible({ timeout: 3000 }).catch(() => false);
         expect(hasRuleForm).toBeTruthy();
       }
     }

@@ -13,7 +13,7 @@ test.describe('Security: XSS Prevention', () => {
     // Navigate to Documents/Document Builder where templates use dangerouslySetInnerHTML
     await goToPage(page, 'doc_builder');
     await page.waitForTimeout(2000);
-    const hasError = await page.locator('text=Something went wrong').isVisible().catch(() => false);
+    const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasError).toBeFalsy();
   });
 
@@ -59,7 +59,7 @@ test.describe('Security: CORS Headers', () => {
     await page.waitForTimeout(2000);
     // Check that no wildcard CORS headers leak to client
     // This is a server-side check — we verify the page loads correctly
-    const hasError = await page.locator('text=Something went wrong').isVisible().catch(() => false);
+    const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasError).toBeFalsy();
   });
 });

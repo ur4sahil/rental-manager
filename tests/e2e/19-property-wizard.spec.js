@@ -82,7 +82,7 @@ test.describe('Property Setup Wizard', () => {
           await confirmBtn.click();
         }
         await page.waitForTimeout(1000);
-        const wizardGone = await wizard.isVisible().catch(() => false);
+        const wizardGone = await wizard.isVisible({ timeout: 3000 }).catch(() => false);
         expect(wizardGone, 'Wizard should close after dismiss').toBeFalsy();
       }
     }

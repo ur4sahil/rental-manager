@@ -16,7 +16,7 @@ test.describe('Leases Module', () => {
 
   test('stat cards show active leases, expiring, deposits, avg rent', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const hasStats = await page.locator('text=Active').first().isVisible().catch(() => false);
+    const hasStats = await page.locator('text=Active').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasStats).toBeTruthy();
   });
 
@@ -48,8 +48,8 @@ test.describe('Leases Module', () => {
     // Check key fields
     await expect(page.locator('input[type="date"]').first()).toBeVisible({ timeout: 3000 });
     // Security deposit
-    const hasDeposit = await page.locator('text=Deposit').first().isVisible().catch(() => false)
-      || await page.locator('text=deposit').first().isVisible().catch(() => false);
+    const hasDeposit = await page.locator('text=Deposit').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=deposit').first().isVisible({ timeout: 3000 }).catch(() => false);
   });
 
   test('lease form has escalation fields', async ({ page }) => {
@@ -57,7 +57,7 @@ test.describe('Leases Module', () => {
     await btn.click();
     await page.waitForTimeout(500);
     const hasEscalation = await page.locator('text=Escalation').first().isVisible({ timeout: 3000 }).catch(() => false)
-      || await page.locator('text=escalation').first().isVisible().catch(() => false);
+      || await page.locator('text=escalation').first().isVisible({ timeout: 3000 }).catch(() => false);
   });
 
   test('lease form has late fee settings', async ({ page }) => {

@@ -29,11 +29,11 @@ test.describe('Nested Sidebar Navigation', () => {
   test('nested items navigate to correct pages', async ({ page }) => {
     await goToPage(page, 'maintenance');
     await page.waitForTimeout(1500);
-    const hasError = await page.locator('text=Something went wrong').isVisible().catch(() => false);
+    const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasError).toBeFalsy();
     // Should see maintenance content
-    const hasContent = await page.locator('text=Work Order').first().isVisible().catch(() => false)
-      || await page.locator('text=Maintenance').first().isVisible().catch(() => false);
+    const hasContent = await page.locator('text=Work Order').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=Maintenance').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasContent).toBeTruthy();
   });
 
@@ -43,7 +43,7 @@ test.describe('Nested Sidebar Navigation', () => {
     for (const pg of nestedPages) {
       await goToPage(page, pg);
       await page.waitForTimeout(1000);
-      const hasError = await page.locator('text=Something went wrong').isVisible().catch(() => false);
+      const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);
       expect(hasError, `${pg} should not crash`).toBeFalsy();
     }
   });
@@ -55,7 +55,7 @@ test.describe('Page Persistence on Refresh', () => {
     await navigateTo(page, 'Accounting');
     await page.waitForTimeout(1500);
     // Verify we're on accounting
-    const onAccounting = await page.locator('text=Accounting').first().isVisible().catch(() => false);
+    const onAccounting = await page.locator('text=Accounting').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(onAccounting).toBeTruthy();
     // Refresh the page
     await page.reload({ waitUntil: 'networkidle' });

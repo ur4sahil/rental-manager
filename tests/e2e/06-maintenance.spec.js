@@ -12,7 +12,7 @@ test.describe('Maintenance Module', () => {
 
   test('shows seeded work orders', async ({ page }) => {
     // .first() to sidestep strict-mode violations — multiple WO rows
-    // match each keyword, and .isVisible() without .first() throws
+    // match each keyword, and .isVisible({ timeout: 3000 }) without .first() throws
     // "strict mode violation" which the .catch() swallowed as false.
     const hasWO = await page.locator('text=faucet').first().isVisible({ timeout: 5000 }).catch(() => false)
       || await page.locator('text=AC').first().isVisible({ timeout: 5000 }).catch(() => false)
@@ -44,16 +44,16 @@ test.describe('Maintenance Module', () => {
     // brand-token classes (bg-danger-*, bg-info-*, bg-neutral-*).
     const emergencyBadge = page.locator('[class*="danger"]').first();
     const normalBadge = page.locator('[class*="info"]').first();
-    const hasBadge = await emergencyBadge.isVisible().catch(() => false)
-      || await normalBadge.isVisible().catch(() => false);
+    const hasBadge = await emergencyBadge.isVisible({ timeout: 3000 }).catch(() => false)
+      || await normalBadge.isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasBadge).toBeTruthy();
   });
 
   test('work order status badges visible (open/in_progress/completed)', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const hasOpen = await page.locator('text=open').first().isVisible().catch(() => false);
-    const hasInProg = await page.locator('text=/in.progress/i').first().isVisible().catch(() => false);
-    const hasCompleted = await page.locator('text=completed').first().isVisible().catch(() => false);
+    const hasOpen = await page.locator('text=open').first().isVisible({ timeout: 3000 }).catch(() => false);
+    const hasInProg = await page.locator('text=/in.progress/i').first().isVisible({ timeout: 3000 }).catch(() => false);
+    const hasCompleted = await page.locator('text=completed').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasOpen || hasInProg || hasCompleted).toBeTruthy();
   });
 

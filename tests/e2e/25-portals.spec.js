@@ -9,7 +9,7 @@ test.describe('Portals', () => {
     test.setTimeout(30000);
     await login(page);
     // Admin can't access tenant portal directly, but we can verify the nav doesn't crash
-    const hasError = await page.locator('text=Something went wrong').isVisible().catch(() => false);
+    const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasError).toBeFalsy();
   });
 
@@ -18,7 +18,7 @@ test.describe('Portals', () => {
     await login(page);
     await navigateTo(page, 'Owners');
     await page.waitForTimeout(1000);
-    const hasError = await page.locator('text=Something went wrong').isVisible().catch(() => false);
+    const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasError, 'Owners page should not crash').toBeFalsy();
   });
 

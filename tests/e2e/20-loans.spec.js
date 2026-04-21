@@ -12,7 +12,7 @@ test.describe('Loans Module', () => {
 
   test('loans page loads without crash', async ({ page }) => {
     test.setTimeout(30000);
-    const hasError = await page.locator('text=Something went wrong').isVisible().catch(() => false);
+    const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasError, 'Loans page should not crash').toBeFalsy();
   });
 
@@ -76,7 +76,7 @@ test.describe('Loans Module', () => {
     await page.waitForTimeout(1000);
     await navigateTo(page, 'Loans');
     await page.waitForTimeout(1000);
-    const hasError = await page.locator('text=Something went wrong').isVisible().catch(() => false);
+    const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasError, 'Loans page should load after navigation').toBeFalsy();
   });
 

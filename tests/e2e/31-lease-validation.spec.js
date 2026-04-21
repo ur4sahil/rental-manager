@@ -16,7 +16,7 @@ test.describe('Lease Date Validation', () => {
     if (await addBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await addBtn.click();
       await page.waitForTimeout(500);
-      const hasStart = await page.locator('input[type="date"]').first().isVisible().catch(() => false);
+      const hasStart = await page.locator('input[type="date"]').first().isVisible({ timeout: 3000 }).catch(() => false);
       expect(hasStart).toBeTruthy();
     }
   });
@@ -44,7 +44,7 @@ test.describe('Multi-Tenant Display', () => {
       await firstProp.click();
       await page.waitForTimeout(1500);
       // Check for CURRENT TENANT(S) section
-      const hasTenantSection = await page.locator('text=/CURRENT TENANT/i').first().isVisible().catch(() => false);
+      const hasTenantSection = await page.locator('text=/CURRENT TENANT/i').first().isVisible({ timeout: 3000 }).catch(() => false);
       expect(hasTenantSection).toBeTruthy();
     }
   });
@@ -62,7 +62,7 @@ test.describe('Vendor Invoice Validation', () => {
     if (await invoiceTab.isVisible({ timeout: 3000 }).catch(() => false)) {
       await invoiceTab.click();
       await page.waitForTimeout(1000);
-      const hasInvoiceContent = await page.locator('text=Invoice').first().isVisible().catch(() => false);
+      const hasInvoiceContent = await page.locator('text=Invoice').first().isVisible({ timeout: 3000 }).catch(() => false);
       expect(hasInvoiceContent).toBeTruthy();
     }
   });

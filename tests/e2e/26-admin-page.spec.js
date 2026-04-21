@@ -26,15 +26,15 @@ test.describe('Admin Page', () => {
     await expect(auditTab).toBeVisible({ timeout: 5000 });
     await auditTab.click();
     await page.waitForTimeout(2000);
-    const hasTable = await page.locator('table').first().isVisible().catch(() => false);
+    const hasTable = await page.locator('table').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasTable).toBeTruthy();
   });
 
   test('team & roles tab loads', async ({ page }) => {
     await goToPage(page, 'roles');
     await page.waitForTimeout(2000);
-    const hasContent = await page.locator('text=Team').first().isVisible().catch(() => false)
-      || await page.locator('text=Role').first().isVisible().catch(() => false);
+    const hasContent = await page.locator('text=Team').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=Role').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasContent).toBeTruthy();
   });
 

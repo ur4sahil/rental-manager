@@ -13,10 +13,10 @@ test.describe('Utilities Module', () => {
   test('shows utility bills', async ({ page }) => {
     await page.waitForTimeout(2000);
     // Look for any utility provider text or $ amounts
-    const hasBill = await page.locator('text=Gas').isVisible().catch(() => false)
-      || await page.locator('text=Water').isVisible().catch(() => false)
-      || await page.locator('text=Electric').isVisible().catch(() => false)
-      || await page.locator('text=$').first().isVisible().catch(() => false);
+    const hasBill = await page.locator('text=Gas').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=Water').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=Electric').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=$').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasBill).toBeTruthy();
   });
 
@@ -53,8 +53,8 @@ test.describe('Utilities Module', () => {
 
   test('stat cards show total, pending, paid, outstanding', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const hasStats = await page.locator('text=Total').first().isVisible().catch(() => false)
-      || await page.locator('text=Pending').first().isVisible().catch(() => false);
+    const hasStats = await page.locator('text=Total').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=Pending').first().isVisible({ timeout: 3000 }).catch(() => false);
   });
 
   test('no horizontal overflow on utilities', async ({ page }) => {
@@ -71,16 +71,16 @@ test.describe('Autopay Module', () => {
 
   test('autopay page loads without crash', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const hasError = await page.locator('text=Something went wrong').isVisible().catch(() => false);
+    const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasError).toBeFalsy();
   });
 
   test('shows autopay schedule or empty state', async ({ page }) => {
     await page.waitForTimeout(1500);
     // Should show schedule list or "no schedules" message
-    const hasContent = await page.locator('text=Schedule').isVisible().catch(() => false)
-      || await page.locator('text=Autopay').isVisible().catch(() => false)
-      || await page.locator('text=No').isVisible().catch(() => false);
+    const hasContent = await page.locator('text=Schedule').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=Autopay').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=No').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasContent).toBeTruthy();
   });
 
@@ -98,22 +98,22 @@ test.describe('Late Fees Module', () => {
 
   test('late fees page loads without crash', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const hasError = await page.locator('text=Something went wrong').isVisible().catch(() => false);
+    const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasError).toBeFalsy();
   });
 
   test('shows late fee rules or add button', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const hasContent = await page.locator('text=Grace').isVisible().catch(() => false)
-      || await page.locator('button:has-text("Add"), button:has-text("New"), button:has-text("Create")').first().isVisible().catch(() => false);
+    const hasContent = await page.locator('text=Grace').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('button:has-text("Add"), button:has-text("New"), button:has-text("Create")').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasContent).toBeTruthy();
   });
 
   test('late fee type options (flat/percentage)', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const hasType = await page.locator('text=flat').isVisible().catch(() => false)
-      || await page.locator('text=Flat').isVisible().catch(() => false)
-      || await page.locator('text=percent').isVisible().catch(() => false);
+    const hasType = await page.locator('text=flat').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=Flat').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=percent').first().isVisible({ timeout: 3000 }).catch(() => false);
   });
 
   test('no horizontal overflow on late fees', async ({ page }) => {

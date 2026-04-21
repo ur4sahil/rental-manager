@@ -27,7 +27,7 @@ test.describe('Cross-Module Integration Flows', () => {
       await page.waitForTimeout(300); // rapid switching
     }
     // Should still be functional
-    const hasError = await page.locator('text=Something went wrong').isVisible().catch(() => false);
+    const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasError).toBeFalsy();
   });
 
@@ -38,7 +38,7 @@ test.describe('Cross-Module Integration Flows', () => {
     // Navigate to properties and verify same data
     await navigateTo(page, 'Properties');
     await page.waitForTimeout(1500);
-    const hasOak = await page.locator('text=Oak').isVisible().catch(() => false);
+    const hasOak = await page.locator('text=Oak').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasOak).toBeTruthy();
   });
 
@@ -46,7 +46,7 @@ test.describe('Cross-Module Integration Flows', () => {
     // Check Bob's balance appears in Tenants
     await navigateTo(page, 'Tenants');
     await page.waitForTimeout(1500);
-    const bobVisible = await page.locator('text=Bob Martinez').isVisible().catch(() => false);
+    const bobVisible = await page.locator('text=Bob Martinez').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(bobVisible).toBeTruthy();
   });
 
@@ -54,9 +54,9 @@ test.describe('Cross-Module Integration Flows', () => {
     await navigateTo(page, 'Maintenance');
     await page.waitForTimeout(2000);
     // Work orders may show assigned vendor names
-    const hasVendor = await page.locator('text=Mike').isVisible().catch(() => false)
-      || await page.locator('text=CoolAir').isVisible().catch(() => false)
-      || await page.locator('text=QuickPaint').isVisible().catch(() => false);
+    const hasVendor = await page.locator('text=Mike').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=CoolAir').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=QuickPaint').first().isVisible({ timeout: 3000 }).catch(() => false);
     // Vendor names may or may not appear depending on data
   });
 
@@ -64,7 +64,7 @@ test.describe('Cross-Module Integration Flows', () => {
     await navigateTo(page, 'Dashboard');
     await page.waitForTimeout(2000);
     // Revenue card should show some amount
-    const hasRevenue = await page.locator('text=Revenue').first().isVisible().catch(() => false);
+    const hasRevenue = await page.locator('text=Revenue').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(hasRevenue).toBeTruthy();
     // Navigate to accounting to verify
     await navigateTo(page, 'Accounting');
@@ -78,7 +78,7 @@ test.describe('Cross-Module Integration Flows', () => {
       await page.waitForTimeout(500);
       await navigateTo(page, 'Dashboard');
       await page.waitForTimeout(500);
-      const hasError = await page.locator('text=Something went wrong').isVisible().catch(() => false);
+      const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);
       expect(hasError, `Returning from ${mod} to Dashboard should not crash`).toBeFalsy();
     }
   });
@@ -99,7 +99,7 @@ test.describe('Cross-Module Integration Flows', () => {
     await navigateTo(page, 'Tenants');
     await page.waitForTimeout(1000);
     // Should not see property form fields
-    const propFormLeak = await page.locator('input[placeholder*="address" i]').isVisible().catch(() => false);
+    const propFormLeak = await page.locator('input[placeholder*="address" i]').isVisible({ timeout: 3000 }).catch(() => false);
     expect(propFormLeak).toBeFalsy();
   });
 });
