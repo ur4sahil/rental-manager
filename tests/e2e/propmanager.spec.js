@@ -19,9 +19,11 @@ test('Landing page renders correctly', async ({ page }) => {
 test('Login and Logout work', async ({ page }) => {
   await login(page);
   await expect(page.locator('nav')).toBeVisible();
-  // Logout
-  await page.click('button:has-text("Logout")');
-  await page.waitForTimeout(1000);
+  // Logout now lives inside the header avatar dropdown.
+  const avatarBtn = page.locator('header button:has-text("expand_more")').first();
+  await avatarBtn.click();
+  await page.locator('button:has-text("Logout")').first().click();
+  await page.waitForTimeout(1500);
   // Should be back on landing
   await expect(page.locator('text=Housify').first()).toBeVisible();
 });
@@ -65,7 +67,10 @@ test('All sidebar modules load without crashing', async ({ page }) => {
 test('Dashboard shows KPI cards', async ({ page }) => {
   await login(page);
   await navigateTo(page, 'Dashboard');
-  const cards = page.locator('.rounded-xl');
+  // Card radius evolved from rounded-xl to rounded-2xl/3xl in the UI
+  // refresh; match any rounded utility class so the count stays honest
+  // as the design system moves.
+  const cards = page.locator('[class*="rounded-xl"], [class*="rounded-2xl"], [class*="rounded-3xl"]');
   const count = await cards.count();
   expect(count).toBeGreaterThan(3);
 });
@@ -77,33 +82,34 @@ test('Properties page: loads, shows data, add form opens', async ({ page }) => {
   await login(page);
   await navigateTo(page, 'Properties');
 
-  await expect(page.locator('button:has-text("Add Property")').first()).toBeVisible();
+  // Add button is now "+ Add" (opens the Property Setup Wizard).
+  const addBtn = page.locator('button:has-text("+ Add")').first();
+  await expect(addBtn).toBeVisible();
 
   const hasProperty = await page.locator('text=Oak Street').isVisible().catch(() => false)
     || await page.locator('text=Maple Ave').isVisible().catch(() => false)
     || await page.locator('text=Pine Road').isVisible().catch(() => false);
   expect(hasProperty).toBeTruthy();
 
-  await page.click('button:has-text("Add Property")');
-  await page.waitForTimeout(500);
-  const addressInput = page.locator('input[placeholder*="Address"], input[placeholder*="address"]').first();
-  await expect(addressInput).toBeVisible({ timeout: 3000 });
+  await addBtn.click();
+  await page.waitForTimeout(800);
+  // Wizard opens — step 1 header reads "Property Setup" (or similar).
+  const wizardOpen = await page.locator('text=/Property Setup|Property Details|Step 1/i').first().isVisible({ timeout: 3000 }).catch(() => false);
+  expect(wizardOpen).toBeTruthy();
 });
 
 // ═══════════════════════════════════════════════════
 // 6 — TENANTS
 // ═══════════════════════════════════════════════════
-test('Tenants page: loads, shows seeded data, add form opens', async ({ page }) => {
+test('Tenants page: loads, shows seeded data', async ({ page }) => {
   await login(page);
   await navigateTo(page, 'Tenants');
 
-  await expect(page.locator('button:has-text("Add Tenant")').first()).toBeVisible();
+  // Tenants are now added through the Property Setup Wizard — no
+  // standalone "Add Tenant" button. The Tenants page surfaces the
+  // list plus per-tenant actions (View Ledger, Move-Out, Evictions).
+  await expect(page.locator('heading:has-text("Tenants"), h2:has-text("Tenants")').first()).toBeVisible({ timeout: 5000 });
   await expect(page.locator('text=Alice Johnson').first()).toBeVisible({ timeout: 5000 });
-
-  await page.click('button:has-text("Add Tenant")');
-  await page.waitForTimeout(500);
-  const nameInput = page.locator('input[placeholder*="Name"], input[placeholder*="name"]').first();
-  await expect(nameInput).toBeVisible({ timeout: 3000 });
 });
 
 // ═══════════════════════════════════════════════════
@@ -123,8 +129,10 @@ test('Maintenance page: loads with seeded work orders', async ({ page }) => {
   await login(page);
   await navigateTo(page, 'Maintenance');
   await expect(page.locator('button:has-text("New Work Order")').first()).toBeVisible();
-  const hasWO = await page.locator('text=Leaking faucet').isVisible().catch(() => false)
-    || await page.locator('text=AC not cooling').isVisible().catch(() => false);
+  // .first() avoids Playwright's strict-mode bail when the same WO
+  // string appears in multiple cards/rows.
+  const hasWO = await page.locator('text=Leaking faucet').first().isVisible().catch(() => false)
+    || await page.locator('text=AC not cooling').first().isVisible().catch(() => false);
   expect(hasWO).toBeTruthy();
 });
 
@@ -135,16 +143,18 @@ test('Accounting: tabs visible, COA shows accounts', async ({ page }) => {
   await login(page);
   await navigateTo(page, 'Accounting');
 
-  const tabs = ['Overview', 'Chart of Accounts', 'Journal Entries', 'Bank Import', 'Reconcile', 'Class Tracking', 'Reports'];
+  // Accounting tabs evolved: the old "Overview" is now the default
+  // Dashboard tab; "Bank Import" was renamed to "Bank Transactions".
+  const tabs = ['Chart of Accounts', 'Journal Entries', 'Recurring Entries', 'Bank Transactions', 'Reconcile', 'Class Tracking', 'Reports'];
   for (const tab of tabs) {
-    await expect(page.locator(`text=${tab}`).first()).toBeVisible({ timeout: 3000 });
+    await expect(page.locator(`button:has-text("${tab}")`).first()).toBeVisible({ timeout: 3000 });
   }
 
-  await page.click('text=Chart of Accounts');
+  await page.locator('button:has-text("Chart of Accounts")').first().click();
   await page.waitForTimeout(1000);
-  const hasCOA = await page.locator('text=Checking Account').isVisible().catch(() => false)
-    || await page.locator('text=Rental Income').isVisible().catch(() => false)
-    || await page.locator('text=1000').isVisible().catch(() => false);
+  const hasCOA = await page.locator('text=Checking Account').first().isVisible().catch(() => false)
+    || await page.locator('text=Rental Income').first().isVisible().catch(() => false)
+    || await page.locator('text=1000').first().isVisible().catch(() => false);
   expect(hasCOA).toBeTruthy();
 });
 
@@ -153,8 +163,9 @@ test('Accounting: tabs visible, COA shows accounts', async ({ page }) => {
 // ═══════════════════════════════════════════════════
 test('Leases page loads with heading', async ({ page }) => {
   await login(page);
-  await navigateTo(page, 'Leases');
-  await expect(page.locator('text=Lease Management').first()).toBeVisible({ timeout: 5000 });
+  // Leases is a hidden route — no sidebar button — navigate via hash.
+  await goToPage(page, 'leases');
+  await expect(page.locator('text=/Lease Management|Leases/').first()).toBeVisible({ timeout: 5000 });
 });
 
 // ═══════════════════════════════════════════════════

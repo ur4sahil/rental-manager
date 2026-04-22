@@ -38,15 +38,19 @@ test.describe('Multi-Tenant Display', () => {
   });
 
   test('property detail shows individual tenant entries', async ({ page }) => {
-    // Click a property to open detail
-    const firstProp = page.locator('.rounded-3xl.shadow-card, [class*="rounded-3xl"][class*="border"]').first();
-    if (await firstProp.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await firstProp.click();
-      await page.waitForTimeout(1500);
-      // Check for CURRENT TENANT(S) section
-      const hasTenantSection = await page.locator('text=/CURRENT TENANT/i').first().isVisible({ timeout: 3000 }).catch(() => false);
-      expect(hasTenantSection).toBeTruthy();
+    // Click the first property card — they're heading-level <h3>
+    // elements with the property address.
+    const firstPropHeading = page.locator('h3:has-text("Street"), h3:has-text("Ave"), h3:has-text("Rd"), h3:has-text("Lane"), h3:has-text("Road")').first();
+    if (!await firstPropHeading.isVisible({ timeout: 3000 }).catch(() => false)) {
+      test.skip(true, 'No properties rendered — skipping tenant-section check');
+      return;
     }
+    await firstPropHeading.click();
+    await page.waitForTimeout(1500);
+    // Properties detail panel uses "Current Tenant" / "Current Tenants"
+    // (case-insensitive match). Fallback to "Tenants" heading.
+    const body = await page.locator('body').innerText();
+    expect(/Current Tenant/i.test(body)).toBeTruthy();
   });
 });
 

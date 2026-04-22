@@ -2,7 +2,27 @@
 // 14 — VISUAL & RESPONSIVE: OVERFLOW, TRUNCATION, Z-INDEX, LAYOUT
 // ═══════════════════════════════════════════════════════════════
 const { test, expect } = require('@playwright/test');
-const { login, navigateTo, assertNoHorizontalOverflow } = require('./helpers');
+const { login, navigateTo, goToPage, assertNoHorizontalOverflow } = require('./helpers');
+
+// Some "modules" in this spec aren't sidebar buttons — Documents,
+// Leases, Audit Trail, Team are hidden routes reached via hash, or
+// tabs within Admin. Map them onto goToPage / custom navigation so
+// the overflow test actually loads the target page.
+const HIDDEN_ROUTE = {
+  Documents: 'documents',
+  Leases: 'leases',
+  Inspections: 'inspections',
+  'Audit Trail': 'audittrail',
+  Team: 'roles',
+};
+
+async function navigateToAny(page, label) {
+  if (HIDDEN_ROUTE[label]) {
+    await goToPage(page, HIDDEN_ROUTE[label]);
+  } else {
+    await navigateTo(page, label);
+  }
+}
 
 test.describe('Visual & Responsive Tests', () => {
   test.beforeEach(async ({ page }) => {
@@ -19,7 +39,7 @@ test.describe('Visual & Responsive Tests', () => {
 
   for (const mod of modules) {
     test(`no overflow bleed on ${mod}`, async ({ page }) => {
-      await navigateTo(page, mod);
+      await navigateToAny(page, mod);
       await page.waitForTimeout(2000);
       await assertNoHorizontalOverflow(page);
     });
@@ -88,15 +108,15 @@ test.describe('Visual & Responsive Tests', () => {
 
   // ── Scrollable Containers ──
   test('long content areas are scrollable, not cut off', async ({ page }) => {
-    await navigateTo(page, 'Audit Trail');
+    // Audit Trail lives on the Admin page (not a sidebar button).
+    await goToPage(page, 'audittrail');
     await page.waitForTimeout(2000);
-    // Audit trail with many rows should be scrollable
     const isScrollable = await page.evaluate(() => {
       const main = document.querySelector('main, [class*="overflow-y"]');
       if (!main) return true;
       return main.scrollHeight >= main.clientHeight;
     });
-    // This is expected to be true if there's enough data
+    expect(isScrollable).toBeTruthy();
   });
 
   // ── Touch Targets (mobile) ──
@@ -169,8 +189,14 @@ test.describe('Visual & Responsive Tests', () => {
   test('status badges have distinct colors', async ({ page }) => {
     await navigateTo(page, 'Properties');
     await page.waitForTimeout(1500);
-    // Check that badges have actual background color, not transparent
-    const badges = page.locator('[class*="bg-green"], [class*="bg-red"], [class*="bg-yellow"], [class*="bg-blue"]');
+    // Tailwind palette uses semantic tokens (brand/success/danger/warn/
+    // info/notice) rather than raw color names. Match either form so
+    // the test stays honest if the design-system naming changes again.
+    const badges = page.locator(
+      '[class*="bg-green"], [class*="bg-red"], [class*="bg-yellow"], [class*="bg-blue"], ' +
+      '[class*="bg-success"], [class*="bg-danger"], [class*="bg-warn"], [class*="bg-info"], ' +
+      '[class*="bg-brand"], [class*="bg-notice"]'
+    );
     const count = await badges.count();
     expect(count).toBeGreaterThan(0);
   });

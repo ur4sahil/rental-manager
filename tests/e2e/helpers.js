@@ -8,51 +8,55 @@ const { expect } = require('@playwright/test');
  * Handles landing → sign-in → company selector → dashboard flow.
  */
 async function login(page) {
-  await page.goto('/', { timeout: 30000 });
+  // Pass ?company=sandbox-llc on the initial navigation. App.js
+  // captures this param at mount (App.js:334-335) and, after the
+  // auth flow resolves, auto-selects the matching membership and
+  // routes straight to the dashboard (App.js:433-446) — bypassing
+  // the Company Selector entirely. That matters here because the
+  // selector's cursor-pointer row has been flaky to click under
+  // retry pressure (onClick bubble + concurrent redirect race), and
+  // the URL path is deterministic.
+  await page.goto('/?company=sandbox-llc', { timeout: 30000 });
 
-  // If already on dashboard (sidebar visible), skip
-  if (await page.locator('button:has-text("Dashboard")').first().isVisible({ timeout: 2000 }).catch(() => false)) {
-    return;
+  // Success markers: the sidebar Dashboard button (desktop) OR the
+  // Dashboard page heading (mobile, where the sidebar is hidden
+  // behind a hamburger until the user opens it). Checking both keeps
+  // the helper viewport-agnostic.
+  // Use :visible — Playwright's .first() can latch onto the hidden
+  // collapsed-sidebar button on mobile viewports, which never resolves.
+  const dashboardMarker = page.locator('button:visible:has-text("Dashboard"), h2:visible:has-text("Dashboard")').first();
+  if (await dashboardMarker.isVisible({ timeout: 3000 }).catch(() => false)) return;
+
+  // Landing page: click Sign In to reveal the login form.
+  const signInBtn = page.locator('button:has-text("Sign In"), a:has-text("Sign In")').first();
+  if (await signInBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await signInBtn.click();
   }
-
-  // Step 1: Click "Sign In" on landing page header
-  await page.locator('button:has-text("Sign In"), a:has-text("Sign In")').first().click();
   await page.waitForSelector('input[type="email"]', { timeout: 10000 });
 
-  // Step 2: Fill credentials
   await page.fill('input[type="email"]', process.env.TEST_EMAIL);
   await page.fill('input[type="password"]', process.env.TEST_PASSWORD);
-
-  // Step 3: Submit — click the last "Sign In" button (the form submit, not header)
+  // The form submit button — the last "Sign In" on page, not the header.
   await page.locator('button:has-text("Sign In")').last().click();
 
-  // Step 4: Wait for company selector to appear
-  // The company selector shows "YOUR COMPANIES" heading and company rows
-  await page.locator('text=/YOUR COMPANIES|Your Companies|Housify/i').first().waitFor({ state: 'visible', timeout: 15000 });
-  await page.waitForTimeout(1000);
+  // Auto-select via ?company= kicks in once auth resolves. If that
+  // path silently doesn't match (e.g. stale membership cache), fall
+  // back to clicking the company row in the selector.
+  if (await dashboardMarker.isVisible({ timeout: 20000 }).catch(() => false)) return;
 
-  // Step 5: Open Sandbox LLC. Each row has TWO click targets: the
-  // cursor-pointer div with onClick → onSelectCompany (in-tab nav),
-  // and a separate <a target="_blank"> "Open" link. Click the
-  // company-name text — it sits inside the cursor-pointer container
-  // so the click bubbles to the div's onClick handler. force:true
-  // bypasses overlay/ancestor-hit-test failures that occasionally
-  // misfire when the page is still settling after the login redirect.
-  const dashboardBtn = page.locator('button:has-text("Dashboard")').first();
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // Fallback: Company Selector is up. Try the name span, then a
+  // broader cursor-pointer row as last resort.
+  for (let attempt = 0; attempt < 2; attempt++) {
     const nameEl = page.locator('.font-semibold.truncate:has-text("Sandbox")').first();
-    const nameGeneric = page.locator('.font-semibold:has-text("Sandbox LLC")').first();
     if (await nameEl.isVisible({ timeout: 2500 }).catch(() => false)) {
       await nameEl.click({ force: true }).catch(() => {});
-    } else if (await nameGeneric.isVisible({ timeout: 1500 }).catch(() => false)) {
-      await nameGeneric.click({ force: true }).catch(() => {});
     } else {
       const firstRow = page.locator('div.cursor-pointer:has(.font-semibold)').first();
-      if (await firstRow.isVisible({ timeout: 1500 }).catch(() => false)) await firstRow.click({ force: true }).catch(() => {});
+      if (await firstRow.isVisible({ timeout: 2000 }).catch(() => false)) await firstRow.click({ force: true }).catch(() => {});
     }
-    if (await dashboardBtn.isVisible({ timeout: 15000 }).catch(() => false)) return;
+    if (await dashboardMarker.isVisible({ timeout: 15000 }).catch(() => false)) return;
   }
-  await dashboardBtn.waitFor({ state: 'visible', timeout: 10000 });
+  await dashboardMarker.waitFor({ state: 'visible', timeout: 10000 });
 }
 
 /**

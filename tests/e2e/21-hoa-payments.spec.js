@@ -2,7 +2,7 @@ const { test, expect } = require('@playwright/test');
 const { login, navigateTo, assertNoHorizontalOverflow } = require('./helpers');
 
 test.describe('HOA Payments', () => {
-  test.beforeEach(async ({ page }) => { await login(page); await navigateTo(page, 'HOA'); });
+  test.beforeEach(async ({ page }) => { await login(page); await navigateTo(page, 'HOA Payments'); });
 
   test('HOA page loads without crash', async ({ page }) => {
     const hasError = await page.locator('text=Something went wrong').first().isVisible({ timeout: 3000 }).catch(() => false);

@@ -26,17 +26,22 @@ test.describe('Document Builder', () => {
   // ── Create Tab ──
   test('shows blank and prefill mode options', async ({ page }) => {
     await page.waitForTimeout(1500);
-    await expect(page.locator('text=Blank Mode').first()).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('text=Prefill from Property').first()).toBeVisible();
+    // Segmented control buttons — labels are "Blank" and "Prefill from Property".
+    await expect(page.locator('button:has-text("Blank")').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('button:has-text("Prefill from Property")').first()).toBeVisible();
   });
 
   test('blank mode shows template selection after clicking', async ({ page }) => {
     await page.waitForTimeout(1500);
-    const blankBtn = page.locator('text=Blank Mode').first();
+    const blankBtn = page.locator('button:has-text("Blank")').first();
     await blankBtn.click();
     await page.waitForTimeout(1000);
-    // Should show template cards
-    await expect(page.locator('text=Choose a Template').first()).toBeVisible({ timeout: 5000 });
+    // Template picker shows when Blank is active. Match either the
+    // explicit "Choose a Template" header or at least one starter
+    // template name (Notice to Pay / Lease Renewal / General Letter).
+    const hasPicker = await page.locator('text=Choose a Template').first().isVisible({ timeout: 3000 }).catch(() => false)
+      || await page.locator('text=/Notice to Pay|Lease Renewal|General Letter/i').first().isVisible({ timeout: 3000 }).catch(() => false);
+    expect(hasPicker).toBeTruthy();
   });
 
   test('prefill mode shows property dropdown', async ({ page }) => {
@@ -52,10 +57,10 @@ test.describe('Document Builder', () => {
   test('templates tab shows template cards', async ({ page }) => {
     await page.locator('button:has-text("Templates")').first().click();
     await page.waitForTimeout(2000);
-    // Should have at least 1 template (system templates auto-clone)
-    const templateCards = page.locator('[class*="rounded-3xl"]');
-    const count = await templateCards.count();
-    expect(count).toBeGreaterThan(0);
+    // Template cards expose Use + Edit buttons — count those to avoid
+    // coupling to a specific rounded-* class.
+    const useButtons = await page.locator('button:has-text("Use")').count();
+    expect(useButtons).toBeGreaterThan(0);
   });
 
   test('templates have Edit and Use buttons', async ({ page }) => {
@@ -73,10 +78,13 @@ test.describe('Document Builder', () => {
     if (await newBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await newBtn.click();
       await page.waitForTimeout(500);
-      // Should show template editor form
+      // Editor sections: Template Details, Form Fields, Signature
+      // Workflow, and the TipTap body editor (contenteditable). The
+      // old "Document Body" heading was removed when the textarea was
+      // replaced by ProseMirror.
       await expect(page.locator('text=Template Details').first()).toBeVisible({ timeout: 3000 });
       await expect(page.locator('text=Form Fields').first()).toBeVisible();
-      await expect(page.locator('text=Document Body').first()).toBeVisible();
+      await expect(page.locator('.ProseMirror').first()).toBeVisible({ timeout: 3000 });
     }
   });
 
@@ -93,18 +101,20 @@ test.describe('Document Builder', () => {
   // ── Template Starter Check ──
   test('system templates are available after first load', async ({ page }) => {
     await page.waitForTimeout(2000);
-    // Click blank mode to trigger template display
-    const blankBtn = page.locator('text=Blank Mode').first();
-    await blankBtn.click();
+    // Click the Blank mode pill — selecting a mode reveals the
+    // Choose-a-Template grid (templates are gated on mode being set).
+    await page.locator('button:has-text("Blank")').first().click();
     await page.waitForTimeout(1500);
-    // Check for known starter templates
+    // Starter templates are seeded per company via auto-clone from the
+    // system-company row. Names: "Notice to Pay or Quit",
+    // "Notice to Vacate", "Lease Renewal Offer", "General Letter", …
     const templates = ['Notice to Pay', 'Notice to Vacate', 'Lease Renewal', 'General Letter'];
     let found = 0;
     for (const t of templates) {
       const vis = await page.locator(`text=${t}`).first().isVisible({ timeout: 3000 }).catch(() => false);
       if (vis) found++;
     }
-    expect(found).toBeGreaterThanOrEqual(2); // At least 2 starter templates visible
+    expect(found).toBeGreaterThanOrEqual(2);
   });
 
   // ── Responsive ──

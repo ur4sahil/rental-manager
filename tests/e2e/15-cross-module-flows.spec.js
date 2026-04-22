@@ -84,22 +84,27 @@ test.describe('Cross-Module Integration Flows', () => {
   });
 
   test('opening and closing modals across modules does not leak state', async ({ page }) => {
-    // Open add form in Properties, cancel, go to Tenants, open add form
-    await navigateTo(page, 'Properties');
-    const propAdd = page.locator('button:has-text("Add")').first();
-    if (await propAdd.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await propAdd.click();
-      await page.waitForTimeout(300);
+    // Properties' "+ Add" now opens the Property Setup Wizard (a
+    // multi-step flow with its own overlay), so the old single-click
+    // Cancel path no longer applies. Check leak-free navigation by
+    // opening Vendors' Add form, closing it, then moving to Owners
+    // and confirming no vendor form fields carry over.
+    await navigateTo(page, 'Vendors');
+    const vendorAdd = page.locator('button:has-text("+ Add"), button:has-text("Add Vendor")').first();
+    if (await vendorAdd.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await vendorAdd.click();
+      await page.waitForTimeout(400);
       const cancel = page.locator('button:has-text("Cancel")').first();
       if (await cancel.isVisible({ timeout: 2000 }).catch(() => false)) {
         await cancel.click();
         await page.waitForTimeout(300);
       }
     }
-    await navigateTo(page, 'Tenants');
+    await navigateTo(page, 'Owners');
     await page.waitForTimeout(1000);
-    // Should not see property form fields
-    const propFormLeak = await page.locator('input[placeholder*="address" i]').isVisible({ timeout: 3000 }).catch(() => false);
-    expect(propFormLeak).toBeFalsy();
+    // Owners page should NOT have a vendor-specific "Trade" or
+    // "Vendor Name" field left over from the prior modal.
+    const leak = await page.locator('input[placeholder*="Trade" i], input[placeholder*="Vendor Name" i]').first().isVisible({ timeout: 2000 }).catch(() => false);
+    expect(leak).toBeFalsy();
   });
 });

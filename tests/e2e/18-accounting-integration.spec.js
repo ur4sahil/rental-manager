@@ -19,14 +19,44 @@ async function bodyText(page) {
   return (await page.locator('body').textContent()) || '';
 }
 
-// Helper: navigate to Accounting → tab
+// Helper: navigate to Accounting → tab. Click the tab and then wait
+// on a tab-specific content marker — the initial flake was that the
+// helper returned before the content swapped, so downstream text
+// assertions ran against the previous tab.
 async function goToAccountingTab(page, tabName) {
   await navigateTo(page, 'Accounting');
   await page.waitForTimeout(1500);
-  const tab = page.locator(`button:has-text("${tabName}")`).first();
-  if (await tab.isVisible({ timeout: 3000 }).catch(() => false)) {
+  const ICON_FOR = {
+    'Dashboard': 'dashboard',
+    'Journal Entries': 'receipt_long',
+    'Recurring Entries': 'autorenew',
+    'Bank Transactions': 'account_balance',
+    'Reconcile': 'account_balance_wallet',
+    'Chart of Accounts': 'account_balance',
+    'Class Tracking': 'category',
+    'Reports': 'assessment',
+    'Overview': 'dashboard',
+  };
+  const MARKER_FOR = {
+    'Journal Entries': 'text=/All\\s*\\(|Add Journal Entry|No journal entries/i',
+    'Chart of Accounts': 'text=/Checking Account|Rental Income|Asset|Liability/i',
+    'Reconcile': 'heading:has-text("Start Bank Reconciliation"), heading:has-text("Previous Reconciliations")',
+    'Overview': 'text=/At a glance|Revenue|Recent Journal Entries/i',
+    'Dashboard': 'text=/At a glance|Revenue|Recent Journal Entries/i',
+  };
+  const icon = ICON_FOR[tabName] || '';
+  const tab = icon
+    ? page.locator(`button:has-text("${icon}"):has-text("${tabName}")`).first()
+    : page.locator(`button:has-text("${tabName}")`).first();
+  if (await tab.isVisible({ timeout: 4000 }).catch(() => false)) {
     await tab.click();
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(500);
+    const marker = MARKER_FOR[tabName];
+    if (marker) {
+      await page.locator(marker).first().waitFor({ state: 'visible', timeout: 4000 }).catch(() => {});
+    } else {
+      await page.waitForTimeout(1500);
+    }
   }
 }
 
@@ -44,7 +74,13 @@ async function selectOptionContaining(page, selectLocator, partialText) {
 // ═══════════════════════════════════════════════════════════════
 // TEST 1: Record a rent payment → verify JE created in Accounting
 // ═══════════════════════════════════════════════════════════════
-test.describe.serial('Payment → Journal Entry Pipeline', () => {
+// Skipped: the Payments page no longer carries its own "Record
+// Payment" form — clicking the button routes to the Accounting page's
+// Journal Entry editor instead. Rewriting this pipeline would require
+// walking through the JE form, which overlaps with coverage in
+// 17-accounting-flows. When someone restores a dedicated payment form
+// or adds an equivalent end-to-end harness, un-skip.
+test.describe.skip('Payment → Journal Entry Pipeline', () => {
   const paymentAmount = '17.{RUN_ID}';  // Unique amount to trace
   const AMOUNT = `17.${RUN_ID.slice(0, 2)}`;
 
@@ -133,7 +169,12 @@ test.describe.serial('Payment → Journal Entry Pipeline', () => {
 // ═══════════════════════════════════════════════════════════════
 // TEST 2: Create tenant with lease dates → verify rent charge JE
 // ═══════════════════════════════════════════════════════════════
-test.describe.serial('Tenant Creation → Rent Charge Pipeline', () => {
+// Skipped: standalone "+ Add Tenant" button was removed — tenants are
+// now created through the Property Setup Wizard. The wizard flow is
+// exercised in 19-property-wizard.spec.js and the rent-charge side
+// effect in data-layer.test.js. Un-skip if a direct tenant-create UI
+// returns.
+test.describe.skip('Tenant Creation → Rent Charge Pipeline', () => {
   const TENANT_NAME = uniqueName('IntegTenant');
   const RENT = '999';
   const DEPOSIT = '500';
@@ -350,7 +391,10 @@ test.describe.serial('Lease Creation → Deposit + Rent Charge', () => {
 // ═══════════════════════════════════════════════════════════════
 // TEST 4: Payment → Tenant Balance Update
 // ═══════════════════════════════════════════════════════════════
-test.describe.serial('Payment → Balance Consistency', () => {
+// Skipped: same reason as "Payment → Journal Entry Pipeline" — the
+// Payments page redirects Record Payment to the JE editor. Balance
+// consistency is indirectly covered by data-layer balance tests.
+test.describe.skip('Payment → Balance Consistency', () => {
   test('Bob Martinez balance decreases after recording a payment', async ({ page }) => {
     await login(page);
     await navigateTo(page, 'Tenants');
@@ -488,17 +532,11 @@ test.describe('Auto Rent Charges', () => {
   test('journal entries contain rent-related entries from active leases', async ({ page }) => {
     await login(page);
     await goToAccountingTab(page, 'Journal Entries');
-
-    // Show all entries
-    const allFilter = page.locator('button:has-text("All")').first();
-    if (await allFilter.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await allFilter.click();
-      await page.waitForTimeout(1500);
-    }
-
+    // Default filter shows "All" — no need to click it. The earlier
+    // variant clicked a loose `button:has-text("All")` which sometimes
+    // matched a secondary filter on a different tab.
+    await page.waitForTimeout(1500);
     const text = await bodyText(page);
-    // After login, autoPostRentCharges runs. Should see rent-related entries.
-    // Could be RENT-AUTO, PAY-, or "rent" in description
     const hasRentEntries = /RENT-AUTO|rent charge|rent payment|PAY-/i.test(text);
     expect(hasRentEntries, 'Journal entries should contain rent-related entries').toBeTruthy();
   });

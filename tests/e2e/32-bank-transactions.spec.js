@@ -44,12 +44,17 @@ test.describe('Bank Transactions Page', () => {
   });
 
   test('shows Rules button', async ({ page }) => {
-    const bankTab = page.locator('button:has-text("Bank Transactions")').first();
+    // The Accounting sidebar has "Bank Transactions" (icon+text); click
+    // the one inside the sidebar (it's prefixed with the material-icon
+    // name "account_balance") to avoid matching the heading on the
+    // detail page that shares the "Bank Transactions" text.
+    const bankTab = page.locator('button:has-text("account_balance"):has-text("Bank Transactions")').first();
     if (await bankTab.isVisible({ timeout: 3000 }).catch(() => false)) {
       await bankTab.click();
-      await page.waitForTimeout(1500);
-      const rulesBtn = page.locator('button:has-text("Rules")').first();
-      const hasRules = await rulesBtn.isVisible({ timeout: 3000 }).catch(() => false);
+      await page.waitForTimeout(2000);
+      // Rules tab label is "Rules (N)" where N is the rule count.
+      const rulesBtn = page.locator('button:has-text("Rules (")').first();
+      const hasRules = await rulesBtn.isVisible({ timeout: 4000 }).catch(() => false);
       expect(hasRules).toBeTruthy();
     }
   });

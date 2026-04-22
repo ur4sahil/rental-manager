@@ -40,7 +40,9 @@ test.describe('Sidebar Navigation', () => {
   });
 
   test('sidebar shows company name and logo', async ({ page }) => {
-    const logo = page.locator('text=Estate Logic').first();
+    // Brand wordmark was renamed from "Estate Logic" → "PropManager"
+    // → "Housify" as the product rebranded.
+    const logo = page.locator('text=Housify').first();
     await expect(logo).toBeVisible({ timeout: 5000 });
   });
 

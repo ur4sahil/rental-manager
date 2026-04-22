@@ -464,7 +464,21 @@ function AppInner() {
   const { data: company } = await supabase.from("companies").select("*").eq("id", tenantMembership.company_id).maybeSingle();
   if (company) { handleSelectCompany(company, tenantMembership.role, user); return; }
   }
-  // Always show company selector for non-tenant roles
+  // Second-chance auto-select: if the user's last-visited company is
+  // still an active membership, restore it on reload. Without this,
+  // Ctrl-R on any module dumps the admin back to the Company Selector
+  // and loses their current page — surprising for a browser refresh.
+  try {
+    const lastCompanyId = localStorage.getItem("lastCompanyId");
+    if (lastCompanyId) {
+      const lastMatch = memberships.find(m => m.company_id === lastCompanyId);
+      if (lastMatch) {
+        const { data: company } = await supabase.from("companies").select("*").eq("id", lastCompanyId).maybeSingle();
+        if (company) { handleSelectCompany(company, lastMatch.role, user); return; }
+      }
+    }
+  } catch (_e) { /* localStorage unavailable — fall through to selector */ }
+  // Default: show selector (first login, multi-company, or stale lastCompanyId)
   setScreen("company_select");
   }
 
