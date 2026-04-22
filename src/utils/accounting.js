@@ -343,7 +343,7 @@ export async function getPropertyClassId(propertyAddress, companyId) {
 // Maps bare account codes ("1000") to UUID primary keys in acct_accounts.
 // Uses the `code` column. Falls back to name matching. Auto-creates missing accounts.
 export const _acctIdCache = {};
-export const _acctCodeToName = { "1000": "Checking Account", "1100": "Accounts Receivable", "2100": "Security Deposits Held", "2110": "Accounts Payable", "2200": "Owner Distributions Payable", "4000": "Rental Income", "4010": "Late Fee Income", "4100": "Other Income", "4200": "Management Fee Income", "5300": "Repairs & Maintenance", "5400": "Utilities Expense", "5500": "Bad Debt Expense", "5600": "Mortgage/Loan Payment", "5610": "Legal & Eviction Costs", "5710": "Property Taxes" };
+export const _acctCodeToName = { "1000": "Checking Account", "1100": "Accounts Receivable", "2100": "Security Deposits Held", "2110": "Accounts Payable", "2200": "Owner Distributions Payable", "3000": "Opening Balance Equity", "3100": "Owner's Equity", "3200": "Retained Earnings", "4000": "Rental Income", "4010": "Late Fee Income", "4100": "Other Income", "4200": "Management Fee Income", "5300": "Repairs & Maintenance", "5400": "Utilities Expense", "5500": "Bad Debt Expense", "5600": "Mortgage/Loan Payment", "5610": "Legal & Eviction Costs", "5710": "Property Taxes" };
 export async function resolveAccountId(bareCode, companyId) {
   if (!companyId) return null;
   const cid = companyId;
@@ -576,4 +576,65 @@ export async function lookupZip(zip) {
   return result;
   } catch (_e) { pmError("PM-8006", { raw: _e, context: "ZIP code lookup", silent: true }); return null; }
   finally { if (timer) clearTimeout(timer); }
+}
+
+
+// ============ OPENING BALANCE JE ============
+// Posts the one-and-only opening balance journal entry for a company.
+// Dedup key: reference = "OPENING-BALANCE-<companyId>", which the
+// idx_je_company_reference_unique index enforces at the DB level.
+// Calling this twice is a safe no-op.
+//
+// Input shape:
+//   balances: [{ code, name, type, amount }]
+//     - type: "Asset" | "Liability" | "Equity" | "Revenue" | "Expense".
+//     - amount: signed. Positive = the type's native side (DR for
+//       Asset/Expense, CR for Liability/Equity/Revenue). Negative
+//       means contra-balance (e.g. accumulated depreciation) and
+//       lands on the opposite side.
+//
+// The plug to 3000 Opening Balance Equity squares the DR/CR totals.
+// After post, the user reclassifies OBE → Retained Earnings /
+// Owner's Equity via a normal JE; once that's done OBE should be $0.
+export async function postOpeningBalanceJE({ companyId, date, balances, userEmail }) {
+  if (!companyId) throw new Error("postOpeningBalanceJE: companyId required");
+  if (!date) throw new Error("postOpeningBalanceJE: date required");
+  const DR_NORMAL = new Set(["Asset", "Expense"]);
+  const lines = [];
+  let totalDR = 0, totalCR = 0;
+  for (const b of (balances || [])) {
+    const amt = safeNum(b.amount);
+    if (Math.abs(amt) < 0.005) continue;
+    const nativeDR = DR_NORMAL.has(b.type);
+    const onDebit = (nativeDR && amt >= 0) || (!nativeDR && amt < 0);
+    const abs = Math.abs(amt);
+    lines.push({
+      account_id: b.code,
+      account_name: b.name || b.code,
+      debit: onDebit ? abs : 0,
+      credit: onDebit ? 0 : abs,
+      memo: "Opening balance as of " + date,
+    });
+    if (onDebit) totalDR += abs; else totalCR += abs;
+  }
+
+  const diff = totalDR - totalCR;
+  if (Math.abs(diff) >= 0.005) {
+    if (diff > 0) {
+      lines.push({ account_id: "3000", account_name: "Opening Balance Equity", debit: 0, credit: diff, memo: "Opening balance plug" });
+    } else {
+      lines.push({ account_id: "3000", account_name: "Opening Balance Equity", debit: -diff, credit: 0, memo: "Opening balance plug" });
+    }
+  }
+
+  if (lines.length === 0) return null;
+
+  return await autoPostJournalEntry({
+    companyId,
+    date,
+    description: "Opening balance as of " + date,
+    reference: "OPENING-BALANCE-" + companyId,
+    status: "posted",
+    lines,
+  });
 }

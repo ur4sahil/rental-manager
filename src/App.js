@@ -495,6 +495,13 @@ function AppInner() {
   { code: "1100", name: "Accounts Receivable", type: "Asset", is_active: true },
   { code: "2100", name: "Security Deposits Held", type: "Liability", is_active: true },
   { code: "2200", name: "Owner Distributions Payable", type: "Liability", is_active: true },
+  // Equity block — needed so the Opening Balances tab has a place to
+  // post prior-system balances. 3000 is the clearing account used as
+  // the plug on the opening JE; never rename or deactivate without
+  // reviewing every opening-balance JE that references it.
+  { code: "3000", name: "Opening Balance Equity", type: "Equity", is_active: true },
+  { code: "3100", name: "Owner's Equity", type: "Equity", is_active: true },
+  { code: "3200", name: "Retained Earnings", type: "Equity", is_active: true },
   { code: "4000", name: "Rental Income", type: "Revenue", is_active: true },
   { code: "4010", name: "Late Fee Income", type: "Revenue", is_active: true },
   { code: "4100", name: "Other Income", type: "Revenue", is_active: true },

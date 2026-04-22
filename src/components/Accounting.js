@@ -8,7 +8,7 @@ import { pmError } from "../utils/errors";
 import { printTheme, chartPalette } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
-import { safeLedgerInsert, checkPeriodLock, autoPostRecurringEntries, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, _acctIdCache } from "../utils/accounting";
+import { safeLedgerInsert, checkPeriodLock, autoPostRecurringEntries, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, postOpeningBalanceJE, _acctIdCache } from "../utils/accounting";
 import { Spinner, PropertySelect } from "./shared";
 import { BankTransactions } from "./Banking";
 
@@ -602,6 +602,249 @@ export function AcctTypeBadge({ type }) {
 export function AcctStatusBadge({ status }) {
   const map = { posted: "bg-success-50 text-success-700", draft: "bg-warn-50 text-warn-700", voided: "bg-danger-50 text-danger-700" };
   return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[status] || "bg-neutral-100 text-neutral-700"}`}>{status}</span>;
+}
+
+// ─── Opening Balance Setup ────────────────────────────────────────
+//
+// One-time wizard for a new business or a mid-year migration: user
+// picks the opening date (day BEFORE normal bookkeeping starts),
+// types the ending balance from the prior system for every
+// asset / liability / equity account, clicks Post. We build a
+// single balanced JE with reference="OPENING-BALANCE-<companyId>"
+// and let the DB's idx_je_company_reference_unique index enforce
+// idempotency — calling post twice silently no-ops.
+//
+// The plug line lands in 3000 Opening Balance Equity so the JE
+// balances no matter which accounts the user has filled. After the
+// user has everything entered they typically reclassify OBE into
+// Owner's Equity / Retained Earnings via a second JE; the
+// post-state view surfaces that next step.
+function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, showToast, showConfirm, onPosted }) {
+  const [openingDate, setOpeningDate] = useState(() => {
+    const d = new Date(new Date().getFullYear() - 1, 11, 31);
+    return formatLocalDate(d);
+  });
+  const [balances, setBalances] = useState({}); // { [accountCode]: "12345.67" }
+  const [saving, setSaving] = useState(false);
+  const [posted, setPosted] = useState(null); // { id, number, date } once found
+
+  // Accounts the user enters balances for: Asset / Liability /
+  // Equity, active, excluding 3000 OBE (that's the plug, never
+  // typed). Sorted by code so the grid reads in standard
+  // balance-sheet order.
+  const eligible = (accounts || [])
+    .filter(a => a.is_active !== false)
+    .filter(a => ["Asset", "Liability", "Equity"].includes(a.type))
+    .filter(a => a.code !== "3000")
+    .sort((a, b) => String(a.code || "").localeCompare(String(b.code || "")));
+
+  // Detect a previously-posted opening JE on mount and whenever
+  // journalEntries refreshes. Lets the tab self-heal across reloads.
+  useEffect(() => {
+    let cancelled = false;
+    async function check() {
+      const { data } = await supabase.from("acct_journal_entries")
+        .select("id, number, date, status")
+        .eq("company_id", companyId)
+        .eq("reference", "OPENING-BALANCE-" + companyId)
+        .neq("status", "voided")
+        .maybeSingle();
+      if (!cancelled) setPosted(data || null);
+    }
+    if (companyId) check();
+    return () => { cancelled = true; };
+  }, [companyId, journalEntries?.length]);
+
+  const DR_NORMAL = ["Asset", "Expense"];
+  let totalDR = 0, totalCR = 0;
+  for (const a of eligible) {
+    const amt = safeNum(balances[a.code]);
+    if (Math.abs(amt) < 0.005) continue;
+    const nativeDR = DR_NORMAL.includes(a.type);
+    const onDebit = (nativeDR && amt >= 0) || (!nativeDR && amt < 0);
+    const abs = Math.abs(amt);
+    if (onDebit) totalDR += abs; else totalCR += abs;
+  }
+  const plug = totalDR - totalCR;
+
+  async function handlePost() {
+    if (saving) return;
+    const asOf = openingDate;
+    if (!asOf || !/^\d{4}-\d{2}-\d{2}$/.test(asOf)) {
+      showToast("Pick a valid opening date", "error");
+      return;
+    }
+    const rows = eligible
+      .map(a => ({ code: a.code, name: a.name, type: a.type, amount: safeNum(balances[a.code]) }))
+      .filter(b => Math.abs(b.amount) >= 0.005);
+    if (rows.length === 0) {
+      showToast("Enter at least one balance before posting", "error");
+      return;
+    }
+    const ok = await showConfirm({
+      message: `Post opening balances as of ${asOf}?\n\n` +
+        `Assets + Expenses (debits): ${formatCurrency(totalDR)}\n` +
+        `Liabilities + Equity + Revenue (credits): ${formatCurrency(totalCR)}\n` +
+        (Math.abs(plug) >= 0.005
+          ? `Plug to 3000 Opening Balance Equity: ${formatCurrency(Math.abs(plug))} ${plug > 0 ? "credit" : "debit"}\n\n`
+          : `\n`) +
+        `This posts ONE journal entry. Re-clicking Post is a safe no-op — the reference is unique.`,
+    });
+    if (!ok) return;
+
+    setSaving(true);
+    try {
+      const jeId = await postOpeningBalanceJE({
+        companyId, date: asOf, balances: rows, userEmail: userProfile?.email || "",
+      });
+      if (jeId) {
+        logAudit("create", "accounting", `Posted opening balance as of ${asOf}`, jeId, userProfile?.email, "", companyId);
+        showToast("Opening balance posted.", "success");
+        // Offer period lock so nothing accidentally back-dates into
+        // the prior period.
+        const lockOk = await showConfirm({
+          message: `Lock all periods through ${asOf}?\n\nRecommended — prevents new entries from back-dating into the opening period. You can unlock later via Reconcile → Period Lock.`,
+          confirmText: "Lock through " + asOf,
+        });
+        if (lockOk) {
+          await supabase.from("accounting_period_lock").upsert([{
+            company_id: companyId, locked_through_date: asOf, locked_by: userProfile?.email || "",
+          }], { onConflict: "company_id" });
+        }
+      } else {
+        // autoPostJournalEntry returns null on dedup or validation
+        // failure. Dedup is safe; surface a neutral message.
+        showToast("Opening balance was already posted — no change.", "info");
+      }
+      if (typeof onPosted === "function") onPosted();
+    } catch (e) {
+      pmError("PM-4002", { raw: e, context: "post opening balance" });
+      showToast("Post failed: " + (e.message || e), "error");
+    } finally { setSaving(false); }
+  }
+
+  async function handleVoid() {
+    if (!posted) return;
+    const ok = await showConfirm({
+      message: `Void the opening balance JE (${posted.number})?\n\nAfter voiding you can re-enter and re-post. Existing ledger rows stay but the JE is marked voided.`,
+      variant: "danger", confirmText: "Void",
+    });
+    if (!ok) return;
+    await supabase.from("acct_journal_entries")
+      .update({ status: "voided" })
+      .eq("id", posted.id).eq("company_id", companyId);
+    logAudit("void", "accounting", `Voided opening balance JE ${posted.number}`, posted.id, userProfile?.email, "", companyId);
+    showToast("Opening balance voided. You can re-enter and re-post.", "success");
+    setPosted(null);
+    if (typeof onPosted === "function") onPosted();
+  }
+
+  if (posted) {
+    return (
+      <div>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-12 h-12 bg-positive-100 rounded-xl flex items-center justify-center">
+            <span className="material-icons-outlined text-positive-600 text-2xl">task_alt</span>
+          </div>
+          <div>
+            <h3 className="text-lg font-manrope font-bold text-neutral-800">Opening balance posted</h3>
+            <p className="text-sm text-neutral-400">As of {posted.date} · {posted.number}</p>
+          </div>
+        </div>
+        <div className="bg-info-50 border border-info-200 rounded-xl p-4 mb-4 text-sm text-info-800">
+          <strong>Next step:</strong> reclassify <code className="font-mono">3000 Opening Balance Equity</code> into <code className="font-mono">3100 Owner's Equity</code> or <code className="font-mono">3200 Retained Earnings</code> via a normal journal entry. OBE should eventually read $0 on your Balance Sheet.
+        </div>
+        <div className="flex gap-2">
+          <Btn variant="secondary" onClick={() => { /* nav handled by parent tab */ }} title="Opens the Journal Entries tab via the usual sidebar click">View journal entry →</Btn>
+          <Btn variant="danger" onClick={handleVoid}>Reverse opening balance</Btn>
+        </div>
+      </div>
+    );
+  }
+
+  const groups = [
+    { type: "Asset",     title: "Assets",      note: "Cash, AR, property at book value, fixed assets." },
+    { type: "Liability", title: "Liabilities", note: "Security deposits held, mortgages, AP." },
+    { type: "Equity",    title: "Equity",      note: "Owner's capital contributions, retained earnings." },
+  ];
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-12 h-12 bg-brand-100 rounded-xl flex items-center justify-center">
+          <span className="material-icons-outlined text-brand-600 text-2xl">restart_alt</span>
+        </div>
+        <div className="flex-1">
+          <h3 className="text-lg font-manrope font-bold text-neutral-800">Opening Balances</h3>
+          <p className="text-sm text-neutral-400">One-time setup for a new business or migration — enter ending balances from your prior system.</p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-neutral-200 p-4 mb-4">
+        <label className="text-xs font-medium text-neutral-500 block mb-1">Opening date</label>
+        <Input type="date" value={openingDate} onChange={e => setOpeningDate(e.target.value)} className="max-w-xs" />
+        <p className="text-[11px] text-neutral-400 mt-1">The day BEFORE your normal bookkeeping starts. For a calendar-year migration, use the prior Dec 31.</p>
+      </div>
+
+      {groups.map(g => {
+        const rows = eligible.filter(a => a.type === g.type);
+        if (rows.length === 0) return null;
+        const subtotalDR = rows.reduce((s, a) => { const x = safeNum(balances[a.code]); return s + (DR_NORMAL.includes(a.type) ? Math.max(x, 0) + Math.max(-x, 0) * 0 : Math.max(-x, 0)); }, 0);
+        const subtotalCR = rows.reduce((s, a) => { const x = safeNum(balances[a.code]); return s + (DR_NORMAL.includes(a.type) ? Math.max(-x, 0) : Math.max(x, 0)); }, 0);
+        return (
+          <div key={g.type} className="bg-white rounded-xl border border-neutral-200 mb-3 overflow-hidden">
+            <div className="px-4 py-3 bg-neutral-50 border-b border-neutral-200">
+              <div className="text-sm font-semibold text-neutral-800">{g.title}</div>
+              <div className="text-[11px] text-neutral-400">{g.note}</div>
+            </div>
+            <table className="w-full text-sm">
+              <tbody>
+                {rows.map(a => (
+                  <tr key={a.id} className="border-b border-neutral-100 last:border-b-0">
+                    <td className="px-4 py-2 text-neutral-600"><span className="font-mono text-xs text-neutral-400 mr-2">{a.code}</span>{a.name}</td>
+                    <td className="px-4 py-2 text-right w-48">
+                      <Input
+                        inputMode="decimal"
+                        value={balances[a.code] || ""}
+                        onChange={e => setBalances(prev => ({ ...prev, [a.code]: e.target.value.replace(/[^0-9.\-]/g, "") }))}
+                        placeholder="0.00"
+                        className="text-right"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+
+      <div className="bg-neutral-50 rounded-xl border border-neutral-200 p-4 mb-4">
+        <div className="flex justify-between text-sm">
+          <span className="text-neutral-500">Total debits (Assets + Expense contras)</span>
+          <span className="font-mono font-semibold text-neutral-800">{formatCurrency(totalDR)}</span>
+        </div>
+        <div className="flex justify-between text-sm mt-1">
+          <span className="text-neutral-500">Total credits (Liabilities + Equity)</span>
+          <span className="font-mono font-semibold text-neutral-800">{formatCurrency(totalCR)}</span>
+        </div>
+        <div className="flex justify-between text-sm mt-2 pt-2 border-t border-neutral-200">
+          <span className={Math.abs(plug) < 0.005 ? "text-positive-700" : "text-warn-700"}>
+            {Math.abs(plug) < 0.005
+              ? "Balanced ✓"
+              : `Plug to 3000 Opening Balance Equity: ${formatCurrency(Math.abs(plug))} ${plug > 0 ? "credit" : "debit"}`}
+          </span>
+        </div>
+        <p className="text-[11px] text-neutral-400 mt-2">
+          Opening Balance Equity is a clearing account. After you've entered everything and the Balance Sheet looks right, move the OBE balance to Owner's Equity or Retained Earnings with a normal journal entry.
+        </p>
+      </div>
+
+      <div className="flex gap-2">
+        <Btn variant="success-fill" onClick={handlePost} disabled={saving}>{saving ? "Posting..." : "Post opening balance"}</Btn>
+      </div>
+    </div>
+  );
 }
 
 // --- Chart of Accounts Sub-Page ---
@@ -3138,6 +3381,9 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
 
   const acctSidebarItems = [
   { section: "OVERVIEW", items: [{ id: "overview", label: "Dashboard", icon: "dashboard" }] },
+  { section: "SETUP", items: [
+    { id: "opening", label: "Opening Balances", icon: "restart_alt" },
+  ]},
   { section: "TRANSACTIONS", items: [
     { id: "coa", label: "Chart of Accounts", icon: "account_balance" },
     { id: "journal", label: "Journal Entries", icon: "receipt_long", badge: pendingCount },
@@ -3187,6 +3433,22 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
 
   {activeTab === "overview" && (
   <div>
+  {/* Setup prompt — shown until the company has at least one posted JE.
+      The opening-balance tab is the first thing a brand-new company
+      should hit; without this banner fresh accounts render a wall of
+      zero-dollar metrics and nothing hints at the setup tab. */}
+  {journalEntries.length === 0 && acctAccounts.length > 0 && (
+    <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-5 flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <span className="material-icons-outlined text-warn-700">restart_alt</span>
+        <div>
+          <div className="text-sm font-semibold text-warn-800">Start here — enter opening balances</div>
+          <div className="text-xs text-warn-700">If you're migrating from another system or starting mid-year, post a one-time opening balance so reports match reality from day one.</div>
+        </div>
+      </div>
+      <Btn size="sm" variant="warning-fill" onClick={() => setActiveTab("opening")}>Go to Opening Balances</Btn>
+    </div>
+  )}
   {/* QuickBooks-style metric cards */}
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
     <div className="bg-white rounded-xl border border-neutral-200 p-5 hover:shadow-md transition-shadow">
@@ -3315,6 +3577,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   </div>
   )}
 
+  {activeTab === "opening" && <AcctOpeningBalance accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} onPosted={fetchAll} />}
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} companySettings={companySettings} addNotification={addNotification} userProfile={userProfile} />}
   {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
   {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} onCloseJEDetail={() => { if (pendingLedgerReturn) { setLedgerView(pendingLedgerReturn); setPendingLedgerReturn(null); setViewJEId(null); } }} />}
