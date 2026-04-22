@@ -634,6 +634,14 @@ function AppInner() {
     return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
   }
 
+  // If a prior subscription exists with a different VAPID key the
+  // browser rejects subscribe() with "a subscription with a different
+  // applicationServerKey already exists". Unsubscribe first so the
+  // new key takes effect cleanly. This happens after a VAPID rotation
+  // or if the user was previously subscribed under the default
+  // applicationServerKey (no VAPID configured).
+  const existing = await registration.pushManager.getSubscription();
+  if (existing) { try { await existing.unsubscribe(); } catch (_e) { /* browser refused; subscribe() below will surface */ } }
   const subscription = await registration.pushManager.subscribe({
   userVisibleOnly: true,
   applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),

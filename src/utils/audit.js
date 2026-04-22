@@ -13,7 +13,7 @@ export const AUDIT_MODULES = new Set([
   "documents","team","pm_requests","bank_reconciliation","owner_distributions","settings",
   "property_tax_bills","property_licenses","property_requests","late_fees","loans","hoa",
   "insurance","utilities","autopay","banking","doc_builder","evictions","notifications",
-  "vendor_invoices","companies",
+  "vendor_invoices","companies","messages",
 ]);
 export async function logAudit(action, module, details = "", recordId = "", userEmail = "", userRoleVal = "unknown", companyId) {
   try {
