@@ -228,10 +228,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       .limit(TXN_FETCH_CAP);
     if (cutoff) txnQ = txnQ.gte("posted_date", cutoff);
     const [feedsRes, txnRes, rulesRes, connRes] = await Promise.all([
-      // Include inactive feeds too so disconnected accounts stay
-       // visible with a Reactivate affordance. Hard-deleted rows
-       // (archived_at set) are still filtered out.
-      supabase.from("bank_account_feed").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at"),
+      // Show all feeds (active + inactive). Disconnected accounts
+      // stay visible with a Reactivate affordance instead of vanishing.
+      // bank_account_feed has no soft-delete column — status='inactive'
+      // is the full deactivation state.
+      supabase.from("bank_account_feed").select("*").eq("company_id", companyId).order("created_at"),
       txnQ,
       supabase.from("bank_transaction_rule").select("*").eq("company_id", companyId).order("priority"),
       supabase.from("bank_connection").select("*").eq("company_id", companyId).order("created_at"),
