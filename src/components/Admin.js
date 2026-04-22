@@ -353,7 +353,7 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   <div className="col-span-2"><label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-1 block">First Name *</label><Input size="sm" value={form.first_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, first_name: v, name: formatPersonName(v, f.mi, f.last_name) })); }} placeholder="First" /></div>
   <div className="col-span-1"><label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-1 block">MI</label><Input size="sm" maxLength={1} value={form.mi} onChange={e => { const v = e.target.value.toUpperCase(); setForm(f => ({ ...f, mi: v, name: formatPersonName(f.first_name, v, f.last_name) })); }} placeholder="M" className="text-center" /></div>
   <div className="col-span-3"><label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-1 block">Last Name *</label><Input size="sm" value={form.last_name} onChange={e => { const v = e.target.value; setForm(f => ({ ...f, last_name: v, name: formatPersonName(f.first_name, f.mi, v) })); }} placeholder="Last" /></div>
-  <div className="col-span-4"><label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-1 block">Email *</label><Input size="sm" placeholder="Email address" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} disabled={!!editingUser} className="disabled:bg-brand-50/30 disabled:text-neutral-400" /></div>
+  <div className="col-span-4"><label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-1 block">Email *</label><Input size="sm" type="email" placeholder="Email address" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} disabled={!!editingUser} autoComplete="off" className="disabled:bg-brand-50/30 disabled:text-neutral-400" /></div>
   <div className="col-span-2"><label className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-1 block">Role</label><Select size="sm" value={form.role} onChange={e => handleRoleChange(e.target.value)}>
   {Object.entries(ROLES).filter(([k]) => k !== "tenant").map(([key, r]) => (
   <option key={key} value={key}>{r.label}</option>
@@ -409,10 +409,14 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   )}
 
   <div className="flex gap-2 mt-3">
-  <Btn size="sm" onClick={saveUser}>
-  {editingUser ? "Save Changes" : "Add User"}
+  <Btn
+    size="sm"
+    onClick={saveUser}
+    disabled={!form.first_name.trim() || !form.last_name.trim() || !form.email.trim() || !form.email.includes("@") || customPages.length === 0}
+  >
+    {editingUser ? "Save Changes" : "Add User"}
   </Btn>
-  <Btn size="sm" variant="secondary" onClick={() => { setShowForm(false); setEditingUser(null); }}>
+  <Btn size="sm" variant="secondary" onClick={() => { setShowForm(false); setEditingUser(null); setForm({ email: "", role: "office_assistant", name: "", first_name: "", mi: "", last_name: "", manager_email: "" }); setCustomPages([]); }}>
   Cancel
   </Btn>
   </div>

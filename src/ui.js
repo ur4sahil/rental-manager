@@ -42,9 +42,14 @@ const BTN_SIZES = {
   lg: "text-sm px-5 py-2 rounded-2xl gap-2",
 };
 
-export function Btn({ variant = "primary", size = "md", className = "", icon, children, ...props }) {
+export function Btn({ variant = "primary", size = "md", className = "", icon, type, children, ...props }) {
+  // Default to type="button". HTML's <button> defaults to type="submit",
+  // which — if the button ever ends up inside a <form> — can fire an
+  // implicit submit on Enter and trigger the *first* button's onClick
+  // instead of the one the user intended. Pin type so our buttons stay
+  // inert to form semantics unless a caller explicitly opts in.
   return (
-    <button className={`${BTN_BASE} ${BTN_VARIANTS[variant] || BTN_VARIANTS.primary} ${BTN_SIZES[size] || BTN_SIZES.md} ${className}`} {...props}>
+    <button type={type || "button"} className={`${BTN_BASE} ${BTN_VARIANTS[variant] || BTN_VARIANTS.primary} ${BTN_SIZES[size] || BTN_SIZES.md} ${className}`} {...props}>
       {icon && <span className="material-icons-outlined text-sm">{icon}</span>}
       {children}
     </button>

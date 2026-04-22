@@ -251,7 +251,14 @@ function AppInner() {
 
   const [pageAction, setPageAction] = useState(null);
   function setPage(p, action) { setPageAction(action || null); setPageRaw(p); window.history.pushState({ page: p, screen: "app" }, "", "#" + p); }
-  function setScreen(s) { setScreenRaw(s); if (s !== "app") window.history.pushState({ screen: s }, "", "#" + s); }
+  function setScreen(s) { setScreenRaw(s); screenRef.current = s; if (s !== "app") window.history.pushState({ screen: s }, "", "#" + s); }
+  // Mirror `screen` into a ref so the auth-state-change subscriber
+  // (which closes over state values from its mount-time render) can
+  // read the CURRENT screen when deciding whether to re-route. Without
+  // this, a stale "loading" value lets Supabase's repeat SIGNED_IN
+  // events (fired on tab-visibility restore) bounce the user back to
+  // the company selector.
+  const screenRef = useRef("loading");
 
   useEffect(() => {
   const onPop = (e) => { if (e.state?.page) setPageRaw(e.state.page); if (e.state?.screen) setScreenRaw(e.state.screen); };
@@ -381,7 +388,14 @@ function AppInner() {
   if (session) {
     // Only route on fresh sign-in events; TOKEN_REFRESHED / USER_UPDATED
     // shouldn't reset the screen the user is currently on.
-    if (_event === "SIGNED_IN" || _event === "INITIAL_SESSION") {
+    //
+    // Supabase also fires SIGNED_IN again when a tab regains focus
+    // after the session is re-fetched — without this guard that
+    // bounces an already-signed-in user back through the company
+    // selector, wiping any in-flight form state. Skip the re-route if
+    // we're already inside the app or on a post-landing screen.
+    const onEntryScreen = screenRef.current === "loading" || screenRef.current === "landing" || screenRef.current === "login";
+    if ((_event === "SIGNED_IN" || _event === "INITIAL_SESSION") && onEntryScreen) {
       routeSignedIn(session.user);
     } else {
       setCurrentUser(session.user);
