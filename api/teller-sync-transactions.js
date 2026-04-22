@@ -19,8 +19,21 @@ function emailFilterValue(email) {
 
 const TELLER_API = "https://api.teller.io";
 const CRON_SECRET = process.env.CRON_SECRET || "";
-const FETCH_TIMEOUT_MS = 25000;
+// Each paginated Teller call runs under this cap. BofA / some CU feeds
+// can take a solid 20-30s on a first fetch; 25s was cutting it close
+// and 0822 regularly timed out. Vercel function ceiling is 60s per
+// invocation, so there's room. Pagination (below) keeps any single
+// request bounded to ~500 txns so this timeout rarely matters.
+const FETCH_TIMEOUT_MS = 45000;
 const CRON_CONCURRENCY = 3;
+// Teller caps per-page, but 500 is a reasonable page size — small
+// enough that a single call is fast, large enough that 1 year of
+// history is only a few round-trips.
+const TELLER_PAGE_SIZE = 500;
+// Safety cap. At 500/page this covers 10,000 transactions. Beyond that
+// something is almost certainly wrong (loop, bad bank response, etc.)
+// and we'd rather fail than hold a Vercel function hostage.
+const MAX_TELLER_PAGES = 20;
 
 // Decrypt AES-GCM — supports both the new v3 per-credential-salt scheme
 // (encryption_salt populated) and the legacy Teller key scheme that
@@ -166,24 +179,48 @@ module.exports = async function handler(req, res) {
           const tellerAccountId = feed.plaid_account_id;
           if (!tellerAccountId) continue;
 
-          const txnRes = await tellerFetch(`${TELLER_API}/accounts/${tellerAccountId}/transactions`, accessToken);
+          // Paginate Teller. The unpaginated endpoint only returns its
+          // default window (~90 days on most banks) — to pull deeper
+          // history we chain with ?from_id=<oldest id of prior page>.
+          // Teller returns txns newest-first, so when a page's oldest
+          // date drops below body.from_date we can stop early.
+          let tellerTxns = [];
+          let fromId = "";
+          let pagesFetched = 0;
+          while (pagesFetched < MAX_TELLER_PAGES) {
+            const qs = `?count=${TELLER_PAGE_SIZE}` + (fromId ? `&from_id=${encodeURIComponent(fromId)}` : "");
+            const txnRes = await tellerFetch(`${TELLER_API}/accounts/${tellerAccountId}/transactions${qs}`, accessToken);
 
-          if (txnRes.status === 401 || txnRes.status === 403) {
-            await supabase
-              .from("bank_connection")
-              .update({ connection_status: "needs_reauth", last_error_code: "AUTH_FAILED", last_error_message: "Re-authentication required" })
-              .eq("id", conn.id);
-            throw new Error("AUTH_FAILED");
+            if (txnRes.status === 401 || txnRes.status === 403) {
+              await supabase
+                .from("bank_connection")
+                .update({ connection_status: "needs_reauth", last_error_code: "AUTH_FAILED", last_error_message: "Re-authentication required" })
+                .eq("id", conn.id);
+              throw new Error("AUTH_FAILED");
+            }
+
+            if (!txnRes.ok) {
+              console.error("[teller-sync] Teller /transactions failed", { status: txnRes.status, body: (txnRes.body || "").slice(0, 2000) });
+              throw new Error(`Teller API error (${txnRes.status})`);
+            }
+
+            const page = JSON.parse(txnRes.body);
+            if (!Array.isArray(page) || page.length === 0) break;
+
+            tellerTxns.push(...page);
+            pagesFetched++;
+
+            // Early stop: if the oldest txn on this page is already
+            // before the requested from_date, no need to page further.
+            const oldestOnPage = page.reduce((m, t) => (t.date && (!m || t.date < m) ? t.date : m), "");
+            if (body.from_date && oldestOnPage && oldestOnPage < body.from_date) break;
+
+            // Teller pagination: next page is everything older than
+            // the oldest id on this page.
+            const oldestId = page[page.length - 1]?.id;
+            if (!oldestId || oldestId === fromId) break; // nothing new
+            fromId = oldestId;
           }
-
-          if (!txnRes.ok) {
-            // Log the raw body server-side; rethrow a generic so it
-            // never reaches the browser via the response body.
-            console.error("[teller-sync] Teller /transactions failed", { status: txnRes.status, body: (txnRes.body || "").slice(0, 2000) });
-            throw new Error(`Teller API error (${txnRes.status})`);
-          }
-
-          let tellerTxns = JSON.parse(txnRes.body);
 
           // Filter by date range if provided
           if (body.from_date) tellerTxns = tellerTxns.filter((t) => t.date >= body.from_date);
