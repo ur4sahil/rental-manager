@@ -23,6 +23,11 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   // message notifications. Cached at mount; admins occasionally change
   // but a stale value for a single session is fine.
   const [adminEmail, setAdminEmail] = useState(null);
+  // The property-management company's display name. Tenants see this
+  // on all incoming messages instead of individual staff names —
+  // their landlord is "the company" not whichever team member happens
+  // to be on duty that day.
+  const [companyName, setCompanyName] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
@@ -73,6 +78,12 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
       .eq("company_id", companyId).eq("role", "admin").eq("status", "active")
       .limit(1).maybeSingle();
     if (adm?.user_email) setAdminEmail(adm.user_email);
+    // Fetch the company name so message bubbles on the tenant side
+    // can attribute incoming messages to "Smith Properties LLC"
+    // instead of whichever individual staff member typed.
+    const { data: co } = await supabase.from("companies")
+      .select("name").eq("id", companyId).maybeSingle();
+    if (co?.name) setCompanyName(co.name);
   }
   // Mark any admin-sent messages as read now that the tenant is online.
   if (tid) {
@@ -609,6 +620,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
     viewerRole="tenant"
     viewerName={tenantData.name || "You"}
     tenantName={tenantData.name}
+    companyName={companyName}
     onDelete={deleteOwnMessage}
     emptyLabel="No messages yet. Send a message to your property manager below."
   />

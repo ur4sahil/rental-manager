@@ -22,7 +22,7 @@ const MSG_ATTACHMENT_MAX = 10 * 1024 * 1024; // 10MB
 // Used by the admin Messages page AND by the tenant-portal/tenants-drawer
 // "messages" tabs so the chat styling stays in one place.
 // ============================================================
-export function MessageThread({ messages, viewerRole, viewerName, emptyLabel, onDelete, tenantName }) {
+export function MessageThread({ messages, viewerRole, viewerName, emptyLabel, onDelete, tenantName, companyName }) {
   const scrollRef = useRef(null);
   // Autoscroll to bottom on new message — checked by length so we don't
   // fight the user when they scroll up to read history (a small UX win
@@ -75,13 +75,33 @@ export function MessageThread({ messages, viewerRole, viewerName, emptyLabel, on
         // when sender_role is missing keeps old rows readable.
         const role = m.sender_role || (m.sender === "admin" ? "admin" : "tenant");
         const outgoing = viewerIsStaff ? role !== "tenant" : role === "tenant";
-        // Prefer the human-readable name over raw email. For an outgoing
-        // bubble we show the viewer's own name; for incoming we prefer
-        // `sender` (captured at insert time), then tenant name if this
-        // is the tenant row, then finally the email as a last resort.
-        const displayName = outgoing
-          ? (viewerName || "You")
-          : (m.sender || tenantName || (role === "tenant" ? "Tenant" : "Property Manager"));
+        // Pick a display name that matches the viewer's expectation:
+        //
+        // 1) Outgoing bubbles (bubbles the viewer's side owns): show
+        //    the ACTUAL author from `m.sender`. Previously this used
+        //    `viewerName` unconditionally, which meant an admin viewing
+        //    a staff-authored message on the PM side saw their own
+        //    name stamped on it (one staff "impersonating" another).
+        //    Fall back to viewerName only when sender wasn't captured.
+        //
+        // 2) Tenant-side incoming bubbles (staff → tenant): collapse
+        //    every staff author behind the property-management company
+        //    name. Tenants don't care whether Harkirat or Sahil typed
+        //    the message — from their POV the landlord is the company.
+        //    Requires `companyName` from the caller (defaults to a
+        //    generic "Property Manager" if we don't have it).
+        //
+        // 3) PM-side incoming bubbles (tenant → staff): show the
+        //    tenant's name (either the drawer context or whoever wrote
+        //    it, matching today's behavior).
+        let displayName;
+        if (outgoing) {
+          displayName = m.sender || viewerName || "You";
+        } else if (viewerRole === "tenant") {
+          displayName = companyName || "Property Manager";
+        } else {
+          displayName = m.sender || tenantName || "Tenant";
+        }
         const avatarInitial = (displayName[0] || "?").toUpperCase();
         const avatarCls = outgoing
           ? "bg-brand-700 text-white"
