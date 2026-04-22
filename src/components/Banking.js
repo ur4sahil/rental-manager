@@ -354,7 +354,20 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       const data = await res.json();
       if (!res.ok || data.error) { showToast("Sync error: " + (data.error || `HTTP ${res.status}`), "error"); }
       else {
-        showToast(`Synced: ${data.total_added} new transaction${data.total_added !== 1 ? "s" : ""}`, "success");
+        // If from_date was provided, include the oldest txn Teller actually
+        // returned per feed. Lets the user see whether Teller ran out of
+        // history (bank retention) vs our pagination stopping early.
+        let msg = `Synced: ${data.total_added} new transaction${data.total_added !== 1 ? "s" : ""}`;
+        if (opts.from_date && Array.isArray(data.feed_stats) && data.feed_stats.length) {
+          const summary = data.feed_stats
+            .filter(f => (f.raw_count || 0) > 0)
+            .map(f => `${String(f.feed_id).slice(0,4)}: ${f.raw_count} txns, oldest ${f.raw_oldest || "—"} (${f.pages_fetched}p)`)
+            .join(" · ");
+          if (summary) msg += " — " + summary;
+        }
+        showToast(msg, "success");
+        // Also log full stats to console for easy copy/paste.
+        if (Array.isArray(data.feed_stats)) console.log("[bank-sync] feed stats:", data.feed_stats);
         fetchAll();
       }
     } catch (e) { showToast("Sync failed: " + e.message, "error"); }

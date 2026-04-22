@@ -174,6 +174,11 @@ module.exports = async function handler(req, res) {
           .eq("status", "active");
 
         let added = 0;
+        // Per-feed diagnostics so the browser can tell whether a short
+        // pull was our fault (stopped paginating early) or the bank's
+        // (Teller/BofA retention limit). Only included on manual /
+        // JWT-authenticated syncs — cron runs don't need the noise.
+        const feedStats = [];
 
         for (const feed of feeds || []) {
           const tellerAccountId = feed.plaid_account_id;
@@ -222,9 +227,24 @@ module.exports = async function handler(req, res) {
             fromId = oldestId;
           }
 
+          // Record what we actually pulled before client-side filtering,
+          // so the caller can tell whether an empty result means "we
+          // didn't paginate" or "Teller/the bank ran out of history".
+          const rawOldest = tellerTxns.reduce((m, t) => (t.date && (!m || t.date < m) ? t.date : m), "");
+          const rawNewest = tellerTxns.reduce((m, t) => (t.date && (!m || t.date > m) ? t.date : m), "");
+          const feedStat = {
+            feed_id: feed.id,
+            pages_fetched: pagesFetched,
+            raw_count: tellerTxns.length,
+            raw_oldest: rawOldest || null,
+            raw_newest: rawNewest || null,
+          };
+
           // Filter by date range if provided
           if (body.from_date) tellerTxns = tellerTxns.filter((t) => t.date >= body.from_date);
           if (body.to_date) tellerTxns = tellerTxns.filter((t) => t.date <= body.to_date);
+          feedStat.after_filter_count = tellerTxns.length;
+          feedStats.push(feedStat);
 
           // Dedup: scope the fingerprint fetch by the date window of the
           // txns we're about to compare against. Previously this pulled
@@ -346,7 +366,7 @@ module.exports = async function handler(req, res) {
           .update({ completed_at: new Date().toISOString(), added_count: added, status: "success" })
           .eq("id", syncEvent?.id);
 
-        return { added, error: null };
+        return { added, error: null, feedStats };
       } catch (e) {
         await supabase
           .from("plaid_sync_event")
@@ -359,7 +379,7 @@ module.exports = async function handler(req, res) {
             .update({ connection_status: "errored", last_error_message: e.message })
             .eq("id", conn.id);
         }
-        return { added: 0, error: e.message };
+        return { added: 0, error: e.message, feedStats: [] };
       }
     }
 
@@ -378,8 +398,14 @@ module.exports = async function handler(req, res) {
     );
     const totalAdded = results.reduce((s, r) => s + (r?.added || 0), 0);
     const totalErrors = results.filter((r) => r?.error).length;
+    const allFeedStats = results.flatMap((r) => r?.feedStats || []);
 
-    return res.status(200).json({ connections_processed: connections.length, total_added: totalAdded, errors: totalErrors });
+    return res.status(200).json({
+      connections_processed: connections.length,
+      total_added: totalAdded,
+      errors: totalErrors,
+      feed_stats: allFeedStats,
+    });
   } catch (e) {
     console.error("teller-sync error:", e.message);
     return res.status(500).json({ error: "Sync failed. Please try again." });
