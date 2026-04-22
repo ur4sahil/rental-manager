@@ -693,10 +693,16 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   const HIGH = new Set(["insurance", "loan", "property_tax"]);
   const propsByAddr = new Map((props.data || []).map(p => [p.address, p]));
   for (const w of (wizards.data || [])) {
-    // Completed wizards don't generate NEW pending tasks — only
-    // in-progress ones do. (Completed-with-approved-skips are fine;
-    // approved-skips are also filtered out below.)
-    if (w.status !== "in_progress") continue;
+    // Skip dismissed wizards only — they represent abandoned drafts
+    // with no DB side effects (deferred-commit model). In_progress
+    // AND completed wizards still surface tasks for any applicable
+    // step the user hasn't filled or explicitly approved: "completed"
+    // just means they clicked Complete Setup; the missing steps are
+    // still genuine pending work (e.g. insurance, property tax,
+    // loan). Without this, clicking Complete with 6 skipped steps
+    // left them invisible in Tasks & Approvals — which is the exact
+    // surprise Sahil hit on Shruti gupta's property.
+    if (w.status === "dismissed") continue;
     const prop = propsByAddr.get(w.property_address);
     if (!prop) continue;
     const applicable = getWizardApplicableSteps({ propertyStatus: prop.status, userRole });

@@ -379,70 +379,44 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     }
   }
 
-  // ---- Save logic for each step ----
+  // ─── Per-step validators ───────────────────────────────────────────
+  //
+  // DEFERRED-COMMIT wizard model: the step functions below validate
+  // input and throw on failure. They do NOT write to live tables —
+  // persistProgress() (called after each advance) stashes the whole
+  // wizard_data object (propForm/tenantForm/utilities/hoas/loan/
+  // insurance/taxes/recurring) into property_setup_wizard.wizard_data
+  // JSONB, and a single commitWizard() at the end fans everything out
+  // to real tables in dependency order.
+  //
+  // Rationale: per-step saves let a user abandon the wizard at Step 2
+  // with a half-configured property + tenant left in the main lists.
+  // Deferred commit keeps the world clean: quitting mid-wizard leaves
+  // nothing in properties/tenants/leases; a Setup Drafts tab lets the
+  // user resume and finish, and only then does anything land.
+
+  function computeCompositeAddress() {
+    return [propForm.address_line_1, propForm.address_line_2, propForm.city, propForm.state + " " + propForm.zip].filter(Boolean).join(", ");
+  }
 
   async function saveUtilities() {
     const validRows = utilities.filter(u => u.provider.trim());
-    if (validRows.length === 0) return true; // nothing to save
-    const rows = validRows.map(async u => {
-      // Build a proper date from the day-of-month (use current month)
-      const now = new Date();
-      const day = Math.min(28, Math.max(1, Number(u.due_date) || 1));
-      const dueDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      const row = {
-      company_id: companyId,
-      property: savedAddress,
-      provider: u.provider.trim(),
-      amount: 0,
-      due: dueDate,
-      responsibility: u.responsibility === "owner_pays" ? "owner" : "tenant",
-      status: "pending",
-      website: u.website || "",
-      };
+    for (const u of validRows) {
       if (u.username || u.password) {
-        const resU = await encryptCredential(u.username || "", companyId);
-        const resP = await encryptCredential(u.password || "", companyId, resU.salt);
-        row.username_encrypted = resU.encrypted;
-        row.password_encrypted = resP.encrypted;
-        row.encryption_iv_username = resU.iv || null;
-        row.encryption_iv = resP.iv || resU.iv;
-        row.encryption_salt = resU.salt || resP.salt;
+        // Credentials: require both together so we don't store a bare username
+        // that encrypts to something irretrievable.
+        if (!(u.username && u.password)) throw new Error("Utility portal needs both username and password (or leave both blank): " + u.provider);
       }
-      return row;
-    });
-    const resolvedRows = await Promise.all(rows);
-    const { error } = await supabase.from("utilities").insert(resolvedRows);
-    if (error) throw new Error("Failed to save utilities: " + error.message);
+    }
     return true;
   }
 
   async function saveHoa() {
     const validHoas = hoas.filter(h => h.hoa_name.trim());
-    if (validHoas.length === 0) return true;
-    const rows = validHoas.map(async h => {
+    for (const h of validHoas) {
       if (!h.amount || Number(h.amount) <= 0) throw new Error("HOA amount is required for " + h.hoa_name);
-      const now = new Date();
-      const day = Math.min(28, Math.max(1, Number(h.due_date) || 1));
-      const dueDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      const row = {
-        company_id: companyId, property: savedAddress, hoa_name: h.hoa_name.trim(),
-        amount: Number(h.amount), due_date: dueDate, frequency: h.frequency || "Monthly",
-        notes: (h.notes || "").trim(), status: "pending", website: h.website || "",
-      };
-      if (h.username || h.password) {
-        const resU = await encryptCredential(h.username || "", companyId);
-        const resP = await encryptCredential(h.password || "", companyId, resU.salt);
-        row.username_encrypted = resU.encrypted;
-        row.password_encrypted = resP.encrypted;
-        row.encryption_iv_username = resU.iv || null;
-        row.encryption_iv = resP.iv || resU.iv;
-        row.encryption_salt = resU.salt || resP.salt;
-      }
-      return row;
-    });
-    const resolvedRows = await Promise.all(rows);
-    const { error } = await supabase.from("hoa_payments").insert(resolvedRows);
-    if (error) throw new Error("Failed to save HOA: " + error.message);
+      if ((h.username || h.password) && !(h.username && h.password)) throw new Error("HOA portal needs both username and password: " + h.hoa_name);
+    }
     return true;
   }
 
@@ -450,61 +424,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     if (!loan.enabled) return true;
     if (!loan.lender_name.trim()) throw new Error("Lender name is required");
     if (!loan.monthly_payment || Number(loan.monthly_payment) <= 0) throw new Error("Monthly payment is required");
-    const loanRow = {
-      company_id: companyId,
-      property: savedAddress,
-      property_id: String(savedPropertyId || ""),
-      lender_name: loan.lender_name.trim(),
-      loan_type: loan.loan_type,
-      original_amount: Number(loan.original_amount) || 0,
-      current_balance: Number(loan.current_balance) || 0,
-      interest_rate: Number(loan.interest_rate) || 0,
-      monthly_payment: Number(loan.monthly_payment),
-      escrow_included: loan.escrow_included,
-      escrow_amount: loan.escrow_included ? (Number(loan.escrow_amount) || 0) : 0,
-      escrow_covers: loan.escrow_included ? loan.escrow_covers : {},
-      loan_start_date: loan.loan_start_date || null,
-      maturity_date: loan.maturity_date || null,
-      account_number: loan.account_number.trim(),
-      notes: loan.notes.trim(),
-      status: "active",
-      website: loan.website || "",
-    };
-    if (loan.username || loan.password) {
-      const resU = await encryptCredential(loan.username || "", companyId);
-      const resP = await encryptCredential(loan.password || "", companyId, resU.salt);
-      loanRow.username_encrypted = resU.encrypted;
-      loanRow.password_encrypted = resP.encrypted;
-      loanRow.encryption_iv_username = resU.iv || null;
-      loanRow.encryption_iv = resP.iv || resU.iv;
-      loanRow.encryption_salt = resU.salt || resP.salt;
-    }
-    const { error } = await supabase.from("property_loans").insert([loanRow]);
-    if (error) throw new Error("Failed to save loan: " + error.message);
-    // If setup_recurring, create a recurring journal entry for the mortgage payment
-    if (loan.setup_recurring) {
-      const today = new Date();
-      const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-      const nextPostDate = formatLocalDate(nextMonth);
-      const mortgageAcctId = await resolveAccountId("5600", companyId);
-      const checkingAcctId = await resolveAccountId("1000", companyId);
-      const { error: recErr } = await supabase.from("recurring_journal_entries").insert([{
-        company_id: companyId,
-        description: "Mortgage payment — " + loan.lender_name + " — " + savedAddress.split(",")[0],
-        frequency: "monthly",
-        day_of_month: 1,
-        amount: Number(loan.monthly_payment),
-        property: savedAddress,
-        debit_account_id: mortgageAcctId,
-        debit_account_name: "Mortgage/Loan Payment",
-        credit_account_id: checkingAcctId,
-        credit_account_name: "Checking Account",
-        status: "active",
-        next_post_date: nextPostDate,
-        created_by: userProfile?.email || ""
-      }]);
-      if (recErr) throw new Error("Recurring mortgage entry failed: " + recErr.message);
-    }
+    if ((loan.username || loan.password) && !(loan.username && loan.password)) throw new Error("Lender portal needs both username and password");
     return true;
   }
 
@@ -512,114 +432,18 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     if (!insurance.enabled) return true;
     if (!insurance.provider.trim()) throw new Error("Insurance provider is required");
     if (!insurance.premium_amount || Number(insurance.premium_amount) <= 0) throw new Error("Premium amount is required");
-    const insRow = {
-      company_id: companyId,
-      property: savedAddress,
-      property_id: String(savedPropertyId || ""),
-      provider: insurance.provider.trim(),
-      policy_number: insurance.policy_number.trim(),
-      premium_amount: Number(insurance.premium_amount),
-      premium_frequency: insurance.premium_frequency,
-      coverage_amount: Number(insurance.coverage_amount) || 0,
-      expiration_date: insurance.expiration_date || null,
-      notes: insurance.notes.trim(),
-      website: insurance.website || "",
-    };
-    if (insurance.username || insurance.password) {
-      const resU = await encryptCredential(insurance.username || "", companyId);
-      const resP = await encryptCredential(insurance.password || "", companyId, resU.salt);
-      insRow.username_encrypted = resU.encrypted;
-      insRow.password_encrypted = resP.encrypted;
-      insRow.encryption_iv_username = resU.iv || null;
-      insRow.encryption_iv = resP.iv || resU.iv;
-      insRow.encryption_salt = resU.salt || resP.salt;
-    }
-    const { error } = await supabase.from("property_insurance").insert([insRow]);
-    if (error) throw new Error("Failed to save insurance: " + error.message);
+    if ((insurance.username || insurance.password) && !(insurance.username && insurance.password)) throw new Error("Insurer portal needs both username and password");
     return true;
   }
 
   async function saveTaxes() {
     if (!taxes.enabled) return true;
     if (!taxes.annual_tax_amount || Number(taxes.annual_tax_amount) <= 0) throw new Error("Annual tax amount is required");
-    const taxRow = {
-      company_id: companyId,
-      property: savedAddress,
-      property_id: savedPropertyId || null,
-      county: propForm.county || null,
-      jurisdiction: propForm.county && propForm.state ? (propForm.county + ", " + propForm.state) : null,
-      parcel_id: taxes.parcel_id.trim() || null,
-      assessed_value: Number(taxes.assessed_value) || 0,
-      tax_year: Number(taxes.tax_year) || new Date().getFullYear(),
-      annual_tax_amount: Number(taxes.annual_tax_amount),
-      billing_frequency: taxes.billing_frequency || "semi_annual",
-      next_due_date: taxes.next_due_date || null,
-      exemptions: taxes.exemptions.trim() || null,
-      escrow_paid_by_lender: !!taxes.escrow_paid_by_lender,
-      records_url: taxes.records_url.trim() || null,
-      notes: taxes.notes.trim() || null,
-    };
-    // Upsert: one active row per property (matches edit-flow expectations).
-    const { data: existing } = await supabase.from("property_taxes").select("id").eq("company_id", companyId).eq("property", savedAddress).is("archived_at", null).maybeSingle();
-    if (existing) {
-      const { error } = await supabase.from("property_taxes").update(taxRow).eq("id", existing.id).eq("company_id", companyId);
-      if (error) throw new Error("Failed to update property tax: " + error.message);
-    } else {
-      const { error } = await supabase.from("property_taxes").insert([taxRow]);
-      if (error) throw new Error("Failed to save property tax: " + error.message);
-    }
-
-    // Refresh the per-installment bill rows with the new annual amount
-    // so each bill's expected_amount = annual / N. Idempotent; only
-    // backfills still-pending rows (paid bills are never touched).
-    try {
-      await generateBillsForProperty({
-        companyId,
-        propertyAddress: savedAddress,
-        propertyId: savedPropertyId || null,
-        county: propForm.county,
-        state: propForm.state,
-        taxYear: Number(taxes.tax_year) || new Date().getFullYear(),
-        expectedAnnualAmount: Number(taxes.annual_tax_amount) || null,
-      });
-    } catch (e) { pmError("PM-8006", { raw: e, context: "regenerate tax bills after saveTaxes", silent: true }); }
-    // No journal-entry creation here — tracking-only for now. Bank-recon
-    // auto-posting will land as a follow-up.
     return true;
   }
 
   async function saveRecurringRent() {
     if (!recurring.amount || Number(recurring.amount) <= 0) throw new Error("Rent amount is required");
-    const allTenants = [tenantForm.tenant, tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4, tenantForm.tenant_5].filter(t => t?.trim()).join(" / ");
-    const tenantArId = await getOrCreateTenantAR(companyId, tenantForm.tenant, null);
-    const revenueId = await resolveAccountId("4000", companyId);
-    const today = new Date();
-    const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-    const nextPostDate = formatLocalDate(nextMonth);
-    // Check for existing recurring entry to prevent duplicates
-    const { data: existRecur } = await supabase.from("recurring_journal_entries").select("id").eq("company_id", companyId).eq("property", savedAddress).eq("status", "active").maybeSingle();
-    if (existRecur) {
-      // Update existing instead of creating duplicate
-      await supabase.from("recurring_journal_entries").update({ amount: Number(recurring.amount), frequency: recurring.frequency, day_of_month: recurring.day_of_month, tenant_name: allTenants, description: "Monthly rent — " + allTenants + " — " + savedAddress.split(",")[0], debit_account_name: "AR - " + allTenants }).eq("id", existRecur.id).eq("company_id", companyId);
-    } else {
-      const { error } = await supabase.from("recurring_journal_entries").insert([{
-        company_id: companyId,
-        description: "Monthly rent — " + allTenants + " — " + savedAddress.split(",")[0],
-        frequency: recurring.frequency,
-        day_of_month: recurring.day_of_month,
-        amount: Number(recurring.amount),
-        tenant_name: allTenants,
-        property: savedAddress,
-        debit_account_id: tenantArId,
-        debit_account_name: "AR - " + allTenants,
-        credit_account_id: revenueId,
-        credit_account_name: "Rental Income",
-        status: "active",
-        next_post_date: nextPostDate,
-        created_by: userProfile?.email || ""
-      }]);
-      if (error) throw new Error("Failed to save recurring rent: " + error.message);
-    }
     return true;
   }
 
@@ -630,48 +454,13 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     if (!propForm.state) throw new Error("State is required");
     if (!propForm.zip.trim() || !/^\d{5}$/.test(propForm.zip.trim())) throw new Error("ZIP must be 5 digits");
     if (!propForm.county) throw new Error("County is required");
-    const compositeAddress = [propForm.address_line_1, propForm.address_line_2, propForm.city, propForm.state + " " + propForm.zip].filter(Boolean).join(", ");
-    // Always check duplicate (even on edit if address changed)
+    // Duplicate-address guard uses the live `properties` table — a
+    // completed wizard may already hold the address the user is
+    // re-typing. Editing an existing property is allowed; that path
+    // sets savedPropertyId at mount from the caller.
+    const compositeAddress = computeCompositeAddress();
     const { data: dup } = await supabase.from("properties").select("id").eq("company_id", companyId).eq("address", compositeAddress).is("archived_at", null).maybeSingle();
-    if (dup && String(dup.id) !== String(savedPropertyId)) throw new Error("A property with this address already exists");
-    // Direct save for all roles with Properties access
-    if (savedPropertyId) {
-      const { error: upErr } = await supabase.from("properties").update({ address: compositeAddress, address_line_1: propForm.address_line_1, address_line_2: propForm.address_line_2, city: propForm.city, state: propForm.state, zip: propForm.zip, county: propForm.county, type: propForm.type, status: propForm.status, notes: propForm.notes }).eq("id", savedPropertyId).eq("company_id", companyId);
-      if (upErr) throw new Error("Failed to update property: " + upErr.message);
-    } else {
-      const { data: newProp, error: propErr } = await supabase.from("properties").insert([{ address: compositeAddress, address_line_1: propForm.address_line_1, address_line_2: propForm.address_line_2, city: propForm.city, state: propForm.state, zip: propForm.zip, county: propForm.county, type: propForm.type, status: propForm.status, notes: propForm.notes, company_id: companyId }]).select("id").maybeSingle();
-      if (propErr) throw new Error("Failed to save property: " + propErr.message);
-      setSavedPropertyId(newProp?.id || null);
-      // Create accounting class
-      const { data: newClass, error: clsErr } = await supabase.from("acct_classes").upsert([{ id: crypto.randomUUID(), name: compositeAddress, description: propForm.type + " · " + formatCurrency(0) + "/mo", color: pickColor(compositeAddress), is_active: true, company_id: companyId }], { onConflict: "company_id,name" }).select("id").maybeSingle();
-      if (clsErr) {
-      // Upsert failed — try plain insert
-      const { data: insClass, error: insClsErr } = await supabase.from("acct_classes").insert([{ id: crypto.randomUUID(), name: compositeAddress, description: propForm.type + " · " + formatCurrency(0) + "/mo", color: pickColor(compositeAddress), is_active: true, company_id: companyId }]).select("id").maybeSingle();
-      if (insClsErr) pmError("PM-4010", { raw: insClsErr, context: "accounting class creation in wizard", silent: true });
-      else if (insClass?.id && newProp?.id) await supabase.from("properties").update({ class_id: insClass.id }).eq("id", newProp.id).eq("company_id", companyId);
-      } else if (newClass?.id && newProp?.id) {
-      await supabase.from("properties").update({ class_id: newClass.id }).eq("id", newProp.id).eq("company_id", companyId);
-      }
-    }
-    setSavedAddress(compositeAddress);
-    if (wizardId) {
-      await supabase.from("property_setup_wizard").update({ property_address: compositeAddress, property_id: String(savedPropertyId || "") }).eq("id", wizardId).eq("company_id", companyId);
-    }
-    // Auto-generate property-tax bills for the current year based on the
-    // county's schedule. Idempotent — safe on re-save. Skips silently if
-    // the jurisdiction has no schedule registered (e.g. out-of-area state).
-    try {
-      const propIdForBills = savedPropertyId || (await supabase.from("properties").select("id").eq("company_id", companyId).eq("address", compositeAddress).maybeSingle()).data?.id || null;
-      await generateBillsForProperty({
-        companyId,
-        propertyAddress: compositeAddress,
-        propertyId: propIdForBills,
-        county: propForm.county,
-        state: propForm.state,
-        taxYear: new Date().getFullYear(),
-      });
-    } catch (e) { pmError("PM-8006", { raw: e, context: "auto-generate tax bills on property save", silent: true }); }
-    showToast("Property saved", "success");
+    if (dup && String(dup.id) !== String(savedPropertyId || "")) throw new Error("A property with this address already exists");
     return true;
   }
 
@@ -683,40 +472,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     if (!tenantForm.rent || Number(tenantForm.rent) <= 0) throw new Error("Rent required");
     if (!tenantForm.lease_start || !tenantForm.lease_end) throw new Error("Lease dates required");
     if (tenantForm.lease_end <= tenantForm.lease_start) throw new Error("Lease end date must be after start date");
-    if (!savedPropertyId) throw new Error("Property must be saved first (complete Step 1)");
-    const addr = savedAddress;
-    // Update property with tenant info
-    const { error: propUpErr } = await supabase.from("properties").update({ status: "occupied", tenant: tenantForm.tenant.trim(), tenant_2: tenantForm.tenant_2?.trim() || "", tenant_2_email: tenantForm.tenant_2_email?.trim() || "", tenant_2_phone: tenantForm.tenant_2_phone?.trim() || "", tenant_3: tenantForm.tenant_3?.trim() || "", tenant_3_email: tenantForm.tenant_3_email?.trim() || "", tenant_3_phone: tenantForm.tenant_3_phone?.trim() || "", tenant_4: tenantForm.tenant_4?.trim() || "", tenant_4_email: tenantForm.tenant_4_email?.trim() || "", tenant_4_phone: tenantForm.tenant_4_phone?.trim() || "", tenant_5: tenantForm.tenant_5?.trim() || "", tenant_5_email: tenantForm.tenant_5_email?.trim() || "", tenant_5_phone: tenantForm.tenant_5_phone?.trim() || "", rent: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, lease_start: tenantForm.lease_start, lease_end: tenantForm.lease_end }).eq("id", savedPropertyId).eq("company_id", companyId);
-    if (propUpErr) throw new Error("Failed to update property: " + propUpErr.message);
-    // Create/find tenant — check by name+property first, then by property only to prevent duplicates
-    let existingTenant = null;
-    const { data: byName } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", escapeFilterValue(tenantForm.tenant.trim())).eq("property", addr).is("archived_at", null).maybeSingle();
-    if (byName) { existingTenant = byName; }
-    else {
-      // Also check if ANY active tenant exists at this property (prevents duplicate from re-running wizard)
-      const { data: byProp } = await supabase.from("tenants").select("id, name").eq("company_id", companyId).eq("property", addr).is("archived_at", null).eq("lease_status", "active").maybeSingle();
-      if (byProp) { existingTenant = byProp; }
-    }
-    let tenantId = existingTenant?.id;
-    if (!existingTenant) {
-      const { data: newT, error: tErr } = await supabase.from("tenants").insert([{ company_id: companyId, name: tenantForm.tenant.trim(), first_name: tenantForm.tenant_first.trim(), middle_initial: tenantForm.tenant_mi.trim(), last_name: tenantForm.tenant_last.trim(), email: tenantForm.tenant_email.toLowerCase(), phone: tenantForm.tenant_phone, property: addr, rent: Number(tenantForm.rent), late_fee_amount: safeNum(tenantForm.late_fee_amount) || null, late_fee_type: tenantForm.late_fee_type || "flat", lease_status: "active", lease_start: tenantForm.lease_start, lease_end_date: tenantForm.lease_end, move_in: tenantForm.lease_start, balance: 0, is_voucher: tenantForm.is_voucher || false, voucher_number: tenantForm.voucher_number || null, reexam_date: tenantForm.reexam_date || null, case_manager_name: tenantForm.case_manager_name || null, case_manager_email: tenantForm.case_manager_email || null, case_manager_phone: tenantForm.case_manager_phone || null, voucher_portion: safeNum(tenantForm.voucher_portion) || null, tenant_portion: safeNum(tenantForm.tenant_portion) || null }]).select("id").maybeSingle();
-      if (tErr) throw new Error("Failed to create tenant: " + tErr.message);
-      tenantId = newT?.id;
-    } else {
-      // Update existing tenant with latest info from wizard
-      await supabase.from("tenants").update({ name: tenantForm.tenant.trim(), first_name: tenantForm.tenant_first.trim(), middle_initial: tenantForm.tenant_mi.trim(), last_name: tenantForm.tenant_last.trim(), email: tenantForm.tenant_email.toLowerCase(), phone: tenantForm.tenant_phone, rent: Number(tenantForm.rent), late_fee_amount: safeNum(tenantForm.late_fee_amount) || null, late_fee_type: tenantForm.late_fee_type || "flat", is_voucher: tenantForm.is_voucher || false, voucher_number: tenantForm.voucher_number || null, reexam_date: tenantForm.reexam_date || null, case_manager_name: tenantForm.case_manager_name || null, case_manager_email: tenantForm.case_manager_email || null, case_manager_phone: tenantForm.case_manager_phone || null, voucher_portion: safeNum(tenantForm.voucher_portion) || null, tenant_portion: safeNum(tenantForm.tenant_portion) || null }).eq("id", existingTenant.id).eq("company_id", companyId);
-    }
-    // Create lease
-    if (tenantForm.lease_start && tenantForm.lease_end) {
-      const { data: existLease } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("property", addr).eq("status", "active").maybeSingle();
-      if (!existLease) {
-        const { error: leaseErr } = await supabase.from("leases").insert([{ company_id: companyId, tenant_name: [tenantForm.tenant, tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4].filter(n => n?.trim()).join(" / "), tenant_id: tenantId, property: addr, start_date: tenantForm.lease_start, end_date: tenantForm.lease_end, rent_amount: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, status: "active", payment_due_day: 1 }]);
-        if (leaseErr) throw new Error("Failed to create lease: " + leaseErr.message);
-      }
-    }
-    // Pre-fill recurring rent amount
+    // Pre-fill recurring rent amount for the later step.
     setRecurring(prev => ({ ...prev, amount: Number(tenantForm.rent) || prev.amount }));
-    showToast("Tenant & lease saved", "success");
     return true;
   }
 
@@ -766,118 +523,278 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     await persistProgress(nextStep, completedSteps);
   }
 
+  // ─── commitWizard ──────────────────────────────────────────────────
+  //
+  // Runs at the end of the wizard. Fans every step's in-memory form
+  // data out to live tables in dependency order. On failure we do our
+  // best to unwind what was already written so the user isn't left
+  // with a ghost half-property (they can fix their input and retry).
+  //
+  // Dependency order: property → acct_classes → tenant(s) → lease →
+  // utilities → hoa_payments → property_loans → property_insurance →
+  // property_taxes (+ tax bills) → recurring_journal_entries →
+  // first-month rent/deposit JEs → auto-post rent charges cron kick.
+  async function commitWizard() {
+    if (!companyId) throw new Error("No company selected");
+    const createdIds = { propertyId: null, classId: null, tenantId: null, leaseId: null, utilityIds: [], hoaIds: [], loanId: null, insuranceId: null, taxesId: null, recurringIds: [] };
+    async function rollback() {
+      // Best-effort cleanup; swallow errors individually so a failed
+      // rollback doesn't mask the original commit error.
+      const del = async (table, id) => { if (!id) return; try { await supabase.from(table).delete().eq("id", id).eq("company_id", companyId); } catch (_e) {} };
+      for (const id of createdIds.recurringIds.reverse()) await del("recurring_journal_entries", id);
+      await del("property_taxes", createdIds.taxesId);
+      await del("property_insurance", createdIds.insuranceId);
+      await del("property_loans", createdIds.loanId);
+      for (const id of createdIds.hoaIds.reverse()) await del("hoa_payments", id);
+      for (const id of createdIds.utilityIds.reverse()) await del("utilities", id);
+      await del("leases", createdIds.leaseId);
+      await del("tenants", createdIds.tenantId);
+      await del("acct_classes", createdIds.classId);
+      await del("properties", createdIds.propertyId);
+    }
+
+    try {
+      // 1. PROPERTY
+      const compositeAddress = computeCompositeAddress();
+      let propertyId = savedPropertyId || null;
+      if (propertyId) {
+        const { error: upErr } = await supabase.from("properties").update({ address: compositeAddress, address_line_1: propForm.address_line_1, address_line_2: propForm.address_line_2, city: propForm.city, state: propForm.state, zip: propForm.zip, county: propForm.county, type: propForm.type, status: propForm.status, notes: propForm.notes }).eq("id", propertyId).eq("company_id", companyId);
+        if (upErr) throw new Error("Failed to update property: " + upErr.message);
+      } else {
+        const { data: newProp, error: propErr } = await supabase.from("properties").insert([{ address: compositeAddress, address_line_1: propForm.address_line_1, address_line_2: propForm.address_line_2, city: propForm.city, state: propForm.state, zip: propForm.zip, county: propForm.county, type: propForm.type, status: propForm.status, notes: propForm.notes, company_id: companyId }]).select("id").maybeSingle();
+        if (propErr) throw new Error("Failed to save property: " + propErr.message);
+        propertyId = newProp?.id || null;
+        createdIds.propertyId = propertyId;
+      }
+
+      // 2. ACCOUNTING CLASS (one per property address)
+      try {
+        const classId = crypto.randomUUID();
+        const { data: newClass, error: clsErr } = await supabase.from("acct_classes").upsert([{ id: classId, name: compositeAddress, description: propForm.type + " · " + formatCurrency(Number(tenantForm.rent) || 0) + "/mo", color: pickColor(compositeAddress), is_active: true, company_id: companyId }], { onConflict: "company_id,name" }).select("id").maybeSingle();
+        if (clsErr) pmError("PM-4010", { raw: clsErr, context: "acct_classes upsert in commitWizard", silent: true });
+        if (newClass?.id) {
+          createdIds.classId = createdIds.propertyId ? newClass.id : null; // only track for rollback if we also created the property
+          await supabase.from("properties").update({ class_id: newClass.id }).eq("id", propertyId).eq("company_id", companyId);
+        }
+      } catch (e) { pmError("PM-4010", { raw: e, context: "acct_classes in commitWizard", silent: true }); }
+
+      // 3. TENANT + LEASE (only when the property is occupied)
+      let tenantId = null;
+      const isOccupied = propForm.status === "occupied" && tenantForm.tenant.trim();
+      if (isOccupied) {
+        const { data: newT, error: tErr } = await supabase.from("tenants").insert([{ company_id: companyId, name: tenantForm.tenant.trim(), first_name: tenantForm.tenant_first.trim(), middle_initial: tenantForm.tenant_mi.trim(), last_name: tenantForm.tenant_last.trim(), email: tenantForm.tenant_email.toLowerCase(), phone: tenantForm.tenant_phone, property: compositeAddress, rent: Number(tenantForm.rent), late_fee_amount: safeNum(tenantForm.late_fee_amount) || null, late_fee_type: tenantForm.late_fee_type || "flat", lease_status: "active", lease_start: tenantForm.lease_start, lease_end_date: tenantForm.lease_end, move_in: tenantForm.lease_start, balance: 0, is_voucher: tenantForm.is_voucher || false, voucher_number: tenantForm.voucher_number || null, reexam_date: tenantForm.reexam_date || null, case_manager_name: tenantForm.case_manager_name || null, case_manager_email: tenantForm.case_manager_email || null, case_manager_phone: tenantForm.case_manager_phone || null, voucher_portion: safeNum(tenantForm.voucher_portion) || null, tenant_portion: safeNum(tenantForm.tenant_portion) || null }]).select("id").maybeSingle();
+        if (tErr) throw new Error("Failed to create tenant: " + tErr.message);
+        tenantId = newT?.id;
+        createdIds.tenantId = tenantId;
+
+        // Mirror the multi-tenant metadata + lease dates + deposit onto the property row.
+        await supabase.from("properties").update({ status: "occupied", tenant: tenantForm.tenant.trim(), tenant_2: tenantForm.tenant_2?.trim() || "", tenant_2_email: tenantForm.tenant_2_email?.trim() || "", tenant_2_phone: tenantForm.tenant_2_phone?.trim() || "", tenant_3: tenantForm.tenant_3?.trim() || "", tenant_3_email: tenantForm.tenant_3_email?.trim() || "", tenant_3_phone: tenantForm.tenant_3_phone?.trim() || "", tenant_4: tenantForm.tenant_4?.trim() || "", tenant_4_email: tenantForm.tenant_4_email?.trim() || "", tenant_4_phone: tenantForm.tenant_4_phone?.trim() || "", tenant_5: tenantForm.tenant_5?.trim() || "", tenant_5_email: tenantForm.tenant_5_email?.trim() || "", tenant_5_phone: tenantForm.tenant_5_phone?.trim() || "", rent: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, lease_start: tenantForm.lease_start, lease_end: tenantForm.lease_end }).eq("id", propertyId).eq("company_id", companyId);
+
+        if (tenantForm.lease_start && tenantForm.lease_end) {
+          const { data: newLease, error: leaseErr } = await supabase.from("leases").insert([{ company_id: companyId, tenant_name: [tenantForm.tenant, tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4].filter(n => n?.trim()).join(" / "), tenant_id: tenantId, property: compositeAddress, start_date: tenantForm.lease_start, end_date: tenantForm.lease_end, rent_amount: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, status: "active", payment_due_day: 1 }]).select("id").maybeSingle();
+          if (leaseErr) throw new Error("Failed to create lease: " + leaseErr.message);
+          createdIds.leaseId = newLease?.id || null;
+        }
+      }
+
+      // 4. UTILITIES (with per-row credential encryption)
+      for (const u of utilities.filter(x => x.provider.trim())) {
+        const now = new Date();
+        const day = Math.min(28, Math.max(1, Number(u.due_date) || 1));
+        const dueDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        const row = { company_id: companyId, property: compositeAddress, provider: u.provider.trim(), amount: 0, due: dueDate, responsibility: u.responsibility === "owner_pays" ? "owner" : "tenant", status: "pending", website: u.website || "" };
+        if (u.username && u.password) {
+          const resU = await encryptCredential(u.username || "", companyId);
+          const resP = await encryptCredential(u.password || "", companyId, resU.salt);
+          row.username_encrypted = resU.encrypted;
+          row.password_encrypted = resP.encrypted;
+          row.encryption_iv_username = resU.iv || null;
+          row.encryption_iv = resP.iv || resU.iv;
+          row.encryption_salt = resU.salt || resP.salt;
+        }
+        const { data: inserted, error } = await supabase.from("utilities").insert([row]).select("id").maybeSingle();
+        if (error) throw new Error("Failed to save utility " + u.provider + ": " + error.message);
+        if (inserted?.id) createdIds.utilityIds.push(inserted.id);
+      }
+
+      // 5. HOA
+      for (const h of hoas.filter(x => x.hoa_name.trim())) {
+        const now = new Date();
+        const day = Math.min(28, Math.max(1, Number(h.due_date) || 1));
+        const dueDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        const row = { company_id: companyId, property: compositeAddress, hoa_name: h.hoa_name.trim(), amount: Number(h.amount), due_date: dueDate, frequency: h.frequency || "Monthly", notes: (h.notes || "").trim(), status: "pending", website: h.website || "" };
+        if (h.username && h.password) {
+          const resU = await encryptCredential(h.username || "", companyId);
+          const resP = await encryptCredential(h.password || "", companyId, resU.salt);
+          row.username_encrypted = resU.encrypted;
+          row.password_encrypted = resP.encrypted;
+          row.encryption_iv_username = resU.iv || null;
+          row.encryption_iv = resP.iv || resU.iv;
+          row.encryption_salt = resU.salt || resP.salt;
+        }
+        const { data: inserted, error } = await supabase.from("hoa_payments").insert([row]).select("id").maybeSingle();
+        if (error) throw new Error("Failed to save HOA " + h.hoa_name + ": " + error.message);
+        if (inserted?.id) createdIds.hoaIds.push(inserted.id);
+      }
+
+      // 6. LOAN (+ optional recurring JE for monthly payment)
+      if (loan.enabled) {
+        const loanRow = { company_id: companyId, property: compositeAddress, property_id: String(propertyId || ""), lender_name: loan.lender_name.trim(), loan_type: loan.loan_type, original_amount: Number(loan.original_amount) || 0, current_balance: Number(loan.current_balance) || 0, interest_rate: Number(loan.interest_rate) || 0, monthly_payment: Number(loan.monthly_payment), escrow_included: loan.escrow_included, escrow_amount: loan.escrow_included ? (Number(loan.escrow_amount) || 0) : 0, escrow_covers: loan.escrow_included ? loan.escrow_covers : {}, loan_start_date: loan.loan_start_date || null, maturity_date: loan.maturity_date || null, account_number: loan.account_number.trim(), notes: loan.notes.trim(), status: "active", website: loan.website || "" };
+        if (loan.username && loan.password) {
+          const resU = await encryptCredential(loan.username || "", companyId);
+          const resP = await encryptCredential(loan.password || "", companyId, resU.salt);
+          loanRow.username_encrypted = resU.encrypted;
+          loanRow.password_encrypted = resP.encrypted;
+          loanRow.encryption_iv_username = resU.iv || null;
+          loanRow.encryption_iv = resP.iv || resU.iv;
+          loanRow.encryption_salt = resU.salt || resP.salt;
+        }
+        const { data: newLoan, error: loanErr } = await supabase.from("property_loans").insert([loanRow]).select("id").maybeSingle();
+        if (loanErr) throw new Error("Failed to save loan: " + loanErr.message);
+        createdIds.loanId = newLoan?.id || null;
+        if (loan.setup_recurring) {
+          const now = new Date();
+          const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+          const mortgageAcctId = await resolveAccountId("5600", companyId);
+          const checkingAcctId = await resolveAccountId("1000", companyId);
+          const { data: rec, error: recErr } = await supabase.from("recurring_journal_entries").insert([{ company_id: companyId, description: "Mortgage payment — " + loan.lender_name + " — " + compositeAddress.split(",")[0], frequency: "monthly", day_of_month: 1, amount: Number(loan.monthly_payment), property: compositeAddress, debit_account_id: mortgageAcctId, debit_account_name: "Mortgage/Loan Payment", credit_account_id: checkingAcctId, credit_account_name: "Checking Account", status: "active", next_post_date: formatLocalDate(nextMonth), created_by: userProfile?.email || "" }]).select("id").maybeSingle();
+          if (recErr) throw new Error("Recurring mortgage entry failed: " + recErr.message);
+          if (rec?.id) createdIds.recurringIds.push(rec.id);
+        }
+      }
+
+      // 7. INSURANCE
+      if (insurance.enabled) {
+        const insRow = { company_id: companyId, property: compositeAddress, property_id: String(propertyId || ""), provider: insurance.provider.trim(), policy_number: insurance.policy_number.trim(), premium_amount: Number(insurance.premium_amount), premium_frequency: insurance.premium_frequency, coverage_amount: Number(insurance.coverage_amount) || 0, expiration_date: insurance.expiration_date || null, notes: insurance.notes.trim(), website: insurance.website || "" };
+        if (insurance.username && insurance.password) {
+          const resU = await encryptCredential(insurance.username || "", companyId);
+          const resP = await encryptCredential(insurance.password || "", companyId, resU.salt);
+          insRow.username_encrypted = resU.encrypted;
+          insRow.password_encrypted = resP.encrypted;
+          insRow.encryption_iv_username = resU.iv || null;
+          insRow.encryption_iv = resP.iv || resU.iv;
+          insRow.encryption_salt = resU.salt || resP.salt;
+        }
+        const { data: newIns, error: insErr } = await supabase.from("property_insurance").insert([insRow]).select("id").maybeSingle();
+        if (insErr) throw new Error("Failed to save insurance: " + insErr.message);
+        createdIds.insuranceId = newIns?.id || null;
+      }
+
+      // 8. PROPERTY TAXES (+ auto-generated bills)
+      if (taxes.enabled) {
+        const taxRow = { company_id: companyId, property: compositeAddress, property_id: propertyId || null, county: propForm.county || null, jurisdiction: propForm.county && propForm.state ? (propForm.county + ", " + propForm.state) : null, parcel_id: taxes.parcel_id.trim() || null, assessed_value: Number(taxes.assessed_value) || 0, tax_year: Number(taxes.tax_year) || new Date().getFullYear(), annual_tax_amount: Number(taxes.annual_tax_amount), billing_frequency: taxes.billing_frequency || "semi_annual", next_due_date: taxes.next_due_date || null, exemptions: taxes.exemptions.trim() || null, escrow_paid_by_lender: !!taxes.escrow_paid_by_lender, records_url: taxes.records_url.trim() || null, notes: taxes.notes.trim() || null };
+        const { data: newTax, error: taxErr } = await supabase.from("property_taxes").insert([taxRow]).select("id").maybeSingle();
+        if (taxErr) throw new Error("Failed to save property tax: " + taxErr.message);
+        createdIds.taxesId = newTax?.id || null;
+        try {
+          await generateBillsForProperty({ companyId, propertyAddress: compositeAddress, propertyId: propertyId || null, county: propForm.county, state: propForm.state, taxYear: Number(taxes.tax_year) || new Date().getFullYear(), expectedAnnualAmount: Number(taxes.annual_tax_amount) || null });
+        } catch (e) { pmError("PM-8006", { raw: e, context: "tax bills in commitWizard", silent: true }); }
+      }
+
+      // 9. RECURRING RENT (only when we have a real tenant)
+      if (isOccupied && tenantId && recurring.amount && Number(recurring.amount) > 0) {
+        const allTenants = [tenantForm.tenant, tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4, tenantForm.tenant_5].filter(t => t?.trim()).join(" / ");
+        const tenantArId = await getOrCreateTenantAR(companyId, tenantForm.tenant, tenantId);
+        const revenueId = await resolveAccountId("4000", companyId);
+        const now = new Date();
+        const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        const { data: rec, error: recErr } = await supabase.from("recurring_journal_entries").insert([{ company_id: companyId, description: "Monthly rent — " + allTenants + " — " + compositeAddress.split(",")[0], frequency: recurring.frequency, day_of_month: recurring.day_of_month, amount: Number(recurring.amount), tenant_name: allTenants, tenant_id: tenantId, property: compositeAddress, debit_account_id: tenantArId, debit_account_name: "AR - " + allTenants, credit_account_id: revenueId, credit_account_name: "Rental Income", status: "active", next_post_date: formatLocalDate(nextMonth), created_by: userProfile?.email || "" }]).select("id").maybeSingle();
+        if (recErr) throw new Error("Failed to save recurring rent: " + recErr.message);
+        if (rec?.id) createdIds.recurringIds.push(rec.id);
+      }
+
+      // 10. FIRST-MONTH DEPOSIT + RENT JEs (replicates legacy handleComplete)
+      if (isOccupied && tenantId && compositeAddress) {
+        const tName = tenantForm.tenant.trim();
+        await getOrCreateTenantAR(companyId, tName, tenantId);
+        const leaseStartKey = (tenantForm.lease_start || "").replace(/-/g, "") || "START";
+        const depRef = "DEP-T" + tenantId + "-" + leaseStartKey;
+        const rentRef = "RENT1-T" + tenantId + "-" + leaseStartKey;
+        const prorentRef = "PRORENT-T" + tenantId + "-" + leaseStartKey;
+        const { data: existingJEs } = await supabase.from("acct_journal_entries").select("reference").eq("company_id", companyId).in("reference", [depRef, rentRef, prorentRef]).neq("status", "voided");
+        const postedRefs = new Set((existingJEs || []).map(j => j.reference));
+        const classId = await getPropertyClassId(compositeAddress, companyId);
+        const dep = Number(tenantForm.security_deposit) || 0;
+        if (dep > 0 && !postedRefs.has(depRef)) {
+          const tenantArId = await getOrCreateTenantAR(companyId, tName, tenantId);
+          const depOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start, description: "Security deposit received — " + tName + " — " + compositeAddress, reference: depRef, property: compositeAddress,
+            lines: [
+              { account_id: tenantArId, account_name: "AR - " + tName, debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + tName },
+              { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: tName + " — " + compositeAddress },
+            ]
+          });
+          if (depOk) await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: compositeAddress, date: tenantForm.lease_start, description: "Security deposit collected", amount: dep, type: "deposit", balance: 0 });
+        }
+        const monthlyRent = Number(tenantForm.rent) || Number(recurring?.amount) || 0;
+        const hasRentJE = postedRefs.has(rentRef) || postedRefs.has(prorentRef);
+        if (monthlyRent > 0 && tenantForm.lease_start && !hasRentJE) {
+          try {
+            const leaseStart = parseLocalDate(tenantForm.lease_start);
+            const startDay = leaseStart.getDate();
+            const daysInMonth = new Date(leaseStart.getFullYear(), leaseStart.getMonth() + 1, 0).getDate();
+            const tenantArId2 = await getOrCreateTenantAR(companyId, tName, tenantId);
+            const revenueId2 = await resolveAccountId("4000", companyId);
+            if (startDay > 1) {
+              const remainingDays = daysInMonth - startDay + 1;
+              const proratedAmount = Math.round(monthlyRent * remainingDays / daysInMonth * 100) / 100;
+              const proOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start, description: `Prorated rent (${remainingDays}/${daysInMonth} days) — ${tName} — ${compositeAddress.split(",")[0]}`, reference: prorentRef, property: compositeAddress,
+                lines: [
+                  { account_id: tenantArId2, account_name: "AR - " + tName, debit: proratedAmount, credit: 0, class_id: classId, memo: "Prorated first month rent" },
+                  { account_id: revenueId2, account_name: "Rental Income", debit: 0, credit: proratedAmount, class_id: classId, memo: `${remainingDays}/${daysInMonth} days @ $${monthlyRent}/mo` },
+                ]
+              });
+              if (proOk) {
+                await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: compositeAddress, date: tenantForm.lease_start, description: `Prorated rent (${remainingDays}/${daysInMonth} days)`, amount: proratedAmount, type: "charge", balance: 0 });
+                { const { error: _balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: proratedAmount });
+                  if (_balErr) pmError("PM-6002", { raw: _balErr, context: "prorated rent balance update", silent: true }); }
+                await supabase.from("recurring_journal_entries").update({ last_posted_date: tenantForm.lease_start }).eq("company_id", companyId).eq("tenant_id", tenantId).eq("status", "active").is("archived_at", null);
+              }
+            } else {
+              const fullOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start, description: `First month rent — ${tName} — ${compositeAddress.split(",")[0]}`, reference: rentRef, property: compositeAddress,
+                lines: [
+                  { account_id: tenantArId2, account_name: "AR - " + tName, debit: monthlyRent, credit: 0, class_id: classId, memo: "First month rent" },
+                  { account_id: revenueId2, account_name: "Rental Income", debit: 0, credit: monthlyRent, class_id: classId, memo: "Full month rent" },
+                ]
+              });
+              if (fullOk) {
+                await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: compositeAddress, date: tenantForm.lease_start, description: "First month rent", amount: monthlyRent, type: "charge", balance: 0 });
+                { const { error: _balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: monthlyRent });
+                  if (_balErr) pmError("PM-6002", { raw: _balErr, context: "first month rent balance update", silent: true }); }
+                await supabase.from("recurring_journal_entries").update({ last_posted_date: tenantForm.lease_start }).eq("company_id", companyId).eq("tenant_id", tenantId).eq("status", "active").is("archived_at", null);
+              }
+            }
+          } catch (e) { pmError("PM-4002", { raw: e, context: "first month rent posting in commitWizard", silent: true }); }
+        }
+        // Wait for the backfill to finish before returning so the
+        // next month's RENT-AUTO entry is visible the moment the
+        // user lands back on the properties / accounting page. Older
+        // fire-and-forget version made the second-month JE appear
+        // only after a page refresh, which looked like a missing
+        // entry.
+        try { await autoPostRentCharges(companyId); } catch (e) { pmError('PM-4002', { raw: e, context: 'auto-post rent charges', silent: true }); }
+      }
+
+      // 11. WIZARD ROW — address + status
+      if (wizardId) {
+        await supabase.from("property_setup_wizard").update({ property_address: compositeAddress, property_id: String(propertyId || ""), status: "completed", updated_at: new Date().toISOString() }).eq("id", wizardId).eq("company_id", companyId);
+      }
+      setSavedPropertyId(propertyId);
+      setSavedAddress(compositeAddress);
+    } catch (e) {
+      await rollback();
+      throw e;
+    }
+  }
+
   async function handleComplete() {
     setSaving(true);
     try {
-      // Finalize accounting entries now that all setup is done
-      if (propForm.status === "occupied" && tenantForm.tenant.trim() && savedAddress) {
-      const addr = savedAddress;
-      const tName = tenantForm.tenant.trim();
-      // Find tenant ID — try exact match first, then contains match
-      let tenantId = null;
-      const { data: tRow } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("name", escapeFilterValue(tName)).eq("property", addr).is("archived_at", null).maybeSingle();
-      if (tRow) { tenantId = tRow.id; }
-      else {
-        // Fallback: find any active tenant at this property
-        const { data: tFallback } = await supabase.from("tenants").select("id").eq("company_id", companyId).eq("property", addr).is("archived_at", null).eq("lease_status", "active").maybeSingle();
-        if (tFallback) tenantId = tFallback.id;
-      }
-      // Deterministic references for the wizard's posted JEs — lets us
-      // dedup by exact-match on `reference` instead of fuzzy-matching
-      // tenant name + keyword inside `description`. The old check
-      // treated any JE whose description contained both the tenant's
-      // name and the word "rent" as "already posted" — a custom JE
-      // like "Renter complaint resolved — Alice" would make the
-      // wizard skip Alice's actual first-month rent. Conversely a
-      // real rent JE for "Alice Smith" would be seen as already
-      // posted when adding "Alice Johnson" at the same address
-      // whose name happens to share the substring "Alice".
-      const leaseStartKey = (tenantForm.lease_start || "").replace(/-/g, "") || "START";
-      const depRef = "DEP-T" + tenantId + "-" + leaseStartKey;
-      const rentRef = "RENT1-T" + tenantId + "-" + leaseStartKey;
-      const prorentRef = "PRORENT-T" + tenantId + "-" + leaseStartKey;
-      const { data: existingJEs } = await supabase.from("acct_journal_entries").select("id, reference").eq("company_id", companyId).in("reference", [depRef, rentRef, prorentRef]).neq("status", "voided");
-      const postedRefs = new Set((existingJEs || []).map(j => j.reference));
-      const hasDepJE = postedRefs.has(depRef);
-      const hasRentJE = postedRefs.has(rentRef) || postedRefs.has(prorentRef);
-      if (tenantId) {
-      // Create AR sub-account
-      await getOrCreateTenantAR(companyId, tName, tenantId);
-      // Post security deposit JE (skip if already posted)
-      const dep = Number(tenantForm.security_deposit) || 0;
-      if (dep > 0 && !hasDepJE) {
-      const classId = await getPropertyClassId(addr, companyId);
-      const tenantArId = await getOrCreateTenantAR(companyId, tName, tenantId);
-      const depOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start, description: "Security deposit received — " + tName + " — " + addr, reference: depRef, property: addr,
-      lines: [
-      { account_id: tenantArId, account_name: "AR - " + tName, debit: dep, credit: 0, class_id: classId, memo: "Security deposit from " + tName },
-      { account_id: "2100", account_name: "Security Deposits Held", debit: 0, credit: dep, class_id: classId, memo: tName + " — " + addr },
-      ]
-      });
-      if (depOk) await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: addr, date: tenantForm.lease_start, description: "Security deposit collected", amount: dep, type: "deposit", balance: 0 });
-      }
-      // Post first month rent (prorated if mid-month) — skip if already posted
-      const monthlyRent = Number(tenantForm.rent) || Number(recurring?.amount) || 0;
-      if (monthlyRent > 0 && tenantForm.lease_start && !hasRentJE) {
-      try {
-        const leaseStart = parseLocalDate(tenantForm.lease_start);
-        const startDay = leaseStart.getDate();
-        const daysInMonth = new Date(leaseStart.getFullYear(), leaseStart.getMonth() + 1, 0).getDate();
-        if (!isNaN(startDay) && !isNaN(daysInMonth)) {
-          const tenantArId2 = await getOrCreateTenantAR(companyId, tName, tenantId);
-          const revenueId2 = await resolveAccountId("4000", companyId);
-          const classId2 = await getPropertyClassId(addr, companyId);
-          if (startDay > 1) {
-            const remainingDays = daysInMonth - startDay + 1;
-            const proratedAmount = Math.round(monthlyRent * remainingDays / daysInMonth * 100) / 100;
-            const proOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start,
-              description: `Prorated rent (${remainingDays}/${daysInMonth} days) — ${tName} — ${addr.split(",")[0]}`,
-              reference: prorentRef, property: addr,
-              lines: [
-                { account_id: tenantArId2, account_name: "AR - " + tName, debit: proratedAmount, credit: 0, class_id: classId2, memo: "Prorated first month rent" },
-                { account_id: revenueId2, account_name: "Rental Income", debit: 0, credit: proratedAmount, class_id: classId2, memo: `${remainingDays}/${daysInMonth} days @ $${monthlyRent}/mo` },
-              ]
-            });
-            if (proOk) {
-              await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: addr, date: tenantForm.lease_start, description: `Prorated rent (${remainingDays}/${daysInMonth} days)`, amount: proratedAmount, type: "charge", balance: 0 });
-              { const { error: _balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: proratedAmount });
-                if (_balErr) pmError("PM-6002", { raw: _balErr, context: "prorated rent balance update", silent: true }); }
-              // Reset only THIS tenant's recurring schedule. Blanket-by-
-              // property used to reset siblings' last_posted_date, which
-              // made the next cron pass skip a month of rent for tenants
-              // already billed.
-              await supabase.from("recurring_journal_entries").update({ last_posted_date: tenantForm.lease_start }).eq("company_id", companyId).eq("tenant_id", tenantId).eq("status", "active").is("archived_at", null);
-            }
-          } else {
-            const fullOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start,
-              description: `First month rent — ${tName} — ${addr.split(",")[0]}`,
-              reference: rentRef, property: addr,
-              lines: [
-                { account_id: tenantArId2, account_name: "AR - " + tName, debit: monthlyRent, credit: 0, class_id: classId2, memo: "First month rent" },
-                { account_id: revenueId2, account_name: "Rental Income", debit: 0, credit: monthlyRent, class_id: classId2, memo: "Full month rent" },
-              ]
-            });
-            if (fullOk) {
-              await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: addr, date: tenantForm.lease_start, description: "First month rent", amount: monthlyRent, type: "charge", balance: 0 });
-              { const { error: _balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: monthlyRent });
-                if (_balErr) pmError("PM-6002", { raw: _balErr, context: "first month rent balance update", silent: true }); }
-              // Scope recurring reset to this tenant only — same reason
-              // as the prorated branch above.
-              await supabase.from("recurring_journal_entries").update({ last_posted_date: tenantForm.lease_start }).eq("company_id", companyId).eq("tenant_id", tenantId).eq("status", "active").is("archived_at", null);
-            }
-          }
-        }
-      } catch (e) { pmError("PM-4002", { raw: e, context: "first month rent posting", silent: true }); }
-      }
-      // Auto-post rent charges
-      autoPostRentCharges(companyId).catch(e => pmError('PM-4002', { raw: e, context: 'auto-post rent charges', silent: true }));
-      }
-      }
-      await persistStatus("completed");
+      await commitWizard();
       showToast("Property setup complete!", "success");
       onComplete();
     } catch (e) {
-      pmError("PM-2002", { raw: e, context: "completing property setup wizard" });
+      pmError("PM-2002", { raw: e, context: "committing property setup wizard" });
+      showToast("Setup failed: " + (e.message || "unknown") + ". Nothing was saved. Fix the issue and click Complete Setup again.", "error");
     } finally {
       setSaving(false);
     }
@@ -2632,6 +2549,12 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const [showRecurringSetup, setShowRecurringSetup] = useState(null);
   const [showArchived, setShowArchived] = useState(false);
   const [archivedProperties, setArchivedProperties] = useState([]); // { tenant, property, rent }
+  // "Setup Drafts" = in_progress wizards. With deferred commit these
+  // represent properties the user started configuring but hasn't
+  // clicked Complete on — no row exists in `properties` yet. The tab
+  // gives them a single place to come back and finish (or discard).
+  const [showDrafts, setShowDrafts] = useState(false);
+  const [setupDrafts, setSetupDrafts] = useState([]);
   const [showDocChecklist, setShowDocChecklist] = useState(null);
   const [showDocUpload, setShowDocUpload] = useState(null); // { property, tenant }
   const [showPropertyWizard, setShowPropertyWizard] = useState(null);
@@ -2748,13 +2671,59 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="flex items-center gap-3">
   <Btn variant="secondary" onClick={exportProperties}><span className="material-icons-outlined text-sm align-middle mr-1">download</span>Export</Btn>
   <div className="flex gap-1">
-  <FilterPill active={!showArchived} onClick={() => setShowArchived(false)}>Active ({properties.length})</FilterPill>
-  <FilterPill active={showArchived} onClick={() => { setShowArchived(true); fetchArchivedProperties(); }}>Archived ({archivedProperties.length})</FilterPill>
+  <FilterPill active={!showArchived && !showDrafts} onClick={() => { setShowArchived(false); setShowDrafts(false); }}>Active ({properties.length})</FilterPill>
+  <FilterPill active={showDrafts} onClick={async () => {
+    setShowDrafts(true); setShowArchived(false);
+    const { data } = await supabase.from("property_setup_wizard").select("*").eq("company_id", companyId).eq("status", "in_progress").order("updated_at", { ascending: false });
+    setSetupDrafts(data || []);
+  }}>Setup Drafts ({setupDrafts.length || 0})</FilterPill>
+  <FilterPill active={showArchived} onClick={() => { setShowArchived(true); setShowDrafts(false); fetchArchivedProperties(); }}>Archived ({archivedProperties.length})</FilterPill>
   </div>
   </div>
   </div>
 
-  {showArchived ? (
+  {showDrafts ? (
+  <div>
+  {setupDrafts.length === 0 ? (
+  <div className="text-center py-12 bg-white rounded-xl border border-subtle-100">
+    <div className="text-subtle-400 mb-1">No setup drafts in progress.</div>
+    <div className="text-xs text-subtle-400">Start a property setup from the Active tab — anything you don't finish will appear here.</div>
+  </div>
+  ) : (
+  <div className="space-y-2">
+  {setupDrafts.map(d => {
+    let wd = {};
+    try { wd = typeof d.wizard_data === "string" ? JSON.parse(d.wizard_data) : (d.wizard_data || {}); } catch (_e) { wd = {}; }
+    const display = d.property_address && d.property_address !== "NEW" ? d.property_address : (wd.propForm?.address_line_1 || "Untitled property");
+    const doneCount = (d.completed_steps || []).length;
+    return (
+      <div key={d.id} className="bg-white rounded-xl border border-brand-50 p-4 flex items-center gap-4">
+        <span className="text-xl">📋</span>
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-neutral-800 text-sm truncate">{display}</div>
+          <div className="text-xs text-neutral-400">Step {d.current_step || 1} of 9 · {doneCount} step{doneCount === 1 ? "" : "s"} filled · Last edited {new Date(d.updated_at || d.created_at).toLocaleDateString()}</div>
+        </div>
+        <Btn variant="primary" size="sm" onClick={() => setShowPropertyWizard({
+          propertyId: d.property_id && d.property_id !== "" ? d.property_id : null,
+          address: d.property_address && d.property_address !== "NEW" ? d.property_address : "",
+          isOccupied: wd.propForm?.status === "occupied",
+          tenant: wd.tenantForm?.tenant || "",
+          rent: Number(wd.tenantForm?.rent) || 0,
+          isResume: true,
+        })}>Resume</Btn>
+        <Btn variant="danger" size="sm" onClick={async () => {
+          if (!await showConfirm({ message: "Discard this draft? No property rows were created yet — nothing will be removed from live tables, only the in-progress wizard entry gets deleted.", variant: "danger", confirmText: "Discard" })) return;
+          await supabase.from("property_setup_wizard").delete().eq("id", d.id).eq("company_id", companyId);
+          const { data: refreshed } = await supabase.from("property_setup_wizard").select("*").eq("company_id", companyId).eq("status", "in_progress").order("updated_at", { ascending: false });
+          setSetupDrafts(refreshed || []);
+        }}>Discard</Btn>
+      </div>
+    );
+  })}
+  </div>
+  )}
+  </div>
+  ) : showArchived ? (
   <div>
   {archivedProperties.length === 0 ? (
   <div className="text-center py-12 bg-white rounded-xl border border-subtle-100"><div className="text-subtle-400">No archived properties</div></div>
