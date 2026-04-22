@@ -116,26 +116,45 @@ module.exports = async function handler(req, res) {
 
   let userCreated = false;
   let alreadyRegistered = false;
+  let magicLinkSent = false;
   try {
     const { data: invRes, error: invErr } = await admin.auth.admin.inviteUserByEmail(email, {
       data: { name: userName || email.split("@")[0], role },
     });
     if (invErr) {
-      // Existing user — inviteUserByEmail refuses. Don't send a
-      // "reset your password" email (Supabase's Recovery template
-      // is what that triggers, and a cross-company invite isn't a
-      // password-reset event — the recipient has a working account
-      // already). Instead, rely on the Pending Invites section on
-      // the Company Selector: the membership row we upsert below
-      // with status="invited" shows up there the next time the user
-      // logs in, and they accept it from that UI. No confusing auth
-      // email is needed.
+      // Existing user — inviteUserByEmail refuses. Fall back to a
+      // magic-link email so the invitee still receives something
+      // actionable: "log in to see your new pending invite". Without
+      // this, hitting "Resend Invite" for an already-registered
+      // teammate is a no-op with no feedback to them — Sahil hit
+      // that and (rightly) called it a bug.
+      //
+      // We deliberately do NOT use the Recovery / reset-password
+      // template here — a cross-company invite isn't a
+      // password-reset event, and using that template had caused
+      // prior confusion (see commit 7e177a7). Magic-link is the
+      // correct semantic: "here's a way to log in and see the invite."
       const msg = (invErr.message || "").toLowerCase();
       const isAlreadyRegistered = msg.includes("already") || msg.includes("registered") || (invErr.status === 422);
       if (!isAlreadyRegistered) {
         return res.status(502).json({ error: "Invite email failed: " + invErr.message });
       }
       alreadyRegistered = true;
+      // Use anon client with signInWithOtp — admin.generateLink
+      // returns the URL only (no email). signInWithOtp triggers
+      // Supabase's Magic Link email template.
+      try {
+        const anonClient = createClient(
+          process.env.REACT_APP_SUPABASE_URL,
+          process.env.REACT_APP_SUPABASE_ANON_KEY,
+          { auth: { persistSession: false, autoRefreshToken: false } }
+        );
+        const { error: otpErr } = await anonClient.auth.signInWithOtp({
+          email,
+          options: { shouldCreateUser: false },
+        });
+        if (!otpErr) magicLinkSent = true;
+      } catch (_otpE) { /* swallow — client still gets already_registered=true */ }
     } else if (invRes?.user) {
       userCreated = true;
     }
@@ -161,10 +180,11 @@ module.exports = async function handler(req, res) {
   return res.status(200).json({
     ok: true,
     created_user: userCreated,
-    // True when the email was already registered — the membership row
-    // was still inserted with status="invited" and the user will see
-    // it on their Company Selector next login. No auth email fires in
-    // this case; the client should communicate that to the admin.
+    // True when the email was already registered — we tried to send a
+    // magic-link so the invitee can log in and accept the pending
+    // membership row we just upserted. `magic_link_sent` tells the
+    // client whether that second-channel email actually went out.
     already_registered: alreadyRegistered,
+    magic_link_sent: magicLinkSent,
   });
 };

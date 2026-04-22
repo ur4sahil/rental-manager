@@ -298,10 +298,15 @@ function RoleManagement({ addNotification, companyId, showToast, showConfirm, us
   addNotification("✉️", `Invite sent to ${user.name} (${roleName})`);
   logAudit("create", "team", "Invited " + user.name + " as " + roleName + ": " + user.email, user.id || "", "", "admin", companyId);
   if (respJson.already_registered) {
-  // User already has a Housify account. No auth email fires — the
-  // membership row is now on their Company Selector as a pending
-  // invite; they accept it on next login.
-  showToast(`${user.email} already has an account. They'll see your invite as "Pending Invites" on their Company Selector the next time they sign in.`, "success");
+  // User already has a Housify account. The server tried to send a
+  // magic-link email so they can click through and accept the new
+  // pending membership. If that send failed, fall back to
+  // "Pending Invites on Company Selector" messaging.
+  if (respJson.magic_link_sent) {
+    showToast(`Magic-link email sent to ${user.email}. Once they sign in, your invite is waiting under "Pending Invites" on the Company Selector.`, "success");
+  } else {
+    showToast(`${user.email} already has an account. They'll see your invite as "Pending Invites" on their Company Selector the next time they sign in.`, "success");
+  }
   } else {
   showToast(`Invite sent to ${user.email}!\n\nThey will receive an invite email to set up their account.`, "success");
   }
