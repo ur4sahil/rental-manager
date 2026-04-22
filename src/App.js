@@ -4,7 +4,7 @@ import ExcelJS from "exceljs";
 import * as Sentry from "@sentry/react";
 import { supabase } from "./supabase";
 import { Input, Textarea, Select, Btn, Card, PageHeader, FormField, TabBar, FilterPill, SectionTitle, EmptyState, IconBtn, BulkBar, AccountPicker, TextLink} from "./ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, pickColor, generateId, formatPersonName, buildNameFields, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, sanitizeFileName, exportToCSV, buildAddress, escapeHtml, escapeFilterValue, sanitizeForPrint, US_STATES, STATE_NAMES, statusColors, priorityColors, emailFilterValue } from "./utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, pickColor, generateId, formatPersonName, buildNameFields, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, sanitizeFileName, exportToCSV, buildAddress, escapeHtml, escapeFilterValue, sanitizeForPrint, US_STATES, STATE_NAMES, statusColors, priorityColors, emailFilterValue, getWizardApplicableSteps } from "./utils/helpers";
 import { PM_ERRORS, pmError, reportError, logErrorToSupabase, detectInfrastructureCode, setShowToastGlobal, setActiveErrorContext } from "./utils/errors";
 import { guardSubmit, guardRelease, guarded, requireCompanyId } from "./utils/guards";
 import { encryptCredential, decryptCredential } from "./utils/encryption";
@@ -805,9 +805,17 @@ function AppInner() {
   return () => { cancelled = true; clearInterval(id); window.removeEventListener("focus", onFocus); };
   }, [activeCompany?.id, userRole, page]);
 
-  // Pending Tasks & Approvals badge. Polls three approval tables +
-  // the wizard table. Tenant users don't see this nav item so skip
-  // the work for them.
+  // Pending Tasks & Approvals badge. Counts the EXACT same rows the
+  // Tasks & Approvals page renders so the sidebar pill doesn't
+  // diverge from what the page shows:
+  //   • pending approvals: property_change_requests + doc_exception_requests
+  //     + company_members  (all status='pending')
+  //   • tenant tasks: rows in `tenants` with doc_status='pending_docs',
+  //     balance > 0, or a lease end date within 30 days
+  //   • wizard-skip tasks: one per applicable step missing on every
+  //     in_progress / completed wizard (the grouped card on the page
+  //     shows N pending, the badge adds N to its total)
+  // Tenant users don't see this nav item, so skip the work.
   useEffect(() => {
     if (!activeCompany?.id) { setPendingTasksCount(0); return; }
     if (userRole === "tenant") { setPendingTasksCount(0); return; }
@@ -815,16 +823,41 @@ function AppInner() {
     async function poll() {
       const cid = activeCompany.id;
       try {
-        const [propReq, docExc, memReq, wiz] = await Promise.all([
+        const [propReq, docExc, memReq, tenantsRes, wizards, propsRes] = await Promise.all([
           supabase.from("property_change_requests").select("id", { count: "exact", head: true }).eq("company_id", cid).eq("status", "pending"),
           supabase.from("doc_exception_requests").select("id", { count: "exact", head: true }).eq("company_id", cid).eq("status", "pending"),
           supabase.from("company_members").select("id", { count: "exact", head: true }).eq("company_id", cid).eq("status", "pending"),
-          // Wizards with missing applicable steps count as 1 per
-          // wizard here — the detailed per-step breakdown still
-          // shows up when the user opens the page.
-          supabase.from("property_setup_wizard").select("id", { count: "exact", head: true }).eq("company_id", cid).in("status", ["in_progress", "completed"]),
+          supabase.from("tenants").select("id, doc_status, balance, lease_end_date, move_out").eq("company_id", cid).is("archived_at", null),
+          supabase.from("property_setup_wizard").select("property_address, status, completed_steps, skipped_approved_steps").eq("company_id", cid).in("status", ["in_progress", "completed"]),
+          supabase.from("properties").select("address, status").eq("company_id", cid).is("archived_at", null),
         ]);
-        const total = (propReq.count || 0) + (docExc.count || 0) + (memReq.count || 0) + (wiz.count || 0);
+        const tenantTasks = (tenantsRes.data || []).reduce((n, t) => {
+          let c = 0;
+          if (t.doc_status === "pending_docs") c++;
+          if (Number(t.balance) > 0) c++;
+          const end = t.lease_end_date || t.move_out;
+          if (end) {
+            const days = Math.ceil((new Date(end).getTime() - Date.now()) / 86400000);
+            if (days > 0 && days <= 30) c++;
+          }
+          return n + c;
+        }, 0);
+        const propsByAddr = new Map((propsRes.data || []).map(p => [p.address, p]));
+        let wizardSteps = 0;
+        for (const w of (wizards.data || [])) {
+          if (w.status === "dismissed") continue;
+          const prop = propsByAddr.get(w.property_address);
+          if (!prop) continue;
+          const applicable = getWizardApplicableSteps({ propertyStatus: prop.status, userRole });
+          const completed = new Set(w.completed_steps || []);
+          const approved = new Set(w.skipped_approved_steps || []);
+          for (const step of applicable) {
+            if (step === "property_details") continue;
+            if (completed.has(step) || approved.has(step)) continue;
+            wizardSteps++;
+          }
+        }
+        const total = (propReq.count || 0) + (docExc.count || 0) + (memReq.count || 0) + tenantTasks + wizardSteps;
         if (!cancelled) setPendingTasksCount(total);
       } catch (_e) { /* silent — next poll retries */ }
     }

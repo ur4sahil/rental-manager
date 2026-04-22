@@ -302,8 +302,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           const { data: completed } = await supabase.from("property_setup_wizard").select("*")
             .eq("company_id", companyId).eq("property_address", addr).eq("status", "completed").order("updated_at", { ascending: false }).limit(1).maybeSingle();
           if (completed) {
-            // Reopen as in_progress
-            await supabase.from("property_setup_wizard").update({ status: "in_progress" }).eq("id", completed.id).eq("company_id", companyId);
+            // Leave status="completed" while editing — previous version
+            // flipped it to in_progress, which made the wizard show up
+            // in the Setup Drafts tab and inflated the sidebar task
+            // count while the user was just editing. commitWizard's
+            // RPC sets status="completed" on Save Changes regardless.
             setWizardId(completed.id);
             // Honour Tasks & Approvals' startAtStep; else last step.
             let openAt = completed.current_step || 1;
@@ -1766,6 +1769,14 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 <p className="text-sm text-neutral-400">Summary of your property setup</p>
               </div>
             </div>
+            {savedPropertyId && (
+              <div className="bg-info-50 border border-info-200 rounded-xl p-3 mb-4 flex items-start gap-2">
+                <span className="material-icons-outlined text-info-600 text-base mt-0.5">edit_note</span>
+                <div className="text-xs text-info-800">
+                  <strong>Editing a live property.</strong> "Save Changes" will UPDATE existing records — property, tenant, lease, utilities, and so on. Nothing new gets created. The save runs atomically in a single transaction; if any part fails, the whole commit rolls back.
+                </div>
+              </div>
+            )}
             <div className="space-y-3">
               {/* Property Details summary */}
               <div className="bg-white rounded-xl border border-neutral-200 p-4">

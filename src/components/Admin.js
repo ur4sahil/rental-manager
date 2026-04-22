@@ -652,15 +652,23 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId, showCo
 function TasksList({ tasks, userRole, userProfile, companyId, setPage, approveWizardSkip, showConfirm, showToast, addNotification, onRefresh, openExceptions }) {
   const [expanded, setExpanded] = React.useState({});
   const canApprove = userRole === "admin" || userRole === "owner" || userRole === "manager";
-  const wizardTasks = tasks.filter(t => t._kind === "wizard_skip");
-  const otherTasks = tasks.filter(t => t._kind !== "wizard_skip");
 
-  // Group wizard-skip rows by property address.
+  // Bundle every task that's scoped to a property address — wizard
+  // setup steps, tenant doc-pending, balance-due, lease-expiring,
+  // work order emergencies. One collapsible card per property; the
+  // pill counts total tasks (not just wizard_skip) and shows a
+  // second "N high" pill when any of them are priority=high.
+  // Anything without an address (rare — shouldn't happen in practice)
+  // stays as a flat row at the bottom.
+  const propertyTasks = tasks.filter(t => t.address);
+  const otherTasks = tasks.filter(t => !t.address);
+
   const byProp = new Map();
-  for (const t of wizardTasks) {
-    const key = t.address || "Unknown";
-    if (!byProp.has(key)) byProp.set(key, { address: key, propertyId: t.propertyId, rows: [], highCount: 0 });
+  for (const t of propertyTasks) {
+    const key = t.address;
+    if (!byProp.has(key)) byProp.set(key, { address: key, propertyId: t.propertyId || null, rows: [], highCount: 0 });
     const bucket = byProp.get(key);
+    if (!bucket.propertyId && t.propertyId) bucket.propertyId = t.propertyId;
     bucket.rows.push(t);
     if (t.priority === "high") bucket.highCount++;
   }
@@ -718,20 +726,36 @@ function TasksList({ tasks, userRole, userProfile, companyId, setPage, approveWi
             {isOpen && (
               <div className="border-t border-brand-50 bg-brand-50/10 px-3 py-2 space-y-1.5">
                 {group.rows.map((t, i) => {
-                  const pending = hasPendingException(t);
+                  if (t._kind === "wizard_skip") {
+                    const pending = hasPendingException(t);
+                    return (
+                      <div key={i} className="bg-white rounded-lg border border-brand-50 px-3 py-2 flex items-center gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-neutral-700 truncate">{t.wizardStepLabel}</div>
+                          {pending && <div className="text-[10px] text-warn-700 mt-0.5 font-semibold uppercase tracking-wide">Exception pending review</div>}
+                        </div>
+                        <span className={"text-[10px] px-2 py-0.5 rounded-full font-bold " + (t.priority === "high" ? "bg-danger-100 text-danger-600" : "bg-warn-100 text-warn-700")}>{t.priority}</span>
+                        <Btn variant="primary" size="xs" onClick={() => setPage("properties", { openWizardFor: { propertyId: t.propertyId, address: t.address, startAtStep: t.wizardStep } })}>Open</Btn>
+                        {canApprove ? (
+                          <Btn variant="success-fill" size="xs" onClick={() => approveWizardSkip(t)}>Mark Done</Btn>
+                        ) : (
+                          !pending && <Btn variant="ghost" size="xs" onClick={() => requestException(t)}>Request</Btn>
+                        )}
+                      </div>
+                    );
+                  }
+                  // Non-setup tasks (docs pending, balance, lease
+                  // expiry, work order) — just the title + click-to-
+                  // navigate. Preserves the deep-link action set up in
+                  // fetchAll.
                   return (
-                    <div key={i} className="bg-white rounded-lg border border-brand-50 px-3 py-2 flex items-center gap-2">
+                    <div key={i} onClick={() => setPage(t.link, t.linkAction)} className="bg-white rounded-lg border border-brand-50 px-3 py-2 flex items-center gap-2 cursor-pointer hover:border-brand-200">
+                      <span className="text-base shrink-0">{t.icon}</span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-neutral-700 truncate">{t.wizardStepLabel}</div>
-                        {pending && <div className="text-[10px] text-warn-700 mt-0.5 font-semibold uppercase tracking-wide">Exception pending review</div>}
+                        <div className="text-sm font-medium text-neutral-700 truncate">{t.title}</div>
                       </div>
                       <span className={"text-[10px] px-2 py-0.5 rounded-full font-bold " + (t.priority === "high" ? "bg-danger-100 text-danger-600" : "bg-warn-100 text-warn-700")}>{t.priority}</span>
-                      <Btn variant="primary" size="xs" onClick={() => setPage("properties", { openWizardFor: { propertyId: t.propertyId, address: t.address, startAtStep: t.wizardStep } })}>Open</Btn>
-                      {canApprove ? (
-                        <Btn variant="success-fill" size="xs" onClick={() => approveWizardSkip(t)}>Mark Done</Btn>
-                      ) : (
-                        !pending && <Btn variant="ghost" size="xs" onClick={() => requestException(t)}>Request</Btn>
-                      )}
+                      <span className="material-icons-outlined text-neutral-300 text-sm">arrow_forward</span>
                     </div>
                   );
                 })}
@@ -786,7 +810,8 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null),
   supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null),
   supabase.from("leases").select("*").eq("company_id", companyId).eq("status", "active"),
-  supabase.from("hoa_payments").select("*").eq("company_id", companyId).eq("status", "unpaid").is("archived_at", null),
+  // HOA rows no longer fetched — they're not surfaced as tasks.
+  Promise.resolve({ data: [] }),
   // Wizard-skip tasks: every in-progress wizard row + every completed
   // one (a completed wizard can still have approved skips we need to
   // differentiate from truly-filled steps on the Review page).
@@ -811,12 +836,14 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   // Tasks
   const t = tenants.data || [];
   const wo = workOrders.data || [];
-  const hoa = hoaDue.data || [];
-  t.filter(x => x.doc_status === "pending_docs").forEach(x => allTasks.push({ icon: "📄", title: x.name + " — documents pending", subtitle: x.property, link: "tenants", linkAction: { openTenantId: x.id, tenantName: x.name, panel: "documents" }, priority: "medium" }));
-  t.filter(x => safeNum(x.balance) > 0).forEach(x => allTasks.push({ icon: "💰", title: x.name + " — balance due " + formatCurrency(x.balance), subtitle: x.property, link: "tenants", linkAction: { openTenantId: x.id, tenantName: x.name, panel: "ledger" }, priority: safeNum(x.balance) > 1000 ? "high" : "medium" }));
-  wo.filter(x => x.priority === "emergency" && x.status !== "completed").forEach(x => allTasks.push({ icon: "🚨", title: (x.property || "Property") + " — " + x.issue, subtitle: "Emergency · " + x.status, link: "maintenance", priority: "high" }));
-  t.filter(x => { const end = x.lease_end_date || x.move_out; if (!end) return false; const days = Math.ceil((parseLocalDate(end) - new Date()) / 86400000); return days > 0 && days <= 30; }).forEach(x => allTasks.push({ icon: "📅", title: x.name + " — lease expires " + (x.lease_end_date || x.move_out), subtitle: x.property, link: "tenants", linkAction: { openTenantId: x.id, tenantName: x.name, panel: "ledger" }, priority: "high" }));
-  hoa.forEach(x => { const daysLeft = Math.ceil((new Date(x.due_date).getTime() - Date.now()) / 86400000); allTasks.push({ icon: "🏘️", title: (x.hoa_name || x.property || "HOA") + " — " + formatCurrency(x.amount) + " due " + x.due_date, subtitle: x.property, link: "hoa", priority: daysLeft <= 3 ? "high" : "medium" }); });
+  // HOA due rows intentionally NOT generated as tasks — they live on
+  // the dedicated HOA Payments page with all the per-row controls
+  // (mark paid, request portal login, etc.). Surfacing them here was
+  // duplicated work; removed per Sahil's call.
+  t.filter(x => x.doc_status === "pending_docs").forEach(x => allTasks.push({ icon: "📄", title: x.name + " — documents pending", subtitle: x.property, address: x.property, link: "tenants", linkAction: { openTenantId: x.id, tenantName: x.name, panel: "documents" }, priority: "medium", _kind: "tenant_docs" }));
+  t.filter(x => safeNum(x.balance) > 0).forEach(x => allTasks.push({ icon: "💰", title: x.name + " — balance due " + formatCurrency(x.balance), subtitle: x.property, address: x.property, link: "tenants", linkAction: { openTenantId: x.id, tenantName: x.name, panel: "ledger" }, priority: safeNum(x.balance) > 1000 ? "high" : "medium", _kind: "tenant_balance" }));
+  wo.filter(x => x.priority === "emergency" && x.status !== "completed").forEach(x => allTasks.push({ icon: "🚨", title: x.issue, subtitle: "Emergency · " + x.status, address: x.property || null, link: "maintenance", priority: "high", _kind: "work_order" }));
+  t.filter(x => { const end = x.lease_end_date || x.move_out; if (!end) return false; const days = Math.ceil((parseLocalDate(end) - new Date()) / 86400000); return days > 0 && days <= 30; }).forEach(x => allTasks.push({ icon: "📅", title: x.name + " — lease expires " + (x.lease_end_date || x.move_out), subtitle: x.property, address: x.property, link: "tenants", linkAction: { openTenantId: x.id, tenantName: x.name, panel: "ledger" }, priority: "high", _kind: "lease_expiry" }));
   // Wizard-skip tasks: one row per applicable step not yet filled
   // and not yet admin-approved. Insurance / Loan / Property Tax are
   // graded "high" since they're compliance/financial; the rest are
