@@ -84,6 +84,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   // backfill past Teller's default ~90-day window. Empty = Teller default.
   const [syncDateModal, setSyncDateModal] = useState(false);
   const [syncFromDate, setSyncFromDate] = useState("");
+  // Connect-bank chooser. When the user already has a Teller enrollment
+  // we offer "Reconnect [Bank]" (reuses enrollmentId — free) vs "Add
+  // different bank" (consumes a new Teller slot). Without this every
+  // click on Connect Bank created a duplicate enrollment.
+  const [connectChooser, setConnectChooser] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -285,7 +290,12 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   }
 
   // --- Teller Connect ---
-  async function connectBank() {
+  // Opens Teller Connect. Pass a reconnectEnrollmentId to open in
+  // "update" mode against an existing enrollment — that re-authenticates
+  // the same institution without consuming a new slot against the
+  // Teller plan. Without it, Teller creates a fresh enrollment (a
+  // second BofA connection counts twice toward plan limits).
+  async function connectBank(reconnectEnrollmentId) {
     setPlaidConnecting(true);
     try {
       const tellerAppId = window.__TELLER_APP_ID || process.env.REACT_APP_TELLER_APP_ID || "";
@@ -301,7 +311,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           document.head.appendChild(script);
         });
       }
-      const tellerConnect = window.TellerConnect.setup({
+      const setupOpts = {
         applicationId: tellerAppId,
         environment: "development",
         onSuccess: async (enrollment) => {
@@ -335,7 +345,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           }
         },
         onExit: () => { /* user closed */ },
-      });
+      };
+      // Teller Connect opens in "update" mode when enrollmentId is set.
+      if (reconnectEnrollmentId) setupOpts.enrollmentId = reconnectEnrollmentId;
+      const tellerConnect = window.TellerConnect.setup(setupOpts);
       tellerConnect.open();
     } catch (e) { pmError("PM-5004", { raw: e, context: "connecting bank via Teller" }); }
     finally { setPlaidConnecting(false); }
@@ -1385,7 +1398,15 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     <div><h3 className="text-lg font-semibold text-neutral-900">Bank Transactions</h3><p className="text-sm text-neutral-400">Import, review, and categorize bank transactions</p></div>
     <div className="flex gap-2 flex-wrap">
       {connections.some(c => c.connection_status === "active") && <Btn variant="success" size="sm" onClick={() => { setSyncFromDate(""); setSyncDateModal(true); }} disabled={syncing}>{syncing ? "Syncing..." : "Sync"}</Btn>}
-      <Btn variant="primary" onClick={connectBank} disabled={plaidConnecting} className="disabled:opacity-50"><span className="material-icons-outlined text-sm">link</span>{plaidConnecting ? "Connecting..." : "Connect Bank"}</Btn>
+      <Btn variant="primary" onClick={() => {
+        // If there are existing Teller enrollments, let the user pick
+        // reuse-vs-add-new before the SDK opens — otherwise Teller
+        // always creates a fresh enrollment and the same BofA shows up
+        // twice in the plan counter.
+        const hasTellerEnrollment = connections.some(c => c.source_type === "teller" && c.plaid_item_id);
+        if (hasTellerEnrollment) setConnectChooser(true);
+        else connectBank();
+      }} disabled={plaidConnecting} className="disabled:opacity-50"><span className="material-icons-outlined text-sm">link</span>{plaidConnecting ? "Connecting..." : "Connect Bank"}</Btn>
       <Btn variant="dark" size="sm" icon="upload_file" onClick={startImport}>Import CSV</Btn>
     </div>
   </div>
@@ -1394,7 +1415,12 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   {connections.filter(c => c.connection_status === "needs_reauth").length > 0 && (
   <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 flex items-center justify-between">
     <div className="text-sm text-warn-800"><strong>Action needed:</strong> {connections.filter(c => c.connection_status === "needs_reauth").length} bank connection(s) need re-authentication.</div>
-    <Btn variant="warning-fill" size="sm" onClick={connectBank}>Fix Now</Btn>
+    <Btn variant="warning-fill" size="sm" onClick={() => {
+      // Re-auth the specific needs_reauth connection in update mode
+      // so Teller doesn't mint a second enrollment for the same bank.
+      const stuck = connections.find(c => c.connection_status === "needs_reauth" && c.plaid_item_id);
+      connectBank(stuck?.plaid_item_id || undefined);
+    }}>Fix Now</Btn>
   </div>
   )}
   {connections.filter(c => c.connection_status === "errored").length > 0 && (
@@ -2301,6 +2327,48 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   </div>
     );
   })()}
+
+  {/* Connect Bank chooser — shown when the user already has a Teller */}
+  {/* enrollment. Reusing reconnects the same bank (free); adding new  */}
+  {/* consumes another Teller plan slot. */}
+  {connectChooser && (
+  <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+      <div className="flex items-center gap-3 mb-1">
+        <span className="text-2xl">🔗</span>
+        <h3 className="text-lg font-bold text-neutral-800">Connect Bank</h3>
+      </div>
+      <p className="text-sm text-neutral-500 mb-4">You already have Teller connections. Reconnecting an existing one is free; adding a different bank consumes another Teller enrollment slot.</p>
+      <div className="space-y-2">
+        {connections.filter(c => c.source_type === "teller" && c.plaid_item_id).map(c => (
+          <button key={c.id} onClick={() => { setConnectChooser(false); connectBank(c.plaid_item_id); }}
+            className="w-full text-left bg-neutral-50 hover:bg-brand-50 border border-neutral-200 hover:border-brand-300 rounded-lg px-3 py-2 transition-colors">
+            <div className="flex items-center gap-3">
+              <span className="material-icons-outlined text-brand-600">refresh</span>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-sm text-neutral-800 truncate">Reconnect {c.institution_name || "Bank"}</div>
+                <div className="text-xs text-neutral-400">Re-authenticate the existing enrollment · no new plan slot</div>
+              </div>
+            </div>
+          </button>
+        ))}
+        <button onClick={() => { setConnectChooser(false); connectBank(); }}
+          className="w-full text-left bg-neutral-50 hover:bg-brand-50 border border-neutral-200 hover:border-brand-300 rounded-lg px-3 py-2 transition-colors">
+          <div className="flex items-center gap-3">
+            <span className="material-icons-outlined text-neutral-500">add</span>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-sm text-neutral-800">Add a different bank</div>
+              <div className="text-xs text-neutral-400">Consumes a new Teller enrollment slot</div>
+            </div>
+          </div>
+        </button>
+      </div>
+      <div className="flex gap-3 pt-4 mt-4 border-t border-neutral-200">
+        <Btn variant="ghost" onClick={() => setConnectChooser(false)}>Cancel</Btn>
+      </div>
+    </div>
+  </div>
+  )}
 
   {/* Sync-with-date modal. Teller's default /transactions response is */}
   {/* usually ~90 days; the API route now paginates via ?from_id when a */}
