@@ -677,11 +677,20 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
 
     // Phase B: atomic DB commit via RPC.
     const compositeAddress = computeCompositeAddress();
+    // savedPropertyId can end up contaminated with a UUID string
+    // from old wizard_data rows (class_id / tenant_id used to get
+    // cross-wired in a prior bug). properties.id is bigserial so
+    // anything non-numeric here means "no live property" — fall back
+    // to fresh-commit mode instead of letting the RPC choke on a
+    // bigint cast failure.
+    const numericPropertyId = (savedPropertyId != null && /^\d+$/.test(String(savedPropertyId)))
+      ? Number(savedPropertyId)
+      : null;
     const payload = {
       company_id: companyId,
       wizard_id: wizardId || null,
-      mode: savedPropertyId ? 'edit' : 'fresh',
-      property_id_for_edit: savedPropertyId || null,
+      mode: numericPropertyId ? 'edit' : 'fresh',
+      property_id_for_edit: numericPropertyId,
       property: {
         address: compositeAddress,
         address_line_1: propForm.address_line_1,
