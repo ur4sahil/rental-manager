@@ -16,7 +16,7 @@ import { MoveOutWizard, EvictionWorkflow } from "./Lifecycle";
 const acctToday = () => formatLocalDate(new Date());
 
 // ============ TENANTS ============
-function Tenants({ addNotification, userProfile, userRole, companyId, setPage, initialTab, showToast, showConfirm, activeCompany, companySettings = {} }) {
+function Tenants({ addNotification, userProfile, userRole, companyId, setPage, initialTab, initialAction, showToast, showConfirm, activeCompany, companySettings = {} }) {
   const isAdmin = userRole === "admin";
   const isManager = userRole === "manager";
   const canReviewAny = isAdmin || userRole === "owner" || isManager;
@@ -78,6 +78,24 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   supabase.from("properties").select("*").eq("company_id", companyId).is("archived_at", null)
   .then(({ data, error }) => { if (error) pmError("PM-8006", { raw: error, context: "tenants property fetch", silent: true }); setProperties(data || []); });
   }, [companyId]);
+
+  // Deep-link handler: Tasks & Approvals passes `openTenantId` +
+  // `panel` via initialAction so clicking a "documents pending" card
+  // lands on that tenant's Documents tab rather than dumping the user
+  // on the generic Tenants list. Runs once the tenants array has
+  // loaded; re-runs if the caller re-navigates with a different id.
+  useEffect(() => {
+    if (!initialAction?.openTenantId || tenants.length === 0) return;
+    const t = tenants.find(x => String(x.id) === String(initialAction.openTenantId))
+      || tenants.find(x => x.name === initialAction.tenantName);
+    if (!t) return;
+    setSelectedTenant(t);
+    setActivePanel(initialAction.panel || "detail");
+    if (initialAction.panel === "documents") fetchTenantDocs(t);
+    if (initialAction.panel === "ledger") openLedger(t);
+    if (initialAction.panel === "messages") openMessages(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAction?.openTenantId, tenants.length]);
 
   async function fetchTenants() {
   const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null);

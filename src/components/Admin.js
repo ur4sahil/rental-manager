@@ -681,10 +681,10 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   const t = tenants.data || [];
   const wo = workOrders.data || [];
   const hoa = hoaDue.data || [];
-  t.filter(x => x.doc_status === "pending_docs").forEach(x => allTasks.push({ icon: "📄", title: x.name + " — documents pending", subtitle: x.property, link: "tenants", priority: "medium" }));
-  t.filter(x => safeNum(x.balance) > 0).forEach(x => allTasks.push({ icon: "💰", title: x.name + " — balance due " + formatCurrency(x.balance), subtitle: x.property, link: "tenants", priority: safeNum(x.balance) > 1000 ? "high" : "medium" }));
+  t.filter(x => x.doc_status === "pending_docs").forEach(x => allTasks.push({ icon: "📄", title: x.name + " — documents pending", subtitle: x.property, link: "tenants", linkAction: { openTenantId: x.id, tenantName: x.name, panel: "documents" }, priority: "medium" }));
+  t.filter(x => safeNum(x.balance) > 0).forEach(x => allTasks.push({ icon: "💰", title: x.name + " — balance due " + formatCurrency(x.balance), subtitle: x.property, link: "tenants", linkAction: { openTenantId: x.id, tenantName: x.name, panel: "ledger" }, priority: safeNum(x.balance) > 1000 ? "high" : "medium" }));
   wo.filter(x => x.priority === "emergency" && x.status !== "completed").forEach(x => allTasks.push({ icon: "🚨", title: (x.property || "Property") + " — " + x.issue, subtitle: "Emergency · " + x.status, link: "maintenance", priority: "high" }));
-  t.filter(x => { const end = x.lease_end_date || x.move_out; if (!end) return false; const days = Math.ceil((parseLocalDate(end) - new Date()) / 86400000); return days > 0 && days <= 30; }).forEach(x => allTasks.push({ icon: "📅", title: x.name + " — lease expires " + (x.lease_end_date || x.move_out), subtitle: x.property, link: "tenants", priority: "high" }));
+  t.filter(x => { const end = x.lease_end_date || x.move_out; if (!end) return false; const days = Math.ceil((parseLocalDate(end) - new Date()) / 86400000); return days > 0 && days <= 30; }).forEach(x => allTasks.push({ icon: "📅", title: x.name + " — lease expires " + (x.lease_end_date || x.move_out), subtitle: x.property, link: "tenants", linkAction: { openTenantId: x.id, tenantName: x.name, panel: "ledger" }, priority: "high" }));
   hoa.forEach(x => { const daysLeft = Math.ceil((new Date(x.due_date).getTime() - Date.now()) / 86400000); allTasks.push({ icon: "🏘️", title: (x.hoa_name || x.property || "HOA") + " — " + formatCurrency(x.amount) + " due " + x.due_date, subtitle: x.property, link: "hoa", priority: daysLeft <= 3 ? "high" : "medium" }); });
   // Wizard-skip tasks: one row per applicable step not yet filled
   // and not yet admin-approved. Insurance / Loan / Property Tax are
@@ -872,7 +872,7 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   );
   }
   return (
-  <div key={i} onClick={() => setPage(t.link)} className="bg-white rounded-xl border border-brand-50 p-4 flex items-center gap-3 cursor-pointer hover:border-brand-200 hover:shadow-sm transition-all">
+  <div key={i} onClick={() => setPage(t.link, t.linkAction)} className="bg-white rounded-xl border border-brand-50 p-4 flex items-center gap-3 cursor-pointer hover:border-brand-200 hover:shadow-sm transition-all">
   <span className="text-xl">{t.icon}</span>
   <div className="flex-1 min-w-0">
   <div className="text-sm font-semibold text-neutral-800 truncate">{t.title}</div>
