@@ -80,6 +80,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   // mapping and the id currently chosen in the AccountPicker.
   const [glMapModal, setGlMapModal] = useState(null); // { feedId, feedName } | null
   const [glMapValue, setGlMapValue] = useState("");
+  // Sync-with-date picker. Opens on Sync / Retry Sync so the user can
+  // backfill past Teller's default ~90-day window. Empty = Teller default.
+  const [syncDateModal, setSyncDateModal] = useState(false);
+  const [syncFromDate, setSyncFromDate] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -1350,7 +1354,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   <div className="flex items-center justify-between">
     <div><h3 className="text-lg font-semibold text-neutral-900">Bank Transactions</h3><p className="text-sm text-neutral-400">Import, review, and categorize bank transactions</p></div>
     <div className="flex gap-2 flex-wrap">
-      {connections.some(c => c.connection_status === "active") && <Btn variant="success" size="sm" onClick={syncTransactions} disabled={syncing}>{syncing ? "Syncing..." : "Sync"}</Btn>}
+      {connections.some(c => c.connection_status === "active") && <Btn variant="success" size="sm" onClick={() => { setSyncFromDate(""); setSyncDateModal(true); }} disabled={syncing}>{syncing ? "Syncing..." : "Sync"}</Btn>}
       <Btn variant="primary" onClick={connectBank} disabled={plaidConnecting} className="disabled:opacity-50"><span className="material-icons-outlined text-sm">link</span>{plaidConnecting ? "Connecting..." : "Connect Bank"}</Btn>
       <Btn variant="dark" size="sm" icon="upload_file" onClick={startImport}>Import CSV</Btn>
     </div>
@@ -1373,7 +1377,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         return `${c.institution_name || "Bank"}: ${msg.replace(/\{.*\}/g, "").trim() || "Temporary error. Try again."}`;
       }).join(" · ")}
     </div>
-    <Btn variant="warning-fill" onClick={() => syncTransactions()} className="shrink-0">Retry Sync</Btn>
+    <Btn variant="warning-fill" onClick={() => { setSyncFromDate(""); setSyncDateModal(true); }} className="shrink-0">Retry Sync</Btn>
   </div>
   )}
 
@@ -2258,6 +2262,38 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   </div>
     );
   })()}
+
+  {/* Sync-with-date modal. Teller's default /transactions response is */}
+  {/* usually ~90 days; the API route now paginates via ?from_id when a */}
+  {/* from_date is supplied, so typing an older date actually pulls  */}
+  {/* history. Empty = Teller default window. */}
+  {syncDateModal && (
+  <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+      <div className="flex items-center gap-3 mb-1">
+        <span className="text-2xl">🔄</span>
+        <h3 className="text-lg font-bold text-neutral-800">Sync Bank Transactions</h3>
+      </div>
+      <p className="text-sm text-neutral-500 mb-4">Pull from a specific date, or leave blank for Teller's default (~90 days).</p>
+      <label className="text-xs text-neutral-500 block mb-1">From Date</label>
+      <Input type="date" value={syncFromDate} onChange={e => setSyncFromDate(e.target.value)} className="w-full" />
+      <div className="flex gap-2 mt-2 flex-wrap">
+        {[30, 60, 90, 180, 365, 730].map(days => {
+          const d = new Date(); d.setDate(d.getDate() - days);
+          return <Btn key={days} variant="slate" size="xs" onClick={() => setSyncFromDate(formatLocalDate(d))}>{days}d</Btn>;
+        })}
+        <Btn variant="slate" size="xs" onClick={() => setSyncFromDate("")}>Default</Btn>
+      </div>
+      <div className="flex gap-3 pt-4 mt-4 border-t border-neutral-200">
+        <Btn disabled={syncing} onClick={async () => {
+          setSyncDateModal(false);
+          await syncTransactions(syncFromDate ? { from_date: syncFromDate } : {});
+        }}>{syncing ? "Syncing..." : "Sync"}</Btn>
+        <Btn variant="ghost" onClick={() => setSyncDateModal(false)}>Cancel</Btn>
+      </div>
+    </div>
+  </div>
+  )}
 
   {/* Change GL Mapping modal — replaces the native prompt() that used */}
   {/* to ask for a raw UUID. Uses AccountPicker so the user searches by */}
