@@ -175,6 +175,12 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   });
   const [savedPropertyId, setSavedPropertyId] = useState(wizardData.propertyId || null);
   const [savedAddress, setSavedAddress] = useState(wizardData.address || "");
+  // IDs of documents inserted during this wizard session. We stamp
+  // the best-known address at upload time, then UPDATE ... WHERE id IN
+  // (...) after commit to the final composite address. Without this,
+  // wizard-uploaded docs get tagged with the pre-commit placeholder
+  // and go missing from the property detail page.
+  const [uploadedDocIds, setUploadedDocIds] = useState([]);
 
   // Step-specific form states
   const [utilities, setUtilities] = useState([
@@ -857,6 +863,20 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       try { await autoPostRentCharges(companyId); } catch (e) { pmError('PM-4002', { raw: e, context: 'auto-post rent charges', silent: true }); }
     }
 
+    // Re-stamp any docs we uploaded during this wizard to the final
+    // composite address. They were tagged with a best-guess at upload
+    // time; if the user edited the address before Complete, this
+    // reconciles them. Scoped by id + company_id so it can't touch
+    // other companies' rows.
+    if (uploadedDocIds.length > 0 && compositeAddress) {
+      try {
+        await supabase.from("documents")
+          .update({ property: compositeAddress })
+          .in("id", uploadedDocIds)
+          .eq("company_id", companyId);
+      } catch (e) { pmError("PM-7003", { raw: e, context: "post-commit doc re-stamp", silent: true }); }
+    }
+
     setSavedPropertyId(resPropertyId);
     setSavedAddress(compositeAddress);
   }
@@ -939,18 +959,25 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         const { error: uploadErr } = await supabase.storage.from("documents").upload(fileName, file, { cacheControl: "3600", upsert: false });
         if (uploadErr) { pmError("PM-7002", { raw: uploadErr, context: "wizard document upload for " + file.name }); continue; }
         const docName = docUploadType === "Other" ? docDescription : docUploadType + " — " + file.name.replace(/\.[^/.]+$/, "");
-        const { error: insertErr } = await supabase.from("documents").insert([{
+        // For a fresh wizard, savedAddress is empty until commitWizard
+        // sets it post-RPC. Use the composite address from propForm as
+        // a best-guess so the doc is tagged with a real address.
+        // commitWizard Phase C re-stamps tracked doc IDs to the final
+        // address if they differ (handles mid-wizard address edits).
+        const uploadAddress = savedAddress || computeCompositeAddress() || "";
+        const { data: inserted, error: insertErr } = await supabase.from("documents").insert([{
           company_id: companyId,
           name: docName,
           file_name: fileName,
           url: fileName,
-          property: savedAddress,
+          property: uploadAddress,
           tenant: propForm.status === "occupied" ? (tenantForm.tenant || "") : "",
           type: docUploadType,
           tenant_visible: false,
           uploaded_at: new Date().toISOString()
-        }]);
+        }]).select("id").maybeSingle();
         if (insertErr) { pmError("PM-7003", { raw: insertErr, context: "wizard document record insert" }); continue; }
+        if (inserted?.id) setUploadedDocIds(prev => [...prev, inserted.id]);
         setUploadedDocs(prev => [...prev, { name: docName, type: docUploadType }]);
         uploaded++;
       } catch (err) {
@@ -2118,6 +2145,12 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   supabase.from("property_licenses").select("*").eq("company_id", companyId).eq("property_id", p.id).is("archived_at", null).order("expiry_date", { ascending: true }),
   ]);
   setPropertyDocs(docsRes.data || []);
+  // Orphans: company docs with no property address. Usually
+  // wizard-era uploads that never got re-stamped.
+  const { data: orphans } = await supabase.from("documents")
+    .select("*").eq("company_id", companyId).is("archived_at", null)
+    .or("property.is.null,property.eq.").order("uploaded_at", { ascending: false }).limit(50);
+  setOrphanDocs(orphans || []);
   setPropertyWorkOrders(wosRes.data || []);
   setPropertyUtilities(utilRes.data || []);
   setPropertyHoas(hoaRes.data || []);
@@ -2671,6 +2704,11 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [propertyDetailTab, setPropertyDetailTab] = useState("overview");
   const [propertyDocs, setPropertyDocs] = useState([]);
+  // Documents whose `property` field is empty/null — almost always
+  // orphans from wizard-uploads before the commit fix landed. Surfaced
+  // in a small tray on the Documents tab so the user can one-click
+  // attach them to this property.
+  const [orphanDocs, setOrphanDocs] = useState([]);
   const [propertyWorkOrders, setPropertyWorkOrders] = useState([]);
   const [historicalTenants, setHistoricalTenants] = useState([]);
   const [propertyUtilities, setPropertyUtilities] = useState([]);
@@ -3151,6 +3189,44 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   <div className="text-sm font-semibold text-neutral-700">Documents</div>
   <Btn variant="primary" size="sm" onClick={() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant || "" })}><span className="material-icons-outlined text-sm">upload</span>Upload</Btn>
   </div>
+  {orphanDocs.length > 0 && (
+  <div className="mb-4 bg-warning-50 border border-warning-200 rounded-lg p-3">
+  <div className="flex items-center gap-2 mb-2">
+  <span className="material-icons-outlined text-warning-600 text-base">link_off</span>
+  <div className="text-sm font-semibold text-warning-800">Unlinked documents ({orphanDocs.length})</div>
+  </div>
+  <div className="text-xs text-warning-700 mb-2">These files were uploaded but never got attached to a property. Attach them here if they belong to this property.</div>
+  <div className="space-y-1.5">
+  {orphanDocs.map(d => (
+  <div key={d.id} className="flex items-center justify-between bg-white rounded-md px-3 py-2 text-sm">
+  <div className="flex items-center gap-2 min-w-0">
+  <span className="material-icons-outlined text-neutral-400 text-base flex-shrink-0">insert_drive_file</span>
+  <div className="truncate">
+  <div className="font-medium text-neutral-700 truncate">{d.name}</div>
+  <div className="text-xs text-neutral-400">{d.type || "—"} · {d.uploaded_at?.slice(0, 10)}</div>
+  </div>
+  </div>
+  <div className="flex items-center gap-2 flex-shrink-0">
+  <TextLink tone="brand" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }}>View</TextLink>
+  <TextLink tone="positive" size="xs" onClick={async () => {
+    if (!guardSubmit("attachDoc", d.id)) return;
+    try {
+      const { error } = await supabase.from("documents")
+        .update({ property: selectedProperty.address })
+        .eq("id", d.id).eq("company_id", companyId);
+      if (error) { pmError("PM-7003", { raw: error, context: "attach orphan doc" }); return; }
+      setOrphanDocs(prev => prev.filter(x => x.id !== d.id));
+      setPropertyDocs(prev => [{ ...d, property: selectedProperty.address }, ...prev]);
+      showToast("Attached: " + d.name, "success");
+      logAudit("update", "documents", "Attached orphan doc: " + d.name, d.id, userProfile?.email, userRole, companyId);
+    } finally { guardRelease("attachDoc", d.id); }
+  }}>Attach here</TextLink>
+  </div>
+  </div>
+  ))}
+  </div>
+  </div>
+  )}
   {propertyDocs.length === 0 ? (
   <div className="text-center py-8">
   <span className="material-icons-outlined text-4xl text-neutral-300 mb-2">folder_open</span>
