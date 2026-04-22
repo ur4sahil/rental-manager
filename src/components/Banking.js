@@ -2167,7 +2167,13 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
                       const { data: newAcct, error } = await supabase.from("acct_accounts").insert({ company_id: companyId, code, name: newBankAcctForm.name.trim(), type: newBankAcctForm.type, subtype: newBankAcctForm.type === "Asset" ? "Bank" : newBankAcctForm.type === "Liability" ? "Credit Card" : "", is_active: true, old_text_id: companyId + "-" + code }).select("id").single();
                       if (error) { pmError("PM-4006", { raw: error, context: "create bank GL account" }); return; }
                       showToast(`Account "${newBankAcctForm.name}" created.`, "success");
-                      await fetchAll();
+                      // Must refresh the parent's accounts list, not fetchAll()
+                      // — AccountPicker reads `accounts` as a prop, and
+                      // nextAccountCode() scans it to pick the next code.
+                      // Stale accounts caused two bugs: blank picker after
+                      // create (couldn't find new id), and 409 duplicate-
+                      // code on the second account (same code re-picked).
+                      if (onRefreshAccounting) await onRefreshAccounting();
                       setPostConnectMappings(prev => ({ ...prev, [acct.id]: newAcct.id }));
                       setPostConnectNewAcct(null);
                     }}>Create</Btn>
