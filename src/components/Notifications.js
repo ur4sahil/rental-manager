@@ -53,12 +53,20 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   const [activity, setActivity] = useState([]);
   const fetchData = useCallback(async () => {
   setLoading(true);
+  // Activity feed is per-user, not per-company. Every notification
+  // row carries a recipient_email; viewers only see rows addressed to
+  // them (or company-wide broadcasts with a NULL recipient). Without
+  // this filter the tab would leak each user's private inbox to
+  // every admin who opens the page.
+  const myEmail = userProfile?.email || "";
   const [s, l, t, le, inbox] = await Promise.all([
   supabase.from("notification_settings").select("*").eq("company_id", companyId).order("event_type"),
   supabase.from("notification_log").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(100),
   supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null),
   supabase.from("leases").select("*").eq("company_id", companyId).eq("status", "active"),
-  supabase.from("notification_inbox").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(200),
+  supabase.from("notification_inbox").select("*").eq("company_id", companyId)
+    .or("recipient_email.ilike." + escapeFilterValue(myEmail || "none") + ",recipient_email.is.null")
+    .order("created_at", { ascending: false }).limit(200),
   ]);
   setSettings(s.data || []);
   setLogs(l.data || []);

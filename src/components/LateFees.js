@@ -135,6 +135,8 @@ function LateFees({ companySettings = {}, addNotification, userProfile, userRole
   if (!result.jeId) { fetchData(); return; } // toast already shown
   }
   addNotification("⚠️", `Late fee ${formatCurrency(feeAmount)} applied to ${payment.tenant}`);
+  // Tenant-facing copy — they'll see this in their portal inbox.
+  if (tenant?.email) addNotification("⚠️", `A late fee of ${formatCurrency(feeAmount)} was added to your account (${payment.daysLate} days overdue).`, { recipient: tenant.email, type: "late_fee" });
   logAudit("create", "late_fees", `Late fee ${formatCurrency(feeAmount)} applied to ${payment.tenant} (${payment.daysLate} days overdue)`, tenant?.id || "", userProfile?.email, userRole, companyId);
   if (tenant?.email) queueNotification("late_fee_applied", tenant.email, { tenant: payment.tenant, amount: feeAmount, daysLate: payment.daysLate, property: payment.property }, companyId);
   fetchData();

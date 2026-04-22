@@ -248,6 +248,8 @@ function OwnerManagement({ addNotification, userProfile, userRole, companyId, sh
   }
 
   addNotification("💰", `$${amt.toLocaleString()} distributed to ${owner.name}`);
+  // Owner-facing copy — lands in the owner portal's inbox.
+  if (owner.email) addNotification("💰", `A distribution of $${amt.toLocaleString()} (${distForm.method}) was sent to you.`, { recipient: owner.email, type: "owner_distribution" });
   logAudit("create", "owner_distributions", `Distribution: $${amt} to ${owner.name} via ${distForm.method}`, "", userProfile?.email, userRole, companyId);
   setShowDistForm(null);
   setDistForm({ amount: "", method: "check", reference: "", notes: "" });

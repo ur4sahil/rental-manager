@@ -170,10 +170,20 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   }
   addNotification("🔧", `Work order "${wo.issue}" marked as ${newStatus.replace("_", " ")}`);
   logAudit("update", "maintenance", `Work order status: ${wo.issue} → ${newStatus}${safeNum(wo.cost) > 0 ? " ($" + safeNum(wo.cost) + ")" : ""}`, wo.id, userProfile?.email, userRole, companyId);
-  // #24: Notify tenant when work order completed
-  if (newStatus === "completed" && wo.tenant) {
-  const { data: woT } = await supabase.from("tenants").select("email").eq("company_id", companyId).ilike("name", wo.tenant).maybeSingle();
-  if (woT?.email) queueNotification("work_order_completed", woT.email, { tenant: wo.tenant, issue: wo.issue, property: wo.property }, companyId);
+  // Tenant-facing: for tenant-originated work orders, keep them in the
+  // loop on status changes (in-progress / completed). Admin-created
+  // orders where the tenant isn't the reporter get no ping — they
+  // didn't file the ticket and don't need status spam.
+  if (wo.tenant && (newStatus === "completed" || newStatus === "in_progress")) {
+    const { data: woT } = await supabase.from("tenants").select("email").eq("company_id", companyId).ilike("name", wo.tenant).maybeSingle();
+    if (woT?.email) {
+      if (newStatus === "completed") {
+        addNotification("✅", `Your maintenance request "${wo.issue}" has been completed.`, { recipient: woT.email, type: "work_order_update" });
+        queueNotification("work_order_completed", woT.email, { tenant: wo.tenant, issue: wo.issue, property: wo.property }, companyId);
+      } else if (newStatus === "in_progress") {
+        addNotification("🔧", `Your maintenance request "${wo.issue}" is now in progress.`, { recipient: woT.email, type: "work_order_update" });
+      }
+    }
   }
   fetchWorkOrders();
   }

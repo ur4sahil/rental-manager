@@ -538,6 +538,8 @@ function LeaseManagement({ companySettings = {}, addNotification, userProfile, u
   if (_err4960) { showToast("Error updating leases: " + _err4960.message, "error"); return; }
   if (showRentIncrease.tenant_id) await supabase.from("tenants").update({ rent: newAmt }).eq("company_id", companyId).eq("id", showRentIncrease.tenant_id);
   addNotification("📈", `Rent increased to ${formatCurrency(newAmt)}/mo for ${showRentIncrease.tenant_name}`);
+  // Tenant-facing copy.
+  if (showRentIncrease.tenant_email) addNotification("📈", `Your rent was updated to ${formatCurrency(newAmt)}/mo, effective ${rentIncreaseForm.effective_date}.`, { recipient: showRentIncrease.tenant_email, type: "rent_increase" });
   logAudit("update", "leases", `Rent increase: ${formatCurrency(showRentIncrease.rent_amount)} → ${formatCurrency(newAmt)} for ${showRentIncrease.tenant_name}`, showRentIncrease.id, userProfile?.email, userRole, companyId);
   setShowRentIncrease(null);
   fetchData();
