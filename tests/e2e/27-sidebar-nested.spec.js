@@ -54,13 +54,21 @@ test.describe('Page Persistence on Refresh', () => {
     await login(page);
     await navigateTo(page, 'Accounting');
     await page.waitForTimeout(1500);
-    // Verify we're on accounting
     const onAccounting = await page.locator('text=Accounting').first().isVisible({ timeout: 3000 }).catch(() => false);
     expect(onAccounting).toBeTruthy();
-    // Refresh the page
+    // Confirm the company was persisted to localStorage during login —
+    // that's the signal App.js uses to restore the user's company on
+    // refresh (see autoSelectCompany second-chance branch).
+    const lastCompanyId = await page.evaluate(() => localStorage.getItem('lastCompanyId'));
+    expect(lastCompanyId, 'lastCompanyId should have been saved on company select').toBeTruthy();
+    // Refresh
     await page.reload({ waitUntil: 'networkidle' });
-    await page.waitForTimeout(3000);
-    // Should still be on accounting (not redirected to company selector)
+    // Auto-select + Accounting render needs a moment.
+    await page.waitForTimeout(4000);
+    // We shouldn't have been bounced to the Company Selector.
+    const onSelector = await page.locator('heading:has-text("Your Companies"), h2:has-text("Your Companies")').first().isVisible({ timeout: 1500 }).catch(() => false);
+    expect(onSelector, 'should NOT be on the Company Selector after reload').toBeFalsy();
+    // Sidebar should be back.
     const stillOnApp = await page.locator('nav').first().isVisible({ timeout: 10000 }).catch(() => false);
     expect(stillOnApp).toBeTruthy();
   });
