@@ -223,7 +223,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       .limit(TXN_FETCH_CAP);
     if (cutoff) txnQ = txnQ.gte("posted_date", cutoff);
     const [feedsRes, txnRes, rulesRes, connRes] = await Promise.all([
-      supabase.from("bank_account_feed").select("*").eq("company_id", companyId).eq("status", "active").order("created_at"),
+      // Include inactive feeds too so disconnected accounts stay
+       // visible with a Reactivate affordance. Hard-deleted rows
+       // (archived_at set) are still filtered out.
+      supabase.from("bank_account_feed").select("*").eq("company_id", companyId).is("archived_at", null).order("created_at"),
       txnQ,
       supabase.from("bank_transaction_rule").select("*").eq("company_id", companyId).order("priority"),
       supabase.from("bank_connection").select("*").eq("company_id", companyId).order("created_at"),
@@ -389,6 +392,20 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     }
     if (selectedFeed === feedId) setSelectedFeed("all");
     showToast(`"${feed.account_name}" disconnected.`, "success");
+    fetchAll();
+  }
+
+  async function reactivateFeed(feedId) {
+    const feed = feeds.find(f => f.id === feedId);
+    if (!feed) return;
+    const { error } = await supabase.from("bank_account_feed").update({ status: "active" }).eq("id", feedId).eq("company_id", companyId);
+    if (error) { showToast("Error reactivating feed: " + error.message, "error"); return; }
+    // If the parent connection was flipped to 'disconnected' when this
+    // was the last active feed, bring it back so sync is enabled again.
+    if (feed.bank_connection_id) {
+      await supabase.from("bank_connection").update({ connection_status: "active" }).eq("id", feed.bank_connection_id).eq("company_id", companyId).eq("connection_status", "disconnected");
+    }
+    showToast(`"${feed.account_name}" reactivated. Hit Sync to pull new transactions.`, "success");
     fetchAll();
   }
 
@@ -1402,10 +1419,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       const isSelected = selectedFeed === feed.id;
       const isMenuOpen = feedMenuOpen === feed.id;
       const isUnmapped = !feed.gl_account_id;
+      const isInactive = feed.status === "inactive";
       return (
       <div key={feed.id} className="relative shrink-0">
       <button onClick={() => { setSelectedFeed(isSelected ? "all" : feed.id); setFeedMenuOpen(null); }}
-        className={`rounded-xl border-2 p-3 min-w-48 text-left transition-all w-full ${isUnmapped ? "border-warn-300 bg-warn-50/30" : isSelected ? "border-brand-600 bg-brand-50" : "border-neutral-200 bg-white hover:border-neutral-300"}`}>
+        className={`rounded-xl border-2 p-3 min-w-48 text-left transition-all w-full ${isInactive ? "border-neutral-200 bg-neutral-50 opacity-60" : isUnmapped ? "border-warn-300 bg-warn-50/30" : isSelected ? "border-brand-600 bg-brand-50" : "border-neutral-200 bg-white hover:border-neutral-300"}`}>
         <div className="flex items-start justify-between">
           <div className="text-xs text-neutral-400 truncate">{feed.institution_name || feed.account_type}</div>
           <span onClick={e => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setFeedMenuPos({ top: r.bottom + 4, left: r.right - 160 }); setFeedMenuOpen(isMenuOpen ? null : feed.id); }}
@@ -1415,7 +1433,8 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
         </div>
         <div className="font-semibold text-neutral-800 truncate">{feed.account_name}</div>
         {feed.masked_number && <div className="text-xs text-neutral-400">••••{feed.masked_number}</div>}
-        {isUnmapped && <div className="text-xs text-warn-600 mt-1 font-medium">Not mapped to GL</div>}
+        {isInactive && <div className="text-xs text-neutral-500 mt-1 font-medium">Disconnected · won't sync</div>}
+        {!isInactive && isUnmapped && <div className="text-xs text-warn-600 mt-1 font-medium">Not mapped to GL</div>}
         <div className="flex justify-between mt-2">
           <span className={`text-xs px-1.5 py-0.5 rounded ${feed.connection_type === "teller" ? "bg-info-100 text-info-700" : feed.connection_type === "plaid" ? "bg-info-100 text-info-700" : "bg-neutral-100 text-neutral-500"}`}>{feed.connection_type === "teller" ? "Teller" : feed.connection_type === "plaid" ? "Plaid" : "CSV"}</span>
           {feed.last_synced_at && <span className="text-xs text-neutral-400">{new Date(feed.last_synced_at).toLocaleDateString()}</span>}
@@ -1429,10 +1448,17 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
             className="w-full text-left px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-2">
             <span className="material-icons-outlined text-sm">link</span>Change GL Mapping
           </button>
+          {feed.status === "inactive" ? (
+          <button onClick={() => { reactivateFeed(feed.id); setFeedMenuOpen(null); }}
+            className="w-full text-left px-3 py-2 text-sm text-positive-600 hover:bg-positive-50 flex items-center gap-2">
+            <span className="material-icons-outlined text-sm">link</span>Reactivate
+          </button>
+          ) : (
           <button onClick={() => { disconnectFeed(feed.id); setFeedMenuOpen(null); }}
             className="w-full text-left px-3 py-2 text-sm text-danger-600 hover:bg-danger-50 flex items-center gap-2">
             <span className="material-icons-outlined text-sm">link_off</span>Disconnect
           </button>
+          )}
         </div>
       </>}
       </div>
