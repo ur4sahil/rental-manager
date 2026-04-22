@@ -280,6 +280,13 @@ function AppInner() {
   // Unread inbound messages (sender_role='tenant', read_at IS NULL) for
   // the sidebar badge on the Messages nav item. Polled every 30s.
   const [unreadMessages, setUnreadMessages] = useState(0);
+  // Count shown on the sidebar "Tasks & Approvals" nav item. Kept
+  // approximate — adds pending counts across the three approval
+  // tables plus in-progress/completed wizards (treated as 1 each
+  // even though each can fan out to many individual skip tasks).
+  // Refresh on focus + every 30s so the badge stays close to live
+  // without hammering the DB.
+  const [pendingTasksCount, setPendingTasksCount] = useState(0);
   const [toasts, setToasts] = useState([]);
   const [confirmConfig, setConfirmConfig] = useState(null);
   const confirmResolveRef = useRef(null);
@@ -798,6 +805,36 @@ function AppInner() {
   return () => { cancelled = true; clearInterval(id); window.removeEventListener("focus", onFocus); };
   }, [activeCompany?.id, userRole, page]);
 
+  // Pending Tasks & Approvals badge. Polls three approval tables +
+  // the wizard table. Tenant users don't see this nav item so skip
+  // the work for them.
+  useEffect(() => {
+    if (!activeCompany?.id) { setPendingTasksCount(0); return; }
+    if (userRole === "tenant") { setPendingTasksCount(0); return; }
+    let cancelled = false;
+    async function poll() {
+      const cid = activeCompany.id;
+      try {
+        const [propReq, docExc, memReq, wiz] = await Promise.all([
+          supabase.from("property_change_requests").select("id", { count: "exact", head: true }).eq("company_id", cid).eq("status", "pending"),
+          supabase.from("doc_exception_requests").select("id", { count: "exact", head: true }).eq("company_id", cid).eq("status", "pending"),
+          supabase.from("company_members").select("id", { count: "exact", head: true }).eq("company_id", cid).eq("status", "pending"),
+          // Wizards with missing applicable steps count as 1 per
+          // wizard here — the detailed per-step breakdown still
+          // shows up when the user opens the page.
+          supabase.from("property_setup_wizard").select("id", { count: "exact", head: true }).eq("company_id", cid).in("status", ["in_progress", "completed"]),
+        ]);
+        const total = (propReq.count || 0) + (docExc.count || 0) + (memReq.count || 0) + (wiz.count || 0);
+        if (!cancelled) setPendingTasksCount(total);
+      } catch (_e) { /* silent — next poll retries */ }
+    }
+    poll();
+    const id = setInterval(poll, 30000);
+    const onFocus = () => poll();
+    window.addEventListener("focus", onFocus);
+    return () => { cancelled = true; clearInterval(id); window.removeEventListener("focus", onFocus); };
+  }, [activeCompany?.id, userRole, page]);
+
   if (screen === "loading") return <><div className="flex items-center justify-center h-screen bg-brand-50/30"><Spinner /></div><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
   if (screen === "landing") return <><LandingPage onGetStarted={(mode) => { setLoginMode(mode); setScreen("login"); }} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
   if (screen === "login") return <><LoginPage onLogin={() => {}} onBack={() => setScreen("landing")} initialMode={loginMode} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
@@ -861,6 +898,9 @@ function AppInner() {
   <span className="material-icons-outlined text-lg">{n.icon}</span><span className="flex-1">{n.label}</span>
   {n.id === "messages" && unreadMessages > 0 && (
   <span className="bg-danger-500 text-white rounded-full text-[10px] font-bold px-1.5 py-0.5 min-w-[18px] text-center">{unreadMessages > 9 ? "9+" : unreadMessages}</span>
+  )}
+  {n.id === "tasks" && pendingTasksCount > 0 && (
+  <span className="bg-warn-500 text-white rounded-full text-[10px] font-bold px-1.5 py-0.5 min-w-[18px] text-center">{pendingTasksCount > 99 ? "99+" : pendingTasksCount}</span>
   )}
   </button>
   {n.children && <button onClick={(e) => { e.stopPropagation(); setExpandedNav(s => { const next = new Set(s); if (next.has(n.id)) next.delete(n.id); else next.add(n.id); return next; }); }}

@@ -864,11 +864,12 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
       });
     }
   }
-  } catch (e) { pmError("PM-8006", { raw: e, context: "tasks fetch", silent: true }); }
   // Cache open doc_exception requests keyed on address + doc_type so
   // the TasksList can badge "Exception pending review" on the right
-  // step without refetching per row.
+  // step without refetching per row. Must live inside the try block
+  // — `docExceptions` is const-scoped to the await destructuring.
   setOpenExceptions((docExceptions.data || []).filter(r => r.tenant_name?.startsWith("Setup:")));
+  } catch (e) { pmError("PM-8006", { raw: e, context: "tasks fetch", silent: true }); }
   setApprovals(allApprovals);
   setTasks(allTasks);
   setLoading(false);
