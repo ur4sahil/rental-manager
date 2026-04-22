@@ -164,13 +164,21 @@ module.exports = async function handler(req, res) {
     .maybeSingle();
   if (!membership) return res.status(403).json({ error: "Not a member of this company" });
 
-  // Credential actions are restricted to admin/owner/pm. Without this
+  // Credential actions are restricted to roles that legitimately
+  // touch account credentials as part of their job. Without this
   // check a company member with role=tenant could POST to /api/encrypt
-  // with action=decrypt and recover any credential stored for the
-  // company — utility passwords, HOA logins, Teller access tokens. The
-  // UI never shows credentials to tenants, but the API enforced no
-  // role gate, so the guard has to live here.
-  const CRED_ROLES = new Set(["admin", "owner", "pm"]);
+  // with action=decrypt and recover any stored credential.
+  //
+  //   admin / owner / pm       — full control, obvious yes.
+  //   manager                  — admin delegate; wizard Utility step
+  //                              requires write access.
+  //   office_assistant         — runs day-to-day property setup
+  //                              including utility accounts; blocking
+  //                              them here turns the wizard into an
+  //                              admin-only workflow, which it isn't.
+  //
+  //   maintenance / tenant     — never need this; kept out.
+  const CRED_ROLES = new Set(["admin", "owner", "pm", "manager", "office_assistant"]);
   if (!CRED_ROLES.has(membership.role)) {
     return res.status(403).json({ error: "Insufficient role for credential operations" });
   }

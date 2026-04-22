@@ -137,7 +137,7 @@ function LicenseFormModal({ license, propertyId, propertyAddress, companyId, use
   );
 }
 
-function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, userRole, onComplete, onDismiss }) {
+function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, userProfile, userRole, onComplete, onDismiss }) {
   // wizardData: { propertyId, address, isOccupied, tenant, rent, leaseStart, leaseEnd, securityDeposit }
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
@@ -239,9 +239,23 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
     async function initWizard() {
       try {
         const addr = savedAddress || wizardData.address || "NEW";
-        // Check for existing wizard (in_progress first, then completed for edit mode)
-        const { data: existing } = await supabase.from("property_setup_wizard").select("*")
+        // Resume path: prefer in_progress; fall back to dismissed so a
+        // user who closed the wizard mid-flow can pick up exactly
+        // where they left off. Previously dismissed rows were orphaned
+        // and re-opening the wizard silently created a fresh row, so
+        // Steps 1-2 looked like they'd been wiped even though the
+        // rows (and wizard_data JSON) were still in the DB.
+        let { data: existing } = await supabase.from("property_setup_wizard").select("*")
           .eq("company_id", companyId).eq("property_address", addr).eq("status", "in_progress").maybeSingle();
+        if (!existing) {
+          const { data: dismissedRow } = await supabase.from("property_setup_wizard").select("*")
+            .eq("company_id", companyId).eq("property_address", addr).eq("status", "dismissed")
+            .order("updated_at", { ascending: false }).limit(1).maybeSingle();
+          if (dismissedRow) {
+            await supabase.from("property_setup_wizard").update({ status: "in_progress" }).eq("id", dismissedRow.id).eq("company_id", companyId);
+            existing = dismissedRow;
+          }
+        }
         if (existing) {
           setWizardId(existing.id);
           const savedStep = existing.current_step || 1;
@@ -870,6 +884,25 @@ function PropertySetupWizard({ wizardData, companyId, showToast, userProfile, us
   }
 
   async function handleDismiss() {
+    // Be honest about what "close" means. Each step's Save button
+    // writes to live tables (property, tenant, lease, utilities, …)
+    // as the user progresses — dismissing mid-flow leaves those rows
+    // in place and marks the wizard row `dismissed` so the resume
+    // path can pick it back up. Warn when anything beyond Step 1 was
+    // saved so the user isn't surprised by a half-configured property
+    // showing up in the main list.
+    const anySaved = completedSteps.size > 0 || !!savedPropertyId;
+    if (anySaved) {
+      const ok = await showConfirm({
+        message:
+          "You've entered data in " + Math.max(1, completedSteps.size) + " step(s). " +
+          "Saved entries (property, tenant, utilities, …) stay in the system and " +
+          "will be flagged 'Setup incomplete' until you finish. You can resume from the " +
+          "Properties list or from Tasks & Approvals.\n\nClose the wizard now?",
+        confirmText: "Close and finish later",
+      });
+      if (!ok) return;
+    }
     await persistStatus("dismissed");
     onDismiss();
   }
@@ -3568,7 +3601,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   </div>
   </div>
   )}
-  {showPropertyWizard && <PropertySetupWizard wizardData={showPropertyWizard} companyId={companyId} showToast={showToast} userProfile={userProfile} userRole={userRole} onComplete={() => { setShowPropertyWizard(null); setPendingRecurringEntry(null); fetchProperties(); showToast("Property setup complete!", "success"); }} onDismiss={() => { setShowPropertyWizard(null); setPendingRecurringEntry(null); fetchProperties(); }} />}
+  {showPropertyWizard && <PropertySetupWizard wizardData={showPropertyWizard} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} userRole={userRole} onComplete={() => { setShowPropertyWizard(null); setPendingRecurringEntry(null); fetchProperties(); showToast("Property setup complete!", "success"); }} onDismiss={() => { setShowPropertyWizard(null); setPendingRecurringEntry(null); fetchProperties(); }} />}
   {pendingRecurringEntry && <RecurringEntryModal entry={pendingRecurringEntry} companyId={companyId} showToast={showToast} onComplete={() => setPendingRecurringEntry(null)} />}
   {showLicenseForm && <LicenseFormModal license={showLicenseForm.license} propertyId={showLicenseForm.propertyId} propertyAddress={showLicenseForm.propertyAddress} companyId={companyId} userProfile={userProfile} userRole={userRole} showToast={showToast} showConfirm={showConfirm} onClose={() => setShowLicenseForm(null)} onSaved={async () => { if (selectedProperty) { const { data } = await supabase.from("property_licenses").select("*").eq("company_id", companyId).eq("property_id", selectedProperty.id).is("archived_at", null).order("expiry_date", { ascending: true }); setPropertyLicenses(data || []); } }} />}
   </div>
