@@ -7,7 +7,7 @@ import { guardSubmit, guardRelease, _submitGuards } from "../utils/guards";
 import { encryptCredential } from "../utils/encryption";
 import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
-import { safeLedgerInsert, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, _classIdCache, _acctIdCache, _tenantArCache, lookupZip } from "../utils/accounting";
+import { safeLedgerInsert, autoPostJournalEntry, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _tenantArCache, lookupZip } from "../utils/accounting";
 import { generateBillsForProperty } from "../utils/taxes";
 import { Badge, Spinner, Modal, RecurringEntryModal, DocUploadModal, formatAllTenants } from "./shared";
 
@@ -860,7 +860,12 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           }
         }
       } catch (e) { pmError('PM-4002', { raw: e, context: 'post-commit first-month rent JE', silent: true }); }
-      try { await autoPostRentCharges(companyId); } catch (e) { pmError('PM-4002', { raw: e, context: 'auto-post rent charges', silent: true }); }
+      // autoPostRentCharges is a no-op stub. The real catch-up worker
+      // is autoPostRecurringEntries — it walks each active recurring
+      // entry from last_posted_date forward and posts every missed
+      // period up to today (honouring next_post_date as the PM's
+      // chosen start-date floor).
+      try { await autoPostRecurringEntries(companyId); } catch (e) { pmError('PM-4002', { raw: e, context: 'auto-post recurring entries', silent: true }); }
     }
 
     // Re-stamp any docs we uploaded during this wizard to the final

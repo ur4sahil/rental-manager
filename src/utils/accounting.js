@@ -455,9 +455,17 @@ export async function autoPostRecurringEntries(companyId) {
     : entry.frequency === "semi-annual" ? 6
     : entry.frequency === "annual" ? 12
     : 1;
-  // Calculate which months need posting (catch up missed periods)
+  // Calculate which months need posting (catch up missed periods).
+  // Cursor starts at the first un-posted period after last_posted_date,
+  // but never earlier than next_post_date — that's the PM's chosen
+  // "start charging from" anchor (set in the wizard's Recurring Rent
+  // step). Without this floor, a lease that started 6 months ago would
+  // auto-backfill 6 JEs even if the PM only wanted to start charging
+  // from next month.
   const lastPosted = entry.last_posted_date ? parseLocalDate(entry.last_posted_date) : null;
   let cursor = lastPosted ? new Date(lastPosted.getFullYear(), lastPosted.getMonth() + freqMonths, 1) : new Date(today.getFullYear(), today.getMonth(), 1);
+  const floorDate = entry.next_post_date ? parseLocalDate(entry.next_post_date) : null;
+  if (floorDate && cursor < floorDate) cursor = floorDate;
   const classId = entry.property ? await getPropertyClassId(entry.property, cid) : null;
   while (cursor <= today && posted < MAX) {
   const monthStr = formatLocalDate(cursor).slice(0, 7);
@@ -526,7 +534,12 @@ export async function autoPostRecurringEntries(companyId) {
   ]
   });
   if (jeId) {
-  await supabase.from("recurring_journal_entries").update({ last_posted_date: postDate, next_post_date: null }).eq("id", entry.id).eq("company_id", cid);
+  // Advance next_post_date to the next expected period instead of
+  // nulling it. The floor check above uses next_post_date to respect
+  // the PM's chosen anchor, so nulling would make the anchor
+  // forget itself on the first post and let subsequent runs drift.
+  const nextCursor = new Date(cursor.getFullYear(), cursor.getMonth() + freqMonths, 1);
+  await supabase.from("recurring_journal_entries").update({ last_posted_date: postDate, next_post_date: formatLocalDate(nextCursor) }).eq("id", entry.id).eq("company_id", cid);
   // Update tenant balance when the debit hits an AR account. Resolving by
   // account_id + type is reliable; the old check used a fuzzy
   // `.includes("ar")` on `debit_account_name`, which silently skipped
