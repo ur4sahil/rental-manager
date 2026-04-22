@@ -1120,11 +1120,22 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
           if (!await showConfirm({ message: `Waive "${label}" for ${selectedTenant.name}? Other required docs stay required.` })) return;
           const next = Array.from(new Set([...approvedList, label]));
           await supabase.from("tenants").update({ approved_doc_exceptions: next }).eq("company_id", companyId).eq("id", selectedTenant.id);
+          // If a pending request existed for this doc, mark it
+          // resolved and notify the staff member who submitted it.
+          if (pendingReq) {
+            await supabase.from("doc_exception_requests")
+              .update({ status: "approved", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() })
+              .eq("id", pendingReq.id);
+            if (pendingReq.requested_by) addNotification("✅", `Your doc exception for ${selectedTenant.name} (${label}) was approved.`, { recipient: pendingReq.requested_by, type: "doc_exception" });
+          }
+          // Notify the tenant too — they'll see "X doc was waived"
+          // next time they open their portal. Scoped via recipient.
+          if (selectedTenant?.email) addNotification("📄", `${label} requirement was waived on your account.`, { recipient: selectedTenant.email, type: "doc_exception" });
           logAudit("approve", "tenants", "Doc exception (" + label + ") approved for " + selectedTenant.name, selectedTenant.id, userProfile?.email, userRole, companyId);
           showToast(`"${label}" waived for ${selectedTenant.name}`, "success");
-          // Local update keeps the UI responsive without re-fetch.
           setSelectedTenant({ ...selectedTenant, approved_doc_exceptions: next });
           fetchTenants();
+          fetchDocExceptions();
         } finally { guardRelease("approveExcInline_" + label); }
       }}>Admin: Waive</TextLink>
     ) : (
@@ -1133,8 +1144,22 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
         try {
           if (!await showConfirm({ message: `Request an exception for "${label}" for ${selectedTenant.name}? A manager will review.` })) return;
           const { data: me } = await supabase.from("app_users").select("manager_email").eq("company_id", companyId).ilike("email", emailFilterValue(userProfile?.email || "")).maybeSingle();
-          await supabase.from("doc_exception_requests").insert([{ company_id: companyId, tenant_name: selectedTenant.name, property: selectedTenant.property, requested_by: userProfile?.email || "", approver_email: me?.manager_email || null, doc_type: label }]);
-          addNotification("📋", `Exception request sent for ${selectedTenant.name}: ${label}`);
+          // Resolve the reviewer: assigned manager_email if set,
+          // else first active admin. The notification lands in their
+          // inbox so they don't have to poll Tasks & Approvals to
+          // discover pending review work.
+          let reviewerEmail = me?.manager_email || null;
+          if (!reviewerEmail) {
+            const { data: adm } = await supabase.from("company_members")
+              .select("user_email").eq("company_id", companyId).eq("role", "admin").eq("status", "active")
+              .limit(1).maybeSingle();
+            reviewerEmail = adm?.user_email || null;
+          }
+          await supabase.from("doc_exception_requests").insert([{ company_id: companyId, tenant_name: selectedTenant.name, property: selectedTenant.property, requested_by: userProfile?.email || "", approver_email: reviewerEmail, doc_type: label }]);
+          if (reviewerEmail) addNotification("📋", `${userProfile?.email || "Staff"} requested a doc exception for ${selectedTenant.name}: ${label}`, { recipient: reviewerEmail, type: "doc_exception" });
+          // Also drop a self-note so the requester sees the outbound
+          // request in their own Activity feed.
+          addNotification("📤", `Exception request sent for ${selectedTenant.name}: ${label}`, { type: "doc_exception" });
           logAudit("request", "tenants", "Doc exception requested (" + label + ") for " + selectedTenant.name, selectedTenant.id, userProfile?.email, userRole, companyId);
           showToast("Request submitted", "success");
           fetchDocExceptions();
@@ -1301,15 +1326,30 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="flex gap-2">
   <Btn variant="success" size="sm" onClick={async () => {
   await supabase.from("doc_exception_requests").update({ status: "approved", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() }).eq("id", r.id);
-  await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", escapeFilterValue(r.tenant_name)).is("archived_at", null);
-  showToast("Exception approved for " + r.tenant_name, "success");
-  logAudit("approve", "tenants", "Document exception approved for " + r.tenant_name, "", userProfile?.email, userRole, companyId);
+  // Per-doc requests waive the specific doc; blanket requests
+  // (legacy rows with no doc_type) fall back to doc_status.
+  if (r.doc_type) {
+    const { data: tRow } = await supabase.from("tenants").select("id, approved_doc_exceptions, email").eq("company_id", companyId).ilike("name", escapeFilterValue(r.tenant_name)).is("archived_at", null).maybeSingle();
+    if (tRow) {
+      const existing = Array.isArray(tRow.approved_doc_exceptions) ? tRow.approved_doc_exceptions : [];
+      const next = Array.from(new Set([...existing, r.doc_type]));
+      await supabase.from("tenants").update({ approved_doc_exceptions: next }).eq("id", tRow.id);
+      if (tRow.email) addNotification("📄", `${r.doc_type} requirement was waived on your account.`, { recipient: tRow.email, type: "doc_exception" });
+    }
+  } else {
+    await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", escapeFilterValue(r.tenant_name)).is("archived_at", null);
+  }
+  // Notify the staff member who submitted this request.
+  if (r.requested_by) addNotification("✅", `Your doc exception for ${r.tenant_name}${r.doc_type ? ` (${r.doc_type})` : ""} was approved.`, { recipient: r.requested_by, type: "doc_exception" });
+  showToast("Exception approved for " + r.tenant_name + (r.doc_type ? ": " + r.doc_type : ""), "success");
+  logAudit("approve", "tenants", "Document exception approved for " + r.tenant_name + (r.doc_type ? " (" + r.doc_type + ")" : ""), r.id, userProfile?.email, userRole, companyId);
   fetchDocExceptions(); fetchTenants();
   }}>Approve</Btn>
   <Btn variant="danger" size="sm" onClick={async () => {
   await supabase.from("doc_exception_requests").update({ status: "rejected", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() }).eq("id", r.id);
+  if (r.requested_by) addNotification("❌", `Your doc exception for ${r.tenant_name}${r.doc_type ? ` (${r.doc_type})` : ""} was rejected.`, { recipient: r.requested_by, type: "doc_exception" });
   showToast("Exception rejected for " + r.tenant_name, "info");
-  logAudit("reject", "tenants", "Document exception rejected for " + r.tenant_name, "", userProfile?.email, userRole, companyId);
+  logAudit("reject", "tenants", "Document exception rejected for " + r.tenant_name + (r.doc_type ? " (" + r.doc_type + ")" : ""), r.id, userProfile?.email, userRole, companyId);
   fetchDocExceptions();
   }}>Reject</Btn>
   </div>

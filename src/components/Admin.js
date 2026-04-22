@@ -770,10 +770,29 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   async function handleApproval(item, action) {
   if (action === "approve") {
   if (item.type === "document") {
+  const docType = item.data.doc_type;
   await supabase.from("doc_exception_requests").update({ status: "approved", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() }).eq("id", item.data.id);
-  await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", escapeFilterValue(item.data.tenant_name)).is("archived_at", null);
-  showToast("Document exception approved for " + item.data.tenant_name, "success");
-  logAudit("approve", "tenants", "Document exception approved for " + item.data.tenant_name, "", userProfile?.email, userRole, companyId);
+  if (docType) {
+    // Per-doc waive: append to tenants.approved_doc_exceptions.
+    const { data: tRow } = await supabase.from("tenants").select("id, approved_doc_exceptions, email").eq("company_id", companyId).ilike("name", escapeFilterValue(item.data.tenant_name)).is("archived_at", null).maybeSingle();
+    if (tRow) {
+      const existing = Array.isArray(tRow.approved_doc_exceptions) ? tRow.approved_doc_exceptions : [];
+      const next = Array.from(new Set([...existing, docType]));
+      await supabase.from("tenants").update({ approved_doc_exceptions: next }).eq("id", tRow.id);
+    }
+  } else {
+    // Legacy blanket waive (request had no doc_type captured).
+    await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).ilike("name", escapeFilterValue(item.data.tenant_name)).is("archived_at", null);
+  }
+  showToast("Document exception approved for " + item.data.tenant_name + (docType ? ": " + docType : ""), "success");
+  logAudit("approve", "tenants", "Document exception approved for " + item.data.tenant_name + (docType ? " (" + docType + ")" : ""), item.data.id, userProfile?.email, userRole, companyId);
+  // Route a notification back to the staff member who submitted it.
+  // addNotification's `recipient` option scopes the inbox row so the
+  // requester sees it on their next load (loadInboxNotifications
+  // filters on recipient_email = current user).
+  if (item.data.requested_by && addNotification) {
+    addNotification("✅", `Your doc exception request for ${item.data.tenant_name}${docType ? ` (${docType})` : ""} was approved.`, { recipient: item.data.requested_by, type: "doc_exception" });
+  }
   } else if (item.type === "member") {
   try {
   const { error } = await supabase.rpc("approve_member_request", { p_member_id: item.data.id });
@@ -792,6 +811,10 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   if (item.type === "document") {
   await supabase.from("doc_exception_requests").update({ status: "rejected", reviewed_by: userProfile?.email, reviewed_at: new Date().toISOString() }).eq("id", item.data.id);
   showToast("Document exception rejected.", "info");
+  logAudit("reject", "tenants", "Document exception rejected for " + item.data.tenant_name + (item.data.doc_type ? " (" + item.data.doc_type + ")" : ""), item.data.id, userProfile?.email, userRole, companyId);
+  if (item.data.requested_by && addNotification) {
+    addNotification("❌", `Your doc exception request for ${item.data.tenant_name}${item.data.doc_type ? ` (${item.data.doc_type})` : ""} was rejected.`, { recipient: item.data.requested_by, type: "doc_exception" });
+  }
   } else if (item.type === "member") {
   await supabase.from("company_members").update({ status: "rejected" }).eq("id", item.data.id).eq("company_id", companyId);
   showToast("Rejected join request for " + item.data.user_email, "info");
