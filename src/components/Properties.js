@@ -201,7 +201,13 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     notes: "",
     setup_recurring: false,
   });
-  const [recurring, setRecurring] = useState({ frequency: "monthly", day_of_month: 1, amount: wizardData.rent || 0 });
+  // start_date: the first month the recurring rent JE should POST.
+  // Important for imported leases — a user migrating from a prior
+  // system whose lease started 9/1/2025 probably already accounted
+  // for every month through today and only wants the schedule to
+  // resume on the next upcoming cycle. Defaulting to "next month
+  // from today" is wrong there. Empty = use the default (next month).
+  const [recurring, setRecurring] = useState({ frequency: "monthly", day_of_month: 1, amount: wizardData.rent || 0, start_date: "" });
   const [uploadedDocs, setUploadedDocs] = useState([]);
   const [docUploadType, setDocUploadType] = useState("Lease");
   const [docDescription, setDocDescription] = useState("");
@@ -260,7 +266,18 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           setWizardId(existing.id);
           const savedStep = existing.current_step || 1;
           const savedCompleted = new Set(existing.completed_steps || []);
-          setStep(savedStep);
+          // If Tasks & Approvals asked us to jump to a specific step
+          // (by stepId like "hoa" / "insurance"), convert it to the
+          // numeric index within the computed `steps` array. Falls
+          // back to the saved current_step otherwise.
+          let openAt = savedStep;
+          const jumpId = wizardData?.startAtStep;
+          if (jumpId) {
+            const stepsForProp = [...getWizardApplicableSteps({ propertyStatus: (existing.wizard_data?.propForm?.status || propForm.status), userRole }), "review"];
+            const idx = stepsForProp.indexOf(jumpId);
+            if (idx >= 0) openAt = idx + 1;
+          }
+          setStep(openAt);
           setCompletedSteps(savedCompleted);
           setApprovedSkips(new Set(existing.skipped_approved_steps || []));
           if (existing.wizard_data) {
@@ -288,7 +305,16 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             // Reopen as in_progress
             await supabase.from("property_setup_wizard").update({ status: "in_progress" }).eq("id", completed.id).eq("company_id", companyId);
             setWizardId(completed.id);
-            setStep(completed.current_step || 1); // Preserve last step instead of restarting
+            // Honour Tasks & Approvals' startAtStep; else last step.
+            let openAt = completed.current_step || 1;
+            const jumpId = wizardData?.startAtStep;
+            if (jumpId) {
+              let wd = {}; try { wd = typeof completed.wizard_data === "string" ? JSON.parse(completed.wizard_data) : (completed.wizard_data || {}); } catch (_e) {}
+              const stepsForProp = [...getWizardApplicableSteps({ propertyStatus: (wd.propForm?.status || propForm.status), userRole }), "review"];
+              const idx = stepsForProp.indexOf(jumpId);
+              if (idx >= 0) openAt = idx + 1;
+            }
+            setStep(openAt);
             setCompletedSteps(new Set(completed.completed_steps || []));
             setApprovedSkips(new Set(completed.skipped_approved_steps || []));
             if (completed.wizard_data) {
@@ -697,8 +723,20 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         const tenantArId = await getOrCreateTenantAR(companyId, tenantForm.tenant, tenantId);
         const revenueId = await resolveAccountId("4000", companyId);
         const now = new Date();
-        const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-        const { data: rec, error: recErr } = await supabase.from("recurring_journal_entries").insert([{ company_id: companyId, description: "Monthly rent — " + allTenants + " — " + compositeAddress.split(",")[0], frequency: recurring.frequency, day_of_month: recurring.day_of_month, amount: Number(recurring.amount), tenant_name: allTenants, tenant_id: tenantId, property: compositeAddress, debit_account_id: tenantArId, debit_account_name: "AR - " + allTenants, credit_account_id: revenueId, credit_account_name: "Rental Income", status: "active", next_post_date: formatLocalDate(nextMonth), created_by: userProfile?.email || "" }]).select("id").maybeSingle();
+        // First post date: user-chosen (for imported leases that need
+        // to start months in the past or the future) or next month if
+        // they left it blank. Day-of-month is clamped to 1-28 via the
+        // field validator so February is always valid.
+        const defaultNext = new Date(now.getFullYear(), now.getMonth() + 1, Math.min(28, Math.max(1, Number(recurring.day_of_month) || 1)));
+        const nextPostDate = recurring.start_date && /^\d{4}-\d{2}-\d{2}$/.test(recurring.start_date)
+          ? recurring.start_date
+          : formatLocalDate(defaultNext);
+        // NOTE: recurring_journal_entries.tenant_id is UUID but
+        // tenants.id is bigserial — inserting the bigint here throws
+        // "invalid input syntax for type uuid". Leave it null; the
+        // cron (autoPostRecurringEntries) matches by property +
+        // tenant_name, not tenant_id.
+        const { data: rec, error: recErr } = await supabase.from("recurring_journal_entries").insert([{ company_id: companyId, description: "Monthly rent — " + allTenants + " — " + compositeAddress.split(",")[0], frequency: recurring.frequency, day_of_month: recurring.day_of_month, amount: Number(recurring.amount), tenant_name: allTenants, property: compositeAddress, debit_account_id: tenantArId, debit_account_name: "AR - " + allTenants, credit_account_id: revenueId, credit_account_name: "Rental Income", status: "active", next_post_date: nextPostDate, created_by: userProfile?.email || "" }]).select("id").maybeSingle();
         if (recErr) throw new Error("Failed to save recurring rent: " + recErr.message);
         if (rec?.id) createdIds.recurringIds.push(rec.id);
       }
@@ -747,7 +785,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: compositeAddress, date: tenantForm.lease_start, description: `Prorated rent (${remainingDays}/${daysInMonth} days)`, amount: proratedAmount, type: "charge", balance: 0 });
                 { const { error: _balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: proratedAmount });
                   if (_balErr) pmError("PM-6002", { raw: _balErr, context: "prorated rent balance update", silent: true }); }
-                await supabase.from("recurring_journal_entries").update({ last_posted_date: tenantForm.lease_start }).eq("company_id", companyId).eq("tenant_id", tenantId).eq("status", "active").is("archived_at", null);
+                await supabase.from("recurring_journal_entries").update({ last_posted_date: tenantForm.lease_start }).eq("company_id", companyId).eq("property", compositeAddress).eq("tenant_name", tName).eq("status", "active").is("archived_at", null);
               }
             } else {
               const fullOk = await autoPostJournalEntry({ companyId, date: tenantForm.lease_start, description: `First month rent — ${tName} — ${compositeAddress.split(",")[0]}`, reference: rentRef, property: compositeAddress,
@@ -760,7 +798,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: tenantId, property: compositeAddress, date: tenantForm.lease_start, description: "First month rent", amount: monthlyRent, type: "charge", balance: 0 });
                 { const { error: _balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: monthlyRent });
                   if (_balErr) pmError("PM-6002", { raw: _balErr, context: "first month rent balance update", silent: true }); }
-                await supabase.from("recurring_journal_entries").update({ last_posted_date: tenantForm.lease_start }).eq("company_id", companyId).eq("tenant_id", tenantId).eq("status", "active").is("archived_at", null);
+                await supabase.from("recurring_journal_entries").update({ last_posted_date: tenantForm.lease_start }).eq("company_id", companyId).eq("property", compositeAddress).eq("tenant_name", tName).eq("status", "active").is("archived_at", null);
               }
             }
           } catch (e) { pmError("PM-4002", { raw: e, context: "first month rent posting in commitWizard", silent: true }); }
@@ -1492,6 +1530,13 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                   <label className="text-xs font-medium text-neutral-500 block mb-1">Day of Month</label>
                   <Input type="number" min="1" max="28" value={recurring.day_of_month} onChange={e => setRecurring({ ...recurring, day_of_month: Math.min(28, Math.max(1, Number(e.target.value))) })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-neutral-500 block mb-1">First post date <span className="text-neutral-400 font-normal">(optional — leave blank to start next month)</span></label>
+                <Input type="date" value={recurring.start_date || ""} onChange={e => setRecurring({ ...recurring, start_date: e.target.value })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                <p className="text-[11px] text-neutral-400 mt-1">
+                  Use this when you're migrating a lease that started in the past. The recurring charge will post (or back-post) on the date you pick; anything before it is assumed to have been handled in your prior system.
+                </p>
               </div>
               <div className="bg-neutral-50 rounded-xl p-3 text-xs text-neutral-500">
                 <div className="flex justify-between"><span>Debit</span><span className="font-medium">AR - {[tenantForm.tenant, tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4, tenantForm.tenant_5].filter(t => t?.trim()).join(" / ")}</span></div>
@@ -2609,6 +2654,11 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
       leaseEnd: prop.lease_end || "",
       securityDeposit: Number(prop.security_deposit) || 0,
       isEdit: true,
+      // Tasks & Approvals passes the specific step it wants to fix;
+      // the wizard jumps to that step on mount instead of starting
+      // at Step 1 or last-saved step, which used to force the user
+      // to click Next 6 times.
+      startAtStep: target.startAtStep || null,
     });
   }, [initialAction, properties]);
 

@@ -635,11 +635,142 @@ function ArchivePage({ addNotification, userProfile, userRole, companyId, showCo
 
 
 // ============ TASKS & APPROVALS PAGE ============
+// ─── TasksList ─────────────────────────────────────────────────────
+//
+// Renders the Pending Tasks section. Previously a flat list of
+// "Setup: X — Address" rows — nine rows per half-configured property
+// — which made the page a wall of text on mobile. Now each property
+// with wizard-skip tasks collapses into a single card that rolls
+// down to reveal the per-step actions. Non-wizard tasks (balance
+// due, lease expiring, HOA due, …) stay as flat rows below.
+//
+// Per-step actions on the expanded card:
+//   • Open Setup — jumps the wizard directly to that step (startAtStep)
+//   • Admin: Mark Complete — same as before (admin/owner/manager)
+//   • Request Exception — staff without approve rights file a routed
+//     doc_exception_request; the step is badged "Exception pending"
+function TasksList({ tasks, userRole, userProfile, companyId, setPage, approveWizardSkip, showConfirm, showToast, addNotification, onRefresh, openExceptions }) {
+  const [expanded, setExpanded] = React.useState({});
+  const canApprove = userRole === "admin" || userRole === "owner" || userRole === "manager";
+  const wizardTasks = tasks.filter(t => t._kind === "wizard_skip");
+  const otherTasks = tasks.filter(t => t._kind !== "wizard_skip");
+
+  // Group wizard-skip rows by property address.
+  const byProp = new Map();
+  for (const t of wizardTasks) {
+    const key = t.address || "Unknown";
+    if (!byProp.has(key)) byProp.set(key, { address: key, propertyId: t.propertyId, rows: [], highCount: 0 });
+    const bucket = byProp.get(key);
+    bucket.rows.push(t);
+    if (t.priority === "high") bucket.highCount++;
+  }
+
+  async function requestException(t) {
+    if (!await showConfirm({ message: `Request a waiver on "${t.wizardStepLabel}" for ${(t.address || "").split(",")[0]}? Your assigned manager will review.` })) return;
+    try {
+      const { data: me } = await supabase.from("app_users").select("manager_email").eq("company_id", companyId).ilike("email", (userProfile?.email || "").toLowerCase()).maybeSingle();
+      let approver = me?.manager_email || null;
+      if (!approver) {
+        const { data: adm } = await supabase.from("company_members").select("user_email").eq("company_id", companyId).eq("role", "admin").eq("status", "active").limit(1).maybeSingle();
+        approver = adm?.user_email || null;
+      }
+      await supabase.from("doc_exception_requests").insert([{
+        company_id: companyId,
+        tenant_name: "Setup: " + t.address,
+        property: t.address,
+        doc_type: t.wizardStepLabel,
+        requested_by: userProfile?.email || "",
+        approver_email: approver,
+      }]);
+      if (approver) addNotification("📋", `${userProfile?.email || "Staff"} requested a setup waiver for ${t.wizardStepLabel} — ${(t.address || "").split(",")[0]}`, { recipient: approver, type: "wizard_skip_request" });
+      addNotification("📤", `Setup waiver requested: ${t.wizardStepLabel} — ${(t.address || "").split(",")[0]}`);
+      logAudit("request", "properties", "Setup waiver requested (" + t.wizardStepLabel + ") for " + t.address, "", userProfile?.email, userRole, companyId);
+      showToast("Exception request submitted", "success");
+      onRefresh();
+    } catch (e) { showToast("Failed to submit: " + (e.message || e), "error"); }
+  }
+
+  function hasPendingException(t) {
+    return openExceptions.some(r =>
+      r.property === t.address &&
+      (r.doc_type === t.wizardStepLabel || r.doc_type === t.wizardStep)
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* One card per property with pending setup steps */}
+      {Array.from(byProp.values()).map(group => {
+        const isOpen = !!expanded[group.address];
+        const shortAddr = (group.address || "").split(",")[0];
+        return (
+          <div key={group.address} className="bg-white rounded-xl border border-brand-50 overflow-hidden">
+            <button onClick={() => setExpanded(prev => ({ ...prev, [group.address]: !isOpen }))} className="w-full px-4 py-3 flex items-center gap-3 hover:bg-brand-50/30 transition-colors text-left">
+              <span className="text-xl">🏠</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-neutral-800 truncate">{shortAddr}</div>
+                <div className="text-xs text-neutral-400 truncate">{group.address}</div>
+              </div>
+              <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-warn-100 text-warn-700">{group.rows.length} pending</span>
+              {group.highCount > 0 && <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-danger-100 text-danger-600">{group.highCount} high</span>}
+              <span className="material-icons-outlined text-neutral-400 text-sm">{isOpen ? "expand_less" : "expand_more"}</span>
+            </button>
+            {isOpen && (
+              <div className="border-t border-brand-50 bg-brand-50/10 px-3 py-2 space-y-1.5">
+                {group.rows.map((t, i) => {
+                  const pending = hasPendingException(t);
+                  return (
+                    <div key={i} className="bg-white rounded-lg border border-brand-50 px-3 py-2 flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-neutral-700 truncate">{t.wizardStepLabel}</div>
+                        {pending && <div className="text-[10px] text-warn-700 mt-0.5 font-semibold uppercase tracking-wide">Exception pending review</div>}
+                      </div>
+                      <span className={"text-[10px] px-2 py-0.5 rounded-full font-bold " + (t.priority === "high" ? "bg-danger-100 text-danger-600" : "bg-warn-100 text-warn-700")}>{t.priority}</span>
+                      <Btn variant="primary" size="xs" onClick={() => setPage("properties", { openWizardFor: { propertyId: t.propertyId, address: t.address, startAtStep: t.wizardStep } })}>Open</Btn>
+                      {canApprove ? (
+                        <Btn variant="success-fill" size="xs" onClick={() => approveWizardSkip(t)}>Mark Done</Btn>
+                      ) : (
+                        !pending && <Btn variant="ghost" size="xs" onClick={() => requestException(t)}>Request</Btn>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Remaining non-wizard tasks — flat rows */}
+      {otherTasks.length > 0 && (
+        <div className="space-y-2">
+          {otherTasks.map((t, i) => (
+            <div key={i} onClick={() => setPage(t.link, t.linkAction)} className="bg-white rounded-xl border border-brand-50 p-4 flex items-center gap-3 cursor-pointer hover:border-brand-200 hover:shadow-sm transition-all">
+              <span className="text-xl">{t.icon}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-neutral-800 truncate">{t.title}</div>
+                <div className="text-xs text-neutral-400">{t.subtitle}</div>
+              </div>
+              <span className={"text-xs px-2 py-0.5 rounded-full font-bold " + (t.priority === "high" ? "bg-danger-100 text-danger-600" : "bg-warn-100 text-warn-700")}>{t.priority}</span>
+              <span className="material-icons-outlined text-neutral-300 text-sm">arrow_forward</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userProfile, userRole, addNotification }) {
   const [loading, setLoading] = useState(true);
   const [approvals, setApprovals] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [activeTab, setActiveTab] = useState("all");
+  // Every pending doc_exception_request against any setup step.
+  // TasksList uses this to mark a wizard-skip task with "Exception
+  // pending review" when the current user has already filed one —
+  // prevents duplicate submissions and gives the user feedback.
+  const [openExceptions, setOpenExceptions] = useState([]);
 
   useEffect(() => { fetchAll(); }, [companyId]);
 
@@ -734,6 +865,10 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
     }
   }
   } catch (e) { pmError("PM-8006", { raw: e, context: "tasks fetch", silent: true }); }
+  // Cache open doc_exception requests keyed on address + doc_type so
+  // the TasksList can badge "Exception pending review" on the right
+  // step without refetching per row.
+  setOpenExceptions((docExceptions.data || []).filter(r => r.tenant_name?.startsWith("Setup:")));
   setApprovals(allApprovals);
   setTasks(allTasks);
   setLoading(false);
@@ -879,40 +1014,19 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   {showTasks && tasks.length > 0 && (
   <div className="mb-6">
   {activeTab === "all" && <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-wide mb-3">Pending Tasks</h3>}
-  <div className="space-y-2">
-  {tasks.map((t, i) => {
-  // Wizard-skip rows need two explicit actions (Open Setup +
-  // admin-only Mark Complete) rather than the generic
-  // click-the-whole-row-to-navigate pattern. Rendered with
-  // button-shaped actions so the click targets are unambiguous.
-  if (t._kind === "wizard_skip") {
-  const canApprove = userRole === "admin" || userRole === "owner" || userRole === "manager";
-  return (
-  <div key={i} className="bg-white rounded-xl border border-brand-50 p-4 flex items-center gap-3 hover:border-brand-200 hover:shadow-sm transition-all">
-  <span className="text-xl">{t.icon}</span>
-  <div className="flex-1 min-w-0">
-  <div className="text-sm font-semibold text-neutral-800 truncate">{t.title}</div>
-  <div className="text-xs text-neutral-400 truncate">{t.subtitle}</div>
-  </div>
-  <span className={"text-xs px-2 py-0.5 rounded-full font-bold " + (t.priority === "high" ? "bg-danger-100 text-danger-600" : "bg-warn-100 text-warn-700")}>{t.priority}</span>
-  <Btn variant="primary" size="xs" onClick={() => setPage("properties", { openWizardFor: { propertyId: t.propertyId, address: t.address } })}>Open Setup</Btn>
-  {canApprove && <Btn variant="success-fill" size="xs" onClick={() => approveWizardSkip(t)}>Mark Complete</Btn>}
-  </div>
-  );
-  }
-  return (
-  <div key={i} onClick={() => setPage(t.link, t.linkAction)} className="bg-white rounded-xl border border-brand-50 p-4 flex items-center gap-3 cursor-pointer hover:border-brand-200 hover:shadow-sm transition-all">
-  <span className="text-xl">{t.icon}</span>
-  <div className="flex-1 min-w-0">
-  <div className="text-sm font-semibold text-neutral-800 truncate">{t.title}</div>
-  <div className="text-xs text-neutral-400">{t.subtitle}</div>
-  </div>
-  <span className={"text-xs px-2 py-0.5 rounded-full font-bold " + (t.priority === "high" ? "bg-danger-100 text-danger-600" : "bg-warn-100 text-warn-700")}>{t.priority}</span>
-  <span className="material-icons-outlined text-neutral-300 text-sm">arrow_forward</span>
-  </div>
-  );
-  })}
-  </div>
+  <TasksList
+    tasks={tasks}
+    userRole={userRole}
+    userProfile={userProfile}
+    companyId={companyId}
+    setPage={setPage}
+    approveWizardSkip={approveWizardSkip}
+    showConfirm={showConfirm}
+    showToast={showToast}
+    addNotification={addNotification}
+    onRefresh={fetchAll}
+    openExceptions={openExceptions}
+  />
   </div>
   )}
 
