@@ -836,9 +836,13 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             if (proOk) {
               await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: resTenantId, property: compositeAddress, date: tenantForm.lease_start, description: 'Prorated rent (' + remainingDays + '/' + daysInMonth + ' days)', amount: proratedAmount, type: 'charge', balance: 0 });
               await supabase.rpc('update_tenant_balance', { p_tenant_id: resTenantId, p_amount_change: proratedAmount });
-              await supabase.from('recurring_journal_entries').update({ last_posted_date: tenantForm.lease_start })
-                .eq('company_id', companyId).eq('property', compositeAddress).eq('tenant_name', tName)
-                .eq('status', 'active').is('archived_at', null);
+              // Anchoring now lives in the RPC (next_post_date set to
+              // lease_start + freq). Writing last_posted_date here used
+              // to race with a concurrent autoPostRecurringEntries fired
+              // from App.js:563 — the premature call would advance
+              // last_posted_date to the current month, then this write
+              // reverted it, leaving next_post_date stranded and
+              // blocking catch-up for Feb/Mar on a past-dated lease.
             }
           } else {
             const fullOk = await autoPostJournalEntry({
@@ -853,9 +857,8 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             if (fullOk) {
               await safeLedgerInsert({ company_id: companyId, tenant: tName, tenant_id: resTenantId, property: compositeAddress, date: tenantForm.lease_start, description: 'First month rent', amount: monthlyRent, type: 'charge', balance: 0 });
               await supabase.rpc('update_tenant_balance', { p_tenant_id: resTenantId, p_amount_change: monthlyRent });
-              await supabase.from('recurring_journal_entries').update({ last_posted_date: tenantForm.lease_start })
-                .eq('company_id', companyId).eq('property', compositeAddress).eq('tenant_name', tName)
-                .eq('status', 'active').is('archived_at', null);
+              // See comment above in the prorated branch — last_posted_date
+              // is now owned entirely by autoPostRecurringEntries.
             }
           }
         }

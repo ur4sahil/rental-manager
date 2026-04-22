@@ -456,16 +456,36 @@ export async function autoPostRecurringEntries(companyId) {
     : entry.frequency === "annual" ? 12
     : 1;
   // Calculate which months need posting (catch up missed periods).
-  // Cursor starts at the first un-posted period after last_posted_date,
-  // but never earlier than next_post_date — that's the PM's chosen
-  // "start charging from" anchor (set in the wizard's Recurring Rent
-  // step). Without this floor, a lease that started 6 months ago would
-  // auto-backfill 6 JEs even if the PM only wanted to start charging
-  // from next month.
+  //
+  // Three cases:
+  //   - last_posted_date set      → cursor = last + freq. Use next_post_date
+  //                                 (if set) as a FORWARD floor so a PM's
+  //                                 explicit "start charging from" anchor
+  //                                 (future-dated) isn't undercut.
+  //   - last_posted_date NULL,    → cursor = next_post_date directly. This
+  //     next_post_date set          is the fresh-wizard case: the RPC seeds
+  //                                 next_post_date at lease_start + freq,
+  //                                 which is the correct first post date.
+  //                                 Falling back to "current month" here
+  //                                 used to race with the wizard's
+  //                                 post-commit: a premature call would
+  //                                 post only the current month and
+  //                                 advance next_post_date forward,
+  //                                 blocking the wizard's own catch-up
+  //                                 from hitting Feb/Mar.
+  //   - both NULL                 → cursor = current month (last-resort
+  //                                 fallback for legacy rows).
   const lastPosted = entry.last_posted_date ? parseLocalDate(entry.last_posted_date) : null;
-  let cursor = lastPosted ? new Date(lastPosted.getFullYear(), lastPosted.getMonth() + freqMonths, 1) : new Date(today.getFullYear(), today.getMonth(), 1);
-  const floorDate = entry.next_post_date ? parseLocalDate(entry.next_post_date) : null;
-  if (floorDate && cursor < floorDate) cursor = floorDate;
+  let cursor;
+  if (lastPosted) {
+    cursor = new Date(lastPosted.getFullYear(), lastPosted.getMonth() + freqMonths, 1);
+    const floorDate = entry.next_post_date ? parseLocalDate(entry.next_post_date) : null;
+    if (floorDate && cursor < floorDate) cursor = floorDate;
+  } else if (entry.next_post_date) {
+    cursor = parseLocalDate(entry.next_post_date);
+  } else {
+    cursor = new Date(today.getFullYear(), today.getMonth(), 1);
+  }
   const classId = entry.property ? await getPropertyClassId(entry.property, cid) : null;
   while (cursor <= today && posted < MAX) {
   const monthStr = formatLocalDate(cursor).slice(0, 7);
