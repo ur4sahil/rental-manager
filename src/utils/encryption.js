@@ -18,15 +18,31 @@ import { pmError } from "./errors";
 // on the first decrypt — the row is re-written with a fresh salt afterwards
 // by the save-enrollment path or the one-shot migration.
 
-async function callEncryptApi(body) {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
-  if (!token) throw new Error("No active session");
-  const resp = await fetch("/api/encrypt", {
+async function fetchEncrypt(token, body) {
+  return fetch("/api/encrypt", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
     body: JSON.stringify(body),
   });
+}
+
+async function callEncryptApi(body) {
+  let { data: { session } } = await supabase.auth.getSession();
+  let token = session?.access_token;
+  if (!token) throw new Error("No active session");
+  let resp = await fetchEncrypt(token, body);
+  // Long-running wizards (minutes between page load and Complete
+  // Setup) can outlast the access-token lifetime. On 401 "Invalid
+  // session" refresh the session once and retry — transparent
+  // recovery instead of a confusing save-failed toast. Any other
+  // non-ok response bubbles up as before.
+  if (resp.status === 401) {
+    try {
+      const { data: refreshed } = await supabase.auth.refreshSession();
+      token = refreshed?.session?.access_token;
+    } catch (_e) { /* fall through to error below */ }
+    if (token) resp = await fetchEncrypt(token, body);
+  }
   if (!resp.ok) {
     let msg = "encrypt API " + resp.status;
     try { msg = (await resp.json()).error || msg; } catch (_) {}
