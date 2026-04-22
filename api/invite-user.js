@@ -37,9 +37,16 @@ function emailFilterValue(email) {
 
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const VALID_ROLES = new Set(["admin", "owner", "pm", "office_assistant", "tenant"]);
-const TEAM_ISSUER_ROLES = new Set(["admin", "owner", "pm"]);
-const TENANT_ISSUER_ROLES = new Set(["admin", "owner", "pm", "office_assistant"]);
+// Keep in sync with ROLES in src/App.js and src/components/Admin.js —
+// any role the Admin form can assign must be invitable. Previously
+// this allowlist missed manager/accountant/maintenance, so Team &
+// Roles would save the user row but the follow-up invite 400'd.
+const VALID_ROLES = new Set(["admin", "owner", "pm", "manager", "office_assistant", "accountant", "maintenance", "tenant"]);
+// Managers sit below admin/owner in the approval chain — they can
+// issue team invites too. Accountant/maintenance are specialized and
+// shouldn't be adding team members.
+const TEAM_ISSUER_ROLES = new Set(["admin", "owner", "pm", "manager"]);
+const TENANT_ISSUER_ROLES = new Set(["admin", "owner", "pm", "manager", "office_assistant"]);
 const MAX_EMAIL_LEN = 254;
 const MAX_NAME_LEN = 128;
 const MAX_COMPANYID_LEN = 128;
