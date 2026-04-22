@@ -1031,7 +1031,12 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   const openView = (je) => setModal({ mode: "view", je });
 
   const openDuplicate = (je) => {
-  setForm({ date: acctToday(), description: je.description || "", reference: je.reference || "", property: je.property || "", lines: (je.lines || []).map(l => ({ account_id: l.account_id, account_name: l.account_name, debit: l.debit || "", credit: l.credit || "", class_id: l.class_id || "", memo: l.memo || "", entity_type: l.entity_type || "", entity_id: l.entity_id || "", entity_name: l.entity_name || "" })) });
+  // Clear reference on duplicate. idx_je_company_reference_unique is a
+  // partial index on (company_id, reference) WHERE reference != '' —
+  // copying the source reference verbatim always collides. The user
+  // can type a fresh reference before saving; empty "" bypasses the
+  // uniqueness check entirely.
+  setForm({ date: acctToday(), description: je.description || "", reference: "", property: je.property || "", lines: (je.lines || []).map(l => ({ account_id: l.account_id, account_name: l.account_name, debit: l.debit || "", credit: l.credit || "", class_id: l.class_id || "", memo: l.memo || "", entity_type: l.entity_type || "", entity_id: l.entity_id || "", entity_name: l.entity_name || "" })) });
   setModal("add");
   };
 
