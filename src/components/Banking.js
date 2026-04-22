@@ -75,6 +75,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   const [selectedFeed, setSelectedFeed] = useState("all");
   const [feedMenuOpen, setFeedMenuOpen] = useState(null);
   const [feedMenuPos, setFeedMenuPos] = useState({ top: 0, left: 0 });
+  // GL-mapping modal (replaces the raw window.prompt that used to
+  // ask the user to type an opaque UUID). Holds the feed we're
+  // mapping and the id currently chosen in the AccountPicker.
+  const [glMapModal, setGlMapModal] = useState(null); // { feedId, feedName } | null
+  const [glMapValue, setGlMapValue] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -1403,7 +1408,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       {isMenuOpen && <>
         <div className="fixed inset-0 z-30" onClick={() => setFeedMenuOpen(null)} />
         <div className="fixed z-40 bg-white border border-neutral-200 rounded-xl shadow-lg py-1 min-w-40" style={{ top: feedMenuPos.top, left: Math.max(8, feedMenuPos.left) }}>
-          <button onClick={() => { const glId = prompt("Enter GL Account ID to map (or use Chart of Accounts)"); if (glId) updateFeedMapping(feed.id, glId); setFeedMenuOpen(null); }}
+          <button onClick={() => { setGlMapModal({ feedId: feed.id, feedName: feed.account_name || "Bank Account" }); setGlMapValue(feed.gl_account_id || ""); setFeedMenuOpen(null); }}
             className="w-full text-left px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-2">
             <span className="material-icons-outlined text-sm">link</span>Change GL Mapping
           </button>
@@ -2253,6 +2258,36 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   </div>
     );
   })()}
+
+  {/* Change GL Mapping modal — replaces the native prompt() that used */}
+  {/* to ask for a raw UUID. Uses AccountPicker so the user searches by */}
+  {/* account name/code like everywhere else in the app. */}
+  {glMapModal && (
+  <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+      <div className="flex items-center gap-3 mb-1">
+        <span className="text-2xl">🔗</span>
+        <h3 className="text-lg font-bold text-neutral-800">Map to GL Account</h3>
+      </div>
+      <p className="text-sm text-neutral-500 mb-4">{glMapModal.feedName}</p>
+      <label className="text-xs text-neutral-500 block mb-1">GL Account</label>
+      <AccountPicker
+        value={glMapValue}
+        onChange={v => setGlMapValue(v)}
+        accounts={accounts}
+        accountTypes={ACCOUNT_TYPES}
+        placeholder="Select GL account..."
+      />
+      <div className="flex gap-3 pt-4 mt-4 border-t border-neutral-200">
+        <Btn disabled={!glMapValue} onClick={async () => {
+          await updateFeedMapping(glMapModal.feedId, glMapValue);
+          setGlMapModal(null); setGlMapValue("");
+        }}>Save Mapping</Btn>
+        <Btn variant="ghost" onClick={() => { setGlMapModal(null); setGlMapValue(""); }}>Cancel</Btn>
+      </div>
+    </div>
+  </div>
+  )}
 
   </div>
   );
