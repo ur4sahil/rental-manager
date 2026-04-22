@@ -562,10 +562,17 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   // first-month rent/deposit JEs → auto-post rent charges cron kick.
   async function commitWizard() {
     if (!companyId) throw new Error("No company selected");
+    // Edit mode = this wizard already produced a property row once.
+    // Every section switches from INSERT to "match-then-update" so we
+    // don't duplicate rows. In first-commit mode (fresh wizard) every
+    // section INSERTs and tracks the id for rollback on failure.
+    const isEditMode = !!savedPropertyId;
     const createdIds = { propertyId: null, classId: null, tenantId: null, leaseId: null, utilityIds: [], hoaIds: [], loanId: null, insuranceId: null, taxesId: null, recurringIds: [] };
     async function rollback() {
-      // Best-effort cleanup; swallow errors individually so a failed
-      // rollback doesn't mask the original commit error.
+      // Only valid on a failed FIRST commit — in edit mode we've
+      // updated existing rows in place and don't have clean diffs to
+      // revert. The caller surfaces the error instead.
+      if (isEditMode) return;
       const del = async (table, id) => { if (!id) return; try { await supabase.from(table).delete().eq("id", id).eq("company_id", companyId); } catch (_e) {} };
       for (const id of createdIds.recurringIds.reverse()) await del("recurring_journal_entries", id);
       await del("property_taxes", createdIds.taxesId);
@@ -608,22 +615,60 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
       let tenantId = null;
       const isOccupied = propForm.status === "occupied" && tenantForm.tenant.trim();
       if (isOccupied) {
-        const { data: newT, error: tErr } = await supabase.from("tenants").insert([{ company_id: companyId, name: tenantForm.tenant.trim(), first_name: tenantForm.tenant_first.trim(), middle_initial: tenantForm.tenant_mi.trim(), last_name: tenantForm.tenant_last.trim(), email: tenantForm.tenant_email.toLowerCase(), phone: tenantForm.tenant_phone, property: compositeAddress, rent: Number(tenantForm.rent), late_fee_amount: safeNum(tenantForm.late_fee_amount) || null, late_fee_type: tenantForm.late_fee_type || "flat", lease_status: "active", lease_start: tenantForm.lease_start, lease_end_date: tenantForm.lease_end, move_in: tenantForm.lease_start, balance: 0, is_voucher: tenantForm.is_voucher || false, voucher_number: tenantForm.voucher_number || null, reexam_date: tenantForm.reexam_date || null, case_manager_name: tenantForm.case_manager_name || null, case_manager_email: tenantForm.case_manager_email || null, case_manager_phone: tenantForm.case_manager_phone || null, voucher_portion: safeNum(tenantForm.voucher_portion) || null, tenant_portion: safeNum(tenantForm.tenant_portion) || null }]).select("id").maybeSingle();
-        if (tErr) throw new Error("Failed to create tenant: " + tErr.message);
-        tenantId = newT?.id;
-        createdIds.tenantId = tenantId;
+        const tenantPayload = { company_id: companyId, name: tenantForm.tenant.trim(), first_name: tenantForm.tenant_first.trim(), middle_initial: tenantForm.tenant_mi.trim(), last_name: tenantForm.tenant_last.trim(), email: tenantForm.tenant_email.toLowerCase(), phone: tenantForm.tenant_phone, property: compositeAddress, rent: Number(tenantForm.rent), late_fee_amount: safeNum(tenantForm.late_fee_amount) || null, late_fee_type: tenantForm.late_fee_type || "flat", lease_status: "active", lease_start: tenantForm.lease_start, lease_end_date: tenantForm.lease_end, move_in: tenantForm.lease_start, is_voucher: tenantForm.is_voucher || false, voucher_number: tenantForm.voucher_number || null, reexam_date: tenantForm.reexam_date || null, case_manager_name: tenantForm.case_manager_name || null, case_manager_email: tenantForm.case_manager_email || null, case_manager_phone: tenantForm.case_manager_phone || null, voucher_portion: safeNum(tenantForm.voucher_portion) || null, tenant_portion: safeNum(tenantForm.tenant_portion) || null };
+        // Upsert by (company_id, property, email). If a matching
+        // tenant row exists we UPDATE it; otherwise INSERT. Preserves
+        // balance, tenant_id FKs, and anything else downstream data
+        // relies on across an edit. Falls back to (company_id,
+        // property, active) to catch rename-only cases.
+        let existingT = null;
+        if (tenantForm.tenant_email) {
+          const { data: byEmail } = await supabase.from("tenants").select("id").eq("company_id", companyId).ilike("email", tenantForm.tenant_email.toLowerCase()).eq("property", compositeAddress).is("archived_at", null).maybeSingle();
+          existingT = byEmail;
+        }
+        if (!existingT) {
+          const { data: byProp } = await supabase.from("tenants").select("id").eq("company_id", companyId).eq("property", compositeAddress).eq("lease_status", "active").is("archived_at", null).maybeSingle();
+          existingT = byProp;
+        }
+        if (existingT) {
+          const { error: tUpErr } = await supabase.from("tenants").update(tenantPayload).eq("id", existingT.id).eq("company_id", companyId);
+          if (tUpErr) throw new Error("Failed to update tenant: " + tUpErr.message);
+          tenantId = existingT.id;
+        } else {
+          const { data: newT, error: tErr } = await supabase.from("tenants").insert([{ ...tenantPayload, balance: 0 }]).select("id").maybeSingle();
+          if (tErr) throw new Error("Failed to create tenant: " + tErr.message);
+          tenantId = newT?.id;
+          createdIds.tenantId = tenantId;
+        }
 
         // Mirror the multi-tenant metadata + lease dates + deposit onto the property row.
         await supabase.from("properties").update({ status: "occupied", tenant: tenantForm.tenant.trim(), tenant_2: tenantForm.tenant_2?.trim() || "", tenant_2_email: tenantForm.tenant_2_email?.trim() || "", tenant_2_phone: tenantForm.tenant_2_phone?.trim() || "", tenant_3: tenantForm.tenant_3?.trim() || "", tenant_3_email: tenantForm.tenant_3_email?.trim() || "", tenant_3_phone: tenantForm.tenant_3_phone?.trim() || "", tenant_4: tenantForm.tenant_4?.trim() || "", tenant_4_email: tenantForm.tenant_4_email?.trim() || "", tenant_4_phone: tenantForm.tenant_4_phone?.trim() || "", tenant_5: tenantForm.tenant_5?.trim() || "", tenant_5_email: tenantForm.tenant_5_email?.trim() || "", tenant_5_phone: tenantForm.tenant_5_phone?.trim() || "", rent: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, lease_start: tenantForm.lease_start, lease_end: tenantForm.lease_end }).eq("id", propertyId).eq("company_id", companyId);
 
         if (tenantForm.lease_start && tenantForm.lease_end) {
-          const { data: newLease, error: leaseErr } = await supabase.from("leases").insert([{ company_id: companyId, tenant_name: [tenantForm.tenant, tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4].filter(n => n?.trim()).join(" / "), tenant_id: tenantId, property: compositeAddress, start_date: tenantForm.lease_start, end_date: tenantForm.lease_end, rent_amount: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, status: "active", payment_due_day: 1 }]).select("id").maybeSingle();
-          if (leaseErr) throw new Error("Failed to create lease: " + leaseErr.message);
-          createdIds.leaseId = newLease?.id || null;
+          const leasePayload = { company_id: companyId, tenant_name: [tenantForm.tenant, tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4].filter(n => n?.trim()).join(" / "), tenant_id: tenantId, property: compositeAddress, start_date: tenantForm.lease_start, end_date: tenantForm.lease_end, rent_amount: Number(tenantForm.rent), security_deposit: Number(tenantForm.security_deposit) || 0, status: "active", payment_due_day: 1 };
+          // Upsert active lease per (company_id, property). Multi-lease
+          // edits are rare and handled via the Leases module; the
+          // wizard owns exactly one active lease per address.
+          const { data: existLease } = await supabase.from("leases").select("id").eq("company_id", companyId).eq("property", compositeAddress).eq("status", "active").maybeSingle();
+          if (existLease) {
+            const { error: leaseUpErr } = await supabase.from("leases").update(leasePayload).eq("id", existLease.id).eq("company_id", companyId);
+            if (leaseUpErr) throw new Error("Failed to update lease: " + leaseUpErr.message);
+          } else {
+            const { data: newLease, error: leaseErr } = await supabase.from("leases").insert([leasePayload]).select("id").maybeSingle();
+            if (leaseErr) throw new Error("Failed to create lease: " + leaseErr.message);
+            createdIds.leaseId = newLease?.id || null;
+          }
         }
       }
 
-      // 4. UTILITIES (with per-row credential encryption)
+      // 4. UTILITIES — replace-all semantics in edit mode. Per-row
+      // upsert-by-provider would leak stale rows the user deleted
+      // from the wizard; archiving-then-inserting is simpler and
+      // preserves history (rows get archived_at set, not hard-
+      // deleted). Fresh commits just INSERT.
+      if (isEditMode) {
+        await supabase.from("utilities").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email || null }).eq("company_id", companyId).eq("property", compositeAddress).is("archived_at", null);
+      }
       for (const u of utilities.filter(x => x.provider.trim())) {
         const now = new Date();
         const day = Math.min(28, Math.max(1, Number(u.due_date) || 1));
@@ -640,10 +685,13 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         }
         const { data: inserted, error } = await supabase.from("utilities").insert([row]).select("id").maybeSingle();
         if (error) throw new Error("Failed to save utility " + u.provider + ": " + error.message);
-        if (inserted?.id) createdIds.utilityIds.push(inserted.id);
+        if (inserted?.id && !isEditMode) createdIds.utilityIds.push(inserted.id);
       }
 
-      // 5. HOA
+      // 5. HOA — same replace-all semantics as utilities.
+      if (isEditMode) {
+        await supabase.from("hoa_payments").update({ archived_at: new Date().toISOString(), archived_by: userProfile?.email || null }).eq("company_id", companyId).eq("property", compositeAddress).is("archived_at", null);
+      }
       for (const h of hoas.filter(x => x.hoa_name.trim())) {
         const now = new Date();
         const day = Math.min(28, Math.max(1, Number(h.due_date) || 1));
@@ -660,10 +708,14 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         }
         const { data: inserted, error } = await supabase.from("hoa_payments").insert([row]).select("id").maybeSingle();
         if (error) throw new Error("Failed to save HOA " + h.hoa_name + ": " + error.message);
-        if (inserted?.id) createdIds.hoaIds.push(inserted.id);
+        if (inserted?.id && !isEditMode) createdIds.hoaIds.push(inserted.id);
       }
 
-      // 6. LOAN (+ optional recurring JE for monthly payment)
+      // 6. LOAN — upsert by (company_id, property). One active row per
+      // property; re-saving overwrites it. Recurring-mortgage entry
+      // uses the same match-then-update pattern on
+      // recurring_journal_entries so editing doesn't create a
+      // duplicate schedule.
       if (loan.enabled) {
         const loanRow = { company_id: companyId, property: compositeAddress, property_id: String(propertyId || ""), lender_name: loan.lender_name.trim(), loan_type: loan.loan_type, original_amount: Number(loan.original_amount) || 0, current_balance: Number(loan.current_balance) || 0, interest_rate: Number(loan.interest_rate) || 0, monthly_payment: Number(loan.monthly_payment), escrow_included: loan.escrow_included, escrow_amount: loan.escrow_included ? (Number(loan.escrow_amount) || 0) : 0, escrow_covers: loan.escrow_included ? loan.escrow_covers : {}, loan_start_date: loan.loan_start_date || null, maturity_date: loan.maturity_date || null, account_number: loan.account_number.trim(), notes: loan.notes.trim(), status: "active", website: loan.website || "" };
         if (loan.username && loan.password) {
@@ -675,21 +727,33 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           loanRow.encryption_iv = resP.iv || resU.iv;
           loanRow.encryption_salt = resU.salt || resP.salt;
         }
-        const { data: newLoan, error: loanErr } = await supabase.from("property_loans").insert([loanRow]).select("id").maybeSingle();
-        if (loanErr) throw new Error("Failed to save loan: " + loanErr.message);
-        createdIds.loanId = newLoan?.id || null;
+        const { data: existLoan } = await supabase.from("property_loans").select("id").eq("company_id", companyId).eq("property", compositeAddress).is("archived_at", null).maybeSingle();
+        if (existLoan) {
+          const { error: loanUpErr } = await supabase.from("property_loans").update(loanRow).eq("id", existLoan.id).eq("company_id", companyId);
+          if (loanUpErr) throw new Error("Failed to update loan: " + loanUpErr.message);
+        } else {
+          const { data: newLoan, error: loanErr } = await supabase.from("property_loans").insert([loanRow]).select("id").maybeSingle();
+          if (loanErr) throw new Error("Failed to save loan: " + loanErr.message);
+          if (!isEditMode) createdIds.loanId = newLoan?.id || null;
+        }
         if (loan.setup_recurring) {
           const now = new Date();
           const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
           const mortgageAcctId = await resolveAccountId("5600", companyId);
           const checkingAcctId = await resolveAccountId("1000", companyId);
-          const { data: rec, error: recErr } = await supabase.from("recurring_journal_entries").insert([{ company_id: companyId, description: "Mortgage payment — " + loan.lender_name + " — " + compositeAddress.split(",")[0], frequency: "monthly", day_of_month: 1, amount: Number(loan.monthly_payment), property: compositeAddress, debit_account_id: mortgageAcctId, debit_account_name: "Mortgage/Loan Payment", credit_account_id: checkingAcctId, credit_account_name: "Checking Account", status: "active", next_post_date: formatLocalDate(nextMonth), created_by: userProfile?.email || "" }]).select("id").maybeSingle();
-          if (recErr) throw new Error("Recurring mortgage entry failed: " + recErr.message);
-          if (rec?.id) createdIds.recurringIds.push(rec.id);
+          const recurRow = { company_id: companyId, description: "Mortgage payment — " + loan.lender_name + " — " + compositeAddress.split(",")[0], frequency: "monthly", day_of_month: 1, amount: Number(loan.monthly_payment), property: compositeAddress, debit_account_id: mortgageAcctId, debit_account_name: "Mortgage/Loan Payment", credit_account_id: checkingAcctId, credit_account_name: "Checking Account", status: "active", next_post_date: formatLocalDate(nextMonth), created_by: userProfile?.email || "" };
+          const { data: existMort } = await supabase.from("recurring_journal_entries").select("id").eq("company_id", companyId).eq("property", compositeAddress).ilike("description", "Mortgage payment%").eq("status", "active").is("archived_at", null).maybeSingle();
+          if (existMort) {
+            await supabase.from("recurring_journal_entries").update(recurRow).eq("id", existMort.id).eq("company_id", companyId);
+          } else {
+            const { data: rec, error: recErr } = await supabase.from("recurring_journal_entries").insert([recurRow]).select("id").maybeSingle();
+            if (recErr) throw new Error("Recurring mortgage entry failed: " + recErr.message);
+            if (rec?.id && !isEditMode) createdIds.recurringIds.push(rec.id);
+          }
         }
       }
 
-      // 7. INSURANCE
+      // 7. INSURANCE — upsert by (company_id, property).
       if (insurance.enabled) {
         const insRow = { company_id: companyId, property: compositeAddress, property_id: String(propertyId || ""), provider: insurance.provider.trim(), policy_number: insurance.policy_number.trim(), premium_amount: Number(insurance.premium_amount), premium_frequency: insurance.premium_frequency, coverage_amount: Number(insurance.coverage_amount) || 0, expiration_date: insurance.expiration_date || null, notes: insurance.notes.trim(), website: insurance.website || "" };
         if (insurance.username && insurance.password) {
@@ -701,44 +765,57 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           insRow.encryption_iv = resP.iv || resU.iv;
           insRow.encryption_salt = resU.salt || resP.salt;
         }
-        const { data: newIns, error: insErr } = await supabase.from("property_insurance").insert([insRow]).select("id").maybeSingle();
-        if (insErr) throw new Error("Failed to save insurance: " + insErr.message);
-        createdIds.insuranceId = newIns?.id || null;
+        const { data: existIns } = await supabase.from("property_insurance").select("id").eq("company_id", companyId).eq("property", compositeAddress).is("archived_at", null).maybeSingle();
+        if (existIns) {
+          const { error: insUpErr } = await supabase.from("property_insurance").update(insRow).eq("id", existIns.id).eq("company_id", companyId);
+          if (insUpErr) throw new Error("Failed to update insurance: " + insUpErr.message);
+        } else {
+          const { data: newIns, error: insErr } = await supabase.from("property_insurance").insert([insRow]).select("id").maybeSingle();
+          if (insErr) throw new Error("Failed to save insurance: " + insErr.message);
+          if (!isEditMode) createdIds.insuranceId = newIns?.id || null;
+        }
       }
 
-      // 8. PROPERTY TAXES (+ auto-generated bills)
+      // 8. PROPERTY TAXES — upsert by (company_id, property).
       if (taxes.enabled) {
         const taxRow = { company_id: companyId, property: compositeAddress, property_id: propertyId || null, county: propForm.county || null, jurisdiction: propForm.county && propForm.state ? (propForm.county + ", " + propForm.state) : null, parcel_id: taxes.parcel_id.trim() || null, assessed_value: Number(taxes.assessed_value) || 0, tax_year: Number(taxes.tax_year) || new Date().getFullYear(), annual_tax_amount: Number(taxes.annual_tax_amount), billing_frequency: taxes.billing_frequency || "semi_annual", next_due_date: taxes.next_due_date || null, exemptions: taxes.exemptions.trim() || null, escrow_paid_by_lender: !!taxes.escrow_paid_by_lender, records_url: taxes.records_url.trim() || null, notes: taxes.notes.trim() || null };
-        const { data: newTax, error: taxErr } = await supabase.from("property_taxes").insert([taxRow]).select("id").maybeSingle();
-        if (taxErr) throw new Error("Failed to save property tax: " + taxErr.message);
-        createdIds.taxesId = newTax?.id || null;
+        const { data: existTax } = await supabase.from("property_taxes").select("id").eq("company_id", companyId).eq("property", compositeAddress).is("archived_at", null).maybeSingle();
+        if (existTax) {
+          const { error: taxUpErr } = await supabase.from("property_taxes").update(taxRow).eq("id", existTax.id).eq("company_id", companyId);
+          if (taxUpErr) throw new Error("Failed to update property tax: " + taxUpErr.message);
+        } else {
+          const { data: newTax, error: taxErr } = await supabase.from("property_taxes").insert([taxRow]).select("id").maybeSingle();
+          if (taxErr) throw new Error("Failed to save property tax: " + taxErr.message);
+          if (!isEditMode) createdIds.taxesId = newTax?.id || null;
+        }
         try {
           await generateBillsForProperty({ companyId, propertyAddress: compositeAddress, propertyId: propertyId || null, county: propForm.county, state: propForm.state, taxYear: Number(taxes.tax_year) || new Date().getFullYear(), expectedAnnualAmount: Number(taxes.annual_tax_amount) || null });
         } catch (e) { pmError("PM-8006", { raw: e, context: "tax bills in commitWizard", silent: true }); }
       }
 
-      // 9. RECURRING RENT (only when we have a real tenant)
+      // 9. RECURRING RENT — upsert by (company_id, property,
+      // status='active', description like 'Monthly rent%').
       if (isOccupied && tenantId && recurring.amount && Number(recurring.amount) > 0) {
         const allTenants = [tenantForm.tenant, tenantForm.tenant_2, tenantForm.tenant_3, tenantForm.tenant_4, tenantForm.tenant_5].filter(t => t?.trim()).join(" / ");
         const tenantArId = await getOrCreateTenantAR(companyId, tenantForm.tenant, tenantId);
         const revenueId = await resolveAccountId("4000", companyId);
         const now = new Date();
-        // First post date: user-chosen (for imported leases that need
-        // to start months in the past or the future) or next month if
-        // they left it blank. Day-of-month is clamped to 1-28 via the
-        // field validator so February is always valid.
         const defaultNext = new Date(now.getFullYear(), now.getMonth() + 1, Math.min(28, Math.max(1, Number(recurring.day_of_month) || 1)));
         const nextPostDate = recurring.start_date && /^\d{4}-\d{2}-\d{2}$/.test(recurring.start_date)
           ? recurring.start_date
           : formatLocalDate(defaultNext);
-        // NOTE: recurring_journal_entries.tenant_id is UUID but
-        // tenants.id is bigserial — inserting the bigint here throws
-        // "invalid input syntax for type uuid". Leave it null; the
-        // cron (autoPostRecurringEntries) matches by property +
-        // tenant_name, not tenant_id.
-        const { data: rec, error: recErr } = await supabase.from("recurring_journal_entries").insert([{ company_id: companyId, description: "Monthly rent — " + allTenants + " — " + compositeAddress.split(",")[0], frequency: recurring.frequency, day_of_month: recurring.day_of_month, amount: Number(recurring.amount), tenant_name: allTenants, property: compositeAddress, debit_account_id: tenantArId, debit_account_name: "AR - " + allTenants, credit_account_id: revenueId, credit_account_name: "Rental Income", status: "active", next_post_date: nextPostDate, created_by: userProfile?.email || "" }]).select("id").maybeSingle();
-        if (recErr) throw new Error("Failed to save recurring rent: " + recErr.message);
-        if (rec?.id) createdIds.recurringIds.push(rec.id);
+        // tenant_id left null on purpose — column is UUID but tenants.id
+        // is bigserial; the cron matches by property + tenant_name.
+        const recurRow = { company_id: companyId, description: "Monthly rent — " + allTenants + " — " + compositeAddress.split(",")[0], frequency: recurring.frequency, day_of_month: recurring.day_of_month, amount: Number(recurring.amount), tenant_name: allTenants, property: compositeAddress, debit_account_id: tenantArId, debit_account_name: "AR - " + allTenants, credit_account_id: revenueId, credit_account_name: "Rental Income", status: "active", next_post_date: nextPostDate, created_by: userProfile?.email || "" };
+        const { data: existRecur } = await supabase.from("recurring_journal_entries").select("id").eq("company_id", companyId).eq("property", compositeAddress).ilike("description", "Monthly rent%").eq("status", "active").is("archived_at", null).maybeSingle();
+        if (existRecur) {
+          const { error: rUpErr } = await supabase.from("recurring_journal_entries").update(recurRow).eq("id", existRecur.id).eq("company_id", companyId);
+          if (rUpErr) throw new Error("Failed to update recurring rent: " + rUpErr.message);
+        } else {
+          const { data: rec, error: recErr } = await supabase.from("recurring_journal_entries").insert([recurRow]).select("id").maybeSingle();
+          if (recErr) throw new Error("Failed to save recurring rent: " + recErr.message);
+          if (rec?.id && !isEditMode) createdIds.recurringIds.push(rec.id);
+        }
       }
 
       // 10. FIRST-MONTH DEPOSIT + RENT JEs (replicates legacy handleComplete)
@@ -825,14 +902,22 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   }
 
   async function handleComplete() {
+    const wasEdit = !!savedPropertyId;
     setSaving(true);
     try {
       await commitWizard();
-      showToast("Property setup complete!", "success");
+      showToast(wasEdit ? "Changes saved." : "Property setup complete!", "success");
       onComplete();
     } catch (e) {
       pmError("PM-2002", { raw: e, context: "committing property setup wizard" });
-      showToast("Setup failed: " + (e.message || "unknown") + ". Nothing was saved. Fix the issue and click Complete Setup again.", "error");
+      if (wasEdit) {
+        // Edit-mode failures leave partial updates in place (rollback
+        // can't un-UPDATE cleanly). Tell the user what broke so they
+        // can fix that one field and re-save.
+        showToast("Save failed: " + (e.message || "unknown") + ". Some fields may have been updated. Fix the issue and click Save Changes again.", "error");
+      } else {
+        showToast("Setup failed: " + (e.message || "unknown") + ". Nothing was saved. Fix the issue and click Complete Setup again.", "error");
+      }
     } finally {
       setSaving(false);
     }
@@ -1924,7 +2009,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           {step < totalSteps ? (
             <Btn variant="success-fill" onClick={handleNext} disabled={saving}>{saving ? "Saving..." : "Next →"}</Btn>
           ) : (
-            <Btn variant="success-fill" onClick={handleComplete} disabled={saving}>{saving ? "Completing..." : "Complete Setup ✓"}</Btn>
+            <Btn variant="success-fill" onClick={handleComplete} disabled={saving}>{saving ? (savedPropertyId ? "Saving..." : "Completing...") : (savedPropertyId ? "Save Changes ✓" : "Complete Setup ✓")}</Btn>
           )}
         </div>
       </div>
