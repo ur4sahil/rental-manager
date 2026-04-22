@@ -1084,23 +1084,64 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-4">
   <div className="text-xs font-bold text-warn-800 mb-2">Required Documents</div>
   {REQUIRED_TENANT_DOCS.map(({ label, types, nameRe }) => {
-  // Shape of REQUIRED_TENANT_DOCS entries was tightened to
-  // {label, types, nameRe} for precision — an upload counts when
-  // doc.type is in `types` AND the filename matches nameRe, or as a
-  // fallback the filename alone matches nameRe. Previous render code
-  // still destructured {label, match} and crashed on
-  // `undefined.some(...)` as soon as a tenant's drawer was opened.
   const uploaded = tenantDocs.some(d => {
     const type = (d?.type || "").trim();
     const name = d?.name || "";
     if (types.includes(type) && nameRe.test(name)) return true;
     return nameRe.test(name);
   });
+  // Per-doc exception state. `approved_doc_exceptions` on the tenant
+  // row captures which specific required-docs have been waived
+  // individually (jsonb array of REQUIRED_TENANT_DOCS labels); a
+  // pending doc_exception_request with this label blocks further
+  // requests until a reviewer acts.
+  const approvedList = (() => {
+    const v = selectedTenant?.approved_doc_exceptions;
+    if (Array.isArray(v)) return v;
+    if (typeof v === "string") { try { return JSON.parse(v); } catch { return []; } }
+    return [];
+  })();
+  const isWaived = approvedList.includes(label);
+  const pendingReq = (docExceptions || []).find(r => r.status === "pending" && r.tenant_name === selectedTenant?.name && r.doc_type === label);
+  const satisfied = uploaded || isWaived;
+  const canApprove = userRole === "admin" || userRole === "owner";
   return (
   <div key={label} className="flex items-center gap-2 py-1 text-sm">
-  <span className={uploaded ? "text-positive-500" : "text-warn-400"}>{uploaded ? "\u2705" : "\u2610"}</span>
-  <span className={uploaded ? "text-neutral-700" : "text-warn-700"}>{label}</span>
+  <span className={satisfied ? "text-positive-500" : "text-warn-400"}>{satisfied ? "\u2705" : "\u2610"}</span>
+  <span className={satisfied ? "text-neutral-700" : "text-warn-700"}>{label}</span>
   {uploaded && <span className="text-xs text-positive-600 bg-positive-50 px-2 py-0.5 rounded-full">Uploaded</span>}
+  {isWaived && !uploaded && <span className="text-xs text-info-600 bg-info-50 px-2 py-0.5 rounded-full">Exception waived</span>}
+  {!uploaded && !isWaived && pendingReq && <span className="text-xs text-warn-700 bg-warn-100 px-2 py-0.5 rounded-full">Exception pending review</span>}
+  {!uploaded && !isWaived && !pendingReq && (
+    canApprove ? (
+      <TextLink tone="info" size="xs" onClick={async () => {
+        if (!guardSubmit("approveExcInline_" + label)) return;
+        try {
+          if (!await showConfirm({ message: `Waive "${label}" for ${selectedTenant.name}? Other required docs stay required.` })) return;
+          const next = Array.from(new Set([...approvedList, label]));
+          await supabase.from("tenants").update({ approved_doc_exceptions: next }).eq("company_id", companyId).eq("id", selectedTenant.id);
+          logAudit("approve", "tenants", "Doc exception (" + label + ") approved for " + selectedTenant.name, selectedTenant.id, userProfile?.email, userRole, companyId);
+          showToast(`"${label}" waived for ${selectedTenant.name}`, "success");
+          // Local update keeps the UI responsive without re-fetch.
+          setSelectedTenant({ ...selectedTenant, approved_doc_exceptions: next });
+          fetchTenants();
+        } finally { guardRelease("approveExcInline_" + label); }
+      }}>Admin: Waive</TextLink>
+    ) : (
+      <TextLink tone="warn" size="xs" onClick={async () => {
+        if (!guardSubmit("reqExcInline_" + label)) return;
+        try {
+          if (!await showConfirm({ message: `Request an exception for "${label}" for ${selectedTenant.name}? A manager will review.` })) return;
+          const { data: me } = await supabase.from("app_users").select("manager_email").eq("company_id", companyId).ilike("email", emailFilterValue(userProfile?.email || "")).maybeSingle();
+          await supabase.from("doc_exception_requests").insert([{ company_id: companyId, tenant_name: selectedTenant.name, property: selectedTenant.property, requested_by: userProfile?.email || "", approver_email: me?.manager_email || null, doc_type: label }]);
+          addNotification("📋", `Exception request sent for ${selectedTenant.name}: ${label}`);
+          logAudit("request", "tenants", "Doc exception requested (" + label + ") for " + selectedTenant.name, selectedTenant.id, userProfile?.email, userRole, companyId);
+          showToast("Request submitted", "success");
+          fetchDocExceptions();
+        } finally { guardRelease("reqExcInline_" + label); }
+      }}>Request Exception</TextLink>
+    )
+  )}
   </div>
   );
   })}
@@ -1133,42 +1174,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   ))}
   </div>
   )}
-  <div className="flex gap-2 mt-3 flex-wrap">
-    <Btn variant="primary" size="sm" onClick={() => setShowDocUpload({ property: selectedTenant?.property || "", tenant: selectedTenant?.name || "" })}>Upload Documents</Btn>
-    {/* Request / approve a doc exception for tenants that never
-        completed required uploads. Previously this lived only in the
-        post-save "Required Documents" banner that flashes right after
-        a new tenant is created — so for any tenant already in the
-        system there was no UI path to ask for or grant an exception.
-        Admin/owner approves directly; anyone else routes a request
-        to their assigned manager via the approval queue. */}
-    {selectedTenant?.doc_status !== "complete" && selectedTenant?.doc_status !== "exception_approved" && (
-      (userRole === "admin" || userRole === "owner") ? (
-        <Btn variant="ghost" size="sm" onClick={async () => {
-          if (!guardSubmit("approveExceptionInline")) return;
-          try {
-            if (!await showConfirm({ message: `Approve a document exception for "${selectedTenant.name}"? This marks their required-docs requirement as waived.` })) return;
-            await supabase.from("tenants").update({ doc_status: "exception_approved" }).eq("company_id", companyId).eq("id", selectedTenant.id);
-            showToast("Document exception approved for " + selectedTenant.name, "success");
-            logAudit("approve", "tenants", "Doc exception approved for " + selectedTenant.name, selectedTenant.id, userProfile?.email, userRole, companyId);
-            fetchTenants();
-          } finally { guardRelease("approveExceptionInline"); }
-        }}>Admin: Approve Exception</Btn>
-      ) : (
-        <Btn variant="ghost" size="sm" onClick={async () => {
-          if (!guardSubmit("reqExceptionInline")) return;
-          try {
-            if (!await showConfirm({ message: `Request a document exception for "${selectedTenant.name}"? Your assigned manager will review.` })) return;
-            const { data: me } = await supabase.from("app_users").select("manager_email").eq("company_id", companyId).ilike("email", emailFilterValue(userProfile?.email || "")).maybeSingle();
-            await supabase.from("doc_exception_requests").insert([{ company_id: companyId, tenant_name: selectedTenant.name, property: selectedTenant.property, requested_by: userProfile?.email || "", approver_email: me?.manager_email || null }]);
-            addNotification("📋", "Doc exception request sent for " + selectedTenant.name);
-            logAudit("request", "tenants", "Doc exception requested for " + selectedTenant.name, selectedTenant.id, userProfile?.email, userRole, companyId);
-            showToast("Exception request submitted", "success");
-          } finally { guardRelease("reqExceptionInline"); }
-        }}>Request Exception</Btn>
-      )
-    )}
-  </div>
+  <Btn variant="primary" size="sm" className="mt-3" onClick={() => setShowDocUpload({ property: selectedTenant?.property || "", tenant: selectedTenant?.name || "" })}>Upload Documents</Btn>
   </div>
   )}
 

@@ -13,7 +13,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   const [tenants, setTenants] = useState([]);
   const [leases, setLeases] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("settings");
+  const [activeTab, setActiveTab] = useState("activity");
   const [showTest, setShowTest] = useState(null);
   const [queueStats, setQueueStats] = useState({ pending: 0, sent: 0, failed: 0 });
 
@@ -45,18 +45,26 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   message_received: { label: "New Message", icon: "\ud83d\udcac", desc: "Sent when a tenant or landlord sends a chat message" },
   };
 
+  // Recent activity — every addNotification() call writes a row to
+  // notification_inbox. Surfacing the full history here solves the
+  // "bell shows 2-3 things and then nothing tracks the rest" problem:
+  // the bell is a short transient list capped at 50; this feed is
+  // the persistent record.
+  const [activity, setActivity] = useState([]);
   const fetchData = useCallback(async () => {
   setLoading(true);
-  const [s, l, t, le] = await Promise.all([
+  const [s, l, t, le, inbox] = await Promise.all([
   supabase.from("notification_settings").select("*").eq("company_id", companyId).order("event_type"),
   supabase.from("notification_log").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(100),
   supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null),
   supabase.from("leases").select("*").eq("company_id", companyId).eq("status", "active"),
+  supabase.from("notification_inbox").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(200),
   ]);
   setSettings(s.data || []);
   setLogs(l.data || []);
   setTenants(t.data || []);
   setLeases(le.data || []);
+  setActivity(inbox.data || []);
   setLoading(false);
   }, [companyId]);
 
@@ -205,10 +213,30 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   </div>
 
   <div className="flex gap-1 mb-4 border-b border-brand-50">
-  {[["settings","Settings"],["log","Send Log"],["rentroll","Rent Roll"]].map(([id,label]) => (
+  {[["activity","Activity"],["settings","Settings"],["log","Send Log"],["rentroll","Rent Roll"]].map(([id,label]) => (
   <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400")}>{label}</button>
   ))}
   </div>
+
+  {/* ACTIVITY TAB — full history of every in-app notification the
+      app has emitted for this company. The header bell only holds the
+      latest session's list; this feed is the persistent record.  */}
+  {activeTab === "activity" && (
+  <div className="space-y-2">
+  {activity.length === 0 ? <div className="text-center py-8 text-neutral-400">No activity yet. As you manage properties, tenants, and payments, notifications will appear here.</div> : (
+    activity.map(n => (
+    <div key={n.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex items-center gap-3">
+    <span className="text-xl">{n.icon || "🔔"}</span>
+    <div className="flex-1 min-w-0">
+      <div className="text-sm text-neutral-800 truncate">{n.message}</div>
+      <div className="text-xs text-neutral-400">{new Date(n.created_at).toLocaleString()}{n.recipient_email ? " · " + n.recipient_email : ""}{n.notification_type && n.notification_type !== "general" ? " · " + n.notification_type : ""}</div>
+    </div>
+    {!n.read && <span className="text-[10px] font-bold uppercase bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full">New</span>}
+    </div>
+    ))
+  )}
+  </div>
+  )}
 
   {/* SETTINGS TAB */}
   {activeTab === "settings" && (
