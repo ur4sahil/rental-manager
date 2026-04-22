@@ -15,7 +15,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }
 const SERVICE_URL = process.env.SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const COMPANY_ID = 'sandbox-llc';
-const TEST_ADDRESS = '100 Oak Street, Unit A'; // seeded occupied property in Sandbox LLC
+const TEST_ADDRESS = '100 Oak Street'; // seeded occupied property in Sandbox LLC
 const WIZARD_LABEL_PREFIX = 'Setup: ';
 
 function svc() {
@@ -80,7 +80,7 @@ test.describe('Wizard Skipped → Tasks & Approvals', () => {
     await navigateTo(page, 'Tasks & Approvals');
     await page.waitForTimeout(2500);
     // Find the row for "Setup: Insurance" and click its Open Setup btn.
-    const row = page.locator('div:has(> .text-sm:text("Setup: Insurance — 100 Oak Street"))').first();
+    const row = page.locator('div:has(> .text-sm:text("Setup: Insurance"))').first();
     // Fallback to a text-based ancestor match if the locator above doesn't hit
     const openBtn = page.locator('div:has-text("Setup: Insurance")').locator('button:has-text("Open Setup")').first();
     if (!await openBtn.isVisible({ timeout: 3000 }).catch(() => false)) {

@@ -10,8 +10,11 @@ test.describe('Admin Page', () => {
   });
 
   test('admin button visible in header', async ({ page }) => {
-    const adminBtn = page.locator('button[title="Admin Settings"]').first();
-    await expect(adminBtn).toBeVisible({ timeout: 5000 });
+    // Settings is now behind the avatar dropdown — "A Admin expand_more".
+    const avatarBtn = page.locator('header button:has-text("expand_more")').first();
+    await expect(avatarBtn).toBeVisible({ timeout: 5000 });
+    await avatarBtn.click();
+    await expect(page.locator('button:has-text("Settings")')).toBeVisible({ timeout: 3000 });
   });
 
   test('clicking admin button navigates to admin page', async ({ page }) => {
@@ -39,7 +42,9 @@ test.describe('Admin Page', () => {
   });
 
   test('sign out button visible in header', async ({ page }) => {
-    const logoutBtn = page.locator('button[title="Sign Out"]').first();
-    await expect(logoutBtn).toBeVisible({ timeout: 5000 });
+    // Logout now lives inside the avatar dropdown.
+    const avatarBtn = page.locator('header button:has-text("expand_more")').first();
+    await avatarBtn.click();
+    await expect(page.locator('button:has-text("Logout")')).toBeVisible({ timeout: 3000 });
   });
 });
