@@ -87,6 +87,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("for_review");
   const [selectedFeed, setSelectedFeed] = useState("all");
+  // Hide disconnected (status='inactive') AND unmapped (gl_account_id=null)
+  // feeds by default — both are dead weight in the card row. A small
+  // "Show hidden (N)" link reveals them when the user wants to map an
+  // unmapped orphan or reactivate a disconnected feed.
+  const [showHiddenFeeds, setShowHiddenFeeds] = useState(false);
   const [feedMenuOpen, setFeedMenuOpen] = useState(null);
   const [feedMenuPos, setFeedMenuPos] = useState({ top: 0, left: 0 });
   // GL-mapping modal (replaces the raw window.prompt that used to
@@ -202,6 +207,14 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   // keeps you on page 7 (or clamps to last-page) — confusing. Same for tab
   // switches and filter/search changes.
   useEffect(() => { setTxnPage(0); }, [selectedFeed, activeTab, searchQuery, directionFilter, dateFrom, dateTo, txnPageSize]);
+  // If the currently-selected feed is now hidden (user disconnected or
+  // hid it), drop the selection back to "all" so the transactions table
+  // doesn't silently filter against an invisible card.
+  useEffect(() => {
+    if (selectedFeed === "all" || showHiddenFeeds) return;
+    const f = feeds.find(x => x.id === selectedFeed);
+    if (f && (f.status === "inactive" || !f.gl_account_id)) setSelectedFeed("all");
+  }, [feeds, selectedFeed, showHiddenFeeds]);
 
   // Minimum bank_feed_transaction column set. The full row has 33 columns;
   // only these are consumed by the UI (sort/filter/display/action). Dropped:
@@ -1547,9 +1560,13 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   )}
 
   {/* Account Cards */}
-  {feeds.length > 0 && (
-  <div className="flex gap-3 overflow-x-auto pb-1">
-    {feeds.map(feed => {
+  {feeds.length > 0 && (() => {
+    const isFeedHidden = (f) => f.status === "inactive" || !f.gl_account_id;
+    const hiddenCount = feeds.filter(isFeedHidden).length;
+    const visibleFeeds = showHiddenFeeds ? feeds : feeds.filter(f => !isFeedHidden(f));
+    return (
+  <div className="flex gap-3 overflow-x-auto pb-1 items-stretch">
+    {visibleFeeds.map(feed => {
       const reviewCount = transactions.filter(t => t.bank_account_feed_id === feed.id && t.status === "for_review").length;
       const isSelected = selectedFeed === feed.id;
       const isMenuOpen = feedMenuOpen === feed.id;
@@ -1603,8 +1620,16 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       <span className="material-icons-outlined">add</span>
       <span className="text-xs">New Account</span>
     </button>
+    {hiddenCount > 0 && (
+    <button onClick={() => setShowHiddenFeeds(v => !v)}
+      className="shrink-0 rounded-xl border border-neutral-200 px-3 min-w-32 flex flex-col items-center justify-center gap-1 text-neutral-500 hover:border-neutral-300 hover:text-neutral-700 bg-neutral-50">
+      <span className="material-icons-outlined text-base">{showHiddenFeeds ? "visibility_off" : "visibility"}</span>
+      <span className="text-xs font-medium">{showHiddenFeeds ? `Hide ${hiddenCount}` : `Show ${hiddenCount} hidden`}</span>
+    </button>
+    )}
   </div>
-  )}
+    );
+  })()}
 
   {feeds.length === 0 && (
   <div className="bg-white rounded-xl border border-neutral-200 p-8 text-center">
