@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import ExcelJS from "exceljs";
 import { supabase } from "../supabase";
 import { AccountPicker, Btn, Checkbox, Chip, FileInput, Input, Radio, Select, TextLink} from "../ui";
 import { safeNum, formatLocalDate, shortId } from "../utils/helpers";
@@ -68,8 +69,6 @@ function csvParseDate(raw) {
 function csvNormDescription(s) {
   return String(s || "")
     .toLowerCase()
-    .replace(/x{2,}\d*/g, "x")
-    .replace(/\d{5,}/g, "#")
     .replace(/[\\"']/g, "")
     .replace(/\s+/g, " ")
     .trim()
@@ -1414,6 +1413,68 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   const safeTxnPage = Math.min(txnPage, txnTotalPages - 1);
   const paginatedTxns = filtered.slice(safeTxnPage * TXN_PAGE_SIZE, (safeTxnPage + 1) * TXN_PAGE_SIZE);
 
+  // Excel export — uses the current `filtered` list so the download
+  // matches exactly what's on screen (active tab, feed, direction,
+  // date range, search), minus pagination.
+  async function exportTransactionsExcel() {
+    try {
+      if (!filtered || filtered.length === 0) { showToast("No transactions match the current filter.", "info"); return; }
+      const feedName = (id) => {
+        const f = feeds.find(ff => ff.id === id);
+        return f ? `${f.institution_name || ""} ${f.account_name || ""}${f.masked_number ? " (••••" + f.masked_number + ")" : ""}`.trim() : "";
+      };
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("Bank Transactions");
+      ws.columns = [
+        { header: "Date", key: "date", width: 12 },
+        { header: "Feed", key: "feed", width: 36 },
+        { header: "Source", key: "source", width: 10 },
+        { header: "Description", key: "description", width: 50 },
+        { header: "Payee", key: "payee", width: 24 },
+        { header: "Check #", key: "check", width: 10 },
+        { header: "Memo", key: "memo", width: 30 },
+        { header: "Direction", key: "direction", width: 10 },
+        { header: "Amount (signed)", key: "signed", width: 15 },
+        { header: "Amount (abs)", key: "absAmount", width: 15 },
+        { header: "Status", key: "status", width: 14 },
+        { header: "Reference #", key: "reference", width: 18 },
+      ];
+      ws.getRow(1).font = { bold: true };
+      ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE5E7EB" } };
+      for (const t of filtered) {
+        const abs = Math.abs(Number(t.amount) || 0);
+        const signed = t.direction === "outflow" ? -abs : abs;
+        ws.addRow({
+          date: t.posted_date,
+          feed: feedName(t.bank_account_feed_id),
+          source: t.source_type || "",
+          description: t.bank_description_clean || t.bank_description_raw || "",
+          payee: t.payee_normalized || t.payee_raw || "",
+          check: t.check_number || "",
+          memo: t.memo || "",
+          direction: t.direction || "",
+          signed,
+          absAmount: abs,
+          status: t.status || "",
+          reference: t.reference_number || "",
+        });
+      }
+      ws.getColumn("signed").numFmt = '"$"#,##0.00;[Red]"-$"#,##0.00';
+      ws.getColumn("absAmount").numFmt = '"$"#,##0.00';
+      const buf = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `bank-transactions-${activeTab}-${formatLocalDate(new Date())}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      showToast(`Exported ${filtered.length} transaction${filtered.length !== 1 ? "s" : ""}.`, "success");
+      logAudit("export", "banking", `Exported ${filtered.length} bank transactions (${activeTab})`, "", userProfile?.email, null, companyId);
+    } catch (e) {
+      pmError("PM-5005", { raw: e, context: "bank transactions Excel export" });
+    }
+  }
+
   const feedTxns = selectedFeed === "all" ? transactions : transactions.filter(t => t.bank_account_feed_id === selectedFeed);
   const counts = {
     for_review: feedTxns.filter(t => t.status === "for_review").length,
@@ -1432,6 +1493,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     <div><h3 className="text-lg font-semibold text-neutral-900">Bank Transactions</h3><p className="text-sm text-neutral-400">Import, review, and categorize bank transactions</p></div>
     <div className="flex gap-2 flex-wrap">
       {connections.some(c => c.connection_status === "active") && <Btn variant="success" size="sm" onClick={() => { setSyncFromDate(""); setSyncDateModal(true); }} disabled={syncing}>{syncing ? "Syncing..." : "Sync"}</Btn>}
+      {activeTab !== "rules" && <Btn variant="dark" size="sm" icon="download" onClick={exportTransactionsExcel} disabled={filtered.length === 0}>Export</Btn>}
       <Btn variant="primary" onClick={() => {
         // If there are existing Teller enrollments, let the user pick
         // reuse-vs-add-new before the SDK opens — otherwise Teller
