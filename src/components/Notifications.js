@@ -204,10 +204,6 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   <StatCard label="Failed" value={logs.filter(l => l.status === "failed").length} color={logs.filter(l => l.status === "failed").length > 0 ? "text-danger-500" : "text-neutral-400"} sub="delivery errors" />
   </div>
 
-  <div className="bg-warn-50 border border-warn-200 rounded-xl p-3 mb-5 text-sm text-warn-800">
-  <span className="font-semibold">Note:</span> Notifications are currently logged to the database. To send actual emails, connect a Supabase Edge Function with SendGrid, Resend, or Postmark. The templates and triggers are ready to wire up.
-  </div>
-
   {/* Queue Delivery Status */}
   <div className="bg-white rounded-xl border border-subtle-100 p-4 mb-5">
   <div className="text-sm font-semibold text-subtle-700 mb-2">📬 Notification Queue</div>
