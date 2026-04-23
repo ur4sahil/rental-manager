@@ -3007,7 +3007,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   {/* ===== PROPERTY DETAIL PANEL ===== */}
   {selectedProperty && (
-  <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-end">
+  <div className="fixed inset-0 bg-black/40 z-50 flex justify-end">
   <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-2xl overflow-y-auto">
   {/* Header */}
   <div className={"p-6 text-white " + (selectedProperty.status === "occupied" ? "bg-gradient-to-r from-success-600 to-success-800" : selectedProperty.status === "vacant" ? "bg-gradient-to-r from-warn-500 to-warn-700" : "bg-gradient-to-r from-subtle-600 to-subtle-800")}>

@@ -70,7 +70,7 @@ export function Spinner() {
 
 export function Modal({ title, onClose, children }) {
   return (
-  <div className="fixed inset-0 bg-black bg-opacity-40 z-[60] flex items-center justify-center p-4">
+  <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 w-full max-w-lg max-h-[90vh] overflow-y-auto">
   <div className="flex items-center justify-between px-6 py-4 border-b border-brand-50 sticky top-0 bg-white rounded-t-3xl">
   <h3 className="font-manrope font-bold text-neutral-800 text-lg">{title}</h3>
@@ -116,7 +116,7 @@ export function ConfirmModal({ config, onConfirm, onCancel }) {
   if (!config) return null;
   const isDanger = config.variant === "danger";
   return (
-  <div className="fixed inset-0 bg-black bg-opacity-40 z-[90] flex items-center justify-center p-4">
+  <div className="fixed inset-0 bg-black/40 z-[90] flex items-center justify-center p-4">
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 w-full max-w-md">
   <div className="px-6 py-4 border-b border-brand-50">
   <h3 className="font-manrope font-bold text-neutral-800 text-lg">{config.title || (isDanger ? "Confirm Action" : "Are you sure?")}</h3>

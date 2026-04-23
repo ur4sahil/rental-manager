@@ -278,7 +278,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   return (
   <div>
   {viewingPhotos && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+  <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
   <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
   <div className="flex items-center justify-between px-6 py-4 border-b border-brand-50 sticky top-0 bg-white">
   <div><h3 className="font-bold text-neutral-800">📸 Photos — {viewingPhotos.issue}</h3><p className="text-xs text-neutral-400">{viewingPhotos.property}</p></div>
@@ -299,7 +299,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   {woPhotos.map(p => (
   <div key={p.id} className="relative group rounded-3xl overflow-hidden border border-brand-50">
   <img src={p.url} alt={p.caption} className="w-full h-40 object-cover" />
-  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all flex items-center justify-center">
+  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
   <Btn variant="danger-fill" onClick={() => deletePhoto(p.id)} className="opacity-0 group-hover:opacity-100">Delete</Btn>
   </div>
   <div className="p-2 text-xs text-neutral-400 truncate">{p.caption}</div>

@@ -837,7 +837,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   return (
   <div>
   {activePanel && selectedTenant && activePanel === "lease" && (
-  <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-end">
+  <div className="fixed inset-0 bg-black/40 z-50 flex justify-end">
   <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-2xl">
   <div className="px-5 py-4 border-b border-brand-50 flex items-center justify-between bg-brand-600 text-white">
   <div>
@@ -1002,7 +1002,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
 
   {/* ===== TENANT DETAIL VIEW ===== */}
   {selectedTenant && ["detail","ledger","documents","messages","actions"].includes(activePanel) && (
-  <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-end">
+  <div className="fixed inset-0 bg-black/40 z-50 flex justify-end">
   <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-2xl overflow-y-auto">
   {/* Header */}
   <div className="bg-gradient-to-r from-brand-600 to-brand-800 p-6 text-white">

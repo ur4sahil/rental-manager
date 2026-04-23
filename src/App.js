@@ -1068,7 +1068,7 @@ function AppInner() {
   {/* Mobile Bottom Nav */}
   {/* Bottom nav removed — mobile navigation via sidebar hamburger menu */}
 
-  {sidebarOpen && <div className="fixed inset-0 bg-black bg-opacity-20 z-10 md:hidden" onClick={() => setSidebarOpen(false)} />}
+  {sidebarOpen && <div className="fixed inset-0 bg-black/20 z-10 md:hidden" onClick={() => setSidebarOpen(false)} />}
   {showNotifications && <div className="fixed inset-0 z-30" onClick={() => setShowNotifications(false)} />}
   {showUserProfile && (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">

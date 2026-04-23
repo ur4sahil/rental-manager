@@ -512,7 +512,7 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   const nameMatches = deleteTyped === deleteModal.company.name;
   const disabled = !nameMatches || deleting === deleteModal.company.id;
   return (
-  <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4">
+  <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
   <div className="bg-white rounded-3xl shadow-card border border-danger-200 w-full max-w-md">
   <div className="px-6 py-4 border-b border-danger-100 bg-danger-50/60 rounded-t-3xl">
   <h3 className="font-manrope font-bold text-danger-700 text-lg flex items-center gap-2">
