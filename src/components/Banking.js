@@ -108,7 +108,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   const [dateTo, setDateTo] = useState("");
   const [directionFilter, setDirectionFilter] = useState("all");
   const [txnPage, setTxnPage] = useState(0);
-  const TXN_PAGE_SIZE = 50;
+  const [txnPageSize, setTxnPageSize] = useState(50);
   // Date range window applied at the DB query level. Default 90 days keeps the
   // dataset small enough for client-side tab counts + search to be snappy.
   // Toggle "all" is available for audit / history workflows — capped at
@@ -197,6 +197,11 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     fetchTransactions();
     /* eslint-disable-next-line */
   }, [dateRangeMode]);
+  // Reset to page 1 whenever the effective result set changes. Without this,
+  // selecting a different feed after paging to page 7 of the previous one
+  // keeps you on page 7 (or clamps to last-page) — confusing. Same for tab
+  // switches and filter/search changes.
+  useEffect(() => { setTxnPage(0); }, [selectedFeed, activeTab, searchQuery, directionFilter, dateFrom, dateTo, txnPageSize]);
 
   // Minimum bank_feed_transaction column set. The full row has 33 columns;
   // only these are consumed by the UI (sort/filter/display/action). Dropped:
@@ -349,10 +354,18 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
             await fetchAll();
             const ninetyDaysAgo = new Date(); ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
             setPostConnectRange({ from: formatLocalDate(ninetyDaysAgo), to: formatLocalDate(new Date()) });
-            // Build default mappings + select all accounts by default
+            // Build default mappings + select all accounts by default. Keyed
+            // by plaid_account_id (Teller's stable account id) — new feeds
+            // don't have a local bank_account_feed.id yet, so we can't use
+            // the old key.
             const mappings = {};
             const selected = new Set();
-            (saveData.accounts || []).forEach(a => { if (a.id && a.gl_account_id) mappings[a.id] = a.gl_account_id; selected.add(a.id); });
+            (saveData.accounts || []).forEach(a => {
+              const k = a.plaid_account_id;
+              if (!k) return;
+              if (a.existing_gl_account_id) mappings[k] = a.existing_gl_account_id;
+              selected.add(k);
+            });
             setPostConnectMappings(mappings);
             setPostConnectSelected(selected);
             setPostConnectNewAcct(null);
@@ -1409,9 +1422,9 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     }
     return true;
   });
-  const txnTotalPages = Math.max(1, Math.ceil(filtered.length / TXN_PAGE_SIZE));
+  const txnTotalPages = Math.max(1, Math.ceil(filtered.length / txnPageSize));
   const safeTxnPage = Math.min(txnPage, txnTotalPages - 1);
-  const paginatedTxns = filtered.slice(safeTxnPage * TXN_PAGE_SIZE, (safeTxnPage + 1) * TXN_PAGE_SIZE);
+  const paginatedTxns = filtered.slice(safeTxnPage * txnPageSize, (safeTxnPage + 1) * txnPageSize);
 
   // Excel export — uses the current `filtered` list so the download
   // matches exactly what's on screen (active tab, feed, direction,
@@ -1730,15 +1743,26 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   )}
 
   {/* Counter + Pagination */}
-  <div className="flex items-center justify-between">
-    <div className="text-xs text-neutral-500">{filtered.length} of {transactions.length} transactions{filtered.length !== transactions.length ? " (filtered)" : ""}</div>
-    {txnTotalPages > 1 && (
-    <div className="flex items-center gap-2">
-      <Btn variant="secondary" size="sm" onClick={() => setTxnPage(Math.max(0, safeTxnPage - 1))} disabled={safeTxnPage === 0}>← Prev</Btn>
-      <span className="text-xs text-neutral-500">Page {safeTxnPage + 1} of {txnTotalPages}</span>
-      <Btn variant="secondary" size="sm" onClick={() => setTxnPage(Math.min(txnTotalPages - 1, safeTxnPage + 1))} disabled={safeTxnPage >= txnTotalPages - 1}>Next →</Btn>
+  <div className="flex items-center justify-between flex-wrap gap-2">
+    <div className="text-xs text-neutral-500">{filtered.length} of {feedTxns.length} transactions{filtered.length !== feedTxns.length ? " (filtered)" : ""}</div>
+    <div className="flex items-center gap-3">
+      <label className="text-xs text-neutral-500 flex items-center gap-1.5">
+        Per page
+        <Select value={txnPageSize} onChange={e => setTxnPageSize(Number(e.target.value))} size="sm" className="w-20">
+          <option value={25}>25</option>
+          <option value={50}>50</option>
+          <option value={100}>100</option>
+          <option value={250}>250</option>
+        </Select>
+      </label>
+      {txnTotalPages > 1 && (
+      <div className="flex items-center gap-2">
+        <Btn variant="secondary" size="sm" onClick={() => setTxnPage(Math.max(0, safeTxnPage - 1))} disabled={safeTxnPage === 0}>← Prev</Btn>
+        <span className="text-xs text-neutral-500">Page {safeTxnPage + 1} of {txnTotalPages}</span>
+        <Btn variant="secondary" size="sm" onClick={() => setTxnPage(Math.min(txnTotalPages - 1, safeTxnPage + 1))} disabled={safeTxnPage >= txnTotalPages - 1}>Next →</Btn>
+      </div>
+      )}
     </div>
-    )}
   </div>
 
   {/* Transaction Table */}
@@ -2274,8 +2298,8 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
 
   {/* Post-Connection Setup Modal */}
   {postConnectModal && (() => {
-    const selectedAccts = postConnectModal.accounts.filter(a => postConnectSelected.has(a.id));
-    const allMapped = selectedAccts.length > 0 && selectedAccts.every(acct => postConnectMappings[acct.id]);
+    const selectedAccts = postConnectModal.accounts.filter(a => postConnectSelected.has(a.plaid_account_id));
+    const allMapped = selectedAccts.length > 0 && selectedAccts.every(acct => postConnectMappings[acct.plaid_account_id]);
     return (
   <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
     <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
@@ -2292,14 +2316,15 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
           <p className="text-xs text-neutral-400 mb-3">Check the accounts you want, then map each to a GL account.</p>
           <div className="space-y-3">
             {postConnectModal.accounts.map(acct => {
-              const isChecked = postConnectSelected.has(acct.id);
-              const isMapped = !!postConnectMappings[acct.id];
-              const isCreating = postConnectNewAcct === acct.id;
+              const key = acct.plaid_account_id;
+              const isChecked = postConnectSelected.has(key);
+              const isMapped = !!postConnectMappings[key];
+              const isCreating = postConnectNewAcct === key;
               return (
-            <div key={acct.id} className={`rounded-xl p-3 border transition-all ${!isChecked ? "bg-neutral-50 border-neutral-100 opacity-60" : isMapped ? "bg-neutral-50 border-neutral-200" : "bg-warn-50/30 border-warn-300"}`}>
+            <div key={key} className={`rounded-xl p-3 border transition-all ${!isChecked ? "bg-neutral-50 border-neutral-100 opacity-60" : isMapped ? "bg-neutral-50 border-neutral-200" : "bg-warn-50/30 border-warn-300"}`}>
               <div className="flex items-center gap-3 mb-2">
                 <Checkbox checked={isChecked} onChange={() => {
-                  setPostConnectSelected(prev => { const next = new Set(prev); if (next.has(acct.id)) next.delete(acct.id); else next.add(acct.id); return next; });
+                  setPostConnectSelected(prev => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next; });
                 }} className="accent-brand-600 w-4 h-4 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm text-neutral-800 truncate">{acct.name || "Bank Account"}</div>
@@ -2311,10 +2336,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
               <div className="ml-7">
                 <label className="text-xs text-neutral-500 block mb-1">GL Account {!isMapped && <span className="text-danger-500 font-semibold">*Required</span>}</label>
                 <AccountPicker
-                  value={postConnectMappings[acct.id] || ""}
+                  value={postConnectMappings[key] || ""}
                   onChange={v => {
-                    if (v === "__new__") { setPostConnectNewAcct(acct.id); setNewBankAcctForm({ code: "", name: acct.name || "", type: acct.suggested_gl_type || "Asset" }); return; }
-                    setPostConnectMappings(prev => ({ ...prev, [acct.id]: v }));
+                    if (v === "__new__") { setPostConnectNewAcct(key); setNewBankAcctForm({ code: "", name: acct.name || "", type: acct.suggested_gl_type || "Asset" }); return; }
+                    setPostConnectMappings(prev => ({ ...prev, [key]: v }));
                     setPostConnectNewAcct(null);
                   }}
                   accounts={accounts}
@@ -2344,7 +2369,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
                       // create (couldn't find new id), and 409 duplicate-
                       // code on the second account (same code re-picked).
                       if (onRefreshAccounting) await onRefreshAccounting();
-                      setPostConnectMappings(prev => ({ ...prev, [acct.id]: newAcct.id }));
+                      setPostConnectMappings(prev => ({ ...prev, [key]: newAcct.id }));
                       setPostConnectNewAcct(null);
                     }}>Create</Btn>
                     <Btn size="sm" variant="ghost" onClick={() => setPostConnectNewAcct(null)}>Cancel</Btn>
@@ -2387,17 +2412,38 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
             if (selectedAccts.length === 0) { showToast("Please select at least one account.", "error"); return; }
             setPostConnectSyncing(true);
             try {
-              // Save GL mappings for selected accounts
+              // Save mappings. NEW accounts (no existing_feed_id) get a
+              // bank_account_feed row inserted now — deferred from
+              // /api/teller-save-enrollment so that canceling leaves no
+              // orphans. EXISTING accounts (reconnect) get their gl_account_id
+              // updated in place.
               for (const acct of selectedAccts) {
-                const glId = postConnectMappings[acct.id];
-                if (glId) {
-                  await supabase.from("bank_account_feed").update({ gl_account_id: glId }).eq("id", acct.id).eq("company_id", companyId);
+                const glId = postConnectMappings[acct.plaid_account_id];
+                if (!glId) continue;
+                if (acct.existing_feed_id) {
+                  await supabase.from("bank_account_feed").update({ gl_account_id: glId, status: "active" })
+                    .eq("id", acct.existing_feed_id).eq("company_id", companyId);
+                } else {
+                  await supabase.from("bank_account_feed").insert({
+                    company_id: companyId,
+                    gl_account_id: glId,
+                    bank_connection_id: postConnectModal.connectionId,
+                    account_name: acct.name || "Bank Account",
+                    masked_number: acct.mask || "",
+                    account_type: acct.type,
+                    institution_name: acct.institution_name || postConnectModal.institutionName || "",
+                    connection_type: "teller",
+                    plaid_account_id: acct.plaid_account_id,
+                    bank_balance_current: acct.balance,
+                    status: "active",
+                  });
                 }
               }
-              // Deactivate unselected feeds
-              const unselected = postConnectModal.accounts.filter(a => !postConnectSelected.has(a.id));
-              for (const acct of unselected) {
-                await supabase.from("bank_account_feed").update({ status: "inactive" }).eq("id", acct.id).eq("company_id", companyId);
+              // For unselected EXISTING feeds, deactivate. Unselected new
+              // accounts have no row — nothing to do.
+              const unselectedExisting = postConnectModal.accounts.filter(a => !postConnectSelected.has(a.plaid_account_id) && a.existing_feed_id);
+              for (const acct of unselectedExisting) {
+                await supabase.from("bank_account_feed").update({ status: "inactive" }).eq("id", acct.existing_feed_id).eq("company_id", companyId);
               }
               // Sync transactions with date range
               const { data: { session } } = await supabase.auth.getSession();

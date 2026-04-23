@@ -76,11 +76,15 @@ function decrypt(encryptedB64, ivHex, companyId, saltHex) {
 //     whitespace collapsed
 // Kept in sync with csvBuildFingerprint in src/components/Banking.js —
 // any change here must mirror there or dedup breaks again.
+// Conservative normalization — strip quote-style chars (CSV drops
+// enclosing quotes, Teller keeps them) and collapse whitespace.
+// Intentionally does NOT collapse digit runs: Confirmation #s and
+// ACH IDs are what distinguish otherwise-identical transactions,
+// and collapsing them creates false-positive dedup matches across
+// different real-world transfers.
 function normDescription(s) {
   return String(s || "")
     .toLowerCase()
-    .replace(/x{2,}\d*/g, "x")
-    .replace(/\d{5,}/g, "#")
     .replace(/[\\"']/g, "")
     .replace(/\s+/g, " ")
     .trim()

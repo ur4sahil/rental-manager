@@ -1,6 +1,12 @@
 // Vercel API Route: Save Teller Enrollment
-// Called after Teller Connect onSuccess — stores connection + feeds (NO GL accounts)
-// GL mapping is done by user in the post-connect modal
+// Called after Teller Connect onSuccess — stores the bank_connection and
+// returns Teller account metadata. bank_account_feed rows are NOT created
+// here for new accounts — that happens on the frontend when the user clicks
+// "Import" in the post-connect modal. This prevents orphan unmapped feeds
+// if the user hits "Skip for Now" (old behavior left 4 "Not mapped to GL"
+// cards around for Sigma Housing). Reconnect case (existing feed matched by
+// plaid_account_id) still updates the existing feed in place and returns
+// existing_feed_id so the frontend can update its gl mapping.
 const https = require("https");
 const crypto = require("crypto");
 const { createClient } = require("@supabase/supabase-js");
@@ -184,14 +190,16 @@ module.exports = async function handler(req, res) {
     }
     const tellerAccounts = JSON.parse(accountsRes.body);
 
-    // Create or reuse bank_account_feed for each Teller account (NO GL accounts created)
-    const resultFeeds = [];
+    // Return Teller account metadata. For reconnect (existing feed matched
+    // by plaid_account_id) we update the feed in place. For brand-new
+    // accounts we return metadata only — the frontend inserts the feed row
+    // on "Import" so canceling leaves no orphans.
+    const resultAccounts = [];
     for (const acct of tellerAccounts) {
       const acctType = acct.type === "credit" ? "credit_card" : acct.subtype === "savings" ? "savings" : acct.subtype === "money_market" ? "savings" : "checking";
       const suggestedGLType = acctType === "credit_card" ? "Liability" : "Asset";
       const suggestedGLSubtype = acctType === "credit_card" ? "Credit Card" : "Bank";
 
-      // Get balance
       let currentBalance = null;
       try {
         const balRes = await tellerFetch(`${TELLER_API}/accounts/${acct.id}/balances`, access_token);
@@ -201,7 +209,6 @@ module.exports = async function handler(req, res) {
         }
       } catch {}
 
-      // Check for existing feed with same Teller account ID (reconnect/dedup)
       const { data: existingFeed } = await supabase
         .from("bank_account_feed")
         .select("id, gl_account_id, status")
@@ -210,64 +217,34 @@ module.exports = async function handler(req, res) {
         .maybeSingle();
 
       if (existingFeed) {
-        // Reuse existing feed — update connection and reactivate if needed
         await supabase.from("bank_account_feed").update({
           bank_connection_id: connectionId,
           status: "active",
           bank_balance_current: currentBalance,
-          account_name: acct.name || existingFeed.account_name || "Bank Account",
+          account_name: acct.name || "Bank Account",
           institution_name: institution?.name || "",
         }).eq("id", existingFeed.id);
-
-        resultFeeds.push({
-          id: existingFeed.id,
-          name: acct.name,
-          type: acctType,
-          mask: acct.last_four,
-          gl_account_id: existingFeed.gl_account_id || null,
-          is_existing: true,
-          suggested_gl_type: suggestedGLType,
-          suggested_gl_subtype: suggestedGLSubtype,
-        });
-      } else {
-        // Create new feed with NO gl_account_id — user maps in modal
-        const { data: feed } = await supabase
-          .from("bank_account_feed")
-          .insert({
-            company_id,
-            gl_account_id: null,
-            bank_connection_id: connectionId,
-            account_name: acct.name || "Bank Account",
-            masked_number: acct.last_four || "",
-            account_type: acctType,
-            institution_name: institution?.name || acct.institution?.name || "",
-            connection_type: "teller",
-            plaid_account_id: acct.id,
-            bank_balance_current: currentBalance,
-            status: "active",
-          })
-          .select("id")
-          .single();
-
-        if (feed) {
-          resultFeeds.push({
-            id: feed.id,
-            name: acct.name,
-            type: acctType,
-            mask: acct.last_four,
-            gl_account_id: null,
-            is_existing: false,
-            suggested_gl_type: suggestedGLType,
-            suggested_gl_subtype: suggestedGLSubtype,
-          });
-        }
       }
+
+      resultAccounts.push({
+        plaid_account_id: acct.id,
+        name: acct.name,
+        type: acctType,
+        mask: acct.last_four,
+        institution_name: institution?.name || acct.institution?.name || "",
+        balance: currentBalance,
+        existing_feed_id: existingFeed?.id || null,
+        existing_gl_account_id: existingFeed?.gl_account_id || null,
+        is_existing: !!existingFeed,
+        suggested_gl_type: suggestedGLType,
+        suggested_gl_subtype: suggestedGLSubtype,
+      });
     }
 
     return res.status(200).json({
       connection_id: connectionId,
-      accounts: resultFeeds,
-      message: `Connected ${resultFeeds.length} account(s) from ${institution?.name || "bank"}`,
+      accounts: resultAccounts,
+      message: `Connected ${resultAccounts.length} account(s) from ${institution?.name || "bank"}`,
     });
   } catch (e) {
     console.error("teller-save-enrollment error:", e.message);
