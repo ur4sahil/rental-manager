@@ -208,6 +208,7 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${priorityColors[w.priority]}`}>{w.priority}</span>
   </div>
   ))}
+  {workOrders.length === 0 && <div className="text-sm text-neutral-400 text-center py-4">No recent maintenance</div>}
   </div>
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Utilities Due</h3>
