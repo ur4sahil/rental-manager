@@ -516,29 +516,17 @@ export async function autoPostRecurringEntries(companyId) {
     const yr = parseInt(monthStr.split("-")[0], 10) || 2026;
     const mo = parseInt(monthStr.split("-")[1], 10) || 1;
     const daysInMonth = new Date(yr, mo, 0).getDate();
+    // Only prorate on the move-in edge. Leases in this app are treated
+    // as month-to-month — a lease_end set to "end of term" shouldn't
+    // auto-truncate the last month's bill. Final-month proration is
+    // the move-out wizard's responsibility.
     const startsMidMonth = lease?.start_date && lease.start_date.slice(0, 7) === monthStr;
-    const endsMidMonth   = lease?.end_date   && lease.end_date.slice(0, 7)   === monthStr;
-    if (startsMidMonth && endsMidMonth) {
-      // Lease starts and ends in the same month — bill only the overlap.
-      const startDay = parseInt(lease.start_date.split("-")[2], 10) || 1;
-      const endDay   = parseInt(lease.end_date.split("-")[2], 10)   || daysInMonth;
-      const days = Math.max(1, endDay - startDay + 1);
-      if (days < daysInMonth) {
-        postAmount = Math.round(safeNum(entry.amount) * days / daysInMonth * 100) / 100;
-        postDesc = (entry.description || "Recurring entry") + ` (prorated ${days}/${daysInMonth} days — lease ${lease.start_date} → ${lease.end_date})`;
-      }
-    } else if (startsMidMonth) {
+    if (startsMidMonth) {
       const startDay = parseInt(lease.start_date.split("-")[2], 10) || 1;
       const days = Math.max(1, daysInMonth - startDay + 1);
       if (days < daysInMonth) {
         postAmount = Math.round(safeNum(entry.amount) * days / daysInMonth * 100) / 100;
         postDesc = (entry.description || "Recurring entry") + ` (prorated ${days}/${daysInMonth} days — lease starts ${lease.start_date})`;
-      }
-    } else if (endsMidMonth) {
-      const endDay = parseInt(lease.end_date.split("-")[2], 10) || 0;
-      if (endDay > 0 && endDay < daysInMonth) {
-        postAmount = Math.round(safeNum(entry.amount) * endDay / daysInMonth * 100) / 100;
-        postDesc = (entry.description || "Recurring entry") + ` (prorated ${endDay}/${daysInMonth} days — lease ends ${lease.end_date})`;
       }
     }
   }

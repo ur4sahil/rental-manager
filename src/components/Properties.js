@@ -788,6 +788,13 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
     } catch (e) { pmError('PM-8006', { raw: e, context: 'post-commit tax bills', silent: true }); }
 
     if (propForm.status === 'occupied' && tenantForm.tenant.trim() && resTenantId && compositeAddress) {
+      // Migration mode: when the PM explicitly sets recurring.start_date
+      // to a date after lease_start, they're onboarding an already-
+      // running lease where deposit + first-month rent were collected
+      // outside the app. Skip those wizard-side posts entirely —
+      // autoPostRecurringEntries still picks up from start_date onward.
+      const recurringStartRaw = (recurring?.start_date || '').trim();
+      const isLeaseMigration = recurringStartRaw && tenantForm.lease_start && recurringStartRaw > tenantForm.lease_start;
       try {
         const tName = tenantForm.tenant.trim();
         await getOrCreateTenantAR(companyId, tName, resTenantId);
@@ -800,7 +807,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         const postedRefs = new Set((existingJEs || []).map(j => j.reference));
         const classId = await getPropertyClassId(compositeAddress, companyId);
         const dep = Number(tenantForm.security_deposit) || 0;
-        if (dep > 0 && !postedRefs.has(depRef)) {
+        if (!isLeaseMigration && dep > 0 && !postedRefs.has(depRef)) {
           const tenantArId = await getOrCreateTenantAR(companyId, tName, resTenantId);
           const depOk = await autoPostJournalEntry({
             companyId, date: tenantForm.lease_start,
@@ -815,7 +822,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
         }
         const monthlyRent = Number(tenantForm.rent) || Number(recurring?.amount) || 0;
         const hasRentJE = postedRefs.has(rentRef) || postedRefs.has(prorentRef);
-        if (monthlyRent > 0 && tenantForm.lease_start && !hasRentJE) {
+        if (!isLeaseMigration && monthlyRent > 0 && tenantForm.lease_start && !hasRentJE) {
           const leaseStart = parseLocalDate(tenantForm.lease_start);
           const startDay = leaseStart.getDate();
           const daysInMonth = new Date(leaseStart.getFullYear(), leaseStart.getMonth() + 1, 0).getDate();
