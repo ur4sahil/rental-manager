@@ -1018,7 +1018,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
   <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Rent</div><div className="text-lg font-bold">{selectedTenant.rent ? formatCurrency(selectedTenant.rent) : "\u2014"}</div></div>
-  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Balance</div><div className={"text-lg font-bold " + (selectedTenant.balance > 0 ? "text-danger-300" : "text-positive-300")}>{selectedTenant.balance > 0 ? formatCurrency(selectedTenant.balance) : "Current"}</div></div>
+  <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Balance</div><div className={"text-lg font-bold " + (safeNum(selectedTenant.balance) > 0 ? "text-danger-300" : safeNum(selectedTenant.balance) < 0 ? "text-positive-300" : "text-white")}>{safeNum(selectedTenant.balance) > 0 ? `-${formatCurrency(selectedTenant.balance)}` : safeNum(selectedTenant.balance) < 0 ? `Credit ${formatCurrency(Math.abs(selectedTenant.balance))}` : "Current"}</div></div>
   <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Status</div><div className="text-lg font-bold capitalize">{selectedTenant.lease_status}</div></div>
   <div className="bg-white/10 rounded-2xl px-3 py-2 text-center"><div className="text-xs text-brand-200">Lease End</div><div className="text-lg font-bold">{selectedTenant.lease_end_date || selectedTenant.move_out || "\u2014"}</div></div>
   </div>
