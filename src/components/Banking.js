@@ -59,9 +59,24 @@ function csvParseDate(raw) {
   return raw;
 }
 
-function csvBuildFingerprint(feedId, date, amount, description) {
-  const norm = (description || "").toLowerCase().replace(/\s+/g, " ").trim().slice(0, 100);
-  return `${feedId}|${date}|${Math.round(amount * 100)}|${norm}`;
+// Normalize description so CSV and Teller fingerprints collide on the
+// same real-world transaction. BofA's CSV masks IDs (ID:XXXXX29876),
+// Teller returns unmasked (ID:8800429876); CSV drops enclosing
+// quotes, Teller keeps them. Collapse all mask tokens to "x", strip
+// long digit runs to "#", drop quotes/backslashes, collapse whitespace.
+// Must match normDescription in api/teller-sync-transactions.js.
+function csvNormDescription(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/x{2,}\d*/g, "x")
+    .replace(/\d{5,}/g, "#")
+    .replace(/[\\"']/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100);
+}
+function csvBuildFingerprint(feedId, date, direction, absAmount, description) {
+  return `${feedId}|${date}|${direction}|${Math.round(absAmount * 100)}|${csvNormDescription(description)}`;
 }
 
 // --- Main Component ---
@@ -480,9 +495,10 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       const payee = wizMapping.payee ? row[wizMapping.payee] : "";
       const checkNum = wizMapping.check_number ? row[wizMapping.check_number] : "";
       const ref = wizMapping.reference ? row[wizMapping.reference] : "";
-      const fingerprint = csvBuildFingerprint(wizFeedId, date, amount, desc);
+      const direction = amount >= 0 ? "inflow" : "outflow";
+      const fingerprint = csvBuildFingerprint(wizFeedId, date, direction, Math.abs(amount), desc);
       const valid = !!date && !isNaN(amount) && amount !== 0;
-      return { idx, date, amount, direction: amount >= 0 ? "inflow" : "outflow", description: desc, memo, payee, checkNum, ref, fingerprint, valid, rawRow: row };
+      return { idx, date, amount, direction, description: desc, memo, payee, checkNum, ref, fingerprint, valid, rawRow: row };
     });
     setWizPreview(rows);
     setWizStep(4);

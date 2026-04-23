@@ -65,9 +65,29 @@ function decrypt(encryptedB64, ivHex, companyId, saltHex) {
   }
 }
 
-function buildFingerprint(feedId, date, amount, description) {
-  const norm = (description || "").toLowerCase().replace(/\s+/g, " ").trim().slice(0, 100);
-  return `${feedId}|${date}|${Math.round(amount * 100)}|${norm}`;
+// Fingerprint built from fields that stay stable across import sources
+// (Teller API vs bank CSV). Uses:
+//   - |direction| instead of signed amount so one-side sign bugs can't
+//     split a txn into two rows
+//   - |abs cents| for amount
+//   - normalized description: lowercased, mask-token runs collapsed
+//     (BofA CSV shows "ID:XXXXX29876", Teller returns "ID:8800429876"),
+//     quotes stripped (CSV drops enclosing quotes, Teller keeps them),
+//     whitespace collapsed
+// Kept in sync with csvBuildFingerprint in src/components/Banking.js —
+// any change here must mirror there or dedup breaks again.
+function normDescription(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/x{2,}\d*/g, "x")
+    .replace(/\d{5,}/g, "#")
+    .replace(/[\\"']/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100);
+}
+function buildFingerprint(feedId, date, direction, absAmount, description) {
+  return `${feedId}|${date}|${direction}|${Math.round(absAmount * 100)}|${normDescription(description)}`;
 }
 
 // mTLS fetch to Teller API — raw, no retry. Returns headers too so the
@@ -311,11 +331,18 @@ module.exports = async function handler(req, res) {
           for (const txn of tellerTxns) {
             if (txn.status === "pending") continue;
 
-            const amount = Math.abs(parseFloat(txn.amount) || 0);
-            const direction = txn.type === "deposit" || txn.type === "credit" ? "inflow" : "outflow";
+            // Direction from SIGN of amount, not from txn.type. Teller
+            // reports Zelle-in and Zelle-out both as type="transfer"
+            // and encodes direction by sign — ignoring the sign and
+            // defaulting "transfer" to outflow flipped every Zelle
+            // receipt to a negative amount. Deposits/credits already
+            // arrive with positive amounts, so sign covers them too.
+            const amountNum = parseFloat(txn.amount) || 0;
+            const direction = amountNum >= 0 ? "inflow" : "outflow";
+            const amount = Math.abs(amountNum);
             const date = txn.date || "";
             const desc = txn.description || "";
-            const fp = buildFingerprint(feed.id, date, direction === "outflow" ? -amount : amount, desc);
+            const fp = buildFingerprint(feed.id, date, direction, amount, desc);
 
             if (existingSet.has(fp)) continue;
 
