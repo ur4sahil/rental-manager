@@ -70,8 +70,9 @@ function buildFingerprint(feedId, date, amount, description) {
   return `${feedId}|${date}|${Math.round(amount * 100)}|${norm}`;
 }
 
-// mTLS fetch to Teller API
-function tellerFetch(url, accessToken) {
+// mTLS fetch to Teller API — raw, no retry. Returns headers too so the
+// retry wrapper can honor Retry-After on 429.
+function tellerFetchRaw(url, accessToken) {
   const certB64 = process.env.TELLER_CERT_B64;
   const keyB64 = process.env.TELLER_KEY_B64;
   const cert = certB64 ? Buffer.from(certB64, "base64").toString("utf8") : undefined;
@@ -95,7 +96,7 @@ function tellerFetch(url, accessToken) {
     const req = https.request(opts, (r) => {
       let body = "";
       r.on("data", (chunk) => (body += chunk));
-      r.on("end", () => resolve({ ok: r.statusCode >= 200 && r.statusCode < 300, status: r.statusCode, body }));
+      r.on("end", () => resolve({ ok: r.statusCode >= 200 && r.statusCode < 300, status: r.statusCode, body, headers: r.headers || {} }));
     });
     req.on("error", reject);
     req.setTimeout(FETCH_TIMEOUT_MS, () => {
@@ -103,6 +104,41 @@ function tellerFetch(url, accessToken) {
     });
     req.end();
   });
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Parse Retry-After header. Teller may return seconds (e.g. "2") or an
+// HTTP date. Clamp to a sane range so a misbehaving header can't make
+// us hang for the full Vercel function budget.
+function parseRetryAfter(value) {
+  if (!value) return null;
+  const asNum = Number(value);
+  if (Number.isFinite(asNum)) return Math.min(10000, Math.max(500, asNum * 1000));
+  const asDate = Date.parse(value);
+  if (Number.isFinite(asDate)) return Math.min(10000, Math.max(500, asDate - Date.now()));
+  return null;
+}
+
+// Retry wrapper — pause on 429 (rate limit) and 503 (service unavailable),
+// both of which are transient. 3 attempts with exponential backoff,
+// capped at 10s per wait. Other non-2xx statuses pass through to the
+// caller to handle (401/403 → reauth, 5xx → hard fail, etc).
+async function tellerFetch(url, accessToken) {
+  const MAX_ATTEMPTS = 3;
+  const BASE_DELAY_MS = 1000;
+  let lastRes = null;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const res = await tellerFetchRaw(url, accessToken);
+    lastRes = res;
+    if (res.status !== 429 && res.status !== 503) return res;
+    if (attempt === MAX_ATTEMPTS - 1) return res; // give up, let caller see 429
+    const retryAfter = parseRetryAfter(res.headers["retry-after"]);
+    const wait = retryAfter != null ? retryAfter : Math.min(10000, BASE_DELAY_MS * Math.pow(2, attempt));
+    console.warn(`[teller-sync] ${res.status} from Teller, waiting ${wait}ms before retry ${attempt + 1}/${MAX_ATTEMPTS - 1}`);
+    await sleep(wait);
+  }
+  return lastRes;
 }
 
 module.exports = async function handler(req, res) {
@@ -225,6 +261,11 @@ module.exports = async function handler(req, res) {
             const oldestId = page[page.length - 1]?.id;
             if (!oldestId || oldestId === fromId) break; // nothing new
             fromId = oldestId;
+            // Tiny breather between pages. Teller's rate limits bite
+            // fast when pulling a year of history across multiple
+            // feeds in one connection — 150ms is unnoticeable to the
+            // user but cuts our 429 rate dramatically.
+            await sleep(150);
           }
 
           // Record what we actually pulled before client-side filtering,
