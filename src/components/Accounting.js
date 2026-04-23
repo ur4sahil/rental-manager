@@ -1158,7 +1158,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-neutral-200 bg-white text-neutral-500" title="To date" />
   {(dateFrom || dateTo) && <TextLink tone="danger" size="xs" underline={false} onClick={() => { setDateFrom(""); setDateTo(""); }}>Clear</TextLink>}
   </div>
-  <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
+  <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-x-auto">
   <table className="w-full text-sm">
   <thead className="text-xs text-neutral-500 uppercase tracking-wider bg-neutral-50 font-semibold"><tr><th className="px-5 py-3 text-left">Entry #</th><th className="px-5 py-3 text-left">Date</th><th className="px-5 py-3 text-left">Property</th><th className="px-5 py-3 text-left">Description</th><th className="px-5 py-3 text-left">Source</th><th className="px-5 py-3 text-left">Status</th><th className="px-5 py-3 text-right">Amount</th><th className="px-5 py-3">Actions</th></tr></thead>
   <tbody>
