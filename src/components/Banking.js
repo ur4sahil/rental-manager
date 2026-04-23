@@ -559,6 +559,23 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
       }
     }
 
+    // Widen the date filter if we imported rows older than the current
+    // fetch window. Otherwise the user sees "55 imported" but the
+    // transactions don't show up in the list because the default
+    // "Last 90 days" filter excludes them. Compute oldest imported
+    // date and pick the smallest window that covers it.
+    if (imported > 0 && batchInserts.length > 0) {
+      const oldestImported = batchInserts.reduce((m, t) => (t.posted_date && (!m || t.posted_date < m) ? t.posted_date : m), "");
+      const cutoff = dateRangeCutoff();
+      const cutoffStr = cutoff || "0000-00-00";
+      if (oldestImported && oldestImported < cutoffStr) {
+        const daysBack = Math.ceil((new Date() - new Date(oldestImported)) / 86400000);
+        const widened = daysBack <= 30 ? "30d" : daysBack <= 90 ? "90d" : daysBack <= 183 ? "6m" : daysBack <= 365 ? "1y" : "all";
+        setDateRangeMode(widened);
+        showToast(`Date filter widened to cover imported transactions (oldest: ${oldestImported}).`, "info");
+      }
+    }
+
     setWizResult({ imported, skipped, duplicates, total: validRows.length, ruleApplied });
     setWizStep(6);
     fetchAll();
