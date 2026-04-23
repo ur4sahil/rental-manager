@@ -19,7 +19,6 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
 
   const [acctRevenue, setAcctRevenue] = useState(0);
   const [acctExpenses, setAcctExpenses] = useState(0);
-  const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
 
 
   useEffect(() => {
@@ -76,15 +75,6 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   const { data: taxData, error: taxErr } = await supabase.from("property_tax_bills").select("*").eq("company_id", companyId).eq("status", "pending").is("archived_at", null).lte("due_date", taxWindow).order("due_date", { ascending: true });
   if (taxErr) pmError("PM-8006", { raw: taxErr, context: "dashboard tax bills fetch", silent: true });
   setTaxBillsDue(taxData || []);
-  // Count pending approvals (lightweight — full data loaded on Tasks page)
-  try {
-  const [propReqs, docExceptions, memberReqs] = await Promise.all([
-  supabase.from("property_change_requests").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "pending"),
-  supabase.from("doc_exception_requests").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "pending"),
-  supabase.from("company_members").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("status", "pending"),
-  ]);
-  setPendingApprovalCount((propReqs.count || 0) + (docExceptions.count || 0) + (memberReqs.count || 0));
-  } catch (e) { pmError("PM-8006", { raw: e, context: "approval count fetch", silent: true }); }
   // Pull financials from accounting module (journal entries are the GL source of truth,
   // but dashboard stats also reference payments/tenants tables for quick metrics)
   try {
@@ -141,29 +131,6 @@ function Dashboard({ companySettings = {}, notifications, setPage, companyId, ad
   <StatCard onClick={() => setPage("maintenance")} label="Open Work Orders" value={openWO} sub={`${workOrders.filter(w => w.priority === "emergency").length} emergency`} color="text-notice-500" />
   <StatCard onClick={() => setPage("utilities")} label="Pending Utilities" value={utilities.filter(u => u.status === "pending").length} sub="awaiting payment" color="text-caution-600" />
   </div>
-  {/* Tasks & Approvals summary — click to go to full page */}
-  {(() => {
-  const taskCount = tenants.filter(t => t.doc_status === "pending_docs").length
-  + tenants.filter(t => t.balance > 0).length
-  + workOrders.filter(w => w.priority === "emergency" && w.status !== "completed").length
-  + tenants.filter(t => { const end = t.lease_end_date || t.move_out; if (!end) return false; const days = Math.ceil((parseLocalDate(end) - new Date()) / 86400000); return days > 0 && days <= 30; }).length
-  + hoaDue.length + pendingApprovalCount
-  // Unpaid tax bills due ≤14d out or overdue count as pending tasks.
-  + taxBillsDue.filter(tb => { const d = parseLocalDate(tb.due_date); d.setHours(0,0,0,0); const today = new Date(); today.setHours(0,0,0,0); return (d - today) / 86400000 <= 14; }).length;
-  return taskCount > 0 ? (
-  <div onClick={() => setPage("tasks")} className="bg-warn-50 rounded-3xl shadow-card border border-warn-200 p-4 mb-6 cursor-pointer hover:bg-warn-100 transition-colors flex items-center justify-between">
-  <div className="flex items-center gap-3">
-  <div className="w-10 h-10 bg-warn-200 text-warn-800 rounded-full flex items-center justify-center font-bold text-lg">{taskCount}</div>
-  <div>
-  <div className="font-manrope font-bold text-warn-800">Tasks & Approvals</div>
-  <div className="text-xs text-warn-600">{pendingApprovalCount > 0 ? pendingApprovalCount + " awaiting approval · " : ""}{taskCount - pendingApprovalCount} pending tasks</div>
-  </div>
-  </div>
-  <span className="material-icons-outlined text-warn-500">arrow_forward</span>
-  </div>
-  ) : null;
-  })()}
-
   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
   <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-4">
   <h3 className="font-semibold text-neutral-700 mb-3">Lease Expirations</h3>
