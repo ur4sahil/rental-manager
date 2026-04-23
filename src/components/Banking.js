@@ -1942,7 +1942,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   {/* Bottom Pagination */}
   {txnTotalPages > 1 && (
   <div className="flex items-center justify-between">
-    <div className="text-xs text-neutral-400">Showing {safeTxnPage * TXN_PAGE_SIZE + 1}–{Math.min((safeTxnPage + 1) * TXN_PAGE_SIZE, filtered.length)} of {filtered.length}</div>
+    <div className="text-xs text-neutral-400">Showing {safeTxnPage * txnPageSize + 1}–{Math.min((safeTxnPage + 1) * txnPageSize, filtered.length)} of {filtered.length}</div>
     <div className="flex items-center gap-2">
       <Btn variant="secondary" size="sm" onClick={() => setTxnPage(Math.max(0, safeTxnPage - 1))} disabled={safeTxnPage === 0}>← Prev</Btn>
       <span className="text-xs text-neutral-500">Page {safeTxnPage + 1} of {txnTotalPages}</span>
