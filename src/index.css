@@ -169,7 +169,25 @@ body {
   font-family: 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Capacitor iOS: push content below the notch/dynamic-island and above
+     the home-indicator bar. These env() values are 0 on the web so
+     nothing shifts for browser users. */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  /* Disable the momentum rubber-band on the body — modals and lists
+     handle their own overscroll. Fixes the "whole app bounces when you
+     scroll a dropdown" issue on iOS webview. */
+  overscroll-behavior: none;
 }
+
+/* Modals/fixed overlays are rendered outside the body padding, so they
+   need their own safe-area handling when they touch the edges. Use the
+   .safe-inset-bottom utility where a modal's action row would otherwise
+   sit under the home-indicator bar. */
+.safe-inset-bottom { padding-bottom: max(env(safe-area-inset-bottom), 12px); }
+.safe-inset-top    { padding-top:    max(env(safe-area-inset-top),    12px); }
 
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',

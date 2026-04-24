@@ -3,6 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/browser": "^8.0.3",
+    "@capacitor/camera": "^8.1.0",
+    "@capacitor/core": "^8.3.1",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/ios": "^8.3.1",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/push-notifications": "^8.0.3",
+    "@capacitor/share": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2",
     "@hcaptcha/react-hcaptcha": "^2.0.2",
     "@sentry/react": "^10.46.0",
     "@supabase/supabase-js": "^2.98.0",
@@ -58,6 +68,7 @@
     ]
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.3.1",
     "@craco/craco": "^7.1.0",
     "@tailwindcss/postcss": "^4.2.2",
     "autoprefixer": "^10.4.27",

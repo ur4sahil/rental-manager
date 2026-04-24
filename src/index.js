@@ -3,6 +3,10 @@ import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
+import { initStatusBar } from './utils/native';
+
+// No-op on web; sets the iOS status bar style to match the brand header.
+initStatusBar();
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
