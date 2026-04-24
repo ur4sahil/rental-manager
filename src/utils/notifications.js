@@ -55,7 +55,7 @@ export async function queueNotification(type, recipientEmail, data, companyId) {
       const { data: session } = await supabase.auth.getSession();
       const jwt = session?.session?.access_token;
       if (jwt) {
-        const title = pushTitleFor(type);
+        const title = pushTitleFor(type, data);
         const message = pushBodyFor(type, data);
         const url = pushUrlFor(type);
         // Fire and forget — don't block the queueNotification caller on
@@ -75,14 +75,29 @@ export async function queueNotification(type, recipientEmail, data, companyId) {
 // Human-readable title/body per notification type. Kept terse — push
 // banners truncate hard on mobile, so the first ~40 chars carry the
 // signal and the full text lives in the in-app/email copy.
-function pushTitleFor(type) {
+//
+// Title carries the WHO + WHERE context (sender · short property
+// address) so the recipient can triage without opening the app.
+// Body carries the actual content (the message, the amount, etc.).
+// Strip the property to its first comma-separated segment so
+// "10013 Dakin Ct, Cheltenham, MD 20623" shows as "10013 Dakin Ct"
+// — full address won't fit on a phone banner anyway.
+function shortProp(p) {
+  if (!p || typeof p !== "string") return "";
+  return p.split(",")[0].trim();
+}
+function pushTitleFor(type, data) {
+  const d = typeof data === "string" ? {} : (data || {});
+  const who = d.sender || d.tenant || "";
+  const where = shortProp(d.property);
+  const join = (a, b) => [a, b].filter(Boolean).join(" \u00b7 "); // " · "
+  if (type === "message_received") return join(who, where) || "New message";
+  if (type === "payment_received") return join(who, where) || "Payment received";
+  if (type === "move_out") return join(d.tenant, where) || "Move-out completed";
+  if (type === "maintenance_request") return join(d.tenant, where) || "Maintenance request";
   const map = {
-    message_received: "New message",
-    payment_received: "Payment received",
-    move_out: "Move-out completed",
     deposit_returned: "Deposit returned",
     lease_expiry: "Lease expiring soon",
-    maintenance_request: "Maintenance request",
     work_order_update: "Work order update",
     invoice_approved: "Invoice approved",
     invoice_rejected: "Invoice rejected",
@@ -93,11 +108,11 @@ function pushTitleFor(type) {
 }
 function pushBodyFor(type, data) {
   const d = typeof data === "string" ? {} : (data || {});
-  if (type === "message_received") return (d.sender ? d.sender + ": " : "") + (d.preview || "").slice(0, 120);
-  if (type === "payment_received") return (d.tenant || "Tenant") + " — $" + (d.amount ?? "?");
-  if (type === "move_out") return (d.tenant || "Tenant") + " moved out of " + (d.property || "property");
+  if (type === "message_received") return (d.preview || "").slice(0, 140) || "(no preview)";
+  if (type === "payment_received") return "$" + (d.amount ?? "?") + (d.status ? " · " + d.status : "");
+  if (type === "move_out") return "Move-out " + (d.moveOutDate || "completed");
   if (type === "deposit_returned") return "$" + (d.returned ?? 0) + " returned to " + (d.tenant || "tenant");
-  if (type === "maintenance_request") return (d.title || "New request") + (d.property ? " — " + d.property : "");
+  if (type === "maintenance_request") return d.title || d.preview || "New request";
   return d.preview || d.message || d.description || "";
 }
 function pushUrlFor(type) {
