@@ -95,8 +95,10 @@ export default function PullToRefresh({ onRefresh, scrollRef, children, classNam
       if (isInsideNestedScroll(e.target)) { pullRef.current.active = false; return; }
       if (el.scrollTop > 0) { pullRef.current.active = false; return; }
       pullRef.current.active = true;
+      pullRef.current.startX = e.touches[0].clientX;
       pullRef.current.startY = e.touches[0].clientY;
       pullRef.current.delta = 0;
+      pullRef.current.axisLocked = false;
     };
 
     const onTouchMove = (e) => {
@@ -111,7 +113,25 @@ export default function PullToRefresh({ onRefresh, scrollRef, children, classNam
         setIndicator(0);
         return;
       }
+      const dx = e.touches[0].clientX - pullRef.current.startX;
       const dy = e.touches[0].clientY - pullRef.current.startY;
+      // Axis lock. Until total movement clears the deadzone, don't do
+      // anything — prevents tiny finger drift from showing the
+      // indicator. Once it clears, commit to one axis: if the motion
+      // so far is more horizontal than vertical, abort this gesture
+      // entirely (user is swiping sideways — carousel, horizontal tab
+      // scroll, just resting their thumb). Requires dy to lead dx by
+      // 1.5x before locking to vertical so a mostly-sideways swipe
+      // with small vertical drift doesn't read as a pull.
+      if (!pullRef.current.axisLocked) {
+        const AXIS_DEADZONE = 10;
+        if (Math.abs(dx) < AXIS_DEADZONE && Math.abs(dy) < AXIS_DEADZONE) return;
+        if (Math.abs(dx) > Math.abs(dy) * 1.5 || dy < 0) {
+          pullRef.current.active = false;
+          return;
+        }
+        pullRef.current.axisLocked = true;
+      }
       if (dy <= 0) {
         // User swiped back up — reset and let native scroll resume.
         pullRef.current.delta = 0;
