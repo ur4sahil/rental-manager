@@ -3290,11 +3290,19 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   const { error: _err3930 } = await supabase.from("acct_journal_lines").delete().eq("journal_entry_id", id).eq("company_id", companyId);
   if (_err3930) { pmError("PM-4003", { raw: _err3930, context: "acct_journal_lines delete before re-insert" }); fetchAll(); return; }
   if (lines?.length > 0) {
-  const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: l.class_id || null, memo: l.memo || "", entity_type: l.entity_type || null, entity_id: l.entity_id || null, entity_name: l.entity_name || null })));
+  // class_id and entity_id are uuid columns. Legacy rows sometimes
+  // carry bigint-stringified values (e.g. entity_id="306" for a
+  // tenant from the old integer-id schema). Coerce anything that
+  // isn't a real UUID to null — same guard addJournalEntry uses.
+  // Without this, editing a JE loaded from a legacy row 500s with
+  // `invalid input syntax for type uuid: "306"` (Sentry PM-4003).
+  const isUUID = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+  const safeUUID = (v) => (v && isUUID(String(v))) ? v : null;
+  const { error: linesErr } = await supabase.from("acct_journal_lines").insert(lines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: safeNum(l.debit), credit: safeNum(l.credit), class_id: safeUUID(l.class_id), memo: l.memo || "", entity_type: l.entity_type || null, entity_id: safeUUID(l.entity_id), entity_name: l.entity_name || null })));
   if (linesErr) {
   pmError("PM-4003", { raw: linesErr, context: "update journal lines failed, restoring" });
   if (oldLines?.length > 0) {
-  await supabase.from("acct_journal_lines").insert(oldLines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: l.debit, credit: l.credit, class_id: l.class_id, memo: l.memo, entity_type: l.entity_type, entity_id: l.entity_id, entity_name: l.entity_name })));
+  await supabase.from("acct_journal_lines").insert(oldLines.map(l => ({ journal_entry_id: id, company_id: companyId, account_id: l.account_id, account_name: l.account_name, debit: l.debit, credit: l.credit, class_id: safeUUID(l.class_id), memo: l.memo, entity_type: l.entity_type, entity_id: safeUUID(l.entity_id), entity_name: l.entity_name })));
   }
   showToast("Error updating journal lines: " + linesErr.message, "error");
   fetchAll();
