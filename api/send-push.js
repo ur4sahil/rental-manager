@@ -76,10 +76,12 @@ module.exports = async (req, res) => {
 
   // 3. Confirm caller is an active member of this company — otherwise
   //    a logged-in user from another company could push-spam tenants
-  //    here. app_users.user_email is compared case-insensitively because
-  //    the table stores whatever case the invite flow recorded.
+  //    here. company_members is the real membership table (app_users
+  //    is a compatibility shim that returns null here). user_email is
+  //    compared case-insensitively because the table stores whatever
+  //    case the invite flow recorded.
   const svc = createClient(SUPABASE_URL, SUPABASE_SVC, { auth: { persistSession: false } });
-  const { data: member } = await svc.from("app_users")
+  const { data: member } = await svc.from("company_members")
     .select("role, status")
     .eq("company_id", company_id)
     .ilike("user_email", callerEmail)
