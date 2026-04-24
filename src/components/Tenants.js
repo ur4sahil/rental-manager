@@ -1344,7 +1344,7 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
     if (tRow) {
       const existing = Array.isArray(tRow.approved_doc_exceptions) ? tRow.approved_doc_exceptions : [];
       const next = Array.from(new Set([...existing, r.doc_type]));
-      await supabase.from("tenants").update({ approved_doc_exceptions: next }).eq("id", tRow.id);
+      await supabase.from("tenants").update({ approved_doc_exceptions: next }).eq("company_id", companyId).eq("id", tRow.id);
       if (tRow.email) addNotification("📄", `${r.doc_type} requirement was waived on your account.`, { recipient: tRow.email, type: "doc_exception" });
     }
   } else {

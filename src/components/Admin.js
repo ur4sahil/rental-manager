@@ -949,7 +949,7 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
     if (tRow) {
       const existing = Array.isArray(tRow.approved_doc_exceptions) ? tRow.approved_doc_exceptions : [];
       const next = Array.from(new Set([...existing, docType]));
-      await supabase.from("tenants").update({ approved_doc_exceptions: next }).eq("id", tRow.id);
+      await supabase.from("tenants").update({ approved_doc_exceptions: next }).eq("company_id", companyId).eq("id", tRow.id);
     }
   } else {
     // Legacy blanket waive (request had no doc_type captured).
