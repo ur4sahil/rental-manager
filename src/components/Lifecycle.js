@@ -149,8 +149,13 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
     if (syncErr) pmError("PM-6002", { raw: syncErr, context: "move-out balance sync to GL", silent: true });
   }
 
-  // 1. Process deposit return/deductions GL
-  if (depositReturn > 0) {
+  // 1. Process deposit return/deductions GL.
+  //    When arAction === "waive" the tenant is being written off for
+  //    bad debt, so the deposit must be adjusted against the balance
+  //    instead of refunded — no cash goes back out the door to a
+  //    tenant who left owing. The waive block below applies what's
+  //    left of the deposit (post-deductions) against the tenant AR.
+  if (depositReturn > 0 && arAction !== "waive") {
   const depResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Security deposit returned — ${tName}`, reference: `DEP-RTN-${shortId()}`, property: selectedLease.property,
   lines: [
   { account_id: "2100", account_name: "Security Deposits Held", debit: depositReturn, credit: 0, class_id: classId, memo: `Deposit return — ${tName}` },
@@ -198,14 +203,52 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   }
   }
 
-  // 2. Handle outstanding AR (balance update gated on JE success)
+  // 2. Handle outstanding AR (balance update gated on JE success).
+  //    Two-leg posting:
+  //      a) apply any held deposit (net of physical damage deductions)
+  //         against the tenant's AR — DR 2100 Deposits Held / CR
+  //         tenant AR sub-account. Clears the liability we'd otherwise
+  //         leave stranded, and reduces what we expense as bad debt.
+  //      b) write off the residual — DR 5500 Bad Debt Expense / CR
+  //         tenant AR sub-account.
+  //    Credit always hits the tenant's AR sub-account
+  //    ("1100-005 AR - Falana Dhimkana"), not the parent 1100.
+  //    Previously only the write-off leg existed AND it credited the
+  //    parent, so the tenant's individual ledger stayed at the full
+  //    pre-write-off balance while the parent carried a matching
+  //    negative credit — drill-downs looked untouched even though the
+  //    aggregate was zero.
   if (arAction === "waive" && outstandingBalance > 0) {
+  const waiveArId = await getOrCreateTenantAR(cid, tName, selectedTenant.id);
+  // Available deposit to apply = lease deposit minus any damage
+  // deductions already forfeited to income (Step 3 of the wizard).
+  // Cap at outstandingBalance so we never over-apply.
+  const availableDeposit = Math.max(0, safeNum(depositAmount) - safeNum(totalDeductions));
+  const depositApplied = Math.min(availableDeposit, outstandingBalance);
+  if (depositApplied > 0) {
+  const appResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Deposit applied to balance — ${tName}`, reference: `DEP-APPLY-${shortId()}`, property: selectedLease.property,
+  lines: [
+  { account_id: "2100", account_name: "Security Deposits Held", debit: depositApplied, credit: 0, class_id: classId, memo: `Deposit applied to AR — ${tName}` },
+  { account_id: waiveArId, account_name: "AR - " + tName, debit: 0, credit: depositApplied, class_id: classId, memo: `Deposit offset (move-out) — ${tName}` },
+  ], requireJE: false });
+  if (!appResult.jeId) showToast("Warning: Deposit-to-AR application failed — please post manually in Accounting.", "error");
+  }
+  const residualWriteOff = Math.round((outstandingBalance - depositApplied) * 100) / 100;
+  if (residualWriteOff > 0) {
   const woResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Bad debt write-off — ${tName}`, reference: `WOFF-${shortId()}`, property: selectedLease.property,
   lines: [
-  { account_id: "5500", account_name: "Bad Debt Expense", debit: outstandingBalance, credit: 0, class_id: classId, memo: `Write-off at move-out — ${tName}` },
-  { account_id: "1100", account_name: "Accounts Receivable", debit: 0, credit: outstandingBalance, class_id: classId, memo: `AR write-off — ${tName}` },
-  ], ledgerEntry: { tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: "Bad debt write-off", amount: -outstandingBalance, type: "adjustment", balance: 0 },
+  { account_id: "5500", account_name: "Bad Debt Expense", debit: residualWriteOff, credit: 0, class_id: classId, memo: `Write-off at move-out — ${tName}` },
+  { account_id: waiveArId, account_name: "AR - " + tName, debit: 0, credit: residualWriteOff, class_id: classId, memo: `AR write-off — ${tName}` },
+  ], ledgerEntry: { tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: "Bad debt write-off", amount: -residualWriteOff, type: "adjustment", balance: 0 },
   balanceUpdate: { tenantId: selectedTenant.id, amount: -outstandingBalance } });
+  if (!woResult.jeId) showToast("Warning: Bad debt write-off failed — please post manually in Accounting.", "error");
+  } else if (depositApplied > 0) {
+  // Full AR absorbed by deposit; the balance-sync above already
+  // reflects the GL, so mirror the -outstandingBalance delta on
+  // the stored column now that there's no write-off to do it.
+  const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: -outstandingBalance });
+  if (balErr) pmError("PM-6002", { raw: balErr, context: "waive deposit-only balance update", silent: true });
+  }
   }
 
   // 2b. Prorate rent for partial move-out month
