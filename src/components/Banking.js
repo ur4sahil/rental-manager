@@ -660,7 +660,13 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
     const { data: jeRow, error: jeErr } = await supabase.from("acct_journal_entries").insert([{
       company_id: companyId, number: jeNumber, date: txn.posted_date,
       description: bankDesc,
-      reference: "Bank Import", property: classProperty, status: "posted"
+      // Per-txn reference. Was hard-coded "Bank Import" for every row,
+      // which silently worked for the first categorization in a
+      // company and then blocked every subsequent one via
+      // idx_je_company_reference_unique ("duplicate key value"). The
+      // XFER- and SPLIT- paths in this file already use the same
+      // BANK-<txn.id> shape.
+      reference: `BANK-${txn.id}`, property: classProperty, status: "posted"
     }]).select("id").maybeSingle();
 
     if (jeErr || !jeRow) { showToast("Error creating JE: " + (jeErr?.message || "no ID"), "error"); return; }
