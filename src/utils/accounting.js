@@ -383,44 +383,93 @@ export async function resolveAccountId(bareCode, companyId) {
 // Creates or retrieves a per-tenant AR sub-account (e.g., "1100-001 AR - Alice Johnson")
 // linked to the parent 1100 Accounts Receivable account.
 export const _tenantArCache = {};
+// Resolve (or create) the AR sub-account for ONE tenant row. The
+// cache key uses tenantId so a tenant who appears at multiple
+// properties (e.g. Sahil Agarwal × 3 leases) gets one AR per lease,
+// not one shared AR keyed by name. The shared-by-name behavior
+// blended unrelated leases into a single $42K consolidated balance
+// at Smith and made per-lease reporting impossible — see migration
+// 20260424000010 which fixed acct_accounts.tenant_id to bigint and
+// the split script that re-attributed legacy lines.
+//
+// Lookup precedence:
+//   1. tenantId-keyed acct_accounts row (the new normal)
+//   2. Legacy "AR - <name>" account ONLY if the tenantId case is
+//      unique for this name (i.e. no other tenants row at this
+//      company shares the name) — preserves the historical
+//      sub-account for single-lease tenants without creating a
+//      duplicate.
+//   3. Create a new "AR - <name> (<short property>)" sub-account
+//      with tenant_id populated.
 export async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   try {
   if (!companyId || !tenantName) return await resolveAccountId("1100", companyId);
-  const cacheKey = `${companyId}::${tenantName}`;
+  const cacheKey = `${companyId}::${tenantId || tenantName}`;
   if (_tenantArCache[cacheKey]) return _tenantArCache[cacheKey];
-  // Check if tenant AR sub-account already exists
-  const { data: existing } = await supabase.from("acct_accounts").select("id, code").eq("company_id", companyId).eq("type", "Asset").eq("name", "AR - " + tenantName).maybeSingle();
-  if (existing?.id) {
-  _tenantArCache[cacheKey] = existing.id;
-  return existing.id;
+  // 1. Look up by tenant_id (preferred — the per-lease key)
+  if (tenantId) {
+    const { data: byId } = await supabase.from("acct_accounts")
+      .select("id").eq("company_id", companyId).eq("type", "Asset")
+      .eq("tenant_id", tenantId).maybeSingle();
+    if (byId?.id) { _tenantArCache[cacheKey] = byId.id; return byId.id; }
   }
-  // Get parent AR account UUID
+  // 2. Legacy fallback by name — only if exactly one active tenant
+  //    row at this company shares the name (otherwise we'd grab the
+  //    consolidated account that another lease is using).
+  const { data: existing } = await supabase.from("acct_accounts")
+    .select("id, tenant_id").eq("company_id", companyId).eq("type", "Asset")
+    .eq("name", "AR - " + tenantName).maybeSingle();
+  if (existing?.id) {
+    if (tenantId) {
+      // Same-name multiplicity check
+      const { data: sib } = await supabase.from("tenants").select("id")
+        .eq("company_id", companyId).eq("name", tenantName).is("archived_at", null);
+      const activeCount = (sib || []).length;
+      if (activeCount <= 1) {
+        // Adopt this account for this tenant — populate tenant_id so
+        // future lookups hit Rule 1 directly.
+        if (!existing.tenant_id) {
+          await supabase.from("acct_accounts").update({ tenant_id: tenantId }).eq("id", existing.id);
+        }
+        _tenantArCache[cacheKey] = existing.id;
+        return existing.id;
+      }
+      // Multiple active rows share this name — fall through to create
+      // a per-lease account (don't reuse the consolidated one).
+    } else {
+      _tenantArCache[cacheKey] = existing.id;
+      return existing.id;
+    }
+  }
+  // 3. Create new per-lease sub-account
   const parentArId = await resolveAccountId("1100", companyId);
-  // Generate next sub-account code: 1100-001, 1100-002, etc.
   const { data: subAccts } = await supabase.from("acct_accounts").select("code").eq("company_id", companyId).like("code", "1100-%").order("code", { ascending: false }).limit(1);
   const lastSeq = subAccts?.[0]?.code ? parseInt(subAccts[0].code.split("-")[1]) || 0 : 0;
   const newCode = "1100-" + String(lastSeq + 1).padStart(3, "0");
-  // Insert with old_text_id (required NOT NULL column)
+  // Look up the tenant's property to disambiguate the account name.
+  let acctName = "AR - " + tenantName;
+  if (tenantId) {
+    const { data: tRow } = await supabase.from("tenants").select("property").eq("id", tenantId).maybeSingle();
+    const shortProp = (tRow?.property || "").split(",")[0].trim();
+    if (shortProp) acctName = "AR - " + tenantName + " (" + shortProp + ")";
+  }
   const oldTextId = companyId + "-" + newCode;
-  let newAcct = null;
-  let createErr = null;
-  // Attempt 1: full payload
+  let newAcct = null, createErr = null;
   ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([{
-  company_id: companyId, code: newCode, name: "AR - " + tenantName,
-  type: "Asset", is_active: true, old_text_id: oldTextId,
-  parent_id: parentArId || null, tenant_id: tenantId || null,
+    company_id: companyId, code: newCode, name: acctName,
+    type: "Asset", is_active: true, old_text_id: oldTextId,
+    parent_id: parentArId || null, tenant_id: tenantId || null,
   }]).select("id").maybeSingle());
-  // Attempt 2: without optional columns
   if (createErr) {
-  ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([{
-  company_id: companyId, code: newCode, name: "AR - " + tenantName,
-  type: "Asset", is_active: true, old_text_id: oldTextId,
-  }]).select("id").maybeSingle());
+    ({ data: newAcct, error: createErr } = await supabase.from("acct_accounts").insert([{
+      company_id: companyId, code: newCode, name: acctName,
+      type: "Asset", is_active: true, old_text_id: oldTextId,
+    }]).select("id").maybeSingle());
   }
   if (createErr || !newAcct?.id) {
-  pmError("PM-4006", { raw: createErr, context: "AR sub-account creation after 3 attempts", silent: true });
-  _tenantArCache[cacheKey] = parentArId;
-  return parentArId;
+    pmError("PM-4006", { raw: createErr, context: "AR sub-account creation", silent: true });
+    _tenantArCache[cacheKey] = parentArId;
+    return parentArId;
   }
   _tenantArCache[cacheKey] = newAcct.id;
   return newAcct.id;
