@@ -3422,13 +3422,17 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   ))}
   </div>
 
-  {/* Mobile horizontal tab bar */}
-  <div className="md:hidden flex gap-2 px-4 py-2 border-b border-neutral-200 overflow-x-auto w-full bg-white">
+  {/* Mobile horizontal tab bar. shrink-0 on each button + a fixed-size
+      icon wrapper is load-bearing: without them, a flex-parent with
+      overflow-x-auto was squeezing each button toward 0 width (Tailwind's
+      default `flex` child has min-width:auto but Safari's flexbox was
+      collapsing icons and stacking labels on top of each other at x=0). */}
+  <div className="md:hidden flex flex-row flex-nowrap gap-2 px-4 py-2 border-b border-neutral-200 overflow-x-auto w-full bg-white">
   {acctSidebarItems.flatMap(g => g.items).map(item => (
-    <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${activeTab === item.id ? "bg-positive-50 text-positive-700" : "text-neutral-500 hover:bg-neutral-50"}`}>
-      <span className="material-icons-outlined text-base">{item.icon}</span>
-      {item.label}
-      {item.badge > 0 && <span className="ml-1 bg-warn-100 text-warn-700 text-xs px-1.5 py-0.5 rounded-full">{item.badge}</span>}
+    <button key={item.id} onClick={() => setActiveTab(item.id)} className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${activeTab === item.id ? "bg-positive-50 text-positive-700" : "text-neutral-500 hover:bg-neutral-50"}`}>
+      <span className="material-icons-outlined text-base w-5 h-5 flex items-center justify-center shrink-0">{item.icon}</span>
+      <span className="whitespace-nowrap">{item.label}</span>
+      {item.badge > 0 && <span className="ml-1 bg-warn-100 text-warn-700 text-xs px-1.5 py-0.5 rounded-full shrink-0">{item.badge}</span>}
     </button>
   ))}
   </div>
