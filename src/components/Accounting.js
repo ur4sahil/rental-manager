@@ -987,7 +987,7 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
 }
 
 // --- Journal Entries Sub-Page ---
-export function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], vendors = [], onAdd, onUpdate, onPost, onVoid, companyId, onOpenLedger, initialViewJEId, autoOpenAdd, showToast, onCloseJEDetail }) {
+export function AcctJournalEntries({ accounts, journalEntries, classes, tenants = [], vendors = [], onAdd, onUpdate, onPost, onVoid, onReverse, companyId, onOpenLedger, initialViewJEId, autoOpenAdd, showToast, onCloseJEDetail }) {
   const [modal, setModal] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
   const [searchProperty, setSearchProperty] = useState("");
@@ -1186,6 +1186,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   <div className="flex gap-1 justify-center" onClick={e => e.stopPropagation()}>
   {je.status === "draft" && <Btn onClick={() => onPost(je.id)} variant="success" size="sm">Post</Btn>}
   {je.status === "posted" && <Btn variant="danger" size="sm" onClick={() => onVoid(je.id)}>Void</Btn>}
+  {je.status === "posted" && onReverse && <Btn variant="slate" size="sm" onClick={() => onReverse(je.id)}>Reverse</Btn>}
   {je.status !== "voided" && <TextLink tone="brand" size="xs" onClick={() => openEdit(je)}>Edit</TextLink>}
   <TextLink tone="neutral" size="xs" onClick={() => openDuplicate(je)}>Duplicate</TextLink>
   </div>
@@ -1233,6 +1234,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   <div className="flex gap-2">
   {modal.je.status === "draft" && <Btn variant="success" size="sm" onClick={() => { onPost(modal.je.id); setModal(null); }}>Post</Btn>}
   {modal.je.status === "posted" && <Btn variant="danger" size="sm" onClick={() => { onVoid(modal.je.id); setModal(null); }}>Void</Btn>}
+  {modal.je.status === "posted" && onReverse && <Btn variant="slate" size="sm" onClick={() => { onReverse(modal.je.id); setModal(null); }}>Reverse</Btn>}
   {modal.je.status !== "voided" && <Btn variant="slate" size="sm" onClick={() => openEdit(modal.je)}>Edit</Btn>}
   <Btn variant="slate" size="sm" onClick={() => { openDuplicate(modal.je); }}>Duplicate</Btn>
   </div>
@@ -3378,6 +3380,98 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   } catch (e) { showToast("Error voiding entry: " + e.message, "error"); } finally { guardRelease("voidJE", id); }
   }
 
+  // Reverse a posted JE by posting a NEW mirror JE with DR/CR swapped.
+  // Unlike void (which marks the original voided and hides it from
+  // reports), reverse leaves the original intact — the net effect on
+  // the books is zero across both dates, which is the standard
+  // accrual-reversal pattern PMs expect. Reversals of reversals are
+  // allowed (user can chain).
+  async function reverseJournalEntry(id) {
+  if (!guardSubmit("reverseJE", id)) return;
+  try {
+  const je = journalEntries.find(j => j.id === id);
+  if (!je) { showToast("Journal entry not found.", "error"); return; }
+  if (je.status !== "posted") { showToast("Only posted journal entries can be reversed.", "error"); return; }
+  const today = formatLocalDate(new Date());
+  if (await checkPeriodLock(companyId, today)) { showToast("Cannot post a reversal in a locked period (" + today + ").", "error"); return; }
+  const confirmed = await showConfirm({
+    message: `Post a reversing entry for ${je.number}?\n\nOriginal: ${je.description || "(no description)"}\nReversal date: ${today}\n\nA new JE will be posted with debits and credits swapped. The original stays posted — both entries remain on the GL.`,
+    variant: "warn", confirmText: "Post Reversal"
+  });
+  if (!confirmed) return;
+  // Fetch fresh lines — the in-memory journalEntries cache may lag.
+  const { data: origLines } = await supabase.from("acct_journal_lines").select("*").eq("journal_entry_id", id);
+  if (!origLines || origLines.length === 0) { showToast("Original entry has no lines to reverse.", "error"); return; }
+  const origRef = je.reference || je.number || "";
+  const newNumber = nextJENumber(journalEntries);
+  const newReference = "REV-" + origRef;
+  const newDescription = "Reversal of " + (je.description || je.number || "");
+  const { data: jeRow, error: headerErr } = await supabase.from("acct_journal_entries").insert([{
+    company_id: companyId, number: newNumber, date: today,
+    description: newDescription, reference: newReference,
+    property: je.property || "", status: "posted"
+  }]).select("id").maybeSingle();
+  if (headerErr || !jeRow) { showToast("Error creating reversal: " + (headerErr?.message || "no id returned"), "error"); return; }
+  // class_id / entity_id are uuid columns; legacy rows occasionally
+  // carry non-UUID strings. Mirror the guard from updateJournalEntry
+  // so a reversal can't fail with "invalid input syntax for type uuid".
+  const isUUID = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+  const safeUUID = (v) => (v && isUUID(String(v))) ? v : null;
+  const revLines = origLines.map(l => ({
+    journal_entry_id: jeRow.id, company_id: companyId,
+    account_id: l.account_id, account_name: l.account_name,
+    debit: safeNum(l.credit), credit: safeNum(l.debit),
+    class_id: safeUUID(l.class_id), memo: "Reversal — " + (l.memo || ""),
+    entity_type: l.entity_type || null, entity_id: safeUUID(l.entity_id),
+    entity_name: l.entity_name || null
+  }));
+  const { error: linesErr } = await supabase.from("acct_journal_lines").insert(revLines);
+  if (linesErr) {
+    const { error: delErr } = await supabase.from("acct_journal_entries").delete().eq("id", jeRow.id).eq("company_id", companyId);
+    if (delErr) pmError("PM-4002", { raw: delErr, context: "orphan reversal header cleanup", silent: true });
+    showToast("Error creating reversal lines: " + linesErr.message, "error");
+    return;
+  }
+  // Mirror the tenant-balance / ledger impact. Find any AR sub-account
+  // lines on the original: their net DR-CR is the original AR impact;
+  // the reversal flips it, so tenants.balance should change by
+  // -arImpact. Tenant is resolved first from entity_id (line-level),
+  // then from description (" description — tenant name" convention).
+  const arAccountIds = new Set((acctAccounts || []).filter(a => a.name === "Accounts Receivable" || (a.code || "").startsWith("1100")).map(a => a.id));
+  const arLines = origLines.filter(l => arAccountIds.has(l.account_id));
+  const arImpact = arLines.reduce((s, l) => s + safeNum(l.debit) - safeNum(l.credit), 0);
+  if (Math.abs(arImpact) > 0.01) {
+    let tenantId = null, tenantName = "";
+    const arLineWithEntity = arLines.find(l => l.entity_type === "tenant" && l.entity_id);
+    if (arLineWithEntity) { tenantId = arLineWithEntity.entity_id; tenantName = arLineWithEntity.entity_name || ""; }
+    if (!tenantId) {
+      const descParts = (je.description || "").split(" — ");
+      const tName = descParts.length >= 2 ? descParts[1] : "";
+      if (tName.trim()) {
+        const { data: tenantRow } = await supabase.from("tenants").select("id, name").ilike("name", escapeFilterValue(tName.trim())).eq("company_id", companyId).maybeSingle();
+        if (tenantRow) { tenantId = tenantRow.id; tenantName = tenantRow.name; }
+      }
+    }
+    if (tenantId) {
+      const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: tenantId, p_amount_change: -arImpact });
+      if (balErr) pmError("PM-6002", { raw: balErr, context: "reversal balance update", silent: true });
+      await safeLedgerInsert({
+        company_id: companyId, tenant: tenantName, tenant_id: tenantId,
+        property: je.property || "", date: today,
+        description: "Reversal: " + (je.description || "").slice(0, 60),
+        amount: -arImpact, type: "reversal", balance: 0,
+      });
+    }
+  }
+  logAudit("reverse", "accounting", `Reversed JE ${je.number} → ${newNumber}`, jeRow.id, userProfile?.email, "", companyId);
+  showToast(`Reversal posted as ${newNumber}.`, "success");
+  fetchAll();
+  } catch (e) {
+  pmError("PM-4003", { raw: e, context: "reverse journal entry" });
+  showToast("Error reversing entry: " + e.message, "error");
+  } finally { guardRelease("reverseJE", id); }
+  }
+
   // --- Class CRUD ---
   async function addClass(cls) {
   if (!guardSubmit("addClass")) return;
@@ -3618,7 +3712,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   {activeTab === "opening" && <AcctOpeningBalance accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} userProfile={userProfile} showToast={showToast} showConfirm={showConfirm} onPosted={fetchAll} />}
   {activeTab === "recurring" && <RecurringJournalEntries companyId={companyId} companySettings={companySettings} addNotification={addNotification} userProfile={userProfile} />}
   {activeTab === "coa" && <AcctChartOfAccounts accounts={acctAccounts} journalEntries={journalEntries} onAdd={addAccount} onUpdate={updateAccount} onToggle={toggleAccount} onDelete={deleteGLAccount} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
-  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} onCloseJEDetail={() => { if (pendingLedgerReturn) { setLedgerView(pendingLedgerReturn); setPendingLedgerReturn(null); setViewJEId(null); } }} />}
+  {activeTab === "journal" && <AcctJournalEntries accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} onAdd={addJournalEntry} onUpdate={updateJournalEntry} onPost={postJournalEntry} onVoid={voidJournalEntry} onReverse={reverseJournalEntry} companyId={companyId} showToast={showToast} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} initialViewJEId={viewJEId} autoOpenAdd={initialAction === "newJE"} onCloseJEDetail={() => { if (pendingLedgerReturn) { setLedgerView(pendingLedgerReturn); setPendingLedgerReturn(null); setViewJEId(null); } }} />}
   {activeTab === "bankimport" && <BankTransactions accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} tenants={acctTenants} vendors={acctVendors} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} onRefreshAccounting={fetchAll} />}
   {activeTab === "reconcile" && <AcctBankReconciliation accounts={acctAccounts} journalEntries={journalEntries} companyId={companyId} showToast={showToast} showConfirm={showConfirm} userProfile={userProfile} />}
   {activeTab === "classes" && <AcctClassTracking accounts={acctAccounts} journalEntries={journalEntries} classes={acctClasses} onAdd={addClass} onUpdate={updateClass} onToggle={toggleClass} onOpenLedger={(ids, title) => setLedgerView({ accountIds: ids, title })} />}
