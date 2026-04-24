@@ -2001,7 +2001,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   }
 
   return (
-    <div className="fixed inset-0 z-[70] bg-surface-muted flex flex-col">
+    <div className="fixed inset-0 z-[70] bg-surface-muted flex flex-col safe-y safe-x">
       {/* Header */}
       <div className="bg-white border-b border-neutral-200 px-6 py-4 flex items-center justify-between">
         <div>
@@ -3013,7 +3013,7 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
 
   {/* ===== PROPERTY DETAIL PANEL ===== */}
   {selectedProperty && (
-  <div className="fixed inset-0 bg-black/40 z-50 flex justify-end">
+  <div className="fixed inset-0 bg-black/40 z-50 flex justify-end safe-y safe-x">
   <div className="bg-white w-full max-w-lg h-full flex flex-col shadow-2xl overflow-y-auto">
   {/* Header */}
   <div className={"p-6 text-white " + (selectedProperty.status === "occupied" ? "bg-gradient-to-r from-success-600 to-success-800" : selectedProperty.status === "vacant" ? "bg-gradient-to-r from-warn-500 to-warn-700" : "bg-gradient-to-r from-subtle-600 to-subtle-800")}>

@@ -614,7 +614,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
 
   {/* ---- MESSAGES TAB ---- */}
   {activeTab === "messages" && (
-  <div className="bg-white rounded-3xl border border-brand-50 overflow-hidden flex flex-col" style={{ minHeight: "500px", maxHeight: "calc(100vh - 320px)" }}>
+  <div className="bg-white rounded-3xl border border-brand-50 overflow-hidden flex flex-col" style={{ minHeight: "500px", maxHeight: "calc(100dvh - 320px)" }}>
   <MessageThread
     messages={messages}
     viewerRole="tenant"
