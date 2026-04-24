@@ -191,6 +191,12 @@ body {
 .safe-x      { padding-left:   env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
 .safe-y      { padding-top:    env(safe-area-inset-top);  padding-bottom: env(safe-area-inset-bottom); }
 
+/* Pull-to-refresh spin. Applied by PullToRefresh.js while the refresh
+   handler is running. Overrides the inline transform the touch handler
+   sets during drag, so we don't need to toggle the style attribute. */
+@keyframes p2r-spin { to { transform: rotate(360deg); } }
+.p2r-spin { animation: p2r-spin 0.9s linear infinite; }
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;

@@ -14,6 +14,7 @@ import { companyQuery, companyInsert, companyUpsert, checkRPCHealth, runDataInte
 import { COMPANY_DEFAULTS } from "./config";
 import { safeLedgerInsert, atomicPostJEAndLedger, postAccountingTransaction, checkPeriodLock, autoPostJournalEntry, checkAccrualExists, autoOwnerDistribution, getPropertyClassId, resolveAccountId, getOrCreateTenantAR, autoPostRentCharges, autoPostRecurringEntries, _classIdCache, _acctIdCache, _acctCodeToName, _tenantArCache, _zipCache, lookupZip } from "./utils/accounting";
 import { ErrorBoundary, Badge, StatCard, Spinner, Modal, ToastContainer, ConfirmModal, PropertyDropdown, TenantSelect, PropertySelect, RecurringEntryModal, DocUploadModal, formatAllTenants, generatePaymentReceipt } from "./components/shared";
+import PullToRefresh from "./components/PullToRefresh";
 
 import { LandingPage } from "./components/LandingPage";
 import { LoginPage } from "./components/LoginPage";
@@ -290,6 +291,9 @@ function AppInner() {
   const [toasts, setToasts] = useState([]);
   const [confirmConfig, setConfirmConfig] = useState(null);
   const confirmResolveRef = useRef(null);
+  // Ref on the main scroll container so PullToRefresh can attach its
+  // touch listeners to the element the user actually scrolls.
+  const mainScrollRef = useRef(null);
 
   function showToast(message, type = "info", errorObj = null) {
   const id = ++_toastIdCounter;
@@ -964,7 +968,7 @@ function AppInner() {
 
   {/* Main Content */}
   <div className="flex-1 flex flex-col min-w-0">
-  <header className="bg-white/80 backdrop-blur-md border-b border-brand-50 px-4 py-3 flex items-center gap-3 sticky top-0 z-40">
+  <header className="bg-white/80 backdrop-blur-md border-b border-brand-50 px-4 py-3 flex items-center gap-3 relative z-40">
   <button className="md:hidden text-neutral-400 hover:text-neutral-600 transition-colors" onClick={() => setSidebarOpen(!sidebarOpen)}><span className="material-icons-outlined">menu</span></button>
   {/* Use effectivePage so tenants/owners see "Tenant Portal" / "Owner Portal"
       on the top bar instead of the raw page state (e.g. "company_select")
@@ -1041,8 +1045,14 @@ function AppInner() {
       the scroll container's edge instead of propagating it up the flex
       column — without this, pulling down on the dashboard dragged the
       header with it while the fixed sidebar stayed put, making them
-      look desynced. */}
-  <main className="flex-1 overflow-y-auto overscroll-contain p-4 md:p-6 pb-24 md:pb-6">
+      look desynced. PullToRefresh re-adds the "slide down to reload"
+      gesture that PWAs lose in standalone mode. */}
+  <PullToRefresh
+    scrollRef={mainScrollRef}
+    onRefresh={() => { window.location.reload(); }}
+    className="flex-1 flex flex-col min-h-0"
+  >
+  <main ref={mainScrollRef} className="flex-1 overflow-y-auto overscroll-contain p-4 md:p-6 pb-24 md:pb-6">
   {missingRPCs.length > 0 && userRole === "admin" && (
   <div className="bg-warn-50 border border-warn-200 rounded-xl px-4 py-3 mb-4">
   <div className="text-sm font-semibold text-warn-800">{"\u26A0\uFE0F"} Missing Database Functions</div>
@@ -1070,6 +1080,7 @@ function AppInner() {
   />
   </ErrorBoundary>
   </main>
+  </PullToRefresh>
   </div>
 
   {/* Mobile Bottom Nav */}
