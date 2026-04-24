@@ -913,7 +913,15 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   const sigs = await loadSignaturesForDoc(doc.id);
   const html2pdf = (await import("html2pdf.js")).default;
   const container = document.createElement("div");
-  container.innerHTML = renderCertificateHtml(doc, sigs, doc._companyName);
+  // renderCertificateHtml already escapes every user field with
+  // escapeForHtml(), so this is belt-and-suspenders — if a future
+  // change to the renderer forgets to escape one field, DOMPurify
+  // still strips the XSS. ADD_TAGS matches the rich layout the
+  // certificate uses; everything else is stripped.
+  container.innerHTML = DOMPurify.sanitize(renderCertificateHtml(doc, sigs, doc._companyName), {
+    ADD_TAGS: ["table","thead","tbody","tr","td","th","br","ul","ol","li","strong","em"],
+    ADD_ATTR: ["style","class","colspan","rowspan","align","valign"],
+  });
   document.body.appendChild(container);
   const filename = "cert-" + (doc.name || "document").replace(/[^a-zA-Z0-9_-]/g, "_") + ".pdf";
   try {
