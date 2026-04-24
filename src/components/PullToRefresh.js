@@ -52,8 +52,19 @@ export default function PullToRefresh({ onRefresh, scrollRef, children, classNam
       }
     };
 
+    // Belt-and-suspenders zoom check. Pinching zooms the visual
+    // viewport; if the page is zoomed in at all, pull-to-refresh is
+    // disabled. Prevents the "pinch out anywhere triggers reload"
+    // case even if the multi-touch filter misses an edge in mid-gesture.
+    const isZoomed = () => {
+      const vv = typeof window !== "undefined" && window.visualViewport;
+      if (!vv) return false;
+      return Math.abs(vv.scale - 1) > 0.02;
+    };
+
     const onTouchStart = (e) => {
       if (refreshing) return;
+      if (isZoomed()) { pullRef.current.active = false; return; }
       // Multi-touch = pinch/zoom. Don't track — otherwise the second
       // finger moving down reads as a pull-down and triggers the
       // reload (user reported this when pinching out to un-zoom on the
@@ -68,10 +79,10 @@ export default function PullToRefresh({ onRefresh, scrollRef, children, classNam
     const onTouchMove = (e) => {
       if (!pullRef.current.active || refreshing) return;
       // If a second finger landed during the drag (pinch starting),
-      // abort and let the browser handle zoom. Without this, the pull
-      // indicator sticks around during the pinch and can fire on
-      // release.
-      if (e.touches.length > 1) {
+      // OR the user has zoomed in since touchstart, abort and let the
+      // browser handle zoom. Without this, the pull indicator sticks
+      // around during the pinch and can fire on release.
+      if (e.touches.length > 1 || isZoomed()) {
         pullRef.current.active = false;
         pullRef.current.delta = 0;
         setIndicator(0);
