@@ -803,14 +803,15 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   const allApprovals = [];
   const allTasks = [];
   try {
-  const [propReqs, docExceptions, memberReqs, tenants, workOrders, leases, hoaDue, wizards, props] = await Promise.all([
+  const [propReqs, docExceptions, memberReqs, tenants, leases, hoaDue, wizards, props] = await Promise.all([
   supabase.from("property_change_requests").select("*").eq("company_id", companyId).eq("status", "pending").order("requested_at", { ascending: false }),
   supabase.from("doc_exception_requests").select("*").eq("company_id", companyId).eq("status", "pending").order("created_at", { ascending: false }),
   supabase.from("company_members").select("*").eq("company_id", companyId).eq("status", "pending").order("created_at", { ascending: false }),
   supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null),
-  supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null),
   supabase.from("leases").select("*").eq("company_id", companyId).eq("status", "active"),
   // HOA rows no longer fetched — they're not surfaced as tasks.
+  // Work orders intentionally excluded — Maintenance page is the home
+  // for emergency WOs; duplicating them here was noise.
   Promise.resolve({ data: [] }),
   // Wizard-skip tasks: every in-progress wizard row + every completed
   // one (a completed wizard can still have approved skips we need to
@@ -835,14 +836,8 @@ function TasksAndApprovals({ companyId, setPage, showToast, showConfirm, userPro
   }
   // Tasks
   const t = tenants.data || [];
-  const wo = workOrders.data || [];
-  // HOA due rows intentionally NOT generated as tasks — they live on
-  // the dedicated HOA Payments page with all the per-row controls
-  // (mark paid, request portal login, etc.). Surfacing them here was
-  // duplicated work; removed per Sahil's call.
   t.filter(x => x.doc_status === "pending_docs").forEach(x => allTasks.push({ icon: "📄", title: x.name + " — documents pending", subtitle: x.property, address: x.property, link: "tenants", linkAction: { openTenantId: x.id, tenantName: x.name, panel: "documents" }, priority: "medium", _kind: "tenant_docs" }));
   t.filter(x => safeNum(x.balance) > 0).forEach(x => allTasks.push({ icon: "💰", title: x.name + " — balance due " + formatCurrency(x.balance), subtitle: x.property, address: x.property, link: "tenants", linkAction: { openTenantId: x.id, tenantName: x.name, panel: "ledger" }, priority: safeNum(x.balance) > 1000 ? "high" : "medium", _kind: "tenant_balance" }));
-  wo.filter(x => x.priority === "emergency" && x.status !== "completed").forEach(x => allTasks.push({ icon: "🚨", title: x.issue, subtitle: "Emergency · " + x.status, address: x.property || null, link: "maintenance", priority: "high", _kind: "work_order" }));
   t.filter(x => { const end = x.lease_end_date || x.move_out; if (!end) return false; const days = Math.ceil((parseLocalDate(end) - new Date()) / 86400000); return days > 0 && days <= 30; }).forEach(x => allTasks.push({ icon: "📅", title: x.name + " — lease expires " + (x.lease_end_date || x.move_out), subtitle: x.property, address: x.property, link: "tenants", linkAction: { openTenantId: x.id, tenantName: x.name, panel: "ledger" }, priority: "high", _kind: "lease_expiry" }));
   // Wizard-skip tasks: one row per applicable step not yet filled
   // and not yet admin-approved. Insurance / Loan / Property Tax are
