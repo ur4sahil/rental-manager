@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, FileInput, Input, PageHeader, Select, Textarea } from "../ui";
-import { safeNum, formatLocalDate, shortId, formatCurrency, sanitizeFileName, exportToCSV, getSignedUrl, emailFilterValue } from "../utils/helpers";
+import { safeNum, formatLocalDate, shortId, formatCurrency, sanitizeFileName, exportToCSV, getSignedUrl, emailFilterValue, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
@@ -60,7 +60,7 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   : supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant", tname).eq("property", tenant.property).order("created_at", { ascending: true }),
   tid
   ? supabase.from("payments").select("*").eq("company_id", companyId).eq("tenant_id", tid).is("archived_at", null).order("date", { ascending: false })
-  : supabase.from("payments").select("*").eq("company_id", companyId).ilike("tenant", tname).eq("property", tenant.property).is("archived_at", null).order("date", { ascending: false }),
+  : supabase.from("payments").select("*").eq("company_id", companyId).ilike("tenant", escapeFilterValue(tname)).eq("property", tenant.property).is("archived_at", null).order("date", { ascending: false }),
   supabase.from("work_orders").select("*").eq("company_id", companyId).eq("tenant", tname).eq("property", tenant.property).is("archived_at", null).order("created", { ascending: false }),
   supabase.from("documents").select("*").eq("company_id", companyId).eq("tenant", tname).eq("tenant_visible", true).is("archived_at", null).order("uploaded_at", { ascending: false }),
   ]);

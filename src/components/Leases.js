@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase";
 import { Btn, Checkbox, Input, PageHeader, Select, Textarea, TextLink} from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, normalizeEmail, escapeHtml } from "../utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, formatCurrency, normalizeEmail, escapeHtml, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
 import { printTheme } from "../utils/theme";
 import { guardSubmit, guardRelease } from "../utils/guards";
@@ -594,7 +594,7 @@ function ESignatureModal({ lease, onClose, onSigned, userProfile, userRole, comp
         .from("tenants")
         .select("email")
         .eq("company_id", companyId)
-        .ilike("name", lease.tenant_name || "")
+        .ilike("name", escapeFilterValue(lease.tenant_name || ""))
         .is("archived_at", null)
         .maybeSingle();
       if (tenant?.email) setTenantEmail(tenant.email);
