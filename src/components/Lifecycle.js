@@ -94,6 +94,37 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   ], requireJE: false });
   if (!dedResult.jeId) showToast("Warning: Deposit deduction GL entry failed — please post manually in Accounting.", "error");
   }
+  // Deductions > deposit: the deposit is fully consumed (DR 2100 /
+  // CR 4100 for the full depositAmount) AND the excess is billed to
+  // the tenant as AR so their balance shows what they still owe.
+  // Before this, "totalDeductions <= depositAmount" guarded the
+  // deduction JE entirely, so damage exceeding the deposit was
+  // silently unposted — tenants who owed $500 beyond deposit had
+  // nothing on their ledger.
+  if (totalDeductions > depositAmount) {
+  // First: fully consume the held deposit as income.
+  if (depositAmount > 0) {
+  const dedResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Deposit deductions — ${tName}`, reference: `DEP-DED-${shortId()}`, property: selectedLease.property,
+  lines: [
+  { account_id: "2100", account_name: "Security Deposits Held", debit: depositAmount, credit: 0, class_id: classId, memo: `Deductions (deposit fully applied): ${deductions.map(d => d.desc).join(", ")}` },
+  { account_id: "4100", account_name: "Other Income", debit: 0, credit: depositAmount, class_id: classId, memo: `Deposit forfeiture — ${tName}` },
+  ], requireJE: false });
+  if (!dedResult.jeId) showToast("Warning: Deposit deduction GL entry failed — please post manually in Accounting.", "error");
+  }
+  // Then: charge the excess ($deductions - $deposit) as AR so the
+  // tenant's balance reflects the shortfall.
+  const excess = depositForfeited; // already computed at line 64
+  if (excess > 0) {
+  const tenantArId = await getOrCreateTenantAR(cid, tName, selectedTenant.id);
+  const excResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Damage beyond deposit — ${tName}`, reference: `DEP-EXCESS-${shortId()}`, property: selectedLease.property,
+  lines: [
+  { account_id: tenantArId, account_name: "AR - " + tName, debit: excess, credit: 0, class_id: classId, memo: `Deductions exceeded deposit by ${excess.toFixed(2)}` },
+  { account_id: "4100", account_name: "Other Income", debit: 0, credit: excess, class_id: classId, memo: `Damage charge — ${tName}` },
+  ], ledgerEntry: { tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: `Damage beyond deposit (+${excess.toFixed(2)})`, amount: excess, type: "charge", balance: 0 },
+  balanceUpdate: { tenantId: selectedTenant.id, amount: excess } });
+  if (!excResult.jeId) showToast("Warning: Damage excess GL entry failed — please post manually in Accounting.", "error");
+  }
+  }
 
   // 2. Handle outstanding AR (balance update gated on JE success)
   if (arAction === "waive" && outstandingBalance > 0) {
