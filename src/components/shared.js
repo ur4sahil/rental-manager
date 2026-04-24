@@ -213,8 +213,12 @@ export function RecurringEntryModal({ entry, companyId, showToast, onComplete })
   next_post_date: nextPostDate,
   created_by: "",
   };
-  // Only include tenant_id if it's a valid UUID (some DBs use integer PKs)
-  if (entry.tenantId && isUUID(String(entry.tenantId))) payload.tenant_id = entry.tenantId;
+  // tenant_id is bigint (matches tenants.id) — see migration
+  // 20260424000007. The previous UUID guard was a vestige of a
+  // schema mismatch that's been fixed; it always rejected the real
+  // tenant id and silently NULLed the column, which broke
+  // tenants.balance updates for every manually-created recurring.
+  if (entry.tenantId) payload.tenant_id = Number(entry.tenantId);
   const { error } = await supabase.from("recurring_journal_entries").insert([payload]);
   if (error) {
   pmError("PM-4008", { raw: error, context: "create recurring rent entry" });

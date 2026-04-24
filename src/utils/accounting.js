@@ -570,6 +570,12 @@ export async function autoPostRecurringEntries(companyId) {
   // `.includes("ar")` on `debit_account_name`, which silently skipped
   // balance updates whenever the name didn't literally contain "ar" (e.g.
   // the column was blank, or named "Accounts Receivable - Tenant X").
+  //
+  // tenant_id is required at write time — see the CHECK constraint in
+  // migration 20260424000008 enforcing (tenant_name IS NULL) =
+  // (tenant_id IS NULL). If a tenant-rent recurring row reaches here
+  // without tenant_id, that's a bug in the writer and should surface
+  // loudly rather than be silently masked.
   if (entry.tenant_id && entry.debit_account_id) {
     const debitId = /^\d{4}$/.test(entry.debit_account_id)
       ? await resolveAccountId(entry.debit_account_id, cid)
@@ -582,6 +588,12 @@ export async function autoPostRecurringEntries(companyId) {
         if (balErr) pmError("PM-6002", { raw: balErr, context: "recurring balance update", silent: true });
       }
     }
+  } else if (entry.tenant_name && !entry.tenant_id) {
+    // Tenant-scoped recurring with no tenant_id — invariant violation.
+    // The CHECK constraint blocks new rows in this state; if we see
+    // one, it's pre-constraint legacy data that needs the backfill
+    // script run for that company.
+    pmError("PM-6002", { raw: { message: "recurring entry has tenant_name but no tenant_id — backfill needed", entryId: entry.id, tenant_name: entry.tenant_name }, context: "recurring balance update", silent: true });
   }
   posted++;
   }
