@@ -970,10 +970,14 @@ function AppInner() {
   <div className="flex-1 flex flex-col min-w-0">
   <header className="bg-white/80 backdrop-blur-md border-b border-brand-50 px-4 py-3 flex items-center gap-3 relative z-40">
   <button className="md:hidden text-neutral-400 hover:text-neutral-600 transition-colors" onClick={() => setSidebarOpen(!sidebarOpen)}><span className="material-icons-outlined">menu</span></button>
-  {/* Use effectivePage so tenants/owners see "Tenant Portal" / "Owner Portal"
-      on the top bar instead of the raw page state (e.g. "company_select")
-      that the role-based router overrides. */}
-  <div className="flex-1 text-sm text-neutral-400 capitalize font-medium">{(effectivePage || page).replace(/_/g, " ")}</div>
+  {/* Active company name — more useful at a glance than the current
+      page title (which is redundant with the selected sidebar item and
+      the page's own H1). On small screens we truncate so long company
+      names don't push the avatar + bell off-screen. Falls back to the
+      page label if no company is active yet. */}
+  <div className="flex-1 min-w-0 text-sm font-semibold text-neutral-700 truncate">
+  {activeCompany?.name || (effectivePage || page).replace(/_/g, " ")}
+  </div>
   <div className="relative">
   <button onClick={() => setShowUserMenu(!showUserMenu)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-2xl hover:bg-brand-50 transition-colors ${showUserMenu ? "bg-brand-50" : ""}`}>
   <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${ROLES[userRole]?.color || "bg-brand-600"}`}>{userProfile?.name?.[0]?.toUpperCase() || "U"}</div>
