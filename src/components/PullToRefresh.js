@@ -62,6 +62,26 @@ export default function PullToRefresh({ onRefresh, scrollRef, children, classNam
       return Math.abs(vv.scale - 1) > 0.02;
     };
 
+    // If the touch started inside a nested scroll container (e.g., a
+    // slide-over drawer with its own overflow-y-auto), don't pull.
+    // Without this, touch events bubble up to <main>, main.scrollTop
+    // is still 0 because the actual scroll is happening in the drawer,
+    // and the user's swipe-to-scroll inside the drawer gets read as a
+    // pull-to-refresh on main — which reloaded the page from inside
+    // the property detail drawer.
+    const isInsideNestedScroll = (target) => {
+      let node = target;
+      while (node && node !== el && node.nodeType === 1) {
+        const s = window.getComputedStyle(node);
+        const oy = s.overflowY;
+        if ((oy === "auto" || oy === "scroll") && node.scrollHeight > node.clientHeight) {
+          return true;
+        }
+        node = node.parentElement;
+      }
+      return false;
+    };
+
     const onTouchStart = (e) => {
       if (refreshing) return;
       if (isZoomed()) { pullRef.current.active = false; return; }
@@ -70,6 +90,9 @@ export default function PullToRefresh({ onRefresh, scrollRef, children, classNam
       // reload (user reported this when pinching out to un-zoom on the
       // Properties search field).
       if (e.touches.length > 1) { pullRef.current.active = false; return; }
+      // Nested scroll container (drawers, modals, inner lists) —
+      // user is scrolling that, not pulling the page.
+      if (isInsideNestedScroll(e.target)) { pullRef.current.active = false; return; }
       if (el.scrollTop > 0) { pullRef.current.active = false; return; }
       pullRef.current.active = true;
       pullRef.current.startY = e.touches[0].clientY;
