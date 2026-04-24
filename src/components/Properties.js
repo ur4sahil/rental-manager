@@ -783,7 +783,11 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
 
     // Phase C: post-commit side effects. Idempotent on
     // deterministic reference / date keys — re-running after a
-    // successful RPC call is safe.
+    // successful RPC call is safe. Each try/catch used to be fully
+    // silent — failures only reached the Error Log. Now we collect
+    // friendly names of failed steps so the completion toast can list
+    // them and the PM knows to check the log.
+    const phaseCFailures = [];
     try {
       if (taxes.enabled && resPropertyId) {
         await generateBillsForProperty({
@@ -793,7 +797,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           expectedAnnualAmount: Number(taxes.annual_tax_amount) || null,
         });
       }
-    } catch (e) { pmError('PM-8006', { raw: e, context: 'post-commit tax bills', silent: true }); }
+    } catch (e) { pmError('PM-8006', { raw: e, context: 'post-commit tax bills', silent: true }); phaseCFailures.push('property tax bills'); }
 
     if (propForm.status === 'occupied' && tenantForm.tenant.trim() && resTenantId && compositeAddress) {
       // Migration mode: when the PM explicitly sets recurring.start_date
@@ -877,13 +881,13 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
             }
           }
         }
-      } catch (e) { pmError('PM-4002', { raw: e, context: 'post-commit first-month rent JE', silent: true }); }
+      } catch (e) { pmError('PM-4002', { raw: e, context: 'post-commit first-month rent JE', silent: true }); phaseCFailures.push('first-month rent / deposit journal entry'); }
       // autoPostRentCharges is a no-op stub. The real catch-up worker
       // is autoPostRecurringEntries — it walks each active recurring
       // entry from last_posted_date forward and posts every missed
       // period up to today (honouring next_post_date as the PM's
       // chosen start-date floor).
-      try { await autoPostRecurringEntries(companyId); } catch (e) { pmError('PM-4002', { raw: e, context: 'auto-post recurring entries', silent: true }); }
+      try { await autoPostRecurringEntries(companyId); } catch (e) { pmError('PM-4002', { raw: e, context: 'auto-post recurring entries', silent: true }); phaseCFailures.push('recurring entries catch-up'); }
     }
 
     // Re-stamp any docs we uploaded during this wizard to the final
@@ -897,19 +901,28 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
           .update({ property: compositeAddress })
           .in("id", uploadedDocIds)
           .eq("company_id", companyId);
-      } catch (e) { pmError("PM-7003", { raw: e, context: "post-commit doc re-stamp", silent: true }); }
+      } catch (e) { pmError("PM-7003", { raw: e, context: "post-commit doc re-stamp", silent: true }); phaseCFailures.push('document re-stamp'); }
     }
 
     setSavedPropertyId(resPropertyId);
     setSavedAddress(compositeAddress);
+    return { phaseCFailures };
   }
 
   async function handleComplete() {
     const wasEdit = !!savedPropertyId;
     setSaving(true);
     try {
-      await commitWizard();
+      const result = await commitWizard();
       showToast(wasEdit ? "Changes saved." : "Property setup complete!", "success");
+      // If any post-commit side effects failed (tax bills, first-month
+      // rent JE, recurring catch-up, doc re-stamp), surface a separate
+      // warning toast listing them so the PM knows to check the Error
+      // Log instead of silently noticing a missing charge days later.
+      if (result?.phaseCFailures?.length) {
+        const list = result.phaseCFailures.join(", ");
+        showToast(`Setup saved, but these post-setup steps had issues: ${list}. Check Admin → Error Log for details.`, "warning");
+      }
       onComplete();
     } catch (e) {
       if (e?.code === "SESSION_EXPIRED") {
