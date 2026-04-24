@@ -4,7 +4,7 @@ import ExcelJS from "exceljs";
 import * as Sentry from "@sentry/react";
 import { supabase } from "./supabase";
 import { Input, Textarea, Select, Btn, Card, PageHeader, FormField, TabBar, FilterPill, SectionTitle, EmptyState, IconBtn, BulkBar, AccountPicker, TextLink} from "./ui";
-import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, pickColor, generateId, formatPersonName, buildNameFields, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, sanitizeFileName, exportToCSV, buildAddress, escapeHtml, escapeFilterValue, sanitizeForPrint, US_STATES, STATE_NAMES, statusColors, priorityColors, emailFilterValue, getWizardApplicableSteps } from "./utils/helpers";
+import { safeNum, parseLocalDate, formatLocalDate, shortId, CLASS_COLORS, ALLOWED_DOC_TYPES, ALLOWED_DOC_EXTENSIONS, pickColor, generateId, formatPersonName, buildNameFields, parseNameParts, isValidEmail, normalizeEmail, formatCurrency, getSignedUrl, formatPhoneInput, sanitizeFileName, exportToCSV, buildAddress, escapeHtml, escapeFilterValue, sanitizeForPrint, US_STATES, STATE_NAMES, statusColors, priorityColors, emailFilterValue, getWizardApplicableSteps, canReviewRequest } from "./utils/helpers";
 import { PM_ERRORS, pmError, reportError, logErrorToSupabase, detectInfrastructureCode, setShowToastGlobal, setActiveErrorContext } from "./utils/errors";
 import { guardSubmit, guardRelease, guarded, requireCompanyId } from "./utils/guards";
 import { encryptCredential, decryptCredential } from "./utils/encryption";
@@ -812,32 +812,34 @@ function AppInner() {
   return () => { cancelled = true; clearInterval(id); window.removeEventListener("focus", onFocus); };
   }, [activeCompany?.id, userRole, page]);
 
-  // Pending Tasks & Approvals badge. Counts the EXACT same rows the
-  // Tasks & Approvals page renders so the sidebar pill doesn't
-  // diverge from what the page shows:
-  //   • pending approvals: property_change_requests + doc_exception_requests
-  //     + company_members  (all status='pending')
-  //   • tenant tasks: rows in `tenants` with doc_status='pending_docs',
-  //     balance > 0, or a lease end date within 30 days
-  //   • wizard-skip tasks: one per applicable step missing on every
-  //     in_progress / completed wizard (the grouped card on the page
-  //     shows N pending, the badge adds N to its total)
+  // Pending Tasks & Approvals badge. Mirrors the Tasks & Approvals
+  // page formula exactly, including approver-routing:
+  //   • approvals: property_change_requests + doc_exception_requests
+  //     filtered by canReviewRequest(userRole, userEmail, approverEmail)
+  //     — i.e. each user sees only rows routed to them (admins/owners
+  //     still see everything). Team join requests are admin/owner only.
+  //   • tenant tasks: pending_docs / balance>0 / lease-end ≤30d
+  //   • wizard-skip tasks: one per unfilled applicable step
   // Tenant users don't see this nav item, so skip the work.
   useEffect(() => {
     if (!activeCompany?.id) { setPendingTasksCount(0); return; }
     if (userRole === "tenant") { setPendingTasksCount(0); return; }
+    const myEmail = userProfile?.email || currentUser?.email || "";
     let cancelled = false;
     async function poll() {
       const cid = activeCompany.id;
       try {
         const [propReq, docExc, memReq, tenantsRes, wizards, propsRes] = await Promise.all([
-          supabase.from("property_change_requests").select("id", { count: "exact", head: true }).eq("company_id", cid).eq("status", "pending"),
-          supabase.from("doc_exception_requests").select("id", { count: "exact", head: true }).eq("company_id", cid).eq("status", "pending"),
+          supabase.from("property_change_requests").select("id, approver_email").eq("company_id", cid).eq("status", "pending"),
+          supabase.from("doc_exception_requests").select("id, approver_email").eq("company_id", cid).eq("status", "pending"),
           supabase.from("company_members").select("id", { count: "exact", head: true }).eq("company_id", cid).eq("status", "pending"),
           supabase.from("tenants").select("id, doc_status, balance, lease_end_date, move_out").eq("company_id", cid).is("archived_at", null),
           supabase.from("property_setup_wizard").select("property_address, status, completed_steps, skipped_approved_steps").eq("company_id", cid).in("status", ["in_progress", "completed"]),
           supabase.from("properties").select("address, status").eq("company_id", cid).is("archived_at", null),
         ]);
+        const propReqCount = (propReq.data || []).filter(r => canReviewRequest({ userRole, userEmail: myEmail, approverEmail: r.approver_email })).length;
+        const docExcCount = (docExc.data || []).filter(r => canReviewRequest({ userRole, userEmail: myEmail, approverEmail: r.approver_email })).length;
+        const memReqCount = (userRole === "admin" || userRole === "owner") ? (memReq.count || 0) : 0;
         const tenantTasks = (tenantsRes.data || []).reduce((n, t) => {
           let c = 0;
           if (t.doc_status === "pending_docs") c++;
@@ -864,7 +866,7 @@ function AppInner() {
             wizardSteps++;
           }
         }
-        const total = (propReq.count || 0) + (docExc.count || 0) + (memReq.count || 0) + tenantTasks + wizardSteps;
+        const total = propReqCount + docExcCount + memReqCount + tenantTasks + wizardSteps;
         if (!cancelled) setPendingTasksCount(total);
       } catch (_e) { /* silent — next poll retries */ }
     }
@@ -873,7 +875,7 @@ function AppInner() {
     const onFocus = () => poll();
     window.addEventListener("focus", onFocus);
     return () => { cancelled = true; clearInterval(id); window.removeEventListener("focus", onFocus); };
-  }, [activeCompany?.id, userRole, page]);
+  }, [activeCompany?.id, userRole, page, userProfile?.email, currentUser?.email]);
 
   if (screen === "loading") return <><div className="flex items-center justify-center h-screen bg-brand-50/30"><Spinner /></div><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
   if (screen === "landing") return <><LandingPage onGetStarted={(mode) => { setLoginMode(mode); setScreen("login"); }} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
