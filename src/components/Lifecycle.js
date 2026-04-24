@@ -26,6 +26,7 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   const [processing, setProcessing] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [outstandingBalance, setOutstandingBalance] = useState(0);
 
   const defaultChecklist = ["Keys returned","All personal items removed","Unit cleaned","Walls patched/repaired","Appliances clean","Carpets cleaned","Final inspection done","Forwarding address collected","Utilities transferred","Security deposit review","Photos taken"];
 
@@ -53,12 +54,38 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   load();
   }, [companyId]);
 
-  function selectTenant(tenantId) {
+  async function selectTenant(tenantId) {
   const t = tenants.find(x => String(x.id) === String(tenantId));
   setSelectedTenant(t || null);
-  if (t) {
+  if (!t) { setSelectedLease(null); setOutstandingBalance(0); return; }
   const lease = leases.find(l => l.tenant_name === t.name || l.property === t.property);
   setSelectedLease(lease || null);
+  // Read balance live from the GL. `tenants.balance` drifts whenever
+  // `recurring_journal_entries.tenant_id` is NULL —
+  // autoPostRecurringEntries skips update_tenant_balance in that case,
+  // so monthly rent JEs post correctly but the stored column only
+  // reflects whatever was booked by paths that know the tenant id.
+  // The tenant's AR sub-account ("AR - <name>") is the source of truth.
+  try {
+  let arAcctId = null;
+  const { data: byId } = await supabase.from("acct_accounts").select("id")
+    .eq("company_id", companyId).eq("type", "Asset").eq("tenant_id", t.id).maybeSingle();
+  arAcctId = byId?.id || null;
+  if (!arAcctId) {
+    const { data: byName } = await supabase.from("acct_accounts").select("id")
+      .eq("company_id", companyId).eq("type", "Asset").eq("name", "AR - " + t.name).maybeSingle();
+    arAcctId = byName?.id || null;
+  }
+  if (!arAcctId) { setOutstandingBalance(safeNum(t.balance)); return; }
+  const { data: lines } = await supabase.from("acct_journal_lines")
+    .select("debit, credit, acct_journal_entries!inner(status)")
+    .eq("company_id", companyId).eq("account_id", arAcctId)
+    .neq("acct_journal_entries.status", "voided");
+  const bal = (lines || []).reduce((s, l) => s + safeNum(l.debit) - safeNum(l.credit), 0);
+  setOutstandingBalance(Math.round(bal * 100) / 100);
+  } catch (e) {
+  pmError("PM-3004", { raw: e, context: "move-out AR balance fetch", silent: true });
+  setOutstandingBalance(safeNum(t.balance));
   }
   }
 
@@ -72,7 +99,6 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   const totalDeductions = deductions.reduce((s, d) => s + d.amount, 0);
   const depositReturn = Math.max(0, depositAmount - totalDeductions);
   const depositForfeited = Math.max(0, totalDeductions - depositAmount);
-  const outstandingBalance = safeNum(selectedTenant?.balance);
 
   async function executeMoveOut() {
   if (!selectedTenant || !selectedLease) return;
@@ -108,6 +134,19 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
     pmError("PM-3004", { raw: stateErr || { message: "state RPC returned not-ok" }, context: "move_out_commit_state" });
     showToast("Move-out state update failed: " + (stateErr?.message || "unknown error") + "\n\nNo GL entries were posted. Try again.", "error");
     return;
+  }
+
+  // Reconcile the stored tenants.balance column against the GL before
+  // any downstream logic consumes it. Both the waive path below and
+  // the ledger-trail refetch at the end apply deltas relative to the
+  // stored column; if it was drifted (see selectTenant comment), a
+  // -outstandingBalance write-off would drive it deeply negative.
+  // Sync once here so everything that follows is internally consistent.
+  const storedBal = safeNum(selectedTenant.balance);
+  const syncDiff = Math.round((outstandingBalance - storedBal) * 100) / 100;
+  if (Math.abs(syncDiff) >= 0.01) {
+    const { error: syncErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: syncDiff });
+    if (syncErr) pmError("PM-6002", { raw: syncErr, context: "move-out balance sync to GL", silent: true });
   }
 
   // 1. Process deposit return/deductions GL
