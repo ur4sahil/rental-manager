@@ -149,7 +149,8 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   completedSteps.push("lease_terminated");
 
   // 4. Deactivate autopay (scope by property to avoid disabling same-name tenant at different property)
-  await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", cid).eq("tenant", tName).eq("property", selectedLease.property);
+  const { error: autopayErr } = await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", cid).eq("tenant", tName).eq("property", selectedLease.property);
+  if (autopayErr) pmError("PM-3004", { raw: autopayErr, context: "autopay disable in move-out wizard", silent: true });
   completedSteps.push("autopay_disabled");
 
   // 5. Archive tenant (moves to Historical Tenants on property page)
@@ -163,7 +164,8 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   completedSteps.push("property_vacant");
 
   // 7. Deactivate recurring entries for this property/tenant
-  await supabase.from("recurring_journal_entries").update({ status: "inactive", archived_at: new Date().toISOString() }).eq("company_id", cid).eq("property", selectedLease.property).eq("status", "active");
+  const { error: recurErr } = await supabase.from("recurring_journal_entries").update({ status: "inactive", archived_at: new Date().toISOString() }).eq("company_id", cid).eq("property", selectedLease.property).eq("status", "active");
+  if (recurErr) pmError("PM-3004", { raw: recurErr, context: "recurring deactivate in move-out wizard", silent: true });
   completedSteps.push("recurring_deactivated");
   } catch (stepErr) {
   showToast("Move-out partially completed. " + stepErr.message + "\n\nPlease manually verify and fix any inconsistent state.", "error");
