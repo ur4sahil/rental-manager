@@ -1149,11 +1149,16 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   <div><h3 className="text-lg font-semibold text-neutral-900">Journal Entries</h3><p className="text-sm text-neutral-400">Record and manage financial transactions</p></div>
   <Btn variant="success-fill" size="sm" onClick={openAdd}>+ New Entry</Btn>
   </div>
-  <div className="flex gap-2 mb-4">
+  {/* Filter row — flex-wrap so mobile can stack the property Select +
+      date pickers below the status pills instead of overlapping them.
+      ml-auto pushed the Select to the right edge with no room to wrap;
+      replaced with md:ml-auto so it only right-aligns once there's
+      horizontal room. */}
+  <div className="flex flex-wrap items-center gap-2 mb-4">
   {[{k:"all",l:`All (${counts.all})`},{k:"posted",l:`Posted (${counts.posted})`},{k:"draft",l:`Drafts (${counts.draft})`},{k:"voided",l:`Voided (${counts.voided})`}].map(f => (
   <FilterPill key={f.k} tone="positive" active={filterStatus === f.k} onClick={() => setFilterStatus(f.k)}>{f.l}</FilterPill>
   ))}
-  <Select filter value={searchProperty} onChange={e => setSearchProperty(e.target.value)} className="text-xs py-1.5 rounded-xl ml-auto">
+  <Select filter value={searchProperty} onChange={e => setSearchProperty(e.target.value)} className="text-xs py-1.5 rounded-xl md:ml-auto">
   <option value="">All Properties</option>
   {jeProperties.map(p => <option key={p} value={p}>{p.split(",")[0]}</option>)}
   </Select>
@@ -1274,12 +1279,12 @@ export function AcctClassTracking({ accounts, journalEntries, classes, onAdd, on
   <div className="flex flex-wrap gap-2 mb-4">
   {PERIODS.map(p => <FilterPill key={p} tone="positive" active={period === p} onClick={() => setPeriod(p)}>{p}</FilterPill>)}
   </div>
-  <div className="grid grid-cols-3 gap-3 mb-4">
-  <div className="bg-success-50 border border-success-100 rounded-xl p-4"><p className="text-xs text-success-600 font-medium">Revenue</p><p className="text-xl font-bold text-success-800 font-mono mt-1">{acctFmt(totalRev)}</p></div>
-  <div className="bg-danger-50 border border-danger-100 rounded-xl p-4"><p className="text-xs text-danger-600 font-medium">Expenses</p><p className="text-xl font-bold text-danger-800 font-mono mt-1">{acctFmt(totalExp)}</p></div>
-  <div className={`border rounded-xl p-4 ${totalNet >= 0 ? "bg-info-50 border-info-100" : "bg-notice-50 border-notice-100"}`}><p className={`text-xs font-medium ${totalNet >= 0 ? "text-info-600" : "text-notice-600"}`}>Net Income</p><p className={`text-xl font-bold font-mono mt-1 ${totalNet >= 0 ? "text-info-800" : "text-notice-800"}`}>{acctFmt(totalNet, true)}</p></div>
+  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+  <div className="bg-success-50 border border-success-100 rounded-xl p-4 min-w-0"><p className="text-xs text-success-600 font-medium">Revenue</p><p className="text-xl font-bold text-success-800 font-mono mt-1 truncate">{acctFmt(totalRev)}</p></div>
+  <div className="bg-danger-50 border border-danger-100 rounded-xl p-4 min-w-0"><p className="text-xs text-danger-600 font-medium">Expenses</p><p className="text-xl font-bold text-danger-800 font-mono mt-1 truncate">{acctFmt(totalExp)}</p></div>
+  <div className={`border rounded-xl p-4 min-w-0 ${totalNet >= 0 ? "bg-info-50 border-info-100" : "bg-notice-50 border-notice-100"}`}><p className={`text-xs font-medium ${totalNet >= 0 ? "text-info-600" : "text-notice-600"}`}>Net Income</p><p className={`text-xl font-bold font-mono mt-1 truncate ${totalNet >= 0 ? "text-info-800" : "text-notice-800"}`}>{acctFmt(totalNet, true)}</p></div>
   </div>
-  <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden">
+  <div className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-x-auto">
   <table className="w-full text-sm">
   <thead className="text-xs text-neutral-500 uppercase tracking-wider bg-neutral-50 font-semibold"><tr><th className="px-5 py-3 text-left">Class</th><th className="px-5 py-3 text-left">Description</th><th className="px-5 py-3 text-right">Revenue</th><th className="px-5 py-3 text-right">Expenses</th><th className="px-5 py-3 text-right">Net Income</th><th className="px-5 py-3 w-16" /></tr></thead>
   <tbody>
@@ -3853,10 +3858,10 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   <div>
   <div className="bg-white rounded-xl border border-brand-100 shadow-sm p-4 mb-5">
   <h3 className="font-manrope font-semibold text-neutral-800 mb-3">Start Bank Reconciliation</h3>
-  <div className="grid grid-cols-3 gap-3">
+  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
   <div><label className="text-xs text-neutral-400 mb-1 block">Month</label><Input placeholder="Enter name" type="month" value={reconPeriod} onChange={e => setReconPeriod(e.target.value)} /></div>
   <div><label className="text-xs text-neutral-400 mb-1 block">Bank Ending Balance ($)</label><Input type="number" step="0.01" value={bankBalance} onChange={e => setBankBalance(e.target.value)} placeholder="Enter from bank statement" /></div>
-  <div className="flex items-end"><Btn className="w-full" onClick={startReconciliation}>Begin Reconciliation</Btn></div>
+  <div className="flex items-end"><Btn className="w-full whitespace-nowrap" onClick={startReconciliation}>Begin Reconciliation</Btn></div>
   </div>
   </div>
 
