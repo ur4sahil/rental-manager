@@ -2433,6 +2433,12 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   if (error) throw new Error("Failed to submit request: " + error.message);
   showToast("Delete request submitted for admin approval.", "success");
   logAudit("create", "property_requests", "Requested delete: " + property.address, property.id, user?.email, userRole, companyId);
+  const approverEmail = me?.manager_email || null;
+  if (approverEmail) {
+    queueNotification("approval_pending", approverEmail, {
+      kind: "delete_property", address: property.address, requested_by: user?.email || "unknown",
+    }, companyId);
+  }
   } catch (e) { showToast(e.message, "error"); }
   finally { guardRelease("requestDeleteProperty"); }
   }

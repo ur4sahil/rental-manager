@@ -264,6 +264,11 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   await supabase.from("property_change_requests").insert([{ company_id: companyId, request_type: "delete_tenant", requested_by: user?.email || "unknown", address: name, notes: "Delete tenant: " + name, approver_email: me?.manager_email || null }]);
   showToast("Delete request submitted for admin approval.", "success");
   logAudit("request", "tenants", "Requested delete: " + name, id, user?.email, userRole, companyId);
+  if (me?.manager_email) {
+    queueNotification("approval_pending", me.manager_email, {
+      kind: "delete_tenant", tenant: name, requested_by: user?.email || "unknown",
+    }, companyId);
+  }
   return;
   }
   // Check for outstanding balance before allowing deletion
@@ -1156,7 +1161,13 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
             reviewerEmail = adm?.user_email || null;
           }
           await supabase.from("doc_exception_requests").insert([{ company_id: companyId, tenant_name: selectedTenant.name, property: selectedTenant.property, requested_by: userProfile?.email || "", approver_email: reviewerEmail, doc_type: label }]);
-          if (reviewerEmail) addNotification("📋", `${userProfile?.email || "Staff"} requested a doc exception for ${selectedTenant.name}: ${label}`, { recipient: reviewerEmail, type: "doc_exception" });
+          if (reviewerEmail) {
+            addNotification("📋", `${userProfile?.email || "Staff"} requested a doc exception for ${selectedTenant.name}: ${label}`, { recipient: reviewerEmail, type: "doc_exception" });
+            queueNotification("approval_pending", reviewerEmail, {
+              kind: "doc_exception", tenant: selectedTenant.name, property: selectedTenant.property,
+              doc_type: label, requested_by: userProfile?.email || "",
+            }, companyId);
+          }
           // Also drop a self-note so the requester sees the outbound
           // request in their own Activity feed.
           addNotification("📤", `Exception request sent for ${selectedTenant.name}: ${label}`, { type: "doc_exception" });

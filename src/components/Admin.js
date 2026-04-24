@@ -6,6 +6,7 @@ import { pmError } from "../utils/errors";
 import { guardSubmit, guardRelease } from "../utils/guards";
 import { logAudit } from "../utils/audit";
 import { runDataIntegrityChecks, saveCompanySettings } from "../utils/company";
+import { queueNotification } from "../utils/notifications";
 import { COMPANY_DEFAULTS } from "../config";
 import { Spinner } from "./shared";
 
@@ -690,7 +691,13 @@ function TasksList({ tasks, userRole, userProfile, companyId, setPage, approveWi
         requested_by: userProfile?.email || "",
         approver_email: approver,
       }]);
-      if (approver) addNotification("📋", `${userProfile?.email || "Staff"} requested a setup waiver for ${t.wizardStepLabel} — ${(t.address || "").split(",")[0]}`, { recipient: approver, type: "wizard_skip_request" });
+      if (approver) {
+        addNotification("📋", `${userProfile?.email || "Staff"} requested a setup waiver for ${t.wizardStepLabel} — ${(t.address || "").split(",")[0]}`, { recipient: approver, type: "wizard_skip_request" });
+        queueNotification("approval_pending", approver, {
+          kind: "wizard_skip", step: t.wizardStepLabel, property: t.address,
+          requested_by: userProfile?.email || "",
+        }, companyId);
+      }
       addNotification("📤", `Setup waiver requested: ${t.wizardStepLabel} — ${(t.address || "").split(",")[0]}`);
       logAudit("request", "properties", "Setup waiver requested (" + t.wizardStepLabel + ") for " + t.address, "", userProfile?.email, userRole, companyId);
       showToast("Exception request submitted", "success");

@@ -43,6 +43,7 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   insurance_expiring: { label: "Vendor Insurance Alert", icon: "\ud83d\udee1\ufe0f", desc: "Sent when vendor insurance is expiring" },
   inspection_due: { label: "Inspection Reminder", icon: "\ud83d\udd0d", desc: "Sent before scheduled inspection" },
   message_received: { label: "New Message", icon: "\ud83d\udcac", desc: "Sent when a tenant or landlord sends a chat message" },
+  approval_pending: { label: "Approval Needed", icon: "\ud83d\udd14", desc: "Sent to the routed approver when a change or document exception is requested" },
   };
 
   // Recent activity — every addNotification() call writes a row to
