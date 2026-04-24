@@ -476,6 +476,13 @@ export async function autoPostRecurringEntries(companyId) {
   //   - both NULL                 → cursor = current month (last-resort
   //                                 fallback for legacy rows).
   const lastPosted = entry.last_posted_date ? parseLocalDate(entry.last_posted_date) : null;
+  // Store the intended day separately — cursor arithmetic uses day-1
+  // anchors (setMonth preserves the day component) but when we actually
+  // emit a post date we want the user's chosen day clamped to the
+  // month's length. e.g. day_of_month=31 posts on the 28th in Feb,
+  // 30th in April, 31st in July. Required so users can set "last day
+  // of the month"-style recurring without the RPC clamp forcing 28.
+  const storedDay = Math.max(1, Math.min(31, parseInt(entry.day_of_month, 10) || 1));
   let cursor;
   if (lastPosted) {
     cursor = new Date(lastPosted.getFullYear(), lastPosted.getMonth() + freqMonths, 1);
@@ -489,7 +496,17 @@ export async function autoPostRecurringEntries(companyId) {
   const classId = entry.property ? await getPropertyClassId(entry.property, cid) : null;
   while (cursor <= today && posted < MAX) {
   const monthStr = formatLocalDate(cursor).slice(0, 7);
-  const postDate = cursor <= today ? formatLocalDate(new Date(Math.min(cursor.getTime(), today.getTime()))) : todayStr;
+  // Compute the actual post day: min(stored_day, days_in_this_month).
+  // Preserves user intent "the 31st" across months with fewer days.
+  const curYear = cursor.getFullYear();
+  const curMonth = cursor.getMonth();
+  const daysInCursorMonth = new Date(curYear, curMonth + 1, 0).getDate();
+  const targetDay = Math.min(storedDay, daysInCursorMonth);
+  const targetDate = new Date(curYear, curMonth, targetDay);
+  // Never post in the future — if the target day in the current month
+  // hasn't arrived yet, hold off until the next run.
+  if (targetDate > today) break;
+  const postDate = formatLocalDate(targetDate);
   const ref = "RECUR-" + (entry.id || shortId()).toString().slice(0, 8) + "-" + monthStr;
   // Skip if posting date falls in locked period
   if (await checkPeriodLock(cid, postDate)) { cursor.setMonth(cursor.getMonth() + freqMonths); continue; }

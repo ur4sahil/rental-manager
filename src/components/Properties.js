@@ -1635,7 +1635,7 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
                 </div>
                 <div>
                   <label className="text-xs font-medium text-neutral-500 block mb-1">Day of Month</label>
-                  <Input type="number" min="1" max="28" value={recurring.day_of_month} onChange={e => setRecurring({ ...recurring, day_of_month: Math.min(28, Math.max(1, Number(e.target.value))) })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
+                  <Input type="number" min="1" max="31" value={recurring.day_of_month} onChange={e => setRecurring({ ...recurring, day_of_month: Math.min(31, Math.max(1, Number(e.target.value))) })} className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" />
                 </div>
               </div>
               <div>
