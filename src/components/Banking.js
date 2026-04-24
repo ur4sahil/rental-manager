@@ -2140,7 +2140,7 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   {showRuleDrawer && (
   <>
   <div className="fixed inset-0 bg-black/30 z-40" onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }} />
-  <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-white shadow-2xl z-50 overflow-y-auto">
+  <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-white shadow-2xl z-50 overflow-y-auto safe-y">
     <div className="sticky top-0 bg-white border-b border-neutral-200 px-5 py-4 flex items-center justify-between z-10">
       <h3 className="text-lg font-bold text-neutral-800">{editingRule ? "Edit Rule" : "Create New Rule"}</h3>
       <TextLink tone="neutral" size="xl" underline={false} onClick={() => { setShowRuleDrawer(false); resetRuleForm(); }}>✕</TextLink>

@@ -681,7 +681,7 @@ function EvictionWorkflow({ addNotification, userProfile, userRole, companyId, s
 
   {/* Case Detail Panel */}
   {selectedCase && (
-  <div className="fixed inset-0 bg-black/40 z-50 flex justify-end">
+  <div className="fixed inset-0 bg-black/40 z-50 flex justify-end safe-y safe-x">
   <div className="bg-white w-full max-w-xl h-full flex flex-col shadow-2xl overflow-y-auto">
   <div className="bg-gradient-to-r from-danger-600 to-danger-800 p-6 text-white">
   <div className="flex items-center justify-between">

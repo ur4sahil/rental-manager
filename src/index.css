@@ -179,7 +179,7 @@ body {
    can extend edge-to-edge on notched devices — these classes restore
    the safe inset where we want it. Zero on desktop/non-notched devices,
    so safe to sprinkle liberally.
-   h-screen / min-h-screen fill 100vh from the top regardless of body
+   h-dvh / min-h-dvh fill 100dvh from the top regardless of body
    padding, so the body alone can't protect them. Apply .safe-top to
    the outermost element of every full-screen container; apply
    .safe-bottom where a fixed action bar would otherwise sit under the

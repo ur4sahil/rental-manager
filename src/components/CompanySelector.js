@@ -319,12 +319,12 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   }
   }
 
-  if (loading) return <div className="flex items-center justify-center h-screen safe-y bg-brand-50/30"><Spinner /></div>;
+  if (loading) return <div className="flex items-center justify-center h-dvh safe-y bg-brand-50/30"><Spinner /></div>;
 
   if (showProfile) return <UserProfile currentUser={currentUser} onBack={() => setShowProfile(false)} showToast={showToast} showConfirm={showConfirm} />;
 
   return (
-  <div className="min-h-screen safe-y safe-x bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
+  <div className="min-h-dvh safe-y safe-x bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
   {/* Top-right menu — fixed positioning escapes the outer safe-y
       padding, so we need our own safe-area math here. On notched
       iPhones the battery/wifi icons were clipping the Logout button

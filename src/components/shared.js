@@ -29,7 +29,7 @@ export class ErrorBoundary extends React.Component {
   render() {
   if (this.state.hasError) {
   return (
-  <div className="flex items-center justify-center min-h-screen safe-y bg-subtle-50">
+  <div className="flex items-center justify-center min-h-dvh safe-y bg-subtle-50">
   <div className="text-center p-8 max-w-md">
   <div className="text-5xl mb-4">⚠️</div>
   <h2 className="text-xl font-bold text-subtle-800 mb-2">Something went wrong</h2>
@@ -84,7 +84,7 @@ export function Modal({ title, onClose, children }) {
 
 export function ToastContainer({ toasts, removeToast }) {
   return (
-  <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 max-w-sm">
+  <div className="fixed bottom-4 right-4 safe-bottom safe-right z-[100] flex flex-col gap-2 max-w-sm">
   {toasts.map(t => (
   <div key={t.id} className={"flex items-start gap-3 px-4 py-3 rounded-2xl shadow-lg border backdrop-blur-md animate-slide-up " + (t.type === "error" ? "bg-danger-50 border-danger-200 text-danger-800" : t.type === "warning" ? "bg-warn-50 border-warn-200 text-warn-800" : t.type === "success" ? "bg-success-50 border-success-200 text-success-800" : "bg-white border-brand-100 text-neutral-700")}>
   {t.isError ? (<>

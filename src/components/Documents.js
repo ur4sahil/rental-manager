@@ -1231,7 +1231,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   if (showTemplateEditor) {
   const sections = [...new Set(templateForm.fields.map(f => f.section).filter(Boolean))];
   return (
-  <div className="fixed inset-0 z-50 bg-surface-muted flex flex-col">
+  <div className="fixed inset-0 z-50 bg-surface-muted flex flex-col safe-y safe-x">
   {/* Top ribbon — breadcrumb + mode toggle + primary action */}
   <div className="h-14 border-b border-neutral-100 bg-white flex items-center px-5 gap-3 shrink-0">
   <IconBtn icon="arrow_back" onClick={() => { setShowTemplateEditor(false); setEditingTemplate(null); }} />
@@ -1689,7 +1689,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   };
 
   return (
-  <div className="fixed inset-0 z-50 bg-surface-muted flex flex-col">
+  <div className="fixed inset-0 z-50 bg-surface-muted flex flex-col safe-y safe-x">
   {/* Top ribbon — breadcrumb + mode hint + Preview CTA */}
   <div className="h-14 border-b border-neutral-100 bg-white flex items-center px-5 gap-3 shrink-0">
   <IconBtn icon="arrow_back" onClick={resetFlow} />
@@ -1775,7 +1775,7 @@ function DocumentBuilder({ addNotification, userProfile, userRole, companyId, ac
   if (step === "preview" && selectedTemplate) {
   const rendered = renderMergedBody(selectedTemplate.body, fieldValues, selectedTemplate.field_config);
   return (
-  <div className="fixed inset-0 z-50 bg-surface-muted flex flex-col">
+  <div className="fixed inset-0 z-50 bg-surface-muted flex flex-col safe-y safe-x">
   {/* Top ribbon — breadcrumb + inline export shortcuts */}
   <div className="h-14 border-b border-neutral-100 bg-white flex items-center px-5 gap-3 shrink-0">
   <IconBtn icon="arrow_back" onClick={() => setStep("fill")} />

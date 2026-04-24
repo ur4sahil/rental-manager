@@ -3407,7 +3407,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   return (
   <div className="flex flex-col md:flex-row gap-0 -mx-4 md:-mx-6 -mt-2">
   {/* Left Sidebar Nav — desktop */}
-  <div className="hidden md:block w-56 shrink-0 border-r border-neutral-200 bg-white min-h-[calc(100vh-180px)] py-4 px-2">
+  <div className="hidden md:block w-56 shrink-0 border-r border-neutral-200 bg-white min-h-[calc(100dvh-180px)] py-4 px-2">
   {acctSidebarItems.map(group => (
   <div key={group.section}>
     <p className="text-[10px] uppercase tracking-widest text-neutral-400 font-semibold px-3 mt-4 mb-1">{group.section}</p>

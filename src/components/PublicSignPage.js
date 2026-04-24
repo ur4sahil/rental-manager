@@ -78,7 +78,7 @@ export default function PublicSignPage({ token }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen safe-y safe-x bg-surface-muted flex items-center justify-center p-6">
+      <div className="min-h-dvh safe-y safe-x bg-surface-muted flex items-center justify-center p-6">
         <div className="text-center">
           <div className="w-10 h-10 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin mx-auto mb-3" />
           <p className="text-sm text-neutral-500">Loading signature request…</p>
@@ -89,7 +89,7 @@ export default function PublicSignPage({ token }) {
 
   if (error) {
     return (
-      <div className="min-h-screen safe-y safe-x bg-surface-muted flex items-center justify-center p-6">
+      <div className="min-h-dvh safe-y safe-x bg-surface-muted flex items-center justify-center p-6">
         <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 max-w-md text-center">
           <div className="text-5xl mb-3">⚠️</div>
           <h1 className="text-lg font-bold text-neutral-800 mb-2">Can't sign right now</h1>
@@ -101,7 +101,7 @@ export default function PublicSignPage({ token }) {
 
   if (done) {
     return (
-      <div className="min-h-screen safe-y safe-x bg-surface-muted flex items-center justify-center p-6">
+      <div className="min-h-dvh safe-y safe-x bg-surface-muted flex items-center justify-center p-6">
         <div className="bg-white rounded-3xl shadow-card border border-success-200 p-8 max-w-md text-center">
           <div className="text-5xl mb-3">✅</div>
           <h1 className="text-xl font-bold text-neutral-800 mb-1">Thanks — signature recorded</h1>
@@ -124,7 +124,7 @@ export default function PublicSignPage({ token }) {
   }
 
   return (
-    <div className="min-h-screen safe-y safe-x bg-surface-muted">
+    <div className="min-h-dvh safe-y safe-x bg-surface-muted">
       {/* Header */}
       <div className="bg-white border-b border-brand-50 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
