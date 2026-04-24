@@ -3407,10 +3407,14 @@ function Properties({ addNotification, userRole, userProfile, companyId, setPage
   return (
   <div key={t.id || i} onClick={async () => {
   // Fetch full detail for this historical tenant
+  // ilike against a user-supplied name without escapeFilterValue can
+  // match cross-tenant rows when the name contains % or _. Classic
+  // scope-leak pattern — escape the LIKE meta-chars before query.
+  const tSafe = escapeFilterValue(t.name || "");
   const [ledgerRes, docsRes, msgsRes] = await Promise.all([
-  t.id ? supabase.from("ledger_entries").select("*").eq("company_id", companyId).ilike("tenant", t.name).order("date", { ascending: false }).limit(200) : Promise.resolve({ data: [] }),
-  supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", t.name).order("uploaded_at", { ascending: false }).limit(100),
-  supabase.from("messages").select("*").eq("company_id", companyId).ilike("tenant", t.name).order("created_at", { ascending: true }).limit(100),
+  t.id ? supabase.from("ledger_entries").select("*").eq("company_id", companyId).ilike("tenant", tSafe).order("date", { ascending: false }).limit(200) : Promise.resolve({ data: [] }),
+  supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", tSafe).order("uploaded_at", { ascending: false }).limit(100),
+  supabase.from("messages").select("*").eq("company_id", companyId).ilike("tenant", tSafe).order("created_at", { ascending: true }).limit(100),
   ]);
   setHistoricalTenantDetail({ tenant: t, ledger: ledgerRes.data || [], docs: docsRes.data || [], messages: msgsRes.data || [], leases: t._leases || [], activeTab: "overview" });
   }} className="bg-white border border-neutral-200 rounded-xl p-4 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all">
