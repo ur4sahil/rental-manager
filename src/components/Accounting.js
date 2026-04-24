@@ -3323,6 +3323,15 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   if (je && await checkPeriodLock(companyId, je.date)) { showToast("Cannot void a journal entry in a locked period (" + je.date + ").", "error"); return; }
   const { error: voidErr } = await supabase.from("acct_journal_entries").update({ status: "voided" }).eq("company_id", companyId).eq("id", id);
   if (voidErr) { showToast("Error voiding entry: " + voidErr.message, "error"); return; }
+  // Clear reconciled flags on this JE's lines so the next bank
+  // reconciliation sees them as unmatched instead of a ghost match.
+  // Without this, voiding a previously-reconciled JE left its lines
+  // carrying reconciled=true / reconciled_date forever — each future
+  // reconcile would still count them as "already matched."
+  const { error: lineErr } = await supabase.from("acct_journal_lines")
+    .update({ reconciled: false, reconciled_date: null })
+    .eq("journal_entry_id", id);
+  if (lineErr) pmError("PM-4002", { raw: lineErr, context: "clear reconciled flags on void", silent: true });
   showToast("Journal entry voided.", "success");
   // Reverse tenant balance based on JE type
   if (je) {
