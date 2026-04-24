@@ -1604,7 +1604,7 @@ function UserProfile({ currentUser, onBack, showToast, showConfirm }) {
   }
 
   return (
-  <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
+  <div className="min-h-screen safe-y safe-x bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
   <div className="w-full max-w-lg">
   <Btn variant="ghost" size="sm" onClick={onBack} className="mb-6">
   <span className="material-icons-outlined text-sm">arrow_back</span> Back to Companies

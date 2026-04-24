@@ -169,7 +169,27 @@ body {
   font-family: 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Disable the whole-page rubber-band scroll on iOS webview / Safari
+     so scrollable lists inside the app are the only things that bounce.
+     No effect on other browsers. */
+  overscroll-behavior: none;
 }
+
+/* Safe-area utilities. index.html uses viewport-fit=cover so content
+   can extend edge-to-edge on notched devices — these classes restore
+   the safe inset where we want it. Zero on desktop/non-notched devices,
+   so safe to sprinkle liberally.
+   h-screen / min-h-screen fill 100vh from the top regardless of body
+   padding, so the body alone can't protect them. Apply .safe-top to
+   the outermost element of every full-screen container; apply
+   .safe-bottom where a fixed action bar would otherwise sit under the
+   home-indicator. */
+.safe-top    { padding-top:    env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+.safe-left   { padding-left:   env(safe-area-inset-left); }
+.safe-right  { padding-right:  env(safe-area-inset-right); }
+.safe-x      { padding-left:   env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+.safe-y      { padding-top:    env(safe-area-inset-top);  padding-bottom: env(safe-area-inset-bottom); }
 
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',

@@ -170,7 +170,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
 
   if (signupSuccess) {
   return (
-  <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex flex-col">
+  <div className="min-h-screen safe-y safe-x bg-gradient-to-br from-brand-50 to-white flex flex-col">
   <nav className="flex items-center justify-between px-8 py-4">
   <button onClick={onBack} className="flex items-center gap-2 text-xl font-bold text-brand-700">
     <span className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shadow-lg shadow-brand-200"><span className="material-icons-outlined text-white text-sm">domain</span></span>
@@ -193,7 +193,7 @@ function LoginPage({ onLogin, onBack, initialMode = "login" }) {
   const typeInfo = userTypeLabels[mode] || {};
 
   return (
-  <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex flex-col">
+  <div className="min-h-screen safe-y safe-x bg-gradient-to-br from-brand-50 to-white flex flex-col">
   <nav className="flex items-center justify-between px-8 py-4">
   <button onClick={onBack} className="flex items-center gap-2 text-xl font-bold text-brand-700">
     <span className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shadow-lg shadow-brand-200"><span className="material-icons-outlined text-white text-sm">domain</span></span>

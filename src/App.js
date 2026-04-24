@@ -226,7 +226,7 @@ function SetPasswordScreen({ currentUser, onComplete, showToast }) {
     onComplete();
   }
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
+    <div className="min-h-screen safe-y safe-x bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
     <div className="bg-white rounded-3xl shadow-card border border-brand-50 p-8 w-full max-w-sm text-center">
     <span className="material-icons-outlined text-4xl text-brand-500 mb-2">lock</span>
     <h2 className="text-xl font-bold text-neutral-800 mb-1">Set Your Password</h2>
@@ -877,7 +877,7 @@ function AppInner() {
     return () => { cancelled = true; clearInterval(id); window.removeEventListener("focus", onFocus); };
   }, [activeCompany?.id, userRole, page, userProfile?.email, currentUser?.email]);
 
-  if (screen === "loading") return <><div className="flex items-center justify-center h-screen bg-brand-50/30"><Spinner /></div><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
+  if (screen === "loading") return <><div className="flex items-center justify-center h-screen safe-y bg-brand-50/30"><Spinner /></div><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
   if (screen === "landing") return <><LandingPage onGetStarted={(mode) => { setLoginMode(mode); setScreen("login"); }} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
   if (screen === "login") return <><LoginPage onLogin={() => {}} onBack={() => setScreen("landing")} initialMode={loginMode} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
   if (screen === "set_password") return <><SetPasswordScreen currentUser={currentUser} onComplete={() => { setScreen("company_select"); autoSelectCompany(currentUser); }} showToast={showToast} /><ToastContainer toasts={toasts} removeToast={removeToast} /><ConfirmModal config={confirmConfig} onConfirm={handleConfirm} onCancel={handleCancel} /></>;
@@ -885,7 +885,7 @@ function AppInner() {
 
   if (!activeCompany?.id || !roleLoaded) {
   return (
-  <div className="flex items-center justify-center h-screen bg-brand-50/30">
+  <div className="flex items-center justify-center h-screen safe-y bg-brand-50/30">
   <div className="text-center">
   <Spinner />
   <p className="text-sm text-neutral-400 mt-4">{!activeCompany?.id ? "Loading company..." : "Loading your access..."}</p>
@@ -907,7 +907,7 @@ function AppInner() {
   const Page = pageComponents[effectivePage] || Dashboard;
 
   return (
-  <div className="flex h-screen bg-surface-muted font-inter overflow-hidden">
+  <div className="flex h-screen safe-y safe-x bg-surface-muted font-inter overflow-hidden">
   {/* Sidebar */}
   <div className={`${sidebarOpen ? "flex" : "hidden"} md:flex flex-col w-56 bg-white/80 backdrop-blur-md border-r border-brand-50 z-30 fixed md:relative h-full`}>
   <div className="px-5 py-4 border-b border-brand-50">

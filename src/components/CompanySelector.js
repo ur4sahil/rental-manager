@@ -319,12 +319,12 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
   }
   }
 
-  if (loading) return <div className="flex items-center justify-center h-screen bg-brand-50/30"><Spinner /></div>;
+  if (loading) return <div className="flex items-center justify-center h-screen safe-y bg-brand-50/30"><Spinner /></div>;
 
   if (showProfile) return <UserProfile currentUser={currentUser} onBack={() => setShowProfile(false)} showToast={showToast} showConfirm={showConfirm} />;
 
   return (
-  <div className="min-h-screen bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
+  <div className="min-h-screen safe-y safe-x bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
   {/* Top-right menu */}
   <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
   <Btn variant="secondary" size="sm" onClick={() => setShowProfile(true)}>

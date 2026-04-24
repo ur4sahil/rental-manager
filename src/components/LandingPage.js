@@ -3,7 +3,7 @@ import { Btn, TextLink } from "../ui";
 
 export function LandingPage({ onGetStarted }) {
   return (
-  <div className="min-h-screen bg-surface-muted">
+  <div className="min-h-screen safe-y safe-x bg-surface-muted">
   <nav className="flex items-center justify-between px-8 py-4 bg-white/80 backdrop-blur-md border-b border-brand-50">
   <div className="flex items-center gap-2">
   <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shadow-lg shadow-brand-200">

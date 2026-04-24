@@ -13,7 +13,14 @@
          status bar tint with the content behind it. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- "default" places the iOS status bar in its own slot above the
+         webview, so content never renders under the time/battery. The
+         alternative "black-translucent" overlays the status bar on top
+         of the web content and forces every full-screen container to
+         manually pad with env(safe-area-inset-top) — which h-screen
+         and min-h-screen containers ignore because they anchor at
+         viewport top 0. Keeping it simple: reserve the status bar slot. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Housify" />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/apple-touch-icon.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="%PUBLIC_URL%/apple-touch-icon.png" />
