@@ -465,12 +465,27 @@ function Messages({ companyId, userProfile, userRole, showToast, showConfirm }) 
 
   if (loading) return <Spinner />;
 
+  // Mobile iMessage behavior: one pane at a time. On list view, tapping
+  // a tenant switches to thread view. A back button in the thread header
+  // returns to the list. Desktop keeps the two-pane layout unchanged.
+  const showListOnMobile = !selectedTenant;
+  const showThreadOnMobile = !!selectedTenant;
+
   return (
     <div>
-      <PageHeader title="Messages" subtitle="Chat with your tenants." />
-      <div className="bg-white rounded-3xl shadow-card border border-brand-50 overflow-hidden flex" style={{ height: "calc(100vh - 220px)", minHeight: "500px" }}>
-        {/* LEFT PANE — conversation list */}
-        <div className="w-80 border-r border-neutral-200 flex flex-col">
+      {/* Desktop-only page header — on mobile the thread/list has its own
+          compact header so we can fit the composer in-viewport. */}
+      <div className="hidden md:block">
+        <PageHeader title="Messages" subtitle="Chat with your tenants." />
+      </div>
+      <div
+        className="bg-white md:rounded-3xl md:shadow-card md:border md:border-brand-50 overflow-hidden flex flex-col md:flex-row"
+        style={{ height: "calc(100dvh - 180px)", minHeight: "500px" }}
+      >
+        {/* LEFT PANE — conversation list. Full-width on mobile when no
+            thread is active; hidden once a thread is open. Fixed 320px
+            on desktop. */}
+        <div className={`${showListOnMobile ? "flex" : "hidden"} md:flex w-full md:w-80 border-r-0 md:border-r border-neutral-200 flex-col`}>
           <div className="p-3 border-b border-neutral-200 bg-white">
             <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search tenants…" size="sm" />
           </div>
@@ -501,15 +516,31 @@ function Messages({ companyId, userProfile, userRole, showToast, showConfirm }) 
           </div>
         </div>
 
-        {/* RIGHT PANE — thread + composer */}
-        <div className="flex-1 flex flex-col min-w-0">
+        {/* RIGHT PANE — thread + composer. On mobile, takes over the full
+            viewport width when a tenant is selected; otherwise hidden. On
+            desktop, always visible on the right. */}
+        <div className={`${showThreadOnMobile ? "flex" : "hidden"} md:flex flex-1 flex-col min-w-0`}>
           {!selectedTenant ? (
-            <div className="flex-1 flex items-center justify-center text-neutral-400 text-sm">Pick a tenant on the left to see the conversation.</div>
+            <div className="flex-1 items-center justify-center text-neutral-400 text-sm hidden md:flex">Pick a tenant on the left to see the conversation.</div>
           ) : (
             <>
-              <div className="px-4 py-3 border-b border-neutral-200 bg-white">
-                <div className="text-sm font-semibold text-neutral-800">{selectedTenant.name}</div>
-                <div className="text-xs text-neutral-500">{selectedTenant.property}{selectedTenant.email ? " · " + selectedTenant.email : ""}</div>
+              <div className="px-4 py-3 border-b border-neutral-200 bg-white flex items-center gap-3">
+                {/* Back button — mobile-only. Clears selection so the
+                    list view comes back. */}
+                <button
+                  onClick={() => setSelectedId(null)}
+                  className="md:hidden -ml-1 p-1 rounded-lg text-brand-600 hover:bg-brand-50 shrink-0"
+                  aria-label="Back to conversations"
+                >
+                  <span className="material-icons-outlined">arrow_back</span>
+                </button>
+                <div className="w-9 h-9 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-sm font-bold shrink-0 md:hidden">
+                  {(selectedTenant.name || "?")[0]?.toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-neutral-800 truncate">{selectedTenant.name}</div>
+                  <div className="text-xs text-neutral-500 truncate">{selectedTenant.property}{selectedTenant.email ? " · " + selectedTenant.email : ""}</div>
+                </div>
               </div>
               <MessageThread
                 messages={threadMsgs}
