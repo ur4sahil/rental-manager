@@ -77,6 +77,29 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   const tName = selectedTenant.name;
   const classId = await getPropertyClassId(selectedLease.property, cid);
 
+  // STATE-FIRST flow (2026-04-24): the server-side move_out_commit_state
+  // RPC bundles lease termination + tenant archive + property vacant +
+  // autopay disable + recurring deactivate in ONE transaction. If any
+  // step fails, Postgres rolls back the whole thing and we abort with
+  // nothing posted to GL. Previously GL ran first and a failed state
+  // transition left orphan deposit-return / deductions / AR-excess JEs
+  // pointing at a tenant who wasn't actually archived — the audit
+  // flagged this as the worst real-world risk in the move-out flow.
+  const { data: stateRes, error: stateErr } = await supabase.rpc("move_out_commit_state", {
+    p_company_id: cid,
+    p_lease_id: selectedLease.id,
+    p_tenant_id: selectedTenant.id,
+    p_tenant_name: tName,
+    p_property: selectedLease.property,
+    p_move_out_date: moveOutDate,
+    p_archived_by: userProfile?.email || "system",
+  });
+  if (stateErr || !stateRes?.ok) {
+    pmError("PM-3004", { raw: stateErr || { message: "state RPC returned not-ok" }, context: "move_out_commit_state" });
+    showToast("Move-out state update failed: " + (stateErr?.message || "unknown error") + "\n\nNo GL entries were posted. Try again.", "error");
+    return;
+  }
+
   // 1. Process deposit return/deductions GL
   if (depositReturn > 0) {
   const depResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Security deposit returned — ${tName}`, reference: `DEP-RTN-${shortId()}`, property: selectedLease.property,
@@ -171,41 +194,9 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   }
   }
 
-  // #7: Track completed steps for error recovery
-  const completedSteps = [];
-  try {
-  // 3. Terminate lease
-  const { error: leaseErr } = await supabase.from("leases").update({ status: "terminated", end_date: moveOutDate }).eq("id", selectedLease.id).eq("company_id", cid);
-  if (leaseErr) { pmError("PM-3004", { raw: leaseErr, context: "lease termination in move-out wizard", silent: true }); throw new Error("Lease termination failed. Please try again or contact your admin."); }
-  completedSteps.push("lease_terminated");
-
-  // 4. Deactivate autopay (scope by property to avoid disabling same-name tenant at different property)
-  const { error: autopayErr } = await supabase.from("autopay_schedules").update({ enabled: false }).eq("company_id", cid).eq("tenant", tName).eq("property", selectedLease.property);
-  if (autopayErr) pmError("PM-3004", { raw: autopayErr, context: "autopay disable in move-out wizard", silent: true });
-  completedSteps.push("autopay_disabled");
-
-  // 5. Archive tenant (moves to Historical Tenants on property page)
-  const { error: tenantErr } = await supabase.from("tenants").update({ lease_status: "inactive", move_out: moveOutDate, archived_at: new Date().toISOString(), archived_by: userProfile?.email || "system" }).eq("id", selectedTenant.id).eq("company_id", cid);
-  if (tenantErr) throw new Error("Tenant archive failed: " + tenantErr.message + ". Completed: " + completedSteps.join(", "));
-  completedSteps.push("tenant_archived");
-
-  // 6. Update property to vacant
-  const { error: propErr } = await supabase.from("properties").update({ status: "vacant", tenant: "", lease_end: null }).eq("company_id", cid).eq("address", selectedLease.property);
-  if (propErr) throw new Error("Property update failed: " + propErr.message + ". Completed: " + completedSteps.join(", "));
-  completedSteps.push("property_vacant");
-
-  // 7. Deactivate the departing tenant's rent-style recurring entries.
-  // Scope by tenant_name so mortgage / HOA / other property-level
-  // recurring (which have null/empty tenant_name) stay active. Without
-  // this, moving out Tenant A on a multi-unit property would silently
-  // stop the mortgage recurring for the whole property.
-  const { error: recurErr } = await supabase.from("recurring_journal_entries").update({ status: "inactive", archived_at: new Date().toISOString() }).eq("company_id", cid).eq("property", selectedLease.property).eq("tenant_name", tName).eq("status", "active");
-  if (recurErr) pmError("PM-3004", { raw: recurErr, context: "recurring deactivate in move-out wizard", silent: true });
-  completedSteps.push("recurring_deactivated");
-  } catch (stepErr) {
-  showToast("Move-out partially completed. " + stepErr.message + "\n\nPlease manually verify and fix any inconsistent state.", "error");
-  pmError("PM-3006", { raw: stepErr, context: "move-out partial failure, completed: " + completedSteps.join(", "), silent: true });
-  }
+  // (State transitions already happened atomically in the
+  //  move_out_commit_state RPC at the top of this function. The
+  //  previous client-side step-by-step update block is gone.)
 
   // 7. Create ledger entries (fetch fresh balance for accurate ledger trail)
   const { data: moTenantBal } = await supabase.from("tenants").select("balance").eq("id", selectedTenant.id).eq("company_id", cid).maybeSingle();
