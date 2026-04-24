@@ -20,9 +20,17 @@ export async function queueNotification(type, recipientEmail, data, companyId) {
   // If setting exists and is disabled, skip entirely
   if (settings && !settings.enabled) return;
 
+  // Default push to ON when no notification_settings row exists for
+  // this event_type. Push delivery is safe-by-default: /api/send-push
+  // returns delivered:0 with no error when the recipient has no
+  // registered subscription, so the worst case on an unsubscribed
+  // user is a no-op. Leaving push:false here meant the Settings tab
+  // had to be manually toggled on per event_type before any push
+  // would fire — which silently dropped every tenant→staff message
+  // notification until someone noticed.
   const channels = settings?.channels
   ? (typeof settings.channels === "string" ? JSON.parse(settings.channels) : settings.channels)
-  : { in_app: true, email: true, push: false };
+  : { in_app: true, email: true, push: true };
 
   // Queue for email if email channel is enabled
   if (channels.email) {

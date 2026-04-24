@@ -411,9 +411,9 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   // rows wrote them as serialized strings. Accept either so a mixed
   // set doesn't crash the whole Notifications page.
   const parseChannels = (x) => {
-    if (!x) return { in_app: true, email: true, push: false };
+    if (!x) return { in_app: true, email: true, push: true };
     if (typeof x === 'object') return x;
-    try { return JSON.parse(x); } catch { return { in_app: true, email: true, push: false }; }
+    try { return JSON.parse(x); } catch { return { in_app: true, email: true, push: true }; }
   };
   const currentChannels = parseChannels(s.channels);
   return (
