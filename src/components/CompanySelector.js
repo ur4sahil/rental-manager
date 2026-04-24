@@ -325,8 +325,15 @@ function CompanySelector({ currentUser, onSelectCompany, onLogout, showToast, sh
 
   return (
   <div className="min-h-screen safe-y safe-x bg-gradient-to-br from-brand-50 to-white flex items-center justify-center p-4">
-  {/* Top-right menu */}
-  <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
+  {/* Top-right menu — fixed positioning escapes the outer safe-y
+      padding, so we need our own safe-area math here. On notched
+      iPhones the battery/wifi icons were clipping the Logout button
+      because top-4 is only 16px below the viewport top — not enough
+      once the Dynamic Island/status bar claims 47-54px. */}
+  <div
+    className="fixed right-4 z-50 flex items-center gap-2"
+    style={{ top: "max(1rem, calc(env(safe-area-inset-top) + 0.5rem))" }}
+  >
   <Btn variant="secondary" size="sm" onClick={() => setShowProfile(true)}>
   <span className="material-icons-outlined text-base">person</span>Profile
   </Btn>
