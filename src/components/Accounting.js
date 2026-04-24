@@ -3029,7 +3029,7 @@ export function csvBuildFingerprint(feedId, date, amount, description) {
   return `${feedId}|${date}|${Math.round(amount * 100)}|${norm}`;
 }
 
-export function Accounting({ companySettings = {}, companyId, activeCompany, addNotification, userProfile, showToast, showConfirm, initialAction }) {
+export function Accounting({ companySettings = {}, companyId, activeCompany, addNotification, userProfile, userRole, showToast, showConfirm, initialAction }) {
   const [acctAccounts, setAcctAccounts] = useState([]);
   const [journalEntries, setJournalEntries] = useState([]);
   const [acctClasses, setAcctClasses] = useState([]);
@@ -3805,6 +3805,22 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
     .gte("posted_date", startDate).lte("posted_date", endDate2);
   if (lockErr) pmError("PM-5006", { raw: lockErr, context: "lock bank feed transactions", silent: true });
 
+  // Auto-lock the accounting period through the end of the
+  // reconciled month so nothing new can post against a balanced
+  // month. Only advances the lock_date forward — if an existing lock
+  // already covers a later date, leave it alone. Admin/manager can
+  // still unlock via the Period Lock tab's "Remove Lock" button
+  // (role-gated below).
+  try {
+    const { data: existingLock } = await supabase.from("accounting_period_lock").select("lock_date").eq("company_id", companyId).maybeSingle();
+    const newLockDate = (existingLock?.lock_date && existingLock.lock_date > endDate2) ? existingLock.lock_date : endDate2;
+    const { error: plockErr } = await supabase.from("accounting_period_lock").upsert({
+      company_id: companyId, lock_date: newLockDate, locked_by: userProfile?.email || "", notes: "Auto-locked by bank reconciliation for " + reconPeriod
+    }, { onConflict: "company_id" });
+    if (plockErr) pmError("PM-4011", { raw: plockErr, context: "auto-lock on reconcile", silent: true });
+    else logAudit("update", "accounting", "Period auto-locked through " + newLockDate + " (reconcile " + reconPeriod + ")", "", userProfile?.email, "", companyId);
+  } catch (e) { pmError("PM-4011", { raw: e, context: "auto-lock on reconcile", silent: true }); }
+
   logAudit("create", "bank_reconciliation", "Bank reconciliation for " + reconPeriod + " — diff: $" + diff + (status === "reconciled" ? " (balanced)" : " (discrepancy)"), "", userProfile?.email || "", "", companyId);
   setShowReconcile(false);
   setBankBalance("");
@@ -3842,7 +3858,11 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
             <div className="text-xs text-danger-600 mt-1">Locked by {periodLock.locked_by || "admin"} on {new Date(periodLock.locked_at).toLocaleDateString()}</div>
             {periodLock.notes && <div className="text-xs text-danger-500 mt-1">{periodLock.notes}</div>}
           </div>
-          <Btn variant="danger" size="sm" onClick={removePeriodLock}>Remove Lock</Btn>
+          {(userRole === "admin" || userRole === "owner" || userRole === "manager") ? (
+            <Btn variant="danger" size="sm" onClick={removePeriodLock}>Remove Lock</Btn>
+          ) : (
+            <div className="text-[11px] text-danger-500 italic">Only admin/manager can unlock.</div>
+          )}
         </div>
       </div>
       ) : (
