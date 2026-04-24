@@ -66,6 +66,11 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
 
   async function executeMoveOut() {
   if (!selectedTenant || !selectedLease) return;
+  // Re-entrancy guard. Without this, a double-tap on Execute would
+  // post the deposit-return + deductions JEs twice — the refs use
+  // shortId() which is random per call, so the unique-reference
+  // index on acct_journal_entries can't stop the duplicate.
+  if (!guardSubmit("executeMoveOut")) return;
   setProcessing(true);
   try {
   const cid = companyId;
@@ -187,8 +192,10 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   setCompleted(true);
   } catch (e) {
   showToast("Move-out failed: " + e.message, "error");
-  }
+  } finally {
   setProcessing(false);
+  guardRelease("executeMoveOut");
+  }
   }
 
   if (loading) return <Spinner />;
