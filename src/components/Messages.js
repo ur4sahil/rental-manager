@@ -213,7 +213,7 @@ export function MessageComposer({ value, onChange, onSend, placeholder, disabled
   }
   const canSend = !disabled && !sending && (value.trim() || attachment);
   return (
-    <div className="border-t border-neutral-200 bg-white p-3 relative">
+    <div className="border-t border-neutral-200 bg-white p-3 relative safe-bottom">
       {attachment && (
         <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-lg bg-brand-50 text-brand-700 text-xs">
           <span className="material-icons-outlined text-sm">attach_file</span>
@@ -479,8 +479,8 @@ function Messages({ companyId, userProfile, userRole, showToast, showConfirm }) 
         <PageHeader title="Messages" subtitle="Chat with your tenants." />
       </div>
       <div
-        className="bg-white md:rounded-3xl md:shadow-card md:border md:border-brand-50 overflow-hidden flex flex-col md:flex-row"
-        style={{ height: "calc(100dvh - 180px)", minHeight: "500px" }}
+        className="bg-white md:rounded-3xl md:shadow-card md:border md:border-brand-50 overflow-hidden flex flex-col md:flex-row h-[calc(100dvh-120px-env(safe-area-inset-bottom,0px))] md:h-[calc(100dvh-180px)]"
+        style={{ minHeight: "320px" }}
       >
         {/* LEFT PANE — conversation list. Full-width on mobile when no
             thread is active; hidden once a thread is open. Fixed 320px
