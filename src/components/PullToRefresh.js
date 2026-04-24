@@ -54,6 +54,11 @@ export default function PullToRefresh({ onRefresh, scrollRef, children, classNam
 
     const onTouchStart = (e) => {
       if (refreshing) return;
+      // Multi-touch = pinch/zoom. Don't track — otherwise the second
+      // finger moving down reads as a pull-down and triggers the
+      // reload (user reported this when pinching out to un-zoom on the
+      // Properties search field).
+      if (e.touches.length > 1) { pullRef.current.active = false; return; }
       if (el.scrollTop > 0) { pullRef.current.active = false; return; }
       pullRef.current.active = true;
       pullRef.current.startY = e.touches[0].clientY;
@@ -62,6 +67,16 @@ export default function PullToRefresh({ onRefresh, scrollRef, children, classNam
 
     const onTouchMove = (e) => {
       if (!pullRef.current.active || refreshing) return;
+      // If a second finger landed during the drag (pinch starting),
+      // abort and let the browser handle zoom. Without this, the pull
+      // indicator sticks around during the pinch and can fire on
+      // release.
+      if (e.touches.length > 1) {
+        pullRef.current.active = false;
+        pullRef.current.delta = 0;
+        setIndicator(0);
+        return;
+      }
       const dy = e.touches[0].clientY - pullRef.current.startY;
       if (dy <= 0) {
         // User swiped back up — reset and let native scroll resume.
