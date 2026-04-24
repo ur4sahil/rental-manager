@@ -7,6 +7,133 @@ import { logAudit } from "../utils/audit";
 import { queueNotification } from "../utils/notifications";
 import { StatCard, Spinner } from "./shared";
 
+// Device-level push status + manual enable. The auto-register on login
+// fires silent pmError on failure, so users who've "toggled push on and
+// nothing happened" have nothing to look at. This panel surfaces every
+// step: SW state, browser permission, VAPID public-key presence, the
+// current subscription (if any), and a button that runs the subscribe
+// flow with a visible log. Without it, diagnosing push outages means
+// hunting through DevTools console for someone who doesn't know what
+// they're looking for.
+function DevicePushPanel({ companyId, userProfile, showToast }) {
+  const [state, setState] = React.useState({ permission: "unknown", subscribed: false, endpoint: null, log: [] });
+  const [busy, setBusy] = React.useState(false);
+
+  const refresh = React.useCallback(async () => {
+    if (typeof window === "undefined") return;
+    const permission = (typeof Notification !== "undefined") ? Notification.permission : "unsupported";
+    let subscribed = false, endpoint = null;
+    try {
+      const reg = await navigator.serviceWorker.getRegistration?.();
+      if (reg?.pushManager) {
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) { subscribed = true; endpoint = sub.endpoint; }
+      }
+    } catch (_e) { /* not supported */ }
+    setState(s => ({ ...s, permission, subscribed, endpoint }));
+  }, []);
+
+  React.useEffect(() => { refresh(); }, [refresh]);
+
+  async function handleEnable() {
+    if (busy) return;
+    setBusy(true);
+    const log = [];
+    const add = (line) => log.push(new Date().toLocaleTimeString() + " " + line);
+    try {
+      add("Checking browser support…");
+      if (!("serviceWorker" in navigator)) { add("❌ service worker not supported in this browser"); throw new Error("service worker unsupported"); }
+      if (!("PushManager" in window)) { add("❌ push manager not supported in this browser"); throw new Error("push unsupported"); }
+      add("✓ service worker + push manager present");
+
+      add("Registering /sw.js…");
+      const registration = await navigator.serviceWorker.register("/sw.js");
+      add("✓ service worker registered");
+
+      add("Requesting Notification permission…");
+      const permission = await Notification.requestPermission();
+      add(permission === "granted" ? "✓ permission granted" : "❌ permission " + permission);
+      if (permission !== "granted") throw new Error("permission " + permission);
+
+      const key = process.env.REACT_APP_VAPID_PUBLIC_KEY || "";
+      if (!key) { add("❌ REACT_APP_VAPID_PUBLIC_KEY not baked into bundle"); throw new Error("VAPID key missing"); }
+      add("✓ VAPID public key present (" + key.slice(0, 10) + "…)");
+
+      const padding = "=".repeat((4 - key.length % 4) % 4);
+      const base64 = (key + padding).replace(/-/g, "+").replace(/_/g, "/");
+      const rawData = window.atob(base64);
+      const applicationServerKey = Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+
+      const existing = await registration.pushManager.getSubscription();
+      if (existing) {
+        add("Existing subscription found — unsubscribing first (VAPID rotation safe)");
+        try { await existing.unsubscribe(); } catch (_e) { add("⚠︎ unsubscribe refused — continuing"); }
+      }
+
+      add("Subscribing…");
+      const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+      add("✓ subscribed — endpoint " + subscription.endpoint.slice(0, 50) + "…");
+
+      add("Saving subscription to DB…");
+      const { error } = await supabase.from("push_subscriptions").upsert([{
+        company_id: companyId,
+        user_email: userProfile?.email,
+        subscription: JSON.parse(JSON.stringify(subscription)),
+      }], { onConflict: "company_id,user_email" });
+      if (error) { add("❌ save failed: " + error.message); throw error; }
+      add("✓ subscription saved — push is live on this device");
+      if (showToast) showToast("Push notifications enabled on this device.", "success");
+      await refresh();
+    } catch (e) {
+      add("ERROR: " + (e?.message || "unknown"));
+      if (showToast) showToast("Push enable failed: " + (e?.message || "unknown") + ". See panel log.", "error");
+    } finally {
+      setState(s => ({ ...s, log }));
+      setBusy(false);
+    }
+  }
+
+  async function handleTest() {
+    if (!userProfile?.email || !companyId) return;
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const jwt = session?.session?.access_token;
+      if (!jwt) { showToast("Not signed in — can't test", "error"); return; }
+      const res = await fetch("/api/send-push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + jwt },
+        body: JSON.stringify({ company_id: companyId, user_email: userProfile.email, title: "Housify test", body: "Push is working on this device.", url: "/#notifications" }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast("Test push failed: " + (j.error || res.status), "error"); return; }
+      showToast("Test push dispatched (delivered " + (j.delivered ?? 0) + ", pruned " + (j.pruned ?? 0) + ").", j.delivered > 0 ? "success" : "warning");
+    } catch (e) {
+      showToast("Test push failed: " + e.message, "error");
+    }
+  }
+
+  const statusColor = state.subscribed ? "text-positive-600" : state.permission === "denied" ? "text-danger-600" : "text-warn-600";
+  const statusLabel = state.subscribed ? "Subscribed on this device" : state.permission === "denied" ? "Permission blocked — enable in browser settings" : "Not subscribed on this device";
+
+  return (
+    <div className="bg-white rounded-xl border border-subtle-100 p-4 mb-5">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm font-semibold text-subtle-700">🔔 Push on this device</div>
+        <span className={"text-xs font-medium " + statusColor}>{statusLabel}</span>
+      </div>
+      <div className="text-xs text-subtle-400 mb-3">Permission: <span className="font-mono">{state.permission}</span>{state.endpoint ? <> · Endpoint: <span className="font-mono break-all">{state.endpoint.slice(0, 60)}…</span></> : null}</div>
+      <div className="flex gap-2">
+        <Btn size="sm" onClick={handleEnable} disabled={busy}>{state.subscribed ? "Re-subscribe" : "Enable push on this device"}</Btn>
+        <Btn size="sm" variant="secondary" onClick={handleTest} disabled={!state.subscribed}>Send test push</Btn>
+        <Btn size="sm" variant="ghost" onClick={refresh}>Refresh</Btn>
+      </div>
+      {state.log.length > 0 && (
+        <pre className="mt-3 bg-neutral-50 rounded-lg p-3 text-[11px] text-neutral-600 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">{state.log.join("\n")}</pre>
+      )}
+    </div>
+  );
+}
+
 function EmailNotifications({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [settings, setSettings] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -216,6 +343,8 @@ function EmailNotifications({ addNotification, userProfile, userRole, companyId,
   {queueStats.failed > 0 && <div className="bg-danger-50 rounded-lg px-3 py-2 mt-3 text-xs text-danger-700">⚠️ {queueStats.failed} notification(s) failed. Check that your delivery worker is running.</div>}
   {queueStats.pending > 10 && <div className="bg-warn-50 rounded-lg px-3 py-2 mt-3 text-xs text-warn-700">📬 {queueStats.pending} queued — delivery service may be behind.</div>}
   </div>
+
+  <DevicePushPanel companyId={companyId} userProfile={userProfile} showToast={showToast} />
 
   <div className="flex gap-1 mb-4 border-b border-brand-50">
   {[["activity","Activity"],["settings","Settings"],["log","Send Log"],["rentroll","Rent Roll"]].map(([id,label]) => (
