@@ -63,6 +63,9 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   const [tenantDocs, setTenantDocs] = useState([]);
   const [tenantTab, setTenantTab] = useState(initialTab || "tenants");
   const [archivedTenants, setArchivedTenants] = useState([]);
+  // Detail panel for a single archived/moved-out tenant.
+  // { tenant, ledger, docs, messages, leases, payments, workOrders, activeTab }
+  const [archivedDetail, setArchivedDetail] = useState(null);
   const [portalMembers, setPortalMembers] = useState({}); // email(lower) → 'invited' | 'active' | 'removed'
   const [showTenantDocPrompt, setShowTenantDocPrompt] = useState(null);
   const [showDocUpload, setShowDocUpload] = useState(null);
@@ -1277,19 +1280,197 @@ function Tenants({ addNotification, userProfile, userRole, companyId, setPage, i
   </div>
 
   {tenantTab === "leases" && <LeaseManagement addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} showToast={showToast} showConfirm={showConfirm} />}
-  {tenantTab === "archived" && (
+  {tenantTab === "archived" && !archivedDetail && (
   <div>
   {archivedTenants.length === 0 ? (
   <div className="text-center py-12 bg-white rounded-xl border border-subtle-100"><div className="text-subtle-400">No archived tenants</div><TextLink tone="brand" size="xs" underline={false} onClick={async () => { if (!guardSubmit("refreshArchived")) return; try { const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).order("archived_at", { ascending: false }).limit(200); setArchivedTenants(data || []); } finally { guardRelease("refreshArchived"); } }} className="mt-2 hover:underline">Refresh</TextLink></div>
   ) : archivedTenants.map(t => (
-  <div key={t.id} className="bg-white rounded-xl border border-subtle-200 p-4 flex items-center gap-4 opacity-70 mb-2">
+  <div key={t.id} className="bg-white rounded-xl border border-subtle-200 p-4 flex items-center gap-4 opacity-80 mb-2 cursor-pointer hover:border-brand-300 hover:shadow-sm transition-all" onClick={async () => {
+    // Fan-out fetch for the full tenant history so the detail panel
+    // renders in one shot. Scope each query by tenant_id where the
+    // table has it, falling back to escaped name ilike otherwise —
+    // ledger_entries / documents / messages didn't uniformly backfill
+    // tenant_id on old rows, so an id-only filter would silently
+    // drop history for long-tenured archives.
+    const tSafe = escapeFilterValue(t.name || "");
+    const [ledger, docs, msgs, leases, pays, wos] = await Promise.all([
+      t.id
+        ? supabase.from("ledger_entries").select("*").eq("company_id", companyId).eq("tenant_id", t.id).order("date", { ascending: false }).limit(500)
+        : supabase.from("ledger_entries").select("*").eq("company_id", companyId).ilike("tenant", tSafe).order("date", { ascending: false }).limit(500),
+      supabase.from("documents").select("*").eq("company_id", companyId).ilike("tenant", tSafe).order("uploaded_at", { ascending: false }).limit(200),
+      t.id
+        ? supabase.from("messages").select("*").eq("company_id", companyId).eq("tenant_id", t.id).order("created_at", { ascending: true }).limit(500)
+        : supabase.from("messages").select("*").eq("company_id", companyId).ilike("tenant", tSafe).order("created_at", { ascending: true }).limit(500),
+      supabase.from("leases").select("*").eq("company_id", companyId).eq("tenant_id", t.id).order("start_date", { ascending: false }),
+      supabase.from("payments").select("*").eq("company_id", companyId).ilike("tenant", tSafe).order("date", { ascending: false }).limit(200),
+      supabase.from("work_orders").select("*").eq("company_id", companyId).ilike("tenant", tSafe).order("created_at", { ascending: false }).limit(100),
+    ]);
+    setArchivedDetail({
+      tenant: t,
+      ledger: ledger.data || [],
+      docs: docs.data || [],
+      messages: msgs.data || [],
+      leases: leases.data || [],
+      payments: pays.data || [],
+      workOrders: wos.data || [],
+      activeTab: "overview",
+    });
+  }}>
   <div className="flex-1">
   <div className="font-semibold text-subtle-700 text-sm">{t.name}</div>
-  <div className="text-xs text-subtle-400">{t.property} · Archived {t.archived_at ? new Date(t.archived_at).toLocaleDateString() : ""}</div>
+  <div className="text-xs text-subtle-400">{t.property} · Archived {t.archived_at ? new Date(t.archived_at).toLocaleDateString() : ""}{t.archived_by ? " by " + t.archived_by : ""}</div>
   </div>
-  <Btn variant="success" size="sm" onClick={async () => { if (!guardSubmit("restoreTenant", t.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", t.id).eq("company_id", companyId); addNotification("\u267B\uFE0F", "Restored: " + t.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); fetchTenants(); } finally { guardRelease("restoreTenant", t.id); } }}>♻️ Restore</Btn>
+  <Btn variant="success" size="sm" onClick={async (e) => { e.stopPropagation(); if (!guardSubmit("restoreTenant", t.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", t.id).eq("company_id", companyId); addNotification("\u267B\uFE0F", "Restored: " + t.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); fetchTenants(); } finally { guardRelease("restoreTenant", t.id); } }}>♻️ Restore</Btn>
   </div>
   ))}
+  </div>
+  )}
+
+  {/* Archived Tenant Detail Drawer — full history from an otherwise
+      unreachable record. Every data slice is read-only: the tenant is
+      archived, so nothing here emits writes beyond the Restore button
+      in the header. */}
+  {tenantTab === "archived" && archivedDetail && (
+  <div className="bg-white rounded-xl border border-subtle-200 p-6">
+  <TextLink tone="brand" size="xs" onClick={() => setArchivedDetail(null)} className="mb-3 flex items-center gap-1"><span className="material-icons-outlined text-sm">arrow_back</span>Back to Archived List</TextLink>
+  <div className="flex items-center gap-3 mb-4">
+  <div className="w-12 h-12 rounded-full bg-neutral-200 flex items-center justify-center text-neutral-500 font-bold text-lg">{(archivedDetail.tenant.name?.[0] || "?").toUpperCase()}</div>
+  <div className="flex-1">
+  <div className="font-bold text-neutral-800 text-lg">{archivedDetail.tenant.name}</div>
+  <div className="text-xs text-neutral-400">{archivedDetail.tenant.email || ""}{archivedDetail.tenant.phone ? " · " + archivedDetail.tenant.phone : ""}</div>
+  <div className="text-xs text-neutral-400">{archivedDetail.tenant.property}</div>
+  </div>
+  <Btn variant="success" size="sm" onClick={async () => { if (!guardSubmit("restoreTenant", archivedDetail.tenant.id)) return; try { await supabase.from("tenants").update({ archived_at: null, archived_by: null, lease_status: "active" }).eq("id", archivedDetail.tenant.id).eq("company_id", companyId); addNotification("\u267B\uFE0F", "Restored: " + archivedDetail.tenant.name); const { data } = await supabase.from("tenants").select("*").eq("company_id", companyId).not("archived_at", "is", null).limit(200); setArchivedTenants(data || []); setArchivedDetail(null); fetchTenants(); } finally { guardRelease("restoreTenant", archivedDetail.tenant.id); } }}>♻️ Restore</Btn>
+  </div>
+  <div className="flex border-b border-neutral-200 mb-4 overflow-x-auto">
+  {[
+    ["overview", "Overview"],
+    ["ledger", `Ledger (${archivedDetail.ledger.length})`],
+    ["payments", `Payments (${archivedDetail.payments.length})`],
+    ["docs", `Documents (${archivedDetail.docs.length})`],
+    ["messages", `Messages (${archivedDetail.messages.length})`],
+    ["workorders", `Work Orders (${archivedDetail.workOrders.length})`],
+  ].map(([id, label]) => (
+  <button key={id} onClick={() => setArchivedDetail(prev => ({ ...prev, activeTab: id }))} className={"px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap " + (archivedDetail.activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-500")}>{label}</button>
+  ))}
+  </div>
+
+  {archivedDetail.activeTab === "overview" && (
+  <div className="space-y-4">
+  {archivedDetail.leases.length > 0 && (
+  <div>
+  <div className="text-xs font-semibold text-neutral-400 uppercase mb-2">Lease History</div>
+  {archivedDetail.leases.map((l, i) => (
+  <div key={l.id || i} className="bg-neutral-50 rounded-lg p-3 mb-2">
+  <div className="grid grid-cols-2 gap-2 text-xs">
+  <div><span className="text-neutral-400 block">Period</span><span className="font-medium text-neutral-700">{l.start_date || "—"} → {l.end_date || "—"}</span></div>
+  <div><span className="text-neutral-400 block">Status</span><span className="font-medium text-neutral-700 capitalize">{l.status}</span></div>
+  <div><span className="text-neutral-400 block">Rent</span><span className="font-medium text-neutral-700">{l.rent_amount ? formatCurrency(l.rent_amount) : "—"}</span></div>
+  <div><span className="text-neutral-400 block">Security Deposit</span><span className="font-medium text-neutral-700">{l.security_deposit ? formatCurrency(l.security_deposit) : "—"}{l.deposit_status ? " · " + l.deposit_status : ""}</span></div>
+  {safeNum(l.deposit_returned) > 0 && <div><span className="text-neutral-400 block">Deposit Returned</span><span className="font-medium text-positive-600">{formatCurrency(l.deposit_returned)}</span></div>}
+  {l.deposit_deductions && <div className="col-span-2"><span className="text-neutral-400 block">Deductions</span><span className="font-medium text-neutral-700">{l.deposit_deductions}</span></div>}
+  </div>
+  </div>
+  ))}
+  </div>
+  )}
+  <div className="grid grid-cols-2 gap-3 text-xs">
+  <div><span className="text-neutral-400 block">Final Balance</span><span className={"font-semibold " + (safeNum(archivedDetail.tenant.balance) > 0 ? "text-danger-500" : "text-positive-600")}>{archivedDetail.tenant.balance != null ? formatCurrency(Math.abs(safeNum(archivedDetail.tenant.balance))) + (safeNum(archivedDetail.tenant.balance) > 0 ? " owed" : " settled") : "—"}</span></div>
+  <div><span className="text-neutral-400 block">Move Out</span><span className="font-medium text-neutral-700">{archivedDetail.tenant.move_out || "—"}</span></div>
+  <div><span className="text-neutral-400 block">Archived</span><span className="font-medium text-neutral-700">{archivedDetail.tenant.archived_at ? new Date(archivedDetail.tenant.archived_at).toLocaleDateString() : "—"}</span></div>
+  <div><span className="text-neutral-400 block">Archived By</span><span className="font-medium text-neutral-700">{archivedDetail.tenant.archived_by || "—"}</span></div>
+  </div>
+  </div>
+  )}
+
+  {archivedDetail.activeTab === "ledger" && (
+  <div>{archivedDetail.ledger.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No transaction history</div> : (
+  <div className="space-y-1">
+  {archivedDetail.ledger.map((e, i) => (
+  <div key={e.id || i} className="flex items-center justify-between py-2.5 border-b border-neutral-100 text-sm">
+  <div>
+  <div className="font-medium text-neutral-700">{e.description}</div>
+  <div className="text-xs text-neutral-400">{e.date}{e.type ? " · " + e.type : ""}</div>
+  </div>
+  <div className="text-right">
+  <div className={"font-semibold font-mono " + (safeNum(e.amount) < 0 ? "text-positive-600" : "text-danger-500")}>{safeNum(e.amount) < 0 ? "+" : "-"}{formatCurrency(Math.abs(safeNum(e.amount)))}</div>
+  {e.balance != null && <div className="text-xs text-neutral-400">Bal: {formatCurrency(e.balance)}</div>}
+  </div>
+  </div>
+  ))}
+  </div>
+  )}</div>
+  )}
+
+  {archivedDetail.activeTab === "payments" && (
+  <div>{archivedDetail.payments.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No payments on file</div> : (
+  <div className="space-y-1">
+  {archivedDetail.payments.map(p => (
+  <div key={p.id} className="flex items-center justify-between py-2.5 border-b border-neutral-100 text-sm">
+  <div>
+  <div className="font-medium text-neutral-700">{p.method || p.type || "Payment"}</div>
+  <div className="text-xs text-neutral-400">{p.date}{p.status ? " · " + p.status : ""}</div>
+  </div>
+  <div className="text-right font-semibold font-mono text-positive-600">{formatCurrency(p.amount)}</div>
+  </div>
+  ))}
+  </div>
+  )}</div>
+  )}
+
+  {archivedDetail.activeTab === "docs" && (
+  <div>{archivedDetail.docs.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No documents</div> : (
+  <div className="space-y-2">
+  {archivedDetail.docs.map(d => (
+  <div key={d.id} className="flex items-center justify-between bg-neutral-50 rounded-lg px-4 py-3 hover:bg-neutral-100 transition-colors">
+  <div className="flex items-center gap-3">
+  <span className="material-icons-outlined text-neutral-400 text-lg">{d.type === "Lease" ? "description" : d.type === "ID" ? "badge" : d.type === "Insurance" ? "verified_user" : "insert_drive_file"}</span>
+  <div>
+  <div className="text-sm font-medium text-neutral-700">{d.name}</div>
+  <div className="text-xs text-neutral-400">{d.type || "Document"}{d.uploaded_at ? " · " + d.uploaded_at.slice(0, 10) : ""}</div>
+  </div>
+  </div>
+  <TextLink tone="brand" size="xs" onClick={async () => { const url = await getSignedUrl("documents", d.file_name || d.url); if (url) window.open(url, "_blank", "noopener,noreferrer"); }} className="flex items-center gap-1"><span className="material-icons-outlined text-sm">open_in_new</span>View</TextLink>
+  </div>
+  ))}
+  </div>
+  )}</div>
+  )}
+
+  {archivedDetail.activeTab === "messages" && (
+  <div>{archivedDetail.messages.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No messages</div> : (
+  <div className="space-y-2 max-h-96 overflow-y-auto">
+  {archivedDetail.messages.map((m) => {
+    const role = m.sender_role || (m.sender === "admin" ? "admin" : "tenant");
+    const fromStaff = role !== "tenant";
+    return (
+    <div key={m.id} className={"rounded-xl px-3 py-2 max-w-[85%] text-sm " + (fromStaff ? "bg-brand-50 text-brand-800 ml-auto" : "bg-neutral-100 text-neutral-700")}>
+    <div>{m.message}</div>
+    {m.attachment_name && <div className="text-xs text-neutral-500 italic mt-1">📎 {m.attachment_name}</div>}
+    <div className="text-xs text-neutral-400 mt-1">{m.sender || role}{m.created_at ? " · " + m.created_at.slice(0, 16).replace("T", " ") : ""}</div>
+    </div>
+    );
+  })}
+  </div>
+  )}</div>
+  )}
+
+  {archivedDetail.activeTab === "workorders" && (
+  <div>{archivedDetail.workOrders.length === 0 ? <div className="text-center py-6 text-neutral-400 text-sm">No maintenance history</div> : (
+  <div className="space-y-2">
+  {archivedDetail.workOrders.map(w => (
+  <div key={w.id} className="bg-neutral-50 rounded-lg px-4 py-3">
+  <div className="flex items-center justify-between">
+  <div className="text-sm font-medium text-neutral-700">{w.issue || "Work order"}</div>
+  <span className="text-xs bg-neutral-200 text-neutral-600 px-2 py-0.5 rounded-full capitalize">{w.status || "—"}</span>
+  </div>
+  <div className="text-xs text-neutral-400 mt-1">{w.created ? String(w.created).slice(0, 10) : ""}{w.priority ? " · " + w.priority : ""}{w.vendor_name ? " · " + w.vendor_name : ""}</div>
+  {w.notes && <div className="text-xs text-neutral-500 mt-2">{w.notes}</div>}
+  </div>
+  ))}
+  </div>
+  )}</div>
+  )}
   </div>
   )}
   {tenantTab === "moveout" && <MoveOutWizard addNotification={addNotification} userProfile={userProfile} userRole={userRole} companyId={companyId} setPage={setPage} showToast={showToast} showConfirm={showConfirm} />}
