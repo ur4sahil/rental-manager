@@ -964,7 +964,7 @@ function AppInner() {
 
   {/* Main Content */}
   <div className="flex-1 flex flex-col min-w-0">
-  <header className="bg-white/80 backdrop-blur-md border-b border-brand-50 px-4 py-3 flex items-center gap-3 relative z-40">
+  <header className="bg-white/80 backdrop-blur-md border-b border-brand-50 px-4 py-3 flex items-center gap-3 sticky top-0 z-40">
   <button className="md:hidden text-neutral-400 hover:text-neutral-600 transition-colors" onClick={() => setSidebarOpen(!sidebarOpen)}><span className="material-icons-outlined">menu</span></button>
   {/* Use effectivePage so tenants/owners see "Tenant Portal" / "Owner Portal"
       on the top bar instead of the raw page state (e.g. "company_select")
@@ -1037,7 +1037,12 @@ function AppInner() {
   </div>
   </header>
 
-  <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
+  {/* overscroll-behavior-y: contain stops iOS Safari's rubber-band at
+      the scroll container's edge instead of propagating it up the flex
+      column — without this, pulling down on the dashboard dragged the
+      header with it while the fixed sidebar stayed put, making them
+      look desynced. */}
+  <main className="flex-1 overflow-y-auto overscroll-contain p-4 md:p-6 pb-24 md:pb-6">
   {missingRPCs.length > 0 && userRole === "admin" && (
   <div className="bg-warn-50 border border-warn-200 rounded-xl px-4 py-3 mb-4">
   <div className="text-sm font-semibold text-warn-800">{"\u26A0\uFE0F"} Missing Database Functions</div>
