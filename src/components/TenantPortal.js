@@ -19,10 +19,13 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   const [newMessage, setNewMessage] = useState("");
   const [msgAttachment, setMsgAttachment] = useState(null);
   const [sendingMsg, setSendingMsg] = useState(false);
-  // One admin email for the company — destination for the tenant's
-  // message notifications. Cached at mount; admins occasionally change
-  // but a stale value for a single session is fine.
-  const [adminEmail, setAdminEmail] = useState(null);
+  // Every active staff member for this company — destinations for the
+  // tenant's outbound message / payment notifications. Previously we
+  // picked ONE admin via limit(1), so only the first-returned admin
+  // was ever pinged; other admins, managers, owners, and office
+  // assistants never got the in-app/email/push. Fan out to everyone
+  // who has inbox access on the staff side.
+  const [staffEmails, setStaffEmails] = useState([]);
   // The property-management company's display name. Tenants see this
   // on all incoming messages instead of individual staff names —
   // their landlord is "the company" not whichever team member happens
@@ -69,15 +72,20 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
   setPayments(p.data || []);
   setWorkOrders(w.data || []);
   setDocuments(d.data || []);
-  // Resolve the destination admin for outbound message notifications.
-  // Pick the first active admin membership; a missing admin just means
-  // no email ping goes out — the thread still records the message.
+  // Resolve the destination staff for outbound message notifications.
+  // Fetch every non-tenant active membership so the handleSend loop
+  // below can fan out; the old single-admin lookup meant managers,
+  // owners, office assistants and additional admins never heard from
+  // a tenant even though they had inbox access.
   if (companyId) {
-    const { data: adm } = await supabase.from("company_members")
-      .select("user_email")
-      .eq("company_id", companyId).eq("role", "admin").eq("status", "active")
-      .limit(1).maybeSingle();
-    if (adm?.user_email) setAdminEmail(adm.user_email);
+    const { data: staff } = await supabase.from("company_members")
+      .select("user_email, role")
+      .eq("company_id", companyId).eq("status", "active")
+      .neq("role", "tenant");
+    const emails = (staff || [])
+      .map(s => (s.user_email || "").toLowerCase())
+      .filter(Boolean);
+    setStaffEmails(Array.from(new Set(emails)));
     // Fetch the company name so message bubbles on the tenant side
     // can attribute incoming messages to "Smith Properties LLC"
     // instead of whichever individual staff member typed.
@@ -260,15 +268,19 @@ function TenantPortal({ currentUser, companyId, showToast, showConfirm }) {
     if (insErr) { pmError("PM-8006", { raw: insErr, context: "messages write" }); return; }
     setNewMessage("");
     setMsgAttachment(null);
-    // Notify the landlord. Sent best-effort — no toast on failure so we
-    // don't surface infra noise to the tenant.
-    if (adminEmail) {
-      await queueNotification("message_received", adminEmail, {
+    // Notify every active staff member. Fan-out is fine — queueNotification
+    // dedupes per recipient in notification_queue; worst case one staff
+    // row fails independently (pmError logged, others still go through).
+    // Sent best-effort — no toast on failure so we don't surface infra
+    // noise to the tenant.
+    if (staffEmails.length > 0) {
+      const payload = {
         sender: tenantData.name,
         preview: body ? body.slice(0, 120) : (attachmentName ? "[attachment: " + attachmentName + "]" : ""),
         tenant: tenantData.name,
         property: tenantData.property,
-      }, companyId);
+      };
+      await Promise.all(staffEmails.map(e => queueNotification("message_received", e, payload, companyId)));
     }
     const { data } = await supabase.from("messages").select("*")
       .eq("company_id", companyId)
