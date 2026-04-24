@@ -923,7 +923,7 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   const accts = grouped[type];
   if (!accts?.length) return null;
   return (
-  <div key={type} className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden mb-3">
+  <div key={type} className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-x-auto mb-3">
   <div className="px-5 py-3 bg-neutral-50 flex items-center justify-between">
   <div className="flex items-center gap-2"><AcctTypeBadge type={type} /><span className="text-xs text-neutral-400">{accts.length} accounts</span></div>
   <span className="font-mono text-xs font-semibold text-neutral-500">{acctFmt(accts.filter(a=>a.is_active).reduce((s,a)=>s+a.computedBalance,0))}</span>
