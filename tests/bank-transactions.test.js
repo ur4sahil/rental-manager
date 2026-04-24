@@ -283,7 +283,13 @@ function testJEDescriptionQuality() {
   // Description uses payee + full description, not truncated bank_description_clean
   assert(APP_CODE.includes('payee_normalized') && APP_CODE.includes('bank_description_raw'), 'JE description uses payee + full raw description');
   assert(APP_CODE.includes("Bank transaction"), 'JE description has fallback text');
-  assert(APP_CODE.includes('reference: "Bank Import"'), 'JE reference is human-readable "Bank Import" (not UUID)');
+  // Reference was originally a literal "Bank Import" string which
+  // violated idx_je_company_reference_unique after the first
+  // categorization. Now BANK-${txn.id} per txn, matching the
+  // XFER-/SPLIT- convention. The human-readable label still exists
+  // — it's just rendered at display time by the BANK- prefix
+  // translator below (line 289 asserts that path).
+  assert(APP_CODE.includes('reference: `BANK-${txn.id}`') || APP_CODE.includes('reference: "BANK-"'), 'JE reference is unique per bank txn (BANK-${txn.id})');
 
   // Ledger overlay translates BANK- prefix
   assert(APP_CODE.includes('r.startsWith("BANK-")') && APP_CODE.includes('return "Bank Import"'), 'Ledger overlay translates BANK- prefix to "Bank Import"');
@@ -296,7 +302,9 @@ function testPagination() {
   console.log('\n📄 PAGINATION');
 
   assert(APP_CODE.includes('txnPage'), 'Transaction page state exists');
-  assert(APP_CODE.includes('TXN_PAGE_SIZE'), 'Page size constant defined');
+  // txnPageSize is now user-selectable state (was a const TXN_PAGE_SIZE
+  // before the Per-page dropdown shipped). Accept either form.
+  assert(APP_CODE.includes('TXN_PAGE_SIZE') || APP_CODE.includes('txnPageSize'), 'Page size state/constant defined');
   assert(APP_CODE.includes('paginatedTxns'), 'Paginated transactions computed');
   assert(APP_CODE.includes('txnTotalPages'), 'Total pages computed');
   assert(APP_CODE.includes('Prev') && APP_CODE.includes('Next'), 'Pagination has Prev/Next buttons');

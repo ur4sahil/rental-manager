@@ -174,17 +174,14 @@ async function testJournalEntryIntegrity() {
 async function testBalanceConsistency() {
   console.log('\n⚖️  BALANCE CONSISTENCY');
 
-  // safeLedgerInsert calculates running balance
-  assert(accountingJs.includes('prevBal'), 'safeLedgerInsert uses prevBal for running balance');
-  assert(accountingJs.includes('prev?.balance'), 'prevBal sourced from previous ledger entry balance');
-
-  // Charges increase balance, payments decrease
-  assert(accountingJs.includes('increasesBalance'), 'increasesBalance categorization exists');
-  assert(accountingJs.includes('decreasesBalance'), 'decreasesBalance categorization exists');
-  assert(accountingJs.includes('"charge", "late_fee", "expense", "deposit_deduction"'), 'Correct types increase balance');
-  assert(accountingJs.includes('"payment", "credit", "deposit_return", "void"'), 'Correct types decrease balance');
-  assert(accountingJs.includes('if (increasesBalance) entry.balance = prevBal + amt'), 'Charges add to running balance');
-  assert(accountingJs.includes('if (decreasesBalance) entry.balance = prevBal - amt'), 'Payments subtract from running balance');
+  // safeLedgerInsert's running-balance logic used to live client-side
+  // (prevBal + increasesBalance/decreasesBalance branches). It now
+  // delegates to the insert_ledger_entry_with_balance RPC so balance
+  // computation is atomic server-side (project_audit_fixes_2026_03_25).
+  // We just verify the RPC call still wires up and the fallback path
+  // exists for older DBs that haven't deployed the RPC yet.
+  assert(accountingJs.includes('insert_ledger_entry_with_balance'), 'safeLedgerInsert calls insert_ledger_entry_with_balance RPC');
+  assert(accountingJs.includes('ledger entry insert via RPC') || accountingJs.includes('ledger RPC missing'), 'safeLedgerInsert has error/fallback path for the RPC');
 
   // update_tenant_balance RPC called after payment operations
   const rpcCalls = ALL_CODE.match(/update_tenant_balance/g);
@@ -269,8 +266,14 @@ async function testDateBoundaryHandling() {
 async function testAutopaySafety() {
   console.log('\n🔐 AUTOPAY SAFETY');
 
-  // Move-out autopay disable scopes by property
-  assert(lifecycleJs.includes('.eq("tenant", tName).eq("property"'), 'Lifecycle move-out disables autopay scoped by tenant AND property');
+  // Move-out autopay scoping. The client-side .eq("tenant", tName)
+  // .eq("property", ...) block was replaced by the move_out_commit_state
+  // RPC (migration 20260424000003) which holds the same scope rules in
+  // SQL. Accept either path so this test passes both before and after
+  // the atomic-RPC refactor.
+  const viaClient = lifecycleJs.includes('.eq("tenant", tName).eq("property"');
+  const viaRpc = lifecycleJs.includes('move_out_commit_state');
+  assert(viaClient || viaRpc, 'Lifecycle move-out disables autopay scoped by tenant AND property (client or RPC)');
 
   // Eviction autopay disable scopes by property
   assert(lifecycleJs.includes('.eq("tenant", evCase.tenant_name).eq("property", evCase.property)'), 'Lifecycle eviction disables autopay scoped by tenant AND property');
