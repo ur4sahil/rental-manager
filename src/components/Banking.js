@@ -1514,13 +1514,16 @@ export function BankTransactions({ accounts, journalEntries, classes, tenants = 
   // --- RENDER ---
   return (
   <div className="space-y-4">
-  {/* Header */}
-  <div className="flex items-center justify-between">
+  {/* Header. On mobile the title block stacks above the action row so
+      the buttons get the full width and don't pile into a vertical
+      stack to the right of the subtitle. All buttons share size="sm"
+      so they match height. */}
+  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
     <div><h3 className="text-lg font-semibold text-neutral-900">Bank Transactions</h3><p className="text-sm text-neutral-400">Import, review, and categorize bank transactions</p></div>
-    <div className="flex gap-2 flex-wrap">
+    <div className="flex flex-wrap gap-2">
       {connections.some(c => c.connection_status === "active") && <Btn variant="success" size="sm" onClick={() => { setSyncFromDate(""); setSyncDateModal(true); }} disabled={syncing}>{syncing ? "Syncing..." : "Sync"}</Btn>}
       {activeTab !== "rules" && <Btn variant="dark" size="sm" icon="download" onClick={exportTransactionsExcel} disabled={filtered.length === 0}>Export</Btn>}
-      <Btn variant="primary" onClick={() => {
+      <Btn variant="primary" size="sm" onClick={() => {
         // If there are existing Teller enrollments, let the user pick
         // reuse-vs-add-new before the SDK opens — otherwise Teller
         // always creates a fresh enrollment and the same BofA shows up

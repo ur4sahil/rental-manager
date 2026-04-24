@@ -156,22 +156,26 @@ export function RecurringJournalEntries({ companyId, companySettings = {}, addNo
   <div className="space-y-2">
   {entries.map(e => (
   <div key={e.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (e.status === "paused" ? "opacity-60 border-subtle-200" : "border-subtle-100")}>
-  <div className="flex items-center gap-4">
-  <div className="flex-1">
-  <div className="font-semibold text-subtle-800 text-sm">{e.description}</div>
-  <div className="text-xs text-subtle-400 mt-0.5">
+  {/* Mobile: stack title block, then amount+status, then actions.
+      Desktop (md+): keep the original single-row horizontal layout. */}
+  <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+  <div className="min-w-0 flex-1">
+  <div className="font-semibold text-subtle-800 text-sm break-words">{e.description}</div>
+  <div className="text-xs text-subtle-400 mt-0.5 break-words">
   {e.tenant_name && <span>{e.tenant_name} · </span>}
   {e.property && <span>{e.property} · </span>}
   Day {e.day_of_month} · {e.frequency}
   {e.late_fee_enabled && <span> · Late fee: ${safeNum(e.late_fee_amount)} after {e.grace_period_days}d</span>}
   </div>
   </div>
-  <div className="text-lg font-bold text-subtle-800">${safeNum(e.amount).toLocaleString()}</div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (e.status === "active" ? "bg-positive-100 text-positive-700" : "bg-subtle-100 text-subtle-500")}>{e.status}</span>
-  <div className="flex gap-1">
+  <div className="flex items-center gap-3 md:contents">
+  <div className="text-lg font-bold text-subtle-800 whitespace-nowrap">${safeNum(e.amount).toLocaleString()}</div>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold shrink-0 " + (e.status === "active" ? "bg-positive-100 text-positive-700" : "bg-subtle-100 text-subtle-500")}>{e.status}</span>
+  <div className="flex gap-1 ml-auto md:ml-0 shrink-0">
   <Btn variant={e.status === "active" ? "notice" : "positive"} size="xs" onClick={() => toggleStatus(e)}>{e.status === "active" ? "⏸ Pause" : "▶ Resume"}</Btn>
   <TextLink tone="brand" size="xs" underline={false} onClick={() => { setEditingEntry(e); setForm({ description: e.description, frequency: e.frequency, day_of_month: e.day_of_month, amount: e.amount, tenant_name: e.tenant_name || "", property: e.property || "", debit_account_id: e.debit_account_id || "1200", debit_account_name: e.debit_account_name || "Accounts Receivable", credit_account_id: e.credit_account_id || "4000", credit_account_name: e.credit_account_name || "Rental Income", late_fee_enabled: e.late_fee_enabled !== false, grace_period_days: e.grace_period_days || 5, late_fee_amount: e.late_fee_amount || 50 }); setShowForm(true); }} className="px-2 py-1 rounded-lg hover:bg-brand-50">Edit</TextLink>
   <TextLink tone="danger" size="xs" underline={false} onClick={() => deleteEntry(e)} className="px-2 py-1 rounded-lg hover:bg-danger-50">Delete</TextLink>
+  </div>
   </div>
   </div>
   {e.next_post_date && <div className="text-xs text-subtle-400 mt-2">Next post: {e.next_post_date}</div>}
