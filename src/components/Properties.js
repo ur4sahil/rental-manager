@@ -391,26 +391,34 @@ function PropertySetupWizard({ wizardData, companyId, showToast, showConfirm, us
   async function persistProgress(nextStep, newCompletedSteps) {
     if (!wizardId) return;
     try {
-      await supabase.from("property_setup_wizard").update({
+      const { error } = await supabase.from("property_setup_wizard").update({
         current_step: nextStep,
         completed_steps: Array.from(newCompletedSteps),
         wizard_data: { propForm, tenantForm, savedPropertyId, savedAddress, utilities, hoas, loan, insurance, taxes, recurring },
         updated_at: new Date().toISOString()
       }).eq("id", wizardId).eq("company_id", companyId);
+      if (error) throw error;
     } catch (e) {
+      // Used to be silent — a transient network blip during autosave
+      // could strand the user mid-wizard thinking progress was saved.
+      // Toast so they know autosave failed and can decide whether to
+      // retry or keep typing. Still non-blocking.
       pmError("PM-2007", { raw: e, context: "wizard progress save", silent: true });
+      showToast && showToast("Autosave failed — your progress may not persist if you close the wizard. Try Save again.", "error");
     }
   }
 
   // Persist wizard completion
   async function persistStatus(status) {
     try {
-      await supabase.from("property_setup_wizard").update({
+      const { error } = await supabase.from("property_setup_wizard").update({
         status: status,
         updated_at: new Date().toISOString()
       }).eq("id", wizardId).eq("company_id", companyId);
+      if (error) throw error;
     } catch (e) {
       pmError("PM-2007", { raw: e, context: "wizard status save", silent: true });
+      showToast && showToast("Could not update wizard status. Your changes may not be remembered on next open.", "error");
     }
   }
 
