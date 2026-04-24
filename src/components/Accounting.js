@@ -3502,19 +3502,22 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
     </div>
   </div>
 
-  {/* Quick Actions */}
-  <div className="flex gap-3 mb-6 overflow-x-auto">
-    <button onClick={() => setActiveTab("journal")} className="flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-positive-300 hover:shadow-sm transition-all whitespace-nowrap">
-      <span className="material-icons-outlined text-positive-600 text-lg">add_circle</span>
-      New Journal Entry
+  {/* Quick Actions. Same shrink-0 + flex-nowrap + inline-flex pattern
+      as the mobile sub-tab bar — without it Safari was squeezing each
+      pill to min-width and the labels clipped at "New Journal En",
+      "Recurring Entri", "Run Repo". */}
+  <div className="flex flex-row flex-nowrap gap-3 mb-6 overflow-x-auto">
+    <button onClick={() => setActiveTab("journal")} className="shrink-0 inline-flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-positive-300 hover:shadow-sm transition-all whitespace-nowrap">
+      <span className="material-icons-outlined text-positive-600 text-lg shrink-0">add_circle</span>
+      <span className="whitespace-nowrap">New Journal Entry</span>
     </button>
-    <button onClick={() => setActiveTab("recurring")} className="flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-positive-300 hover:shadow-sm transition-all whitespace-nowrap">
-      <span className="material-icons-outlined text-positive-600 text-lg">autorenew</span>
-      Recurring Entries
+    <button onClick={() => setActiveTab("recurring")} className="shrink-0 inline-flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-positive-300 hover:shadow-sm transition-all whitespace-nowrap">
+      <span className="material-icons-outlined text-positive-600 text-lg shrink-0">autorenew</span>
+      <span className="whitespace-nowrap">Recurring Entries</span>
     </button>
-    <button onClick={() => setActiveTab("reports")} className="flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-positive-300 hover:shadow-sm transition-all whitespace-nowrap">
-      <span className="material-icons-outlined text-positive-600 text-lg">assessment</span>
-      Run Reports
+    <button onClick={() => setActiveTab("reports")} className="shrink-0 inline-flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-positive-300 hover:shadow-sm transition-all whitespace-nowrap">
+      <span className="material-icons-outlined text-positive-600 text-lg shrink-0">assessment</span>
+      <span className="whitespace-nowrap">Run Reports</span>
     </button>
   </div>
 
