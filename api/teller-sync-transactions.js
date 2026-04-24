@@ -321,15 +321,30 @@ module.exports = async function handler(req, res) {
           const batchDates = tellerTxns.map(t => t.date).filter(Boolean).sort();
           const minDate = batchDates[0] || "";
           const maxDate = batchDates[batchDates.length - 1] || "";
+          // Dedup by BOTH Teller's provider_transaction_id AND our
+          // fingerprint_hash. provider_transaction_id is the primary
+          // key for Teller — it's stable across syncs and unique per
+          // bank txn. fingerprint_hash is the cross-source key (CSV <>
+          // Teller) and the fallback for anything without a provider
+          // id. Without the provider-id check, a change to the
+          // fingerprint algorithm would cause the same Teller txn to
+          // re-insert on the next sync — exactly what happened after
+          // commit 605ddb2 removed the \d{5,}→# rule: every txn showed
+          // up twice.
           let fpQuery = supabase
             .from("bank_feed_transaction")
-            .select("fingerprint_hash")
+            .select("fingerprint_hash, provider_transaction_id")
             .eq("bank_account_feed_id", feed.id)
             .eq("company_id", conn.company_id);
           if (minDate) fpQuery = fpQuery.gte("posted_date", minDate);
           if (maxDate) fpQuery = fpQuery.lte("posted_date", maxDate);
-          const { data: existingFps } = await fpQuery;
-          const existingSet = new Set((existingFps || []).map((f) => f.fingerprint_hash));
+          const { data: existingRows } = await fpQuery;
+          const existingFp = new Set();
+          const existingPtid = new Set();
+          for (const r of existingRows || []) {
+            if (r.fingerprint_hash) existingFp.add(r.fingerprint_hash);
+            if (r.provider_transaction_id) existingPtid.add(r.provider_transaction_id);
+          }
 
           const inserts = [];
           for (const txn of tellerTxns) {
@@ -348,7 +363,10 @@ module.exports = async function handler(req, res) {
             const desc = txn.description || "";
             const fp = buildFingerprint(feed.id, date, direction, amount, desc);
 
-            if (existingSet.has(fp)) continue;
+            // Primary: provider_transaction_id match (cheap, stable).
+            // Fallback: fingerprint match (CSV-Teller crosswalk).
+            if (txn.id && existingPtid.has(txn.id)) continue;
+            if (existingFp.has(fp)) continue;
 
             // Persist a minimal whitelist of fields rather than the full
             // Teller payload. The upstream txn object can include ACH
