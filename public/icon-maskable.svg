@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#4338ca"/>
+    </linearGradient>
+  </defs>
+  <!-- Full-bleed background so Android adaptive-icon masks (circle, squircle,
+       rounded-square) crop cleanly. The H sits inside the ~80% safe area. -->
+  <rect width="512" height="512" fill="url(#g)"/>
+  <text x="256" y="340" font-family="Manrope, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif"
+    font-weight="800" font-size="240" fill="white" text-anchor="middle" letter-spacing="-6">H</text>
+</svg>
