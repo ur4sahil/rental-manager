@@ -163,8 +163,12 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   if (propErr) throw new Error("Property update failed: " + propErr.message + ". Completed: " + completedSteps.join(", "));
   completedSteps.push("property_vacant");
 
-  // 7. Deactivate recurring entries for this property/tenant
-  const { error: recurErr } = await supabase.from("recurring_journal_entries").update({ status: "inactive", archived_at: new Date().toISOString() }).eq("company_id", cid).eq("property", selectedLease.property).eq("status", "active");
+  // 7. Deactivate the departing tenant's rent-style recurring entries.
+  // Scope by tenant_name so mortgage / HOA / other property-level
+  // recurring (which have null/empty tenant_name) stay active. Without
+  // this, moving out Tenant A on a multi-unit property would silently
+  // stop the mortgage recurring for the whole property.
+  const { error: recurErr } = await supabase.from("recurring_journal_entries").update({ status: "inactive", archived_at: new Date().toISOString() }).eq("company_id", cid).eq("property", selectedLease.property).eq("tenant_name", tName).eq("status", "active");
   if (recurErr) pmError("PM-3004", { raw: recurErr, context: "recurring deactivate in move-out wizard", silent: true });
   completedSteps.push("recurring_deactivated");
   } catch (stepErr) {
