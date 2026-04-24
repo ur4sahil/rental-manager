@@ -149,105 +149,70 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
     if (syncErr) pmError("PM-6002", { raw: syncErr, context: "move-out balance sync to GL", silent: true });
   }
 
-  // 1. Process deposit return/deductions GL.
-  //    When arAction === "waive" the tenant is being written off for
-  //    bad debt, so the deposit must be adjusted against the balance
-  //    instead of refunded — no cash goes back out the door to a
-  //    tenant who left owing. The waive block below applies what's
-  //    left of the deposit (post-deductions) against the tenant AR.
-  if (depositReturn > 0 && arAction !== "waive") {
-  const depResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Security deposit returned — ${tName}`, reference: `DEP-RTN-${shortId()}`, property: selectedLease.property,
-  lines: [
-  { account_id: "2100", account_name: "Security Deposits Held", debit: depositReturn, credit: 0, class_id: classId, memo: `Deposit return — ${tName}` },
-  { account_id: "1000", account_name: "Checking Account", debit: 0, credit: depositReturn, class_id: classId, memo: `Deposit refund to ${tName}` },
-  ], requireJE: false });
-  if (!depResult.jeId) showToast("Warning: Deposit return GL entry failed — please post manually in Accounting.", "error");
-  }
-  if (totalDeductions > 0 && totalDeductions <= depositAmount) {
-  const dedResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Deposit deductions — ${tName}`, reference: `DEP-DED-${shortId()}`, property: selectedLease.property,
-  lines: [
-  { account_id: "2100", account_name: "Security Deposits Held", debit: totalDeductions, credit: 0, class_id: classId, memo: `Deductions: ${deductions.map(d => d.desc).join(", ")}` },
-  { account_id: "4100", account_name: "Other Income", debit: 0, credit: totalDeductions, class_id: classId, memo: `Deposit forfeiture — ${tName}` },
-  ], requireJE: false });
-  if (!dedResult.jeId) showToast("Warning: Deposit deduction GL entry failed — please post manually in Accounting.", "error");
-  }
-  // Deductions > deposit: the deposit is fully consumed (DR 2100 /
-  // CR 4100 for the full depositAmount) AND the excess is billed to
-  // the tenant as AR so their balance shows what they still owe.
-  // Before this, "totalDeductions <= depositAmount" guarded the
-  // deduction JE entirely, so damage exceeding the deposit was
-  // silently unposted — tenants who owed $500 beyond deposit had
-  // nothing on their ledger.
-  if (totalDeductions > depositAmount) {
-  // First: fully consume the held deposit as income.
+  // Unified deposit + deductions + waive posting model.
+  //
+  //   A. Transfer the held deposit to the tenant's AR as a credit.
+  //      DR 2100 Security Deposits Held / CR tenant AR.
+  //      Releases the liability and gives the tenant a credit on
+  //      their ledger equal to the deposit.
+  //   B. Charge deductions to the tenant AR as damage income.
+  //      DR tenant AR / CR 4100 Other Income.
+  //      If deductions exceed the credit from (A), AR tips positive
+  //      (tenant owes); if smaller, AR is still credit (tenant is
+  //      owed a refund, which sits as a credit until an admin
+  //      processes a manual refund).
+  //   C. If arAction === "waive" AND the resulting AR is still
+  //      positive (i.e. unpaid rent wasn't fully absorbed by the
+  //      deposit-minus-deductions), write off the residual as bad
+  //      debt. DR 5500 Bad Debt Expense / CR tenant AR.
+  //
+  // No cash refund JE is posted here. By design, any leftover credit
+  // stays on the tenant AR for the admin to refund manually later.
+  const unifiedArId = (depositAmount > 0 || totalDeductions > 0 || arAction === "waive")
+    ? await getOrCreateTenantAR(cid, tName, selectedTenant.id)
+    : null;
+
+  // A. Deposit → tenant AR credit. Always runs if a deposit exists,
+  //    regardless of deductions / arAction, because the 2100 liability
+  //    must be released once the tenant moves out.
   if (depositAmount > 0) {
-  const dedResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Deposit deductions — ${tName}`, reference: `DEP-DED-${shortId()}`, property: selectedLease.property,
+  const depResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Deposit transferred to ledger — ${tName}`, reference: `DEP-TFR-${shortId()}`, property: selectedLease.property,
   lines: [
-  { account_id: "2100", account_name: "Security Deposits Held", debit: depositAmount, credit: 0, class_id: classId, memo: `Deductions (deposit fully applied): ${deductions.map(d => d.desc).join(", ")}` },
-  { account_id: "4100", account_name: "Other Income", debit: 0, credit: depositAmount, class_id: classId, memo: `Deposit forfeiture — ${tName}` },
-  ], requireJE: false });
-  if (!dedResult.jeId) showToast("Warning: Deposit deduction GL entry failed — please post manually in Accounting.", "error");
-  }
-  // Then: charge the excess ($deductions - $deposit) as AR so the
-  // tenant's balance reflects the shortfall.
-  const excess = depositForfeited; // already computed at line 64
-  if (excess > 0) {
-  const tenantArId = await getOrCreateTenantAR(cid, tName, selectedTenant.id);
-  const excResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Damage beyond deposit — ${tName}`, reference: `DEP-EXCESS-${shortId()}`, property: selectedLease.property,
-  lines: [
-  { account_id: tenantArId, account_name: "AR - " + tName, debit: excess, credit: 0, class_id: classId, memo: `Deductions exceeded deposit by ${excess.toFixed(2)}` },
-  { account_id: "4100", account_name: "Other Income", debit: 0, credit: excess, class_id: classId, memo: `Damage charge — ${tName}` },
-  ], ledgerEntry: { tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: `Damage beyond deposit (+${excess.toFixed(2)})`, amount: excess, type: "charge", balance: 0 },
-  balanceUpdate: { tenantId: selectedTenant.id, amount: excess } });
-  if (!excResult.jeId) showToast("Warning: Damage excess GL entry failed — please post manually in Accounting.", "error");
-  }
+  { account_id: "2100", account_name: "Security Deposits Held", debit: depositAmount, credit: 0, class_id: classId, memo: `Deposit release at move-out — ${tName}` },
+  { account_id: unifiedArId, account_name: "AR - " + tName, debit: 0, credit: depositAmount, class_id: classId, memo: `Deposit credit — move-out` },
+  ], ledgerEntry: { tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: "Deposit transferred to ledger", amount: -depositAmount, type: "credit", balance: 0 },
+  balanceUpdate: { tenantId: selectedTenant.id, amount: -depositAmount } });
+  if (!depResult.jeId) showToast("Warning: Deposit-to-ledger transfer failed — please post manually in Accounting.", "error");
   }
 
-  // 2. Handle outstanding AR (balance update gated on JE success).
-  //    Two-leg posting:
-  //      a) apply any held deposit (net of physical damage deductions)
-  //         against the tenant's AR — DR 2100 Deposits Held / CR
-  //         tenant AR sub-account. Clears the liability we'd otherwise
-  //         leave stranded, and reduces what we expense as bad debt.
-  //      b) write off the residual — DR 5500 Bad Debt Expense / CR
-  //         tenant AR sub-account.
-  //    Credit always hits the tenant's AR sub-account
-  //    ("1100-005 AR - Falana Dhimkana"), not the parent 1100.
-  //    Previously only the write-off leg existed AND it credited the
-  //    parent, so the tenant's individual ledger stayed at the full
-  //    pre-write-off balance while the parent carried a matching
-  //    negative credit — drill-downs looked untouched even though the
-  //    aggregate was zero.
-  if (arAction === "waive" && outstandingBalance > 0) {
-  const waiveArId = await getOrCreateTenantAR(cid, tName, selectedTenant.id);
-  // Available deposit to apply = lease deposit minus any damage
-  // deductions already forfeited to income (Step 3 of the wizard).
-  // Cap at outstandingBalance so we never over-apply.
-  const availableDeposit = Math.max(0, safeNum(depositAmount) - safeNum(totalDeductions));
-  const depositApplied = Math.min(availableDeposit, outstandingBalance);
-  if (depositApplied > 0) {
-  const appResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Deposit applied to balance — ${tName}`, reference: `DEP-APPLY-${shortId()}`, property: selectedLease.property,
+  // B. Deductions → charge tenant AR as damage income. One JE
+  //    regardless of whether deductions exceed the deposit — the
+  //    AR absorbs the difference naturally.
+  if (totalDeductions > 0) {
+  const dedResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Move-out deductions — ${tName}`, reference: `DEP-DED-${shortId()}`, property: selectedLease.property,
   lines: [
-  { account_id: "2100", account_name: "Security Deposits Held", debit: depositApplied, credit: 0, class_id: classId, memo: `Deposit applied to AR — ${tName}` },
-  { account_id: waiveArId, account_name: "AR - " + tName, debit: 0, credit: depositApplied, class_id: classId, memo: `Deposit offset (move-out) — ${tName}` },
-  ], requireJE: false });
-  if (!appResult.jeId) showToast("Warning: Deposit-to-AR application failed — please post manually in Accounting.", "error");
+  { account_id: unifiedArId, account_name: "AR - " + tName, debit: totalDeductions, credit: 0, class_id: classId, memo: `Deductions: ${deductions.map(d => d.desc).join(", ")}` },
+  { account_id: "4100", account_name: "Other Income", debit: 0, credit: totalDeductions, class_id: classId, memo: `Move-out damage charges — ${tName}` },
+  ], ledgerEntry: { tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: `Deductions: ${deductions.map(d => d.desc).join(", ") || "move-out damages"}`, amount: totalDeductions, type: "charge", balance: 0 },
+  balanceUpdate: { tenantId: selectedTenant.id, amount: totalDeductions } });
+  if (!dedResult.jeId) showToast("Warning: Move-out deduction JE failed — please post manually in Accounting.", "error");
   }
-  const residualWriteOff = Math.round((outstandingBalance - depositApplied) * 100) / 100;
-  if (residualWriteOff > 0) {
+
+  // C. Waive → if the tenant AR is still positive after deposit
+  //    credit + deductions, write off the residual as bad debt.
+  //    netOwed reconstructs the expected AR position from the inputs
+  //    rather than re-querying the GL (which would incur an extra
+  //    round-trip and race with the JEs we just posted).
+  if (arAction === "waive") {
+  const netOwed = Math.round((outstandingBalance - depositAmount + totalDeductions) * 100) / 100;
+  if (netOwed > 0) {
   const woResult = await atomicPostJEAndLedger({ companyId, date: moveOutDate, description: `Bad debt write-off — ${tName}`, reference: `WOFF-${shortId()}`, property: selectedLease.property,
   lines: [
-  { account_id: "5500", account_name: "Bad Debt Expense", debit: residualWriteOff, credit: 0, class_id: classId, memo: `Write-off at move-out — ${tName}` },
-  { account_id: waiveArId, account_name: "AR - " + tName, debit: 0, credit: residualWriteOff, class_id: classId, memo: `AR write-off — ${tName}` },
-  ], ledgerEntry: { tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: "Bad debt write-off", amount: -residualWriteOff, type: "adjustment", balance: 0 },
-  balanceUpdate: { tenantId: selectedTenant.id, amount: -outstandingBalance } });
+  { account_id: "5500", account_name: "Bad Debt Expense", debit: netOwed, credit: 0, class_id: classId, memo: `Write-off at move-out — ${tName}` },
+  { account_id: unifiedArId, account_name: "AR - " + tName, debit: 0, credit: netOwed, class_id: classId, memo: `AR write-off — ${tName}` },
+  ], ledgerEntry: { tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: "Bad debt write-off", amount: -netOwed, type: "adjustment", balance: 0 },
+  balanceUpdate: { tenantId: selectedTenant.id, amount: -netOwed } });
   if (!woResult.jeId) showToast("Warning: Bad debt write-off failed — please post manually in Accounting.", "error");
-  } else if (depositApplied > 0) {
-  // Full AR absorbed by deposit; the balance-sync above already
-  // reflects the GL, so mirror the -outstandingBalance delta on
-  // the stored column now that there's no write-off to do it.
-  const { error: balErr } = await supabase.rpc("update_tenant_balance", { p_tenant_id: selectedTenant.id, p_amount_change: -outstandingBalance });
-  if (balErr) pmError("PM-6002", { raw: balErr, context: "waive deposit-only balance update", silent: true });
   }
   }
 
@@ -290,13 +255,12 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   //  move_out_commit_state RPC at the top of this function. The
   //  previous client-side step-by-step update block is gone.)
 
-  // 7. Create ledger entries (fetch fresh balance for accurate ledger trail)
-  const { data: moTenantBal } = await supabase.from("tenants").select("balance").eq("id", selectedTenant.id).eq("company_id", cid).maybeSingle();
-  let moRunningBalance = safeNum(moTenantBal?.balance);
-  if (depositReturn > 0) {
-  moRunningBalance -= depositReturn;
-  await safeLedgerInsert({ company_id: cid, tenant: tName, tenant_id: selectedTenant.id, property: selectedLease.property, date: moveOutDate, description: "Security deposit returned", amount: -depositReturn, type: "deposit_return", balance: moRunningBalance });
-  }
+  // (Phase 4 previously wrote a "Security deposit returned" ledger
+  //  row whenever depositReturn > 0. The new model never posts a
+  //  cash refund JE — the deposit sits on the tenant AR as a credit
+  //  and any actual refund happens through a later admin-initiated
+  //  flow. The unified A/B/C block above already wrote the proper
+  //  ledger rows for the transfer, deductions, and write-off.)
 
   // 8. Save inspection checklist
   await supabase.from("inspections").insert([{ company_id: cid, property: selectedLease.property, type: "Move-Out", date: moveOutDate, inspector: userProfile?.name || "Admin", items: JSON.stringify(checklist), notes: `Move-out inspection for ${tName}` }]);
@@ -305,9 +269,6 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   logAudit("update", "tenants", `Move-out completed: ${tName} from ${selectedLease.property}`, selectedTenant.id, userProfile?.email, userRole, cid);
   addNotification("🚪", `Move-out completed: ${tName} from ${selectedLease.property}`);
   queueNotification("move_out", selectedTenant?.email || "", { tenant: tName, property: selectedLease?.property, moveOutDate: formatLocalDate(new Date()) }, cid);
-  if (selectedTenant.email) {
-  queueNotification("deposit_returned", selectedTenant.email, { tenant: tName, returned: depositReturn, deducted: totalDeductions, property: selectedLease.property, moveOutDate }, cid);
-  }
 
   setCompleted(true);
   } catch (e) {
@@ -422,9 +383,25 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <Input placeholder="$" type="number" value={newDeductionAmt} onChange={e => setNewDeductionAmt(e.target.value)} className="w-24" />
   <Btn onClick={addDeduction}>Add</Btn>
   </div>
+  {/* The deposit transfers to the tenant's ledger as a credit
+      during move-out. Deductions charge against that credit. Any
+      leftover credit remains on the tenant AR — no cash refund is
+      posted automatically. If deductions exceed the deposit, the
+      tenant AR tips positive (they owe the excess), which Step 4's
+      AR settlement handles. */}
   <div className="bg-success-50 rounded-2xl p-4 mt-4 space-y-1">
   <div className="flex justify-between text-sm"><span className="text-neutral-400">Total Deductions</span><span className="font-semibold text-danger-600">-${totalDeductions.toFixed(2)}</span></div>
-  <div className="flex justify-between text-sm font-bold"><span className="text-success-700">Return to Tenant</span><span className="text-success-700">${depositReturn.toFixed(2)}</span></div>
+  {(() => {
+    const netCredit = safeNum(depositAmount) - safeNum(totalDeductions);
+    const owed = netCredit < 0;
+    return (
+      <div className="flex justify-between text-sm font-bold">
+      <span className={owed ? "text-danger-700" : "text-success-700"}>{owed ? "Tenant owes (excess damage)" : "Credit to tenant ledger"}</span>
+      <span className={owed ? "text-danger-700" : "text-success-700"}>${Math.abs(netCredit).toFixed(2)}</span>
+      </div>
+    );
+  })()}
+  <div className="text-[11px] text-neutral-400 pt-1">Deposit posts as a credit on the tenant's ledger at move-out. No cash refund is auto-issued — process manually if/when refunding.</div>
   </div>
   <div className="flex justify-between mt-6">
   <Btn variant="ghost" onClick={() => setStep(2)}>← Back</Btn>
@@ -472,9 +449,19 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Property</span><span className="font-semibold text-neutral-700">{selectedLease?.property}</span></div>
   <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Move-Out Date</span><span className="font-semibold text-neutral-700">{moveOutDate}</span></div>
   <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Inspection Items</span><span className="font-semibold text-success-600">{checklist.filter(c => c.checked).length}/{checklist.length} checked</span></div>
-  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Deposit Return</span><span className="font-semibold text-success-600">${depositReturn.toFixed(2)}</span></div>
+  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Deposit → Tenant Ledger</span><span className="font-semibold text-neutral-700">${safeNum(depositAmount).toFixed(2)}</span></div>
   {totalDeductions > 0 && <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">Deductions</span><span className="font-semibold text-danger-600">-${totalDeductions.toFixed(2)}</span></div>}
-  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">AR Action</span><span className="font-semibold text-neutral-700 capitalize">{outstandingBalance > 0 ? arAction.replace("_", " ") : "Settled"}</span></div>
+  {(() => {
+    const finalAR = Math.round((safeNum(outstandingBalance) - safeNum(depositAmount) + safeNum(totalDeductions)) * 100) / 100;
+    const owes = finalAR > 0;
+    return (
+      <div className="flex justify-between py-2 border-b border-brand-50">
+      <span className="text-neutral-400">Final Tenant AR</span>
+      <span className={"font-semibold " + (owes ? "text-danger-600" : finalAR < 0 ? "text-success-600" : "text-neutral-700")}>{owes ? `Owes $${finalAR.toFixed(2)}` : finalAR < 0 ? `Credit $${Math.abs(finalAR).toFixed(2)}` : "Settled"}</span>
+      </div>
+    );
+  })()}
+  <div className="flex justify-between py-2 border-b border-brand-50"><span className="text-neutral-400">AR Action</span><span className="font-semibold text-neutral-700 capitalize">{outstandingBalance > 0 ? arAction.replace("_", " ") : "—"}</span></div>
   </div>
   <div className="bg-warn-50 rounded-2xl p-3 mt-4 text-xs text-warn-700">
   <span className="material-icons-outlined text-sm align-middle mr-1">warning</span>
