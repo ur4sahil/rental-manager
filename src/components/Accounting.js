@@ -3655,6 +3655,80 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
     fetchPeriodLock();
   }
 
+  // Re-open a previously closed reconciliation.
+  //
+  // Reverses four side effects of saveReconciliation:
+  //   (1) acct_journal_lines.reconciled=true  → false + reconciled_date cleared
+  //       for every line listed in reconciled_items JSON.
+  //   (2) bank_feed_transaction.status='locked'  → 'matched' for the period
+  //       (the most plausible previous state — matched rows have a JE).
+  //   (3) bank_reconciliations.status              → 'reopened'
+  //       Kept (not deleted) so the audit trail shows the history.
+  //   (4) accounting_period_lock rolled back IF the lock_date equals
+  //       this reconciliation's end-of-period AND no newer
+  //       reconciliation covers the same (or later) period.
+  //
+  // Role-gated to admin / owner / manager in the UI.
+  async function reopenReconciliation(recon) {
+    if (!recon) return;
+    if (!await showConfirm({
+      message: `Re-open reconciliation for ${recon.period}?\n\nThis will:\n• Mark all matched lines as unreconciled\n• Unlock bank transactions for this period\n• Roll back the period lock if it was set by this reconciliation\n\nContinue?`,
+      variant: "danger",
+      confirmText: "Re-open",
+    })) return;
+
+    let reconciledItemIds = [];
+    try {
+      const arr = typeof recon.reconciled_items === "string" ? JSON.parse(recon.reconciled_items || "[]") : (recon.reconciled_items || []);
+      reconciledItemIds = (arr || []).map(it => it.id).filter(Boolean);
+    } catch (e) { pmError("PM-8006", { raw: e, context: "parse reconciled_items for re-open", silent: true }); }
+
+    // (1) Clear reconciled flags
+    if (reconciledItemIds.length > 0) {
+      const { error } = await supabase.from("acct_journal_lines")
+        .update({ reconciled: false, reconciled_date: null })
+        .in("id", reconciledItemIds);
+      if (error) pmError("PM-4002", { raw: error, context: "clear reconciled flags on reopen", silent: true });
+    }
+
+    // (2) Unlock bank feed transactions in this period
+    const startDate = recon.period + "-01";
+    const endObj = parseLocalDate(startDate); endObj.setMonth(endObj.getMonth() + 1); endObj.setDate(0);
+    const endDate = formatLocalDate(endObj);
+    const { error: bfctErr } = await supabase.from("bank_feed_transaction")
+      .update({ status: "matched" })
+      .eq("company_id", companyId)
+      .eq("status", "locked")
+      .gte("posted_date", startDate).lte("posted_date", endDate);
+    if (bfctErr) pmError("PM-5006", { raw: bfctErr, context: "unlock bank txns on reopen", silent: true });
+
+    // (3) Mark reconciliation as reopened
+    const { error: rStatusErr } = await supabase.from("bank_reconciliations")
+      .update({ status: "reopened" })
+      .eq("id", recon.id).eq("company_id", companyId);
+    if (rStatusErr) { showToast("Error marking reopened: " + rStatusErr.message, "error"); return; }
+
+    // (4) Roll back period lock if safe
+    const { data: pl } = await supabase.from("accounting_period_lock").select("lock_date").eq("company_id", companyId).maybeSingle();
+    if (pl?.lock_date === endDate) {
+      const { data: laterRecons } = await supabase.from("bank_reconciliations")
+        .select("id, period, status")
+        .eq("company_id", companyId)
+        .gt("period", recon.period)
+        .neq("status", "reopened")
+        .limit(1);
+      if (!laterRecons || laterRecons.length === 0) {
+        await supabase.from("accounting_period_lock").delete().eq("company_id", companyId);
+      }
+    }
+
+    logAudit("update", "bank_reconciliation", `Reopened reconciliation for ${recon.period}`, recon.id, userProfile?.email || "", userRole || "", companyId);
+    showToast(`Reconciliation for ${recon.period} reopened.`, "success");
+    setViewRecon(null);
+    fetchRecons();
+    fetchPeriodLock();
+  }
+
   async function removePeriodLock() {
     if (!await showConfirm({ message: "Remove the period lock? This will allow modifications to previously locked periods.", variant: "danger", confirmText: "Remove Lock" })) return;
     await supabase.from("accounting_period_lock").delete().eq("company_id", companyId);
@@ -3924,11 +3998,16 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
 
   {viewRecon && (
   <div>
+  <div className="flex items-center justify-between mb-2">
   <Btn variant="ghost" size="sm" onClick={() => setViewRecon(null)}>← Back</Btn>
+  {viewRecon.status !== "reopened" && (userRole === "admin" || userRole === "owner" || userRole === "manager") && (
+    <Btn variant="danger" size="sm" onClick={() => reopenReconciliation(viewRecon)}>Re-open</Btn>
+  )}
+  </div>
   <div className="bg-white rounded-3xl border border-brand-50 p-5">
   <div className="flex justify-between items-start mb-4">
   <div><h3 className="font-semibold text-neutral-800">Reconciliation — {viewRecon.period}</h3><div className="text-xs text-neutral-400">{new Date(viewRecon.created_at).toLocaleDateString()}</div></div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewRecon.status === "reconciled" ? "bg-positive-100 text-positive-700" : "bg-danger-100 text-danger-700")}>{viewRecon.status}</span>
+  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (viewRecon.status === "reconciled" ? "bg-positive-100 text-positive-700" : viewRecon.status === "reopened" ? "bg-neutral-100 text-neutral-600" : "bg-danger-100 text-danger-700")}>{viewRecon.status}</span>
   </div>
   <div className="grid grid-cols-3 gap-3 mb-4">
   <div className="bg-info-50 rounded-lg p-3 text-center"><div className="text-xs text-neutral-400">Bank Balance</div><div className="text-lg font-bold text-info-700">${safeNum(viewRecon.bank_ending_balance).toLocaleString()}</div></div>
