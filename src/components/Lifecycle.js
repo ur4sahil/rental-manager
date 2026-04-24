@@ -30,11 +30,21 @@ function MoveOutWizard({ addNotification, userProfile, userRole, companyId, setP
   const defaultChecklist = ["Keys returned","All personal items removed","Unit cleaned","Walls patched/repaired","Appliances clean","Carpets cleaned","Final inspection done","Forwarding address collected","Utilities transferred","Security deposit review","Photos taken"];
 
   useEffect(() => {
+  // Guard against mounting before companyId has hydrated. Without this,
+  // an early mount fires .eq("company_id", undefined) → Supabase
+  // returns 0 rows → tenants stays [] → dropdown stays empty. The
+  // later companyId-resolved render DOES re-trigger useEffect, but
+  // only if the component actually re-mounts; otherwise the stale
+  // empty state sticks for the whole tab session.
+  if (!companyId) { setLoading(false); return; }
   async function load() {
+  setLoading(true);
   const [t, l] = await Promise.all([
   supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null).eq("lease_status", "active"),
   supabase.from("leases").select("*").eq("company_id", companyId).eq("status", "active"),
   ]);
+  if (t.error) pmError("PM-3004", { raw: t.error, context: "move-out tenants fetch", silent: true });
+  if (l.error) pmError("PM-3004", { raw: l.error, context: "move-out leases fetch", silent: true });
   setTenants(t.data || []);
   setLeases(l.data || []);
   setChecklist(defaultChecklist.map(item => ({ label: item, checked: false, notes: "" })));
