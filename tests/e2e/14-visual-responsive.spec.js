@@ -48,7 +48,12 @@ test.describe('Visual & Responsive Tests', () => {
   // ── Element Visibility & Stacking ──
   test('modals render above page content (z-index)', async ({ page }) => {
     await navigateTo(page, 'Properties');
-    const addBtn = page.locator('button:has-text("Add"), button:has-text("add")').first();
+    // Properties page's primary create button is labeled "+ Add"
+    // (Properties.js:3030). The earlier generic Add/add selector
+    // matched any button containing "Add" — including sidebar-child
+    // buttons after Properties got nested children — and could fire
+    // a navigation instead of opening the modal.
+    const addBtn = page.locator('button:has-text("+ Add")').first();
     if (await addBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await addBtn.click();
       await page.waitForTimeout(500);
@@ -65,7 +70,12 @@ test.describe('Visual & Responsive Tests', () => {
 
   test('modal overlay prevents interaction with background', async ({ page }) => {
     await navigateTo(page, 'Properties');
-    const addBtn = page.locator('button:has-text("Add"), button:has-text("add")').first();
+    // Properties page's primary create button is labeled "+ Add"
+    // (Properties.js:3030). The earlier generic Add/add selector
+    // matched any button containing "Add" — including sidebar-child
+    // buttons after Properties got nested children — and could fire
+    // a navigation instead of opening the modal.
+    const addBtn = page.locator('button:has-text("+ Add")').first();
     if (await addBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
       await addBtn.click();
       await page.waitForTimeout(500);
