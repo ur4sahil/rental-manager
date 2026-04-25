@@ -118,15 +118,20 @@ window.Sentry = Sentry;
 let _toastIdCounter = 0;
 
 // ============ ROLE DEFINITIONS ============
+// Accounting sub-page IDs — match ALL_NAV's accounting.children
+// below. Listed once and spread into each role that has accounting
+// access so they show up in the expanded sidebar.
+const ACCT_SUB_PAGES = ["acct_opening","acct_coa","acct_journal","acct_recurring","acct_bankimport","acct_reconcile","acct_classes","acct_reports"];
+
 const ROLES = {
-  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","insurance","tax_bills","accounting","owners","notifications","messages","admin","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions","latefees"] },
+  admin: { label: "Admin", color: "bg-brand-600", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","loans","insurance","tax_bills","accounting",...ACCT_SUB_PAGES,"owners","notifications","messages","admin","documents","doc_builder","leases","autopay","inspections","vendors","moveout","evictions","latefees"] },
   // Manager sits between admin and the customizable staff roles. Can
   // review / approve requests submitted by staff who've been explicitly
   // assigned to them via manager_email. Can't administer the company
   // (no members page, no role edits).
-  manager: { label: "Manager", color: "bg-brand-400", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting","notifications","messages","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
-  office_assistant: { label: "Office Assistant", color: "bg-info-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting","notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
-  accountant: { label: "Accountant", color: "bg-positive-600", pages: ["dashboard","accounting","payments","utilities"] },
+  manager: { label: "Manager", color: "bg-brand-400", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting",...ACCT_SUB_PAGES,"notifications","messages","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
+  office_assistant: { label: "Office Assistant", color: "bg-info-500", pages: ["dashboard","tasks","properties","tenants","payments","maintenance","utilities","hoa","tax_bills","accounting",...ACCT_SUB_PAGES,"notifications","messages","admin","documents","doc_builder","leases","inspections","vendors","moveout","evictions"] },
+  accountant: { label: "Accountant", color: "bg-positive-600", pages: ["dashboard","accounting",...ACCT_SUB_PAGES,"payments","utilities"] },
   maintenance: { label: "Maintenance", color: "bg-notice-500", pages: ["maintenance","vendors"] },
   tenant: { label: "Tenant", color: "bg-brand-50/300", pages: ["tenant_portal"] },
   owner: { label: "Owner", color: "bg-highlight-600", pages: ["owner_portal","loans"] },
@@ -145,7 +150,16 @@ const ALL_NAV = [
   ]},
   { id: "tenants", label: "Tenants", icon: "people" },
   { id: "payments", label: "Payments", icon: "payments" },
-  { id: "accounting", label: "Accounting", icon: "account_balance" },
+  { id: "accounting", label: "Accounting", icon: "account_balance", children: [
+    { id: "acct_opening",    label: "Opening Balances",  icon: "restart_alt" },
+    { id: "acct_coa",        label: "Chart of Accounts", icon: "list_alt" },
+    { id: "acct_journal",    label: "Journal Entries",   icon: "receipt_long" },
+    { id: "acct_recurring",  label: "Recurring Entries", icon: "autorenew" },
+    { id: "acct_bankimport", label: "Bank Transactions", icon: "credit_card" },
+    { id: "acct_reconcile",  label: "Reconcile",         icon: "account_balance_wallet" },
+    { id: "acct_classes",    label: "Class Tracking",    icon: "category" },
+    { id: "acct_reports",    label: "Reports",           icon: "assessment" },
+  ]},
   { id: "doc_builder", label: "Document Builder", icon: "description" },
   { id: "vendors", label: "Vendors", icon: "engineering" },
   { id: "tasks", label: "Tasks & Approvals", icon: "assignment" },
@@ -167,6 +181,19 @@ const pageComponents = {
   maintenance: Maintenance,
   utilities: Utilities,
   accounting: Accounting,
+  // Each Accounting sub-page routes to the same Accounting component
+  // with a baked initialTab. The component watches the prop and
+  // syncs activeTab on change so nav-clicks within the section don't
+  // unmount/remount stale state. Sub-page IDs match the sidebar
+  // children defined in ALL_NAV.
+  acct_opening:    (p) => <Accounting {...p} initialTab="opening" />,
+  acct_coa:        (p) => <Accounting {...p} initialTab="coa" />,
+  acct_journal:    (p) => <Accounting {...p} initialTab="journal" />,
+  acct_recurring:  (p) => <Accounting {...p} initialTab="recurring" />,
+  acct_bankimport: (p) => <Accounting {...p} initialTab="bankimport" />,
+  acct_reconcile:  (p) => <Accounting {...p} initialTab="reconcile" />,
+  acct_classes:    (p) => <Accounting {...p} initialTab="classes" />,
+  acct_reports:    (p) => <Accounting {...p} initialTab="reports" />,
   documents: Documents, // no sidebar entry, but accessible via "Upload Document" buttons in property/tenant views
   inspections: Inspections,
   hoa: HOAPayments,

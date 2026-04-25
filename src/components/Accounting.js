@@ -524,7 +524,7 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   <div className="flex-1 overflow-auto sm:hidden">
   {allLines.length === 0 && <div className="px-4 py-8 text-center text-neutral-400">No transactions found for this period</div>}
   {allLines.map((l, i) => (
-  <div key={i} className="border-b border-neutral-100 px-4 py-3 cursor-pointer hover:bg-positive-50/40 transition-colors active:bg-positive-50" onClick={() => onViewJE && onViewJE(l.jeId)}>
+  <div key={i} className="border-b border-neutral-100 px-4 py-3 cursor-pointer hover:bg-brand-50/40 transition-colors active:bg-brand-50" onClick={() => onViewJE && onViewJE(l.jeId)}>
   <div className="flex justify-between items-start mb-1">
   <div className="text-xs text-neutral-500">{l.date}</div>
   <div className={`font-mono text-sm font-semibold ${l.balance < 0 ? "text-danger-600" : "text-neutral-800"}`}>{acctFmt(l.balance, true)}</div>
@@ -535,7 +535,7 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   {l.debit > 0 && <span className="text-success-600">DR {acctFmt(l.debit)}</span>}
   {l.credit > 0 && <span className="text-danger-500">CR {acctFmt(l.credit)}</span>}
   {l.property && <span className="text-neutral-400">{l.property.split(",")[0]}</span>}
-  <span className="text-positive-600 font-mono ml-auto">{l.number || "—"}</span>
+  <span className="text-brand-600 font-mono ml-auto">{l.number || "—"}</span>
   </div>
   </div>
   ))}
@@ -558,9 +558,9 @@ export function AccountLedgerView({ accountIds, accounts, journalEntries, title,
   </thead>
   <tbody>
   {allLines.map((l, i) => (
-  <tr key={i} className="border-t border-neutral-100 hover:bg-positive-50/40 transition-colors cursor-pointer" onClick={() => onViewJE && onViewJE(l.jeId)}>
+  <tr key={i} className="border-t border-neutral-100 hover:bg-brand-50/40 transition-colors cursor-pointer" onClick={() => onViewJE && onViewJE(l.jeId)}>
   <td className="px-4 py-2 text-xs text-neutral-500 whitespace-nowrap">{l.date}</td>
-  <td className="px-3 py-2 text-xs text-positive-600 font-mono">{l.number || "—"}</td>
+  <td className="px-3 py-2 text-xs text-brand-600 font-mono">{l.number || "—"}</td>
   <td className="px-3 py-2 text-neutral-700 text-xs max-w-xs truncate" title={l.description + (l.memo ? " | " + l.memo : "")}>{l.description}{l.memo && <span className="text-neutral-400 ml-1">({l.memo})</span>}</td>
   <td className="px-3 py-2 text-xs text-neutral-400 font-mono">{(() => { const r = l.reference || ""; if (r.startsWith("BANK-")) return "Bank Import"; if (r.startsWith("XFER-")) return "Bank Transfer"; return r || "—"; })()}</td>
   {ids.length > 1 && <td className="px-3 py-2 text-xs text-neutral-500">{l.accountName}</td>}
@@ -747,8 +747,8 @@ function AcctOpeningBalance({ accounts, journalEntries, companyId, userProfile, 
     return (
       <div>
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 bg-positive-100 rounded-xl flex items-center justify-center">
-            <span className="material-icons-outlined text-positive-600 text-2xl">task_alt</span>
+          <div className="w-12 h-12 bg-brand-100 rounded-xl flex items-center justify-center">
+            <span className="material-icons-outlined text-brand-600 text-2xl">task_alt</span>
           </div>
           <div>
             <h3 className="text-lg font-manrope font-bold text-neutral-800">Opening balance posted</h3>
@@ -936,7 +936,7 @@ export function AcctChartOfAccounts({ accounts, journalEntries, onAdd, onUpdate,
   <thead className="text-xs text-neutral-500 uppercase tracking-wider bg-neutral-50 font-semibold"><tr><th className="px-5 py-3 text-left">Number</th><th className="px-5 py-3 text-left">Name</th><th className="px-5 py-3 text-left">Subtype</th><th className="px-5 py-3 text-right">Balance</th><th className="px-5 py-3 w-20">Actions</th></tr></thead>
   <tbody>
   {accts.map(a => (
-  <tr key={a.id} className={`border-t border-neutral-100 hover:bg-positive-50/40 transition-colors cursor-pointer ${a._isSubAccount ? "bg-neutral-50/40" : ""}`} onClick={() => onOpenLedger && onOpenLedger([a.id], (a.code ? a.code + " " : "") + a.name)}>
+  <tr key={a.id} className={`border-t border-neutral-100 hover:bg-brand-50/40 transition-colors cursor-pointer ${a._isSubAccount ? "bg-neutral-50/40" : ""}`} onClick={() => onOpenLedger && onOpenLedger([a.id], (a.code ? a.code + " " : "") + a.name)}>
   <td className={`py-3 font-mono text-xs text-neutral-400 ${a._isSubAccount ? "pl-8 pr-5" : "px-5"}`}>{a._isSubAccount ? "└ " : ""}{a.code || "—"}</td>
   <td className={`px-5 py-3 ${a._isSubAccount ? "text-sm text-neutral-600" : "font-medium"} ${!a.is_active ? "text-neutral-400 line-through" : a._isSubAccount ? "" : "text-neutral-800"}`}>{a.name}</td>
   <td className="px-5 py-3 text-xs text-neutral-400">{a.subtype || ""}</td>
@@ -1174,7 +1174,7 @@ export function AcctJournalEntries({ accounts, journalEntries, classes, tenants 
   {filtered.map(je => {
   const total = (je.lines || []).reduce((s,l) => s + safeNum(l.debit), 0);
   return (
-  <tr key={je.id} className="border-t border-neutral-100 hover:bg-positive-50/40 transition-colors cursor-pointer" onClick={() => openView(je)}>
+  <tr key={je.id} className="border-t border-neutral-100 hover:bg-brand-50/40 transition-colors cursor-pointer" onClick={() => openView(je)}>
   <td className="px-5 py-3 font-mono text-xs font-semibold text-neutral-700">{je.number}</td>
   <td className="px-5 py-3 text-neutral-500">{acctFmtDate(je.date)}</td>
   <td className="px-5 py-3 text-xs text-neutral-500">{je.property || "—"}</td>
@@ -1291,7 +1291,7 @@ export function AcctClassTracking({ accounts, journalEntries, classes, onAdd, on
   <thead className="text-xs text-neutral-500 uppercase tracking-wider bg-neutral-50 font-semibold"><tr><th className="px-5 py-3 text-left">Class</th><th className="px-5 py-3 text-left">Description</th><th className="px-5 py-3 text-right">Revenue</th><th className="px-5 py-3 text-right">Expenses</th><th className="px-5 py-3 text-right">Net Income</th><th className="px-5 py-3 w-16" /></tr></thead>
   <tbody>
   {classReport.map(c => (
-  <tr key={c.id} className="border-t border-neutral-100 hover:bg-positive-50/40 transition-colors">
+  <tr key={c.id} className="border-t border-neutral-100 hover:bg-brand-50/40 transition-colors">
   <td className="px-5 py-3"><div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{background:c.color}} /><span className={`font-medium ${!c.is_active?"text-neutral-400 line-through":"text-neutral-800"}`}>{c.name}</span></div></td>
   <td className="px-5 py-3 text-xs text-neutral-400">{c.description}</td>
   <td className="px-5 py-3 text-right font-mono text-sm text-success-700">{c.revenue > 0 ? acctFmt(c.revenue) : "—"}</td>
@@ -2409,13 +2409,13 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <div className="relative mb-5">
         <span className="material-icons-outlined absolute left-3 top-1/2 -tranneutral-y-1/2 text-neutral-300">search</span>
         <Input type="text" placeholder="Find report by name..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-          className="w-full pl-10 pr-4 py-3 border border-neutral-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-positive-200 focus:border-positive-400 transition-all" />
+          className="w-full pl-10 pr-4 py-3 border border-neutral-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-brand-200 focus:border-brand-400 transition-all" />
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-neutral-200">
         {[["standard","Standard Reports"],["favorites",`Favorites (${favReports.length})`],["custom","Custom Reports"]].map(([id,label]) => (
-          <button key={id} onClick={() => setCatalogTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 ${catalogTab === id ? "border-positive-600 text-positive-700" : "border-transparent text-neutral-400 hover:text-neutral-600"}`}>{label}</button>
+          <button key={id} onClick={() => setCatalogTab(id)} className={`px-4 py-2 text-sm font-medium border-b-2 ${catalogTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400 hover:text-neutral-600"}`}>{label}</button>
         ))}
       </div>
 
@@ -2423,11 +2423,11 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       {searchQuery && filteredReports && (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {filteredReports.map(r => (
-        <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-positive-300 hover:shadow-md transition-all bg-white">
+        <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-brand-300 hover:shadow-md transition-all bg-white">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
-              <span className="material-icons-outlined text-neutral-400 group-hover:text-positive-600 text-xl">{r.icon}</span>
-              <div><p className="text-sm font-semibold text-neutral-800 group-hover:text-positive-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div>
+              <span className="material-icons-outlined text-neutral-400 group-hover:text-brand-600 text-xl">{r.icon}</span>
+              <div><p className="text-sm font-semibold text-neutral-800 group-hover:text-brand-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div>
             </div>
             <TextLink tone="neutral" size="xs" underline={false} onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }}><span className="material-icons-outlined text-lg">{favorites.includes(r.id) ? "star" : "star_outline"}</span></TextLink>
           </div>
@@ -2442,8 +2442,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <div>{favReports.length === 0 ? <div className="text-center py-12 text-neutral-400"><span className="material-icons-outlined text-4xl mb-2 block">star_outline</span><p className="text-sm">No favorite reports yet. Click the star on any report to add it here.</p></div> : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {favReports.map(r => (
-          <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-positive-300 hover:shadow-md transition-all bg-white">
-            <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-neutral-400 group-hover:text-positive-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-neutral-800 group-hover:text-positive-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div></div>
+          <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-brand-300 hover:shadow-md transition-all bg-white">
+            <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-neutral-400 group-hover:text-brand-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-neutral-800 group-hover:text-brand-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div></div>
             <TextLink tone="warn" size="xs" underline={false} onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }}><span className="material-icons-outlined text-lg">star</span></TextLink></div>
           </div>))}
         </div>
@@ -2455,10 +2455,10 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       <div>{customReports.length === 0 ? <div className="text-center py-12 text-neutral-400"><span className="material-icons-outlined text-4xl mb-2 block">tune</span><p className="text-sm">No saved report configurations yet.</p><p className="text-xs mt-1">Open any report, configure filters, then click "Save Config" in the toolbar.</p></div> : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {customReports.map(c => (
-          <div key={c.id} className="group border border-neutral-200 rounded-xl p-4 hover:border-positive-300 hover:shadow-md transition-all bg-white">
+          <div key={c.id} className="group border border-neutral-200 rounded-xl p-4 hover:border-brand-300 hover:shadow-md transition-all bg-white">
             <div className="flex items-start justify-between">
               <div className="cursor-pointer flex-1" onClick={() => loadCustomReport(c)}>
-                <p className="text-sm font-semibold text-neutral-800 group-hover:text-positive-700">{c.name}</p>
+                <p className="text-sm font-semibold text-neutral-800 group-hover:text-brand-700">{c.name}</p>
                 <p className="text-xs text-neutral-400 mt-0.5">{c.reportTitle} · {c.period}</p>
                 <p className="text-xs text-neutral-300 mt-0.5">Saved {new Date(c.savedAt).toLocaleDateString()}</p>
               </div>
@@ -2481,8 +2481,8 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         {!collapsedCats[cat.category] && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {cat.reports.map(r => (
-          <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-positive-300 hover:shadow-md transition-all bg-white">
-            <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-neutral-400 group-hover:text-positive-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-neutral-800 group-hover:text-positive-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div></div>
+          <div key={r.id} onClick={() => openReport(r)} className="group cursor-pointer border border-neutral-200 rounded-xl p-4 hover:border-brand-300 hover:shadow-md transition-all bg-white">
+            <div className="flex items-start justify-between"><div className="flex items-center gap-3"><span className="material-icons-outlined text-neutral-400 group-hover:text-brand-600 text-xl">{r.icon}</span><div><p className="text-sm font-semibold text-neutral-800 group-hover:text-brand-700">{r.title}</p><p className="text-xs text-neutral-400 mt-0.5">{r.description}</p></div></div>
             <button onClick={e => { e.stopPropagation(); toggleFavorite(r.id); }} className={favorites.includes(r.id) ? "text-warn-400 hover:text-warn-500" : "text-neutral-300 hover:text-warn-400"}><span className="material-icons-outlined text-lg">{favorites.includes(r.id) ? "star" : "star_outline"}</span></button></div>
           </div>))}
         </div>
@@ -2561,11 +2561,11 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     <div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Profit & Loss</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       <div className="cursor-pointer hover:bg-neutral-50 rounded py-1 flex items-center gap-1" onClick={() => setShowIncome(!showIncome)}><span className="material-icons-outlined text-sm text-neutral-400">{showIncome ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-neutral-900">Income</span></div>
-      {showIncome && plData.revenue.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-positive-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><span className="text-sm text-neutral-700">{a.name}</span><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
+      {showIncome && plData.revenue.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-brand-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><span className="text-sm text-neutral-700">{a.name}</span><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
       {showIncome && <div className="flex justify-between py-1.5 border-t border-neutral-300 font-bold mt-1" style={{paddingLeft:24}}><span className="text-sm">Total Income</span><span className="font-mono text-sm tabular-nums">{acctFmt(plData.totalRevenue)}</span></div>}
       <div className="flex justify-between py-2 border-t-2 border-neutral-800 font-black mt-2"><span className="text-sm">Gross Profit</span><span className="font-mono text-sm tabular-nums">{acctFmt(plData.totalRevenue)}</span></div>
       <div className="cursor-pointer hover:bg-neutral-50 rounded py-1 mt-3 flex items-center gap-1" onClick={() => setShowExpenses(!showExpenses)}><span className="material-icons-outlined text-sm text-neutral-400">{showExpenses ? "expand_more" : "chevron_right"}</span><span className="text-sm font-bold text-neutral-900">Expenses</span></div>
-      {showExpenses && plData.expenses.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-positive-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><span className="text-sm text-neutral-700">{a.name}</span><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
+      {showExpenses && plData.expenses.filter(a => a.amount !== 0).map(a => <div key={a.id} className="flex justify-between py-1 cursor-pointer hover:bg-brand-50/30 rounded" style={{paddingLeft:24}} onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><span className="text-sm text-neutral-700">{a.name}</span><span className="font-mono text-sm tabular-nums">{acctFmt(a.amount)}</span></div>)}
       {showExpenses && <div className="flex justify-between py-1.5 border-t border-neutral-300 font-bold mt-1" style={{paddingLeft:24}}><span className="text-sm">Total Expenses</span><span className="font-mono text-sm tabular-nums">{acctFmt(plData.totalExpenses)}</span></div>}
       <div className="flex justify-between py-3 border-t-2 border-b-2 border-neutral-800 font-black mt-3"><span className="text-sm">NET INCOME</span><span className={`font-mono text-sm tabular-nums ${plData.netIncome < 0 ? "text-danger-600" : ""}`}>{acctFmt(plData.netIncome)}</span></div>
       <div className="text-xs text-neutral-400 mt-4 flex justify-between"><span>Accrual basis</span><span>{new Date().toLocaleString()}</span></div>
@@ -2596,7 +2596,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {reportId === "tb" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Trial Balance</p><p className="text-sm text-neutral-500 mt-1">As of {acctFmtDate(asOfDate)}</p></div>
       <table className="w-full text-sm"><thead className="bg-neutral-50 border-b border-neutral-200"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Account</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Debit</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Credit</th></tr></thead>
-      <tbody>{tbData.filter(a => a.debitBalance !== 0 || a.creditBalance !== 0).map(a => <tr key={a.id} className="border-t border-neutral-100 hover:bg-positive-50/30 cursor-pointer" onClick={() => { setSelectedAccountId(a.id); setCurrentReport({ id: "gl", title: "General Ledger" }); }}><td className="px-4 py-2 text-neutral-700">{a.code ? a.code + " " : ""}{a.name}</td><td className="px-4 py-2 text-right font-mono">{a.debitBalance > 0 ? acctFmt(a.debitBalance) : ""}</td><td className="px-4 py-2 text-right font-mono">{a.creditBalance > 0 ? acctFmt(a.creditBalance) : ""}</td></tr>)}</tbody>
+      <tbody>{tbData.filter(a => a.debitBalance !== 0 || a.creditBalance !== 0).map(a => <tr key={a.id} className="border-t border-neutral-100 hover:bg-brand-50/30 cursor-pointer" onClick={() => { setSelectedAccountId(a.id); setCurrentReport({ id: "gl", title: "General Ledger" }); }}><td className="px-4 py-2 text-neutral-700">{a.code ? a.code + " " : ""}{a.name}</td><td className="px-4 py-2 text-right font-mono">{a.debitBalance > 0 ? acctFmt(a.debitBalance) : ""}</td><td className="px-4 py-2 text-right font-mono">{a.creditBalance > 0 ? acctFmt(a.creditBalance) : ""}</td></tr>)}</tbody>
       <tfoot><tr className="border-t-2 border-neutral-800 font-bold"><td className="px-4 py-2">TOTALS</td><td className="px-4 py-2 text-right font-mono">{acctFmt(tbData.reduce((s,a) => s + a.debitBalance, 0))}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(tbData.reduce((s,a) => s + a.creditBalance, 0))}</td></tr></tfoot></table>
     </div>)}
 
@@ -2606,7 +2606,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
       {glLines.length > 0 && <div className="flex justify-end mb-3"><div className="text-right"><p className="text-xs text-neutral-400">Ending Balance</p><p className="font-mono font-bold">{acctFmt(glLines[glLines.length-1].balance, true)}</p></div></div>}
       <div className="flex justify-end mb-2 relative"><Btn variant="slate" size="sm" icon="view_column" onClick={() => setShowColPicker(!showColPicker)}>Columns</Btn>{showColPicker && <div className="absolute right-0 top-8 bg-white border border-neutral-200 rounded-xl shadow-lg p-3 z-20 w-48">{[["date","Date"],["entry","Entry #"],["description","Description"],["memo","Memo"],["debit","Debit"],["credit","Credit"],["balance","Balance"]].map(([id,label]) => <label key={id} className="flex items-center gap-2 py-1 cursor-pointer text-sm text-neutral-700"><Checkbox checked={glColumns[id]} onChange={() => toggleGlCol(id)} className="accent-brand-600" />{label}</label>)}</div>}</div>
       <table className="w-full text-sm border border-neutral-200 rounded-xl overflow-hidden"><thead className="bg-neutral-50"><tr>{glColumns.date && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Date</th>}{glColumns.entry && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Entry #</th>}{glColumns.description && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Description</th>}{glColumns.memo && <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Memo</th>}{glColumns.debit && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Debit</th>}{glColumns.credit && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Credit</th>}{glColumns.balance && <th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Balance</th>}</tr></thead>
-      <tbody>{glLines.length === 0 ? <tr><td colSpan={7} className="px-4 py-8 text-center text-neutral-400">No transactions</td></tr> : glLines.map((l,i) => <tr key={l.jeId+"-"+i} className="border-t border-neutral-100 hover:bg-positive-50/40">{glColumns.date && <td className="px-4 py-2 text-xs text-neutral-400">{acctFmtDate(l.date)}</td>}{glColumns.entry && <td className="px-4 py-2 font-mono text-xs text-brand-600">{l.jeNumber||"—"}</td>}{glColumns.description && <td className="px-4 py-2 text-neutral-700">{l.description}</td>}{glColumns.memo && <td className="px-4 py-2 text-xs text-neutral-400">{l.memo||"—"}</td>}{glColumns.debit && <td className="px-4 py-2 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>}{glColumns.credit && <td className="px-4 py-2 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>}{glColumns.balance && <td className={`px-4 py-2 text-right font-mono font-semibold ${l.balance < 0 ? "text-danger-600" : ""}`}>{acctFmt(l.balance, true)}</td>}</tr>)}</tbody></table>
+      <tbody>{glLines.length === 0 ? <tr><td colSpan={7} className="px-4 py-8 text-center text-neutral-400">No transactions</td></tr> : glLines.map((l,i) => <tr key={l.jeId+"-"+i} className="border-t border-neutral-100 hover:bg-brand-50/40">{glColumns.date && <td className="px-4 py-2 text-xs text-neutral-400">{acctFmtDate(l.date)}</td>}{glColumns.entry && <td className="px-4 py-2 font-mono text-xs text-brand-600">{l.jeNumber||"—"}</td>}{glColumns.description && <td className="px-4 py-2 text-neutral-700">{l.description}</td>}{glColumns.memo && <td className="px-4 py-2 text-xs text-neutral-400">{l.memo||"—"}</td>}{glColumns.debit && <td className="px-4 py-2 text-right font-mono">{l.debit > 0 ? acctFmt(l.debit) : ""}</td>}{glColumns.credit && <td className="px-4 py-2 text-right font-mono">{l.credit > 0 ? acctFmt(l.credit) : ""}</td>}{glColumns.balance && <td className={`px-4 py-2 text-right font-mono font-semibold ${l.balance < 0 ? "text-danger-600" : ""}`}>{acctFmt(l.balance, true)}</td>}</tr>)}</tbody></table>
     </div>)}
 
     {/* AR Aging Summary */}
@@ -2649,7 +2649,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
     {reportId === "expenses_by_category" && (<div>
       <div className="text-center mb-6"><h4 className="text-lg font-bold text-neutral-900">{companyName}</h4><p className="text-sm text-neutral-500 mt-1">Expenses by Category</p><p className="text-sm text-neutral-500 mt-1">{acctFmtDate(start)} through {acctFmtDate(end)}</p></div>
       {(() => { const data = getExpensesByCategory(start, end); return (<table className="w-full text-sm"><thead className="bg-neutral-50"><tr><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">Category</th><th className="px-4 py-2 text-right text-xs font-semibold text-neutral-500">Amount</th><th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500 w-48">% of Total</th></tr></thead>
-      <tbody>{data.map(a => <tr key={a.id} className="border-t border-neutral-100 cursor-pointer hover:bg-positive-50/30" onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><td className="px-4 py-2 text-neutral-700">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-neutral-100 rounded-full h-2"><div className="bg-positive-500 rounded-full h-2" style={{width: Math.min(100, a.percentage) + "%"}} /></div><span className="text-xs text-neutral-500 w-8">{a.percentage}%</span></div></td></tr>)}</tbody></table>); })()}
+      <tbody>{data.map(a => <tr key={a.id} className="border-t border-neutral-100 cursor-pointer hover:bg-brand-50/30" onClick={() => onOpenLedger && onOpenLedger([a.id], a.name)}><td className="px-4 py-2 text-neutral-700">{a.name}</td><td className="px-4 py-2 text-right font-mono">{acctFmt(a.amount)}</td><td className="px-4 py-2"><div className="flex items-center gap-2"><div className="flex-1 bg-neutral-100 rounded-full h-2"><div className="bg-brand-500 rounded-full h-2" style={{width: Math.min(100, a.percentage) + "%"}} /></div><span className="text-xs text-neutral-500 w-8">{a.percentage}%</span></div></td></tr>)}</tbody></table>); })()}
     </div>)}
 
     {/* P&L by Property — columnar QBO-style */}
@@ -2692,7 +2692,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border-bottom:1
         const renderRow = (label, getVal, bold, borderTop, acctId) => (
           <tr key={label} className={borderTop ? "border-t border-neutral-300" : "border-t border-neutral-50"}>
             <td className={bold ? boldLabelCls : labelCls} style={!bold ? { paddingLeft: 24 } : {}}>{label}</td>
-            {props.map(p => { const v = getVal(p.id); return <td key={p.id} className={`${bold ? boldCellCls : cellCls}${acctId ? " cursor-pointer hover:bg-positive-50/30" : ""}`} onClick={acctId && v !== 0 ? () => onOpenLedger && onOpenLedger([acctId], label) : undefined}>{fmtCell(v)}</td>; })}
+            {props.map(p => { const v = getVal(p.id); return <td key={p.id} className={`${bold ? boldCellCls : cellCls}${acctId ? " cursor-pointer hover:bg-brand-50/30" : ""}`} onClick={acctId && v !== 0 ? () => onOpenLedger && onOpenLedger([acctId], label) : undefined}>{fmtCell(v)}</td>; })}
           </tr>
         );
         return (
@@ -3031,14 +3031,24 @@ export function csvBuildFingerprint(feedId, date, amount, description) {
   return `${feedId}|${date}|${Math.round(amount * 100)}|${norm}`;
 }
 
-export function Accounting({ companySettings = {}, companyId, activeCompany, addNotification, userProfile, userRole, showToast, showConfirm, initialAction }) {
+export function Accounting({ companySettings = {}, companyId, activeCompany, addNotification, userProfile, userRole, showToast, showConfirm, initialAction, initialTab }) {
   const [acctAccounts, setAcctAccounts] = useState([]);
   const [journalEntries, setJournalEntries] = useState([]);
   const [acctClasses, setAcctClasses] = useState([]);
   const [acctTenants, setAcctTenants] = useState([]);
   const [acctVendors, setAcctVendors] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState(initialAction === "newJE" ? "journal" : "overview");
+  // initialTab — set by App.js when the user lands here from a
+  // child-of-accounting sidebar item (e.g. "Journal Entries" routes
+  // to page="acct_journal" → Accounting with initialTab="journal").
+  // Falls back to initialAction for the legacy "newJE" entry path,
+  // then to the dashboard.
+  const [activeTab, setActiveTab] = useState(
+    initialTab || (initialAction === "newJE" ? "journal" : "overview")
+  );
+  // Keep the tab in sync when the user nav-clicks between accounting
+  // sub-pages without unmounting the component.
+  useEffect(() => { if (initialTab) setActiveTab(initialTab); }, [initialTab]);
   const [ledgerView, setLedgerView] = useState(null); // { accountIds: [], title: "" }
   const [viewJEId, setViewJEId] = useState(null); // JE ID to auto-open in journal tab
   const [pendingLedgerReturn, setPendingLedgerReturn] = useState(null); // { accountIds, title } — restore ledger after viewing JE
@@ -3525,31 +3535,15 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   ];
 
   return (
-  <div className="flex flex-col md:flex-row gap-0 -mx-4 md:-mx-6 -mt-2">
-  {/* Left Sidebar Nav — desktop */}
-  <div className="hidden md:block w-56 shrink-0 border-r border-neutral-200 bg-white min-h-[calc(100dvh-180px)] py-4 px-2">
-  {acctSidebarItems.map(group => (
-  <div key={group.section}>
-    <p className="text-[10px] uppercase tracking-widest text-neutral-400 font-semibold px-3 mt-4 mb-1">{group.section}</p>
-    {group.items.map(item => (
-      <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === item.id ? "bg-positive-50 text-positive-700 border-l-3 border-positive-600" : "text-neutral-600 hover:bg-neutral-50"}`}>
-        <span className="material-icons-outlined text-lg">{item.icon}</span>
-        <span className="truncate">{item.label}</span>
-        {item.badge > 0 && <span className="ml-auto bg-warn-100 text-warn-700 text-xs px-1.5 py-0.5 rounded-full">{item.badge}</span>}
-      </button>
-    ))}
-  </div>
-  ))}
-  </div>
-
-  {/* Mobile horizontal tab bar. shrink-0 on each button + a fixed-size
-      icon wrapper is load-bearing: without them, a flex-parent with
-      overflow-x-auto was squeezing each button toward 0 width (Tailwind's
-      default `flex` child has min-width:auto but Safari's flexbox was
-      collapsing icons and stacking labels on top of each other at x=0). */}
-  <div className="md:hidden flex flex-row flex-nowrap gap-2 px-4 py-2 border-b border-neutral-200 overflow-x-auto w-full bg-white">
+  <div className="flex flex-col gap-0">
+  {/* Mobile horizontal tab bar — kept on mobile since the global
+      sidebar is collapsed there and the in-page tabs let the user
+      switch sub-pages without opening the slide-out menu. Desktop
+      navigates via the Accounting children expanded in the global
+      sidebar (App.js ALL_NAV) — same pattern as Properties. */}
+  <div className="md:hidden flex flex-row flex-nowrap gap-2 px-4 py-2 border-b border-neutral-200 overflow-x-auto w-full bg-white -mx-4 -mt-2">
   {acctSidebarItems.flatMap(g => g.items).map(item => (
-    <button key={item.id} onClick={() => setActiveTab(item.id)} className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${activeTab === item.id ? "bg-positive-50 text-positive-700" : "text-neutral-500 hover:bg-neutral-50"}`}>
+    <button key={item.id} onClick={() => setActiveTab(item.id)} className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${activeTab === item.id ? "bg-brand-50 text-brand-700" : "text-neutral-500 hover:bg-neutral-50"}`}>
       <span className="material-icons-outlined text-base w-5 h-5 flex items-center justify-center shrink-0">{item.icon}</span>
       <span className="whitespace-nowrap">{item.label}</span>
       {item.badge > 0 && <span className="ml-1 bg-warn-100 text-warn-700 text-xs px-1.5 py-0.5 rounded-full shrink-0">{item.badge}</span>}
@@ -3558,7 +3552,7 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
   </div>
 
   {/* Content Area */}
-  <div className="flex-1 min-w-0 px-4 md:px-6 py-2">
+  <div className="min-w-0 py-2">
 
   {activeTab === "overview" && (
   <div>
@@ -3627,16 +3621,16 @@ export function Accounting({ companySettings = {}, companyId, activeCompany, add
       pill to min-width and the labels clipped at "New Journal En",
       "Recurring Entri", "Run Repo". */}
   <div className="flex flex-row flex-nowrap gap-3 mb-6 overflow-x-auto">
-    <button onClick={() => setActiveTab("journal")} className="shrink-0 inline-flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-positive-300 hover:shadow-sm transition-all whitespace-nowrap">
-      <span className="material-icons-outlined text-positive-600 text-lg shrink-0">add_circle</span>
+    <button onClick={() => setActiveTab("journal")} className="shrink-0 inline-flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-brand-300 hover:shadow-sm transition-all whitespace-nowrap">
+      <span className="material-icons-outlined text-brand-600 text-lg shrink-0">add_circle</span>
       <span className="whitespace-nowrap">New Journal Entry</span>
     </button>
-    <button onClick={() => setActiveTab("recurring")} className="shrink-0 inline-flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-positive-300 hover:shadow-sm transition-all whitespace-nowrap">
-      <span className="material-icons-outlined text-positive-600 text-lg shrink-0">autorenew</span>
+    <button onClick={() => setActiveTab("recurring")} className="shrink-0 inline-flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-brand-300 hover:shadow-sm transition-all whitespace-nowrap">
+      <span className="material-icons-outlined text-brand-600 text-lg shrink-0">autorenew</span>
       <span className="whitespace-nowrap">Recurring Entries</span>
     </button>
-    <button onClick={() => setActiveTab("reports")} className="shrink-0 inline-flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-positive-300 hover:shadow-sm transition-all whitespace-nowrap">
-      <span className="material-icons-outlined text-positive-600 text-lg shrink-0">assessment</span>
+    <button onClick={() => setActiveTab("reports")} className="shrink-0 inline-flex items-center gap-2 bg-white border border-neutral-200 rounded-xl px-4 py-3 text-sm text-neutral-700 hover:border-brand-300 hover:shadow-sm transition-all whitespace-nowrap">
+      <span className="material-icons-outlined text-brand-600 text-lg shrink-0">assessment</span>
       <span className="whitespace-nowrap">Run Reports</span>
     </button>
   </div>
@@ -4149,7 +4143,7 @@ export function AcctBankReconciliation({ accounts, journalEntries, companyId, sh
   <div className="space-y-1 mb-4">
   {reconItems.map((item, i) => (
   <div key={i} onClick={() => toggleReconItem(i)} className={"flex items-center gap-3 px-4 py-2.5 rounded-lg cursor-pointer border " + (item.reconciled ? "bg-positive-50 border-positive-200" : "bg-white border-subtle-100 hover:bg-brand-50/30")}>
-  <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs flex-shrink-0 " + (item.reconciled ? "bg-positive-500 border-positive-500 text-white" : "border-brand-200")}>{item.reconciled ? "✓" : ""}</span>
+  <span className={"w-5 h-5 rounded border flex items-center justify-center text-xs flex-shrink-0 " + (item.reconciled ? "bg-brand-500 border-positive-500 text-white" : "border-brand-200")}>{item.reconciled ? "✓" : ""}</span>
   <div className="flex-1 min-w-0">
   <div className="text-sm text-neutral-800 truncate">{item.description}</div>
   <div className="text-xs text-neutral-400">{item.date} · {item.reference} · {item.memo}</div>
