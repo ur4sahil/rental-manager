@@ -314,22 +314,50 @@ export const getBalanceSheetData = (accounts, journalEntries, asOfDate) => {
   if (["Expense","Cost of Goods Sold","Other Expense"].includes(acct.type)) netIncome -= entry.debit - entry.credit;
   }
 
-  // Build AR sub-ledger and aging using dynamic AR account IDs
-  const arAccountIds = new Set(accounts.filter(a => a.name === "Accounts Receivable").map(a => a.id));
+  // Build AR sub-ledger and aging using ALL AR-class accounts. The
+  // app uses two patterns:
+  //   • One bare "Accounts Receivable" account (legacy)
+  //   • Per-tenant sub-accounts named "AR - <Tenant Name> (<property>)"
+  //     created by getOrCreateTenantAR with .tenant_id set
+  // The previous filter matched only the bare-name account, so every
+  // per-tenant AR posting (the bulk of real activity) was invisible
+  // to the AR Aging report and fell through to "Unassigned" via the
+  // description-regex fallback.
+  const arAccounts = accounts.filter(a =>
+    a.name === "Accounts Receivable" ||
+    a.name?.startsWith("AR - ") ||
+    (a.code || "").startsWith("1100")
+  );
+  const arAccountIds = new Set(arAccounts.map(a => a.id));
+  // Per-account tenant attribution. Per-tenant AR sub-accounts are
+  // named "AR - <Tenant Name> (<property>)" — parsing the name avoids
+  // taking a dependency on the `tenants` collection (not in this
+  // function's scope) while still resolving every per-tenant account.
+  const acctIdToTenantName = new Map();
+  for (const a of arAccounts) {
+    if (a.name?.startsWith("AR - ")) {
+      const m = a.name.match(/^AR - (.+?)(?:\s*\(|$)/);
+      if (m) acctIdToTenantName.set(a.id, m[1].trim());
+    }
+  }
+
+  // Description-regex fallback for the bare "Accounts Receivable"
+  // account, which doesn't carry a tenant_id. Tries the live
+  // patterns we see in real data: "Monthly rent — Tenant — …",
+  // "Bad debt write-off — Tenant", "Security deposit — Tenant",
+  // "First month rent — Tenant", "Prorated rent (…) — Tenant — …".
+  const tenantFromDesc = (description, memo) => {
+    const desc = description || memo || "";
+    // Look for "<verb-or-phrase> — <Tenant> — <maybe property>"
+    const m = desc.match(/—\s*([A-Z][^—]*?)(?:\s*—|$)/);
+    if (m) return m[1].trim();
+    return null;
+  };
+
   const arSubLedger = {};
   filtered.forEach(je => {
   (je.lines || []).filter(l => arAccountIds.has(l.account_id)).forEach(l => {
-  // Extract tenant name from memo (format: "TenantName rent 2025-06" or "TenantName — PropertyAddr")
-  const memo = l.memo || je.description || "";
-  let tenantKey = "Unassigned";
-  // Try to extract tenant from "Rent charge — TenantName — Property — Month"
-  const descMatch = je.description ? je.description.match(/(?:Rent charge|Payment received|AR Settlement|Security deposit).*?—\s*([^—]+?)(?:\s*—|$)/) : null;
-  // Try memo format "TenantName rent YYYY-MM"
-  const memoMatch = memo.match(/^(.+?)\s+(?:rent|payment|deposit)/i);
-  if (descMatch) tenantKey = descMatch[1].trim();
-  else if (memoMatch) tenantKey = memoMatch[1].trim();
-  else if (memo && memo !== "") tenantKey = memo.split(" ")[0] + " " + (memo.split(" ")[1] || "");
-
+  let tenantKey = acctIdToTenantName.get(l.account_id) || tenantFromDesc(je.description, l.memo) || "Unassigned";
   if (!arSubLedger[tenantKey]) arSubLedger[tenantKey] = { debits: 0, credits: 0 };
   arSubLedger[tenantKey].debits += safeNum(l.debit);
   arSubLedger[tenantKey].credits += safeNum(l.credit);
@@ -352,11 +380,9 @@ export const getBalanceSheetData = (accounts, journalEntries, asOfDate) => {
   const bucket = daysDiff < 30 ? "current" : daysDiff < 60 ? "days30" : daysDiff < 90 ? "days60" : daysDiff < 120 ? "days90" : "over90";
   arAging[bucket] += amount;
 
-  // Per-tenant aging
-  const memo = l.memo || je.description || "";
-  const descMatch = je.description ? je.description.match(/(?:Rent charge|Payment|Late fee|Rent accrual).*?—\s*([^—]+?)(?:\s*—|$)/) : null;
-  const memoMatch = memo.match(/^(.+?)\s+(?:rent|payment|AR|Late)/i);
-  let tenantKey = descMatch ? descMatch[1].trim() : memoMatch ? memoMatch[1].trim() : "Unassigned";
+  // Per-tenant aging — use account_id → tenant_id mapping first;
+  // fall back to description regex for the legacy bare AR account.
+  const tenantKey = acctIdToTenantName.get(l.account_id) || tenantFromDesc(je.description, l.memo) || "Unassigned";
   if (!arAgingByTenant[tenantKey]) arAgingByTenant[tenantKey] = { current: 0, days30: 0, days60: 0, days90: 0, over90: 0, total: 0 };
   arAgingByTenant[tenantKey][bucket] += amount;
   arAgingByTenant[tenantKey].total += amount;
