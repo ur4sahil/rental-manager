@@ -186,7 +186,21 @@ export async function autoPostJournalEntry({ date, description, reference, prope
   }
   if (!isNumberCollision) break; // some other failure — don't loop
   }
-  if (jeErr || !jeRow) { pmError("PM-4002", { raw: jeErr, context: "journal entry insert" }); return null; }
+  if (jeErr || !jeRow) {
+    // Defensive: any 23505 (unique-violation) that fell through the
+    // classifier above is still a dedup at the SQL level — the caller's
+    // intent was idempotent, so suppress the user-facing toast. Without
+    // this catch-all, an unindexed unique constraint or a renamed index
+    // (we've shipped two over the lifetime of acct_journal_entries) leaks
+    // a PM-9005 toast on every dashboard load that auto-posts an
+    // already-posted JE.
+    if (jeErr?.code === "23505") {
+      pmError("PM-4002", { raw: jeErr, context: "JE unique-violation fallthrough (treated as dedup) — reference=" + (reference || "(none)"), silent: true, meta: { reference, dedup: true } });
+      return null;
+    }
+    pmError("PM-4002", { raw: jeErr, context: "journal entry insert" });
+    return null;
+  }
   // Step 2: Insert journal entry lines (with company_id for RLS)
   if (resolvedLines.length > 0) {
   const { error: lineErr } = await supabase.from("acct_journal_lines").insert(resolvedLines.map(l => ({
