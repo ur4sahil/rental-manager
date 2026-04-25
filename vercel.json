@@ -15,10 +15,6 @@
     {
       "path": "/api/integrity-check",
       "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/expire-invites",
-      "schedule": "0 9 * * *"
     }
   ],
   "headers": [
