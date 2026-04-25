@@ -449,7 +449,7 @@ export async function getOrCreateTenantAR(companyId, tenantName, tenantId) {
   // Look up the tenant's property to disambiguate the account name.
   let acctName = "AR - " + tenantName;
   if (tenantId) {
-    const { data: tRow } = await supabase.from("tenants").select("property").eq("id", tenantId).maybeSingle();
+    const { data: tRow } = await supabase.from("tenants").select("property").eq("company_id", companyId).eq("id", tenantId).maybeSingle();
     const shortProp = (tRow?.property || "").split(",")[0].trim();
     if (shortProp) acctName = "AR - " + tenantName + " (" + shortProp + ")";
   }
