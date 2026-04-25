@@ -191,23 +191,29 @@ async function ensureMembership() {
     await sb.from('app_users').upsert({ email: TEST_EMAIL.toLowerCase() }, { onConflict: 'email' });
   } catch { /* table may be empty/legacy on some envs — ignore */ }
 
-  // Flip company_members → admin/active
-  const { data: existing } = await sb.from('company_members').select('id, role, status')
+  // Flip company_members → admin/active. Critical: also CLEAR
+  // custom_pages — App.js:929 uses customAllowedPages OVER the role
+  // default when present, so a stale per-user page list (e.g. one
+  // missing "owners" / "latefees" / accounting sub-pages) silently
+  // routes those pages back to dashboard. Setting custom_pages=NULL
+  // lets the admin role's full list apply.
+  const { data: existing } = await sb.from('company_members').select('id, role, status, custom_pages')
     .eq('company_id', COMPANY_ID).ilike('user_email', TEST_EMAIL).maybeSingle();
+  const updates = { role: 'admin', status: 'active', custom_pages: null };
   if (existing) {
-    if (existing.role !== 'admin' || existing.status !== 'active') {
-      const { error } = await sb.from('company_members').update({ role: 'admin', status: 'active' }).eq('id', existing.id);
-      if (error) return logErr('membership', 'failed to flip to admin/active', error);
-      logOk(`flipped existing membership ${existing.id} → admin/active`);
+    const needsUpdate = existing.role !== 'admin' || existing.status !== 'active' || existing.custom_pages !== null;
+    if (needsUpdate) {
+      const { error } = await sb.from('company_members').update(updates).eq('id', existing.id);
+      if (error) return logErr('membership', 'failed to set admin/active/full-pages', error);
+      logOk(`flipped existing membership ${existing.id} → admin/active + cleared custom_pages`);
     } else {
-      logOk('membership already admin/active');
+      logOk('membership already admin/active with role-default pages');
     }
   } else {
     const { error } = await sb.from('company_members').insert({
       company_id: COMPANY_ID,
       user_email: TEST_EMAIL.toLowerCase(),
-      role: 'admin',
-      status: 'active',
+      ...updates,
     });
     if (error) return logErr('membership', 'failed to insert', error);
     logOk('inserted admin membership');

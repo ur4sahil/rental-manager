@@ -60,10 +60,53 @@ test.describe('Vendors — click coverage', () => {
   });
 });
 
-// Owners — deferred. Owners is a hidden route (no sidebar link in the
-// admin role's rendered sidebar even though the role allows it). Hash
-// navigation via goToPage('owners') doesn't route — the popstate
-// dispatch is firing but `page` state isn't updating to "owners".
-// Cause-finding is bigger than this spec; coming back to it as a
-// separate task once we have a working hash route or a direct setPage
-// hook to drive from tests.
+test.describe('Owners — click coverage', () => {
+  test.beforeEach(async ({ page }) => {
+    await login(page, SMITH);
+    // Owners is a hidden route (no sidebar link). goToPage routes via
+    // hash — App.js's popstate listener picks it up and sets page.
+    // This works AS LONG AS the test user's company_members.custom_pages
+    // is null/includes 'owners'; the seed clears that column to ensure
+    // admin role's full page list applies.
+    await goToPage(page, 'owners');
+    await page.waitForTimeout(1500);
+  });
+
+  test('page renders without overflow', async ({ page }) => {
+    await expect(page.locator('h2:has-text("Owner")').first()).toBeVisible({ timeout: 5000 });
+    await assertNoHorizontalOverflow(page);
+    await assertButtonsClickable(page);
+  });
+
+  test('seeded CT owners are visible', async ({ page }) => {
+    const card = page.locator('text=/CLICKTEST Alpha Holdings|CLICKTEST Beta Investments/').first();
+    await expect(card).toBeVisible({ timeout: 5000 });
+  });
+
+  test('+ Add owner button opens form', async ({ page }) => {
+    const addBtn = page.locator('button:has-text("+ Add"), button:has-text("+ New"), button:has-text("New Owner")').first();
+    if (!await addBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      test.skip(true, 'add-owner button not visible — role may not allow');
+      return;
+    }
+    await addBtn.click();
+    await page.waitForTimeout(700);
+    const formOpen = await page.locator('text=/Owner Name|First Name|Management Fee/i')
+      .first().isVisible({ timeout: 3000 }).catch(() => false);
+    expect(formOpen, 'new owner form opened').toBeTruthy();
+    const cancel = page.locator('button:has-text("Cancel")').first();
+    if (await cancel.isVisible({ timeout: 1500 }).catch(() => false)) await cancel.click();
+  });
+
+  test('owner tab strip (overview/statements/distributions) renders', async ({ page }) => {
+    const tab = page.locator('button:has-text("Statements"), button:has-text("Distributions")').first();
+    if (!await tab.isVisible({ timeout: 3000 }).catch(() => false)) {
+      test.skip(true, 'no statements/distributions tab in current layout');
+      return;
+    }
+    await tab.click();
+    await page.waitForTimeout(800);
+    const crashed = await page.locator('text=Something went wrong').first().isVisible({ timeout: 1500 }).catch(() => false);
+    expect(crashed).toBeFalsy();
+  });
+});
