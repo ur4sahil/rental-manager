@@ -143,9 +143,16 @@ test('Accounting: tabs visible, COA shows accounts', async ({ page }) => {
   await login(page);
 
   // 2026-04-24 — Accounting in-page tabs were retired in favor of
-  // global-sidebar children (commit 12e6d75). navigateTo() expands
-  // the parent and routes to the child page.
+  // global-sidebar children (commit 12e6d75). Clicking the parent
+  // does NOT auto-expand its children; that's a separate chevron
+  // (App.js:979). Toggle it explicitly so child links render.
   await navigateTo(page, 'Accounting');
+  const parentRow = page.locator('button:has-text("Accounting")').first();
+  const chevron = parentRow.locator('xpath=following-sibling::button').first();
+  if (await chevron.isVisible({ timeout: 1500 }).catch(() => false)) {
+    await chevron.click();
+    await page.waitForTimeout(400);
+  }
   const children = ['Chart of Accounts', 'Journal Entries', 'Recurring Entries', 'Bank Transactions', 'Reconcile', 'Class Tracking', 'Reports'];
   for (const c of children) {
     await expect(page.locator(`button:has-text("${c}")`).first()).toBeVisible({ timeout: 3000 });

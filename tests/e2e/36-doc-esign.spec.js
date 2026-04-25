@@ -181,11 +181,20 @@ test.describe('Public e-sign page (/sign/:token)', () => {
       await page.locator('button:has-text("Type Name")').click();
       await page.locator('input[placeholder*="legal name"]').fill('Nope Nope');
 
-      // Sign button should be disabled until consent is checked
-      const signBtn = page.locator('button:has-text("Agree to the terms"), button:has-text("Sign & Submit")').last();
+      // Sign button should be disabled until ALL three consents are checked.
+      // Disabled label is "Complete the three consents above to sign" (commit
+      // 69f3ffa), enabled label is "Sign & Submit".
+      const signBtn = page.locator('button:has-text("Complete the three consents"), button:has-text("Sign & Submit")').last();
       await expect(signBtn).toBeDisabled();
 
-      await page.locator('input[type="checkbox"]').check();
+      const boxes = page.locator('input[type="checkbox"]');
+      const boxCount = await boxes.count();
+      // Check only first two — button must STILL be disabled
+      if (boxCount >= 1) await boxes.nth(0).check();
+      if (boxCount >= 2) await boxes.nth(1).check();
+      await expect(signBtn).toBeDisabled();
+      // Check the third — now it should enable
+      if (boxCount >= 3) await boxes.nth(2).check();
       await expect(page.locator('button:has-text("Sign & Submit")')).toBeEnabled();
     } finally {
       await cleanupDoc(doc.id);

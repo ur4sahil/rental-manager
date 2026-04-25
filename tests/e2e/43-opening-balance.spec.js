@@ -19,7 +19,16 @@ test.describe('Opening Balance tab', () => {
   });
 
   test('Opening Balances child appears in Accounting sidebar', async ({ page }) => {
+    // Clicking the Accounting parent doesn't auto-expand its children
+    // (App.js:979 — chevron is a separate sibling button). Toggle it
+    // explicitly so the Opening Balances child renders.
     await navigateTo(page, 'Accounting');
+    const parentRow = page.locator('button:has-text("Accounting")').first();
+    const chevron = parentRow.locator('xpath=following-sibling::button').first();
+    if (await chevron.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await chevron.click();
+      await page.waitForTimeout(400);
+    }
     const child = page.locator('button:has-text("Opening Balances")').first();
     await expect(child).toBeVisible({ timeout: 5000 });
   });

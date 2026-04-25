@@ -16,8 +16,12 @@ async function bodyText(page) {
 // 12e6d75), so navigateTo() goes directly to the child page and
 // helpers.js auto-expands the Accounting parent.
 async function goToAccountingTab(page, tabName) {
-  // Map old tab labels to new sidebar child labels
+  // Map old tab labels to new sidebar child labels.
+  // "Overview"/"Dashboard" land on the Accounting parent which
+  // renders the overview metrics + recent JEs.
   const map = {
+    'Overview': 'Accounting',
+    'Dashboard': 'Accounting',
     'Chart of Accounts': 'Chart of Accounts',
     'Journal Entries': 'Journal Entries',
     'Recurring': 'Recurring Entries',
