@@ -8,28 +8,34 @@ const { expect } = require('@playwright/test');
  * Handles landing → sign-in → company selector → dashboard flow.
  *
  * @param {Page} page
- * @param {string} [companySlug='sandbox-llc'] — companies.id (TEXT) to auto-select
- *   via ?company= query param. Pass a UUID for the click-test suite which targets
- *   Smith Properties LLC ('dce4974d-afa9-4e65-afdf-1189b815195d').
+ * @param {string|object} [arg='sandbox-llc']
+ *   String form: companies.id to auto-select (back-compat).
+ *   Object form: { companySlug, email, password, expectsPortal }
+ *     • email/password — override TEST_EMAIL/TEST_PASSWORD env (used by
+ *       64/65 portal specs to log in as tenant/owner roles).
+ *     • expectsPortal — when true, skip the dashboard-marker wait
+ *       (tenant/owner roles auto-route to tenant_portal/owner_portal,
+ *       not Dashboard).
  */
-async function login(page, companySlug = 'sandbox-llc') {
-  // Pass ?company=<id> on the initial navigation. App.js captures this
-  // param at mount (App.js:485-498) and, after the auth flow resolves,
-  // auto-selects the matching membership and routes straight to the
-  // dashboard — bypassing the Company Selector. The selector's
-  // cursor-pointer row has been flaky to click under retry pressure
-  // (onClick bubble + concurrent redirect race); the URL path is
-  // deterministic.
+async function login(page, arg = 'sandbox-llc') {
+  const opts = typeof arg === 'string' ? { companySlug: arg } : (arg || {});
+  const companySlug = opts.companySlug || 'sandbox-llc';
+  const email = opts.email || process.env.TEST_EMAIL;
+  const password = opts.password || process.env.TEST_PASSWORD;
+  const expectsPortal = !!opts.expectsPortal;
   await page.goto('/?company=' + encodeURIComponent(companySlug), { timeout: 30000 });
 
-  // Success markers: the sidebar Dashboard button (desktop) OR the
-  // Dashboard page heading (mobile, where the sidebar is hidden
-  // behind a hamburger until the user opens it). Checking both keeps
-  // the helper viewport-agnostic.
-  // Use :visible — Playwright's .first() can latch onto the hidden
-  // collapsed-sidebar button on mobile viewports, which never resolves.
+  // Success markers vary by role:
+  //   • admin/manager/etc → Dashboard sidebar button or h2
+  //   • tenant role → "Pay Rent" tab in tenant portal
+  //   • owner role → "Statements" / "Distributions" / "Properties" tab
+  // For the portal cases we don't have a single text marker, so use a
+  // generic `main` locator that matches once auth has resolved past
+  // the loading screen.
   const dashboardMarker = page.locator('button:visible:has-text("Dashboard"), h2:visible:has-text("Dashboard")').first();
-  if (await dashboardMarker.isVisible({ timeout: 3000 }).catch(() => false)) return;
+  const portalMarker = page.locator('main:visible button, main:visible [role="tab"]').first();
+  const successMarker = expectsPortal ? portalMarker : dashboardMarker;
+  if (await successMarker.isVisible({ timeout: 3000 }).catch(() => false)) return;
 
   // Landing page: click Sign In to reveal the login form.
   const signInBtn = page.locator('button:has-text("Sign In"), a:has-text("Sign In")').first();
@@ -38,15 +44,15 @@ async function login(page, companySlug = 'sandbox-llc') {
   }
   await page.waitForSelector('input[type="email"]', { timeout: 10000 });
 
-  await page.fill('input[type="email"]', process.env.TEST_EMAIL);
-  await page.fill('input[type="password"]', process.env.TEST_PASSWORD);
+  await page.fill('input[type="email"]', email);
+  await page.fill('input[type="password"]', password);
   // The form submit button — the last "Sign In" on page, not the header.
   await page.locator('button:has-text("Sign In")').last().click();
 
   // Auto-select via ?company= kicks in once auth resolves. If that
   // path silently doesn't match (e.g. stale membership cache), fall
   // back to clicking the company row in the selector.
-  if (await dashboardMarker.isVisible({ timeout: 20000 }).catch(() => false)) return;
+  if (await successMarker.isVisible({ timeout: 20000 }).catch(() => false)) return;
 
   // Fallback: Company Selector is up. Try the name span, then a
   // broader cursor-pointer row as last resort.
@@ -58,9 +64,9 @@ async function login(page, companySlug = 'sandbox-llc') {
       const firstRow = page.locator('div.cursor-pointer:has(.font-semibold)').first();
       if (await firstRow.isVisible({ timeout: 2000 }).catch(() => false)) await firstRow.click({ force: true }).catch(() => {});
     }
-    if (await dashboardMarker.isVisible({ timeout: 15000 }).catch(() => false)) return;
+    if (await successMarker.isVisible({ timeout: 15000 }).catch(() => false)) return;
   }
-  await dashboardMarker.waitFor({ state: 'visible', timeout: 10000 });
+  await successMarker.waitFor({ state: 'visible', timeout: 10000 });
 }
 
 /**

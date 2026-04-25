@@ -32,6 +32,14 @@ const ID_PREFIX = 'CT-';                  // prefix on string ids we control
 
 const TEST_EMAIL = process.env.TEST_EMAIL || 'admin@propmanager.com';
 
+// Portal test users — separate auth identities so 64/65 specs can
+// log in as the tenant/owner role and exercise tenant_portal /
+// owner_portal. Passwords are deterministic; tests/.env can override
+// (CLICK_TENANT_PASSWORD / CLICK_OWNER_PASSWORD) for prod-style runs.
+const PORTAL_PASSWORD = process.env.CLICK_PORTAL_PASSWORD || 'ClickTest!2026';
+const TENANT_TEST_EMAIL = 'clicktest-tenant@propmanager.com';
+const OWNER_TEST_EMAIL  = 'clicktest-owner@propmanager.com';
+
 // Deterministic addresses → reruns hit the same rows
 const PROPS = [
   { address: '101 Click Test Way',     type: 'Single Family', status: 'occupied' },
@@ -155,6 +163,17 @@ async function cleanup() {
     sb.from('doc_exception_requests').delete().eq('company_id', COMPANY_ID).ilike('reason', '%' + TAG + '%'));
   await tryDelete('wizard_skipped_approvals', () =>
     sb.from('wizard_skipped_approvals').delete().eq('company_id', COMPANY_ID).ilike('section_label', '%' + TAG + '%'));
+
+  // 7b. Portal-user tenants/owners (separate from CT-tagged ones)
+  await tryDelete('tenants-portal', () =>
+    sb.from('tenants').delete().eq('company_id', COMPANY_ID).ilike('email', TENANT_TEST_EMAIL));
+  await tryDelete('owners-portal', () =>
+    sb.from('owners').delete().eq('company_id', COMPANY_ID).ilike('email', OWNER_TEST_EMAIL));
+  // Memberships for portal users — also clear so the auth user isn't
+  // tied to Smith on next seed run (will be reattached idempotently).
+  await tryDelete('company_members-portal', () =>
+    sb.from('company_members').delete().eq('company_id', COMPANY_ID)
+      .or(`user_email.ilike.${TENANT_TEST_EMAIL},user_email.ilike.${OWNER_TEST_EMAIL}`));
 
   // 8. Tenants → Properties
   if (tenantIds.length) {
@@ -404,6 +423,115 @@ async function seedVendors() {
   logOk(`${toInsert.length} vendors inserted (${have.size} already present)`);
 }
 
+// ── Portal users: tenant + owner Supabase auth users ───────────
+// Idempotently create or update auth users + corresponding tenants/owners
+// rows + company_members. Specs 64/65 sign in as these to exercise
+// tenant_portal / owner_portal.
+async function findAuthUserByEmail(email) {
+  // Supabase JS doesn't expose getUserByEmail; list+filter (cap 50 — fine
+  // for a test-data seed).
+  const { data } = await sb.auth.admin.listUsers({ page: 1, perPage: 200 });
+  const users = data?.users || [];
+  return users.find(u => (u.email || '').toLowerCase() === email.toLowerCase()) || null;
+}
+
+async function ensureAuthUser(email, password) {
+  let u = await findAuthUserByEmail(email);
+  if (!u) {
+    const { data, error } = await sb.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,  // skip the confirmation flow
+    });
+    if (error) { logErr('auth', `createUser ${email}`, error); return null; }
+    u = data.user;
+    logOk(`created auth user ${email}`);
+  } else {
+    // Reset password each run so tests/.env can be regenerated without
+    // leaving an unknown-password user.
+    const { error } = await sb.auth.admin.updateUserById(u.id, { password, email_confirm: true });
+    if (error) { logErr('auth', `update ${email}`, error); return null; }
+    logOk(`auth user ${email} ready (password reset)`);
+  }
+  return u;
+}
+
+async function seedPortalUsers(props) {
+  header('Step 9 — portal users (tenant + owner auth)');
+  const tenantUser = await ensureAuthUser(TENANT_TEST_EMAIL, PORTAL_PASSWORD);
+  const ownerUser  = await ensureAuthUser(OWNER_TEST_EMAIL, PORTAL_PASSWORD);
+
+  // — Tenant: tenants table row at the first CT property + tenant
+  //   role membership.
+  if (tenantUser && props && props[0]) {
+    const propAddr = props[0].address || props[0].address_line_1 || PROPS[0].address;
+    const { data: existingT } = await sb.from('tenants').select('id, email')
+      .eq('company_id', COMPANY_ID).ilike('email', TENANT_TEST_EMAIL).maybeSingle();
+    if (!existingT) {
+      const { error } = await sb.from('tenants').insert({
+        company_id: COMPANY_ID,
+        name: 'CT Portal Tenant',
+        email: TENANT_TEST_EMAIL,
+        phone: '555-7000',
+        property: propAddr,
+        rent: 1500,
+        balance: 0,
+        lease_status: 'active',
+      });
+      if (error) logErr('tenants-portal', 'insert failed', error);
+      else logOk('inserted CT Portal Tenant row');
+    } else {
+      logOk('tenant row for portal user already present');
+    }
+    // company_members → role=tenant active
+    const { data: tm } = await sb.from('company_members').select('id, role, status, custom_pages')
+      .eq('company_id', COMPANY_ID).ilike('user_email', TENANT_TEST_EMAIL).maybeSingle();
+    if (tm) {
+      await sb.from('company_members').update({ role: 'tenant', status: 'active', custom_pages: null }).eq('id', tm.id);
+      logOk(`flipped tenant membership ${tm.id} → tenant/active`);
+    } else {
+      await sb.from('company_members').insert({
+        company_id: COMPANY_ID, user_email: TENANT_TEST_EMAIL.toLowerCase(),
+        role: 'tenant', status: 'active', custom_pages: null,
+      });
+      logOk('inserted tenant membership');
+    }
+  }
+
+  // — Owner: owners table row + company_members role=owner active.
+  //   companyRole must NOT be admin (App.js:937 forces owner_portal
+  //   only when effectiveRole=owner AND companyRole !== "admin").
+  if (ownerUser) {
+    const { data: existingO } = await sb.from('owners').select('id, email')
+      .eq('company_id', COMPANY_ID).ilike('email', OWNER_TEST_EMAIL).maybeSingle();
+    if (!existingO) {
+      const { error } = await sb.from('owners').insert({
+        company_id: COMPANY_ID,
+        name: 'CT Portal Owner',
+        email: OWNER_TEST_EMAIL,
+        phone: '555-7100',
+        status: 'active',
+      });
+      if (error) logErr('owners-portal', 'insert failed', error);
+      else logOk('inserted CT Portal Owner row');
+    } else {
+      logOk('owner row for portal user already present');
+    }
+    const { data: om } = await sb.from('company_members').select('id, role, status, custom_pages')
+      .eq('company_id', COMPANY_ID).ilike('user_email', OWNER_TEST_EMAIL).maybeSingle();
+    if (om) {
+      await sb.from('company_members').update({ role: 'owner', status: 'active', custom_pages: null }).eq('id', om.id);
+      logOk(`flipped owner membership ${om.id} → owner/active`);
+    } else {
+      await sb.from('company_members').insert({
+        company_id: COMPANY_ID, user_email: OWNER_TEST_EMAIL.toLowerCase(),
+        role: 'owner', status: 'active', custom_pages: null,
+      });
+      logOk('inserted owner membership');
+    }
+  }
+}
+
 // ── 7. Owners (3 rows + 2 props each) ────────────────────────────
 async function seedOwners(props) {
   header('Step 7 — owners (3 rows, 2 props each)');
@@ -454,6 +582,7 @@ async function main() {
   await seedVendors();
   const owners = await seedOwners(props);
   await seedTasks();
+  await seedPortalUsers(props);
 
   console.log('\n──────────────────────────────────────────────────');
   console.log(errors.length ? `⚠  Done with ${errors.length} soft errors:` : '✅ Done — no errors');
