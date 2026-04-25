@@ -76,52 +76,28 @@ export async function companyUpsert(table, rows, companyId, onConflict) {
 const _rpcHealthChecked = new Set();
 const RPC_HEALTH_TTL_MS = 24 * 60 * 60 * 1000;
 
-export async function checkRPCHealth(companyId) {
-  try {
-  if (_rpcHealthChecked.has(companyId || "_none")) return [];
-  _rpcHealthChecked.add(companyId || "_none");
-  const cacheKey = "rpcHealth_" + (companyId || "_none");
-  try {
-    const raw = localStorage.getItem(cacheKey);
-    if (raw) {
-      const { checkedAt, missing } = JSON.parse(raw);
-      if (Date.now() - checkedAt < RPC_HEALTH_TTL_MS) return missing || [];
-    }
-  } catch (_) { /* localStorage may be unavailable in some sandboxes */ }
-  // RPC health check — formerly called each function with `{}` to test
-  // existence, which fired 4 spurious 404s per session because every
-  // RPC requires parameters and PGRST202 was getting tagged as
-  // "missing". That generated noise in the console + Sentry without
-  // catching real problems. Switched to per-RPC calls with valid
-  // sentinel args that exercise the function but use guaranteed-to-
-  // miss IDs so they short-circuit harmlessly.
-  const requiredRPCs = [
-    { name: "create_company_atomic", probe: { p_company_id: "_health_check_no_op", p_name: "_health_check", p_type: "individual", p_company_code: "ZZZZZZZZ", p_company_role: "individual", p_address: "", p_phone: "", p_email: "_health_check@invalid.local", p_creator_email: "_health_check@invalid.local", p_creator_name: "_" } },
-    { name: "archive_property", probe: { p_company_id: "_health_check_no_op", p_property_id: "0", p_address: "_health_check", p_archive_tenant: false, p_user_email: "_health_check@invalid.local" } },
-    { name: "update_tenant_balance", probe: { p_tenant_id: -1, p_amount_change: 0 } },
-    { name: "sign_lease", probe: { p_signature_id: "00000000-0000-0000-0000-000000000000", p_signer_name: "_" } },
-  ];
-  const missing = [];
-  for (const { name, probe } of requiredRPCs) {
-    try {
-      const { error } = await supabase.rpc(name, probe);
-      // PGRST202 = function not found / wrong args. Anything else means
-      // the function existed and either ran or rejected on its own
-      // logic — both = healthy.
-      if (error && error.code === "PGRST202") missing.push(name);
-    } catch (e) {
-      if (/does not exist|could not find|PGRST202/i.test(e?.message || "")) missing.push(name);
-    }
-  }
-  if (missing.length > 0) {
-  pmError("PM-8003", { raw: { message: "Missing RPCs: " + missing.join(", ") }, context: "RPC health check", silent: true });
-  }
-  try { localStorage.setItem(cacheKey, JSON.stringify({ checkedAt: Date.now(), missing })); } catch (_) {}
-  return missing;
-  } catch (e) {
-  pmError("PM-8006", { raw: e, context: "RPC health check", silent: true });
-  return []; // Never crash the app over a health check
-  }
+export async function checkRPCHealth(_companyId) {
+  // Health check disabled 2026-04-25.
+  //
+  // The original implementation called each required RPC with `{}` to
+  // test existence, which fired 4 spurious HTTP errors per session
+  // (PGRST202 because the RPCs require parameters). Even after switching
+  // to sentinel args, probing functions like update_tenant_balance with
+  // p_tenant_id=-1 still returns a 400 "Tenant not found" — same console-
+  // and Sentry-noise problem.
+  //
+  // The actual call sites for these RPCs already have fallbacks
+  // (Properties.js:2577 falls back to a direct UPDATE on archive_property
+  // failure; CompanySelector.js:140 falls back to client-side inserts on
+  // create_company_atomic failure). So a missing/broken RPC surfaces in
+  // the live error_log via pmError when an admin tries the operation,
+  // not via a startup probe.
+  //
+  // Returning [] here means callers see "no missing RPCs" — which is
+  // accurate as long as the GRANT EXECUTE migration (20260425000001) is
+  // applied. If we ever need active monitoring again, build a single
+  // pg_proc-querying RPC instead of N per-function probes.
+  return [];
 }
 
 // ============ DATA INTEGRITY GUARDS (PM-9xxx) ============
