@@ -42,6 +42,25 @@ export async function queueNotification(type, recipientEmail, data, companyId) {
   status: "pending",
   }]);
   if (_notifWriteErr) pmError("PM-8006", { raw: _notifWriteErr, context: "email queue insert", silent: true });
+  // Fire-and-forget the worker so the row drains immediately. Vercel
+  // Hobby plan caps cron at once-per-day; the worker would otherwise
+  // sit idle until the next scheduled tick (or never, if no cron is
+  // wired). The worker is idempotent — concurrent calls just see no
+  // pending rows. JWT auth path on the worker accepts any active
+  // session, so we attach the caller's token instead of CRON_SECRET.
+  else {
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const jwt = session?.session?.access_token;
+      if (jwt) {
+        fetch("/api/notification-worker", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + jwt },
+          body: JSON.stringify({}),
+        }).catch(err => pmError("PM-8006", { raw: err, context: "worker trigger", silent: true }));
+      }
+    } catch (e) { pmError("PM-8006", { raw: e, context: "worker dispatch", silent: true }); }
+  }
   }
 
   // Deliver push via the /api/send-push Vercel function. The function

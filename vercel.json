@@ -15,10 +15,6 @@
     {
       "path": "/api/integrity-check",
       "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/notification-worker",
-      "schedule": "*/5 * * * *"
     }
   ],
   "headers": [

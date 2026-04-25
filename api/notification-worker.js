@@ -296,7 +296,6 @@ module.exports = async (req, res) => {
   const isCronAuth = CRON_SECRET && CRON_SECRET.length >= 8 && (
     isCronSecretBearer(authHeader, CRON_SECRET) || cronSecretMatches(bodySecret, CRON_SECRET)
   );
-  if (!isCronAuth) { res.status(401).json({ error: "Unauthorized" }); return; }
 
   if (!RESEND_API_KEY || !EMAIL_FROM) {
     res.status(500).json({ error: "RESEND_API_KEY or EMAIL_FROM not configured" });
@@ -307,8 +306,22 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const resend = new Resend(RESEND_API_KEY);
   const sb = createClient(SUPABASE_URL, SUPABASE_SVC, { auth: { persistSession: false } });
+
+  // Allow any authenticated user as an alternative to CRON_SECRET. The
+  // worker is idempotent (2nd call drains 0 rows), so an in-app trigger
+  // posting from queueNotification() is safe — there's no abuse vector
+  // beyond what an authenticated user can already do by inserting rows.
+  // Cron-style external invocation still uses the bearer secret.
+  let isUserAuth = false;
+  if (!isCronAuth && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.slice(7);
+    const { data: { user }, error: authErr } = await sb.auth.getUser(token);
+    if (!authErr && user?.id) isUserAuth = true;
+  }
+  if (!isCronAuth && !isUserAuth) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const resend = new Resend(RESEND_API_KEY);
 
   // Pull pending rows oldest-first.
   const { data: pending, error: pendErr } = await sb.from("notification_queue")
