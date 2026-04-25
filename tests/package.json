@@ -43,6 +43,8 @@
     "seed:click": "node seed-clicktest-data.js",
     "seed:click:cleanup": "node seed-clicktest-data.js --cleanup",
     "test:click": "npx playwright test e2e/5[0-9]-*.spec.js e2e/6[0-6]-*.spec.js --reporter=list",
+    "user-flow": "node seed-clicktest-data.js && npx playwright test e2e/5[0-9]-*.spec.js e2e/6[0-6]-*.spec.js --reporter=list --workers=1",
+    "user-flow:headed": "node seed-clicktest-data.js && npx playwright test e2e/5[0-9]-*.spec.js e2e/6[0-6]-*.spec.js --reporter=list --workers=1 --headed",
     "matrix": "node scripts/build-click-matrix.js"
   },
   "keywords": [],
