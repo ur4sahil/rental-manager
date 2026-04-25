@@ -15,9 +15,16 @@ test.describe('Accounting Module', () => {
 
   // ── Sidebar children visibility ──
   test('all accounting tabs are visible', async ({ page }) => {
-    // Land on Accounting parent → triggers auto-expand
+    // Land on Accounting and explicitly expand the chevron so the
+    // child links are rendered. App.js auto-expands only when the
+    // current page IS a child; for the parent itself we toggle.
     await navigateTo(page, 'Accounting');
-    // The 8 children should be in the sidebar after expansion
+    const parentRow = page.locator('button:has-text("Accounting")').first();
+    const chevron = parentRow.locator('xpath=following-sibling::button').first();
+    if (await chevron.isVisible({ timeout: 1500 }).catch(() => false)) {
+      await chevron.click();
+      await page.waitForTimeout(400);
+    }
     const children = ['Opening Balances', 'Chart of Accounts', 'Journal Entries',
       'Recurring Entries', 'Bank Transactions', 'Reconcile', 'Class Tracking', 'Reports'];
     for (const c of children) {

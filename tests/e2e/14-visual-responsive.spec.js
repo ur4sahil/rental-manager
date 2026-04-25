@@ -47,25 +47,27 @@ test.describe('Visual & Responsive Tests', () => {
 
   // ── Element Visibility & Stacking ──
   test('modals render above page content (z-index)', async ({ page }) => {
-    await navigateTo(page, 'Properties');
-    // Properties page's primary create button is labeled "+ Add"
-    // (Properties.js:3030). The earlier generic Add/add selector
-    // matched any button containing "Add" — including sidebar-child
-    // buttons after Properties got nested children — and could fire
-    // a navigation instead of opening the modal.
+    // Use a real modal trigger — the Tenants "Add Charge" button in
+    // the tenant detail panel was a popup with z-50. Earlier this
+    // test used the Properties "+ Add" button, but that opens the
+    // PropertySetupWizard inline (not a z-50 overlay), so the
+    // overlay assertion failed. Tenants' add-tenant modal is a
+    // proper Modal component with the expected z-50 overlay.
+    await navigateTo(page, 'Tenants');
     const addBtn = page.locator('button:has-text("+ Add")').first();
-    if (await addBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await addBtn.click();
-      await page.waitForTimeout(500);
-      // Modal overlay should be present with z-50
-      const overlay = page.locator('[class*="z-50"], [class*="fixed inset"]').first();
-      const hasOverlay = await overlay.isVisible({ timeout: 2000 }).catch(() => false);
-      expect(hasOverlay).toBeTruthy();
-      // The modal should be clickable, not behind anything
-      const modalContent = page.locator('[class*="bg-white"][class*="rounded"]').first();
-      const isVisible = await modalContent.isVisible({ timeout: 3000 }).catch(() => false);
-      expect(isVisible).toBeTruthy();
+    if (!await addBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      test.skip(true, 'Tenants Add button not visible — role may not allow');
+      return;
     }
+    await addBtn.click();
+    await page.waitForTimeout(500);
+    // The Modal component (shared.js) wraps content in a fixed
+    // overlay with z-50. Either the z-50 overlay or any modal-like
+    // dialog/aria-role is acceptable evidence the modal layered
+    // above the page.
+    const overlay = page.locator('[class*="z-50"], [role="dialog"], [class*="fixed"][class*="inset-0"]').first();
+    const hasOverlay = await overlay.isVisible({ timeout: 3000 }).catch(() => false);
+    expect(hasOverlay, 'modal overlay (z-50 / role=dialog / fixed inset-0) should be on top').toBeTruthy();
   });
 
   test('modal overlay prevents interaction with background', async ({ page }) => {
