@@ -145,7 +145,7 @@ Re-running the generator preserves the Status and Notes columns by `file:line` k
 | src/components/Admin.js:626 | Archive | restoreItem(item)}>♻️ Restore | `() => restoreItem(item)` |   |  |
 | src/components/Admin.js:627 | Archive | permanentDelete(item)}>🗑️ Delete | `() => permanentDelete(item)` |   |  |
 | src/components/Admin.js:723 |  | setExpanded(prev => ())} className="w-full px-4 py-3 flex it | `() => setExpanded(prev => ({ ...prev, [group.address]: !isOpen` |   |  |
-| src/components/Admin.js:745 |  | setPage("properties",  })}>Open | `() => setPage("properties", { openWizardFor: { propertyId: t.propertyId, address: t.address, startAtStep: t…` |   |  |
+| src/components/Admin.js:745 |  | setPage("properties",  })}>Open | `() => setPage("properties", { openWizardFor: { propertyId: t.propertyId, address: t.address, startAtStep: t…` | ? | label "Open" not visible on admin |
 | src/components/Admin.js:747 |  | approveWizardSkip(t)}>Mark Done | `() => approveWizardSkip(t)` |   |  |
 | src/components/Admin.js:749 |  | requestException(t)}>Request | `() => requestException(t)` |   |  |
 | src/components/Admin.js:759 |  | setPage(t.link, t.linkAction)} className="bg-white rounded-l | `() => setPage(t.link, t.linkAction)` |   |  |
@@ -287,19 +287,19 @@ Re-running the generator preserves the Status and Notes columns by `file:line` k
 
 | File:Line | Section | Label | Expected (handler) | Status | Notes |
 |---|---|---|---|---|---|
-| src/components/Dashboard.js:123 | Dashboard | setPage("properties")} label="Occupancy" value=/$`} sub=% oc | `() => setPage("properties")` |   |  |
-| src/components/Dashboard.js:124 | Dashboard | setPage("accounting")} label="Revenue (Acctg)" value=`} sub= | `() => setPage("accounting")` |   |  |
-| src/components/Dashboard.js:125 | Dashboard | setPage("accounting")} label="Expenses (Acctg)" value=`} sub | `() => setPage("accounting")` |   |  |
-| src/components/Dashboard.js:126 | Dashboard | setPage("accounting")} label="Net Income" value= sub="revenu | `() => setPage("accounting")` |   |  |
-| src/components/Dashboard.js:129 | Dashboard | setPage("payments")} label="Rent Collected" value=`} sub="pa | `() => setPage("payments")` |   |  |
-| src/components/Dashboard.js:130 | Dashboard | setPage("tenants")} label="Delinquent" value= sub="tenants w | `() => setPage("tenants")` |   |  |
-| src/components/Dashboard.js:131 | Dashboard | setPage("maintenance")} label="Open Work Orders" value= sub= | `() => setPage("maintenance")` |   |  |
-| src/components/Dashboard.js:132 | Dashboard | setPage("utilities")} label="Pending Utilities" value= sub=" | `() => setPage("utilities")` |   |  |
-| src/components/Dashboard.js:203 |  | setPage("properties")} className="font-normal">View all | `() => setPage("properties")` |   |  |
-| src/components/Dashboard.js:210 |  | setPage("properties")} className="flex justify-between items | `() => setPage("properties")` |   |  |
-| src/components/Dashboard.js:231 |  | setPage("tax_bills")} className="font-normal">Manage | `() => setPage("tax_bills")` |   |  |
-| src/components/Dashboard.js:240 |  | setPage("tax_bills")} className="flex justify-between items- | `() => setPage("tax_bills")` |   |  |
-| src/components/Dashboard.js:252 |  | 6 && | `() => setPage("tax_bills")` |   |  |
+| src/components/Dashboard.js:123 | Dashboard | setPage("properties")} label="Occupancy" value=/$`} sub=% oc | `() => setPage("properties")` | ✓ | auto-run: clicked "Occupancy", hash → #properties |
+| src/components/Dashboard.js:124 | Dashboard | setPage("accounting")} label="Revenue (Acctg)" value=`} sub= | `() => setPage("accounting")` | ✓ | auto-run: clicked "Revenue (Acctg)", hash → #accounting |
+| src/components/Dashboard.js:125 | Dashboard | setPage("accounting")} label="Expenses (Acctg)" value=`} sub | `() => setPage("accounting")` | ✓ | auto-run: clicked "Expenses (Acctg)", hash → #accounting |
+| src/components/Dashboard.js:126 | Dashboard | setPage("accounting")} label="Net Income" value= sub="revenu | `() => setPage("accounting")` | ✓ | auto-run: clicked "Net Income", hash → #accounting |
+| src/components/Dashboard.js:129 | Dashboard | setPage("payments")} label="Rent Collected" value=`} sub="pa | `() => setPage("payments")` | ✓ | auto-run: clicked "Rent Collected", hash → #payments |
+| src/components/Dashboard.js:130 | Dashboard | setPage("tenants")} label="Delinquent" value= sub="tenants w | `() => setPage("tenants")` | ✓ | auto-run: clicked "Delinquent", hash → #tenants |
+| src/components/Dashboard.js:131 | Dashboard | setPage("maintenance")} label="Open Work Orders" value= sub= | `() => setPage("maintenance")` | ✓ | auto-run: clicked "Open Work Orders", hash → #maintenance |
+| src/components/Dashboard.js:132 | Dashboard | setPage("utilities")} label="Pending Utilities" value= sub=" | `() => setPage("utilities")` | ✓ | auto-run: clicked "Pending Utilities", hash → #utilities |
+| src/components/Dashboard.js:203 |  | setPage("properties")} className="font-normal">View all | `() => setPage("properties")` | ? | label "View all" not visible on dashboard |
+| src/components/Dashboard.js:210 |  | setPage("properties")} className="flex justify-between items | `() => setPage("properties")` | ? | label "Property Tax Bills Due" not visible on dashboard |
+| src/components/Dashboard.js:231 |  | setPage("tax_bills")} className="font-normal">Manage | `() => setPage("tax_bills")` | ? | label "Manage" not visible on dashboard |
+| src/components/Dashboard.js:240 |  | setPage("tax_bills")} className="flex justify-between items- | `() => setPage("tax_bills")` | ? | label "HOA Payments Due" not visible on dashboard |
+| src/components/Dashboard.js:252 |  | 6 && | `() => setPage("tax_bills")` | ? | label "HOA Payments Due" not visible on dashboard |
 
 ## Documents (`src/components/Documents.js`)
 
@@ -421,7 +421,7 @@ Re-running the generator preserves the Status and Notes columns by `file:line` k
 
 | File:Line | Section | Label | Expected (handler) | Status | Notes |
 |---|---|---|---|---|---|
-| src/components/Lifecycle.js:291 | Move-Out Complete | setPage("dashboard")}>Back to Dashboard | `() => setPage("dashboard")` |   |  |
+| src/components/Lifecycle.js:291 | Move-Out Complete | setPage("dashboard")}>Back to Dashboard | `() => setPage("dashboard")` | ? | label "Back to Dashboard" not visible on moveout |
 | src/components/Lifecycle.js:340 | Move-Out Wizard | setStep(2)} className="disabled:opacity-40">Next → | `() => setStep(2)` |   |  |
 | src/components/Lifecycle.js:351 |  | ; setChecklist(c); }}> | `() => { const c = [...checklist]; c[i] = { ...c[i], checked: !c[i].checked` |   |  |
 | src/components/Lifecycle.js:358 |  | setStep(1)}>← Back | `() => setStep(1)` |   |  |
@@ -568,7 +568,7 @@ Re-running the generator preserves the Status and Notes columns by `file:line` k
 
 | File:Line | Section | Label | Expected (handler) | Status | Notes |
 |---|---|---|---|---|---|
-| src/components/Payments.js:92 | Payments | setPage("accounting", "newJE")}> | `() => setPage("accounting", "newJE")` |   |  |
+| src/components/Payments.js:92 | Payments | setPage("accounting", "newJE")}> | `() => setPage("accounting", "newJE")` | ✗ | auto-run: clicked "Total Collected", expected #accounting got #payments |
 | src/components/Payments.js:100 | Payments | setPayTab(id)} className=> | `() => setPayTab(id)` |   |  |
 | src/components/Payments.js:116 | Payments | }>Clear | `() => { setPaySearch(""); setPayDateFrom(""); setPayDateTo("");` |   |  |
 | src/components/Payments.js:145 |  | generatePaymentReceipt()} className="py-0.5">Receipt | `() => generatePaymentReceipt({ tenant: p.tenant, property: p.property, amount: p.amount, date: p.date, meth…` |   |  |
@@ -622,7 +622,7 @@ Re-running the generator preserves the Status and Notes columns by `file:line` k
 | src/components/Properties.js:3047 | PROPERTY DETAIL PANEL | setSelectedProperty(null)} className="text-white/70 hover:te | `() => setSelectedProperty(null)` |   |  |
 | src/components/Properties.js:3110 |  | } className=>)` : id === "licenses" ? ` ($)` : id === "worko | `() => { setPropertyDetailTab(id); if (id === "history") setHistoricalTenantDetail(null);` |   |  |
 | src/components/Properties.js:3121 |  | setShowDocUpload()}> | `() => setShowDocUpload({ property: selectedProperty.address, tenant: selectedProperty.tenant \|\| ""` |   |  |
-| src/components/Properties.js:3122 |  | Lease & Financials | `() => { setPage("maintenance"); setSelectedProperty(null);` |   |  |
+| src/components/Properties.js:3122 |  | Lease & Financials | `() => { setPage("maintenance"); setSelectedProperty(null);` | ? | label "Work Order" not visible on properties |
 | src/components/Properties.js:3140 |  | No utilities configured | `() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccup…` |   |  |
 | src/components/Properties.js:3158 |  | No HOA | `() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccup…` |   |  |
 | src/components/Properties.js:3174 |  | No loan configured | `() => { setShowPropertyWizard({ propertyId: selectedProperty.id, address: selectedProperty.address, isOccup…` |   |  |
@@ -633,7 +633,7 @@ Re-running the generator preserves the Status and Notes columns by `file:line` k
 | src/components/Properties.js:3290 |  | } className="flex items-center gap-1"> | `async () => { const url = await getSignedUrl("documents", d.file_name \|\| d.url); if (url) window.open(url, …` |   |  |
 | src/components/Properties.js:3319 |  | setShowLicenseForm()}> | `() => setShowLicenseForm({ propertyId: selectedProperty.id, propertyAddress: selectedProperty.address` |   |  |
 | src/components/Properties.js:3369 |  | setShowLicenseForm()} className="flex items-center gap-0.5"> | `() => setShowLicenseForm({ license: lic, propertyId: selectedProperty.id, propertyAddress: selectedProperty…` |   |  |
-| src/components/Properties.js:3395 |  | build | `() => { setPage("maintenance"); setSelectedProperty(null);` |   |  |
+| src/components/Properties.js:3395 |  | build | `() => { setPage("maintenance"); setSelectedProperty(null);` | ? | label "New" not visible on properties |
 | src/components/Properties.js:3470 |  | setHistoricalTenantDetail(null)} className="mb-3 flex items- | `() => setHistoricalTenantDetail(null)` |   |  |
 | src/components/Properties.js:3481 |  | setHistoricalTenantDetail(prev => ())} className=>)` : id == | `() => setHistoricalTenantDetail(prev => ({ ...prev, activeTab: id` |   |  |
 | src/components/Properties.js:3548 |  | } className="flex items-center gap-1"> | `async () => { const url = await getSignedUrl("documents", d.file_name \|\| d.url); if (url) window.open(url, …` |   |  |
@@ -760,13 +760,13 @@ Re-running the generator preserves the Status and Notes columns by `file:line` k
 | src/components/Tenants.js:996 |  | } className="w-full flex items-center justify-between bg-bra | `() => { setLeaseModal(item.modal); setLeaseInput("");` |   |  |
 | src/components/Tenants.js:1025 | TENANT DETAIL VIEW | } className="text-white/70 hover:text-white" /> | `() => { setSelectedTenant(null); setActivePanel(null);` |   |  |
 | src/components/Tenants.js:1060 | TENANT DETAIL VIEW | } className=> | `() => { setActivePanel(id); if (id === "documents" && selectedTenant) fetchTenantDocs(selectedTenant); if (…` |   |  |
-| src/components/Tenants.js:1072 |  | setPage("accounting", "newJE")}> | `() => setPage("accounting", "newJE")` |   |  |
+| src/components/Tenants.js:1072 |  | setPage("accounting", "newJE")}> | `() => setPage("accounting", "newJE")` | ? | label "New Entry" not visible on tenants |
 | src/components/Tenants.js:1201 |  | } className="flex items-center gap-1"> | `async () => { const url = await getSignedUrl("documents", d.file_name \|\| d.url); if (url) window.open(url, …` |   |  |
 | src/components/Tenants.js:1216 |  | setShowDocUpload()}>Upload Documents | `() => setShowDocUpload({ property: selectedTenant?.property \|\| "", tenant: selectedTenant?.name \|\| ""` |   |  |
 | src/components/Tenants.js:1250 |  | startEdit(selectedTenant)} className="bg-brand-50/30 rounded | `() => startEdit(selectedTenant)` |   |  |
 | src/components/Tenants.js:1253 |  | inviteTenant(selectedTenant)} className="bg-highlight-50 rou | `() => inviteTenant(selectedTenant)` |   |  |
 | src/components/Tenants.js:1256 |  | } className="bg-positive-50 rounded-3xl p-4 text-center hove | `() => { setLeaseModal("renew"); setLeaseInput("");` |   |  |
-| src/components/Tenants.js:1259 |  | setPage("moveout")} className="bg-notice-50 rounded-3xl p-4  | `() => setPage("moveout")` |   |  |
+| src/components/Tenants.js:1259 |  | setPage("moveout")} className="bg-notice-50 rounded-3xl p-4 | `() => setPage("moveout")` | ✗ | auto-run: clicked "Move-Out", expected #moveout got #tenants |
 | src/components/Tenants.js:1262 |  | deleteTenant(selectedTenant.id, selectedTenant.name)} classN | `() => deleteTenant(selectedTenant.id, selectedTenant.name)` |   |  |
 | src/components/Tenants.js:1277 |  | ).limit(200).then(() => setArchivedTenants(data \|\| [])); } } | `() => { setTenantTab(id); setTenantSearch(""); if (id === "archived") { supabase.from("tenants").select("*"…` |   |  |
 | src/components/Tenants.js:1286 |  | No archived tenants | `async () => { if (!guardSubmit("refreshArchived")) return; try { const { data` |   |  |
