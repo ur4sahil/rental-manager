@@ -32,19 +32,40 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   const [woPhotos, setWoPhotos] = useState([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoRef = useRef();
-  const [form, setForm] = useState({ property: "", tenant: "", issue: "", priority: "normal", status: "open", assigned: "", cost: 0, notes: "" });
+  // form.vendor_id mirrors the active vendor selection. When set, the
+  // form writes BOTH vendor_id (FK) AND vendor_name + assigned (display)
+  // so existing reports / filters keyed off `assigned` keep working
+  // while new linkage uses the FK. Empty string = "Other / staff",
+  // free-text typed name kept in form.assigned only.
+  const [form, setForm] = useState({ property: "", tenant: "", issue: "", priority: "normal", status: "open", assigned: "", vendor_id: "", cost: 0, notes: "" });
   const [woSearch, setWoSearch] = useState("");
   const [woFilterProp, setWoFilterProp] = useState("all");
   const [woFilterAssigned, setWoFilterAssigned] = useState("all");
   const [selectedWOs, setSelectedWOs] = useState(new Set());
+  const [vendors, setVendors] = useState([]);
+  // assignMode reflects the Select dropdown state for "Assigned To".
+  // "vendor" — a vendor is picked (form.vendor_id is set)
+  // "other"  — free-text Input is shown (form.assigned non-empty or
+  //            user just picked the Other option)
+  // ""       — Unassigned
+  const [assignMode, setAssignMode] = useState("");
 
-  useEffect(() => { fetchWorkOrders(); }, [companyId]);
+  useEffect(() => { fetchWorkOrders(); fetchVendorsForAssign(); }, [companyId]);
 
   async function fetchWorkOrders() {
   const { data, error } = await supabase.from("work_orders").select("*").eq("company_id", companyId).is("archived_at", null).order("created", { ascending: false }).limit(500);
   if (error) { pmError("PM-7005", { raw: error, context: "loading work orders" }); }
   setWorkOrders(data || []);
   setLoading(false);
+  }
+
+  // Active, non-archived vendors keyed for the work-order Assigned-To
+  // dropdown. Filter to status active/preferred so blocked vendors
+  // can't be picked for new work — same gate VendorManagement uses.
+  async function fetchVendorsForAssign() {
+    const { data } = await supabase.from("vendors").select("id, name, specialty, status")
+      .eq("company_id", companyId).is("archived_at", null).order("name");
+    setVendors((data || []).filter(v => v.status !== "blocked" && v.status !== "inactive"));
   }
 
   async function bulkUpdateWOStatus(newStatus) {
@@ -82,9 +103,18 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   if (editingWO && editingWO.status === "completed" && safeNum(form.cost) !== safeNum(editingWO.cost)) {
   if (!await showConfirm({ message: `This work order is completed and its cost was already posted to accounting ($${safeNum(editingWO.cost)}). Changing the cost to $${safeNum(form.cost)} will NOT update the GL entry.\n\nYou may need to void and re-post the journal entry manually. Continue?` })) return;
   }
-  const payload = { ...form };
+  // If a vendor was picked from the dropdown, sync vendor_id +
+  // vendor_name + assigned so all three columns reflect the same
+  // entity. Free-text "Other" assignments leave vendor_id null.
+  const pickedVendor = form.vendor_id ? vendors.find(v => String(v.id) === String(form.vendor_id)) : null;
+  const payload = {
+    ...form,
+    vendor_id: pickedVendor ? pickedVendor.id : null,
+    vendor_name: pickedVendor ? pickedVendor.name : "",
+    assigned: pickedVendor ? pickedVendor.name : (form.assigned || ""),
+  };
   const { error } = editingWO
-  ? await supabase.from("work_orders").update({ property: payload.property, tenant: payload.tenant, issue: payload.issue, priority: payload.priority, status: payload.status, assigned: payload.assigned, cost: payload.cost, notes: payload.notes }).eq("id", editingWO.id).eq("company_id", companyId)
+  ? await supabase.from("work_orders").update({ property: payload.property, tenant: payload.tenant, issue: payload.issue, priority: payload.priority, status: payload.status, assigned: payload.assigned, vendor_id: payload.vendor_id, vendor_name: payload.vendor_name, cost: payload.cost, notes: payload.notes }).eq("id", editingWO.id).eq("company_id", companyId)
   : await supabase.from("work_orders").insert([{ ...payload, created: formatLocalDate(new Date()), company_id: companyId }]);
   if (error) { pmError("PM-7001", { raw: error, context: "saving work order" }); return; }
   showToast(editingWO ? "Work order updated." : "Work order created.", "success");
@@ -103,7 +133,8 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   }
   setShowForm(false);
   setEditingWO(null);
-  setForm({ property: "", tenant: "", issue: "", priority: "normal", status: "open", assigned: "", cost: 0, notes: "" });
+  setForm({ property: "", tenant: "", issue: "", priority: "normal", status: "open", assigned: "", vendor_id: "", cost: 0, notes: "" });
+  setAssignMode("");
   fetchWorkOrders();
   } finally { guardRelease("saveWorkOrder"); }
   }
@@ -190,7 +221,13 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
 
   function startEdit(w) {
   setEditingWO(w);
-  setForm({ property: w.property, tenant: w.tenant, issue: w.issue, priority: w.priority, status: w.status, assigned: w.assigned || "", cost: w.cost || 0, notes: w.notes || "" });
+  setForm({ property: w.property, tenant: w.tenant, issue: w.issue, priority: w.priority, status: w.status, assigned: w.assigned || "", vendor_id: w.vendor_id || "", cost: w.cost || 0, notes: w.notes || "" });
+  // Restore the Assign dropdown mode from the existing row: vendor
+  // FK wins; otherwise treat any free-text `assigned` as Other; empty
+  // means Unassigned.
+  if (w.vendor_id) setAssignMode("vendor");
+  else if (w.assigned) setAssignMode("other");
+  else setAssignMode("");
   setShowForm(true);
   }
 
@@ -331,7 +368,7 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   {maintTab === "workorders" && (<>
   <div className="flex items-center justify-between mb-4">
   <div></div>
-  <Btn onClick={() => { setEditingWO(null); setForm({ property: "", tenant: "", issue: "", priority: "normal", status: "open", assigned: "", cost: 0, notes: "" }); setShowForm(!showForm); }}>+ New Work Order</Btn>
+  <Btn onClick={() => { setEditingWO(null); setForm({ property: "", tenant: "", issue: "", priority: "normal", status: "open", assigned: "", vendor_id: "", cost: 0, notes: "" }); setAssignMode(""); setShowForm(!showForm); }}>+ New Work Order</Btn>
   </div>
 
   {showForm && (
@@ -349,7 +386,45 @@ function Maintenance({ addNotification, userProfile, userRole, companyId, showTo
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Status</label><Select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
   {["open", "in_progress", "completed"].map(s => <option key={s}>{s}</option>)}
   </Select></div>
-  <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Assigned To</label><Input placeholder="Vendor or staff name" value={form.assigned} onChange={e => setForm({ ...form, assigned: e.target.value })} /></div>
+  <div>
+    <label className="text-xs font-medium text-neutral-400 mb-1 block">Assigned To</label>
+    <Select
+      value={assignMode === "vendor" ? form.vendor_id : assignMode}
+      onChange={e => {
+        const v = e.target.value;
+        if (v === "") {
+          setAssignMode("");
+          setForm({ ...form, vendor_id: "", assigned: "" });
+        } else if (v === "other") {
+          setAssignMode("other");
+          // Clear the auto-filled vendor name; let the user type.
+          setForm({ ...form, vendor_id: "", assigned: "" });
+        } else {
+          const vendor = vendors.find(x => String(x.id) === String(v));
+          setAssignMode("vendor");
+          setForm({ ...form, vendor_id: v, assigned: vendor?.name || "" });
+        }
+      }}
+    >
+      <option value="">— Unassigned —</option>
+      {vendors.length > 0 && (
+        <optgroup label="Vendors">
+          {vendors.map(v => (
+            <option key={v.id} value={v.id}>{v.name}{v.specialty ? ` (${v.specialty})` : ""}</option>
+          ))}
+        </optgroup>
+      )}
+      <option value="other">Other / staff name…</option>
+    </Select>
+    {assignMode === "other" && (
+      <Input
+        className="mt-2"
+        placeholder="Type a name (e.g., John, in-house team)"
+        value={form.assigned}
+        onChange={e => setForm({ ...form, assigned: e.target.value })}
+      />
+    )}
+  </div>
   <div><label className="text-xs font-medium text-neutral-400 mb-1 block">Cost ($)</label><Input placeholder="0.00" type="number" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} /></div>
   <div className="col-span-2"><label className="text-xs font-medium text-neutral-400 mb-1 block">Notes</label><Textarea placeholder="Completion details, parts used, etc." value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="border border-brand-100 rounded-xl px-3 py-1.5 text-sm w-full" rows={2} /></div>
   </div>
