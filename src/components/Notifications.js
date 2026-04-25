@@ -1,25 +1,21 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "../supabase";
-import { Input, Textarea, Select, Btn, PageHeader } from "../ui";
-import { safeNum, parseLocalDate, formatLocalDate, formatCurrency, normalizeEmail, escapeFilterValue } from "../utils/helpers";
+import { Input, Textarea, Select, Btn, PageHeader, Card, Badge, FilterPill } from "../ui";
+import { normalizeEmail, escapeFilterValue } from "../utils/helpers";
 import { pmError } from "../utils/errors";
-import { logAudit } from "../utils/audit";
-import { queueNotification } from "../utils/notifications";
-import { StatCard, Spinner } from "./shared";
+import { Spinner } from "./shared";
 
-// Device-level push status + manual enable. The auto-register on login
-// fires silent pmError on failure, so users who've "toggled push on and
-// nothing happened" have nothing to look at. This panel surfaces every
-// step: SW state, browser permission, VAPID public-key presence, the
-// current subscription (if any), and a button that runs the subscribe
-// flow with a visible log. Without it, diagnosing push outages means
-// hunting through DevTools console for someone who doesn't know what
-// they're looking for.
+// Push subscription control. Replaces the old DevicePushPanel which
+// surfaced raw permission state, the VAPID endpoint URL, and a 4-button
+// debug bar — accurate but read like a DevTools console. The actual
+// auto-subscribe still runs silently from App.js:registerPushNotifications
+// on login; this panel is for the manual re-enable / test / disable
+// flow when something went wrong silently.
 function DevicePushPanel({ companyId, userProfile, showToast }) {
-  const [state, setState] = React.useState({ permission: "unknown", subscribed: false, endpoint: null, log: [] });
-  const [busy, setBusy] = React.useState(false);
+  const [state, setState] = useState({ permission: "unknown", subscribed: false, endpoint: null, log: [] });
+  const [busy, setBusy] = useState(false);
 
-  const refresh = React.useCallback(async () => {
+  const refresh = useCallback(async () => {
     if (typeof window === "undefined") return;
     const permission = (typeof Notification !== "undefined") ? Notification.permission : "unsupported";
     let subscribed = false, endpoint = null;
@@ -33,7 +29,7 @@ function DevicePushPanel({ companyId, userProfile, showToast }) {
     setState(s => ({ ...s, permission, subscribed, endpoint }));
   }, []);
 
-  React.useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { refresh(); }, [refresh]);
 
   async function handleEnable() {
     if (busy) return;
@@ -42,9 +38,9 @@ function DevicePushPanel({ companyId, userProfile, showToast }) {
     const add = (line) => log.push(new Date().toLocaleTimeString() + " " + line);
     try {
       add("Checking browser support…");
-      if (!("serviceWorker" in navigator)) { add("❌ service worker not supported in this browser"); throw new Error("service worker unsupported"); }
-      if (!("PushManager" in window)) { add("❌ push manager not supported in this browser"); throw new Error("push unsupported"); }
-      add("✓ service worker + push manager present");
+      if (!("serviceWorker" in navigator)) { add("❌ service worker not supported"); throw new Error("service worker unsupported"); }
+      if (!("PushManager" in window)) { add("❌ push manager not supported"); throw new Error("push unsupported"); }
+      add("✓ browser supports push");
 
       add("Registering /sw.js…");
       const registration = await navigator.serviceWorker.register("/sw.js");
@@ -56,8 +52,8 @@ function DevicePushPanel({ companyId, userProfile, showToast }) {
       if (permission !== "granted") throw new Error("permission " + permission);
 
       const key = process.env.REACT_APP_VAPID_PUBLIC_KEY || "";
-      if (!key) { add("❌ REACT_APP_VAPID_PUBLIC_KEY not baked into bundle"); throw new Error("VAPID key missing"); }
-      add("✓ VAPID public key present (" + key.slice(0, 10) + "…)");
+      if (!key) { add("❌ VAPID key missing from build"); throw new Error("VAPID key missing"); }
+      add("✓ VAPID public key present");
 
       const padding = "=".repeat((4 - key.length % 4) % 4);
       const base64 = (key + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -66,27 +62,27 @@ function DevicePushPanel({ companyId, userProfile, showToast }) {
 
       const existing = await registration.pushManager.getSubscription();
       if (existing) {
-        add("Existing subscription found — unsubscribing first (VAPID rotation safe)");
+        add("Existing subscription — unsubscribing first (VAPID rotation safe)");
         try { await existing.unsubscribe(); } catch (_e) { add("⚠︎ unsubscribe refused — continuing"); }
       }
 
       add("Subscribing…");
       const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
-      add("✓ subscribed — endpoint " + subscription.endpoint.slice(0, 50) + "…");
+      add("✓ subscribed");
 
-      add("Saving subscription to DB…");
+      add("Saving subscription…");
       const { error } = await supabase.from("push_subscriptions").upsert([{
         company_id: companyId,
         user_email: userProfile?.email,
         subscription: JSON.parse(JSON.stringify(subscription)),
       }], { onConflict: "company_id,user_email" });
       if (error) { add("❌ save failed: " + error.message); throw error; }
-      add("✓ subscription saved — push is live on this device");
-      if (showToast) showToast("Push notifications enabled on this device.", "success");
+      add("✓ saved — push is live on this device");
+      if (showToast) showToast("Push notifications turned on for this device.", "success");
       await refresh();
     } catch (e) {
       add("ERROR: " + (e?.message || "unknown"));
-      if (showToast) showToast("Push enable failed: " + (e?.message || "unknown") + ". See panel log.", "error");
+      if (showToast) showToast("Couldn't turn on notifications: " + (e?.message || "unknown"), "error");
     } finally {
       setState(s => ({ ...s, log }));
       setBusy(false);
@@ -106,399 +102,414 @@ function DevicePushPanel({ companyId, userProfile, showToast }) {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { showToast("Test push failed: " + (j.error || res.status), "error"); return; }
-      showToast("Test push dispatched (delivered " + (j.delivered ?? 0) + ", pruned " + (j.pruned ?? 0) + ").", j.delivered > 0 ? "success" : "warning");
+      showToast(j.delivered > 0 ? "Test push delivered." : "Test push sent but not delivered yet.", j.delivered > 0 ? "success" : "warning");
     } catch (e) {
       showToast("Test push failed: " + e.message, "error");
     }
   }
 
-  const statusColor = state.subscribed ? "text-positive-600" : state.permission === "denied" ? "text-danger-600" : "text-warn-600";
-  const statusLabel = state.subscribed ? "Subscribed on this device" : state.permission === "denied" ? "Permission blocked — enable in browser settings" : "Not subscribed on this device";
+  async function handleDisable() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const reg = await navigator.serviceWorker.getRegistration?.();
+      const sub = reg?.pushManager ? await reg.pushManager.getSubscription() : null;
+      if (sub) {
+        try { await sub.unsubscribe(); } catch (_e) { /* harmless if already gone */ }
+      }
+      await supabase.from("push_subscriptions").delete()
+        .eq("company_id", companyId)
+        .ilike("user_email", escapeFilterValue(userProfile?.email || ""));
+      showToast?.("Push notifications turned off for this device.", "success");
+      await refresh();
+    } catch (e) {
+      showToast?.("Couldn't turn off notifications: " + e.message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
 
+  // Permission denied at the browser level — show the help text only.
+  if (state.permission === "denied") {
+    return (
+      <Card padding="p-4" className="mb-5 border-warn-200 bg-warn-50/40">
+        <div className="text-sm font-semibold text-neutral-800 mb-1">Notifications are blocked in your browser</div>
+        <div className="text-xs text-neutral-500">
+          Open your browser's site settings for this page and allow notifications, then reload.
+        </div>
+      </Card>
+    );
+  }
+
+  // Subscribed — slim status row.
+  if (state.subscribed) {
+    return (
+      <div className="flex items-center justify-between text-xs text-neutral-500 mb-5 px-1">
+        <span>
+          <span className="text-success-600 mr-1">✓</span>
+          Notifications are on for this device
+        </span>
+        <div className="flex gap-3">
+          <button onClick={handleTest} disabled={busy} className="text-brand-600 hover:underline">Send a test</button>
+          <button onClick={handleDisable} disabled={busy} className="text-neutral-500 hover:text-danger-600 hover:underline">Turn off</button>
+        </div>
+      </div>
+    );
+  }
+
+  // Not subscribed — friendly hero card.
   return (
-    <div className="bg-white rounded-xl border border-subtle-100 p-4 mb-5">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm font-semibold text-subtle-700">🔔 Push on this device</div>
-        <span className={"text-xs font-medium " + statusColor}>{statusLabel}</span>
+    <Card padding="p-5" className="mb-5">
+      <div className="text-sm font-semibold text-neutral-800 mb-1">Get instant alerts on this device</div>
+      <div className="text-xs text-neutral-500 mb-3">
+        We'll ping you when rent comes in, a maintenance request opens, or a lease needs attention.
       </div>
-      <div className="text-xs text-subtle-400 mb-3">Permission: <span className="font-mono">{state.permission}</span>{state.endpoint ? <> · Endpoint: <span className="font-mono break-all">{state.endpoint.slice(0, 60)}…</span></> : null}</div>
-      <div className="flex gap-2">
-        <Btn size="sm" onClick={handleEnable} disabled={busy}>{state.subscribed ? "Re-subscribe" : "Enable push on this device"}</Btn>
-        <Btn size="sm" variant="secondary" onClick={handleTest} disabled={!state.subscribed}>Send test push</Btn>
-        <Btn size="sm" variant="ghost" onClick={refresh}>Refresh</Btn>
-      </div>
+      <Btn onClick={handleEnable} disabled={busy}>
+        {busy ? "Turning on…" : "Turn on notifications"}
+      </Btn>
       {state.log.length > 0 && (
-        <pre className="mt-3 bg-neutral-50 rounded-lg p-3 text-[11px] text-neutral-600 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">{state.log.join("\n")}</pre>
+        <details className="mt-3">
+          <summary className="text-xs text-neutral-400 cursor-pointer hover:text-neutral-600">Show technical details</summary>
+          <pre className="mt-2 bg-neutral-50 rounded-lg p-3 text-[11px] text-neutral-600 font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">{state.log.join("\n")}</pre>
+        </details>
       )}
-    </div>
+    </Card>
   );
+}
+
+// Day bucket for grouping Activity / History rows. Returns "Today",
+// "Yesterday", or "Earlier" — matches macOS Mail / iOS conventions
+// rather than absolute dates, which read more friendly for a feed.
+function dayBucket(iso) {
+  if (!iso) return "Earlier";
+  const d = new Date(iso);
+  if (isNaN(d)) return "Earlier";
+  const startOfDay = (x) => { const c = new Date(x); c.setHours(0, 0, 0, 0); return c; };
+  const today = startOfDay(new Date());
+  const dDay = startOfDay(d);
+  const days = Math.round((today - dDay) / 86400000);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return "Earlier";
+}
+
+function groupByDay(items, dateKey = "created_at") {
+  const groups = { Today: [], Yesterday: [], Earlier: [] };
+  for (const r of items) groups[dayBucket(r[dateKey])].push(r);
+  return groups;
 }
 
 function EmailNotifications({ addNotification, userProfile, userRole, companyId, showToast, showConfirm }) {
   const [settings, setSettings] = useState([]);
   const [logs, setLogs] = useState([]);
-  const [tenants, setTenants] = useState([]);
-  const [leases, setLeases] = useState([]);
+  const [activity, setActivity] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("activity");
-  const [showTest, setShowTest] = useState(null);
-  const [queueStats, setQueueStats] = useState({ pending: 0, sent: 0, failed: 0 });
+  const [activityFilter, setActivityFilter] = useState("all"); // "all" | "unread"
+  const [queueFailed, setQueueFailed] = useState(0);
 
-  const fetchQueueStatus = useCallback(async () => {
-  try {
-  const { data: items } = await supabase.from("notification_queue").select("status").eq("company_id", companyId).limit(500);
-  if (items) {
-  setQueueStats({
-  pending: items.filter(i => i.status === "pending").length,
-  sent: items.filter(i => i.status === "sent").length,
-  failed: items.filter(i => i.status === "failed").length,
-  });
-  }
-  } catch (e) { pmError("PM-8006", { raw: e, context: "fetch notification queue status", silent: true }); }
+  // Dropped: tenants / leases / queueStats.pending+sent — the page no
+  // longer surfaces those. Queue-failed count is kept only to drive the
+  // single conditional inline alert at the top.
+  const fetchQueueFailed = useCallback(async () => {
+    try {
+      const { count } = await supabase.from("notification_queue")
+        .select("*", { count: "exact", head: true })
+        .eq("company_id", companyId).eq("status", "failed");
+      setQueueFailed(count || 0);
+    } catch (e) { pmError("PM-8006", { raw: e, context: "fetch notification queue failed count", silent: true }); }
   }, [companyId]);
 
   const channels = ["in_app", "email", "push"];
-  const channelLabels = { in_app: "In-App", email: "Email", push: "Push" };
+  const channelLabels = { in_app: "In-app", email: "Email", push: "Push" };
 
   const eventLabels = {
-  rent_due: { label: "Rent Due Reminder", icon: "💰", desc: "Sent X days before rent is due" },
-  rent_overdue: { label: "Rent Overdue Notice", icon: "\u26a0\ufe0f", desc: "Sent when rent is past due" },
-  lease_expiring: { label: "Lease Expiration Alert", icon: "\ud83d\udcdd", desc: "Sent X days before lease expires" },
-  work_order_update: { label: "Work Order Status Update", icon: "🔧", desc: "Sent when maintenance request changes status" },
-  payment_received: { label: "Payment Confirmation", icon: "\u2705", desc: "Sent when payment is recorded" },
-  lease_created: { label: "New Lease Created", icon: "\ud83c\udfe0", desc: "Sent when a new lease is signed" },
-  insurance_expiring: { label: "Vendor Insurance Alert", icon: "\ud83d\udee1\ufe0f", desc: "Sent when vendor insurance is expiring" },
-  inspection_due: { label: "Inspection Reminder", icon: "\ud83d\udd0d", desc: "Sent before scheduled inspection" },
-  message_received: { label: "New Message", icon: "\ud83d\udcac", desc: "Sent when a tenant or landlord sends a chat message" },
-  approval_pending: { label: "Approval Needed", icon: "\ud83d\udd14", desc: "Sent to the routed approver when a change or document exception is requested" },
+    rent_due:           { label: "Rent due reminder",        icon: "💰", desc: "Sent before rent is due" },
+    rent_overdue:       { label: "Rent overdue notice",      icon: "⚠️", desc: "Sent when rent is past due" },
+    lease_expiring:     { label: "Lease expiration alert",   icon: "📝", desc: "Sent before a lease expires" },
+    work_order_update:  { label: "Work order update",        icon: "🔧", desc: "When maintenance status changes" },
+    payment_received:   { label: "Payment confirmation",     icon: "✅", desc: "When a payment is recorded" },
+    lease_created:      { label: "New lease created",        icon: "🏠", desc: "When a new lease is signed" },
+    insurance_expiring: { label: "Vendor insurance alert",   icon: "🛡️", desc: "When vendor insurance is expiring" },
+    inspection_due:     { label: "Inspection reminder",      icon: "🔍", desc: "Before a scheduled inspection" },
+    message_received:   { label: "New message",              icon: "💬", desc: "When a tenant or landlord sends a message" },
+    approval_pending:   { label: "Approval needed",          icon: "🔔", desc: "When a change or document exception is requested" },
   };
 
-  // Recent activity — every addNotification() call writes a row to
-  // notification_inbox. Surfacing the full history here solves the
-  // "bell shows 2-3 things and then nothing tracks the rest" problem:
-  // the bell is a short transient list capped at 50; this feed is
-  // the persistent record.
-  const [activity, setActivity] = useState([]);
   const fetchData = useCallback(async () => {
-  setLoading(true);
-  // Activity feed is per-user, not per-company. Every notification
-  // row carries a recipient_email; viewers only see rows addressed to
-  // them (or company-wide broadcasts with a NULL recipient). Without
-  // this filter the tab would leak each user's private inbox to
-  // every admin who opens the page.
-  const myEmail = userProfile?.email || "";
-  const [s, l, t, le, inbox] = await Promise.all([
-  supabase.from("notification_settings").select("*").eq("company_id", companyId).order("event_type"),
-  supabase.from("notification_log").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(100),
-  supabase.from("tenants").select("*").eq("company_id", companyId).is("archived_at", null),
-  supabase.from("leases").select("*").eq("company_id", companyId).eq("status", "active"),
-  supabase.from("notification_inbox").select("*").eq("company_id", companyId)
-    .or("recipient_email.ilike." + escapeFilterValue(myEmail || "none") + ",recipient_email.is.null")
-    .order("created_at", { ascending: false }).limit(200),
-  ]);
-  setSettings(s.data || []);
-  setLogs(l.data || []);
-  setTenants(t.data || []);
-  setLeases(le.data || []);
-  setActivity(inbox.data || []);
-  setLoading(false);
-  }, [companyId]);
+    setLoading(true);
+    // Activity feed is per-user — every notification row carries a
+    // recipient_email. Without filtering, the tab would leak each
+    // user's inbox to every admin.
+    const myEmail = userProfile?.email || "";
+    const [s, l, inbox] = await Promise.all([
+      supabase.from("notification_settings").select("*").eq("company_id", companyId).order("event_type"),
+      supabase.from("notification_log").select("*").eq("company_id", companyId).order("created_at", { ascending: false }).limit(100),
+      supabase.from("notification_inbox").select("*").eq("company_id", companyId)
+        .or("recipient_email.ilike." + escapeFilterValue(myEmail || "none") + ",recipient_email.is.null")
+        .order("created_at", { ascending: false }).limit(200),
+    ]);
+    setSettings(s.data || []);
+    setLogs(l.data || []);
+    setActivity(inbox.data || []);
+    setLoading(false);
+  }, [companyId, userProfile?.email]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { fetchQueueFailed(); }, [fetchQueueFailed]);
 
   async function toggleSetting(setting) {
-  const { error: _err6051 } = await supabase.from("notification_settings").update({ enabled: !setting.enabled }).eq("company_id", companyId).eq("id", setting.id);
-  if (_err6051) pmError("PM-8006", { raw: _err6051, context: "notification_settings write", silent: true });
-  fetchData();
+    const { error } = await supabase.from("notification_settings").update({ enabled: !setting.enabled }).eq("company_id", companyId).eq("id", setting.id);
+    if (error) pmError("PM-8006", { raw: error, context: "notification_settings toggle", silent: true });
+    fetchData();
   }
 
   async function updateDaysBefore(setting, days) {
-  const { error: _err6056 } = await supabase.from("notification_settings").update({ days_before: Number(days) }).eq("company_id", companyId).eq("id", setting.id);
-  if (_err6056) pmError("PM-8006", { raw: _err6056, context: "notification_settings write", silent: true });
-  fetchData();
+    const { error } = await supabase.from("notification_settings").update({ days_before: Number(days) }).eq("company_id", companyId).eq("id", setting.id);
+    if (error) pmError("PM-8006", { raw: error, context: "notification_settings days_before", silent: true });
+    fetchData();
   }
 
   async function updateTemplate(setting, template) {
-  const { error: _err6061 } = await supabase.from("notification_settings").update({ template }).eq("company_id", companyId).eq("id", setting.id);
-  if (_err6061) pmError("PM-8006", { raw: _err6061, context: "notification_settings write", silent: true });
+    const { error } = await supabase.from("notification_settings").update({ template }).eq("company_id", companyId).eq("id", setting.id);
+    if (error) pmError("PM-8006", { raw: error, context: "notification_settings template", silent: true });
+  }
+
+  async function updateRecipients(setting, recipients) {
+    const { error } = await supabase.from("notification_settings").update({ recipients }).eq("id", setting.id).eq("company_id", companyId);
+    if (error) pmError("PM-8006", { raw: error, context: "notification_settings recipients", silent: true });
+    fetchData();
+  }
+
+  // Supabase returns JSONB as parsed JS objects; older rows stored
+  // serialized strings. Accept either so a mixed set doesn't crash.
+  function parseChannels(x) {
+    if (!x) return { in_app: true, email: true, push: true };
+    if (typeof x === "object") return x;
+    try { return JSON.parse(x); } catch { return { in_app: true, email: true, push: true }; }
+  }
+
+  async function toggleChannel(setting, ch) {
+    const current = parseChannels(setting.channels);
+    const next = { ...current, [ch]: !current[ch] };
+    const { error } = await supabase.from("notification_settings").update({ channels: next }).eq("id", setting.id).eq("company_id", companyId);
+    if (error) pmError("PM-8006", { raw: error, context: "notification_settings channels", silent: true });
+    fetchData();
   }
 
   async function sendTestNotification(setting) {
-  // Simulate sending by logging it
-  const testRecipient = userProfile?.email || "test@example.com";
-  const { error: _err_notification_log_6067 } = await supabase.from("notification_log").insert([{ company_id: companyId,
-  event_type: setting.event_type,
-  recipient_email: normalizeEmail(testRecipient),
-  subject: "[TEST] " + (eventLabels[setting.event_type]?.label || setting.event_type),
-  message: setting.template || "Test notification",
-  status: "sent",
-  related_id: "test",
-  }]);
-  if (_err_notification_log_6067) pmError("PM-8006", { raw: _err_notification_log_6067, context: "notification_log write", silent: true });
-  addNotification("\u2709\ufe0f", "Test notification sent for " + (eventLabels[setting.event_type]?.label || setting.event_type));
-  fetchData();
+    const testRecipient = userProfile?.email || "test@example.com";
+    const { error } = await supabase.from("notification_log").insert([{
+      company_id: companyId,
+      event_type: setting.event_type,
+      recipient_email: normalizeEmail(testRecipient),
+      subject: "[TEST] " + (eventLabels[setting.event_type]?.label || setting.event_type),
+      message: setting.template || "Test notification",
+      status: "sent",
+      related_id: "test",
+    }]);
+    if (error) pmError("PM-8006", { raw: error, context: "notification_log test write", silent: true });
+    addNotification("✉️", "Test sent for " + (eventLabels[setting.event_type]?.label || setting.event_type));
+    fetchData();
   }
-
-  async function runNotificationCheck() {
-  const today = new Date();
-  let count = 0;
-
-  // Check rent due
-  const rentDueSetting = settings.find(s => s.event_type === "rent_due" && s.enabled);
-  if (rentDueSetting) {
-  const daysBefore = rentDueSetting.days_before || 3;
-  for (const lease of leases) {
-  const rawDueDay = lease.payment_due_day || 1;
-  // Clamp due day to valid day for this month (avoids Feb 30 etc)
-  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-  const dueDay = Math.min(rawDueDay, daysInMonth);
-  const nextDue = new Date(today.getFullYear(), today.getMonth(), dueDay);
-  if (nextDue < today) {
-  nextDue.setMonth(nextDue.getMonth() + 1);
-  // Re-clamp for next month (e.g., due day 31 in Feb → 28)
-  const nextMonthDays = new Date(nextDue.getFullYear(), nextDue.getMonth() + 1, 0).getDate();
-  if (nextDue.getDate() > nextMonthDays) nextDue.setDate(nextMonthDays);
-  }
-  const daysUntilDue = Math.ceil((nextDue - today) / 86400000);
-  if (daysUntilDue <= daysBefore && daysUntilDue >= 0) {
-  const tenant = tenants.find(t => t.name === lease.tenant_name);
-  if (tenant?.email) {
-  // Check if already notified for this period (prevent duplicate reminders)
-  const monthKey = nextDue.getFullYear() + "-" + String(nextDue.getMonth()+1).padStart(2,"0");
-  const { data: existing } = await supabase.from("notification_log").select("id").eq("company_id", companyId).eq("event_type", "rent_due").eq("related_id", lease.id).ilike("message", "%" + escapeFilterValue(monthKey) + "%").limit(1);
-  if (existing?.length > 0) continue; // Already sent for this period
-  
-  const msg = "Rent of $" + lease.rent_amount + " is due on " + nextDue.toLocaleDateString() + " for " + lease.property;
-  // Queue for email delivery
-  queueNotification("rent_due", tenant.email, { tenant: lease.tenant_name, amount: lease.rent_amount, date: nextDue.toLocaleDateString(), property: lease.property }, companyId);
-  // In-app notification
-  addNotification("💰", "Rent reminder sent to " + tenant.name, { type: "rent_due", recipient: tenant.email });
-  // Log
-  const { error: _err6104 } = await supabase.from("notification_log").insert([{ company_id: companyId, event_type: "rent_due", recipient_email: normalizeEmail(tenant.email), subject: "Rent Due Reminder", message: msg + " " + monthKey, status: "queued", related_id: lease.id }]);
-  if (_err6104) pmError("PM-8006", { raw: _err6104, context: "notification_log write", silent: true });
-  count++;
-  }
-  }
-  }
-  }
-
-  // Check lease expiring
-  const leaseExpSetting = settings.find(s => s.event_type === "lease_expiring" && s.enabled);
-  if (leaseExpSetting) {
-  const daysBefore = leaseExpSetting.days_before || 60;
-  for (const lease of leases) {
-  const daysLeft = Math.ceil((parseLocalDate(lease.end_date) - today) / 86400000);
-  if (daysLeft <= daysBefore && daysLeft > 0) {
-  const tenant = tenants.find(t => t.name === lease.tenant_name);
-  if (tenant?.email) {
-  // Check if already notified for this lease expiry
-  const { data: existingLease } = await supabase.from("notification_log").select("id").eq("company_id", companyId).eq("event_type", "lease_expiring").eq("related_id", lease.id).limit(1);
-  if (existingLease?.length > 0) continue;
-  
-  const msg = "Lease for " + lease.property + " expires on " + lease.end_date + " (" + daysLeft + " days remaining)";
-  queueNotification("lease_expiry", tenant.email, { tenant: lease.tenant_name, property: lease.property, date: lease.end_date, daysLeft }, companyId);
-  addNotification("📋", "Lease expiry warning sent to " + tenant.name, { type: "lease_expiry", recipient: tenant.email });
-  const { error: _err6121 } = await supabase.from("notification_log").insert([{ company_id: companyId, event_type: "lease_expiring", recipient_email: normalizeEmail(tenant.email), subject: "Lease Expiration Notice", message: msg, status: "queued", related_id: lease.id }]);
-  if (_err6121) pmError("PM-8006", { raw: _err6121, context: "notification_log write", silent: true });
-  count++;
-  }
-  }
-  }
-  }
-
-  addNotification("\ud83d\udce8", count + " notifications sent");
-  logAudit("create", "notifications", "Ran notification check: " + count + " sent", "", userProfile?.email, userRole, companyId);
-  fetchData();
-  }
-
-  useEffect(() => { fetchQueueStatus(); }, [fetchQueueStatus]);
 
   if (loading) return <Spinner />;
 
-  const sentToday = logs.filter(l => l.created_at && new Date(l.created_at).toDateString() === new Date().toDateString()).length;
-  const enabledCount = settings.filter(s => s.enabled).length;
+  // Activity filter (All / Unread)
+  const filteredActivity = activityFilter === "unread" ? activity.filter(a => !a.read) : activity;
+  const activityGroups = groupByDay(filteredActivity);
+  const logGroups = groupByDay(logs);
 
   return (
-  <div>
-  <div className="flex justify-between items-center mb-5">
-  <PageHeader title="Email Notifications" />
-  <Btn size="sm" onClick={runNotificationCheck}>Run Notification Check</Btn>
-  </div>
+    <div>
+      <PageHeader
+        title="Notifications"
+        subtitle="Stay up to date on rent, leases, and maintenance."
+      />
 
-  <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-4">
-  <StatCard label="Active Rules" value={enabledCount + "/" + settings.length} color="text-positive-600" sub="notification types" />
-  <StatCard label="Sent Today" value={sentToday} color="text-info-600" sub="notifications" />
-  <StatCard label="Total Sent" value={logs.length} color="text-brand-600" sub="all time" />
-  <StatCard label="Failed" value={logs.filter(l => l.status === "failed").length} color={logs.filter(l => l.status === "failed").length > 0 ? "text-danger-500" : "text-neutral-400"} sub="delivery errors" />
-  </div>
+      {queueFailed > 0 && (
+        <div className="bg-danger-50 border border-danger-200 rounded-xl px-4 py-2.5 mb-4 text-sm text-danger-700">
+          {queueFailed} notification{queueFailed === 1 ? "" : "s"} didn't deliver. Check your email settings.
+        </div>
+      )}
 
-  {/* Queue Delivery Status */}
-  <div className="bg-white rounded-xl border border-subtle-100 p-4 mb-5">
-  <div className="text-sm font-semibold text-subtle-700 mb-2">📬 Notification Queue</div>
-  <div className="grid grid-cols-3 gap-3">
-  <div className="text-center"><div className="text-lg font-bold text-warn-600">{queueStats.pending}</div><div className="text-xs text-subtle-400">Pending</div></div>
-  <div className="text-center"><div className="text-lg font-bold text-positive-600">{queueStats.sent}</div><div className="text-xs text-subtle-400">Delivered</div></div>
-  <div className="text-center"><div className="text-lg font-bold text-danger-600">{queueStats.failed}</div><div className="text-xs text-subtle-400">Failed</div></div>
-  </div>
-  {queueStats.failed > 0 && <div className="bg-danger-50 rounded-lg px-3 py-2 mt-3 text-xs text-danger-700">⚠️ {queueStats.failed} notification(s) failed. Check that your delivery worker is running.</div>}
-  {queueStats.pending > 10 && <div className="bg-warn-50 rounded-lg px-3 py-2 mt-3 text-xs text-warn-700">📬 {queueStats.pending} queued — delivery service may be behind.</div>}
-  </div>
+      <DevicePushPanel companyId={companyId} userProfile={userProfile} showToast={showToast} />
 
-  <DevicePushPanel companyId={companyId} userProfile={userProfile} showToast={showToast} />
+      <div className="flex gap-1 mb-4 border-b border-brand-50">
+        {[["activity", "Activity"], ["preferences", "Preferences"], ["history", "History"]].map(([id, label]) => (
+          <button key={id} onClick={() => setActiveTab(id)}
+            className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400")}>
+            {label}
+          </button>
+        ))}
+      </div>
 
-  <div className="flex gap-1 mb-4 border-b border-brand-50">
-  {[["activity","Activity"],["settings","Settings"],["log","Send Log"],["rentroll","Rent Roll"]].map(([id,label]) => (
-  <button key={id} onClick={() => setActiveTab(id)} className={"px-4 py-2 text-sm font-medium border-b-2 " + (activeTab === id ? "border-brand-600 text-brand-700" : "border-transparent text-neutral-400")}>{label}</button>
-  ))}
-  </div>
+      {/* ─── ACTIVITY ─── */}
+      {activeTab === "activity" && (
+        <div>
+          <div className="flex gap-2 mb-4">
+            <FilterPill active={activityFilter === "all"} onClick={() => setActivityFilter("all")}>
+              All ({activity.length})
+            </FilterPill>
+            <FilterPill active={activityFilter === "unread"} onClick={() => setActivityFilter("unread")}>
+              Unread ({activity.filter(a => !a.read).length})
+            </FilterPill>
+          </div>
 
-  {/* ACTIVITY TAB — full history of every in-app notification the
-      app has emitted for this company. The header bell only holds the
-      latest session's list; this feed is the persistent record.  */}
-  {activeTab === "activity" && (
-  <div className="space-y-2">
-  {activity.length === 0 ? <div className="text-center py-8 text-neutral-400">No activity yet. As you manage properties, tenants, and payments, notifications will appear here.</div> : (
-    activity.map(n => (
-    <div key={n.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-3 flex items-center gap-3">
-    <span className="text-xl">{n.icon || "🔔"}</span>
-    <div className="flex-1 min-w-0">
-      <div className="text-sm text-neutral-800 truncate">{n.message}</div>
-      <div className="text-xs text-neutral-400">{new Date(n.created_at).toLocaleString()}{n.recipient_email ? " · " + n.recipient_email : ""}{n.notification_type && n.notification_type !== "general" ? " · " + n.notification_type : ""}</div>
+          {filteredActivity.length === 0 ? (
+            <div className="text-center py-12 text-neutral-400 text-sm">
+              {activityFilter === "unread" ? "No unread notifications." : "No activity yet. As things happen, you'll see them here."}
+            </div>
+          ) : (
+            ["Today", "Yesterday", "Earlier"].map(bucket => (
+              activityGroups[bucket].length > 0 && (
+                <div key={bucket} className="mb-5">
+                  <div className="text-xs uppercase tracking-wide text-neutral-400 font-semibold mb-2 px-1">{bucket}</div>
+                  <div className="space-y-2">
+                    {activityGroups[bucket].map(n => (
+                      <Card key={n.id} padding="px-4 py-3" className="flex items-center gap-3">
+                        <span className="text-xl">{n.icon || "🔔"}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-neutral-800 truncate">{n.message}</div>
+                          <div className="text-xs text-neutral-400">
+                            {new Date(n.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                            {n.notification_type && n.notification_type !== "general" ? " · " + n.notification_type : ""}
+                          </div>
+                        </div>
+                        {!n.read && <Badge color="indigo" label="New" />}
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )
+            ))
+          )}
+        </div>
+      )}
+
+      {/* ─── PREFERENCES ─── */}
+      {activeTab === "preferences" && (
+        <div className="space-y-3">
+          {settings.length === 0 && (
+            <div className="text-center py-12 text-neutral-400 text-sm">
+              No notification rules configured for this company yet.
+            </div>
+          )}
+          {settings.map(s => {
+            const info = eventLabels[s.event_type] || { label: s.event_type, icon: "📧", desc: "" };
+            const ch = parseChannels(s.channels);
+            return (
+              <Card key={s.id} padding="p-4" className={s.enabled ? "" : "opacity-70"}>
+                {/* Header row — always visible */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    <span className="text-xl shrink-0">{info.icon}</span>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-neutral-800">{info.label}</div>
+                      <div className="text-xs text-neutral-400">{info.desc}</div>
+                    </div>
+                  </div>
+                  <button onClick={() => toggleSetting(s)}
+                    aria-label={(s.enabled ? "Disable " : "Enable ") + info.label}
+                    className={"relative w-10 h-5 rounded-full transition-colors shrink-0 " + (s.enabled ? "bg-success-500" : "bg-neutral-300")}>
+                    <span className={"absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow " + (s.enabled ? "left-5" : "left-0.5")} />
+                  </button>
+                </div>
+
+                {/* Detail controls — only when enabled */}
+                {s.enabled && (
+                  <div className="mt-4 pt-4 border-t border-brand-50 space-y-3">
+                    {/* Channels */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-neutral-500 mr-1">Send via:</span>
+                      {channels.map(c => (
+                        <button key={c} onClick={() => toggleChannel(s, c)}
+                          className={"text-xs px-2.5 py-1 rounded-full border transition-colors " +
+                            (ch[c]
+                              ? "bg-brand-50 text-brand-700 border-brand-200"
+                              : "bg-white text-neutral-400 border-neutral-200 hover:border-neutral-300")}>
+                          {channelLabels[c]}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Recipients + days_before */}
+                    <div className="flex items-center gap-3 flex-wrap text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="text-neutral-500">Recipients:</span>
+                        <Select value={s.recipients || "all"} onChange={e => updateRecipients(s, e.target.value)}
+                          className="text-xs border border-neutral-200 rounded-lg px-2 py-1">
+                          <option value="all">Everyone</option>
+                          <option value="tenant">Tenants only</option>
+                          <option value="admin">Admins only</option>
+                          <option value="tenant,admin">Admins + Tenants</option>
+                        </Select>
+                      </div>
+                      {s.days_before > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-neutral-500">Notify</span>
+                          <Input type="number" value={s.days_before} onChange={e => updateDaysBefore(s, e.target.value)}
+                            className="w-14 border border-neutral-200 rounded-lg px-2 py-1 text-xs text-center" min="0" />
+                          <span className="text-neutral-500">days early</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Customize message + Send test */}
+                    <div className="flex items-center justify-between text-xs">
+                      <details className="flex-1 mr-3">
+                        <summary className="text-neutral-500 cursor-pointer hover:text-neutral-700 inline">
+                          Customize message
+                        </summary>
+                        <Textarea value={s.template || ""} onChange={e => updateTemplate(s, e.target.value)}
+                          className="text-xs text-neutral-700 mt-2" rows={3}
+                          placeholder="Use {{tenant}}, {{property}}, {{amount}}, {{date}} as placeholders." />
+                      </details>
+                      <button onClick={() => sendTestNotification(s)}
+                        className="text-brand-600 hover:underline text-xs shrink-0">
+                        Send test
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ─── HISTORY ─── */}
+      {activeTab === "history" && (
+        <div>
+          {logs.length === 0 ? (
+            <div className="text-center py-12 text-neutral-400 text-sm">
+              No notifications sent yet.
+            </div>
+          ) : (
+            ["Today", "Yesterday", "Earlier"].map(bucket => (
+              logGroups[bucket].length > 0 && (
+                <div key={bucket} className="mb-5">
+                  <div className="text-xs uppercase tracking-wide text-neutral-400 font-semibold mb-2 px-1">{bucket}</div>
+                  <div className="space-y-2">
+                    {logGroups[bucket].map(l => (
+                      <Card key={l.id} padding="px-4 py-2.5" className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm text-neutral-800 truncate">{l.subject}</div>
+                          <div className="text-xs text-neutral-400 truncate">
+                            {l.recipient_email} · {new Date(l.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                          </div>
+                        </div>
+                        <Badge status={l.status} />
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )
+            ))
+          )}
+        </div>
+      )}
     </div>
-    {!n.read && <span className="text-[10px] font-bold uppercase bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full">New</span>}
-    </div>
-    ))
-  )}
-  </div>
-  )}
-
-  {/* SETTINGS TAB */}
-  {activeTab === "settings" && (
-  <div className="space-y-3">
-  {settings.map(s => {
-  const info = eventLabels[s.event_type] || { label: s.event_type, icon: "\ud83d\udce7", desc: "" };
-  return (
-  <div key={s.id} className={"bg-white rounded-xl border shadow-sm p-4 " + (s.enabled ? "border-brand-50" : "border-brand-50/50 opacity-60")}>
-  <div className="flex justify-between items-start mb-2">
-  <div className="flex items-center gap-2">
-  <span className="text-lg">{info.icon}</span>
-  <div>
-  <div className="text-sm font-bold text-neutral-800">{info.label}</div>
-  <div className="text-xs text-neutral-400">{info.desc}</div>
-  </div>
-  </div>
-  <button onClick={() => toggleSetting(s)} className={"relative w-10 h-5 rounded-full transition-colors " + (s.enabled ? "bg-positive-500" : "bg-neutral-300")}>
-  <span className={"absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow " + (s.enabled ? "left-5" : "left-0.5")} />
-  </button>
-  </div>
-  <div className="flex items-center gap-3 text-xs mb-2">
-  <span className="text-neutral-400">Recipients:</span>
-  <Select value={s.recipients || "all"} onChange={async (e) => {
-  // Column is `recipients` (the previous `recipient_filter` rename
-  // was silently failing — column doesn't exist). Option values
-  // match existing DB vocabulary: "admin" | "tenant" | "tenant,admin".
-  await supabase.from("notification_settings").update({ recipients: e.target.value }).eq("id", s.id).eq("company_id", companyId);
-  fetchData();
-  }} className="text-xs border border-subtle-200 rounded px-1.5 py-0.5 mr-2">
-  <option value="all">All</option>
-  <option value="tenant">Tenant Only</option>
-  <option value="admin">Admin Only</option>
-  <option value="tenant,admin">Admin + Tenant</option>
-  </Select>
-  <div className="flex gap-1 mr-3">
-  {channels.map(ch => {
-  // Supabase returns JSONB columns as already-parsed JS objects; older
-  // rows wrote them as serialized strings. Accept either so a mixed
-  // set doesn't crash the whole Notifications page.
-  const parseChannels = (x) => {
-    if (!x) return { in_app: true, email: true, push: true };
-    if (typeof x === 'object') return x;
-    try { return JSON.parse(x); } catch { return { in_app: true, email: true, push: true }; }
-  };
-  const currentChannels = parseChannels(s.channels);
-  return (
-  <button key={ch} onClick={async () => {
-  const next = { ...currentChannels, [ch]: !currentChannels[ch] };
-  await supabase.from("notification_settings").update({ channels: next }).eq("id", s.id).eq("company_id", companyId);
-  fetchData();
-  }} className={"text-xs px-2 py-0.5 rounded " + (currentChannels[ch] ? "bg-brand-100 text-brand-700" : "bg-subtle-100 text-subtle-400")}>{channelLabels[ch]}</button>
-  );
-  })}
-  </div>
-  {s.days_before > 0 && (
-  <div className="flex items-center gap-1">
-  <span className="text-neutral-400">Days before:</span>
-  <Input type="number" value={s.days_before} onChange={e => updateDaysBefore(s, e.target.value)} className="w-12 border border-brand-100 rounded px-1 py-0.5 text-xs text-center" min="0" />
-  </div>
-  )}
-  </div>
-  <div className="mb-2">
-  <Textarea value={s.template} onChange={e => updateTemplate(s, e.target.value)} className="text-xs text-neutral-500" rows={2} />
-  </div>
-  <Btn variant="secondary" size="xs" onClick={() => sendTestNotification(s)}>Send Test</Btn>
-  </div>
-  );
-  })}
-  </div>
-  )}
-
-  {/* LOG TAB */}
-  {activeTab === "log" && (
-  <div className="space-y-2">
-  {logs.map(l => (
-  <div key={l.id} className="bg-white rounded-3xl border border-brand-50 px-4 py-2.5 flex justify-between items-center">
-  <div>
-  <div className="text-sm text-neutral-800">{l.subject}</div>
-  <div className="text-xs text-neutral-400">{l.recipient_email} · {new Date(l.created_at).toLocaleString()}</div>
-  </div>
-  <span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (l.status === "sent" ? "bg-positive-100 text-positive-700" : l.status === "failed" ? "bg-danger-100 text-danger-700" : "bg-warn-100 text-warn-700")}>{l.status}</span>
-  </div>
-  ))}
-  {logs.length === 0 && <div className="text-center py-8 text-neutral-400">No notifications sent yet</div>}
-  </div>
-  )}
-
-  {/* RENT ROLL TAB */}
-  {activeTab === "rentroll" && (
-  <div>
-  <h3 className="font-semibold text-neutral-700 mb-3">Rent Roll</h3>
-  <div className="bg-white rounded-3xl border border-brand-50 overflow-x-auto">
-  <table className="w-full text-sm">
-  <thead className="bg-brand-50/30 text-xs text-neutral-400">
-  <tr>
-  <th className="text-left px-4 py-2">Tenant</th>
-  <th className="text-left px-4 py-2">Property</th>
-  <th className="text-right px-4 py-2">Rent</th>
-  <th className="text-right px-4 py-2">Balance</th>
-  <th className="text-left px-4 py-2">Lease End</th>
-  <th className="text-left px-4 py-2">Status</th>
-  </tr>
-  </thead>
-  <tbody>
-  {tenants.filter(t => t.lease_status === "active" || !t.lease_status).map(t => (
-  <tr key={t.id} className="border-t border-brand-50/50">
-  <td className="px-4 py-2 font-medium text-neutral-800">{t.name}</td>
-  <td className="px-4 py-2 text-neutral-500">{t.property}</td>
-  <td className="px-4 py-2 text-right font-bold">${safeNum(t.rent).toLocaleString()}</td>
-  <td className={"px-4 py-2 text-right font-bold " + (safeNum(t.balance) > 0 ? "text-danger-600" : "text-positive-600")}>${safeNum(t.balance).toLocaleString()}</td>
-  <td className="px-4 py-2 text-neutral-500">{t.move_out || "—"}</td>
-  <td className="px-4 py-2"><span className={"px-2 py-0.5 rounded-full text-xs font-bold " + (t.lease_status === "active" ? "bg-positive-100 text-positive-700" : "bg-neutral-100 text-neutral-400")}>{t.lease_status || "active"}</span></td>
-  </tr>
-  ))}
-  </tbody>
-  <tfoot className="bg-brand-50/30 font-bold text-sm">
-  <tr>
-  <td className="px-4 py-2" colSpan="2">Total ({tenants.filter(t => t.lease_status === "active" || !t.lease_status).length} tenants)</td>
-  <td className="px-4 py-2 text-right">${tenants.filter(t => t.lease_status === "active" || !t.lease_status).reduce((s, t) => s + safeNum(t.rent), 0).toLocaleString()}</td>
-  <td className="px-4 py-2 text-right">${tenants.filter(t => t.lease_status === "active" || !t.lease_status).reduce((s, t) => s + safeNum(t.balance), 0).toLocaleString()}</td>
-  <td colSpan="2"></td>
-  </tr>
-  </tfoot>
-  </table>
-  </div>
-  </div>
-  )}
-  </div>
   );
 }
 
